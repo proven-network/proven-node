@@ -6,7 +6,7 @@ pub use error::{Error, Result};
 use std::future::Future;
 use std::net::Shutdown;
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_vsock::{VsockAddr, VsockListener, VsockStream};
 
 pub use command::{Command, InitializeArgs};
@@ -28,8 +28,11 @@ where
     let mut listener = VsockListener::bind(vsock_addr)?;
 
     loop {
-        let (stream, _) = listener.accept().await?;
-        let command: Command = serde_cbor::from_reader(stream)?;
+        let (mut stream, _) = listener.accept().await?;
+
+        let mut buffer = Vec::new();
+        stream.read_to_end(&mut buffer).await?;
+        let command: Command = serde_cbor::from_slice(&buffer)?;
 
         match command {
             Command::Shutdown => {
