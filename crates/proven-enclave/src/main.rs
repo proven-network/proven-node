@@ -4,7 +4,10 @@ mod net;
 use error::Result;
 use net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 
+use std::net::{Ipv4Addr, SocketAddrV4};
+
 use proven_imds::{IdentityDocument, Imds};
+use proven_nats_server::NatsServer;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{listen_for_commands, Command, InitializeArgs};
 use proven_vsock_tracing::configure_logging_to_vsock;
@@ -12,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockStream, VMADDR_CID_ANY};
 use tracing::info;
+use tracing_panic::panic_hook;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<()> {
@@ -50,7 +54,9 @@ async fn main() -> Result<()> {
 }
 
 async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> Result<()> {
+    std::panic::set_hook(Box::new(panic_hook));
     configure_logging_to_vsock(VsockAddr::new(3, args.log_port)).await?;
+
     write_dns_resolv(args.dns_resolv)?;
     bring_up_loopback().await?;
 
@@ -82,6 +88,13 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
 
     let identity = fetch_imds_identity().await?;
     info!("identity: {:?}", identity);
+    let server_name = identity.instance_id;
+
+    let nats_server = NatsServer::new(
+        server_name,
+        SocketAddrV4::new(Ipv4Addr::LOCALHOST, args.nats_port),
+    );
+    let nats_server_handle = nats_server.start().await?;
 
     tokio::select! {
         _ = shutdown_token.cancelled() => {
@@ -90,7 +103,14 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         _ = proxy_handle => {
             info!("proxy handler exited");
         }
+        _ = nats_server_handle => {
+            info!("nats server exited");
+        }
     }
+
+    info!("shutting down...");
+    nats_server.shutdown().await;
+    info!("shutdown complete. goodbye.");
 
     Ok(())
 }

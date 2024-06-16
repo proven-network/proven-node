@@ -7,6 +7,7 @@ edition = "2021"
 cidr = "0.2.2"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 proven-imds = { path = "../proven-imds" }
+proven-nats-server = { path = "../proven-nats-server" }
 proven-vsock-proxy = { path = "../proven-vsock-proxy" }
 proven-vsock-rpc = { path = "../proven-vsock-rpc" }
 proven-vsock-tracing = { path = "../proven-vsock-tracing" }

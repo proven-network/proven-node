@@ -8,7 +8,7 @@ members = [
     # "crates/proven-doh-proxy",
     "crates/proven-host",
     "crates/proven-imds",
-    # "crates/proven-nats",
+    "crates/proven-nats-server",
     # "crates/proven-s3-sse-c-keyvalue",
     "crates/proven-vsock-proxy",
     "crates/proven-vsock-rpc",

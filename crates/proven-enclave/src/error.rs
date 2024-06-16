@@ -23,6 +23,9 @@ pub enum Error {
     Io(std::io::Error),
 
     #[from]
+    NatsServer(proven_nats_server::Error),
+
+    #[from]
     Netlink(rtnetlink::Error),
 
     #[from]
@@ -44,6 +47,7 @@ impl core::fmt::Display for Error {
             Error::Cidr(e) => write!(f, "{}", e),
             Error::Imds(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
+            Error::NatsServer(e) => write!(f, "{}", e),
             Error::Netlink(e) => write!(f, "{}", e),
             Error::VsockProxy(e) => write!(f, "{}", e),
             Error::VsockRpc(e) => write!(f, "{}", e),
