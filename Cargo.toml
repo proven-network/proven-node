@@ -10,9 +10,9 @@ members = [
     "crates/proven-imds",
     # "crates/proven-nats",
     # "crates/proven-s3-sse-c-keyvalue",
-    # "crates/proven-tracing-proxy",
     "crates/proven-vsock-cac",
     "crates/proven-vsock-proxy",
+    "crates/proven-vsock-tracing",
 ]
 
 resolver = "2"

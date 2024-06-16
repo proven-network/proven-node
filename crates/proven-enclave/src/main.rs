@@ -7,6 +7,7 @@ use net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 use proven_imds::{IdentityDocument, Imds};
 use proven_vsock_cac::{listen_for_commands, Command, InitializeArgs};
 use proven_vsock_proxy::Proxy;
+use proven_vsock_tracing::configure_logging_to_vsock;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockStream, VMADDR_CID_ANY};
@@ -49,6 +50,7 @@ async fn main() -> Result<()> {
 }
 
 async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> Result<()> {
+    configure_logging_to_vsock(VsockAddr::new(3, args.log_port)).await?;
     write_dns_resolv(args.dns_resolv)?;
     bring_up_loopback().await?;
 

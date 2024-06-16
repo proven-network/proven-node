@@ -9,6 +9,7 @@ derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 proven-imds = { path = "../proven-imds" }
 proven-vsock-cac = { path = "../proven-vsock-cac" }
 proven-vsock-proxy = { path = "../proven-vsock-proxy" }
+proven-vsock-tracing = { path = "../proven-vsock-tracing" }
 rtnetlink = "0.14.1"
 tokio = { version = "1.37.0", features = [
   "io-util",

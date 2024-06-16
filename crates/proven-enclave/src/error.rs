@@ -29,7 +29,10 @@ pub enum Error {
     Netlink(rtnetlink::Error),
 
     #[from]
-    Proxy(proven_vsock_proxy::Error),
+    VsockProxy(proven_vsock_proxy::Error),
+
+    #[from]
+    VsockTracing(proven_vsock_tracing::Error),
 }
 
 impl core::fmt::Display for Error {
@@ -43,7 +46,8 @@ impl core::fmt::Display for Error {
             Error::Imds(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::Netlink(e) => write!(f, "{}", e),
-            Error::Proxy(e) => write!(f, "{}", e),
+            Error::VsockProxy(e) => write!(f, "{}", e),
+            Error::VsockTracing(e) => write!(f, "{}", e),
         }
     }
 }

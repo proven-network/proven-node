@@ -1052,6 +1052,7 @@ dependencies = [
  "proven-imds",
  "proven-vsock-cac",
  "proven-vsock-proxy",
+ "proven-vsock-tracing",
  "rtnetlink",
  "tokio",
  "tokio-util",
@@ -1121,6 +1122,17 @@ dependencies = [
  "tokio-util",
  "tokio-vsock",
  "tracing",
+]
+
+[[package]]
+name = "proven-vsock-tracing"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "tokio",
+ "tokio-vsock",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
