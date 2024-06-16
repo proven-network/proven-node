@@ -22,6 +22,12 @@ pub struct NatsServer {
 }
 
 impl NatsServer {
+    /// Creates a new instance of `NatsServer`.
+    ///
+    /// # Arguments
+    ///
+    /// * `server_name` - The name of the server.
+    /// * `listen_addr` - The address to listen on.
     pub fn new(server_name: String, listen_addr: SocketAddrV4) -> Self {
         Self {
             listen_addr,
@@ -31,17 +37,24 @@ impl NatsServer {
         }
     }
 
+    /// Starts the NATS server.
+    ///
+    /// # Returns
+    ///
+    /// A `JoinHandle` that can be used to await the completion of the server task.
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
 
+        self.mount_tmpfs().await?;
         self.update_nats_config().await?;
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
 
         let server_task = self.task_tracker.spawn(async move {
+            // Start the nats-server process
             let mut cmd = Command::new("nats-server")
                 .arg("--config")
                 .arg("/etc/nats/nats-server.conf")
@@ -52,6 +65,7 @@ impl NatsServer {
 
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
+            // Spawn a task to read and process the stderr output of the nats-server process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
@@ -80,6 +94,7 @@ impl NatsServer {
                 }
             });
 
+            // Wait for the nats-server process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
                     let status = cmd.wait().await.unwrap();
@@ -105,6 +120,7 @@ impl NatsServer {
         Ok(server_task)
     }
 
+    /// Shuts down the NATS server.
     pub async fn shutdown(&self) {
         info!("nats server shutting down...");
 
@@ -114,6 +130,11 @@ impl NatsServer {
         info!("nats server shutdown");
     }
 
+    /// Builds a NATS client.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the built `Client` if successful, or an `Error` if the client failed to connect.
     pub async fn build_client(&self) -> Result<Client> {
         let client = async_nats::connect(&format!("nats://{}", self.listen_addr))
             .await
@@ -122,6 +143,42 @@ impl NatsServer {
         Ok(client)
     }
 
+    /// Mounts a tmpfs filesystem at `/var/lib/nats/jetstream`. This is required for some JetStream metadata even if streams are in-memory.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
+    async fn mount_tmpfs(&self) -> Result<()> {
+        tokio::fs::create_dir_all("/var/lib/nats/jetstream")
+            .await
+            .unwrap();
+
+        let cmd = tokio::process::Command::new("mount")
+            .arg("-o")
+            .arg("size=64MB")
+            .arg("-t")
+            .arg("tmpfs")
+            .arg("none")
+            .arg("/var/lib/nats/jetstream")
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .await;
+
+        info!("{:?}", cmd);
+
+        match cmd {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+            Err(e) => Err(Error::Spawn(e)),
+        }
+    }
+
+    /// Updates the NATS server configuration.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or failure.
     async fn update_nats_config(&self) -> Result<()> {
         let config = format!(
             r#"
