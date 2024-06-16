@@ -1,0 +1,24 @@
+[package]
+name = "proven-enclave"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cidr = "0.2.2"
+derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+proven-imds = { path = "../proven-imds" }
+proven-vsock-cac = { path = "../proven-vsock-cac" }
+proven-vsock-proxy = { path = "../proven-vsock-proxy" }
+rtnetlink = "0.14.1"
+tokio = { version = "1.37.0", features = [
+  "io-util",
+  "macros",
+  "process",
+  "rt",
+  "rt-multi-thread",
+] }
+tokio-util = { version = "0.7.11", features = ["rt"] }
+tokio-vsock = "0.5.0"
+tracing = "0.1.40"
+tracing-panic = "0.1.2"
+tracing-subscriber = "0.3.18"

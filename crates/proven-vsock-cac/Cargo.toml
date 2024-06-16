@@ -1,0 +1,20 @@
+[package]
+name = "proven-vsock-cac"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.37.0", features = [
+  "io-util",
+  "macros",
+  "process",
+  "test-util",
+  "rt",
+] }
+cidr = { version = "0.2.2", features = ["serde"] }
+derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+serde = { version = "1.0.202", features = ["derive"] }
+serde_cbor = "0.11.2"
+tokio-util = "0.7.11"
+tokio-vsock = "0.5.0"
+tracing = "0.1.40"

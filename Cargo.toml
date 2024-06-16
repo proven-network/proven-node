@@ -1,0 +1,17 @@
+[workspace]
+
+members = [
+    # "crates/proven-application-registry",
+    # "crates/proven-asm-keyvalue",
+    "crates/proven-enclave",
+    # "crates/proven-doh-proxy",
+    "crates/proven-host",
+    "crates/proven-imds",
+    # "crates/proven-nats",
+    # "crates/proven-s3-sse-c-keyvalue",
+    # "crates/proven-tracing-proxy",
+    "crates/proven-vsock-cac",
+    "crates/proven-vsock-proxy",
+]
+
+resolver = "2"
