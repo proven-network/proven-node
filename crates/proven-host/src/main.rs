@@ -16,8 +16,8 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::{TokioIo, TokioTimer};
-use proven_vsock_cac::{send_command, Command, InitializeArgs};
 use proven_vsock_proxy::Proxy;
+use proven_vsock_rpc::{send_command, Command, InitializeArgs};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -153,11 +153,11 @@ async fn start_enclave() -> Result<()> {
         tun_device: args.tun_device,
     };
 
-    let _ = send_command(
+    send_command(
         VsockAddr::new(args.enclave_cid, 1024),
         Command::Initialize(initialize_args),
     )
-    .await;
+    .await?;
 
     Ok(())
 }

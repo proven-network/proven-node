@@ -1050,8 +1050,8 @@ dependencies = [
  "cidr",
  "derive_more",
  "proven-imds",
- "proven-vsock-cac",
  "proven-vsock-proxy",
+ "proven-vsock-rpc",
  "proven-vsock-tracing",
  "rtnetlink",
  "tokio",
@@ -1073,8 +1073,8 @@ dependencies = [
  "http-body-util",
  "hyper 1.3.1",
  "hyper-util",
- "proven-vsock-cac",
  "proven-vsock-proxy",
+ "proven-vsock-rpc",
  "tokio",
  "tokio-util",
  "tokio-vsock",
@@ -1098,20 +1098,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-vsock-cac"
-version = "0.1.0"
-dependencies = [
- "cidr",
- "derive_more",
- "serde",
- "serde_cbor",
- "tokio",
- "tokio-util",
- "tokio-vsock",
- "tracing",
-]
-
-[[package]]
 name = "proven-vsock-proxy"
 version = "0.1.0"
 dependencies = [
@@ -1119,6 +1105,20 @@ dependencies = [
  "derive_more",
  "tokio",
  "tokio-tun",
+ "tokio-util",
+ "tokio-vsock",
+ "tracing",
+]
+
+[[package]]
+name = "proven-vsock-rpc"
+version = "0.1.0"
+dependencies = [
+ "cidr",
+ "derive_more",
+ "serde",
+ "serde_cbor",
+ "tokio",
  "tokio-util",
  "tokio-vsock",
  "tracing",

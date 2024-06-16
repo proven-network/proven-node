@@ -2,7 +2,7 @@ mod command;
 mod error;
 
 pub use error::{Error, Result};
-use tracing::info;
+use tracing::debug;
 
 use std::future::Future;
 use std::net::Shutdown;
@@ -13,7 +13,7 @@ use tokio_vsock::{VsockAddr, VsockListener, VsockStream};
 pub use command::{Command, InitializeArgs};
 
 pub async fn send_command(vsock_addr: VsockAddr, command: Command) -> Result<()> {
-    info!("sending command: {:?}", command);
+    debug!("sending command: {:?}", command);
 
     let mut stream = VsockStream::connect(vsock_addr).await?;
     let encoded = serde_cbor::to_vec(&command)?;
@@ -23,10 +23,10 @@ pub async fn send_command(vsock_addr: VsockAddr, command: Command) -> Result<()>
 
     let ack = stream.read_u8().await?;
     if ack == 1 {
-        info!("received acknowledgment");
+        debug!("received acknowledgment");
         stream.shutdown(Shutdown::Both)?;
     } else {
-        info!("failed to receive acknowledgment");
+        debug!("failed to receive acknowledgment");
     }
 
     Ok(())
@@ -47,7 +47,7 @@ where
         stream.read_exact(&mut buffer).await?;
 
         let command: Command = serde_cbor::from_slice(&buffer)?;
-        info!("received command: {:?}", command);
+        debug!("received command: {:?}", command);
 
         stream.write_u8(1).await?; // Send acknowledgment
 

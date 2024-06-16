@@ -5,8 +5,8 @@ use error::Result;
 use net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 
 use proven_imds::{IdentityDocument, Imds};
-use proven_vsock_cac::{listen_for_commands, Command, InitializeArgs};
 use proven_vsock_proxy::Proxy;
+use proven_vsock_rpc::{listen_for_commands, Command, InitializeArgs};
 use proven_vsock_tracing::configure_logging_to_vsock;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -98,7 +98,6 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
 async fn fetch_imds_identity() -> Result<IdentityDocument> {
     let imds = Imds::new().await?;
     let identity = imds.get_verified_identity_document().await?;
-    info!("identity: {:?}", identity);
 
     Ok(identity)
 }

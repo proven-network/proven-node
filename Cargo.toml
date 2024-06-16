@@ -10,8 +10,8 @@ members = [
     "crates/proven-imds",
     # "crates/proven-nats",
     # "crates/proven-s3-sse-c-keyvalue",
-    "crates/proven-vsock-cac",
     "crates/proven-vsock-proxy",
+    "crates/proven-vsock-rpc",
     "crates/proven-vsock-tracing",
 ]
 

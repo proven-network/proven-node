@@ -14,9 +14,6 @@ pub enum Error {
     Async(tokio::task::JoinError),
 
     #[from]
-    Cac(proven_vsock_cac::Error),
-
-    #[from]
     Cidr(cidr::errors::NetworkParseError),
 
     #[from]
@@ -32,6 +29,9 @@ pub enum Error {
     VsockProxy(proven_vsock_proxy::Error),
 
     #[from]
+    VsockRpc(proven_vsock_rpc::Error),
+
+    #[from]
     VsockTracing(proven_vsock_tracing::Error),
 }
 
@@ -41,12 +41,12 @@ impl core::fmt::Display for Error {
             Error::Custom(e) => write!(f, "{}", e),
             Error::AddrParse(e) => write!(f, "{}", e),
             Error::Async(e) => write!(f, "{}", e),
-            Error::Cac(e) => write!(f, "{}", e),
             Error::Cidr(e) => write!(f, "{}", e),
             Error::Imds(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::Netlink(e) => write!(f, "{}", e),
             Error::VsockProxy(e) => write!(f, "{}", e),
+            Error::VsockRpc(e) => write!(f, "{}", e),
             Error::VsockTracing(e) => write!(f, "{}", e),
         }
     }

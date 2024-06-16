@@ -1,5 +1,5 @@
 [package]
-name = "proven-vsock-cac"
+name = "proven-vsock-rpc"
 version = "0.1.0"
 edition = "2021"
 
