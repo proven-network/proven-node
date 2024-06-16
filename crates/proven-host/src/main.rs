@@ -3,9 +3,11 @@ mod net;
 
 use error::Result;
 use net::{configure_nat, configure_route, configure_tcp_forwarding};
+use tokio::process::Child;
 
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 
 use bytes::Bytes;
 use cidr::Ipv4Cidr;
@@ -30,6 +32,9 @@ use tracing_subscriber::FmtSubscriber;
 struct Args {
     #[arg(long, default_value_t = Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap())]
     cidr: Ipv4Cidr,
+
+    #[arg(index = 1)]
+    eif_path: PathBuf,
 
     #[clap(long)]
     email: Vec<String>,
@@ -105,16 +110,18 @@ async fn main() -> Result<()> {
 
     let cancellation_token = CancellationToken::new();
 
-    let tracker = TaskTracker::new();
+    let mut enclave = start_enclave().await?;
 
+    let tracker = TaskTracker::new();
     tracker.spawn(start_proxy_server(cancellation_token.clone()));
     tracker.spawn(start_http_server(cancellation_token.clone()));
-
-    // sleep for a bit to allow the proxy server to start
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-    start_enclave().await?;
-
     tracker.close();
+
+    // sleep for a bit to allow everything to start
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    initialize_enclave().await?;
+
+    info!("enclave initialized successfully");
 
     match tokio::signal::ctrl_c().await {
         Ok(()) => {}
@@ -127,17 +134,35 @@ async fn main() -> Result<()> {
 
     cancellation_token.cancel();
 
+    enclave.wait().await?;
     tracker.wait().await;
 
     Ok(())
 }
 
-async fn start_enclave() -> Result<()> {
-    // TODO: Call nitro-cli here
+async fn start_enclave() -> Result<Child> {
+    let args = Args::parse();
+
+    let handle = tokio::process::Command::new("nitro-cli")
+        .arg("run-enclave")
+        .arg("--cpu-count")
+        .arg(args.enclave_cpus.to_string())
+        .arg("--memory")
+        .arg(args.enclave_memory.to_string())
+        .arg("--enclave-cid")
+        .arg(args.enclave_cid.to_string())
+        .arg("--eif-path")
+        .arg(args.eif_path)
+        .spawn()?;
+
+    Ok(handle)
+}
+
+async fn initialize_enclave() -> Result<()> {
+    let args = Args::parse();
 
     let dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
 
-    let args = Args::parse();
     let initialize_args = InitializeArgs {
         cidr: args.cidr,
         dns_resolv,
