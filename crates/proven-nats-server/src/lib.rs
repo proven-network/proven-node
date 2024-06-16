@@ -155,7 +155,7 @@ impl NatsServer {
 
         let cmd = tokio::process::Command::new("mount")
             .arg("-o")
-            .arg("size=64MB")
+            .arg("size=64m")
             .arg("-t")
             .arg("tmpfs")
             .arg("none")
