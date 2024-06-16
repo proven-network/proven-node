@@ -97,40 +97,16 @@ async fn main() -> Result<()> {
         }
     });
 
-    // TODO: Call nitro-cli here
-
-    // Read dns_resolv from /etc/resolv.conf
-    let dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
-
-    let args = Args::parse();
-
-    let initialize_args = InitializeArgs {
-        cidr: args.cidr,
-        dns_resolv,
-        email: args.email,
-        enclave_ip: args.enclave_ip,
-        fqdn: args.fqdn,
-        host_ip: args.host_ip,
-        https_port: args.https_port,
-        log_port: args.log_port,
-        nats_port: args.nats_port,
-        production: args.production,
-        proxy_port: args.proxy_port,
-        tun_device: args.tun_device.clone(),
-    };
-
-    let _ = send_command(
-        VsockAddr::new(args.enclave_cid, 1024),
-        Command::Initialize(initialize_args),
-    )
-    .await;
-
     let cancellation_token = CancellationToken::new();
 
     let tracker = TaskTracker::new();
 
     tracker.spawn(start_proxy_server(cancellation_token.clone()));
     tracker.spawn(start_http_server(cancellation_token.clone()));
+
+    // sleep for a bit to allow the proxy server to start
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    start_enclave().await?;
 
     tracker.close();
 
@@ -146,6 +122,36 @@ async fn main() -> Result<()> {
     cancellation_token.cancel();
 
     tracker.wait().await;
+
+    Ok(())
+}
+
+async fn start_enclave() -> Result<()> {
+    // TODO: Call nitro-cli here
+
+    let dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
+
+    let args = Args::parse();
+    let initialize_args = InitializeArgs {
+        cidr: args.cidr,
+        dns_resolv,
+        email: args.email,
+        enclave_ip: args.enclave_ip,
+        fqdn: args.fqdn,
+        host_ip: args.host_ip,
+        https_port: args.https_port,
+        log_port: args.log_port,
+        nats_port: args.nats_port,
+        production: args.production,
+        proxy_port: args.proxy_port,
+        tun_device: args.tun_device,
+    };
+
+    let _ = send_command(
+        VsockAddr::new(args.enclave_cid, 1024),
+        Command::Initialize(initialize_args),
+    )
+    .await;
 
     Ok(())
 }
