@@ -143,6 +143,12 @@ async fn main() -> Result<()> {
 async fn start_enclave() -> Result<Child> {
     let args = Args::parse();
 
+    tokio::process::Command::new("nitro-cli")
+        .arg("terminate-enclave")
+        .arg("--all")
+        .output()
+        .await?;
+
     let handle = tokio::process::Command::new("nitro-cli")
         .arg("run-enclave")
         .arg("--cpu-count")
