@@ -3,6 +3,7 @@
 members = [
     # "crates/proven-application-registry",
     # "crates/proven-asm-keyvalue",
+    "crates/proven-core",
     "crates/proven-enclave",
     # "crates/proven-doh-proxy",
     "crates/proven-host",

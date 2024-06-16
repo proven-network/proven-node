@@ -53,7 +53,7 @@ pub async fn setup_default_gateway(
     Ok(())
 }
 
-pub fn write_dns_resolv(contents: Vec<u8>) -> Result<()> {
+pub fn write_dns_resolv(contents: String) -> Result<()> {
     info!("writing resolv.conf");
 
     std::fs::create_dir_all("/run/resolvconf")?;
@@ -63,5 +63,5 @@ pub fn write_dns_resolv(contents: Vec<u8>) -> Result<()> {
         .write(true)
         .open("/run/resolvconf/resolv.conf")?;
 
-    Ok(std::io::Write::write_all(&mut resolv, contents.as_slice())?)
+    Ok(std::io::Write::write_all(&mut resolv, contents.as_bytes())?)
 }

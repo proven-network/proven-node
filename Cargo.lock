@@ -1040,6 +1040,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-core"
+version = "0.1.0"
+
+[[package]]
 name = "proven-enclave"
 version = "0.1.0"
 dependencies = [

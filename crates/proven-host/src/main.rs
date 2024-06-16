@@ -16,7 +16,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::{TokioIo, TokioTimer};
-use proven_vsock_cac::{send_command, Command};
+use proven_vsock_cac::{send_command, Command, InitializeArgs};
 use proven_vsock_proxy::Proxy;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -31,17 +31,35 @@ struct Args {
     #[arg(long, default_value_t = Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap())]
     cidr: Ipv4Cidr,
 
+    #[clap(long)]
+    email: Vec<String>,
+
+    #[arg(long, default_value_t = 4)]
+    enclave_cid: u32,
+
     #[arg(long, default_value_t = Ipv4Addr::new(10, 0, 0, 2))]
     enclave_ip: Ipv4Addr,
 
+    #[clap(long, required = true)]
+    fqdn: String,
+
     #[arg(long, default_value_t = Ipv4Addr::new(10, 0, 0, 1))]
-    ip: Ipv4Addr,
+    host_ip: Ipv4Addr,
+
+    #[arg(long, default_value_t = 443)]
+    https_port: u16,
 
     #[arg(long, default_value_t = 1026)]
     log_port: u32,
 
+    #[arg(long, default_value_t = 4222)]
+    nats_port: u16,
+
     #[arg(long, default_value_t = format!("ens5"))]
     outbound_device: String,
+
+    #[arg(long, default_value_t = false)]
+    production: bool,
 
     #[arg(long, default_value_t = 1025)]
     proxy_port: u32,
@@ -79,6 +97,34 @@ async fn main() -> Result<()> {
         }
     });
 
+    // TODO: Call nitro-cli here
+
+    // Read dns_resolv from /etc/resolv.conf
+    let dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
+
+    let args = Args::parse();
+
+    let initialize_args = InitializeArgs {
+        cidr: args.cidr,
+        dns_resolv,
+        email: args.email,
+        enclave_ip: args.enclave_ip,
+        fqdn: args.fqdn,
+        host_ip: args.host_ip,
+        https_port: args.https_port,
+        log_port: args.log_port,
+        nats_port: args.nats_port,
+        production: args.production,
+        proxy_port: args.proxy_port,
+        tun_device: args.tun_device.clone(),
+    };
+
+    let _ = send_command(
+        VsockAddr::new(args.enclave_cid, 1024),
+        Command::Initialize(initialize_args),
+    )
+    .await;
+
     let cancellation_token = CancellationToken::new();
 
     let tracker = TaskTracker::new();
@@ -109,16 +155,21 @@ async fn start_proxy_server(cancellation_token: CancellationToken) -> Result<()>
 
     let mut vsock = VsockListener::bind(VsockAddr::new(3, args.proxy_port)).unwrap();
 
-    let proxy_handler = Proxy::new(args.ip, args.enclave_ip, args.cidr, args.tun_device.clone())
-        .start(async {
-            configure_nat(&args.outbound_device, args.cidr).await?;
-            configure_route(&args.tun_device, args.cidr, args.enclave_ip).await?;
-            configure_tcp_forwarding(args.ip, args.enclave_ip, &args.outbound_device).await?;
+    let proxy_handler = Proxy::new(
+        args.host_ip,
+        args.enclave_ip,
+        args.cidr,
+        args.tun_device.clone(),
+    )
+    .start(async {
+        configure_nat(&args.outbound_device, args.cidr).await?;
+        configure_route(&args.tun_device, args.cidr, args.enclave_ip).await?;
+        configure_tcp_forwarding(args.host_ip, args.enclave_ip, &args.outbound_device).await?;
 
-            Ok(())
-        })
-        .await
-        .unwrap();
+        Ok(())
+    })
+    .await
+    .unwrap();
 
     loop {
         tokio::select! {
