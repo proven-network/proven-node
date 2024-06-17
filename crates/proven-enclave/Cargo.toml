@@ -10,6 +10,8 @@ proven-attestation = { path = "../proven-attestation" }
 proven-attestation-nsm = { path = "../proven-attestation-nsm" }
 proven-imds = { path = "../proven-imds" }
 proven-nats-server = { path = "../proven-nats-server" }
+proven-store = { path = "../proven-store" }
+proven-store-s3-sse-c = { path = "../proven-store-s3-sse-c" }
 proven-vsock-proxy = { path = "../proven-vsock-proxy" }
 proven-vsock-rpc = { path = "../proven-vsock-rpc" }
 proven-vsock-tracing = { path = "../proven-vsock-tracing" }

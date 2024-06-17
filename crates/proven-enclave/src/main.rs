@@ -1,3 +1,4 @@
+#![allow(clippy::result_large_err)]
 mod error;
 mod net;
 
@@ -10,6 +11,8 @@ use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_imds::{IdentityDocument, Imds};
 use proven_nats_server::NatsServer;
+use proven_store::Store;
+use proven_store_s3_sse_c::S3Store;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{listen_for_commands, Command, InitializeArgs};
 use proven_vsock_tracing::configure_logging_to_vsock;
@@ -116,6 +119,14 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         SocketAddrV4::new(Ipv4Addr::LOCALHOST, args.nats_port),
     );
     let nats_server_handle = nats_server.start().await?;
+
+    // Testing store
+    let store = S3Store::new("myduperprovenbucket".to_string(), identity.region).await;
+    store
+        .put("blah.txt".to_string(), b"hello world".to_vec())
+        .await?;
+    let data = store.get("blah.txt".to_string()).await?;
+    info!("data: {:?}", data);
 
     tokio::select! {
         _ = shutdown_token.cancelled() => {

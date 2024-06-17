@@ -32,6 +32,9 @@ pub enum Error {
     Nsm(proven_attestation_nsm::Error),
 
     #[from]
+    S3Store(proven_store_s3_sse_c::Error),
+
+    #[from]
     VsockProxy(proven_vsock_proxy::Error),
 
     #[from]
@@ -53,6 +56,7 @@ impl core::fmt::Display for Error {
             Error::NatsServer(e) => write!(f, "{}", e),
             Error::Netlink(e) => write!(f, "{}", e),
             Error::Nsm(e) => write!(f, "{}", e),
+            Error::S3Store(e) => write!(f, "{}", e),
             Error::VsockProxy(e) => write!(f, "{}", e),
             Error::VsockRpc(e) => write!(f, "{}", e),
             Error::VsockTracing(e) => write!(f, "{}", e),
