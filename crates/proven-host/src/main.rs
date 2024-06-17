@@ -3,7 +3,6 @@ mod net;
 
 use error::Result;
 use net::{configure_nat, configure_route, configure_tcp_forwarding};
-use tokio::process::Child;
 
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -21,6 +20,7 @@ use hyper_util::rt::{TokioIo, TokioTimer};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{send_command, Command, InitializeArgs};
 use tokio::net::TcpListener;
+use tokio::process::Child;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockListener};

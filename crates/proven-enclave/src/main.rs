@@ -6,6 +6,8 @@ use net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 
 use std::net::{Ipv4Addr, SocketAddrV4};
 
+use proven_attestation::Attestor;
+use proven_attestation_nsm::NsmAttestor;
 use proven_imds::{IdentityDocument, Imds};
 use proven_nats_server::NatsServer;
 use proven_vsock_proxy::Proxy;
@@ -54,9 +56,13 @@ async fn main() -> Result<()> {
 }
 
 async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> Result<()> {
+    // Configure tracing
     std::panic::set_hook(Box::new(panic_hook));
     configure_logging_to_vsock(VsockAddr::new(3, args.log_port)).await?;
 
+    info!("tracing configured");
+
+    // Configure network
     write_dns_resolv(args.dns_resolv)?;
     bring_up_loopback().await?;
 
@@ -70,6 +76,7 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         args.cidr,
         args.tun_device.clone(),
     );
+
     let connection_handler = proxy
         .start(async {
             setup_default_gateway(args.tun_device.as_str(), args.host_ip, args.cidr).await?;
@@ -86,10 +93,24 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
             .await
     });
 
+    info!("network configured");
+
+    // Seed entropy
+    let nsm = NsmAttestor::new();
+    let secured_random_bytes = nsm.secure_random().await?;
+    let mut rng = std::fs::OpenOptions::new()
+        .write(true)
+        .open("/dev/random")?;
+    std::io::Write::write_all(&mut rng, &secured_random_bytes)?;
+
+    info!("entropy seeded");
+
+    // Fetch validated identity from IMDS
     let identity = fetch_imds_identity().await?;
     info!("identity: {:?}", identity);
     let server_name = identity.instance_id;
 
+    // Boot NATS server
     let nats_server = NatsServer::new(
         server_name,
         SocketAddrV4::new(Ipv4Addr::LOCALHOST, args.nats_port),

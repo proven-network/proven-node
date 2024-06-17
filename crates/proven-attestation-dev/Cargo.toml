@@ -1,0 +1,7 @@
+[package]
+name = "proven-attestation-dev"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proven-attestation = { path = "../proven-attestation" }

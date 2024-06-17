@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 cidr = "0.2.2"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+proven-attestation = { path = "../proven-attestation" }
+proven-attestation-nsm = { path = "../proven-attestation-nsm" }
 proven-imds = { path = "../proven-imds" }
 proven-nats-server = { path = "../proven-nats-server" }
 proven-vsock-proxy = { path = "../proven-vsock-proxy" }
