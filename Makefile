@@ -1,6 +1,6 @@
-.PHONY: all build install enclave
+.PHONY: all build install
 
-all: build install enclave
+all: build install
 
 build:
 	cargo build --release
@@ -8,6 +8,3 @@ build:
 install:
 	@sudo cp target/release/proven-host /usr/sbin/proven
 	@echo "Copied target/release/proven-host to /usr/sbin/"
-
-enclave:
-	make -C ./build
