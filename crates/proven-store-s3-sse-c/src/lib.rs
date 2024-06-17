@@ -41,6 +41,21 @@ impl S3Store {
 impl Store for S3Store {
     type SE = Error;
 
+    async fn del(&self, key: String) -> Result<(), Self::SE> {
+        let resp = self
+            .client
+            .delete_object()
+            .bucket(&self.bucket)
+            .key(&key)
+            .send()
+            .await;
+
+        match resp {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::S3(e.into())),
+        }
+    }
+
     async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
         let sse_key = self.generate_aes_key(&key);
 
