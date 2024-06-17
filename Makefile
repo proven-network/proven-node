@@ -3,10 +3,10 @@
 all: build install enclave
 
 build:
-  cargo build --release
+	cargo build --release
 
 install:
-  @sudo cp target/release/proven-host /usr/sbin/proven
+	@sudo cp target/release/proven-host /usr/sbin/proven
 	@echo "Copied target/release/proven-host to /usr/sbin/"
 
 enclave:
