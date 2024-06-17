@@ -5,6 +5,7 @@ pub use error::Error;
 use async_trait::async_trait;
 use aws_config::Region;
 use base64::{engine::general_purpose::STANDARD as base64, Engine};
+use blake3::Hasher;
 use proven_store::Store;
 use tokio::io::AsyncReadExt;
 
@@ -12,10 +13,11 @@ use tokio::io::AsyncReadExt;
 pub struct S3Store {
     bucket: String,
     client: aws_sdk_s3::Client,
+    secret_key: [u8; 32],
 }
 
 impl S3Store {
-    pub async fn new(bucket: String, region: String) -> Self {
+    pub async fn new(bucket: String, region: String, secret_key: [u8; 32]) -> Self {
         let config = aws_config::from_env()
             .region(Region::new(region))
             .load()
@@ -24,7 +26,14 @@ impl S3Store {
         Self {
             bucket,
             client: aws_sdk_s3::Client::new(&config),
+            secret_key,
         }
+    }
+
+    fn generate_aes_key(&self, key: &String) -> [u8; 32] {
+        let mut hasher = Hasher::new_keyed(&self.secret_key);
+        hasher.update(key.as_bytes());
+        *hasher.finalize().as_bytes()
     }
 }
 
@@ -33,10 +42,7 @@ impl Store for S3Store {
     type SE = Error;
 
     async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
-        let sse_key = "12345678901234567890123456789012".to_string();
-        let sse_key_base64 = base64.encode(sse_key.as_bytes());
-        let sse_key_md5 = md5::compute(sse_key.as_bytes());
-        let sse_key_md5_base64 = base64.encode(sse_key_md5.as_slice());
+        let sse_key = self.generate_aes_key(&key);
 
         let resp = self
             .client
@@ -44,8 +50,8 @@ impl Store for S3Store {
             .bucket(&self.bucket)
             .key(&key)
             .sse_customer_algorithm("AES256")
-            .sse_customer_key(sse_key_base64)
-            .sse_customer_key_md5(sse_key_md5_base64)
+            .sse_customer_key(base64.encode(sse_key))
+            .sse_customer_key_md5(base64.encode(md5::compute(sse_key).as_slice()))
             .send()
             .await;
 
@@ -68,10 +74,7 @@ impl Store for S3Store {
     }
 
     async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
-        let sse_key = "12345678901234567890123456789012".to_string();
-        let sse_key_base64 = base64.encode(sse_key.as_bytes());
-        let sse_key_md5 = md5::compute(sse_key.as_bytes());
-        let sse_key_md5_base64 = base64.encode(sse_key_md5.as_slice());
+        let sse_key = self.generate_aes_key(&key);
 
         let resp = self
             .client
@@ -80,8 +83,8 @@ impl Store for S3Store {
             .key(key)
             .body(bytes.into())
             .sse_customer_algorithm("AES256")
-            .sse_customer_key(sse_key_base64)
-            .sse_customer_key_md5(sse_key_md5_base64)
+            .sse_customer_key(base64.encode(sse_key))
+            .sse_customer_key_md5(base64.encode(md5::compute(sse_key).as_slice()))
             .send()
             .await;
 

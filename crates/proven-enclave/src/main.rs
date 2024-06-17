@@ -121,7 +121,13 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     let nats_server_handle = nats_server.start().await?;
 
     // Testing store
-    let store = S3Store::new("myduperprovenbucket".to_string(), identity.region).await;
+    let secret_key = [0u8; 32];
+    let store = S3Store::new(
+        "myduperprovenbucket".to_string(),
+        identity.region,
+        secret_key,
+    )
+    .await;
     store
         .put("blah.txt".to_string(), b"hello world".to_vec())
         .await?;
