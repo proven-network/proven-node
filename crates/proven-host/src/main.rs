@@ -17,6 +17,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
 use hyper_util::rt::{TokioIo, TokioTimer};
+use nix::unistd::Uid;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{send_command, Command, InitializeArgs};
 use tokio::net::TcpListener;
@@ -82,6 +83,10 @@ struct Args {
 #[tokio::main(worker_threads = 8)]
 async fn main() -> Result<()> {
     let args = Args::parse();
+
+    if !Uid::effective().is_root() {
+        return Err(Error::NotRoot);
+    }
 
     if !Path::new(&args.eif_path).exists() {
         return Err(Error::EifDoesNotExist(args.eif_path));

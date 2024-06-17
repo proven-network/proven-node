@@ -11,6 +11,8 @@ pub enum Error {
     #[from]
     Io(std::io::Error),
 
+    NotRoot,
+
     #[from]
     VsockProxy(proven_vsock_proxy::Error),
 
@@ -23,6 +25,7 @@ impl core::fmt::Display for Error {
         match self {
             Error::EifDoesNotExist(path) => write!(f, "eif does not exist: {:?}", path),
             Error::Io(e) => write!(f, "{}", e),
+            Error::NotRoot => write!(f, "must be root"),
             Error::VsockProxy(e) => write!(f, "{}", e),
             Error::VsockRpc(e) => write!(f, "{}", e),
         }

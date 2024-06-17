@@ -11,6 +11,7 @@ derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 http-body-util = "0.1.1"
 hyper = { version = "1.3.1", features = ["server", "http1"] }
 hyper-util = { version = "0.1.3", features = ["http1", "server", "tokio"] }
+nix = { version = "0.29.0", features = ["user"] }
 proven-vsock-proxy = { path = "../proven-vsock-proxy" }
 proven-vsock-rpc = { path = "../proven-vsock-rpc" }
 tokio = { version = "1.37.0", features = [
