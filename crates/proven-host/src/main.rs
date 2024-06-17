@@ -33,7 +33,7 @@ struct Args {
     #[arg(long, default_value_t = Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap())]
     cidr: Ipv4Cidr,
 
-    #[arg(index = 1, default_value = "/var/lib/enclave.eif")]
+    #[arg(index = 1, default_value = "/var/lib/proven/enclave.eif")]
     eif_path: PathBuf,
 
     #[clap(long)]
