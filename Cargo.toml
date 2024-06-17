@@ -13,6 +13,7 @@ members = [
     "crates/proven-imds",
     "crates/proven-nats-server",
     "crates/proven-store",
+    "crates/proven-store-asm",
     "crates/proven-store-s3-sse-c",
     "crates/proven-vsock-proxy",
     "crates/proven-vsock-rpc",

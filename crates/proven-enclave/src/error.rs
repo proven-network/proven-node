@@ -11,6 +11,9 @@ pub enum Error {
     AddrParse(std::net::AddrParseError),
 
     #[from]
+    AsmStore(proven_store_asm::Error),
+
+    #[from]
     Async(tokio::task::JoinError),
 
     #[from]
@@ -49,6 +52,7 @@ impl core::fmt::Display for Error {
         match self {
             Error::Custom(e) => write!(f, "{}", e),
             Error::AddrParse(e) => write!(f, "{}", e),
+            Error::AsmStore(e) => write!(f, "{}", e),
             Error::Async(e) => write!(f, "{}", e),
             Error::Cidr(e) => write!(f, "{}", e),
             Error::Imds(e) => write!(f, "{}", e),

@@ -2,9 +2,10 @@
 mod error;
 mod net;
 
-use error::Result;
+use error::{Error, Result};
 use net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 
+use std::convert::TryInto;
 use std::net::{Ipv4Addr, SocketAddrV4};
 
 use proven_attestation::Attestor;
@@ -12,6 +13,7 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_imds::{IdentityDocument, Imds};
 use proven_nats_server::NatsServer;
 use proven_store::Store;
+use proven_store_asm::AsmStore;
 use proven_store_s3_sse_c::S3Store;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{listen_for_commands, Command, InitializeArgs};
@@ -120,12 +122,27 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     );
     let nats_server_handle = nats_server.start().await?;
 
+    // Get secret from ASM and get or init sse base key
+    let secret_id = format!("proven-{}", identity.region.clone());
+    let store = AsmStore::new(identity.region.clone(), secret_id).await;
+
+    let s3_sse_c_base_key_opt = store.get("S3_SSE_C_BASE_KEY".to_string()).await?;
+    let s3_sse_c_base_key: [u8; 32] = match s3_sse_c_base_key_opt {
+        Some(key) => key.try_into().map_err(|_| Error::Custom("bad value for S3_SSE_C_BASE_KEY".to_string()))?,
+        None => {
+            let key = rand::random::<[u8; 32]>();
+            store
+                .put("S3_SSE_C_BASE_KEY".to_string(), key.to_vec())
+                .await?;
+            key
+        }
+    };
+
     // Testing store
-    let secret_key = [0u8; 32];
     let store = S3Store::new(
         "myduperprovenbucket".to_string(),
         identity.region,
-        secret_key,
+        s3_sse_c_base_key,
     )
     .await;
     store

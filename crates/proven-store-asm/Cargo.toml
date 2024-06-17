@@ -1,15 +1,12 @@
 [package]
-name = "proven-store-s3-sse-c"
+name = "proven-store-asm"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 async-trait = "0.1.80"
 aws-config = { version = "1.5.1", features = ["behavior-version-latest"] }
-aws-sdk-s3 = "1.36.0"
-base64 = "0.22.1"
-blake3 = "1.5.1"
+aws-sdk-secretsmanager = "1.35.1"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
-md5 = "0.7.0"
 proven-store = { path = "../proven-store" }
-tokio = "1.38.0"
+serde_json = "1.0.117"
