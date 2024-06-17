@@ -23,7 +23,7 @@ image: $(image_tar)
 $(image_tar): Dockerfile
 	docker run \
 		-v $(PWD):/workspace \
-		gcr.io/kaniko-project/executor:v1.22.0 \
+		gcr.io/kaniko-project/executor:v1.23.1 \
 		--reproducible \
 		--no-push \
 		--tarPath $(image_tar) \
