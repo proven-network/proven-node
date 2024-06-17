@@ -128,7 +128,9 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
 
     let s3_sse_c_base_key_opt = store.get("S3_SSE_C_BASE_KEY".to_string()).await?;
     let s3_sse_c_base_key: [u8; 32] = match s3_sse_c_base_key_opt {
-        Some(key) => key.try_into().map_err(|_| Error::Custom("bad value for S3_SSE_C_BASE_KEY".to_string()))?,
+        Some(key) => key
+            .try_into()
+            .map_err(|_| Error::Custom("bad value for S3_SSE_C_BASE_KEY".to_string()))?,
         None => {
             let key = rand::random::<[u8; 32]>();
             store
