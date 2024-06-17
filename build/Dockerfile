@@ -2,8 +2,11 @@ FROM messense/rust-musl-cross:${RUSTARCH}-musl as builder
 
 WORKDIR /
 
+ARG COMMIT
 RUN git clone git@github.com:proven-network/proven-node.git
 WORKDIR /proven-node
+RUN git checkout ${COMMIT}
+
 ARG RUSTTARGET
 RUN rustup target add ${RUSTTARGET}
 RUN cargo build --release --target ${RUSTTARGET}

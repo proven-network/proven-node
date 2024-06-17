@@ -1,12 +1,12 @@
 mod error;
 mod net;
 
-use error::Result;
+use error::{Error, Result};
 use net::{configure_nat, configure_route, configure_tcp_forwarding};
 
 use std::convert::Infallible;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bytes::Bytes;
 use cidr::Ipv4Cidr;
@@ -33,7 +33,7 @@ struct Args {
     #[arg(long, default_value_t = Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap())]
     cidr: Ipv4Cidr,
 
-    #[arg(index = 1)]
+    #[arg(index = 1, default_value = "/var/lib/enclave.eif")]
     eif_path: PathBuf,
 
     #[clap(long)]
@@ -81,6 +81,12 @@ struct Args {
 
 #[tokio::main(worker_threads = 8)]
 async fn main() -> Result<()> {
+    let args = Args::parse();
+
+    if !Path::new(&args.eif_path).exists() {
+        return Err(Error::EifDoesNotExist(args.eif_path));
+    }
+
     let subscriber = FmtSubscriber::builder()
         .with_max_level(Level::TRACE)
         .finish();
