@@ -32,6 +32,20 @@ impl Kms {
         }
     }
 
+    pub async fn encrypt(&self, plaintext: Vec<u8>) -> Result<Vec<u8>> {
+        let ciphertext = self
+            .client
+            .encrypt()
+            .plaintext(Blob::new(plaintext))
+            .key_id(&self.key_id)
+            .send()
+            .await
+            .map_err(|e| Error::Kms(e.into()))
+            .map(|output| output.ciphertext_blob.unwrap().into_inner())?;
+
+        Ok(ciphertext)
+    }
+
     pub async fn decrypt(&self, ciphertext: Vec<u8>) -> Result<Vec<u8>> {
         let (private_key, public_key) = Self::generate_keypair().await?;
 
