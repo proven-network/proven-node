@@ -1,17 +1,17 @@
 [workspace]
 
 members = [
-    # "crates/proven-application-registry",
-    # "crates/proven-asm-keyvalue",
     "crates/proven-attestation",
     "crates/proven-attestation-dev",
     "crates/proven-attestation-nsm",
     "crates/proven-core",
+    # "crates/proven-doh",
     "crates/proven-enclave",
-    # "crates/proven-doh-proxy",
     "crates/proven-host",
     "crates/proven-imds",
+    "crates/proven-kms",
     "crates/proven-nats-server",
+    # "crates/proven-runtime",
     "crates/proven-store",
     "crates/proven-store-asm",
     "crates/proven-store-s3-sse-c",

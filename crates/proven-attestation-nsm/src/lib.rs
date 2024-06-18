@@ -33,8 +33,8 @@ impl Attestor for NsmAttestor {
     async fn attest(&self, params: AttestationParams) -> Result<Vec<u8>> {
         let req = Request::Attestation {
             nonce: params.nonce.map(ByteBuf::from),
-            user_data: params.user_data.map(ByteBuf::from),
             public_key: params.public_key.map(ByteBuf::from),
+            user_data: params.user_data.map(ByteBuf::from),
         };
 
         match self.process_request(req)? {
