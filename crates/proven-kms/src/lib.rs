@@ -5,6 +5,7 @@ pub use error::{Error, Result};
 use aws_config::Region;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::{KeyEncryptionMechanism, RecipientInfo};
+use base64::{engine::general_purpose::STANDARD as base64, Engine};
 use proven_attestation::{AttestationParams, Attestor};
 use proven_attestation_nsm::NsmAttestor;
 use rand::rngs::OsRng;
@@ -64,7 +65,7 @@ impl Kms {
             .attestation_document(Blob::new(attestation_document))
             .build();
 
-        let ciphertext_for_recipient = self
+        let base64_ciphertext_for_recipient = self
             .client
             .decrypt()
             .ciphertext_blob(Blob::new(ciphertext))
@@ -75,12 +76,16 @@ impl Kms {
             .map_err(|e| Error::Kms(e.into()))
             .map(|output| output.ciphertext_for_recipient.unwrap())?;
 
-        let plaintext = private_key.decrypt(
-            Oaep::new_with_mgf_hash::<Sha256, Sha256>(),
-            &ciphertext_for_recipient.into_inner(),
-        )?;
+        base64
+            .decode(base64_ciphertext_for_recipient.into_inner())
+            .map(|ciphertext_for_recipient| {
+                let plaintext = private_key.decrypt(
+                    Oaep::new_with_mgf_hash::<Sha256, Sha256>(),
+                    &ciphertext_for_recipient,
+                )?;
 
-        Ok(plaintext)
+                Ok(plaintext)
+            })?
     }
 
     async fn generate_keypair() -> Result<(RsaPrivateKey, RsaPublicKey)> {

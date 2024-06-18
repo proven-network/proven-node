@@ -2914,6 +2914,7 @@ version = "0.1.0"
 dependencies = [
  "aws-config",
  "aws-sdk-kms",
+ "base64 0.22.1",
  "derive_more",
  "proven-attestation",
  "proven-attestation-nsm",
