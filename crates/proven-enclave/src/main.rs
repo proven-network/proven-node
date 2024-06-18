@@ -11,6 +11,7 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_imds::{IdentityDocument, Imds};
+use proven_kms::Kms;
 use proven_nats_server::NatsServer;
 use proven_store::Store;
 use proven_store_asm::AsmStore;
@@ -125,18 +126,26 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     // Get secret from ASM and get or init sse base key
     let secret_id = format!("proven-{}", identity.region.clone());
     let store = AsmStore::new(identity.region.clone(), secret_id).await;
+    let kms = Kms::new(
+        "2aae0800-75c8-4ca1-aff4-8b1fc885a8ce".to_string(),
+        identity.region.clone(),
+    )
+    .await;
 
     let s3_sse_c_base_key_opt = store.get("S3_SSE_C_BASE_KEY".to_string()).await?;
     let s3_sse_c_base_key: [u8; 32] = match s3_sse_c_base_key_opt {
-        Some(key) => key
+        Some(encrypted_key) => kms
+            .decrypt(encrypted_key)
+            .await?
             .try_into()
             .map_err(|_| Error::Custom("bad value for S3_SSE_C_BASE_KEY".to_string()))?,
         None => {
-            let key = rand::random::<[u8; 32]>();
+            let unencrypted_key = rand::random::<[u8; 32]>();
+            let encrypted_key = kms.encrypt(unencrypted_key.to_vec()).await?;
             store
-                .put("S3_SSE_C_BASE_KEY".to_string(), key.to_vec())
+                .put("S3_SSE_C_BASE_KEY".to_string(), encrypted_key)
                 .await?;
-            key
+            unencrypted_key
         }
     };
 

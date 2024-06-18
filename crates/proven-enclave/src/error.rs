@@ -26,6 +26,9 @@ pub enum Error {
     Io(std::io::Error),
 
     #[from]
+    Kms(proven_kms::Error),
+
+    #[from]
     NatsServer(proven_nats_server::Error),
 
     #[from]
@@ -57,6 +60,7 @@ impl core::fmt::Display for Error {
             Error::Cidr(e) => write!(f, "{}", e),
             Error::Imds(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
+            Error::Kms(e) => write!(f, "{}", e),
             Error::NatsServer(e) => write!(f, "{}", e),
             Error::Netlink(e) => write!(f, "{}", e),
             Error::Nsm(e) => write!(f, "{}", e),

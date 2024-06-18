@@ -2854,6 +2854,7 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-nsm",
  "proven-imds",
+ "proven-kms",
  "proven-nats-server",
  "proven-store",
  "proven-store-asm",

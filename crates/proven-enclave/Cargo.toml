@@ -9,6 +9,7 @@ derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 proven-attestation = { path = "../proven-attestation" }
 proven-attestation-nsm = { path = "../proven-attestation-nsm" }
 proven-imds = { path = "../proven-imds" }
+proven-kms = { path = "../proven-kms" }
 proven-nats-server = { path = "../proven-nats-server" }
 proven-store = { path = "../proven-store" }
 proven-store-asm = { path = "../proven-store-asm" }
