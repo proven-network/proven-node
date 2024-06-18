@@ -1,5 +1,6 @@
 mod error;
 
+use aes::cipher::{BlockDecryptMut, KeyIvInit};
 pub use error::{Error, Result};
 
 use aws_config::Region;
@@ -68,7 +69,7 @@ impl Kms {
 
         let padding = Oaep::new_with_mgf_hash::<Sha256, Sha256>();
 
-        let plaintext = self
+        let enveloped_data = self
             .client
             .decrypt()
             .ciphertext_blob(Blob::new(ciphertext))
@@ -79,10 +80,40 @@ impl Kms {
             .map_err(|e| Error::Kms(e.into()))
             .map(|output| output.ciphertext_for_recipient.unwrap())
             .map(|blob| ber::decode::<ContentInfo>(blob.into_inner().as_slice()))?
-            .map(|content_info| ber::decode::<EnvelopedData>(content_info.content.as_bytes()))?
-            .map(|enveloped_data| enveloped_data.encrypted_content_info.encrypted_content)?
-            .map(|bytes| private_key.decrypt(padding, bytes.to_vec().as_slice()))
-            .unwrap()?;
+            .map(|content_info| ber::decode::<EnvelopedData>(content_info.content.as_bytes()))??;
+
+        let recipient_info = enveloped_data.recipient_infos.iter().next().unwrap();
+
+        let key_trans_info = match recipient_info {
+            rasn_cms::RecipientInfo::KeyTransRecipientInfo(key_trans_info) => Some(key_trans_info),
+            _ => None,
+        }
+        .unwrap();
+
+        let data_key =
+            private_key.decrypt(padding, key_trans_info.encrypted_key.to_vec().as_slice())?;
+
+        let iv = enveloped_data
+            .encrypted_content_info
+            .content_encryption_algorithm
+            .parameters
+            .unwrap();
+
+        let decryptor =
+            cbc::Decryptor::<aes::Aes256>::new(data_key.as_slice().into(), iv.as_bytes().into());
+
+        let mut ciphertext = enveloped_data
+            .encrypted_content_info
+            .encrypted_content
+            .unwrap()
+            .to_vec();
+
+        let ciphertext = ciphertext.as_mut_slice();
+
+        let plaintext = decryptor
+            .decrypt_padded_mut::<block_padding::Pkcs7>(ciphertext)
+            .unwrap()
+            .to_vec();
 
         Ok(plaintext)
     }
