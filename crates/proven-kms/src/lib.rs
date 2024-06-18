@@ -5,7 +5,6 @@ pub use error::{Error, Result};
 use aws_config::Region;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::{KeyEncryptionMechanism, RecipientInfo};
-use base64::{engine::general_purpose::URL_SAFE as base64, Engine};
 use cms::content_info::ContentInfo;
 use cms::enveloped_data::EnvelopedData;
 use der::Decode;
@@ -83,7 +82,6 @@ impl Kms {
                 info!("vec: {:?}", vec);
                 vec
             })
-            .map(|vec| base64.decode(vec))?
             .map(|vec| ContentInfo::from_der(vec.as_slice()))?
             .map(|content_info| content_info.content.decode_as::<EnvelopedData>().unwrap())
             .map(|enveloped_data| enveloped_data.encrypted_content.encrypted_content.unwrap())

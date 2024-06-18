@@ -5,9 +5,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, From)]
 pub enum Error {
     #[from]
-    Base64(base64::DecodeError),
-
-    #[from]
     Der(der::Error),
 
     #[from]
@@ -29,7 +26,6 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Base64(e) => write!(f, "{}", e),
             Error::Der(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::Kms(e) => write!(f, "{}", e),
