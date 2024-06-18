@@ -2945,6 +2945,7 @@ version = "0.1.0"
 dependencies = [
  "aws-config",
  "aws-sdk-kms",
+ "base64 0.22.1",
  "cms",
  "der 0.7.9",
  "derive_more",
@@ -2953,6 +2954,7 @@ dependencies = [
  "rand 0.8.5",
  "rsa",
  "sha2 0.10.8",
+ "tracing",
 ]
 
 [[package]]

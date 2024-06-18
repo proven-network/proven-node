@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 aws-config = { version = "1.5.1", features = ["behavior-version-latest"] }
 aws-sdk-kms = "1.32.1"
+base64 = "0.22.1"
 cms = "0.2.3"
 der = "0.7.9"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
@@ -14,3 +15,4 @@ proven-attestation-nsm = { path = "../proven-attestation-nsm" }
 rand = "0.8.5"
 rsa = "0.9.6"
 sha2 = "0.10.8"
+tracing = "0.1.40"
