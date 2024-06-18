@@ -5,17 +5,15 @@ pub use error::{Error, Result};
 use aws_config::Region;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::{KeyEncryptionMechanism, RecipientInfo};
-use cms::content_info::ContentInfo;
-use cms::enveloped_data::EnvelopedData;
-use der::Decode;
 use proven_attestation::{AttestationParams, Attestor};
 use proven_attestation_nsm::NsmAttestor;
 use rand::rngs::OsRng;
+use rasn::ber;
+use rasn_cms::{ContentInfo, EnvelopedData};
 use rsa::oaep::Oaep;
 use rsa::pkcs8::EncodePublicKey;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 use sha2::Sha256;
-use tracing::info;
 
 pub struct Kms {
     client: aws_sdk_kms::Client,
@@ -68,7 +66,10 @@ impl Kms {
             .attestation_document(Blob::new(attestation_document))
             .build();
 
-        self.client
+        let padding = Oaep::new_with_mgf_hash::<Sha256, Sha256>();
+
+        let plaintext = self
+            .client
             .decrypt()
             .ciphertext_blob(Blob::new(ciphertext))
             .recipient(recipient)
@@ -77,22 +78,13 @@ impl Kms {
             .await
             .map_err(|e| Error::Kms(e.into()))
             .map(|output| output.ciphertext_for_recipient.unwrap())
-            .map(|blob| {
-                let vec = blob.into_inner();
-                info!("vec: {:?}", vec);
-                vec
-            })
-            .map(|vec| ContentInfo::from_der(vec.as_slice()))?
-            .map(|content_info| content_info.content.decode_as::<EnvelopedData>().unwrap())
-            .map(|enveloped_data| enveloped_data.encrypted_content.encrypted_content.unwrap())
-            .map(|octet_string| {
-                let plaintext = private_key.decrypt(
-                    Oaep::new_with_mgf_hash::<Sha256, Sha256>(),
-                    &octet_string.into_bytes(),
-                )?;
+            .map(|blob| ber::decode::<ContentInfo>(blob.into_inner().as_slice()))?
+            .map(|content_info| ber::decode::<EnvelopedData>(content_info.content.as_bytes()))?
+            .map(|enveloped_data| enveloped_data.encrypted_content_info.encrypted_content)?
+            .map(|bytes| private_key.decrypt(padding, bytes.to_vec().as_slice()))
+            .unwrap()?;
 
-                Ok(plaintext)
-            })?
+        Ok(plaintext)
     }
 
     async fn generate_keypair() -> Result<(RsaPrivateKey, RsaPublicKey)> {
