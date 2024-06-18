@@ -22,7 +22,7 @@ use proven_vsock_tracing::configure_logging_to_vsock;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockStream, VMADDR_CID_ANY};
-use tracing::info;
+use tracing::{error, info};
 use tracing_panic::panic_hook;
 
 #[tokio::main(flavor = "multi_thread")]
@@ -43,9 +43,13 @@ async fn main() -> Result<()> {
                             return;
                         }
 
-                        task_tracker.spawn(initialize(args, shutdown_token));
+                        let main_handler = task_tracker.spawn(initialize(args, shutdown_token));
 
                         task_tracker.close();
+
+                        if let Err(e) = main_handler.await {
+                            error!("initialize failed: {:?}", e);
+                        };
                     }
                     Command::Shutdown => {
                         shutdown_token.cancel();
