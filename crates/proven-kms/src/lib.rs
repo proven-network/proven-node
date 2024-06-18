@@ -1,6 +1,8 @@
 mod error;
+mod pkcs7;
 
-use aes::cipher::{BlockDecryptMut, KeyIvInit};
+use pkcs7::ContentInfo;
+
 pub use error::{Error, Result};
 
 use aws_config::Region;
@@ -9,12 +11,8 @@ use aws_sdk_kms::types::{KeyEncryptionMechanism, RecipientInfo};
 use proven_attestation::{AttestationParams, Attestor};
 use proven_attestation_nsm::NsmAttestor;
 use rand::rngs::OsRng;
-use rasn::ber;
-use rasn_cms::{ContentInfo, EnvelopedData};
-use rsa::oaep::Oaep;
 use rsa::pkcs8::EncodePublicKey;
 use rsa::{RsaPrivateKey, RsaPublicKey};
-use sha2::Sha256;
 
 pub struct Kms {
     client: aws_sdk_kms::Client,
@@ -67,9 +65,7 @@ impl Kms {
             .attestation_document(Blob::new(attestation_document))
             .build();
 
-        let padding = Oaep::new_with_mgf_hash::<Sha256, Sha256>();
-
-        let enveloped_data = self
+        let ciphertext = self
             .client
             .decrypt()
             .ciphertext_blob(Blob::new(ciphertext))
@@ -78,42 +74,11 @@ impl Kms {
             .send()
             .await
             .map_err(|e| Error::Kms(e.into()))
-            .map(|output| output.ciphertext_for_recipient.unwrap())
-            .map(|blob| ber::decode::<ContentInfo>(blob.into_inner().as_slice()))?
-            .map(|content_info| ber::decode::<EnvelopedData>(content_info.content.as_bytes()))??;
+            .map(|output| output.ciphertext_for_recipient.unwrap())?
+            .into_inner();
 
-        let recipient_info = enveloped_data.recipient_infos.iter().next().unwrap();
-
-        let key_trans_info = match recipient_info {
-            rasn_cms::RecipientInfo::KeyTransRecipientInfo(key_trans_info) => Some(key_trans_info),
-            _ => None,
-        }
-        .unwrap();
-
-        let data_key =
-            private_key.decrypt(padding, key_trans_info.encrypted_key.to_vec().as_slice())?;
-
-        let iv = enveloped_data
-            .encrypted_content_info
-            .content_encryption_algorithm
-            .parameters
-            .unwrap();
-
-        let decryptor =
-            cbc::Decryptor::<aes::Aes256>::new(data_key.as_slice().into(), iv.as_bytes().into());
-
-        let mut ciphertext = enveloped_data
-            .encrypted_content_info
-            .encrypted_content
-            .unwrap()
-            .to_vec();
-
-        let ciphertext = ciphertext.as_mut_slice();
-
-        let plaintext = decryptor
-            .decrypt_padded_mut::<block_padding::Pkcs7>(ciphertext)
-            .unwrap()
-            .to_vec();
+        let content_info = ContentInfo::parse_ber(ciphertext.as_slice())?;
+        let plaintext = content_info.decrypt_content(&private_key)?;
 
         Ok(plaintext)
     }
