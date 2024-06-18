@@ -76,7 +76,7 @@ impl Kms {
             .map(|output| output.ciphertext_for_recipient.unwrap())?;
 
         let plaintext = private_key.decrypt(
-            Oaep::new::<Sha256>(),
+            Oaep::new_with_mgf_hash::<Sha256, Sha256>(),
             &ciphertext_for_recipient.into_inner(),
         )?;
 

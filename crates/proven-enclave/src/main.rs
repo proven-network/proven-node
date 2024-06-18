@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
 
                         task_tracker.close();
 
-                        if let Err(e) = main_handler.await {
+                        if let Err(e) = main_handler.await.unwrap() {
                             error!("initialize failed: {:?}", e);
                         };
                     }
