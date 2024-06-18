@@ -15,6 +15,9 @@ pub enum Error {
 
     #[from]
     Rsa(rsa::errors::Error),
+
+    #[from]
+    Spki(rsa::pkcs8::spki::Error),
 }
 
 impl std::fmt::Display for Error {
@@ -24,6 +27,7 @@ impl std::fmt::Display for Error {
             Error::Kms(e) => write!(f, "{}", e),
             Error::Nsm(e) => write!(f, "{}", e),
             Error::Rsa(e) => write!(f, "{}", e),
+            Error::Spki(e) => write!(f, "{}", e),
         }
     }
 }

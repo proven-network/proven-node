@@ -9,7 +9,8 @@ use proven_attestation::{AttestationParams, Attestor};
 use proven_attestation_nsm::NsmAttestor;
 use rand::rngs::OsRng;
 use rsa::oaep::Oaep;
-use rsa::{pkcs1::EncodeRsaPublicKey, RsaPrivateKey, RsaPublicKey};
+use rsa::pkcs8::EncodePublicKey;
+use rsa::{RsaPrivateKey, RsaPublicKey};
 use sha2::Sha256;
 
 pub struct Kms {
@@ -53,7 +54,7 @@ impl Kms {
             .nsm_attestor
             .attest(AttestationParams {
                 nonce: None,
-                public_key: Some(public_key.to_pkcs1_der().unwrap().into_vec()),
+                public_key: Some(public_key.to_public_key_der()?.to_vec()),
                 user_data: None,
             })
             .await?;
