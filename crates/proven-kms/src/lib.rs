@@ -5,7 +5,9 @@ pub use error::{Error, Result};
 use aws_config::Region;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::{KeyEncryptionMechanism, RecipientInfo};
-use base64::{engine::general_purpose::STANDARD as base64, Engine};
+use cms::content_info::ContentInfo;
+use cms::enveloped_data::EnvelopedData;
+use der::Decode;
 use proven_attestation::{AttestationParams, Attestor};
 use proven_attestation_nsm::NsmAttestor;
 use rand::rngs::OsRng;
@@ -65,8 +67,7 @@ impl Kms {
             .attestation_document(Blob::new(attestation_document))
             .build();
 
-        let base64_ciphertext_for_recipient = self
-            .client
+        self.client
             .decrypt()
             .ciphertext_blob(Blob::new(ciphertext))
             .recipient(recipient)
@@ -74,14 +75,14 @@ impl Kms {
             .send()
             .await
             .map_err(|e| Error::Kms(e.into()))
-            .map(|output| output.ciphertext_for_recipient.unwrap())?;
-
-        base64
-            .decode(base64_ciphertext_for_recipient.into_inner())
-            .map(|ciphertext_for_recipient| {
+            .map(|output| output.ciphertext_for_recipient.unwrap())
+            .map(|blob| ContentInfo::from_der(blob.into_inner().as_slice()))?
+            .map(|content_info| content_info.content.decode_as::<EnvelopedData>().unwrap())
+            .map(|enveloped_data| enveloped_data.encrypted_content.encrypted_content.unwrap())
+            .map(|octet_string| {
                 let plaintext = private_key.decrypt(
                     Oaep::new_with_mgf_hash::<Sha256, Sha256>(),
-                    &ciphertext_for_recipient,
+                    &octet_string.into_bytes(),
                 )?;
 
                 Ok(plaintext)
