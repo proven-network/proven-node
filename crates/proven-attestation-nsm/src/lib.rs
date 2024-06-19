@@ -10,7 +10,7 @@ use aws_nitro_enclaves_nsm_api::driver::{nsm_exit, nsm_init, nsm_process_request
 use proven_attestation::{AttestationParams, Attestor};
 use serde_bytes::ByteBuf;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct NsmAttestor {
     fd: Arc<Mutex<i32>>,
 }
@@ -52,6 +52,14 @@ impl Attestor for NsmAttestor {
         match self.process_request(Request::GetRandom {})? {
             Response::GetRandom { random } => Ok(random),
             _ => Err(Error::UnexpectedResponse),
+        }
+    }
+}
+
+impl Clone for NsmAttestor {
+    fn clone(&self) -> Self {
+        Self {
+            fd: Arc::clone(&self.fd),
         }
     }
 }
