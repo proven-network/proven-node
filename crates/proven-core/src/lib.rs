@@ -15,7 +15,7 @@ use axum::Router;
 use proven_sessions::SessionManagement;
 use proven_store::Store;
 use tokio_util::sync::CancellationToken;
-use tracing::info;
+use tracing::{error, info};
 
 pub struct NewCoreArguments<SM: SessionManagement + 'static, CS: Store + 'static> {
     pub cert_store: CS,
@@ -76,8 +76,8 @@ impl<SM: SessionManagement + 'static, CS: Store + 'static> Core<SM, CS> {
             _ = self.shutdown_token.cancelled() => {
                 info!("shutdown command received");
             }
-            _ = https_handle => {
-                info!("https server exited");
+            e = https_handle => {
+                error!("https server exited: {:?}", e);
             }
         }
 

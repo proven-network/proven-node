@@ -47,13 +47,9 @@ async fn main() -> Result<()> {
                             return;
                         }
 
-                        let main_handler = task_tracker.spawn(initialize(args, shutdown_token));
+                        task_tracker.spawn(initialize(args, shutdown_token));
 
                         task_tracker.close();
-
-                        if let Err(e) = main_handler.await.unwrap() {
-                            error!("initialize failed: {:?}", e);
-                        };
                     }
                     Command::Shutdown => {
                         shutdown_token.cancel();
@@ -189,14 +185,14 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         _ = shutdown_token.cancelled() => {
             info!("shutdown command received");
         }
-        _ = proxy_handle => {
-            info!("proxy handler exited");
+        e = proxy_handle => {
+            error!("proxy exited: {:?}", e);
         }
-        _ = nats_server_handle => {
-            info!("nats server exited");
+        e = nats_server_handle => {
+            error!("proxy exited: {:?}", e);
         }
-        _ = core_handle => {
-            info!("nats server exited");
+        e = core_handle => {
+            error!("proxy exited: {:?}", e);
         }
     }
 
