@@ -9,6 +9,7 @@ use coset::{iana, CborSerializable};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use futures::{sink::SinkExt, stream::StreamExt};
+use proven_sessions::{Session, SessionManagement};
 use serde::Deserialize;
 use std::borrow::Cow;
 use std::net::SocketAddr;
@@ -20,10 +21,9 @@ struct ConnectParams {
     session: String,
 }
 
-pub async fn create_websocket_handler(nats_client: async_nats::Client) -> Router {
-    let sessions_js_context = async_nats::jetstream::new(nats_client.clone());
-    let sessions_store = sessions_js_context.get_key_value("sessions").await.unwrap();
-
+pub async fn create_websocket_handler<T: SessionManagement + 'static>(
+    session_manager: T,
+) -> Router {
     Router::new().route(
         "/ws",
         get(
@@ -39,20 +39,10 @@ pub async fn create_websocket_handler(nats_client: async_nats::Client) -> Router
                 info!("`{user_agent}` at {addr} connected.");
                 info!("Query: {:?}", query);
 
-                match sessions_store.get(query.session.clone()).await {
-                    Ok(Some(session_cbor)) => {
-                        match serde_cbor::from_slice::<Session>(&session_cbor) {
-                            Ok(session) => {
-                                info!("{:?}", session);
-                                ws.on_upgrade(move |socket| handle_socket(socket, session, addr))
-                            }
-                            Err(e) => {
-                                info!("Error deserializing session {}: {:?}", query.session, e);
-                                ws.on_upgrade(move |socket| {
-                                    handle_socket_error(socket, Cow::from("Session not valid."))
-                                })
-                            }
-                        }
+                match session_manager.get_session(query.session.clone()).await {
+                    Ok(Some(session)) => {
+                        info!("{:?}", session);
+                        ws.on_upgrade(move |socket| handle_socket(socket, session, addr))
                     }
                     Ok(None) => {
                         info!("No session {}", query.session);

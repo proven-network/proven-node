@@ -1,12 +1,12 @@
 mod attestation;
 mod error;
 mod http;
-// mod ws;
+mod ws;
 
 use attestation::create_attestation_handlers;
 pub use error::{Error, Result};
 use http::HttpsServer;
-// use ws::create_websocket_handler;
+use ws::create_websocket_handler;
 
 use std::net::{Ipv4Addr, SocketAddr};
 
@@ -55,12 +55,12 @@ impl<SM: SessionManagement + 'static, CS: Store + 'static> Core<SM, CS> {
 
     pub async fn start(&self) -> Result<()> {
         let session_handlers = create_attestation_handlers(self.session_manager.clone()).await;
-        // let websocket_handler = create_websocket_handler(nats_client).await;
+        let websocket_handler = create_websocket_handler(self.session_manager.clone()).await;
 
         let https_app = Router::new()
             .route("/", get(|| async { "Hello Tls!" }))
-            .nest("/", session_handlers);
-        // .nest("/", websocket_handler);
+            .nest("/", session_handlers)
+            .nest("/", websocket_handler);
 
         let https_server = HttpsServer::new(
             SocketAddr::from((self.ip, self.https_port)),
