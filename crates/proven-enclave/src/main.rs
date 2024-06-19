@@ -11,6 +11,7 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, NewCoreArguments};
+use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_imds::{IdentityDocument, Imds};
 use proven_kms::Kms;
 use proven_nats_server::NatsServer;
@@ -120,6 +121,13 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     info!("identity: {:?}", identity);
     let server_name = identity.instance_id;
 
+    // Boot dnscrypt-proxy
+    let dnscrypt_proxy = DnscryptProxy::new(
+        identity.availability_zone,
+        SocketAddrV4::new(Ipv4Addr::new(172, 31, 32, 128), 443),
+    );
+    let dnscrypt_proxy_handle = dnscrypt_proxy.start().await?;
+
     // Boot NATS server
     let nats_server = NatsServer::new(
         server_name,
@@ -185,14 +193,17 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         _ = shutdown_token.cancelled() => {
             info!("shutdown command received");
         }
+        e = dnscrypt_proxy_handle => {
+            error!("dnscrypt_proxy exited: {:?}", e);
+        }
         e = proxy_handle => {
             error!("proxy exited: {:?}", e);
         }
         e = nats_server_handle => {
-            error!("proxy exited: {:?}", e);
+            error!("nats_server exited: {:?}", e);
         }
         e = core_handle => {
-            error!("proxy exited: {:?}", e);
+            error!("core exited: {:?}", e);
         }
     }
 

@@ -23,6 +23,9 @@ pub enum Error {
     Cidr(cidr::errors::NetworkParseError),
 
     #[from]
+    DnscryptProxy(proven_dnscrypt_proxy::Error),
+
+    #[from]
     Imds(proven_imds::Error),
 
     #[from]
@@ -62,6 +65,7 @@ impl core::fmt::Display for Error {
             Error::AsmStore(e) => write!(f, "{}", e),
             Error::Async(e) => write!(f, "{}", e),
             Error::Cidr(e) => write!(f, "{}", e),
+            Error::DnscryptProxy(e) => write!(f, "{}", e),
             Error::Imds(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::Kms(e) => write!(f, "{}", e),

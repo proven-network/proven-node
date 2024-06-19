@@ -17,7 +17,7 @@ RUN chmod 0755      /bin/proven-enclave
 
 FROM nats:alpine3.19
 
-RUN apk add --no-cache iproute2 net-tools iproute2-tc nfs-utils
+RUN apk add --no-cache dnscrypt-proxy iproute2 iproute2-tc net-tools nfs-utils
 
 COPY --from=builder /bin/proven-enclave /bin/
 

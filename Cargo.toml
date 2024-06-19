@@ -1,11 +1,14 @@
 [workspace]
 
 members = [
+    # "crates/proven-applications",
     "crates/proven-attestation",
     "crates/proven-attestation-dev",
     "crates/proven-attestation-nsm",
+    # "crates/proven-build",
+    # "crates/proven-cluster",
     "crates/proven-core",
-    # "crates/proven-doh",
+    "crates/proven-dnscrypt-proxy",
     "crates/proven-enclave",
     "crates/proven-host",
     "crates/proven-imds",
@@ -17,6 +20,7 @@ members = [
     "crates/proven-store-asm",
     "crates/proven-store-memory",
     "crates/proven-store-nats",
+    # "crates/proven-store-s3-1z-chacha",
     "crates/proven-store-s3-sse-c",
     "crates/proven-vsock-proxy",
     "crates/proven-vsock-rpc",
