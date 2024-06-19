@@ -1,7 +1,7 @@
 [workspace]
 
 members = [
-    # "crates/proven-applications",
+    "crates/proven-applications",
     "crates/proven-attestation",
     "crates/proven-attestation-dev",
     "crates/proven-attestation-nsm",
