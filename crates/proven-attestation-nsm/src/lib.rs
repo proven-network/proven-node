@@ -2,25 +2,29 @@ mod error;
 
 pub use error::{Error, Result};
 
+use std::sync::{Arc, Mutex};
+
 use async_trait::async_trait;
 use aws_nitro_enclaves_nsm_api::api::{Request, Response};
+use aws_nitro_enclaves_nsm_api::driver::{nsm_exit, nsm_init, nsm_process_request};
 use proven_attestation::{AttestationParams, Attestor};
 use serde_bytes::ByteBuf;
 
 #[derive(Clone, Debug)]
 pub struct NsmAttestor {
-    fd: i32,
+    fd: Arc<Mutex<i32>>,
 }
 
 impl NsmAttestor {
     pub fn new() -> Self {
         Self {
-            fd: aws_nitro_enclaves_nsm_api::driver::nsm_init(),
+            fd: Arc::new(Mutex::new(nsm_init())),
         }
     }
 
     fn process_request(&self, req: Request) -> Result<Response> {
-        match aws_nitro_enclaves_nsm_api::driver::nsm_process_request(self.fd, req) {
+        let fd = self.fd.lock().unwrap();
+        match nsm_process_request(*fd, req) {
             Response::Error(err) => Err(Error::RequestError(err)),
             resp => Ok(resp),
         }
@@ -60,6 +64,7 @@ impl Default for NsmAttestor {
 
 impl Drop for NsmAttestor {
     fn drop(&mut self) {
-        aws_nitro_enclaves_nsm_api::driver::nsm_exit(self.fd);
+        let fd = self.fd.lock().unwrap();
+        nsm_exit(*fd);
     }
 }
