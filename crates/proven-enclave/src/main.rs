@@ -10,7 +10,7 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
-use proven_core::attestation::create_attestation_handlers;
+use proven_core::{Core, NewCoreArguments};
 use proven_imds::{IdentityDocument, Imds};
 use proven_kms::Kms;
 use proven_nats_server::NatsServer;
@@ -169,7 +169,21 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     let session_manager =
         SessionManager::new(nsm, challenge_store, sessions_store, network_definition);
 
-    let _session_handlers = create_attestation_handlers(session_manager).await;
+    let core_shutdown_token = shutdown_token.clone();
+    let core_handle = tokio::spawn(async move {
+        let core = Core::new(NewCoreArguments {
+            cert_store: store,
+            email: args.email,
+            ip: args.enclave_ip,
+            fqdn: args.fqdn,
+            https_port: args.https_port,
+            production: args.production,
+            session_manager,
+            shutdown_token: core_shutdown_token,
+        });
+
+        let _ = core.start().await;
+    });
 
     tokio::select! {
         _ = shutdown_token.cancelled() => {
@@ -179,6 +193,9 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
             info!("proxy handler exited");
         }
         _ = nats_server_handle => {
+            info!("nats server exited");
+        }
+        _ = core_handle => {
             info!("nats server exited");
         }
     }

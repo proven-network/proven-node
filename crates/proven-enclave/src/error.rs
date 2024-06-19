@@ -5,6 +5,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, From)]
 pub enum Error {
     #[from]
+    Core(proven_core::Error),
+
+    #[from]
     Custom(String),
 
     #[from]
@@ -53,6 +56,7 @@ pub enum Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
+            Error::Core(e) => write!(f, "{}", e),
             Error::Custom(e) => write!(f, "{}", e),
             Error::AddrParse(e) => write!(f, "{}", e),
             Error::AsmStore(e) => write!(f, "{}", e),

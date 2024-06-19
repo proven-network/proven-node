@@ -1,9 +1,10 @@
-mod nats_cert_cache;
+mod cert_cache;
 
-use nats_cert_cache::NatsCertCache;
+use cert_cache::CertCache;
 
 use axum::http::Method;
 use axum::Router;
+use proven_store::Store;
 use rustls::ServerConfig;
 use std::future::IntoFuture;
 use std::net::SocketAddr;
@@ -29,16 +30,16 @@ pub struct HttpsServer {
 }
 
 impl HttpsServer {
-    pub fn new(
+    pub fn new<S: Store + 'static>(
         listen_addr: SocketAddr,
         fqdn: String,
         email: Vec<String>,
         use_self_signed_cert: bool,
-        cert_store: async_nats::jetstream::kv::Store,
+        cert_store: S,
     ) -> Self {
         let mut state = AcmeConfig::new([fqdn.clone()])
             .contact(email.iter().map(|e| format!("mailto:{}", e)))
-            .cache(NatsCertCache::new(cert_store))
+            .cache(CertCache::new(cert_store))
             .directory_lets_encrypt(!use_self_signed_cert)
             .state();
 

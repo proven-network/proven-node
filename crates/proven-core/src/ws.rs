@@ -1,5 +1,3 @@
-use crate::session::SessionManager;
-
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};

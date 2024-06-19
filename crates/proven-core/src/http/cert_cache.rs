@@ -1,50 +1,44 @@
-use async_nats::jetstream::kv::{EntryError, PutError, Store};
 use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use derive_more::From;
+use proven_store::Store;
 use ring::digest::{Context, SHA256};
-use tokio_rustls_acme::{AccountCache, CertCache};
 
 #[derive(Debug, From)]
 pub enum NatsCertCacheError {
-    #[from]
-    RetrieveError(EntryError),
-    #[from]
-    StoreError(PutError),
+    RetrieveError,
+    StoreError,
 }
 
-pub struct NatsCertCache {
-    inner: Store,
+pub struct CertCache<S: Store> {
+    store: S,
 }
 
-impl NatsCertCache {
-    pub fn new(kv_store: Store) -> Self {
-        Self { inner: kv_store }
+impl<S: Store> CertCache<S> {
+    pub fn new(store: S) -> Self {
+        Self { store }
     }
 
     async fn read_if_exist(
         &self,
         key: impl AsRef<str>,
     ) -> Result<Option<Vec<u8>>, NatsCertCacheError> {
-        match self.inner.get(key.as_ref()).await {
-            Ok(Some(content)) => Ok(Some(content.into())),
-            Ok(None) => Ok(None),
-            Err(e) => Err(NatsCertCacheError::RetrieveError(e)),
-        }
+        self.store
+            .get(key.as_ref().to_string())
+            .await
+            .map_err(|_| NatsCertCacheError::RetrieveError)
     }
 
     async fn write(
         &self,
-        file: impl AsRef<str>,
+        key: impl AsRef<str>,
         contents: Vec<u8>,
     ) -> Result<(), NatsCertCacheError> {
-        let key = file.as_ref();
-        let value = contents;
-        match self.inner.put(key, value.into()).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(NatsCertCacheError::StoreError(e)),
-        }
+        self.store
+            .put(key.as_ref().to_string(), contents)
+            .await
+            .map_err(|_| NatsCertCacheError::StoreError)
     }
 
     fn cached_account_key(contact: &[String], directory_url: impl AsRef<str>) -> String {
@@ -71,7 +65,7 @@ impl NatsCertCache {
 }
 
 #[async_trait]
-impl CertCache for NatsCertCache {
+impl<S: Store> tokio_rustls_acme::CertCache for CertCache<S> {
     type EC = NatsCertCacheError;
 
     async fn load_cert(
@@ -96,7 +90,7 @@ impl CertCache for NatsCertCache {
 }
 
 #[async_trait]
-impl AccountCache for NatsCertCache {
+impl<S: Store> tokio_rustls_acme::AccountCache for CertCache<S> {
     type EA = NatsCertCacheError;
 
     async fn load_account(

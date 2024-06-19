@@ -4,6 +4,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, From)]
 pub enum Error {
+    AlreadyStarted,
+
     #[from]
     Custom(String),
 
@@ -26,6 +28,7 @@ pub enum Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
+            Error::AlreadyStarted => write!(f, "Server already started"),
             Error::Custom(e) => write!(f, "{}", e),
             Error::AddrParse(e) => write!(f, "{}", e),
             Error::Async(e) => write!(f, "{}", e),
