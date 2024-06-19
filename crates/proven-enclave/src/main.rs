@@ -74,7 +74,7 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     info!("tracing configured");
 
     // Configure network
-    write_dns_resolv(args.dns_resolv)?;
+    write_dns_resolv()?;
     bring_up_loopback().await?;
 
     let vsock_stream = VsockStream::connect(VsockAddr::new(3, args.proxy_port))

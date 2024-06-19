@@ -11,7 +11,7 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, warn};
 
 pub struct DnscryptProxy {
     availability_zone: String,
@@ -68,22 +68,21 @@ impl DnscryptProxy {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
 
-                let re = Regex::new(
-                    r"\[\d+\] (\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6}) (\[[A-Z]+\]) (.*)",
-                )
-                .unwrap();
+                let re = Regex::new(r"(\[\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\]) (\[[A-Z]+\]) (.*)")
+                    .unwrap();
 
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(caps) = re.captures(&line) {
                         let label = caps.get(2).unwrap().as_str();
                         let message = caps.get(3).unwrap().as_str();
                         match label {
-                            "[INF]" => info!("{}", message),
-                            "[DBG]" => debug!("{}", message),
-                            "[WRN]" => warn!("{}", message),
-                            "[ERR]" => error!("{}", message),
-                            "[FTL]" => error!("{}", message),
-                            "[TRC]" => trace!("{}", message),
+                            "[INFO]" => info!("{}", message),
+                            "[NOTICE]" => info!("{}", message),
+                            "[DEBUG]" => debug!("{}", message),
+                            "[WARNING]" => warn!("{}", message),
+                            "[CRITICAL]" => warn!("{}", message),
+                            "[ERROR]" => error!("{}", message),
+                            "[FATAL]" => error!("{}", message),
                             _ => error!("{}", line),
                         }
                     } else {
@@ -175,9 +174,6 @@ stamp = '{}'
         "#,
             self.generate_doh_stamp()
         );
-
-        info!("Writing dnscrypt-proxy configuration");
-        info!("{}", config);
 
         tokio::fs::write("/etc/dnscrypt-proxy/dnscrypt-proxy.toml", config)
             .await
