@@ -29,7 +29,7 @@ use tokio_vsock::{VsockAddr, VsockStream, VMADDR_CID_ANY};
 use tracing::{error, info};
 use tracing_panic::panic_hook;
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main(worker_threads = 10)]
 async fn main() -> Result<()> {
     let shutdown_token = CancellationToken::new();
     let task_tracker = TaskTracker::new();
