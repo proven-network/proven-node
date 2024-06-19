@@ -16,6 +16,7 @@ members = [
     "crates/proven-store",
     "crates/proven-store-asm",
     "crates/proven-store-memory",
+    "crates/proven-store-nats",
     "crates/proven-store-s3-sse-c",
     "crates/proven-vsock-proxy",
     "crates/proven-vsock-rpc",

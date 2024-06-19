@@ -3040,6 +3040,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-store-nats"
+version = "0.1.0"
+dependencies = [
+ "async-nats",
+ "async-trait",
+ "derive_more",
+ "proven-store",
+]
+
+[[package]]
 name = "proven-store-s3-sse-c"
 version = "0.1.0"
 dependencies = [

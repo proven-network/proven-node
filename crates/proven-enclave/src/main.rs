@@ -157,21 +157,13 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         }
     };
 
-    // Testing store
-    let store = S3Store::new(
+    let challenge_store = MemoryStore::new();
+    let sessions_store = S3Store::new(
         "myduperprovenbucket".to_string(),
         identity.region,
         s3_sse_c_base_key,
     )
     .await;
-    store
-        .put("blah.txt".to_string(), b"hello world".to_vec())
-        .await?;
-    let data = store.get("blah.txt".to_string()).await?;
-    info!("data: {:?}", data);
-
-    let challenge_store = MemoryStore::new();
-    let sessions_store = S3Store::new("bucket".to_string(), "region".to_string(), [0u8; 32]).await;
     let network_definition = NetworkDefinition::stokenet();
 
     let session_manager =
