@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use aws_config::Region;
 use proven_store::Store;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AsmStore {
     client: aws_sdk_secretsmanager::Client,
     secret_id: String,

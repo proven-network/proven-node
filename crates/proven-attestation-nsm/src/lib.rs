@@ -7,6 +7,7 @@ use aws_nitro_enclaves_nsm_api::api::{Request, Response};
 use proven_attestation::{AttestationParams, Attestor};
 use serde_bytes::ByteBuf;
 
+#[derive(Clone, Debug)]
 pub struct NsmAttestor {
     fd: i32,
 }

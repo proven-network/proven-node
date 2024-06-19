@@ -9,7 +9,7 @@ use blake3::Hasher;
 use proven_store::Store;
 use tokio::io::AsyncReadExt;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct S3Store {
     bucket: String,
     client: aws_sdk_s3::Client,

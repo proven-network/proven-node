@@ -1,0 +1,19 @@
+[package]
+name = "proven-sessions"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.80"
+base64 = "0.22.1"
+bytes = "1.6.0"
+derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+ed25519-dalek = { version = "2.1.1", features = ["rand_core", "signature"] }
+hex = "0.4.3"
+proven-attestation = { path = "../proven-attestation" }
+proven-store = { path = "../proven-store" }
+radix-common = "1.2.0"
+rand = "0.8.5"
+rola = { git = "https://github.com/proven-network/rola.git" }
+serde = { version = "1.0.201", features = ["derive"] }
+serde_cbor = "0.11.2"

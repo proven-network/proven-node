@@ -1,4 +1,4 @@
-use crate::attestation::Session;
+use crate::session::SessionManager;
 
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::CloseFrame;

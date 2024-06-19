@@ -10,15 +10,19 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
+use proven_core::attestation::create_attestation_handlers;
 use proven_imds::{IdentityDocument, Imds};
 use proven_kms::Kms;
 use proven_nats_server::NatsServer;
+use proven_sessions::{SessionManagement, SessionManager};
 use proven_store::Store;
 use proven_store_asm::AsmStore;
+use proven_store_memory::MemoryStore;
 use proven_store_s3_sse_c::S3Store;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{listen_for_commands, Command, InitializeArgs};
 use proven_vsock_tracing::configure_logging_to_vsock;
+use radix_common::network::NetworkDefinition;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockStream, VMADDR_CID_ANY};
@@ -165,6 +169,15 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         .await?;
     let data = store.get("blah.txt".to_string()).await?;
     info!("data: {:?}", data);
+
+    let challenge_store = MemoryStore::new();
+    let sessions_store = S3Store::new("bucket".to_string(), "region".to_string(), [0u8; 32]).await;
+    let network_definition = NetworkDefinition::stokenet();
+
+    let session_manager =
+        SessionManager::new(nsm, challenge_store, sessions_store, network_definition);
+
+    let _session_handlers = create_attestation_handlers(session_manager).await;
 
     tokio::select! {
         _ = shutdown_token.cancelled() => {

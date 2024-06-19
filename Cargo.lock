@@ -2878,6 +2878,8 @@ dependencies = [
  "http 0.2.12",
  "http-body-util",
  "proven-attestation",
+ "proven-sessions",
+ "proven-store",
  "radix-common",
  "rand 0.8.5",
  "ring",
@@ -2902,15 +2904,19 @@ dependencies = [
  "derive_more",
  "proven-attestation",
  "proven-attestation-nsm",
+ "proven-core",
  "proven-imds",
  "proven-kms",
  "proven-nats-server",
+ "proven-sessions",
  "proven-store",
  "proven-store-asm",
+ "proven-store-memory",
  "proven-store-s3-sse-c",
  "proven-vsock-proxy",
  "proven-vsock-rpc",
  "proven-vsock-tracing",
+ "radix-common",
  "rand 0.8.5",
  "rtnetlink",
  "tokio",
@@ -2988,6 +2994,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-sessions"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "derive_more",
+ "ed25519-dalek 2.1.1",
+ "hex",
+ "proven-attestation",
+ "proven-store",
+ "radix-common",
+ "rand 0.8.5",
+ "rola",
+ "serde",
+ "serde_cbor",
+]
+
+[[package]]
 name = "proven-store"
 version = "0.1.0"
 dependencies = [
@@ -3004,6 +3029,14 @@ dependencies = [
  "derive_more",
  "proven-store",
  "serde_json",
+]
+
+[[package]]
+name = "proven-store-memory"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "proven-store",
 ]
 
 [[package]]

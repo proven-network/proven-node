@@ -10,8 +10,8 @@ pub struct AttestationParams {
 }
 
 #[async_trait]
-pub trait Attestor: Send + Sync {
-    type AE: Debug + Error;
+pub trait Attestor: Clone + Send + Sync {
+    type AE: Debug + Error + Send + Sync;
     async fn attest(&self, params: AttestationParams) -> Result<Vec<u8>, Self::AE>;
     async fn secure_random(&self) -> Result<Vec<u8>, Self::AE>;
 }

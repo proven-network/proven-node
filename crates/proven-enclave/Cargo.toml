@@ -8,15 +8,19 @@ cidr = "0.2.2"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 proven-attestation = { path = "../proven-attestation" }
 proven-attestation-nsm = { path = "../proven-attestation-nsm" }
+proven-core = { path = "../proven-core" }
 proven-imds = { path = "../proven-imds" }
 proven-kms = { path = "../proven-kms" }
 proven-nats-server = { path = "../proven-nats-server" }
+proven-sessions = { path = "../proven-sessions" }
 proven-store = { path = "../proven-store" }
 proven-store-asm = { path = "../proven-store-asm" }
+proven-store-memory = { path = "../proven-store-memory" }
 proven-store-s3-sse-c = { path = "../proven-store-s3-sse-c" }
 proven-vsock-proxy = { path = "../proven-vsock-proxy" }
 proven-vsock-rpc = { path = "../proven-vsock-rpc" }
 proven-vsock-tracing = { path = "../proven-vsock-tracing" }
+radix-common = "1.2.0"
 rand = "0.8.5"
 rtnetlink = "0.14.1"
 tokio = { version = "1.37.0", features = [
