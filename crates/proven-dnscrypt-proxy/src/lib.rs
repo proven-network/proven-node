@@ -68,7 +68,7 @@ impl DnscryptProxy {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
 
-                let re = Regex::new(r"(\[\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\]) (\[[A-Z]+\]) (.*)")
+                let re = Regex::new(r"(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]) (\[[A-Z]+\]) (.*)")
                     .unwrap();
 
                 while let Ok(Some(line)) = lines.next_line().await {

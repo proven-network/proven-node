@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct InitializeArgs {
     pub cidr: Ipv4Cidr,
-    pub dns_resolv: String,
     pub email: Vec<String>,
     pub enclave_ip: Ipv4Addr,
     pub fqdn: String,
@@ -33,7 +32,6 @@ mod tests {
     fn test_initialize_round_trip() {
         let command = Command::Initialize(InitializeArgs {
             cidr: Ipv4Cidr::new(Ipv4Addr::new(192, 168, 0, 0), 16).unwrap(),
-            dns_resolv: String::from("nameserver 192.168.0.254"),
             email: vec![String::from("test@example.com")],
             fqdn: String::from("example.com"),
             host_ip: Ipv4Addr::new(192, 168, 0, 1),
