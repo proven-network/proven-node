@@ -9,6 +9,7 @@ use aws_nitro_enclaves_nsm_api::api::{Request, Response};
 use aws_nitro_enclaves_nsm_api::driver::{nsm_exit, nsm_init, nsm_process_request};
 use proven_attestation::{AttestationParams, Attestor};
 use serde_bytes::ByteBuf;
+use tracing::error;
 
 #[derive(Debug)]
 pub struct NsmAttestor {
@@ -25,7 +26,10 @@ impl NsmAttestor {
     fn process_request(&self, req: Request) -> Result<Response> {
         let fd = self.fd.lock().unwrap();
         match nsm_process_request(*fd, req) {
-            Response::Error(err) => Err(Error::RequestError(err)),
+            Response::Error(err) => {
+                error!("Request error: {:?}", err);
+                Err(Error::RequestError(err))
+            }
             resp => Ok(resp),
         }
     }

@@ -2855,6 +2855,7 @@ dependencies = [
  "aws-nitro-enclaves-nsm-api",
  "proven-attestation",
  "serde_bytes",
+ "tracing",
 ]
 
 [[package]]
