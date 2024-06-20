@@ -205,6 +205,7 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
             core.shutdown().await;
             nats_server.shutdown().await;
             dnscrypt_proxy.shutdown().await;
+            info!("host shutdown cleanly. goodbye.");
         }
         _ = critical_tasks => {
             error!("critical task failed - exiting");

@@ -176,7 +176,7 @@ async fn main() -> Result<()> {
     }
 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    info!("shutdown cleanly. goodbye.");
+    info!("host shutdown cleanly. goodbye.");
 
     Ok(())
 }
