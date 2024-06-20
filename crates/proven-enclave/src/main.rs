@@ -98,11 +98,9 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         .unwrap();
 
     let proxy_ct = CancellationToken::new();
-    let proxy_handle = tokio::spawn(async move {
-        connection_handler
-            .proxy(vsock_stream, proxy_ct.clone())
-            .await
-    });
+    let proxy_ct_clone = proxy_ct.clone();
+    let proxy_handle =
+        tokio::spawn(async move { connection_handler.proxy(vsock_stream, proxy_ct_clone).await });
 
     info!("network configured");
 
@@ -196,6 +194,9 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
             Ok(Err(e)) = proxy_handle => {
                 error!("proxy exited: {:?}", e);
             }
+            else => {
+                info!("enclave shutdown cleanly. goodbye.");
+            }
         }
     });
 
@@ -204,8 +205,8 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
             info!("shutdown command received. shutting down...");
             core.shutdown().await;
             nats_server.shutdown().await;
+            proxy_ct.cancel();
             dnscrypt_proxy.shutdown().await;
-            info!("host shutdown cleanly. goodbye.");
         }
         _ = critical_tasks => {
             error!("critical task failed - exiting");
@@ -215,6 +216,8 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
             error!("core exited unexpectedly - exiting");
         }
     }
+
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     Ok(())
 }
