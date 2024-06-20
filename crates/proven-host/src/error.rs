@@ -9,6 +9,9 @@ pub enum Error {
     EifDoesNotExist(PathBuf),
 
     #[from]
+    Http(crate::http::HttpServerError),
+
+    #[from]
     Io(std::io::Error),
 
     NotRoot,
@@ -24,6 +27,7 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             Error::EifDoesNotExist(path) => write!(f, "eif does not exist: {:?}", path),
+            Error::Http(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::NotRoot => write!(f, "must be root"),
             Error::VsockProxy(e) => write!(f, "{}", e),
