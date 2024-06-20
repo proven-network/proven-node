@@ -49,17 +49,12 @@ where
         let command: Command = serde_cbor::from_slice(&buffer)?;
         debug!("received command: {:?}", command);
 
-        match command {
-            Command::Shutdown => {
-                command_handler(command).await;
-                break;
-            }
-            _ => {
-                command_handler(command).await;
-            }
-        }
-
+        command_handler(command.clone()).await;
         stream.write_u8(1).await?; // Send acknowledgment
+
+        if let Command::Shutdown = command {
+            break;
+        }
     }
 
     Ok(())
