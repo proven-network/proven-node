@@ -17,6 +17,9 @@ pub enum Error {
     NotRoot,
 
     #[from]
+    TracingService(crate::vsock_tracing::TracingServiceError),
+
+    #[from]
     VsockProxy(proven_vsock_proxy::Error),
 
     #[from]
@@ -30,6 +33,7 @@ impl core::fmt::Display for Error {
             Error::Http(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::NotRoot => write!(f, "must be root"),
+            Error::TracingService(e) => write!(f, "{}", e),
             Error::VsockProxy(e) => write!(f, "{}", e),
             Error::VsockRpc(e) => write!(f, "{}", e),
         }

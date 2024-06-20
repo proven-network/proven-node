@@ -1,10 +1,12 @@
 mod error;
 mod http;
 mod net;
+mod vsock_tracing;
 
 use error::{Error, Result};
 use http::HttpServer;
 use net::{configure_nat, configure_route, configure_tcp_forwarding};
+use vsock_tracing::TracingService;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -17,8 +19,7 @@ use proven_vsock_rpc::{send_command, Command, InitializeArgs};
 use tokio::process::Child;
 use tokio_util::sync::CancellationToken;
 use tokio_vsock::{VsockAddr, VsockListener};
-use tracing::{error, info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{error, info};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -84,7 +85,8 @@ async fn main() -> Result<()> {
         return Err(Error::EifDoesNotExist(args.eif_path));
     }
 
-    configure_tracing()?;
+    let tracing_service = TracingService::new();
+    let tracing_handle = tracing_service.start(args.log_port)?;
 
     let mut enclave = start_enclave().await?;
 
@@ -144,7 +146,11 @@ async fn main() -> Result<()> {
             Err(e) = proxy_handle => {
                 error!("proxy exited: {:?}", e);
             }
-            else => { info!("all critical tasks exited normally") }
+            else => {
+                info!("all critical tasks exited normally");
+                tracing_service.shutdown().await;
+                tracing_handle.await.unwrap();
+            }
         }
     });
 
@@ -226,38 +232,6 @@ async fn shutdown_enclave() -> Result<()> {
     let args = Args::parse();
 
     send_command(VsockAddr::new(args.enclave_cid, 1024), Command::Shutdown).await?;
-
-    Ok(())
-}
-
-fn configure_tracing() -> Result<()> {
-    tracing::subscriber::set_global_default(
-        FmtSubscriber::builder()
-            .with_max_level(Level::TRACE)
-            .finish(),
-    )
-    .unwrap();
-
-    tokio::spawn(async {
-        let args = Args::parse();
-
-        let mut vsock = VsockListener::bind(VsockAddr::new(3, args.log_port)).unwrap();
-        match vsock.accept().await {
-            Ok((mut stream, addr)) => {
-                info!("accepted log connection from {}", addr);
-
-                match tokio::io::copy(&mut stream, &mut tokio::io::stdout()).await {
-                    Ok(_) => {}
-                    Err(err) => {
-                        error!("error copying from VsockStream to stdout: {:?}", err);
-                    }
-                }
-            }
-            Err(err) => {
-                error!("error accepting connection: {:?}", err);
-            }
-        }
-    });
 
     Ok(())
 }
