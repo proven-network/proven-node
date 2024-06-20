@@ -49,8 +49,6 @@ where
         let command: Command = serde_cbor::from_slice(&buffer)?;
         debug!("received command: {:?}", command);
 
-        stream.write_u8(1).await?; // Send acknowledgment
-
         match command {
             Command::Shutdown => {
                 command_handler(command).await;
@@ -60,6 +58,8 @@ where
                 command_handler(command).await;
             }
         }
+
+        stream.write_u8(1).await?; // Send acknowledgment
     }
 
     Ok(())
