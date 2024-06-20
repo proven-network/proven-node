@@ -208,11 +208,14 @@ async fn start_enclave() -> Result<Child> {
 async fn initialize_enclave() -> Result<()> {
     let args = Args::parse();
 
+    let host_dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
+
     let initialize_args = InitializeArgs {
         cidr: args.cidr,
         email: args.email,
         enclave_ip: args.enclave_ip,
         fqdn: args.fqdn,
+        host_dns_resolv,
         host_ip: args.host_ip,
         https_port: args.https_port,
         log_port: args.log_port,

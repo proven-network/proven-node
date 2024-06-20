@@ -79,7 +79,7 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     info!("tracing configured");
 
     // Configure network
-    write_dns_resolv()?;
+    write_dns_resolv(args.host_dns_resolv)?; // Use host's DNS resolver until dnscrypt-proxy is up
     bring_up_loopback().await?;
 
     let vsock_stream = VsockStream::connect(VsockAddr::new(3, args.proxy_port))
@@ -135,6 +135,7 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         instance.subnet_id,
     );
     let dnscrypt_proxy_handle = dnscrypt_proxy.start().await?;
+    write_dns_resolv("nameserver 127.0.0.1".to_string())?; // Switch to dnscrypt-proxy's DNS resolver
 
     // Boot NATS server
     let nats_server = NatsServer::new(
