@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use anyhow::{anyhow, Result};
 use asn1_rs::{oid, BerSequence};
 use asn1_rs::{
