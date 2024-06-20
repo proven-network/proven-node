@@ -11,6 +11,7 @@ proven-attestation-nsm = { path = "../proven-attestation-nsm" }
 proven-core = { path = "../proven-core" }
 proven-dnscrypt-proxy = { path = "../proven-dnscrypt-proxy" }
 proven-imds = { path = "../proven-imds" }
+proven-instance-details = { path = "../proven-instance-details" }
 proven-kms = { path = "../proven-kms" }
 proven-nats-server = { path = "../proven-nats-server" }
 proven-sessions = { path = "../proven-sessions" }

@@ -13,6 +13,7 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, NewCoreArguments};
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_imds::{IdentityDocument, Imds};
+use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::Kms;
 use proven_nats_server::NatsServer;
 use proven_sessions::{SessionManagement, SessionManager};
@@ -117,12 +118,17 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     // Fetch validated identity from IMDS
     let identity = fetch_imds_identity().await?;
     info!("identity: {:?}", identity);
-    let server_name = identity.instance_id;
+
+    let instance = fetch_instance_details(identity.region.clone(), identity.instance_id).await?;
+    info!("instance: {:?}", instance);
+    let server_name = instance.instance_id.clone();
 
     // Boot dnscrypt-proxy
     let dnscrypt_proxy = DnscryptProxy::new(
-        identity.availability_zone,
-        SocketAddrV4::new(Ipv4Addr::new(172, 31, 32, 128), 443),
+        identity.region.clone(),
+        instance.vpc_id,
+        instance.availability_zone,
+        instance.subnet_id,
     );
     let dnscrypt_proxy_handle = dnscrypt_proxy.start().await?;
 
@@ -220,6 +226,13 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     Ok(())
+}
+
+async fn fetch_instance_details(region: String, instance_id: String) -> Result<Instance> {
+    let fetcher = InstanceDetailsFetcher::new(region).await;
+    let instance = fetcher.get_instance_details(instance_id).await?;
+
+    Ok(instance)
 }
 
 async fn fetch_imds_identity() -> Result<IdentityDocument> {

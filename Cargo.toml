@@ -11,6 +11,7 @@ members = [
     "crates/proven-dnscrypt-proxy",
     "crates/proven-enclave",
     "crates/proven-host",
+    "crates/proven-instance-details",
     "crates/proven-imds",
     "crates/proven-kms",
     "crates/proven-nats-server",

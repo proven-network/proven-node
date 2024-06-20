@@ -29,6 +29,9 @@ pub enum Error {
     Imds(proven_imds::Error),
 
     #[from]
+    InstanceDetails(proven_instance_details::Error),
+
+    #[from]
     Io(std::io::Error),
 
     #[from]
@@ -67,6 +70,7 @@ impl core::fmt::Display for Error {
             Error::Cidr(e) => write!(f, "{}", e),
             Error::DnscryptProxy(e) => write!(f, "{}", e),
             Error::Imds(e) => write!(f, "{}", e),
+            Error::InstanceDetails(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::Kms(e) => write!(f, "{}", e),
             Error::NatsServer(e) => write!(f, "{}", e),

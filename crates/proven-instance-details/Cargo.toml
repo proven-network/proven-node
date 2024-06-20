@@ -1,0 +1,9 @@
+[package]
+name = "proven-instance-details"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aws-config = "1.5.2"
+aws-sdk-ec2 = "1.52.0"
+derive_more = { version = "1.0.0-beta.6", features = ["from"] }

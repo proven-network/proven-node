@@ -2979,8 +2979,8 @@ name = "proven-dnscrypt-proxy"
 version = "0.1.0"
 dependencies = [
  "aws-config",
- "aws-sdk-ec2",
  "aws-sdk-route53resolver",
+ "derive_more",
  "dns-stamp-parser",
  "regex",
  "tokio",
@@ -2999,6 +2999,7 @@ dependencies = [
  "proven-core",
  "proven-dnscrypt-proxy",
  "proven-imds",
+ "proven-instance-details",
  "proven-kms",
  "proven-nats-server",
  "proven-sessions",
@@ -3054,6 +3055,15 @@ dependencies = [
  "serde",
  "serde_json",
  "x509-parser",
+]
+
+[[package]]
+name = "proven-instance-details"
+version = "0.1.0"
+dependencies = [
+ "aws-config",
+ "aws-sdk-ec2",
+ "derive_more",
 ]
 
 [[package]]
