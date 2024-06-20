@@ -173,43 +173,47 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     let session_manager =
         SessionManager::new(nsm, challenge_store, sessions_store, network_definition);
 
-    let core_shutdown_token = shutdown_token.clone();
-    let core_handle = tokio::spawn(async move {
-        let core = Core::new(NewCoreArguments {
-            cert_store: store,
-            email: args.email,
-            ip: args.enclave_ip,
-            fqdn: args.fqdn,
-            https_port: args.https_port,
-            production: args.production,
-            session_manager,
-            shutdown_token: core_shutdown_token,
-        });
+    let core = Core::new(NewCoreArguments {
+        cert_store: store,
+        email: args.email,
+        ip: args.enclave_ip,
+        fqdn: args.fqdn,
+        https_port: args.https_port,
+        production: args.production,
+        session_manager,
+    });
+    let core_handle = core.start().await?;
 
-        let _ = core.start().await;
+    // Tasks that must be running for the enclave to function
+    let critical_tasks = tokio::spawn(async move {
+        tokio::select! {
+            e = dnscrypt_proxy_handle => {
+                error!("dnscrypt_proxy exited: {:?}", e);
+            }
+            e = nats_server_handle => {
+                error!("nats_server exited: {:?}", e);
+            }
+            e = proxy_handle => {
+                error!("proxy exited: {:?}", e);
+            }
+        }
     });
 
     tokio::select! {
         _ = shutdown_token.cancelled() => {
-            info!("shutdown command received");
+            info!("shutdown command received. shutting down...");
+            core.shutdown().await;
+            nats_server.shutdown().await;
+            dnscrypt_proxy.shutdown().await;
         }
-        e = dnscrypt_proxy_handle => {
-            error!("dnscrypt_proxy exited: {:?}", e);
-        }
-        e = proxy_handle => {
-            error!("proxy exited: {:?}", e);
-        }
-        e = nats_server_handle => {
-            error!("nats_server exited: {:?}", e);
+        e = critical_tasks => {
+            error!("critical task failed: {:?}", e);
+            core.shutdown().await;
         }
         e = core_handle => {
             error!("core exited: {:?}", e);
         }
     }
-
-    info!("shutting down...");
-    nats_server.shutdown().await;
-    info!("shutdown complete. goodbye.");
 
     Ok(())
 }
