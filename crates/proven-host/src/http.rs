@@ -67,6 +67,8 @@ impl HttpServer {
             }
         });
 
+        self.task_tracker.close();
+
         Ok(handle)
     }
 
