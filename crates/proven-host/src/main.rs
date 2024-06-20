@@ -144,6 +144,7 @@ async fn main() -> Result<()> {
             Err(e) = proxy_handle => {
                 error!("proxy exited: {:?}", e);
             }
+            else => { info!("all critical tasks exited normally") }
         }
     });
 
