@@ -45,7 +45,6 @@ impl HttpServer {
             loop {
                 tokio::select! {
                     _ = shutdown_token.cancelled() => {
-                        info!("shutting down http server...");
                         break;
                     }
                     result = listener.accept() => {

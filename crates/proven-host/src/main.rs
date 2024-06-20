@@ -138,10 +138,10 @@ async fn main() -> Result<()> {
     // Tasks that must be running for the host to function
     let critical_tasks = tokio::spawn(async move {
         tokio::select! {
-            e = http_redirector_handle => {
+            Err(e) = http_redirector_handle => {
                 error!("http_redirector exited: {:?}", e);
             }
-            e = proxy_handle => {
+            Err(e) = proxy_handle => {
                 error!("proxy exited: {:?}", e);
             }
         }
@@ -163,7 +163,6 @@ async fn main() -> Result<()> {
             cancellation_token.cancel();
             http_redirector.shutdown().await;
         }
-
         _ = critical_tasks => {
             error!("critical task failed - exiting");
         }

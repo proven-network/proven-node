@@ -187,13 +187,13 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     // Tasks that must be running for the enclave to function
     let critical_tasks = tokio::spawn(async move {
         tokio::select! {
-            e = dnscrypt_proxy_handle => {
+            Ok(Err(e)) = dnscrypt_proxy_handle => {
                 error!("dnscrypt_proxy exited: {:?}", e);
             }
-            e = nats_server_handle => {
+            Ok(Err(e)) = nats_server_handle => {
                 error!("nats_server exited: {:?}", e);
             }
-            e = proxy_handle => {
+            Ok(Err(e)) = proxy_handle => {
                 error!("proxy exited: {:?}", e);
             }
         }
@@ -206,12 +206,12 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
             nats_server.shutdown().await;
             dnscrypt_proxy.shutdown().await;
         }
-        e = critical_tasks => {
-            error!("critical task failed: {:?}", e);
+        _ = critical_tasks => {
+            error!("critical task failed - exiting");
             core.shutdown().await;
         }
-        e = core_handle => {
-            error!("core exited: {:?}", e);
+        _ = core_handle => {
+            error!("core exited unexpectedly - exiting");
         }
     }
 
