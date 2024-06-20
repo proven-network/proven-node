@@ -37,11 +37,11 @@ impl TracingService {
                 Ok((mut stream, addr)) => {
                     info!("accepted log connection from {}", addr);
 
-                    let mut stdin = tokio::io::stdin();
+                    let mut stdout = tokio::io::stdout();
 
                     tokio::select! {
                         _ = shutdown_token.cancelled() => {}
-                        _ = tokio::io::copy(&mut stdin, &mut stream) => {}
+                        _ = tokio::io::copy(&mut stream, &mut stdout) => {}
                     }
                 }
                 Err(err) => {
