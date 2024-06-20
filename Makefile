@@ -3,7 +3,7 @@
 all: build install
 
 build:
-	cargo build --release
+	cargo build --release --package proven-host
 
 install:
 	@sudo cp target/release/proven-host /usr/sbin/proven
