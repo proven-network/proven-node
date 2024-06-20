@@ -9,7 +9,7 @@ RUN git checkout ${COMMIT}
 
 ARG RUSTTARGET
 RUN rustup target add ${RUSTTARGET}
-RUN cargo build --release --target ${RUSTTARGET}
+RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
 
 RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
 RUN chown root:root /bin/proven-enclave
