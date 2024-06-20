@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
                              Ok((vsock_stream, remote_addr)) => {
                             info!("accepted connection from {:?}", remote_addr);
 
-                            connection_handler.proxy(vsock_stream, proxy_cancel_token.clone()).await.unwrap();
+                            let _ = connection_handler.proxy(vsock_stream, proxy_cancel_token.clone()).await;
                         },
                         Err(err) => {
                             error!("error accepting connection: {:?}", err);
