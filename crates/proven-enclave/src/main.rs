@@ -49,9 +49,13 @@ async fn main() -> Result<()> {
                             return;
                         }
 
-                        task_tracker.spawn(initialize(args, shutdown_token));
-
                         task_tracker.close();
+
+                        if let Ok(Err(e)) =
+                            task_tracker.spawn(initialize(args, shutdown_token)).await
+                        {
+                            error!("failed to initialize enclave: {:?}", e);
+                        }
                     }
                     Command::Shutdown => {
                         shutdown_token.cancel();
