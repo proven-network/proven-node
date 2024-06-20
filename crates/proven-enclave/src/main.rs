@@ -31,6 +31,8 @@ use tokio_vsock::{VsockAddr, VsockStream, VMADDR_CID_ANY};
 use tracing::{error, info};
 use tracing_panic::panic_hook;
 
+static VMADDR_CID_EC2_HOST: u32 = 3;
+
 #[tokio::main(worker_threads = 10)]
 async fn main() -> Result<()> {
     let shutdown_token = CancellationToken::new();
@@ -49,13 +51,13 @@ async fn main() -> Result<()> {
                             return;
                         }
 
-                        task_tracker.close();
+                        task_tracker.spawn(async move {
+                            if let Err(e) = initialize(args, shutdown_token).await {
+                                error!("initialize failed: {:?}", e);
+                            }
+                        });
 
-                        if let Ok(Err(e)) =
-                            task_tracker.spawn(initialize(args, shutdown_token)).await
-                        {
-                            error!("failed to initialize enclave: {:?}", e);
-                        }
+                        task_tracker.close();
                     }
                     Command::Shutdown => {
                         shutdown_token.cancel();
@@ -74,7 +76,7 @@ async fn main() -> Result<()> {
 async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> Result<()> {
     // Configure tracing
     std::panic::set_hook(Box::new(panic_hook));
-    configure_logging_to_vsock(VsockAddr::new(3, args.log_port)).await?;
+    configure_logging_to_vsock(VsockAddr::new(VMADDR_CID_EC2_HOST, args.log_port)).await?;
 
     info!("tracing configured");
 
@@ -82,7 +84,7 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     write_dns_resolv(args.host_dns_resolv)?; // Use host's DNS resolver until dnscrypt-proxy is up
     bring_up_loopback().await?;
 
-    let vsock_stream = VsockStream::connect(VsockAddr::new(3, args.proxy_port))
+    let vsock_stream = VsockStream::connect(VsockAddr::new(VMADDR_CID_EC2_HOST, args.proxy_port))
         .await
         .unwrap();
 

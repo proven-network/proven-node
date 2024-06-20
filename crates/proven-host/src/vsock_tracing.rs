@@ -1,7 +1,7 @@
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tokio_vsock::{VsockAddr, VsockListener};
+use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -32,7 +32,7 @@ impl TracingService {
 
         let shutdown_token = self.shutdown_token.clone();
         let handle = self.task_tracker.spawn(async move {
-            let mut vsock = VsockListener::bind(VsockAddr::new(3, log_port)).unwrap();
+            let mut vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, log_port)).unwrap();
             match vsock.accept().await {
                 Ok((mut stream, addr)) => {
                     info!("accepted log connection from {}", addr);

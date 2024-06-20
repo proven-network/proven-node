@@ -18,7 +18,7 @@ use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{send_command, Command, InitializeArgs};
 use tokio::process::Child;
 use tokio_util::sync::CancellationToken;
-use tokio_vsock::{VsockAddr, VsockListener};
+use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 use tracing::{error, info};
 
 #[derive(Parser, Debug)]
@@ -95,7 +95,8 @@ async fn main() -> Result<()> {
     let proxy_handle = tokio::spawn(async move {
         let args = Args::parse();
 
-        let mut vsock = VsockListener::bind(VsockAddr::new(3, args.proxy_port)).unwrap();
+        let mut vsock =
+            VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
         let connection_handler = Proxy::new(
             args.host_ip,
             args.enclave_ip,

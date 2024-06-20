@@ -65,10 +65,11 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use tokio::sync::Mutex;
+    use tokio_vsock::VMADDR_CID_ANY;
 
     #[tokio::test]
     async fn test_send_and_receive_command() {
-        let vsock_addr = VsockAddr::new(3, 1300);
+        let vsock_addr = VsockAddr::new(VMADDR_CID_ANY, 1300);
         let command = Command::Shutdown;
         let received_command = Arc::new(Mutex::new(None));
 
