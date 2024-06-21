@@ -7,6 +7,7 @@ use serde::Deserialize;
 #[derive(Debug)]
 pub enum RpcHandlerError {
     MethodNotFound,
+    PayloadInvalid,
     SessionInvalid,
     Sign1Invalid,
     SignatureInvalid,
@@ -80,16 +81,12 @@ impl RpcHandler {
             .map_err(|_| RpcHandlerError::SignatureInvalid)?;
 
         let method: Method =
-            serde_cbor::from_slice(payload).map_err(|_| RpcHandlerError::Sign1Invalid)?;
+            serde_cbor::from_slice(payload).map_err(|_| RpcHandlerError::PayloadInvalid)?;
 
         let response = match method {
             Method::WhoAmI => Ok(self.identity_address.as_bytes().to_vec()),
             _ => Err(RpcHandlerError::MethodNotFound),
         }?;
-
-        let protected_header: coset::Header = coset::HeaderBuilder::new()
-            .algorithm(coset::iana::Algorithm::EdDSA)
-            .build();
 
         let sign1_builder = match seq {
             None => coset::CoseSign1Builder::new(),
@@ -98,6 +95,10 @@ impl RpcHandler {
                 coset::CoseSign1Builder::new().unprotected(seq_header)
             }
         };
+
+        let protected_header: coset::Header = coset::HeaderBuilder::new()
+            .algorithm(coset::iana::Algorithm::EdDSA)
+            .build();
 
         let resp_sign1 = sign1_builder
             .protected(protected_header)
