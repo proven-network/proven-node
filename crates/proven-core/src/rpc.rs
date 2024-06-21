@@ -7,6 +7,7 @@ use serde::Deserialize;
 #[derive(Debug)]
 pub enum RpcHandlerError {
     MethodNotFound,
+    SessionInvalid,
     Sign1Invalid,
     SignatureInvalid,
     SigningKeyInvalid,
@@ -14,7 +15,7 @@ pub enum RpcHandlerError {
 }
 
 pub struct RpcHandler {
-    session_id: String,
+    aad: Vec<u8>,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
     identity_address: String,
@@ -45,8 +46,10 @@ impl RpcHandler {
         let verifying_key = VerifyingKey::from_bytes(&verifying_key_bytes)
             .map_err(|_| RpcHandlerError::VerifyingKeyInvalid)?;
 
+        let aad = hex::decode(session.session_id).map_err(|_| RpcHandlerError::SessionInvalid)?;
+
         Ok(Self {
-            session_id: session.session_id,
+            aad,
             signing_key,
             verifying_key,
             identity_address: session.identity_address,
@@ -70,7 +73,7 @@ impl RpcHandler {
             .map(|(_, v)| v);
 
         sign1
-            .verify_signature(self.session_id.as_bytes(), |signature_bytes, pt| {
+            .verify_signature(&self.aad, |signature_bytes, pt| {
                 Signature::from_slice(signature_bytes)
                     .map(|signature| self.verifying_key.verify(pt, &signature))?
             })
@@ -99,9 +102,7 @@ impl RpcHandler {
         let resp_sign1 = sign1_builder
             .protected(protected_header)
             .payload(response)
-            .create_signature(self.session_id.as_bytes(), |pt| {
-                self.signing_key.sign(pt).to_vec()
-            })
+            .create_signature(&self.aad, |pt| self.signing_key.sign(pt).to_vec())
             .build();
 
         resp_sign1
