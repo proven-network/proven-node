@@ -23,6 +23,9 @@ pub enum Error {
 
     #[from]
     Io(std::io::Error),
+
+    #[from]
+    Rpc(crate::rpc::RpcHandlerError), // shouldn't actually be here; handle in transport
 }
 
 impl core::fmt::Display for Error {
@@ -35,6 +38,7 @@ impl core::fmt::Display for Error {
             Error::Axum(e) => write!(f, "{}", e),
             Error::HttpsServer(e) => write!(f, "{:?}", e),
             Error::Io(e) => write!(f, "{}", e),
+            Error::Rpc(e) => write!(f, "{:?}", e),
         }
     }
 }

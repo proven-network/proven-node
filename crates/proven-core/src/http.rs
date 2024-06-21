@@ -86,7 +86,7 @@ impl HttpsServer {
 
         let handle = self.task_tracker.spawn(async move {
             tokio::select! {
-                e = axum_server::bind(listen_addr).acceptor(acceptor).serve(router.into_make_service_with_connect_info::<SocketAddr>()).into_future() => {
+                e = axum_server::bind(listen_addr).acceptor(acceptor).serve(router.into_make_service()).into_future() => {
                     info!("https server exited {:?}", e);
                 }
                 _ = shutdown_token.cancelled() => {}
