@@ -41,8 +41,6 @@ pub struct WhoAmIResponse {
     pub identity_address: String,
 }
 
-const SEQ_HEADER: Label = Label::Int(42);
-
 impl RpcHandler {
     pub fn new(session: Session) -> Result<Self, RpcHandlerError> {
         let signing_key_bytes: [u8; 32] = session
@@ -82,7 +80,7 @@ impl RpcHandler {
             .rest
             .clone()
             .into_iter()
-            .find(|(l, _)| l == &SEQ_HEADER)
+            .find(|(l, _)| l == &Label::Text("seq".to_string()))
             .map(|(_, v)| v);
 
         sign1
@@ -108,7 +106,9 @@ impl RpcHandler {
         let sign1_builder = match seq {
             None => coset::CoseSign1Builder::new(),
             Some(seq) => {
-                let seq_header = coset::HeaderBuilder::new().value(42, seq).build();
+                let seq_header = coset::HeaderBuilder::new()
+                    .text_value("seq".to_string(), seq)
+                    .build();
                 coset::CoseSign1Builder::new().unprotected(seq_header)
             }
         };
