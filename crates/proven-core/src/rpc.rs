@@ -88,6 +88,8 @@ impl RpcHandler {
             _ => Err(RpcHandlerError::MethodNotFound),
         }?;
 
+        let payload = serde_cbor::to_vec(&response).map_err(|_| RpcHandlerError::PayloadInvalid)?;
+
         let sign1_builder = match seq {
             None => coset::CoseSign1Builder::new(),
             Some(seq) => {
@@ -102,7 +104,7 @@ impl RpcHandler {
 
         let resp_sign1 = sign1_builder
             .protected(protected_header)
-            .payload(response)
+            .payload(payload)
             .create_signature(&self.aad, |pt| self.signing_key.sign(pt).to_vec())
             .build();
 
