@@ -2,7 +2,7 @@ use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_sessions::Session;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
 pub enum RpcHandlerError {
@@ -23,10 +23,22 @@ pub struct RpcHandler {
 }
 
 #[repr(u8)]
-#[derive(Debug, Deserialize)]
-pub enum Method {
+#[derive(Debug, Deserialize, Serialize)]
+pub enum Request {
     WhoAmI = 0x0,
     Watch(String) = 0x1,
+    Other,
+}
+
+#[derive(Debug, Serialize)]
+pub enum Response {
+    Ok,
+    WhoAmI(WhoAmIResponse),
+}
+
+#[derive(Debug, Serialize)]
+pub struct WhoAmIResponse {
+    pub identity_address: String,
 }
 
 const SEQ_HEADER: Label = Label::Int(42);
@@ -80,11 +92,14 @@ impl RpcHandler {
             })
             .map_err(|_| RpcHandlerError::SignatureInvalid)?;
 
-        let method: Method =
+        let method: Request =
             serde_cbor::from_slice(payload).map_err(|_| RpcHandlerError::PayloadInvalid)?;
 
         let response = match method {
-            Method::WhoAmI => Ok(self.identity_address.as_bytes().to_vec()),
+            Request::WhoAmI => Ok(Response::WhoAmI(WhoAmIResponse {
+                identity_address: self.identity_address.clone(),
+            })),
+            Request::Watch(_) => Ok(Response::Ok),
             _ => Err(RpcHandlerError::MethodNotFound),
         }?;
 

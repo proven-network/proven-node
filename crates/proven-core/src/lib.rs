@@ -1,7 +1,7 @@
 mod attestation;
 mod error;
 mod http;
-mod rpc;
+pub mod rpc;
 mod ws;
 
 use attestation::create_attestation_handlers;
