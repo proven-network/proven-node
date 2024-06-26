@@ -9,4 +9,4 @@ aws-config = { version = "1.5.1", features = ["behavior-version-latest"] }
 aws-sdk-secretsmanager = "1.35.1"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 proven-store = { path = "../proven-store" }
-serde_json = "1.0.117"
+serde_json = "1.0.118"

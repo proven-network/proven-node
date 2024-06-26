@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cidr = "0.2.2"
+cidr = "0.2.3"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 tokio = { version = "1.37.0", features = [
   "io-util",

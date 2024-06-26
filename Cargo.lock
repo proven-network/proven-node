@@ -1109,9 +1109,9 @@ dependencies = [
 
 [[package]]
 name = "cidr"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d18b093eba54c9aaa1e3784d4361eb2ba944cf7d0a932a830132238f483e8d8"
+checksum = "6bdf600c45bd958cf2945c445264471cca8b6c8e67bc87b71affd6d7e5682621"
 dependencies = [
  "serde",
 ]
@@ -2902,10 +2902,8 @@ name = "proven-applications"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "derive_more",
  "proven-store",
  "radix-common",
- "rand 0.8.5",
  "serde",
  "serde_cbor",
 ]
@@ -2922,6 +2920,7 @@ name = "proven-attestation-dev"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "coset",
  "proven-attestation",
  "rand 0.8.5",
  "serde",
@@ -2943,12 +2942,10 @@ dependencies = [
 name = "proven-core"
 version = "0.1.0"
 dependencies = [
- "async-nats",
  "async-trait",
  "axum",
  "axum-extra",
  "axum_typed_multipart",
- "base64 0.22.1",
  "bytes",
  "coset",
  "derive_more",
@@ -2956,7 +2953,6 @@ dependencies = [
  "futures",
  "headers",
  "hex",
- "http 0.2.12",
  "http-body-util",
  "proven-attestation",
  "proven-http",
@@ -3143,7 +3139,6 @@ dependencies = [
  "radix-common",
  "tokio",
  "tracing",
- "tracing-panic",
  "tracing-subscriber",
 ]
 
@@ -3249,7 +3244,6 @@ dependencies = [
  "serde",
  "serde_cbor",
  "tokio",
- "tokio-util",
  "tokio-vsock",
  "tracing",
 ]
@@ -3905,9 +3899,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.117"
+version = "1.0.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "455182ea6142b14f93f4bc5320a2b31c1f266b66a4a5c858b013302a5d8cbfc3"
+checksum = "d947f6b3163d8857ea16c4fa0dd4840d52f3041039a85decd46867eb1abef2e4"
 dependencies = [
  "itoa",
  "ryu",

@@ -5,9 +5,8 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1.80"
-derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 proven-store = { path = "../proven-store" }
 radix-common = "1.2.0"
-rand = "0.8.5"
+
 serde = { version = "1.0.201", features = ["derive"] }
 serde_cbor = "0.11.2"
