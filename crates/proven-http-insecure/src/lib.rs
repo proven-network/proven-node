@@ -50,8 +50,10 @@ impl HttpServer for InsecureHttpServer {
         let router = router.layer(cors);
 
         let handle = self.task_tracker.spawn(async move {
+            let listener = tokio::net::TcpListener::bind(listen_addr).await.unwrap();
+
             tokio::select! {
-              e = axum_server::bind(listen_addr).serve(router.into_make_service()).into_future() => {
+              e = axum::serve(listener, router.into_make_service()).into_future() => {
                 info!("http server exited {:?}", e);
               }
               _ = shutdown_token.cancelled() => {}

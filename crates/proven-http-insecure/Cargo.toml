@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.80"
 axum = { version = "0.7.5", features = ["ws"] }
-axum-server = { version = "0.6.0" }
 proven-http = { path = "../proven-http" }
 tokio = "1.37.0"
 tokio-util = { version = "0.7.11", features = ["rt"] }

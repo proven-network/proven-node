@@ -16,12 +16,6 @@ use tracing_subscriber::FmtSubscriber;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    #[clap(long)]
-    email: Vec<String>,
-
-    #[clap(long, required = true)]
-    fqdn: String,
-
     #[arg(long, default_value_t = 4222)]
     nats_port: u16,
 
@@ -61,6 +55,7 @@ async fn main() -> Result<()> {
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("Shutting down");
+            let _ = core.shutdown().await;
         }
         _ = core_handle => {
             error!("Core exited");

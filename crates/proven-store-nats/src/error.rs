@@ -1,6 +1,6 @@
 use derive_more::From;
 
-#[derive(Debug, From)]
+#[derive(Clone, Debug, From)]
 pub enum Error {
     #[from]
     Create(async_nats::jetstream::context::CreateKeyValueErrorKind),

@@ -1,3 +1,7 @@
+mod error;
+
+use error::{Error, Result};
+
 use std::collections::HashSet;
 use std::vec;
 
@@ -49,16 +53,6 @@ pub trait SessionManagement: Clone + Send + Sync {
     async fn get_session(&self, session_id: String) -> Result<Option<Session>>;
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug)]
-pub enum Error {
-    AttestationError,
-    ChallengeStoreError,
-    SessionStoreError,
-    SignedChallengeInvalid,
-}
-
 #[derive(Clone)]
 pub struct SessionManager<A: Attestor, CS: Store, SS: Store> {
     attestor: A,
@@ -102,7 +96,7 @@ where
         self.challenge_store
             .put(challenge.clone(), vec![1])
             .await
-            .map_err(|_| Error::ChallengeStoreError)?;
+            .map_err(|_| Error::ChallengeStore)?;
 
         Ok(challenge)
     }
@@ -181,7 +175,7 @@ where
         self.sessions_store
             .put(session.session_id.clone(), session_cbor)
             .await
-            .map_err(|_| Error::SessionStoreError)?;
+            .map_err(|_| Error::SessionStore)?;
 
         match self
             .attestor
@@ -193,7 +187,7 @@ where
             .await
         {
             Ok(attestation) => Ok(attestation),
-            Err(_) => Err(Error::AttestationError),
+            Err(_) => Err(Error::Attestation),
         }
     }
 
@@ -206,7 +200,7 @@ where
                 }
                 None => Ok(None),
             },
-            Err(_) => Err(Error::SessionStoreError),
+            Err(_) => Err(Error::SessionStore),
         }
     }
 }
