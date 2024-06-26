@@ -1,4 +1,4 @@
-use crate::rpc::RpcHandler;
+use super::RpcHandler;
 
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -12,17 +12,15 @@ use std::borrow::Cow;
 use tracing::{error, info};
 
 #[derive(Debug, Deserialize)]
-struct ConnectParams {
+struct QueryParams {
     session: String,
 }
 
-pub async fn create_websocket_handler<T: SessionManagement + 'static>(
-    session_manager: T,
-) -> Router {
+pub async fn create_rpc_router<T: SessionManagement + 'static>(session_manager: T) -> Router {
     Router::new().route(
         "/ws",
         get(
-            |ws: WebSocketUpgrade, query: Query<ConnectParams>| async move {
+            |ws: WebSocketUpgrade, query: Query<QueryParams>| async move {
                 match session_manager.get_session(query.session.clone()).await {
                     Ok(Some(session)) => match RpcHandler::new(session.clone()) {
                         Ok(rpc_handler) => {

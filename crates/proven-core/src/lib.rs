@@ -2,12 +2,10 @@ mod attestation;
 mod error;
 mod http;
 pub mod rpc;
-mod ws;
 
-use attestation::create_attestation_handlers;
+use attestation::create_session_router;
 pub use error::{Error, Result};
 use http::HttpsServer;
-use ws::create_websocket_handler;
 
 use std::net::{Ipv4Addr, SocketAddr};
 
@@ -62,13 +60,15 @@ impl<SM: SessionManagement + 'static, CS: Store + 'static> Core<SM, CS> {
             return Err(Error::AlreadyStarted);
         }
 
-        let session_handlers = create_attestation_handlers(self.session_manager.clone()).await;
-        let websocket_handler = create_websocket_handler(self.session_manager.clone()).await;
+        let session_router = create_session_router(self.session_manager.clone()).await;
+        let http_rpc_router = rpc::http::create_rpc_router(self.session_manager.clone()).await;
+        let websocket_router = rpc::ws::create_rpc_router(self.session_manager.clone()).await;
 
         let https_app = Router::new()
             .route("/", get(|| async { "Hello Tls!" }))
-            .nest("/", session_handlers)
-            .nest("/", websocket_handler);
+            .nest("/", session_router)
+            .nest("/", http_rpc_router)
+            .nest("/", websocket_router);
 
         let https_server = HttpsServer::new(
             SocketAddr::from((self.ip, self.https_port)),

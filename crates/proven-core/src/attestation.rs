@@ -20,9 +20,7 @@ struct SessionRequest {
     application_name: Option<String>,
 }
 
-pub async fn create_attestation_handlers<T: SessionManagement + 'static>(
-    session_manager: T,
-) -> Router {
+pub async fn create_session_router<T: SessionManagement + 'static>(session_manager: T) -> Router {
     let session_manager_clone = session_manager.clone();
     let app = Router::new()
         .route(

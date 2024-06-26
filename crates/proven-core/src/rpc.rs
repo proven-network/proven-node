@@ -1,3 +1,6 @@
+pub mod http;
+pub mod ws;
+
 use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
