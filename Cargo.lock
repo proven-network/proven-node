@@ -2960,8 +2960,8 @@ dependencies = [
  "http 0.2.12",
  "http-body-util",
  "proven-attestation",
+ "proven-http",
  "proven-sessions",
- "proven-store",
  "radix-common",
  "rand 0.8.5",
  "ring",
@@ -3002,6 +3002,7 @@ dependencies = [
  "proven-attestation-nsm",
  "proven-core",
  "proven-dnscrypt-proxy",
+ "proven-http-letsencrypt",
  "proven-imds",
  "proven-instance-details",
  "proven-kms",
@@ -3047,6 +3048,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-http"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "tokio",
+]
+
+[[package]]
+name = "proven-http-insecure"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "axum-server",
+ "proven-http",
+ "tokio",
+ "tokio-util",
+ "tower-http",
+ "tracing",
+]
+
+[[package]]
+name = "proven-http-letsencrypt"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "axum-server",
+ "base64 0.22.1",
+ "proven-http",
+ "proven-store",
+ "ring",
+ "rustls 0.21.12",
+ "tokio",
+ "tokio-rustls-acme",
+ "tokio-stream",
+ "tokio-util",
+ "tower-http",
+ "tracing",
+]
+
+[[package]]
 name = "proven-imds"
 version = "0.1.0"
 dependencies = [
@@ -3087,6 +3131,26 @@ dependencies = [
  "rand 0.8.5",
  "rsa",
  "sha2 0.10.8",
+]
+
+[[package]]
+name = "proven-local"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "derive_more",
+ "proven-attestation",
+ "proven-attestation-dev",
+ "proven-core",
+ "proven-http-insecure",
+ "proven-sessions",
+ "proven-store",
+ "proven-store-memory",
+ "radix-common",
+ "tokio",
+ "tracing",
+ "tracing-panic",
+ "tracing-subscriber",
 ]
 
 [[package]]

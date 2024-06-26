@@ -6,12 +6,13 @@ use error::{Error, Result};
 use net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 
 use std::convert::TryInto;
-use std::net::{Ipv4Addr, SocketAddrV4};
+use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, NewCoreArguments};
 use proven_dnscrypt_proxy::DnscryptProxy;
+use proven_http_letsencrypt::LetsEncryptHttpServer;
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::Kms;
@@ -184,16 +185,11 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     let session_manager =
         SessionManager::new(nsm, challenge_store, sessions_store, network_definition);
 
-    let core = Core::new(NewCoreArguments {
-        cert_store: store,
-        email: args.email,
-        ip: args.enclave_ip,
-        fqdn: args.fqdn,
-        https_port: args.https_port,
-        production: args.production,
-        session_manager,
-    });
-    let core_handle = core.start().await?;
+    let http_sock_addr = SocketAddr::from((args.enclave_ip, args.https_port));
+    let http_server = LetsEncryptHttpServer::new(http_sock_addr, args.fqdn, args.email, store);
+
+    let core = Core::new(NewCoreArguments { session_manager });
+    let core_handle = core.start(http_server).await?;
 
     // Tasks that must be running for the enclave to function
     let critical_tasks = tokio::spawn(async move {

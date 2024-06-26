@@ -19,9 +19,6 @@ pub enum Error {
     Axum(axum::Error),
 
     #[from]
-    HttpsServer(crate::http::HttpsServerError),
-
-    #[from]
     Io(std::io::Error),
 
     #[from]
@@ -36,7 +33,6 @@ impl core::fmt::Display for Error {
             Error::AddrParse(e) => write!(f, "{}", e),
             Error::Async(e) => write!(f, "{}", e),
             Error::Axum(e) => write!(f, "{}", e),
-            Error::HttpsServer(e) => write!(f, "{:?}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::Rpc(e) => write!(f, "{:?}", e),
         }

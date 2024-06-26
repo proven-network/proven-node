@@ -1,0 +1,14 @@
+[package]
+name = "proven-http-insecure"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.80"
+axum = { version = "0.7.5", features = ["ws"] }
+axum-server = { version = "0.6.0" }
+proven-http = { path = "../proven-http" }
+tokio = "1.37.0"
+tokio-util = { version = "0.7.11", features = ["rt"] }
+tower-http = { version = "0.5.2", features = ["cors"] }
+tracing = "0.1.40"

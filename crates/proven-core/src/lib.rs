@@ -1,61 +1,39 @@
 mod attestation;
 mod error;
-mod http;
 pub mod rpc;
 
 use attestation::create_session_router;
 pub use error::{Error, Result};
-use http::HttpsServer;
-
-use std::net::{Ipv4Addr, SocketAddr};
 
 use axum::routing::get;
 use axum::Router;
+use proven_http::HttpServer;
 use proven_sessions::SessionManagement;
-use proven_store::Store;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 
-pub struct NewCoreArguments<SM: SessionManagement + 'static, CS: Store + 'static> {
-    pub cert_store: CS,
-    pub ip: Ipv4Addr,
-    pub email: Vec<String>,
-    pub fqdn: String,
-    pub https_port: u16,
-    pub production: bool,
+pub struct NewCoreArguments<SM: SessionManagement + 'static> {
     pub session_manager: SM,
 }
 
-pub struct Core<SM: SessionManagement + 'static, CS: Store + 'static> {
-    cert_store: CS,
-    ip: Ipv4Addr,
-    email: Vec<String>,
-    fqdn: String,
-    https_port: u16,
-    production: bool,
+pub struct Core<SM: SessionManagement + 'static> {
     session_manager: SM,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl<SM: SessionManagement + 'static, CS: Store + 'static> Core<SM, CS> {
-    pub fn new(args: NewCoreArguments<SM, CS>) -> Self {
+impl<SM: SessionManagement + 'static> Core<SM> {
+    pub fn new(args: NewCoreArguments<SM>) -> Self {
         Self {
-            cert_store: args.cert_store,
-            ip: args.ip,
-            email: args.email,
-            fqdn: args.fqdn,
-            https_port: args.https_port,
-            production: args.production,
             session_manager: args.session_manager,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
     }
 
-    pub async fn start(&self) -> Result<JoinHandle<()>> {
+    pub async fn start<HS: HttpServer + 'static>(&self, http_server: HS) -> Result<JoinHandle<()>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
@@ -70,22 +48,14 @@ impl<SM: SessionManagement + 'static, CS: Store + 'static> Core<SM, CS> {
             .nest("/", http_rpc_router)
             .nest("/", websocket_router);
 
-        let https_server = HttpsServer::new(
-            SocketAddr::from((self.ip, self.https_port)),
-            self.fqdn.clone(),
-            self.email.clone(),
-            !self.production,
-            self.cert_store.clone(),
-        );
-
         let shutdown_token = self.shutdown_token.clone();
         let handle = self.task_tracker.spawn(async move {
-            let https_handle = https_server.start(https_app).unwrap();
+            let https_handle = http_server.start(https_app).unwrap();
 
             tokio::select! {
                 _ = shutdown_token.cancelled() => {
                     info!("shutdown command received");
-                    https_server.shutdown().await;
+                    http_server.shutdown().await;
                 }
                 e = https_handle => {
                     error!("https server exited: {:?}", e);

@@ -1,0 +1,9 @@
+[package]
+name = "proven-http"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.80"
+axum = "0.7.5"
+tokio = "1.38.0"

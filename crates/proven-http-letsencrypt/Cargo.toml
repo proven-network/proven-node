@@ -1,0 +1,20 @@
+[package]
+name = "proven-http-letsencrypt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.80"
+axum = { version = "0.7.5", features = ["ws"] }
+axum-server = { version = "0.6.0", features = ["tls-rustls"] }
+base64 = "0.22.1"
+proven-http = { path = "../proven-http" }
+proven-store = { path = "../proven-store" }
+ring = "0.17.8"
+rustls = "0.21.9"
+tokio = "1.37.0"
+tokio-rustls-acme = { version = "0.3.0", features = ["axum"] }
+tokio-stream = "0.1.15"
+tokio-util = { version = "0.7.11", features = ["rt"] }
+tower-http = { version = "0.5.2", features = ["cors"] }
+tracing = "0.1.40"

@@ -10,6 +10,7 @@ proven-attestation = { path = "../proven-attestation" }
 proven-attestation-nsm = { path = "../proven-attestation-nsm" }
 proven-core = { path = "../proven-core" }
 proven-dnscrypt-proxy = { path = "../proven-dnscrypt-proxy" }
+proven-http-letsencrypt = { path = "../proven-http-letsencrypt" }
 proven-imds = { path = "../proven-imds" }
 proven-instance-details = { path = "../proven-instance-details" }
 proven-kms = { path = "../proven-kms" }

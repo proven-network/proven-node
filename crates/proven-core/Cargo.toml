@@ -21,8 +21,8 @@ hex = "0.4.3"
 http = "0.2.12"
 http-body-util = "0.1.1"
 proven-attestation = { path = "../proven-attestation" }
+proven-http = { path = "../proven-http" }
 proven-sessions = { path = "../proven-sessions" }
-proven-store = { path = "../proven-store" }
 radix-common = "1.2.0"
 rand = "0.8.5"
 ring = "0.17.8"
