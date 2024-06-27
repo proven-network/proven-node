@@ -3022,14 +3022,13 @@ dependencies = [
 name = "proven-host"
 version = "0.1.0"
 dependencies = [
- "bytes",
+ "axum",
  "cidr",
  "clap",
  "derive_more",
- "http-body-util",
- "hyper 1.3.1",
- "hyper-util",
  "nix 0.29.0",
+ "proven-http",
+ "proven-http-insecure",
  "proven-vsock-proxy",
  "proven-vsock-rpc",
  "tokio",

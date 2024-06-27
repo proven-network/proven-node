@@ -5,6 +5,7 @@ pub mod rpc;
 use attestation::create_session_router;
 pub use error::{Error, Result};
 
+use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 use proven_http::HttpServer;
@@ -43,14 +44,23 @@ impl<SM: SessionManagement + 'static> Core<SM> {
         let websocket_router = rpc::ws::create_rpc_router(self.session_manager.clone()).await;
 
         let https_app = Router::new()
-            .route("/", get(|| async { "Hello Tls!" }))
+            .route(
+                "/",
+                get(|| async {
+                    Response::builder()
+                        .status(301)
+                        .header("Location", "https://proven.network")
+                        .body("".to_string())
+                        .unwrap()
+                }),
+            )
             .nest("/", session_router)
             .nest("/", http_rpc_router)
             .nest("/", websocket_router);
 
         let shutdown_token = self.shutdown_token.clone();
         let handle = self.task_tracker.spawn(async move {
-            let https_handle = http_server.start(https_app).unwrap();
+            let https_handle = http_server.start(https_app).await.unwrap();
 
             tokio::select! {
                 _ = shutdown_token.cancelled() => {

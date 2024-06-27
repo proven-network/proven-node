@@ -73,7 +73,7 @@ impl LetsEncryptHttpServer {
 impl HttpServer for LetsEncryptHttpServer {
     type HE = Error;
 
-    fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE> {
+    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE> {
         let acceptor = self.acceptor.clone();
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();

@@ -8,6 +8,6 @@ use tokio::task::JoinHandle;
 #[async_trait]
 pub trait HttpServer: Send + Sync {
     type HE: Debug + Error + Send + Sync;
-    fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE>;
+    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE>;
     async fn shutdown(&self);
 }

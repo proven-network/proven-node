@@ -1,19 +1,23 @@
 mod error;
-mod http;
 mod net;
 mod vsock_tracing;
 
 use error::{Error, Result};
-use http::HttpServer;
 use net::{configure_nat, configure_route, configure_tcp_forwarding};
 use vsock_tracing::TracingService;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 
+use axum::http::Uri;
+use axum::response::Redirect;
+use axum::routing::any;
+use axum::Router;
 use cidr::Ipv4Cidr;
 use clap::Parser;
 use nix::unistd::Uid;
+use proven_http::HttpServer;
+use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{send_command, Command, InitializeArgs};
 use tokio::process::Child;
@@ -135,14 +139,15 @@ async fn main() -> Result<()> {
         }
     });
 
-    let http_redirector = HttpServer::new(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 80)));
-    let http_redirector_handle = http_redirector.start().await?;
+    let http_server = InsecureHttpServer::new(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 80)));
+    let http_redirector = Router::new().route("/*path", any(redirect_to_https));
+    let http_server_handle = http_server.start(http_redirector).await?;
 
     // Tasks that must be running for the host to function
     let critical_tasks = tokio::spawn(async move {
         tokio::select! {
-            Err(e) = http_redirector_handle => {
-                error!("http_redirector exited: {:?}", e);
+            Err(e) = http_server_handle => {
+                error!("http_server exited: {:?}", e);
             }
             Err(e) = proxy_handle => {
                 error!("proxy exited: {:?}", e);
@@ -169,7 +174,7 @@ async fn main() -> Result<()> {
             enclave.wait().await?;
             // Cancel proxy and http server
             cancellation_token.cancel();
-            http_redirector.shutdown().await;
+            http_server.shutdown().await;
         }
         _ = critical_tasks => {
             error!("critical task failed - exiting");
@@ -241,4 +246,10 @@ async fn shutdown_enclave() -> Result<()> {
     send_command(VsockAddr::new(args.enclave_cid, 1024), Command::Shutdown).await?;
 
     Ok(())
+}
+
+async fn redirect_to_https(uri: Uri) -> Redirect {
+    let args = Args::parse();
+    let https_uri = format!("https://{}{}", args.fqdn, uri);
+    Redirect::permanent(&https_uri)
 }

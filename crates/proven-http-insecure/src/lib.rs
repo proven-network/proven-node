@@ -1,6 +1,6 @@
 mod error;
 
-use error::Error;
+pub use error::Error;
 
 use std::future::IntoFuture;
 use std::net::SocketAddr;
@@ -35,7 +35,7 @@ impl InsecureHttpServer {
 impl HttpServer for InsecureHttpServer {
     type HE = Error;
 
-    fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE> {
+    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE> {
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();
 
@@ -49,9 +49,11 @@ impl HttpServer for InsecureHttpServer {
 
         let router = router.layer(cors);
 
-        let handle = self.task_tracker.spawn(async move {
-            let listener = tokio::net::TcpListener::bind(listen_addr).await.unwrap();
+        let listener = tokio::net::TcpListener::bind(listen_addr)
+            .await
+            .map_err(Error::Bind)?;
 
+        let handle = self.task_tracker.spawn(async move {
             tokio::select! {
               e = axum::serve(listener, router.into_make_service()).into_future() => {
                 info!("http server exited {:?}", e);

@@ -9,7 +9,7 @@ pub enum Error {
     EifDoesNotExist(PathBuf),
 
     #[from]
-    Http(crate::http::HttpServerError),
+    Http(proven_http_insecure::Error),
 
     #[from]
     Io(std::io::Error),
