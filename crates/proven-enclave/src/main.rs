@@ -176,7 +176,10 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     let challenge_store = MemoryStore::new();
     let sessions_store =
         S3Store::new(args.sessions_bucket, identity.region, s3_sse_c_base_key).await;
-    let network_definition = NetworkDefinition::stokenet();
+    let network_definition = match args.stokenet {
+        true => NetworkDefinition::stokenet(),
+        false => NetworkDefinition::mainnet(),
+    };
 
     let session_manager =
         SessionManager::new(nsm, challenge_store, sessions_store, network_definition);

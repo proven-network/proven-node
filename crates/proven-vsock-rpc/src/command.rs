@@ -14,9 +14,9 @@ pub struct InitializeArgs {
     pub https_port: u16,
     pub log_port: u32,
     pub nats_port: u16,
-    pub production: bool,
     pub proxy_port: u32,
     pub sessions_bucket: String,
+    pub stokenet: bool,
     pub tun_device: String,
 }
 
@@ -42,9 +42,9 @@ mod tests {
             enclave_ip: Ipv4Addr::new(192, 168, 0, 2),
             log_port: 1235,
             nats_port: 4222,
-            production: true,
             proxy_port: 1236,
             sessions_bucket: String::from("sessions_bucket"),
+            stokenet: true,
             tun_device: String::from("tun0"),
         });
         let encoded = serde_cbor::to_vec(&command).unwrap();
