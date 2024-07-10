@@ -73,6 +73,9 @@ struct Args {
     #[arg(long, default_value_t = 1025)]
     proxy_port: u32,
 
+    #[arg(long, required = true)]
+    sessions_bucket: String,
+
     #[arg(long, default_value_t = format!("tun0"))]
     tun_device: String,
 }
@@ -228,6 +231,7 @@ async fn initialize_enclave() -> Result<()> {
         nats_port: args.nats_port,
         production: args.production,
         proxy_port: args.proxy_port,
+        sessions_bucket: args.sessions_bucket,
         tun_device: args.tun_device,
     };
 

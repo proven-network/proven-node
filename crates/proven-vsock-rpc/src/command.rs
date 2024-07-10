@@ -16,6 +16,7 @@ pub struct InitializeArgs {
     pub nats_port: u16,
     pub production: bool,
     pub proxy_port: u32,
+    pub sessions_bucket: String,
     pub tun_device: String,
 }
 
@@ -43,6 +44,7 @@ mod tests {
             nats_port: 4222,
             production: true,
             proxy_port: 1236,
+            sessions_bucket: String::from("sessions_bucket"),
             tun_device: String::from("tun0"),
         });
         let encoded = serde_cbor::to_vec(&command).unwrap();
