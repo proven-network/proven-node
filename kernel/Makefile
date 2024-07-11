@@ -3,6 +3,7 @@
 KERNEL_VERSION = 6.9.8
 BUILD_DIR = build
 OUTPUT_DIR = output
+BLOBS_DIR = /usr/share/nitro_enclaves/blobs
 KERNEL_SOURCE = ${BUILD_DIR}/linux-$(KERNEL_VERSION)
 KERNEL_ARCHIVE = $(KERNEL_SOURCE).tar.xz
 KERNEL_URL = https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-$(KERNEL_VERSION).tar.xz
@@ -69,8 +70,22 @@ build: config
 		echo "Unsupported architecture."; \
 	fi
 
+install:
+	@if [ `uname -m` = "x86_64" ]; then \
+		sudo cp $(OUTPUT_DIR)/bzImage ${BLOBS_DIR}/bzImage; \
+		sudo cp $(OUTPUT_DIR)/bzImage.config ${BLOBS_DIR}/bzImage.config; \
+		sudo cp $(OUTPUT_DIR)/nsm.ko ${BLOBS_DIR}/nsm.ko; \
+	elif [ `uname -m` = "aarch64" ]; then \
+		sudo cp $(OUTPUT_DIR)/Image ${BLOBS_DIR}/Image; \
+		sudo cp $(OUTPUT_DIR)/Image.config ${BLOBS_DIR}/Image.config; \
+		sudo cp $(OUTPUT_DIR)/nsm.ko ${BLOBS_DIR}/nsm.ko; \
+	else \
+		echo "Unsupported architecture."; \
+	fi
+	@echo "Copied output blobs to ${BLOBS_DIR}"
+
 clean:
 	@echo "Cleaning up"
 	rm -rf $(BUILD_DIR)
 
-.PHONY: all download extract config build clean
+.PHONY: all download extract config build install clean
