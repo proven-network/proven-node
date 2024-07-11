@@ -48,7 +48,7 @@ config: extract
 	scripts/config --enable VSOCKETS && \
 	scripts/config --enable VIRTIO_VSOCKETS && \
 	scripts/config --enable CONFIG_IO_URING && \
-	scripts/config --enable CONFIG_NSM && \
+	echo "CONFIG_NSM=m" >> .config && \
 	make olddefconfig
 
 build: config
@@ -59,10 +59,12 @@ build: config
 		echo "Detected x86_64 architecture. Copying bzImage."; \
 		cp $(KERNEL_SOURCE)/arch/x86/boot/bzImage $(OUTPUT_DIR)/bzImage; \
 		cp $(KERNEL_SOURCE)/.config $(OUTPUT_DIR)/bzImage.config; \
+		cp $(KERNEL_SOURCE)/drivers/misc/nsm.ko $(OUTPUT_DIR)/nsm.ko; \
 	elif [ `uname -m` = "aarch64" ]; then \
 		echo "Detected aarch64 architecture. Copying Image."; \
 		cp $(KERNEL_SOURCE)/arch/arm64/boot/Image $(OUTPUT_DIR)/Image; \
 		cp $(KERNEL_SOURCE)/.config $(OUTPUT_DIR)/Image.config; \
+		cp $(KERNEL_SOURCE)/drivers/misc/nsm.ko $(OUTPUT_DIR)/nsm.ko; \
 	else \
 		echo "Unsupported architecture."; \
 	fi
