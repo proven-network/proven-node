@@ -15,7 +15,7 @@ RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
 RUN chown root:root /bin/proven-enclave
 RUN chmod 0755      /bin/proven-enclave
 
-FROM nats:alpine3.19
+FROM nats:alpine3.20
 
 RUN apk add --no-cache dnscrypt-proxy iproute2 iproute2-tc net-tools nfs-utils
 
