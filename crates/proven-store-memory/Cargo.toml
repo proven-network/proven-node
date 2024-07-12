@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.80"
+async-trait = "0.1.81"
 proven-store = { path = "../proven-store" }

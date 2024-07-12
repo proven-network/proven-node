@@ -6,13 +6,13 @@ edition = "2021"
 [dependencies]
 cidr = "0.2.3"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
-tokio = { version = "1.37.0", features = [
+tokio = { version = "1.38.0", features = [
   "io-util",
   "macros",
   "process",
   "rt",
 ] }
-tokio-tun = "0.11.4"
+tokio-tun = "0.11.5"
 tokio-util = "0.7.11"
 tokio-vsock = "0.5.0"
 tracing = "0.1.40"

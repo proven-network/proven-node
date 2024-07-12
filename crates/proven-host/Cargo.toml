@@ -6,14 +6,14 @@ edition = "2021"
 [dependencies]
 axum = "0.7.5"
 cidr = "0.2.3"
-clap = { version = "4.5.4", features = ["derive"] }
+clap = { version = "4.5.9", features = ["derive"] }
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 nix = { version = "0.29.0", features = ["user"] }
 proven-http = { path = "../proven-http" }
 proven-http-insecure = { path = "../proven-http-insecure" }
 proven-vsock-proxy = { path = "../proven-vsock-proxy" }
 proven-vsock-rpc = { path = "../proven-vsock-rpc" }
-tokio = { version = "1.37.0", features = [
+tokio = { version = "1.38.0", features = [
   "io-util",
   "macros",
   "process",

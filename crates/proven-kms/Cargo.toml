@@ -7,8 +7,8 @@ edition = "2021"
 aes = "0.8.4"
 anyhow = "1.0.86"
 asn1-rs = "0.6.1"
-aws-config = { version = "1.5.1", features = ["behavior-version-latest"] }
-aws-sdk-kms = "1.32.1"
+aws-config = { version = "1.5.4", features = ["behavior-version-latest"] }
+aws-sdk-kms = "1.35.0"
 block-padding = { version = "0.3.3", features = ["std"] }
 cbc = { version = "0.1.2", features = ["std", "block-padding"] }
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }

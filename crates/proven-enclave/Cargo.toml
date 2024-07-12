@@ -27,7 +27,7 @@ proven-vsock-tracing = { path = "../proven-vsock-tracing" }
 radix-common = "1.2.0"
 rand = "0.8.5"
 rtnetlink = "0.14.1"
-tokio = { version = "1.37.0", features = [
+tokio = { version = "1.38.0", features = [
   "io-util",
   "macros",
   "process",

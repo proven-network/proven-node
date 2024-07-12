@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.80"
-aws-config = { version = "1.5.1", features = ["behavior-version-latest"] }
-aws-sdk-s3 = "1.36.0"
+async-trait = "0.1.81"
+aws-config = { version = "1.5.4", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.40.0"
 base64 = "0.22.1"
 blake3 = "1.5.1"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
