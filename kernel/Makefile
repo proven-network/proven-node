@@ -66,6 +66,8 @@ build: config
 		cp $(KERNEL_SOURCE)/arch/arm64/boot/Image $(OUTPUT_DIR)/Image; \
 		cp $(KERNEL_SOURCE)/.config $(OUTPUT_DIR)/Image.config; \
 		cp $(KERNEL_SOURCE)/drivers/misc/nsm.ko $(OUTPUT_DIR)/nsm.ko; \
+		echo "Patching Image to support loading by Nitro Enclave."; \
+		printf "\x00\x00\x20\x00\x00\x00\x00\x00" | dd of=$(OUTPUT_DIR)/Image bs=1 count=8 seek=8 conv=notrunc; \
 	else \
 		echo "Unsupported architecture."; \
 	fi
