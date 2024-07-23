@@ -126,7 +126,8 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     let identity = fetch_imds_identity().await?;
     info!("identity: {:?}", identity);
 
-    let instance = fetch_instance_details(identity.region.clone(), identity.instance_id).await?;
+    let instance =
+        fetch_instance_details(identity.region.clone(), identity.instance_id.clone()).await?;
     info!("instance: {:?}", instance);
     let server_name = instance.instance_id.clone();
 
@@ -174,8 +175,12 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     };
 
     let challenge_store = MemoryStore::new();
-    let sessions_store =
-        S3Store::new(args.sessions_bucket, identity.region, s3_sse_c_base_key).await;
+    let sessions_store = S3Store::new(
+        args.sessions_bucket,
+        identity.region.clone(),
+        s3_sse_c_base_key,
+    )
+    .await;
     let network_definition = match args.stokenet {
         true => NetworkDefinition::stokenet(),
         false => NetworkDefinition::mainnet(),
@@ -184,8 +189,11 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     let session_manager =
         SessionManager::new(nsm, challenge_store, sessions_store, network_definition);
 
+    let cluster_fqdn = format!("{}.{}", identity.region, args.fqdn.clone());
+    let node_fqdn = format!("{}.{}", identity.instance_id, cluster_fqdn);
+    let domains = vec![node_fqdn, cluster_fqdn, args.fqdn.clone()];
     let http_sock_addr = SocketAddr::from((args.enclave_ip, args.https_port));
-    let http_server = LetsEncryptHttpServer::new(http_sock_addr, args.fqdn, args.email, store);
+    let http_server = LetsEncryptHttpServer::new(http_sock_addr, domains, args.email, store);
 
     let core = Core::new(NewCoreArguments { session_manager });
     let core_handle = core.start(http_server).await?;

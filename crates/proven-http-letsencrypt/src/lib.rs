@@ -32,11 +32,11 @@ pub struct LetsEncryptHttpServer {
 impl LetsEncryptHttpServer {
     pub fn new<S: Store + 'static>(
         listen_addr: SocketAddr,
-        fqdn: String,
+        domains: Vec<String>,
         email: Vec<String>,
         cert_store: S,
     ) -> Self {
-        let mut state = AcmeConfig::new([fqdn.clone()])
+        let mut state = AcmeConfig::new(domains.clone())
             .contact(email.iter().map(|e| format!("mailto:{}", e)))
             .cache(CertCache::new(cert_store))
             .directory_lets_encrypt(true)
