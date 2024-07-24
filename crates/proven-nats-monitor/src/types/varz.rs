@@ -35,15 +35,18 @@ pub struct VarzWebsocket {
 pub struct VarzJetstreamConfig {
     pub max_memory: u64,
     pub max_storage: u64,
-    pub store_dir: String,
-    pub sync_interval: u64,
-    pub compress_ok: bool,
+    pub store_dir: Option<String>,
+    pub sync_interval: Option<u64>,
+    pub sync_always: Option<bool>,
+    pub compress_ok: Option<bool>,
+    pub unique_tag: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct VarzJetstreamStatsApi {
     pub total: u64,
     pub errors: u64,
+    pub inflight: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -221,7 +224,13 @@ mod tests {
                 "ack_wait": 60000000000,
                 "max_ack_pending": 1024
             },
-            "websocket": {},
+            "websocket": {
+                "host": "0.0.0.0",
+                "port": 8443,
+                "no_auth_user": "demo-user",
+                "handshake_timeout": 5000000000,
+                "compression": true
+            },
             "jetstream": {
                 "config": {
                     "max_memory": 10737418240,

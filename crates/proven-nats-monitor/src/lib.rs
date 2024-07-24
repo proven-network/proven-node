@@ -22,7 +22,7 @@ impl NatsMonitor {
     pub async fn get_varz(&self) -> Result<Varz> {
         let response = self.client.get("/varz").await?;
         let json = response.text()?;
-        info!("raw varz: {}", json);
+        info!("raw varz: {}", json); // TODO: remove this later
         let varz: Varz = serde_json::from_str(&json)?;
         Ok(varz)
     }
