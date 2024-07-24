@@ -17,6 +17,7 @@ use proven_http_letsencrypt::LetsEncryptHttpServer;
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::Kms;
+use proven_nats_monitor::NatsMonitor;
 use proven_nats_server::NatsServer;
 use proven_sessions::{SessionManagement, SessionManager};
 use proven_store::Store;
@@ -149,6 +150,10 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     );
     let nats_server_handle = nats_server.start().await?;
     let nats_client = nats_server.build_client().await?;
+
+    let nats_monitor = NatsMonitor::new(8222);
+    let varz = nats_monitor.get_varz().await?;
+    info!("nats varz: {:?}", varz);
 
     let challenge_store = NatsStore::new(
         nats_client.clone(),

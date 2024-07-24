@@ -15,6 +15,7 @@ proven-http-letsencrypt = { path = "../proven-http-letsencrypt" }
 proven-imds = { path = "../proven-imds" }
 proven-instance-details = { path = "../proven-instance-details" }
 proven-kms = { path = "../proven-kms" }
+proven-nats-monitor = { path = "../proven-nats-monitor" }
 proven-nats-server = { path = "../proven-nats-server" }
 proven-sessions = { path = "../proven-sessions" }
 proven-store = { path = "../proven-store" }

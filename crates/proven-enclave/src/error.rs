@@ -38,6 +38,9 @@ pub enum Error {
     Kms(proven_kms::Error),
 
     #[from]
+    NatsMonitor(proven_nats_monitor::Error),
+
+    #[from]
     NatsServer(proven_nats_server::Error),
 
     #[from]
@@ -76,6 +79,7 @@ impl core::fmt::Display for Error {
             Error::InstanceDetails(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
             Error::Kms(e) => write!(f, "{}", e),
+            Error::NatsMonitor(e) => write!(f, "{}", e),
             Error::NatsServer(e) => write!(f, "{}", e),
             Error::NatsStore(e) => write!(f, "{}", e),
             Error::Netlink(e) => write!(f, "{}", e),

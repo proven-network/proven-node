@@ -223,6 +223,7 @@ impl NatsServer {
             server_name: {}
             listen: {}
             jetstream: enabled
+            http: localhost:8222
 
             jetstream {{
                 store_dir: "/var/lib/nats/jetstream"
