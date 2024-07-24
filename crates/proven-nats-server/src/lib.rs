@@ -3,18 +3,21 @@ mod error;
 pub use error::{Error, Result};
 
 use std::process::Stdio;
+use std::sync::Arc;
 
 use async_nats::Client;
 use regex::Regex;
 use std::net::SocketAddrV4;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
 pub struct NatsServer {
+    clients: Arc<Mutex<Vec<Client>>>,
     listen_addr: SocketAddrV4,
     server_name: String,
     shutdown_token: CancellationToken,
@@ -30,6 +33,7 @@ impl NatsServer {
     /// * `listen_addr` - The address to listen on.
     pub fn new(server_name: String, listen_addr: SocketAddrV4) -> Self {
         Self {
+            clients: Arc::new(Mutex::new(Vec::new())),
             listen_addr,
             server_name,
             shutdown_token: CancellationToken::new(),
@@ -140,6 +144,14 @@ impl NatsServer {
     pub async fn shutdown(&self) {
         info!("nats server shutting down...");
 
+        info!("flushing existing clients...");
+        let clients = self.clients.lock().await;
+        for client in clients.iter() {
+            if let Err(err) = client.flush().await {
+                error!("failed to flush client: {}", err);
+            }
+        }
+
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
@@ -155,6 +167,9 @@ impl NatsServer {
         let client = async_nats::connect(&format!("nats://{}", self.listen_addr))
             .await
             .map_err(Error::ClientFailedToConnect)?;
+
+        let mut clients = self.clients.lock().await;
+        clients.push(client.clone());
 
         Ok(client)
     }
