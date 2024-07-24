@@ -2,7 +2,7 @@ FROM messense/rust-musl-cross:${RUSTARCH}-musl as builder
 
 WORKDIR /
 
-RUN wget https://github.com/nats-io/natscli/releases/download/v0.1.4/nats-0.1.4-linux-amd64.zip
+RUN curl -L https://github.com/nats-io/natscli/releases/download/v0.1.4/nats-0.1.4-linux-amd64.zip -o nats-0.1.4-linux-amd64.zip
 RUN unzip nats-0.1.4-linux-amd64.zip
 RUN cp nats-0.1.4-linux-amd64/nats /bin/
 RUN chown root:root /bin/nats
