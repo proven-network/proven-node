@@ -211,6 +211,22 @@ impl NatsServer {
 
         tokio::fs::write("/etc/nats/nats-server.conf", config)
             .await
-            .map_err(Error::ConfigWrite)
+            .map_err(Error::ConfigWrite)?;
+
+        // Run "nats-server --signal reload" to reload the configuration if it is running (task_tracker closed)
+        if self.task_tracker.is_closed() {
+            let output = Command::new("nats-server")
+                .arg("--signal")
+                .arg("reload")
+                .output()
+                .await
+                .map_err(Error::Spawn)?;
+
+            if !output.status.success() {
+                return Err(Error::NonZeroExitCode(output.status));
+            }
+        }
+
+        Ok(())
     }
 }
