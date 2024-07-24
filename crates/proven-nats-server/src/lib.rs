@@ -164,9 +164,16 @@ impl NatsServer {
     ///
     /// A `Result` containing the built `Client` if successful, or an `Error` if the client failed to connect.
     pub async fn build_client(&self) -> Result<Client> {
-        let client = async_nats::connect(&format!("nats://{}", self.listen_addr))
-            .await
-            .map_err(Error::ClientFailedToConnect)?;
+        let connect_options = async_nats::ConnectOptions::new()
+            .name(format!("client-{}", self.server_name))
+            .ignore_discovered_servers();
+
+        let client = async_nats::connect_with_options(
+            &format!("nats://{}", self.listen_addr),
+            connect_options,
+        )
+        .await
+        .map_err(Error::ClientFailedToConnect)?;
 
         let mut clients = self.clients.lock().await;
         clients.push(client.clone());
