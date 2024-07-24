@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct InitializeArgs {
+    pub certificates_bucket: String,
     pub cidr: Ipv4Cidr,
     pub email: Vec<String>,
     pub enclave_ip: Ipv4Addr,
@@ -15,7 +16,6 @@ pub struct InitializeArgs {
     pub log_port: u32,
     pub nats_port: u16,
     pub proxy_port: u32,
-    pub sessions_bucket: String,
     pub stokenet: bool,
     pub tun_device: String,
 }
@@ -33,6 +33,7 @@ mod tests {
     #[test]
     fn test_initialize_round_trip() {
         let command = Command::Initialize(InitializeArgs {
+            certificates_bucket: String::from("certificates_bucket"),
             cidr: Ipv4Cidr::new(Ipv4Addr::new(192, 168, 0, 0), 16).unwrap(),
             email: vec![String::from("test@example.com")],
             fqdn: String::from("example.com"),
@@ -43,7 +44,6 @@ mod tests {
             log_port: 1235,
             nats_port: 4222,
             proxy_port: 1236,
-            sessions_bucket: String::from("sessions_bucket"),
             stokenet: true,
             tun_device: String::from("tun0"),
         });

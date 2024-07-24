@@ -7,6 +7,7 @@ use net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 
 use std::convert::TryInto;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::time::Duration;
 
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
@@ -20,7 +21,7 @@ use proven_nats_server::NatsServer;
 use proven_sessions::{SessionManagement, SessionManager};
 use proven_store::Store;
 use proven_store_asm::AsmStore;
-use proven_store_memory::MemoryStore;
+use proven_store_nats::{NatsKeyValueConfig, NatsStore};
 use proven_store_s3_sse_c::S3Store;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{listen_for_commands, Command, InitializeArgs};
@@ -147,40 +148,25 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
         SocketAddrV4::new(Ipv4Addr::LOCALHOST, args.nats_port),
     );
     let nats_server_handle = nats_server.start().await?;
+    let nats_client = nats_server.build_client().await?;
 
-    // Get secret from ASM and get or init sse base key
-    let secret_id = format!("proven-{}", identity.region.clone());
-    let store = AsmStore::new(identity.region.clone(), secret_id).await;
-    let kms = Kms::new(
-        "2aae0800-75c8-4ca1-aff4-8b1fc885a8ce".to_string(),
-        identity.region.clone(),
+    let challenge_store = NatsStore::new(
+        nats_client.clone(),
+        NatsKeyValueConfig {
+            bucket: "challenges".to_string(),
+            max_age: Duration::from_secs(5 * 60), // 5 minutes
+            ..Default::default()
+        },
     )
-    .await;
-
-    let s3_sse_c_base_key_opt = store.get("S3_SSE_C_BASE_KEY".to_string()).await?;
-    let s3_sse_c_base_key: [u8; 32] = match s3_sse_c_base_key_opt {
-        Some(encrypted_key) => kms
-            .decrypt(encrypted_key)
-            .await?
-            .try_into()
-            .map_err(|_| Error::Custom("bad value for S3_SSE_C_BASE_KEY".to_string()))?,
-        None => {
-            let unencrypted_key = rand::random::<[u8; 32]>();
-            let encrypted_key = kms.encrypt(unencrypted_key.to_vec()).await?;
-            store
-                .put("S3_SSE_C_BASE_KEY".to_string(), encrypted_key)
-                .await?;
-            unencrypted_key
-        }
-    };
-
-    let challenge_store = MemoryStore::new();
-    let sessions_store = S3Store::new(
-        args.sessions_bucket,
-        identity.region.clone(),
-        s3_sse_c_base_key,
+    .await?;
+    let sessions_store = NatsStore::new(
+        nats_client.clone(),
+        NatsKeyValueConfig {
+            bucket: "sessions".to_string(),
+            ..Default::default()
+        },
     )
-    .await;
+    .await?;
     let network_definition = match args.stokenet {
         true => NetworkDefinition::stokenet(),
         false => NetworkDefinition::mainnet(),
@@ -189,11 +175,17 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     let session_manager =
         SessionManager::new(nsm, challenge_store, sessions_store, network_definition);
 
+    let cert_store = S3Store::new(
+        args.certificates_bucket,
+        identity.region.clone(),
+        get_or_init_encrypted_key(identity.region.clone(), "CERTIFICATES_KEY".to_string()).await?,
+    )
+    .await;
     let cluster_fqdn = format!("{}.{}", identity.region, args.fqdn.clone());
     let node_fqdn = format!("{}.{}", identity.instance_id, cluster_fqdn);
     let domains = vec![node_fqdn, cluster_fqdn, args.fqdn.clone()];
     let http_sock_addr = SocketAddr::from((args.enclave_ip, args.https_port));
-    let http_server = LetsEncryptHttpServer::new(http_sock_addr, domains, args.email, store);
+    let http_server = LetsEncryptHttpServer::new(http_sock_addr, domains, args.email, cert_store);
 
     let core = Core::new(NewCoreArguments { session_manager });
     let core_handle = core.start(http_server).await?;
@@ -236,6 +228,33 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     Ok(())
+}
+
+async fn get_or_init_encrypted_key(region: String, key_name: String) -> Result<[u8; 32]> {
+    let secret_id = format!("proven-{}", region.clone());
+    let store = AsmStore::new(region.clone(), secret_id).await;
+    let kms = Kms::new(
+        "2aae0800-75c8-4ca1-aff4-8b1fc885a8ce".to_string(),
+        region.clone(),
+    )
+    .await;
+
+    let key_opt = store.get(key_name.clone()).await?;
+    let key: [u8; 32] = match key_opt {
+        Some(encrypted_key) => kms
+            .decrypt(encrypted_key)
+            .await?
+            .try_into()
+            .map_err(|_| Error::Custom(format!("bad value for {}", key_name)))?,
+        None => {
+            let unencrypted_key = rand::random::<[u8; 32]>();
+            let encrypted_key = kms.encrypt(unencrypted_key.to_vec()).await?;
+            store.put(key_name, encrypted_key).await?;
+            unencrypted_key
+        }
+    };
+
+    Ok(key)
 }
 
 async fn fetch_instance_details(region: String, instance_id: String) -> Result<Instance> {

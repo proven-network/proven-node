@@ -28,6 +28,9 @@ use tracing::{error, info};
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
+    #[arg(long, required = true)]
+    certificates_bucket: String,
+
     #[arg(long, default_value_t = Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap())]
     cidr: Ipv4Cidr,
 
@@ -69,9 +72,6 @@ struct Args {
 
     #[arg(long, default_value_t = 1025)]
     proxy_port: u32,
-
-    #[arg(long, required = true)]
-    sessions_bucket: String,
 
     #[arg(long, default_value_t = false)]
     stokenet: bool,
@@ -220,6 +220,7 @@ async fn initialize_enclave() -> Result<()> {
     let host_dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
 
     let initialize_args = InitializeArgs {
+        certificates_bucket: args.certificates_bucket,
         cidr: args.cidr,
         email: args.email,
         enclave_ip: args.enclave_ip,
@@ -230,7 +231,6 @@ async fn initialize_enclave() -> Result<()> {
         log_port: args.log_port,
         nats_port: args.nats_port,
         proxy_port: args.proxy_port,
-        sessions_bucket: args.sessions_bucket,
         stokenet: args.stokenet,
         tun_device: args.tun_device,
     };

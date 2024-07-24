@@ -3001,7 +3001,7 @@ dependencies = [
  "proven-sessions",
  "proven-store",
  "proven-store-asm",
- "proven-store-memory",
+ "proven-store-nats",
  "proven-store-s3-sse-c",
  "proven-vsock-proxy",
  "proven-vsock-rpc",

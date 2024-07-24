@@ -1,8 +1,8 @@
 mod error;
 
-use error::Error;
+pub use error::Error;
 
-use async_nats::jetstream::kv::Config as KevValueConfig;
+pub use async_nats::jetstream::kv::Config as NatsKeyValueConfig;
 use async_trait::async_trait;
 use proven_store::Store;
 
@@ -12,7 +12,10 @@ pub struct NatsStore {
 }
 
 impl NatsStore {
-    pub async fn new(client: async_nats::Client, config: KevValueConfig) -> Result<Self, Error> {
+    pub async fn new(
+        client: async_nats::Client,
+        config: NatsKeyValueConfig,
+    ) -> Result<Self, Error> {
         let jetstream_context = async_nats::jetstream::new(client.clone());
         let nats_kv_store = jetstream_context
             .create_key_value(config)

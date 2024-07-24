@@ -41,6 +41,9 @@ pub enum Error {
     NatsServer(proven_nats_server::Error),
 
     #[from]
+    NatsStore(proven_store_nats::Error),
+
+    #[from]
     Netlink(rtnetlink::Error),
 
     #[from]
@@ -74,6 +77,7 @@ impl core::fmt::Display for Error {
             Error::Io(e) => write!(f, "{}", e),
             Error::Kms(e) => write!(f, "{}", e),
             Error::NatsServer(e) => write!(f, "{}", e),
+            Error::NatsStore(e) => write!(f, "{}", e),
             Error::Netlink(e) => write!(f, "{}", e),
             Error::Nsm(e) => write!(f, "{}", e),
             Error::S3Store(e) => write!(f, "{}", e),
