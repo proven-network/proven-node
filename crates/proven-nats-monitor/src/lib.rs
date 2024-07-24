@@ -5,6 +5,7 @@ pub use error::{Error, Result};
 pub use types::Varz;
 
 use httpclient::{Client, InMemoryResponseExt};
+use tracing::info;
 
 pub struct NatsMonitor {
     client: Client,
@@ -20,7 +21,9 @@ impl NatsMonitor {
 
     pub async fn get_varz(&self) -> Result<Varz> {
         let response = self.client.get("/varz").await?;
-        let varz: Varz = serde_json::from_str(&response.text()?)?;
+        let json = response.text()?;
+        info!("raw varz: {}", json);
+        let varz: Varz = serde_json::from_str(&json)?;
         Ok(varz)
     }
 

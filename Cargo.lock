@@ -3151,6 +3151,7 @@ dependencies = [
  "httpclient",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
