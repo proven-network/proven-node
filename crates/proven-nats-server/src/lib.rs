@@ -106,7 +106,23 @@ impl NatsServer {
                     Ok(())
                 }
                 _ = shutdown_token.cancelled() => {
-                    cmd.kill().await.unwrap();
+                    let pid = cmd.id().unwrap().to_string();
+
+                    let output = Command::new("kill")
+                        .arg("-USR2")
+                        .arg(pid)
+                        .output()
+                        .await
+                        .expect("failed to execute process");
+
+                    if !output.status.success() {
+                        let e = String::from_utf8_lossy(&output.stderr);
+                        error!("Failed to send SIGUSR2 signal: {}", e);
+                    }
+
+                    info!("nats server entered lame duck mode. waiting for connections to close...");
+
+                    let _ = cmd.wait().await;
 
                     Ok(())
                 }
