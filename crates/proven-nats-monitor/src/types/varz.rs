@@ -189,7 +189,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_deserialize_sample_json() {
+    fn test_deserialize_sample_varz() {
         let json_str = r#"
         {
             "server_id": "NBYQVR2I5KUG5I6FN2YNFAPP5GVWF6V7QYGFK2VSKQDOY5ZYC2Y7QAZO",

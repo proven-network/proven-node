@@ -2,7 +2,7 @@ mod error;
 mod types;
 
 pub use error::{Error, Result};
-pub use types::Varz;
+pub use types::{Connz, Varz};
 
 use httpclient::{Client, InMemoryResponseExt};
 use tracing::info;
@@ -17,6 +17,14 @@ impl NatsMonitor {
             client: Client::new()
                 .base_url(format!("http://localhost:{}", monitoring_port).as_str()),
         }
+    }
+
+    pub async fn get_connz(&self) -> Result<Connz> {
+        let response = self.client.get("/connz?subs=1").await?;
+        let json = response.text()?;
+        info!("raw connz: {}", json); // TODO: remove this later
+        let connz: Connz = serde_json::from_str(&json)?;
+        Ok(connz)
     }
 
     pub async fn get_varz(&self) -> Result<Varz> {

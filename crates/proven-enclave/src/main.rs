@@ -154,6 +154,8 @@ async fn initialize(args: InitializeArgs, shutdown_token: CancellationToken) -> 
     let nats_monitor = NatsMonitor::new(8222);
     let varz = nats_monitor.get_varz().await?;
     info!("nats varz: {:?}", varz);
+    let connz = nats_monitor.get_connz().await?;
+    info!("nats connz: {:?}", connz);
 
     let challenge_store = NatsStore::new(
         nats_client.clone(),
