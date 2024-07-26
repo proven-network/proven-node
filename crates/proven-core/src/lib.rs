@@ -1,6 +1,6 @@
 mod attestation;
 mod error;
-pub mod rpc;
+mod rpc;
 
 use attestation::create_session_router;
 pub use error::{Error, Result};
