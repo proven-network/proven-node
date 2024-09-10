@@ -5,13 +5,11 @@ FROM golang:alpine as go-builder
 WORKDIR /
 
 # Install dependencies
-RUN apk add --no-cache git
+RUN apk add --no-cache bash git
 
 # Build gocryptfs
 RUN git clone https://github.com/rfjakob/gocryptfs.git
 WORKDIR /gocryptfs
-RUN ls -lah
-RUN cat ./build-without-openssl.bash
 RUN ./build-without-openssl.bash
 
 # Move gocryptfs to /bin
