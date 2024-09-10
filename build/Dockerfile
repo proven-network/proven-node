@@ -58,6 +58,12 @@ RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
 RUN unzip babylon-node-v1.2.3.zip
 RUN ls -lah
 
+# Move babylon-node to /bin
+RUN mkdir -p /bin/babylon-node
+RUN mv core-v1.2.3 /bin/babylon-node
+RUN mv libcorerust.so /bin/babylon-node
+RUN chown -R root:root /bin/babylon-node
+
 # -----------
 # FINAL IMAGE
 # -----------
@@ -67,5 +73,8 @@ FROM nats:alpine3.20
 
 # COPY --from=go-builder /bin/gocryptfs /bin/
 # COPY --from=rust-builder /bin/proven-enclave /bin/
+COPY --from=babylon-node /bin/babylon-node /bin/babylon-node
+
+RUN ls -lah /bin/babylon-node
 
 CMD proven-enclave
