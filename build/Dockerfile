@@ -4,6 +4,9 @@
 FROM golang:alpine as go-builder
 WORKDIR /
 
+# Install dependencies
+RUN apk add --no-cache git
+
 # Clone gocryptfs repository
 RUN git clone git@github.com:rfjakob/gocryptfs.git
 WORKDIR /go/src/gocryptfs
