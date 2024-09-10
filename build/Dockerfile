@@ -40,12 +40,14 @@
 # RUN chown root:root /bin/proven-enclave
 # RUN chmod 0755      /bin/proven-enclave
 
-# -----------
-# FINAL IMAGE
-# -----------
-FROM nats:alpine3.20
+# ------------
+# BABYLON NODE
+# ------------
+FROM alpine:3.20 as babylon-node
 
-RUN apk add --no-cache dnscrypt-proxy iproute2 iproute2-tc net-tools nfs-utils wget
+RUN apk add --no-cache unzip wget
+
+WORKDIR /babylon-node
 
 # Download babylon-node
 RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.2/babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
@@ -55,6 +57,13 @@ RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babyl
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
 RUN unzip babylon-node-v1.2.3.zip
 RUN ls -lah
+
+# -----------
+# FINAL IMAGE
+# -----------
+FROM nats:alpine3.20
+
+# RUN apk add --no-cache dnscrypt-proxy iproute2 iproute2-tc net-tools nfs-utils
 
 # COPY --from=go-builder /bin/gocryptfs /bin/
 # COPY --from=rust-builder /bin/proven-enclave /bin/
