@@ -8,7 +8,7 @@ WORKDIR /
 RUN apk add --no-cache git
 
 # Build gocryptfs
-RUN git clone git@github.com:rfjakob/gocryptfs.git
+RUN git clone https://github.com/rfjakob/gocryptfs.git
 WORKDIR /gocryptfs
 RUN ./build-without-openssl.bash
 
