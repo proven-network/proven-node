@@ -1,21 +1,21 @@
 # --------------
 # GO BUILD STEPS
 # --------------
-# FROM golang:alpine3.20 as go-builder
-# WORKDIR /
+FROM golang:alpine3.20 as go-builder
+WORKDIR /
 
-# # Install dependencies
-# RUN apk add --no-cache bash git
+# Install dependencies
+RUN apk add --no-cache bash git
 
-# # Build gocryptfs
-# RUN git clone https://github.com/rfjakob/gocryptfs.git
-# WORKDIR /gocryptfs
-# RUN ./build-without-openssl.bash
+# Build gocryptfs
+RUN git clone https://github.com/rfjakob/gocryptfs.git
+WORKDIR /gocryptfs
+RUN ./build-without-openssl.bash
 
-# # Move gocryptfs to /bin
-# RUN cp /gocryptfs/gocryptfs /bin/
-# RUN chown root:root /bin/gocryptfs
-# RUN chmod 0755      /bin/gocryptfs
+# Move gocryptfs to /bin
+RUN cp /gocryptfs/gocryptfs /bin/
+RUN chown root:root /bin/gocryptfs
+RUN chmod 0755      /bin/gocryptfs
 
 # ----------------
 # RUST BUILD STEPS
@@ -71,10 +71,10 @@ FROM nats:alpine3.20
 
 # RUN apk add --no-cache dnscrypt-proxy iproute2 iproute2-tc net-tools nfs-utils
 
-# COPY --from=go-builder /bin/gocryptfs /bin/
+COPY --from=go-builder /bin/gocryptfs /bin/
 # COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=babylon-node /bin/babylon-node /bin/babylon-node
 
-RUN ls -lah /bin/babylon-node
+RUN ls -lah /bin
 
 CMD proven-enclave
