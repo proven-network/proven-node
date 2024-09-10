@@ -4,6 +4,12 @@ use cidr::Ipv4Cidr;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AddPeerArgs {
+    pub peer_ip: Ipv4Addr,
+    pub peer_port: u16,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct InitializeArgs {
     pub certificates_bucket: String,
     pub cidr: Ipv4Cidr,
@@ -22,6 +28,7 @@ pub struct InitializeArgs {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Command {
+    AddPeer(AddPeerArgs),
     Initialize(InitializeArgs),
     Shutdown,
 }

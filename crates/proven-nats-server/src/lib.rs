@@ -41,6 +41,12 @@ impl NatsServer {
         }
     }
 
+    pub async fn add_peer(&self, peer_ip: SocketAddrV4) -> Result<()> {
+        println!("Adding peer: {}", peer_ip);
+
+        Ok(())
+    }
+
     /// Starts the NATS server.
     ///
     /// # Returns

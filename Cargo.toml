@@ -6,7 +6,6 @@ members = [
     "crates/proven-attestation-dev",
     "crates/proven-attestation-nsm",
     # "crates/proven-build",
-    # "crates/proven-cluster",
     "crates/proven-core",
     "crates/proven-dnscrypt-proxy",
     "crates/proven-enclave",

@@ -4,11 +4,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, From)]
 pub enum Error {
-    #[from]
-    Core(proven_core::Error),
-
-    #[from]
-    Custom(String),
+    AlreadyStarted,
 
     #[from]
     AddrParse(std::net::AddrParseError),
@@ -19,8 +15,13 @@ pub enum Error {
     #[from]
     Async(tokio::task::JoinError),
 
+    BadKey,
+
     #[from]
     Cidr(cidr::errors::NetworkParseError),
+
+    #[from]
+    Core(proven_core::Error),
 
     #[from]
     DnscryptProxy(proven_dnscrypt_proxy::Error),
@@ -68,12 +69,13 @@ pub enum Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
-            Error::Core(e) => write!(f, "{}", e),
-            Error::Custom(e) => write!(f, "{}", e),
+            Error::AlreadyStarted => write!(f, "The enclave has already been started"),
             Error::AddrParse(e) => write!(f, "{}", e),
             Error::AsmStore(e) => write!(f, "{}", e),
             Error::Async(e) => write!(f, "{}", e),
+            Error::BadKey => write!(f, "The key is invalid"),
             Error::Cidr(e) => write!(f, "{}", e),
+            Error::Core(e) => write!(f, "{}", e),
             Error::DnscryptProxy(e) => write!(f, "{}", e),
             Error::Imds(e) => write!(f, "{}", e),
             Error::InstanceDetails(e) => write!(f, "{}", e),

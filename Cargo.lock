@@ -2942,7 +2942,6 @@ dependencies = [
 name = "proven-core"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "axum",
  "axum-extra",
  "axum_typed_multipart",

@@ -10,7 +10,7 @@ use std::net::Shutdown;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_vsock::{VsockAddr, VsockListener, VsockStream};
 
-pub use command::{Command, InitializeArgs};
+pub use command::{AddPeerArgs, Command, InitializeArgs};
 
 pub async fn send_command(vsock_addr: VsockAddr, command: Command) -> Result<()> {
     debug!("sending command: {:?}", command);
