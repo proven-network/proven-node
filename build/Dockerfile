@@ -56,7 +56,6 @@ RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babyl
 # Unzip babylon-node
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
 RUN unzip babylon-node-v1.2.3.zip
-RUN ls -lah
 
 # Move babylon-node to /bin
 RUN mkdir -p /bin/babylon-node
@@ -69,7 +68,7 @@ RUN chown -R root:root /bin/babylon-node
 # -----------
 FROM nats:alpine3.20
 
-# RUN apk add --no-cache dnscrypt-proxy iproute2 iproute2-tc net-tools nfs-utils
+RUN apk add --no-cache dnscrypt-proxy iproute2 iproute2-tc openjdk17 net-tools nfs-utils
 
 COPY --from=go-builder /bin/gocryptfs /bin/
 # COPY --from=rust-builder /bin/proven-enclave /bin/
