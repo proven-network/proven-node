@@ -7,11 +7,9 @@ WORKDIR /
 # Install dependencies
 RUN apk add --no-cache git
 
-# Clone gocryptfs repository
+# Build gocryptfs
 RUN git clone git@github.com:rfjakob/gocryptfs.git
-WORKDIR /go/src/gocryptfs
-
-# Build gocryptfs binary
+WORKDIR /gocryptfs
 RUN ./build-without-openssl.bash
 
 # Move gocryptfs to /bin
