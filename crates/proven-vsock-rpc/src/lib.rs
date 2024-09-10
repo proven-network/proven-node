@@ -32,7 +32,23 @@ pub async fn send_command(vsock_addr: VsockAddr, command: Command) -> Result<()>
     Ok(())
 }
 
-pub async fn listen_for_commands<F, Fut>(vsock_addr: VsockAddr, command_handler: F) -> Result<()>
+pub async fn listen_for_command(vsock_addr: VsockAddr) -> Result<Command> {
+    let mut listener = VsockListener::bind(vsock_addr)?;
+    let (mut stream, _) = listener.accept().await?;
+
+    let length = stream.read_u32().await?;
+    let mut buffer = vec![0u8; length as usize];
+    stream.read_exact(&mut buffer).await?;
+
+    let command: Command = serde_cbor::from_slice(&buffer)?;
+    debug!("received command: {:?}", command);
+
+    stream.write_u8(1).await?; // Send acknowledgment
+
+    Ok(command)
+}
+
+pub async fn handle_commands<F, Fut>(vsock_addr: VsockAddr, command_handler: F) -> Result<()>
 where
     F: Fn(Command) -> Fut + Send + 'static,
     Fut: Future<Output = ()> + Send + 'static,
@@ -76,7 +92,7 @@ mod tests {
         let receiver = tokio::spawn({
             let received_command_clone = received_command.clone();
             async move {
-                listen_for_commands(vsock_addr, move |command| {
+                handle_commands(vsock_addr, move |command| {
                     let received_command_clone = received_command_clone.clone();
                     async move {
                         let mut received = received_command_clone.lock().await;
