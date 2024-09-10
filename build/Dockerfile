@@ -28,7 +28,7 @@ ARG RUSTTARGET
 RUN rustup target add ${RUSTTARGET}
 
 # Build Rust component of babylon-node
-RUN git clone git@github.com:radixdlt/babylon-node.git
+RUN git clone https://github.com/radixdlt/babylon-node.git
 WORKDIR /babylon-node/core-rust
 RUN cargo build --release --target ${RUSTTARGET}
 
