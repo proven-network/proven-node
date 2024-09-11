@@ -71,7 +71,7 @@ FROM nats:alpine3.20
 RUN apk add --no-cache dnscrypt-proxy iproute2 iproute2-tc openjdk17 net-tools nfs-utils
 
 COPY --from=go-builder /bin/gocryptfs /bin/
-# COPY --from=rust-builder /bin/proven-enclave /bin/
+COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=babylon-node /bin/babylon-node /bin/babylon-node
 
 RUN ls -lah /bin
