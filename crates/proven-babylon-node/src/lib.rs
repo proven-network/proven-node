@@ -32,7 +32,7 @@ static STOKENET_SEED_NODES: &[&str] = &[
 ];
 
 static JAVA_OPTS: &[&str] = &[
-    "-Djava.library.path=/opt/radixdlt/babylon-node",
+    "-Djava.library.path=/bin/babylon-node",
     "--enable-preview",
     "-server",
     "-Xms2g",
