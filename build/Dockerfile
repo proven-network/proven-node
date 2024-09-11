@@ -68,7 +68,7 @@ RUN chown -R root:root /bin/babylon-node
 # -----------
 FROM nats:alpine3.20
 
-RUN apk add --no-cache dnscrypt-proxy fuse iproute2 iproute2-tc libc6-compat openjdk17 net-tools nfs-utils
+RUN apk add --no-cache dnscrypt-proxy fuse gcompat iproute2 iproute2-tc openjdk17 net-tools nfs-utils
 
 COPY --from=go-builder /bin/gocryptfs /bin/
 COPY --from=rust-builder /bin/proven-enclave /bin/
