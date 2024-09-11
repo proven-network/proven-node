@@ -74,6 +74,4 @@ COPY --from=go-builder /bin/gocryptfs /bin/
 COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=babylon-node /bin/babylon-node /bin/babylon-node
 
-RUN ls -lah /bin
-
 CMD proven-enclave
