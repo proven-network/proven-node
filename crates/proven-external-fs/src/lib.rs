@@ -9,7 +9,7 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::info;
+use tracing::{info, warn};
 
 static CONF_PATH: &str = "/var/lib/proven-node/nfs/encrypted/gocryptfs.conf";
 static DECRYPTED_PATH: &str = "/var/lib/proven-node/external-fs";
@@ -69,12 +69,23 @@ impl ExternalFs {
                 .arg("-fg")
                 .arg(ENCRYPTED_PATH)
                 .arg(DECRYPTED_PATH)
-                .stdout(Stdio::null())
+                .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
                 .map_err(Error::Spawn)?;
 
+            let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+
+            // Spawn a task to read and process the stdout output of the gocryptfs process
+            task_tracker.spawn(async move {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+
+                while let Ok(Some(line)) = lines.next_line().await {
+                    info!("{}", line);
+                }
+            });
 
             // Spawn a task to read and process the stderr output of the gocryptfs process
             task_tracker.spawn(async move {
@@ -82,7 +93,7 @@ impl ExternalFs {
                 let mut lines = reader.lines();
 
                 while let Ok(Some(line)) = lines.next_line().await {
-                    info!("{}", line);
+                    warn!("{}", line);
                 }
             });
 
