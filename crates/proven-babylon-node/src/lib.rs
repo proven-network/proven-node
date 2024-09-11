@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{info, warn};
 
+static CONFIG_PATH: &str = "/var/lib/proven-node/babylon-node.config";
 static KEYSTORE_PATH: &str = "/var/lib/proven-node/babylon-keystore.ks";
 static KEYSTORE_PASS: &str = "notarealpassword"; // Irrelevant as keyfile never leaves TEE
 
@@ -83,7 +84,7 @@ impl BabylonNode {
                 .env("JAVA_OPTS", JAVA_OPTS.join(" "))
                 .env("LD_PRELOAD", "/bin/babylon-node/libcorerust.so")
                 .arg("-config")
-                .arg("/var/lib/proven-node/babylon-node.config")
+                .arg(CONFIG_PATH)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -221,8 +222,14 @@ impl BabylonNode {
             self.network_definition.id, seed_nodes, KEYSTORE_PATH, self.store_dir
         );
 
-        tokio::fs::write("/etc/nats/nats-server.conf", config)
-            .await
+        let mut config_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(CONFIG_PATH)
+            .unwrap();
+
+        std::io::Write::write_all(&mut config_file, config.as_bytes())
             .map_err(Error::ConfigWrite)?;
 
         Ok(())
