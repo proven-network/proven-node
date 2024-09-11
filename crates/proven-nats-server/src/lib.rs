@@ -20,6 +20,7 @@ pub struct NatsServer {
     clients: Arc<Mutex<Vec<Client>>>,
     listen_addr: SocketAddrV4,
     server_name: String,
+    store_dir: String,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
@@ -31,11 +32,12 @@ impl NatsServer {
     ///
     /// * `server_name` - The name of the server.
     /// * `listen_addr` - The address to listen on.
-    pub fn new(server_name: String, listen_addr: SocketAddrV4) -> Self {
+    pub fn new(server_name: String, listen_addr: SocketAddrV4, store_dir: String) -> Self {
         Self {
             clients: Arc::new(Mutex::new(Vec::new())),
             listen_addr,
             server_name,
+            store_dir,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -57,7 +59,9 @@ impl NatsServer {
             return Err(Error::AlreadyStarted);
         }
 
-        self.mount_tmpfs().await?;
+        tokio::fs::create_dir_all(self.store_dir.as_str())
+            .await
+            .unwrap();
         self.update_nats_config().await?;
 
         let shutdown_token = self.shutdown_token.clone();
@@ -187,37 +191,6 @@ impl NatsServer {
         Ok(client)
     }
 
-    /// Mounts a tmpfs filesystem at `/var/lib/nats/jetstream`. This is required for some JetStream metadata even if streams are in-memory.
-    ///
-    /// # Returns
-    ///
-    /// A `Result` indicating success or failure.
-    async fn mount_tmpfs(&self) -> Result<()> {
-        tokio::fs::create_dir_all("/var/lib/nats/jetstream")
-            .await
-            .unwrap();
-
-        let cmd = tokio::process::Command::new("mount")
-            .arg("-o")
-            .arg("size=64m")
-            .arg("-t")
-            .arg("tmpfs")
-            .arg("none")
-            .arg("/var/lib/nats/jetstream")
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .output()
-            .await;
-
-        info!("{:?}", cmd);
-
-        match cmd {
-            Ok(output) if output.status.success() => Ok(()),
-            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-            Err(e) => Err(Error::Spawn(e)),
-        }
-    }
-
     /// Updates the NATS server configuration.
     ///
     /// # Returns
@@ -232,10 +205,10 @@ impl NatsServer {
             http: localhost:8222
 
             jetstream {{
-                store_dir: "/var/lib/nats/jetstream"
+                store_dir: "{}"
             }}
         "#,
-            self.server_name, self.listen_addr
+            self.server_name, self.listen_addr, self.store_dir
         );
 
         tokio::fs::write("/etc/nats/nats-server.conf", config)

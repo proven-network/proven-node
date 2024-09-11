@@ -129,11 +129,13 @@ impl EnclaveManager {
             "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/".to_string(),
         );
         let external_fs_handle = external_fs.start().await?;
+        let external_fs_path = external_fs.root_path();
 
         // Boot NATS server
         let nats_server = NatsServer::new(
             server_name.clone(),
             SocketAddrV4::new(Ipv4Addr::LOCALHOST, args.nats_port),
+            format!("{}/nats", external_fs_path),
         );
         let nats_server_handle = nats_server.start().await?;
         let nats_client = nats_server.build_client().await?;

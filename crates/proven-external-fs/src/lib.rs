@@ -34,6 +34,10 @@ impl ExternalFs {
         }
     }
 
+    pub fn root_path(&self) -> &str {
+        DECRYPTED_PATH
+    }
+
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
