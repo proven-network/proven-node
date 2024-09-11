@@ -59,7 +59,8 @@ impl ExternalFs {
 
         let gocryptfs_task = self.task_tracker.spawn(async move {
             // Start the gocryptfs process
-            let mut cmd = Command::new("gocryptfs")
+            let mut cmd = Command::new("sudo")
+                .arg("gocrpytfs")
                 .arg("-passfile")
                 .arg(PASSFILE_PATH)
                 .arg("-fg")
