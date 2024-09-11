@@ -41,15 +41,15 @@ impl ExternalFs {
 
         tokio::fs::create_dir_all(NFS_DIR).await.unwrap();
 
-        self.mount_nfs().await?;
+        info!("created NFS directory");
 
-        // Write encryption_key as single line in passfile
-        tokio::fs::write(GOCRYPTFS_PASSFILE_PATH, self.encryption_key.as_bytes())
-            .await
-            .unwrap();
+        self.mount_nfs().await?;
+        self.write_passfile()?;
 
         if tokio::fs::metadata(GOCRYPTFS_CONF_PATH).await.is_err() {
+            info!("gocrpytfs not initialized, initializing...");
             self.init_gocryptfs().await?;
+            info!("gocrpytfs initialized");
         }
 
         let shutdown_token = self.shutdown_token.clone();
@@ -160,5 +160,20 @@ impl ExternalFs {
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
             Err(e) => Err(Error::Spawn(e)),
         }
+    }
+
+    fn write_passfile(&self) -> Result<()> {
+        info!("writing passfile");
+
+        let mut passfile = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(GOCRYPTFS_PASSFILE_PATH)?;
+
+        Ok(std::io::Write::write_all(
+            &mut passfile,
+            self.encryption_key.as_bytes(),
+        )?)
     }
 }
