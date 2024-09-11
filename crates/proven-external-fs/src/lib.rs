@@ -11,10 +11,10 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::info;
 
-static GOCRYPTFS_DECRYPTED_PATH: &str = "/var/lib/proven-node/external-fs";
-static GOCRYPTFS_ENCRYPTED_PATH: &str = "/var/lib/proven-node/nfs/encrypted";
-static GOCRYPTFS_PASSFILE_PATH: &str = "/var/lib/proven-node/gocryptfs.passfile";
-static GOCRYPTFS_CONF_PATH: &str = "/var/lib/proven-node/nfs/encrypted/gocryptfs.conf";
+static CONF_PATH: &str = "/var/lib/proven-node/nfs/encrypted/gocryptfs.conf";
+static DECRYPTED_PATH: &str = "/var/lib/proven-node/external-fs";
+static ENCRYPTED_PATH: &str = "/var/lib/proven-node/nfs/encrypted";
+static PASSFILE_PATH: &str = "/var/lib/proven-node/gocryptfs.passfile";
 static NFS_DIR: &str = "/var/lib/proven-node/nfs";
 
 pub struct ExternalFs {
@@ -46,11 +46,13 @@ impl ExternalFs {
         self.mount_nfs().await?;
         self.write_passfile()?;
 
-        if tokio::fs::metadata(GOCRYPTFS_CONF_PATH).await.is_err() {
+        if tokio::fs::metadata(CONF_PATH).await.is_err() {
             info!("gocrpytfs not initialized, initializing...");
             self.init_gocryptfs().await?;
             info!("gocrpytfs initialized");
         }
+
+        tokio::fs::create_dir_all(DECRYPTED_PATH).await.unwrap();
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
@@ -59,10 +61,10 @@ impl ExternalFs {
             // Start the gocryptfs process
             let mut cmd = Command::new("gocryptfs")
                 .arg("-passfile")
-                .arg(GOCRYPTFS_PASSFILE_PATH)
+                .arg(PASSFILE_PATH)
                 .arg("-fg")
-                .arg(GOCRYPTFS_ENCRYPTED_PATH)
-                .arg(GOCRYPTFS_DECRYPTED_PATH)
+                .arg(ENCRYPTED_PATH)
+                .arg(DECRYPTED_PATH)
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -94,7 +96,7 @@ impl ExternalFs {
                 _ = shutdown_token.cancelled() => {
                     // Run umount command
                     let _ = Command::new("umount")
-                        .arg(GOCRYPTFS_DECRYPTED_PATH)
+                        .arg(DECRYPTED_PATH)
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
                         .output()
@@ -143,15 +145,13 @@ impl ExternalFs {
     }
 
     async fn init_gocryptfs(&self) -> Result<()> {
-        tokio::fs::create_dir_all(GOCRYPTFS_ENCRYPTED_PATH)
-            .await
-            .unwrap();
+        tokio::fs::create_dir_all(ENCRYPTED_PATH).await.unwrap();
 
         let cmd = Command::new("gocryptfs")
             .arg("-init")
             .arg("-passfile")
-            .arg(GOCRYPTFS_PASSFILE_PATH)
-            .arg(GOCRYPTFS_ENCRYPTED_PATH)
+            .arg(PASSFILE_PATH)
+            .arg(ENCRYPTED_PATH)
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
@@ -173,7 +173,7 @@ impl ExternalFs {
             .create(true)
             .truncate(true)
             .write(true)
-            .open(GOCRYPTFS_PASSFILE_PATH)?;
+            .open(PASSFILE_PATH)?;
 
         Ok(std::io::Write::write_all(
             &mut passfile,
