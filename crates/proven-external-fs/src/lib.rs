@@ -135,8 +135,6 @@ impl ExternalFs {
             .output()
             .await;
 
-        info!("{:?}", cmd);
-
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
@@ -145,6 +143,10 @@ impl ExternalFs {
     }
 
     async fn init_gocryptfs(&self) -> Result<()> {
+        tokio::fs::create_dir_all(GOCRYPTFS_ENCRYPTED_PATH)
+            .await
+            .unwrap();
+
         let cmd = Command::new("gocryptfs")
             .arg("-init")
             .arg("-passfile")
@@ -154,6 +156,8 @@ impl ExternalFs {
             .stderr(Stdio::inherit())
             .output()
             .await;
+
+        info!("{:?}", cmd);
 
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
