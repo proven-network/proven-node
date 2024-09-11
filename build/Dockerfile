@@ -20,25 +20,25 @@ RUN chmod 0755      /bin/gocryptfs
 # ----------------
 # RUST BUILD STEPS
 # ----------------
-# FROM messense/rust-musl-cross:${RUSTARCH}-musl as rust-builder
-# WORKDIR /
+FROM messense/rust-musl-cross:${RUSTARCH}-musl as rust-builder
+WORKDIR /
 
-# # Set Rust target
-# ARG RUSTTARGET
-# RUN rustup target add ${RUSTTARGET}
+# Set Rust target
+ARG RUSTTARGET
+RUN rustup target add ${RUSTTARGET}
 
-# # Build proven-enclave
-# WORKDIR /
-# ARG COMMIT
-# RUN git clone git@github.com:proven-network/proven-node.git
-# WORKDIR /proven-node
-# RUN git checkout ${COMMIT}
-# RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
+# Build proven-enclave
+WORKDIR /
+ARG COMMIT
+RUN git clone git@github.com:proven-network/proven-node.git
+WORKDIR /proven-node
+RUN git checkout ${COMMIT}
+RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
 
-# # Move proven-enclave to /bin
-# RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
-# RUN chown root:root /bin/proven-enclave
-# RUN chmod 0755      /bin/proven-enclave
+# Move proven-enclave to /bin
+RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
+RUN chown root:root /bin/proven-enclave
+RUN chmod 0755      /bin/proven-enclave
 
 # ------------
 # BABYLON NODE
