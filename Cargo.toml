@@ -9,6 +9,7 @@ members = [
     "crates/proven-core",
     "crates/proven-dnscrypt-proxy",
     "crates/proven-enclave",
+    "crates/proven-external-fs",
     "crates/proven-host",
     "crates/proven-http",
     "crates/proven-http-insecure",

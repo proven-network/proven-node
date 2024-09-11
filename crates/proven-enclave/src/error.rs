@@ -27,6 +27,9 @@ pub enum Error {
     DnscryptProxy(proven_dnscrypt_proxy::Error),
 
     #[from]
+    ExternalFs(proven_external_fs::Error),
+
+    #[from]
     Imds(proven_imds::Error),
 
     #[from]
@@ -77,6 +80,7 @@ impl core::fmt::Display for Error {
             Error::Cidr(e) => write!(f, "{}", e),
             Error::Core(e) => write!(f, "{}", e),
             Error::DnscryptProxy(e) => write!(f, "{}", e),
+            Error::ExternalFs(e) => write!(f, "{}", e),
             Error::Imds(e) => write!(f, "{}", e),
             Error::InstanceDetails(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),

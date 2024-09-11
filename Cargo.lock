@@ -2992,6 +2992,7 @@ dependencies = [
  "proven-attestation-nsm",
  "proven-core",
  "proven-dnscrypt-proxy",
+ "proven-external-fs",
  "proven-http-letsencrypt",
  "proven-imds",
  "proven-instance-details",
@@ -3015,6 +3016,17 @@ dependencies = [
  "tracing",
  "tracing-panic",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "proven-external-fs"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "regex",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]

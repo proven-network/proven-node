@@ -11,6 +11,7 @@ use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, NewCoreArguments};
 use proven_dnscrypt_proxy::DnscryptProxy;
+use proven_external_fs::ExternalFs;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
@@ -122,6 +123,13 @@ impl EnclaveManager {
         let dnscrypt_proxy_handle = dnscrypt_proxy.start().await?;
         write_dns_resolv("nameserver 127.0.0.1".to_string())?; // Switch to dnscrypt-proxy's DNS resolver
 
+        // Boot external fs
+        let external_fs = ExternalFs::new(
+            "your-password".to_string(),
+            "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/".to_string(),
+        );
+        let external_fs_handle = external_fs.start().await?;
+
         // Boot NATS server
         let nats_server = NatsServer::new(
             server_name.clone(),
@@ -189,6 +197,9 @@ impl EnclaveManager {
                     Ok(Err(e)) = dnscrypt_proxy_handle => {
                         error!("dnscrypt_proxy exited: {:?}", e);
                     }
+                    Ok(Err(e)) = external_fs_handle => {
+                        error!("external_fs exited: {:?}", e);
+                    }
                     Ok(Err(e)) = nats_server_handle => {
                         error!("nats_server exited: {:?}", e);
                     }
@@ -206,6 +217,7 @@ impl EnclaveManager {
                     info!("shutdown command received. shutting down...");
                     enclave_clone.lock().await.shutdown().await;
                     proxy_ct.cancel();
+                    external_fs.shutdown().await;
                     dnscrypt_proxy.shutdown().await;
                 }
                 _ = critical_tasks => {
