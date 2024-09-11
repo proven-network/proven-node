@@ -30,6 +30,7 @@ RUN rustup target add ${RUSTTARGET}
 # Build Rust component of babylon-node
 RUN git clone https://github.com/radixdlt/babylon-node.git
 WORKDIR /babylon-node/core-rust
+RUN git checkout v1.2.3
 RUN RUSTFLAGS="-C target-feature=-crt-static" cargo build --release --target ${RUSTTARGET}
 
 # Move libcorerust.so to /bin
@@ -59,18 +60,13 @@ RUN apk add --no-cache unzip wget
 
 WORKDIR /babylon-node
 
-# Download babylon-node
-# RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.2/babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
+# Download non-Rust components of babylon-node
 RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-v1.2.3.zip
-
-# Unzip babylon-node
-RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
 RUN unzip babylon-node-v1.2.3.zip
 
 # Move babylon-node to /bin
 RUN mkdir -p /bin/babylon-node
 RUN mv core-v1.2.3 /bin/babylon-node
-# RUN mv libcorerust.so /bin/babylon-node
 RUN chown -R root:root /bin/babylon-node
 
 # -----------
