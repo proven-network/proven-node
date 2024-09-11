@@ -66,7 +66,8 @@ pub async fn configure_tcp_forwarding(
     enclave_ip: Ipv4Addr,
     outbound_device: &str,
 ) -> Result<()> {
-    for port in [443, 2049] {
+    // HTTPS, NFS, Babylon gossip, respectively
+    for port in [443, 2049, 30000] {
         Command::new("iptables")
             .arg("-t")
             .arg("nat")
