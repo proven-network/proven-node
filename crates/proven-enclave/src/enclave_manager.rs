@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
+use proven_babylon_node::BabylonNode;
 use proven_core::{Core, NewCoreArguments};
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
@@ -131,6 +132,17 @@ impl EnclaveManager {
         let external_fs_handle = external_fs.start().await?;
         let external_fs_path = external_fs.root_path();
 
+        let network_definition = match args.stokenet {
+            true => NetworkDefinition::stokenet(),
+            false => NetworkDefinition::mainnet(),
+        };
+
+        let babylon_node = BabylonNode::new(
+            network_definition.clone(),
+            format!("{}/babylon", external_fs_path),
+        );
+        let babylon_node_handle = babylon_node.start().await?;
+
         // Boot NATS server
         let nats_server = NatsServer::new(
             server_name.clone(),
@@ -163,10 +175,6 @@ impl EnclaveManager {
             },
         )
         .await?;
-        let network_definition = match args.stokenet {
-            true => NetworkDefinition::stokenet(),
-            false => NetworkDefinition::mainnet(),
-        };
 
         let session_manager =
             SessionManager::new(nsm, challenge_store, sessions_store, network_definition);
@@ -196,6 +204,9 @@ impl EnclaveManager {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
+                    Ok(Err(e)) = babylon_node_handle => {
+                        error!("babylon_node exited: {:?}", e);
+                    }
                     Ok(Err(e)) = dnscrypt_proxy_handle => {
                         error!("dnscrypt_proxy exited: {:?}", e);
                     }
@@ -219,6 +230,7 @@ impl EnclaveManager {
                     info!("shutdown command received. shutting down...");
                     enclave_clone.lock().await.shutdown().await;
                     proxy_ct.cancel();
+                    babylon_node.shutdown().await;
                     external_fs.shutdown().await;
                     dnscrypt_proxy.shutdown().await;
                 }

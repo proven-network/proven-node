@@ -9,6 +9,7 @@ cidr = "0.2.3"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 proven-attestation = { path = "../proven-attestation" }
 proven-attestation-nsm = { path = "../proven-attestation-nsm" }
+proven-babylon-node = { path = "../proven-babylon-node" }
 proven-core = { path = "../proven-core" }
 proven-dnscrypt-proxy = { path = "../proven-dnscrypt-proxy" }
 proven-external-fs = { path = "../proven-external-fs" }

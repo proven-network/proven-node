@@ -15,6 +15,9 @@ pub enum Error {
     #[from]
     Async(tokio::task::JoinError),
 
+    #[from]
+    BabylonNode(proven_babylon_node::Error),
+
     BadKey,
 
     #[from]
@@ -76,6 +79,7 @@ impl core::fmt::Display for Error {
             Error::AddrParse(e) => write!(f, "{}", e),
             Error::AsmStore(e) => write!(f, "{}", e),
             Error::Async(e) => write!(f, "{}", e),
+            Error::BabylonNode(e) => write!(f, "{}", e),
             Error::BadKey => write!(f, "The key is invalid"),
             Error::Cidr(e) => write!(f, "{}", e),
             Error::Core(e) => write!(f, "{}", e),
