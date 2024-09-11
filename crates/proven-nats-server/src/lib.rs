@@ -59,7 +59,7 @@ impl NatsServer {
             return Err(Error::AlreadyStarted);
         }
 
-        tokio::fs::create_dir_all(self.store_dir.as_str())
+        tokio::fs::create_dir_all(format!("{}/jetstream", self.store_dir.as_str()))
             .await
             .unwrap();
         self.update_nats_config().await?;
