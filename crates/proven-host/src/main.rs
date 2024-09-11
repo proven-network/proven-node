@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
     });
 
     // sleep for a bit to allow everything to start
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(8)).await;
     initialize_enclave().await?;
 
     info!("enclave initialized successfully");
