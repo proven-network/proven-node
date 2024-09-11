@@ -78,7 +78,7 @@ RUN apk add --no-cache dnscrypt-proxy fuse gcompat iproute2 iproute2-tc openjdk1
 
 COPY --from=go-builder /bin/gocryptfs /bin/
 COPY --from=babylon-node /bin/babylon-node /bin/babylon-node
-COPY --from=rust-builder /bin/libcorerust.so /bin/babylon-node/libcorerust.so
+COPY --from=rust-builder /bin/libcorerust.so /bin/babylon-node/
 COPY --from=rust-builder /bin/proven-enclave /bin/
 
 CMD proven-enclave
