@@ -11,7 +11,7 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::info;
+use tracing::{info, warn};
 
 static KEYSTORE_PATH: &str = "/var/lib/proven-node/babylon-keystore.ks";
 static KEYSTORE_PASS: &str = "notarealpassword"; // Irrelevant as keyfile never leaves TEE
@@ -84,12 +84,42 @@ impl BabylonNode {
                 .env("LD_PRELOAD", "/bin/babylon-node/libcorerust.so")
                 .arg("-config")
                 .arg("/var/lib/proven-node/babylon-node.config")
-                .stdout(Stdio::null())
+                .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
                 .map_err(Error::Spawn)?;
 
+            let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+
+            // Spawn a task to read and process the stdout output of the babylon-node process
+            task_tracker.spawn(async move {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+
+                // let re = Regex::new(r"(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]) (\[[A-Z]+\]) (.*)")
+                //     .unwrap();
+
+                while let Ok(Some(line)) = lines.next_line().await {
+                    info!("{}", line);
+                    // if let Some(caps) = re.captures(&line) {
+                    //     let label = caps.get(2).unwrap().as_str();
+                    //     let message = caps.get(3).unwrap().as_str();
+                    //     match label {
+                    //         "[INFO]" => info!("{}", message),
+                    //         "[NOTICE]" => info!("{}", message),
+                    //         "[DEBUG]" => debug!("{}", message),
+                    //         "[WARNING]" => warn!("{}", message),
+                    //         "[CRITICAL]" => warn!("{}", message),
+                    //         "[ERROR]" => error!("{}", message),
+                    //         "[FATAL]" => error!("{}", message),
+                    //         _ => error!("{}", line),
+                    //     }
+                    // } else {
+                    //     error!("{}", line);
+                    // }
+                }
+            });
 
             // Spawn a task to read and process the stderr output of the babylon-node process
             task_tracker.spawn(async move {
@@ -100,7 +130,7 @@ impl BabylonNode {
                 //     .unwrap();
 
                 while let Ok(Some(line)) = lines.next_line().await {
-                    info!("{}", line);
+                    warn!("{}", line);
                     // if let Some(caps) = re.captures(&line) {
                     //     let label = caps.get(2).unwrap().as_str();
                     //     let message = caps.get(3).unwrap().as_str();
