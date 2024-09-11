@@ -115,6 +115,9 @@ impl ExternalFs {
 
         self.task_tracker.close();
 
+        // Sleep for a bit to allow mount to complete
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
         Ok(gocryptfs_task)
     }
 
