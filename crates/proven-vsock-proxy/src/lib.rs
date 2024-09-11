@@ -97,12 +97,12 @@ impl ConnectionHandler {
                 return Ok(());
             }
             e = tokio::spawn(tun_to_vsock(tun_read, vsock_write)) => {
-                error!("tun_to_vsock error");
+                error!("tun_to_vsock error: {:?}", e);
 
                 e?
             }
             e = tokio::spawn(vsock_to_tun(vsock_read, tun_write)) => {
-                error!("vsock_to_tun error");
+                error!("vsock_to_tun error: {:?}", e);
 
                 e?
             }
