@@ -110,12 +110,19 @@ impl ExternalFs {
                 }
                 _ = shutdown_token.cancelled() => {
                     // Run umount command
-                    let _ = Command::new("umount")
+                    let output = Command::new("umount")
                         .arg(DECRYPTED_PATH)
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
                         .output()
                         .await;
+
+                    // log output
+                    match output {
+                        Ok(output) if output.status.success() => info!("gocryptfs umount successful"),
+                        Ok(output) => warn!("gocryptfs failed: {:?}", output),
+                        Err(e) => warn!("gocryptfs failed: {:?}", e),
+                    }
 
                     cmd.wait().await.unwrap();
 
