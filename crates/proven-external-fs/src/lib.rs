@@ -56,6 +56,8 @@ impl ExternalFs {
             info!("gocrpytfs initialized");
         }
 
+        // TODO: Do a fsck of the encrypted directory here
+
         tokio::fs::create_dir_all(DECRYPTED_PATH).await.unwrap();
 
         let shutdown_token = self.shutdown_token.clone();
