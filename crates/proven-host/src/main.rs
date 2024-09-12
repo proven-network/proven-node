@@ -243,7 +243,8 @@ cpu_count: {}
 # Example of reserving CPUs 2, 3, and 6 through 9:
 # cpu_pool: 2,3,6-9
     "#,
-        enclave_memory, enclave_cpus
+        enclave_memory + 10,
+        enclave_cpus
     );
 
     std::fs::write("/etc/nitro_enclaves/allocator.yaml", allocator_config)?;
