@@ -123,7 +123,8 @@ impl NatsServer {
                     let pid = cmd.id().unwrap().to_string();
 
                     let output = Command::new("kill")
-                        .arg("-USR2")
+                        .arg("-s")
+                        .arg("USR2")
                         .arg(pid)
                         .output()
                         .await
