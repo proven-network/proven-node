@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     libreadline6-dev \
     libicu-dev \
     pkg-config \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Download source code
