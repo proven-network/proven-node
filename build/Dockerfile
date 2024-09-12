@@ -30,8 +30,6 @@ RUN ./configure
 RUN make
 RUN make install
 
-RUN ldd /usr/local/pgsql/bin/postgres
-
 # --------------
 # GO BUILD STEPS
 # --------------
@@ -111,11 +109,11 @@ RUN chown root:root /bin/dnscrypt-proxy
 FROM debian:bookworm-20240904-slim
 
 RUN apt-get update && apt-get install -y \
-    fuse \
-    iproute2 \
-    openjdk-17-jre-headless \
-    net-tools \
-    nfs-common \
+    fuse=2.9.9-6+b1 \
+    iproute2=6.1.0-3 \
+    openjdk-17-jre-headless=17.0.12+7-2~deb12u1 \
+    net-tools=2.10-0.1 \
+    nfs-common=1:2.6.2-4 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=postgres-builder /usr/local/pgsql /bin/pgsql
@@ -124,7 +122,5 @@ COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
-
-RUN ldd /bin/pgsql/bin/postgres
 
 CMD proven-enclave
