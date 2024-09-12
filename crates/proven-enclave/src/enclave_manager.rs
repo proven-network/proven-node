@@ -62,7 +62,8 @@ impl EnclaveManager {
         info!("tracing configured");
 
         remount_tmp_with_exec().await?;
-        log_mounts();
+
+        info!("tmp remounted with exec (babylon snappy java fix)");
 
         // Configure network
         write_dns_resolv(args.host_dns_resolv)?; // Use host's DNS resolver until dnscrypt-proxy is up
@@ -303,21 +304,14 @@ async fn fetch_imds_identity() -> Result<IdentityDocument> {
     Ok(identity)
 }
 
-fn log_mounts() {
-    let mounts = std::fs::read_to_string("/proc/mounts").unwrap();
-    info!("mounts: {}", mounts);
-}
-
 async fn remount_tmp_with_exec() -> Result<()> {
-    let output = tokio::process::Command::new("mount")
+    tokio::process::Command::new("mount")
         .arg("-o")
         .arg("remount,exec")
         .arg("tmpfs")
         .arg("/tmp")
         .output()
         .await?;
-
-    info!("remount output: {:?}", output);
 
     Ok(())
 }
