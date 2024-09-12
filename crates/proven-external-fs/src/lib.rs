@@ -20,15 +20,17 @@ static NFS_DIR: &str = "/var/lib/proven-node/nfs";
 pub struct ExternalFs {
     encryption_key: String,
     nfs_server: String,
+    skip_fsck: bool,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
 impl ExternalFs {
-    pub fn new(encryption_key: String, nfs_server: String) -> Self {
+    pub fn new(encryption_key: String, nfs_server: String, skip_fsck: bool) -> Self {
         Self {
             encryption_key,
             nfs_server,
+            skip_fsck,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -51,14 +53,16 @@ impl ExternalFs {
         self.write_passfile()?;
 
         if tokio::fs::metadata(CONF_PATH).await.is_err() {
-            info!("gocrpytfs not initialized, initializing...");
+            info!("gocryptfs not initialized, initializing...");
             self.init_gocryptfs().await?;
-            info!("gocrpytfs initialized");
-        } else {
+            info!("gocryptfs initialized");
+        } else if !self.skip_fsck {
             // TODO: Do a fsck of the encrypted directory here
-            info!("gocrpytfs already initialized. Checking integrity...");
+            info!("gocryptfs already initialized. Checking integrity...");
             self.fsck_gocryptfs().await?;
-            info!("gocrpytfs integrity check passed");
+            info!("gocryptfs integrity check passed");
+        } else {
+            info!("skipping gocryptfs integrity check");
         }
 
         tokio::fs::create_dir_all(DECRYPTED_PATH).await.unwrap();
