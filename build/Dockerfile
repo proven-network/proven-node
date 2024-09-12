@@ -82,13 +82,13 @@ RUN apk add --no-cache unzip wget
 WORKDIR /tmp
 
 # Download
-RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.2/babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
+RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
 RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-v1.2.3.zip
 RUN wget https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
 RUN wget https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.5/dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
 
 # Unzip
-RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
+RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
 RUN unzip babylon-node-v1.2.3.zip
 RUN unzip nats-server-v2.10.20-linux-arm64.zip
 RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
