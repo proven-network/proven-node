@@ -61,6 +61,8 @@ impl EnclaveManager {
 
         info!("tracing configured");
 
+        log_mounts();
+
         // Configure network
         write_dns_resolv(args.host_dns_resolv)?; // Use host's DNS resolver until dnscrypt-proxy is up
         bring_up_loopback().await?;
@@ -298,4 +300,9 @@ async fn fetch_imds_identity() -> Result<IdentityDocument> {
     let identity = imds.get_verified_identity_document().await?;
 
     Ok(identity)
+}
+
+fn log_mounts() {
+    let mounts = std::fs::read_to_string("/proc/mounts").unwrap();
+    info!("mounts: {}", mounts);
 }
