@@ -49,7 +49,7 @@ struct Args {
     #[arg(long, default_value_t = Ipv4Addr::new(10, 0, 0, 2))]
     enclave_ip: Ipv4Addr,
 
-    #[arg(long, default_value_t = 3084)]
+    #[arg(long, default_value_t = 6144)]
     enclave_memory: u32,
 
     #[clap(long, required = true)]
