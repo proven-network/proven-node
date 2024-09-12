@@ -54,9 +54,12 @@ impl ExternalFs {
             info!("gocrpytfs not initialized, initializing...");
             self.init_gocryptfs().await?;
             info!("gocrpytfs initialized");
+        } else {
+            // TODO: Do a fsck of the encrypted directory here
+            info!("gocrpytfs already initialized. Checking integrity...");
+            self.fsck_gocryptfs().await?;
+            info!("gocrpytfs integrity check passed");
         }
-
-        // TODO: Do a fsck of the encrypted directory here
 
         tokio::fs::create_dir_all(DECRYPTED_PATH).await.unwrap();
 
@@ -176,6 +179,26 @@ impl ExternalFs {
 
         let cmd = Command::new("gocryptfs")
             .arg("-init")
+            .arg("-passfile")
+            .arg(PASSFILE_PATH)
+            .arg(ENCRYPTED_PATH)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .await;
+
+        info!("{:?}", cmd);
+
+        match cmd {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+            Err(e) => Err(Error::Spawn(e)),
+        }
+    }
+
+    async fn fsck_gocryptfs(&self) -> Result<()> {
+        let cmd = Command::new("gocryptfs")
+            .arg("-fsck")
             .arg("-passfile")
             .arg(PASSFILE_PATH)
             .arg(ENCRYPTED_PATH)
