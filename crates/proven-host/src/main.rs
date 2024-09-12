@@ -74,6 +74,9 @@ struct Args {
     proxy_port: u32,
 
     #[arg(long, default_value_t = false)]
+    skip_fsck: bool,
+
+    #[arg(long, default_value_t = false)]
     stokenet: bool,
 
     #[arg(long, default_value_t = format!("tun0"))]
@@ -274,6 +277,7 @@ async fn initialize_enclave() -> Result<()> {
         log_port: args.log_port,
         nats_port: args.nats_port,
         proxy_port: args.proxy_port,
+        skip_fsck: args.skip_fsck,
         stokenet: args.stokenet,
         tun_device: args.tun_device,
     };

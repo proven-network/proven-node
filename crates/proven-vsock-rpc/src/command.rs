@@ -22,6 +22,7 @@ pub struct InitializeArgs {
     pub log_port: u32,
     pub nats_port: u16,
     pub proxy_port: u32,
+    pub skip_fsck: bool,
     pub stokenet: bool,
     pub tun_device: String,
 }
@@ -51,6 +52,7 @@ mod tests {
             log_port: 1235,
             nats_port: 4222,
             proxy_port: 1236,
+            skip_fsck: false,
             stokenet: true,
             tun_device: String::from("tun0"),
         });
