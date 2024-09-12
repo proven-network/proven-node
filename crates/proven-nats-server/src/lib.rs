@@ -211,6 +211,8 @@ impl NatsServer {
             self.server_name, self.listen_addr, self.store_dir
         );
 
+        tokio::fs::create_dir_all("/etc/nats").await.unwrap();
+
         tokio::fs::write("/etc/nats/nats-server.conf", config)
             .await
             .map_err(Error::ConfigWrite)?;
