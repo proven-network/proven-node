@@ -1,3 +1,32 @@
+# --------------------
+# POSTGRES BUILD STEPS
+# --------------------
+FROM debian:bookworm-20240904-slim as postgres-builder
+
+# Install dependencies to build from source
+RUN apt-get update && apt-get install -y \
+    gcc \
+    build-essential \
+    zlib1g-dev \
+    libreadline6-dev \
+    libicu-dev \
+    pkg-config
+    && rm -rf /var/lib/apt/lists/*
+
+# Download source code
+WORKDIR /tmp
+RUN wget https://ftp.postgresql.org/pub/source/v16.4/postgresql-16.4.tar.bz2
+RUN tar -xvf postgresql-16.4.tar.bz2
+WORKDIR /tmp/postgresql-16.4
+
+# Overwrite root check
+RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
+
+# Build and install
+RUN ./configure
+RUN make
+RUN make install
+
 # --------------
 # GO BUILD STEPS
 # --------------
