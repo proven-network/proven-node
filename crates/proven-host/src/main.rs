@@ -244,8 +244,7 @@ cpu_count: {}
 # configured by using `cpu_pool` (like below), instead of `cpu_count`.
 # Note: cpu_count and cpu_pool conflict with each other. Only use exactly one of them.
 # Example of reserving CPUs 2, 3, and 6 through 9:
-# cpu_pool: 2,3,6-9
-    "#,
+# cpu_pool: 2,3,6-9"#,
         enclave_memory, enclave_cpus
     );
 
