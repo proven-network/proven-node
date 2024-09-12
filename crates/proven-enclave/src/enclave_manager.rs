@@ -61,6 +61,7 @@ impl EnclaveManager {
 
         info!("tracing configured");
 
+        remount_tmp_with_exec().await?;
         log_mounts();
 
         // Configure network
@@ -305,4 +306,18 @@ async fn fetch_imds_identity() -> Result<IdentityDocument> {
 fn log_mounts() {
     let mounts = std::fs::read_to_string("/proc/mounts").unwrap();
     info!("mounts: {}", mounts);
+}
+
+async fn remount_tmp_with_exec() -> Result<()> {
+    let output = tokio::process::Command::new("mount")
+        .arg("-o")
+        .arg("remount,exec")
+        .arg("tmpfs")
+        .arg("/tmp")
+        .output()
+        .await?;
+
+    info!("remount output: {:?}", output);
+
+    Ok(())
 }
