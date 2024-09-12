@@ -3183,6 +3183,7 @@ name = "proven-nats-server"
 version = "0.1.0"
 dependencies = [
  "async-nats",
+ "nix 0.29.0",
  "regex",
  "tokio",
  "tokio-util",

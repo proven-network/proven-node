@@ -6,6 +6,8 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use async_nats::Client;
+use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
 use regex::Regex;
 use std::net::SocketAddrV4;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -120,22 +122,13 @@ impl NatsServer {
                     Ok(())
                 }
                 _ = shutdown_token.cancelled() => {
-                    let pid = cmd.id().unwrap().to_string();
+                    let pid = Pid::from_raw(cmd.id().unwrap() as i32);
 
-                    let output = Command::new("kill")
-                        .arg("-s")
-                        .arg("USR2")
-                        .arg(pid)
-                        .output()
-                        .await
-                        .expect("failed to execute process");
-
-                    if !output.status.success() {
-                        let e = String::from_utf8_lossy(&output.stderr);
+                    if let Err(e) = signal::kill(pid, Signal::SIGUSR2) {
                         error!("Failed to send SIGUSR2 signal: {}", e);
+                    } else {
+                        info!("nats server entered lame duck mode. waiting for connections to close...");
                     }
-
-                    info!("nats server entered lame duck mode. waiting for connections to close...");
 
                     let _ = cmd.wait().await;
 
