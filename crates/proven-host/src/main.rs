@@ -95,6 +95,11 @@ async fn main() -> Result<()> {
     let tracing_service = TracingService::new();
     let tracing_handle = tracing_service.start(args.log_port)?;
 
+    stop_existing_enclaves().await?;
+
+    info!("allocating enclave resources...");
+    allocate_enclave_resources(args.enclave_cpus, args.enclave_memory).await?;
+
     let mut enclave = start_enclave().await?;
 
     let cancellation_token = CancellationToken::new();
@@ -174,7 +179,7 @@ async fn main() -> Result<()> {
             info!("shutting down...");
             // Shutdown enclave first
             shutdown_enclave().await?;
-            enclave.wait().await?;
+            enclave.wait().await?; // TODO: this doesn't do anything - should poll active enclaves to check instead
             // Cancel proxy and http server
             cancellation_token.cancel();
             http_server.shutdown().await;
@@ -185,19 +190,26 @@ async fn main() -> Result<()> {
     }
 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    info!("deallocating enclave resources...");
+    allocate_enclave_resources(1, 0).await?;
     info!("host shutdown cleanly. goodbye.");
+
+    Ok(())
+}
+
+async fn stop_existing_enclaves() -> Result<()> {
+    tokio::process::Command::new("nitro-cli")
+        .arg("terminate-enclave")
+        .arg("--all")
+        .output()
+        .await?;
 
     Ok(())
 }
 
 async fn start_enclave() -> Result<Child> {
     let args = Args::parse();
-
-    tokio::process::Command::new("nitro-cli")
-        .arg("terminate-enclave")
-        .arg("--all")
-        .output()
-        .await?;
 
     let handle = tokio::process::Command::new("nitro-cli")
         .arg("run-enclave")
@@ -212,6 +224,37 @@ async fn start_enclave() -> Result<Child> {
         .spawn()?;
 
     Ok(handle)
+}
+
+async fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Result<()> {
+    let allocator_config = format!(
+        r#"---
+# Enclave configuration file.
+#
+# How much memory to allocate for enclaves (in MiB).
+memory_mib: {}
+#
+# How many CPUs to reserve for enclaves.
+cpu_count: {}
+#
+# Alternatively, the exact CPUs to be reserved for the enclave can be explicitly
+# configured by using `cpu_pool` (like below), instead of `cpu_count`.
+# Note: cpu_count and cpu_pool conflict with each other. Only use exactly one of them.
+# Example of reserving CPUs 2, 3, and 6 through 9:
+# cpu_pool: 2,3,6-9
+    "#,
+        enclave_memory, enclave_cpus
+    );
+
+    std::fs::write("/etc/nitro_enclaves/allocator.yaml", allocator_config)?;
+
+    tokio::process::Command::new("systemctl")
+        .arg("restart")
+        .arg("nitro-enclaves-allocator.service")
+        .output()
+        .await?;
+
+    Ok(())
 }
 
 async fn initialize_enclave() -> Result<()> {
