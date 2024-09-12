@@ -3,6 +3,8 @@
 # --------------------
 FROM debian:bookworm-20240904-slim as postgres-builder
 
+RUN whoami
+
 # Install dependencies to build from source
 RUN apt-get update && apt-get install -y \
     gcc \
@@ -21,12 +23,15 @@ RUN tar -xvf postgresql-16.4.tar.bz2
 WORKDIR /tmp/postgresql-16.4
 
 # Overwrite root check
-RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
+# RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
 
 # Build and install
 RUN ./configure
 RUN make
 RUN make install
+
+# Test run postgres bin
+RUN /usr/local/pgsql/bin/postgres
 
 # --------------
 # GO BUILD STEPS
@@ -114,6 +119,7 @@ RUN apt-get update && apt-get install -y \
     nfs-common \
     && rm -rf /var/lib/apt/lists/*
 
+COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 COPY --from=go-builder /bin/gocryptfs /bin/
 COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
