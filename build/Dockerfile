@@ -30,8 +30,7 @@ RUN ./configure
 RUN make
 RUN make install
 
-# Test run postgres bin
-RUN /usr/local/pgsql/bin/postgres
+RUN ldd /usr/local/pgsql/bin/postgres
 
 # --------------
 # GO BUILD STEPS
@@ -119,11 +118,13 @@ RUN apt-get update && apt-get install -y \
     nfs-common \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
+COPY --from=postgres-builder /usr/local/pgsql /bin/pgsql
 COPY --from=go-builder /bin/gocryptfs /bin/
 COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
+
+RUN ldd /bin/pgsql/bin/postgres
 
 CMD proven-enclave
