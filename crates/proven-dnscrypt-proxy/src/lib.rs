@@ -250,6 +250,10 @@ stamp = '{}'
             dns_stamp.encode().unwrap()
         );
 
+        tokio::fs::create_dir_all("/etc/dnscrypt-proxy")
+            .await
+            .unwrap();
+
         tokio::fs::write("/etc/dnscrypt-proxy/dnscrypt-proxy.toml", config)
             .await
             .map_err(Error::ConfigWrite)
