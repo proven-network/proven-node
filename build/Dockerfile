@@ -90,6 +90,4 @@ COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 
-RUN ldd /bin/babylon-node/libcorerust.so
-
 CMD proven-enclave
