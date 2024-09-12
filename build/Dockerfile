@@ -40,39 +40,52 @@ RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
 RUN chown root:root /bin/proven-enclave
 RUN chmod 0755      /bin/proven-enclave
 
-# ------------
-# BABYLON NODE
-# ------------
-FROM alpine:3.20 as babylon-node
+# --------------
+# EXTRA BINARIES
+# --------------
+FROM alpine:3.20 as extra-binaries
 
 RUN apk add --no-cache unzip wget
 
-WORKDIR /babylon-node
+WORKDIR /tmp
 
-# Download babylon-node
+# Download
 RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.2/babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
 RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-v1.2.3.zip
+RUN wget https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
 
-# Unzip babylon-node
+# Unzip
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.2.zip
 RUN unzip babylon-node-v1.2.3.zip
+RUN unzip nats-server-v2.10.20-linux-arm64.zip
 
-# Move babylon-node to /bin
+# Move to /bin
 RUN mkdir -p /bin/babylon-node
 RUN mv core-v1.2.3 /bin/babylon-node
 RUN mv libcorerust.so /bin/babylon-node
 RUN chown -R root:root /bin/babylon-node
+RUN mv nats-server-v2.10.20-linux-arm64/nats-server /bin/
+RUN chown root:root /bin/nats-server
 
 # -----------
 # FINAL IMAGE
 # -----------
-FROM nats:alpine3.20
+FROM debian:bullseye-20240904-slim
 
 RUN apk add --no-cache dnscrypt-proxy fuse gcompat iproute2 iproute2-tc openjdk17 net-tools nfs-utils
+RUN apt-get update && apt-get install -y \
+    dnscrypt-proxy \
+    fuse \
+    iproute2 \
+    openjdk-17-jre-headless \
+    net-tools \
+    nfs-common \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=go-builder /bin/gocryptfs /bin/
 COPY --from=rust-builder /bin/proven-enclave /bin/
-COPY --from=babylon-node /bin/babylon-node /bin/babylon-node
+COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
+COPY --from=extra-binaries /bin/nats-server /bin/
 
 RUN ldd /bin/babylon-node/libcorerust.so
 
