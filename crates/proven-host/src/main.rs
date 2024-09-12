@@ -43,7 +43,7 @@ struct Args {
     #[arg(long, default_value_t = 4)]
     enclave_cid: u32,
 
-    #[arg(long, default_value_t = 13)]
+    #[arg(long, default_value_t = 12)]
     enclave_cpus: u8,
 
     #[arg(long, default_value_t = Ipv4Addr::new(10, 0, 0, 2))]
