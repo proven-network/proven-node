@@ -72,7 +72,6 @@ RUN chown root:root /bin/nats-server
 # -----------
 FROM debian:bullseye-20240904-slim
 
-RUN apk add --no-cache dnscrypt-proxy fuse gcompat iproute2 iproute2-tc openjdk17 net-tools nfs-utils
 RUN apt-get update && apt-get install -y \
     dnscrypt-proxy \
     fuse \
