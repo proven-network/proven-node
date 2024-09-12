@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     libreadline6-dev \
     libicu-dev \
-    pkg-config
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Download source code
