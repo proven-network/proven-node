@@ -20,17 +20,15 @@ static NFS_DIR: &str = "/var/lib/proven-node/nfs";
 pub struct ExternalFs {
     encryption_key: String,
     nfs_server: String,
-    skip_fsck: bool,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
 impl ExternalFs {
-    pub fn new(encryption_key: String, nfs_server: String, skip_fsck: bool) -> Self {
+    pub fn new(encryption_key: String, nfs_server: String) -> Self {
         Self {
             encryption_key,
             nfs_server,
-            skip_fsck,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -56,13 +54,8 @@ impl ExternalFs {
             info!("gocryptfs not initialized, initializing...");
             self.init_gocryptfs().await?;
             info!("gocryptfs initialized");
-        } else if !self.skip_fsck {
-            // TODO: Do a fsck of the encrypted directory here
-            info!("gocryptfs already initialized. Checking integrity...");
-            self.fsck_gocryptfs().await?;
-            info!("gocryptfs integrity check passed");
         } else {
-            info!("skipping gocryptfs integrity check");
+            info!("gocryptfs already initialized");
         }
 
         tokio::fs::create_dir_all(DECRYPTED_PATH).await.unwrap();
@@ -203,28 +196,25 @@ impl ExternalFs {
         }
     }
 
-    async fn fsck_gocryptfs(&self) -> Result<()> {
-        let cmd = Command::new("gocryptfs")
-            .arg("-fsck")
-            .arg("-passfile")
-            .arg(PASSFILE_PATH)
-            .arg(ENCRYPTED_PATH)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .output()
-            .await;
+    // async fn fsck_gocryptfs(&self) -> Result<()> {
+    //     let cmd = Command::new("gocryptfs")
+    //         .arg("-fsck")
+    //         .arg("-passfile")
+    //         .arg(PASSFILE_PATH)
+    //         .arg(ENCRYPTED_PATH)
+    //         .stdout(Stdio::inherit())
+    //         .stderr(Stdio::inherit())
+    //         .output()
+    //         .await;
 
-        info!("{:?}", cmd);
+    //     info!("{:?}", cmd);
 
-        // Sleep for a bit to allow fsck to demount
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-        match cmd {
-            Ok(output) if output.status.success() => Ok(()),
-            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-            Err(e) => Err(Error::Spawn(e)),
-        }
-    }
+    //     match cmd {
+    //         Ok(output) if output.status.success() => Ok(()),
+    //         Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+    //         Err(e) => Err(Error::Spawn(e)),
+    //     }
+    // }
 
     fn write_passfile(&self) -> Result<()> {
         info!("writing passfile");

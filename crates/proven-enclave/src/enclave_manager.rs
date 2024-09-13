@@ -132,7 +132,6 @@ impl EnclaveManager {
         let external_fs = ExternalFs::new(
             "your-password".to_string(),
             "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/".to_string(),
-            args.skip_fsck,
         );
         let external_fs_handle = external_fs.start().await?;
         let external_fs_path = external_fs.root_path();
