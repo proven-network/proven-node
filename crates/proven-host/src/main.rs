@@ -101,6 +101,7 @@ async fn main() -> Result<()> {
     stop_existing_enclaves().await?;
 
     info!("allocating enclave resources...");
+    allocate_enclave_resources(1, 0).await?;
     allocate_enclave_resources(args.enclave_cpus, args.enclave_memory).await?;
 
     let mut enclave = start_enclave().await?;
