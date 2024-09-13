@@ -216,6 +216,9 @@ impl ExternalFs {
 
         info!("{:?}", cmd);
 
+        // Sleep for a bit to allow fsck to demount
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
