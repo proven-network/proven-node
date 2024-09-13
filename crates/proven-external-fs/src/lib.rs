@@ -50,6 +50,7 @@ impl ExternalFs {
         info!("created NFS directory");
 
         self.mount_nfs().await?;
+        self.run_speed_test(NFS_DIR).await?;
         self.write_passfile()?;
 
         if tokio::fs::metadata(CONF_PATH).await.is_err() {
@@ -145,6 +146,8 @@ impl ExternalFs {
         // Sleep for a bit to allow mount to complete
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
+        self.run_speed_test(DECRYPTED_PATH).await?;
+
         Ok(gocryptfs_task)
     }
 
@@ -235,5 +238,33 @@ impl ExternalFs {
             &mut passfile,
             self.encryption_key.as_bytes(),
         )?)
+    }
+
+    async fn run_speed_test(&self, dir_to_test: &str) -> Result<()> {
+        let target = format!("{}/speed_test", dir_to_test);
+
+        info!("running speed test on {}", target);
+
+        let cmd = Command::new("dd")
+            .arg("if=/dev/zero")
+            .arg(target.clone())
+            .arg("bs=1M")
+            .arg("count=1024")
+            .arg("oflag=dsync")
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .await;
+
+        info!("{:?}", cmd);
+
+        // clean up target file
+        let _ = tokio::fs::remove_file(target).await;
+
+        match cmd {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+            Err(e) => Err(Error::Spawn(e)),
+        }
     }
 }
