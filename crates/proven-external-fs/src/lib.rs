@@ -69,6 +69,7 @@ impl ExternalFs {
                 .arg("-passfile")
                 .arg(PASSFILE_PATH)
                 .arg("-fg")
+                .arg("-noprealloc")
                 .arg(ENCRYPTED_PATH)
                 .arg(DECRYPTED_PATH)
                 .stdout(Stdio::piped())
