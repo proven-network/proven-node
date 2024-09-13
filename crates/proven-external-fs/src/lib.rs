@@ -247,7 +247,7 @@ impl ExternalFs {
 
         let cmd = Command::new("dd")
             .arg("if=/dev/zero")
-            .arg(target.clone())
+            .arg(format!("of={}", target))
             .arg("bs=1M")
             .arg("count=1024")
             .arg("oflag=dsync")
