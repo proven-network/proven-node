@@ -257,7 +257,7 @@ cpu_count: {}
         .await?;
 
     // wait for the allocator to finish
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
     Ok(())
 }
