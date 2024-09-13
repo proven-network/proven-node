@@ -101,7 +101,6 @@ async fn main() -> Result<()> {
     stop_existing_enclaves().await?;
 
     info!("allocating enclave resources...");
-    allocate_enclave_resources(1, 0).await?;
     allocate_enclave_resources(args.enclave_cpus, args.enclave_memory).await?;
 
     let mut enclave = start_enclave().await?;
@@ -254,7 +253,8 @@ cpu_count: {}
 # Note: cpu_count and cpu_pool conflict with each other. Only use exactly one of them.
 # Example of reserving CPUs 2, 3, and 6 through 9:
 # cpu_pool: 2,3,6-9"#,
-        enclave_memory, enclave_cpus
+        enclave_memory + 1000,
+        enclave_cpus
     );
 
     std::fs::write("/etc/nitro_enclaves/allocator.yaml", allocator_config)?;
@@ -264,9 +264,6 @@ cpu_count: {}
         .arg("nitro-enclaves-allocator.service")
         .output()
         .await?;
-
-    // wait for the allocator to restart
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
     Ok(())
 }
