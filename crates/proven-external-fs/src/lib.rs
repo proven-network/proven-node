@@ -62,8 +62,6 @@ impl ExternalFs {
             return Err(Error::AlreadyStarted);
         }
 
-        info!("created NFS directory");
-
         self.mount_nfs().await?;
 
         if self.is_initialized() {
@@ -71,7 +69,9 @@ impl ExternalFs {
         } else {
             info!("gocryptfs not initialized, initializing...");
             self.init_gocryptfs().await?;
-            info!("gocryptfs initialized");
+            info!("gocryptfs initialized. remounting...");
+            self.umount_nfs().await?;
+            self.mount_nfs().await?;
         }
 
         let shutdown_token = self.shutdown_token.clone();
@@ -194,6 +194,27 @@ impl ExternalFs {
         info!("{:?}", cmd);
         info!(
             "mounted nfs: {} -> {}",
+            self.nfs_mount_point, self.nfs_mount_dir
+        );
+
+        match cmd {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+            Err(e) => Err(Error::Spawn(e)),
+        }
+    }
+
+    async fn umount_nfs(&self) -> Result<()> {
+        let cmd = Command::new("umount")
+            .arg(self.nfs_mount_dir.as_str())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .await;
+
+        info!("{:?}", cmd);
+        info!(
+            "unmounted nfs: {} -> {}",
             self.nfs_mount_point, self.nfs_mount_dir
         );
 
