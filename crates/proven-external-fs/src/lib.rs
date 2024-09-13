@@ -22,12 +22,18 @@ pub struct ExternalFs {
     mount_dir: String,
     nfs_mount_dir: String,
     passfile_path: String,
+    skip_fsck: bool,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
 impl ExternalFs {
-    pub fn new(encryption_key: String, nfs_mount_point: String, mount_dir: String) -> Self {
+    pub fn new(
+        encryption_key: String,
+        nfs_mount_point: String,
+        mount_dir: String,
+        skip_fsck: bool,
+    ) -> Self {
         // random name for nfs_dir
         let sub_dir: String = thread_rng()
             .sample_iter(&Alphanumeric)
@@ -52,6 +58,7 @@ impl ExternalFs {
             mount_dir,
             nfs_mount_dir,
             passfile_path,
+            skip_fsck,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -66,6 +73,14 @@ impl ExternalFs {
 
         if self.is_initialized() {
             info!("gocryptfs already initialized");
+
+            if self.skip_fsck {
+                info!("skipping integrity check...");
+            } else {
+                info!("running integrity check...");
+                self.fsck_gocryptfs().await?;
+                info!("integrity check successful");
+            }
         } else {
             info!("gocryptfs not initialized, initializing...");
             self.init_gocryptfs().await?;
@@ -198,25 +213,25 @@ impl ExternalFs {
         }
     }
 
-    // async fn fsck_gocryptfs(&self) -> Result<()> {
-    //     let cmd = Command::new("gocryptfs")
-    //         .arg("-fsck")
-    //         .arg("-passfile")
-    //         .arg(PASSFILE_PATH)
-    //         .arg(ENCRYPTED_PATH)
-    //         .stdout(Stdio::inherit())
-    //         .stderr(Stdio::inherit())
-    //         .output()
-    //         .await;
+    async fn fsck_gocryptfs(&self) -> Result<()> {
+        let cmd = Command::new("gocryptfs")
+            .arg("-fsck")
+            .arg("-passfile")
+            .arg(self.passfile_path.as_str())
+            .arg(self.nfs_mount_dir.as_str())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .await;
 
-    //     info!("{:?}", cmd);
+        info!("{:?}", cmd);
 
-    //     match cmd {
-    //         Ok(output) if output.status.success() => Ok(()),
-    //         Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-    //         Err(e) => Err(Error::Spawn(e)),
-    //     }
-    // }
+        match cmd {
+            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+            Err(e) => Err(Error::Spawn(e)),
+        }
+    }
 }
 
 async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()> {

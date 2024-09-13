@@ -134,6 +134,7 @@ impl EnclaveManager {
             "your-password".to_string(),
             "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/babylon/".to_string(),
             babylon_store_dir.clone(),
+            args.skip_fsck,
         );
         let babylon_external_fs_handle = babylon_external_fs.start().await?;
 
@@ -151,6 +152,7 @@ impl EnclaveManager {
             "your-password".to_string(),
             "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/nats/".to_string(),
             nats_store_dir.clone(),
+            args.skip_fsck,
         );
         let nats_external_fs_handle = nats_external_fs.start().await?;
         let nats_server = NatsServer::new(
