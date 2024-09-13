@@ -76,6 +76,7 @@ impl ExternalFs {
                 .arg("-passfile")
                 .arg(PASSFILE_PATH)
                 .arg("-fg")
+                .arg("-fusedebug")
                 .arg(ENCRYPTED_PATH)
                 .arg(DECRYPTED_PATH)
                 .stdout(Stdio::piped())
