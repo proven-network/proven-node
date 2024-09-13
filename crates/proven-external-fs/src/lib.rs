@@ -62,7 +62,7 @@ impl ExternalFs {
             return Err(Error::AlreadyStarted);
         }
 
-        self.mount_nfs().await?;
+        mount_nfs(self.nfs_mount_point.clone(), self.nfs_mount_dir.clone()).await?;
 
         if self.is_initialized() {
             info!("gocryptfs already initialized");
@@ -70,8 +70,8 @@ impl ExternalFs {
             info!("gocryptfs not initialized, initializing...");
             self.init_gocryptfs().await?;
             info!("gocryptfs initialized. remounting...");
-            self.umount_nfs().await?;
-            self.mount_nfs().await?;
+            umount_nfs(self.nfs_mount_dir.clone()).await?;
+            mount_nfs(self.nfs_mount_point.clone(), self.nfs_mount_dir.clone()).await?;
         }
 
         let shutdown_token = self.shutdown_token.clone();
@@ -151,6 +151,8 @@ impl ExternalFs {
 
                     cmd.wait().await.unwrap();
 
+                    umount_nfs(nfs_mount_dir).await?;
+
                     Ok(())
                 }
             }
@@ -176,53 +178,6 @@ impl ExternalFs {
 
     fn is_initialized(&self) -> bool {
         std::fs::metadata(format!("{}/{}", self.nfs_mount_dir, CONF_FILENAME)).is_ok()
-    }
-
-    async fn mount_nfs(&self) -> Result<()> {
-        let cmd = Command::new("mount")
-            .arg("-t")
-            .arg("nfs")
-            .arg("-o")
-            .arg("noatime,nfsvers=4.2,sync,nconnect=16,rsize=1048576,wsize=1048576")
-            .arg(self.nfs_mount_point.as_str())
-            .arg(self.nfs_mount_dir.as_str())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .output()
-            .await;
-
-        info!("{:?}", cmd);
-        info!(
-            "mounted nfs: {} -> {}",
-            self.nfs_mount_point, self.nfs_mount_dir
-        );
-
-        match cmd {
-            Ok(output) if output.status.success() => Ok(()),
-            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-            Err(e) => Err(Error::Spawn(e)),
-        }
-    }
-
-    async fn umount_nfs(&self) -> Result<()> {
-        let cmd = Command::new("umount")
-            .arg(self.nfs_mount_dir.as_str())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .output()
-            .await;
-
-        info!("{:?}", cmd);
-        info!(
-            "unmounted nfs: {} -> {}",
-            self.nfs_mount_point, self.nfs_mount_dir
-        );
-
-        match cmd {
-            Ok(output) if output.status.success() => Ok(()),
-            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-            Err(e) => Err(Error::Spawn(e)),
-        }
     }
 
     async fn init_gocryptfs(&self) -> Result<()> {
@@ -264,4 +219,45 @@ impl ExternalFs {
     //         Err(e) => Err(Error::Spawn(e)),
     //     }
     // }
+}
+
+async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()> {
+    let cmd = Command::new("mount")
+        .arg("-t")
+        .arg("nfs")
+        .arg("-o")
+        .arg("noatime,nfsvers=4.2,sync,nconnect=16,rsize=1048576,wsize=1048576")
+        .arg(nfs_mount_point.as_str())
+        .arg(nfs_mount_dir.as_str())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .output()
+        .await;
+
+    info!("{:?}", cmd);
+    info!("mounted nfs: {} -> {}", nfs_mount_point, nfs_mount_dir);
+
+    match cmd {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+        Err(e) => Err(Error::Spawn(e)),
+    }
+}
+
+async fn umount_nfs(nfs_mount_dir: String) -> Result<()> {
+    let cmd = Command::new("umount")
+        .arg(nfs_mount_dir.as_str())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .output()
+        .await;
+
+    info!("{:?}", cmd);
+    info!("unmounted nfs: {}", nfs_mount_dir);
+
+    match cmd {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+        Err(e) => Err(Error::Spawn(e)),
+    }
 }
