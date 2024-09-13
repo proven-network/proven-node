@@ -205,6 +205,9 @@ impl BabylonNode {
     }
 
     async fn update_node_config(&self) -> Result<()> {
+        // Ensure store dir created
+        std::fs::create_dir_all(&self.store_dir).unwrap();
+
         let seed_nodes = match self.network_definition.id {
             1 => MAINNET_SEED_NODES,
             2 => STOKENET_SEED_NODES,
