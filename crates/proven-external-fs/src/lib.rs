@@ -245,26 +245,55 @@ impl ExternalFs {
 
         info!("running speed test on {}", target);
 
-        let cmd = Command::new("dd")
+        info!("write test");
+        let write_cmd = Command::new("dd")
             .arg("if=/dev/zero")
             .arg(format!("of={}", target))
             .arg("bs=1M")
             .arg("count=1024")
-            .arg("oflag=dsync")
+            .arg("oflag=direct")
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
             .await;
 
-        info!("{:?}", cmd);
+        info!("{:?}", write_cmd);
+
+        if let Err(e) = write_cmd {
+            return Err(Error::Spawn(e));
+        }
+
+        let write_output = write_cmd.unwrap();
+        if !write_output.status.success() {
+            return Err(Error::NonZeroExitCode(write_output.status));
+        }
+
+        info!("read test");
+        let read_cmd = Command::new("dd")
+            .arg(format!("if={}", target))
+            .arg("of=/dev/null")
+            .arg("bs=1M")
+            .arg("count=1024")
+            .arg("iflag=direct")
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .await;
+
+        info!("{:?}", read_cmd);
+
+        if let Err(e) = read_cmd {
+            return Err(Error::Spawn(e));
+        }
+
+        let read_output = read_cmd.unwrap();
+        if !read_output.status.success() {
+            return Err(Error::NonZeroExitCode(read_output.status));
+        }
 
         // clean up target file
         let _ = tokio::fs::remove_file(target).await;
 
-        match cmd {
-            Ok(output) if output.status.success() => Ok(()),
-            Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-            Err(e) => Err(Error::Spawn(e)),
-        }
+        Ok(())
     }
 }
