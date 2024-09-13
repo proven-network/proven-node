@@ -128,30 +128,35 @@ impl EnclaveManager {
         let dnscrypt_proxy_handle = dnscrypt_proxy.start().await?;
         write_dns_resolv("nameserver 127.0.0.1".to_string())?; // Switch to dnscrypt-proxy's DNS resolver
 
-        // Boot external fs
-        let external_fs = ExternalFs::new(
+        // Boot babylon node
+        let babylon_store_dir = "/var/lib/babylon".to_string();
+        let babylon_external_fs = ExternalFs::new(
             "your-password".to_string(),
-            "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/".to_string(),
+            "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/babylon/".to_string(),
+            babylon_store_dir.clone(),
         );
-        let external_fs_handle = external_fs.start().await?;
-        let external_fs_path = external_fs.root_path();
+        let babylon_external_fs_handle = babylon_external_fs.start().await?;
 
         let network_definition = match args.stokenet {
             true => NetworkDefinition::stokenet(),
             false => NetworkDefinition::mainnet(),
         };
 
-        let babylon_node = BabylonNode::new(
-            network_definition.clone(),
-            format!("{}/babylon", external_fs_path),
-        );
+        let babylon_node = BabylonNode::new(network_definition.clone(), babylon_store_dir);
         let babylon_node_handle = babylon_node.start().await?;
 
         // Boot NATS server
+        let nats_store_dir = "/var/lib/nats".to_string();
+        let nats_external_fs = ExternalFs::new(
+            "your-password".to_string(),
+            "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/nats/".to_string(),
+            nats_store_dir.clone(),
+        );
+        let nats_external_fs_handle = nats_external_fs.start().await?;
         let nats_server = NatsServer::new(
             server_name.clone(),
             SocketAddrV4::new(Ipv4Addr::LOCALHOST, args.nats_port),
-            format!("{}/nats", external_fs_path),
+            format!("{}/nats", nats_store_dir),
         );
         let nats_server_handle = nats_server.start().await?;
         let nats_client = nats_server.build_client().await?;
@@ -208,14 +213,17 @@ impl EnclaveManager {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
+                    Ok(Err(e)) = babylon_external_fs_handle => {
+                        error!("babylon_external_fs exited: {:?}", e);
+                    }
                     Ok(Err(e)) = babylon_node_handle => {
                         error!("babylon_node exited: {:?}", e);
                     }
                     Ok(Err(e)) = dnscrypt_proxy_handle => {
                         error!("dnscrypt_proxy exited: {:?}", e);
                     }
-                    Ok(Err(e)) = external_fs_handle => {
-                        error!("external_fs exited: {:?}", e);
+                    Ok(Err(e)) = nats_external_fs_handle => {
+                        error!("nats_external_fs exited: {:?}", e);
                     }
                     Ok(Err(e)) = nats_server_handle => {
                         error!("nats_server exited: {:?}", e);
@@ -233,9 +241,10 @@ impl EnclaveManager {
                 _ = shutdown_token.cancelled() => {
                     info!("shutdown command received. shutting down...");
                     enclave_clone.lock().await.shutdown().await;
+                    nats_external_fs.shutdown().await;
                     proxy_ct.cancel();
                     babylon_node.shutdown().await;
-                    external_fs.shutdown().await;
+                    babylon_external_fs.shutdown().await;
                     dnscrypt_proxy.shutdown().await;
                 }
                 _ = critical_tasks => {

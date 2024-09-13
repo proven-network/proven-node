@@ -4,6 +4,8 @@ pub use error::{Error, Result};
 
 use std::process::Stdio;
 
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
@@ -11,31 +13,48 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{info, warn};
 
-static CONF_PATH: &str = "/var/lib/proven-node/nfs/encrypted/gocryptfs.conf";
-static DECRYPTED_PATH: &str = "/var/lib/proven-node/external-fs";
-static ENCRYPTED_PATH: &str = "/var/lib/proven-node/nfs/encrypted";
-static PASSFILE_PATH: &str = "/var/lib/proven-node/gocryptfs.passfile";
-static NFS_DIR: &str = "/var/lib/proven-node/nfs";
+static CONF_FILENAME: &str = "gocryptfs.conf";
+static MNT_DIR: &str = "/mnt";
+static PASSFILE_DIR: &str = "/var/lib/proven/gocryptfs";
 
 pub struct ExternalFs {
-    encryption_key: String,
-    nfs_server: String,
+    nfs_mount_point: String,
+    mount_dir: String,
+    nfs_mount_dir: String,
+    passfile_path: String,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
 impl ExternalFs {
-    pub fn new(encryption_key: String, nfs_server: String) -> Self {
+    pub fn new(encryption_key: String, nfs_mount_point: String, mount_dir: String) -> Self {
+        // random name for nfs_dir
+        let sub_dir: String = thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(10)
+            .map(char::from)
+            .collect();
+
+        // Paths specific to this instance
+        let nfs_mount_dir = format!("{}/{}", MNT_DIR, sub_dir);
+        let passfile_path = format!("{}/{}.passfile", PASSFILE_DIR, sub_dir);
+
+        // create directories
+        std::fs::create_dir_all(&mount_dir).unwrap();
+        std::fs::create_dir_all(&nfs_mount_dir).unwrap();
+        std::fs::create_dir_all(PASSFILE_DIR).unwrap();
+
+        // create passfile with encryption key (needed for gocryptfs)
+        std::fs::write(&passfile_path, encryption_key).unwrap();
+
         Self {
-            encryption_key,
-            nfs_server,
+            nfs_mount_point,
+            mount_dir,
+            nfs_mount_dir,
+            passfile_path,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
-    }
-
-    pub fn root_path(&self) -> &str {
-        DECRYPTED_PATH
     }
 
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
@@ -43,35 +62,33 @@ impl ExternalFs {
             return Err(Error::AlreadyStarted);
         }
 
-        tokio::fs::create_dir_all(NFS_DIR).await.unwrap();
-
         info!("created NFS directory");
 
         self.mount_nfs().await?;
-        self.write_passfile()?;
 
-        if tokio::fs::metadata(CONF_PATH).await.is_err() {
+        if self.is_initialized() {
+            info!("gocryptfs already initialized");
+        } else {
             info!("gocryptfs not initialized, initializing...");
             self.init_gocryptfs().await?;
             info!("gocryptfs initialized");
-        } else {
-            info!("gocryptfs already initialized");
         }
-
-        tokio::fs::create_dir_all(DECRYPTED_PATH).await.unwrap();
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
+        let passfile_path = self.passfile_path.clone();
+        let nfs_mount_dir = self.nfs_mount_dir.clone();
+        let mount_dir = self.mount_dir.clone();
 
         let gocryptfs_task = self.task_tracker.spawn(async move {
             // Start the gocryptfs process
             let mut cmd = Command::new("gocryptfs")
                 .arg("-passfile")
-                .arg(PASSFILE_PATH)
+                .arg(passfile_path)
                 .arg("-fg")
                 .arg("-noprealloc")
-                .arg(ENCRYPTED_PATH)
-                .arg(DECRYPTED_PATH)
+                .arg(nfs_mount_dir.as_str())
+                .arg(mount_dir.as_str())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -79,6 +96,11 @@ impl ExternalFs {
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+
+            info!(
+                "mounted gocrypt: {} -> {}",
+                nfs_mount_dir, mount_dir
+            );
 
             // Spawn a task to read and process the stdout output of the gocryptfs process
             task_tracker.spawn(async move {
@@ -114,7 +136,7 @@ impl ExternalFs {
                 _ = shutdown_token.cancelled() => {
                     // Run umount command
                     let output = Command::new("umount")
-                        .arg(DECRYPTED_PATH)
+                        .arg(mount_dir.as_str())
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
                         .output()
@@ -152,20 +174,28 @@ impl ExternalFs {
         info!("external fs shut down");
     }
 
+    fn is_initialized(&self) -> bool {
+        std::fs::metadata(format!("{}/{}", self.nfs_mount_dir, CONF_FILENAME)).is_ok()
+    }
+
     async fn mount_nfs(&self) -> Result<()> {
         let cmd = Command::new("mount")
             .arg("-t")
             .arg("nfs")
             .arg("-o")
             .arg("noatime,nfsvers=4.2,sync,nconnect=16,rsize=1048576,wsize=1048576")
-            .arg(self.nfs_server.as_str())
-            .arg(NFS_DIR)
+            .arg(self.nfs_mount_point.as_str())
+            .arg(self.nfs_mount_dir.as_str())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
             .await;
 
         info!("{:?}", cmd);
+        info!(
+            "mounted nfs: {} -> {}",
+            self.nfs_mount_point, self.nfs_mount_dir
+        );
 
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
@@ -175,13 +205,11 @@ impl ExternalFs {
     }
 
     async fn init_gocryptfs(&self) -> Result<()> {
-        tokio::fs::create_dir_all(ENCRYPTED_PATH).await.unwrap();
-
         let cmd = Command::new("gocryptfs")
             .arg("-init")
             .arg("-passfile")
-            .arg(PASSFILE_PATH)
-            .arg(ENCRYPTED_PATH)
+            .arg(self.passfile_path.as_str())
+            .arg(self.nfs_mount_dir.as_str())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
@@ -215,19 +243,4 @@ impl ExternalFs {
     //         Err(e) => Err(Error::Spawn(e)),
     //     }
     // }
-
-    fn write_passfile(&self) -> Result<()> {
-        info!("writing passfile");
-
-        let mut passfile = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(PASSFILE_PATH)?;
-
-        Ok(std::io::Write::write_all(
-            &mut passfile,
-            self.encryption_key.as_bytes(),
-        )?)
-    }
 }
