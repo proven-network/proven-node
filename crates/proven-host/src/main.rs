@@ -230,6 +230,14 @@ async fn start_enclave() -> Result<Child> {
 }
 
 async fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Result<()> {
+    // check if values are already correct
+    let existing_allocator_config = std::fs::read_to_string("/etc/nitro_enclaves/allocator.yaml")?;
+    if existing_allocator_config.contains(&format!("cpu_count: {}", enclave_cpus))
+        && existing_allocator_config.contains(&format!("memory_mib: {}", enclave_memory))
+    {
+        return Ok(());
+    }
+
     let allocator_config = format!(
         r#"---
 # Enclave configuration file.
@@ -255,9 +263,6 @@ cpu_count: {}
         .arg("nitro-enclaves-allocator.service")
         .output()
         .await?;
-
-    // wait for the allocator to finish
-    tokio::time::sleep(std::time::Duration::from_secs(8)).await;
 
     Ok(())
 }
