@@ -69,9 +69,6 @@ impl ExternalFs {
         } else {
             info!("gocryptfs not initialized, initializing...");
             self.init_gocryptfs().await?;
-            info!("gocryptfs initialized. remounting...");
-            umount_nfs(self.nfs_mount_dir.clone()).await?;
-            mount_nfs(self.nfs_mount_point.clone(), self.nfs_mount_dir.clone()).await?;
         }
 
         let shutdown_token = self.shutdown_token.clone();
