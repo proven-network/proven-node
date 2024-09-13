@@ -88,7 +88,6 @@ impl ExternalFs {
                 .arg("-fg")
                 .arg("-noprealloc")
                 .arg("-nosyslog")
-                .arg("-fusedebug")
                 .arg(nfs_mount_dir.as_str())
                 .arg(mount_dir.as_str())
                 .stdout(Stdio::piped())
