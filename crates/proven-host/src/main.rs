@@ -233,7 +233,7 @@ async fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Re
     // check if values are already correct
     let existing_allocator_config = std::fs::read_to_string("/etc/nitro_enclaves/allocator.yaml")?;
     if existing_allocator_config.contains(&format!("cpu_count: {}", enclave_cpus))
-        && existing_allocator_config.contains(&format!("memory_mib: {}", enclave_memory))
+        && existing_allocator_config.contains(&format!("memory_mib: {}", enclave_memory + 1000))
     {
         return Ok(());
     }
