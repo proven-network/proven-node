@@ -163,7 +163,7 @@ impl ExternalFs {
             .arg("-t")
             .arg("nfs")
             .arg("-o")
-            .arg("noatime,nocto,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576")
+            .arg("noatime,nolock,nocto,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576")
             .arg(self.nfs_server.as_str())
             .arg(NFS_DIR)
             .stdout(Stdio::inherit())
