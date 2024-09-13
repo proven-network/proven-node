@@ -50,7 +50,6 @@ impl ExternalFs {
         info!("created NFS directory");
 
         self.mount_nfs().await?;
-        // self.run_speed_test(NFS_DIR).await?;
         self.write_passfile()?;
 
         if tokio::fs::metadata(CONF_PATH).await.is_err() {
@@ -146,8 +145,6 @@ impl ExternalFs {
         // Sleep for a bit to allow mount to complete
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-        // self.run_speed_test(DECRYPTED_PATH).await?;
-
         Ok(gocryptfs_task)
     }
 
@@ -239,61 +236,4 @@ impl ExternalFs {
             self.encryption_key.as_bytes(),
         )?)
     }
-
-    //     async fn run_speed_test(&self, dir_to_test: &str) -> Result<()> {
-    //         let target = format!("{}/speed_test", dir_to_test);
-
-    //         info!("running speed test on {}", target);
-
-    //         info!("write test");
-    //         let write_cmd = Command::new("dd")
-    //             .arg("if=/dev/random")
-    //             .arg(format!("of={}", target))
-    //             .arg("bs=1M")
-    //             .arg("count=1024")
-    //             .arg("oflag=dsync")
-    //             .stdout(Stdio::inherit())
-    //             .stderr(Stdio::inherit())
-    //             .output()
-    //             .await;
-
-    //         info!("{:?}", write_cmd);
-
-    //         if let Err(e) = write_cmd {
-    //             return Err(Error::Spawn(e));
-    //         }
-
-    //         let write_output = write_cmd.unwrap();
-    //         if !write_output.status.success() {
-    //             return Err(Error::NonZeroExitCode(write_output.status));
-    //         }
-
-    //         info!("read test");
-    //         let read_cmd = Command::new("dd")
-    //             .arg(format!("if={}", target))
-    //             .arg("of=/dev/null")
-    //             .arg("bs=1M")
-    //             .arg("count=1024")
-    //             .arg("iflag=dsync")
-    //             .stdout(Stdio::inherit())
-    //             .stderr(Stdio::inherit())
-    //             .output()
-    //             .await;
-
-    //         info!("{:?}", read_cmd);
-
-    //         if let Err(e) = read_cmd {
-    //             return Err(Error::Spawn(e));
-    //         }
-
-    //         let read_output = read_cmd.unwrap();
-    //         if !read_output.status.success() {
-    //             return Err(Error::NonZeroExitCode(read_output.status));
-    //         }
-
-    //         // clean up target file
-    //         let _ = tokio::fs::remove_file(target).await;
-
-    //         Ok(())
-    //     }
 }
