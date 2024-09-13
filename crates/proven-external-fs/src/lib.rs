@@ -163,13 +163,15 @@ impl ExternalFs {
             .arg("-t")
             .arg("nfs")
             .arg("-o")
-            .arg("noatime,noacl,nocto,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576")
+            .arg("noatime,nocto,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576")
             .arg(self.nfs_server.as_str())
             .arg(NFS_DIR)
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
             .await;
+
+        info!("{:?}", cmd);
 
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
