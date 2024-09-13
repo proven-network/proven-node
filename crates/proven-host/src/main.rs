@@ -265,6 +265,9 @@ cpu_count: {}
         .output()
         .await?;
 
+    // wait for the allocator to restart
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
     Ok(())
 }
 
