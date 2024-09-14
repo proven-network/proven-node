@@ -256,6 +256,7 @@ async fn log_ls(mount_dir: String) -> Result<()> {
 
 async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()> {
     let cmd = Command::new("mount")
+        .arg("-v")
         .arg("-t")
         .arg("nfs")
         .arg("-o")
