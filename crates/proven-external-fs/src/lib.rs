@@ -86,8 +86,6 @@ impl ExternalFs {
             self.init_gocryptfs().await?;
         }
 
-        log_ls(self.mount_dir.clone()).await?;
-
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
         let passfile_path = self.passfile_path.clone();
@@ -177,6 +175,8 @@ impl ExternalFs {
 
         // Sleep for a bit to allow mount to complete
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+        log_ls(self.mount_dir.clone()).await?;
 
         Ok(gocryptfs_task)
     }
