@@ -100,8 +100,6 @@ impl EnclaveManager {
 
         info!("network configured");
 
-        run_speedtest().await?;
-
         // Seed entropy
         let nsm = NsmAttestor::new();
         let secured_random_bytes = nsm.secure_random().await?;
@@ -120,6 +118,9 @@ impl EnclaveManager {
             fetch_instance_details(identity.region.clone(), identity.instance_id.clone()).await?;
         info!("instance: {:?}", instance);
         let server_name = instance.instance_id.clone();
+
+        info!("initial speedtest...");
+        run_speedtest().await?;
 
         // Boot dnscrypt-proxy
         let dnscrypt_proxy = DnscryptProxy::new(
