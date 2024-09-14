@@ -3,7 +3,7 @@ mod net;
 mod vsock_tracing;
 
 use error::{Error, Result};
-use net::{configure_nat, configure_route, configure_tcp_forwarding};
+use net::{configure_nat, configure_port_forwarding, configure_route};
 use vsock_tracing::TracingService;
 
 use std::net::{Ipv4Addr, SocketAddr};
@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
         .start(async {
             configure_nat(&args.outbound_device, args.cidr).await?;
             configure_route(&args.tun_device, args.cidr, args.enclave_ip).await?;
-            configure_tcp_forwarding(args.host_ip, args.enclave_ip, &args.outbound_device).await?;
+            configure_port_forwarding(args.host_ip, args.enclave_ip, &args.outbound_device).await?;
 
             Ok(())
         })

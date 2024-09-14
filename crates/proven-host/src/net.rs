@@ -61,13 +61,21 @@ pub async fn configure_route(tun_device: &str, cidr: Ipv4Cidr, enclave_ip: Ipv4A
     Ok(())
 }
 
-pub async fn configure_tcp_forwarding(
+pub async fn configure_port_forwarding(
     ip: Ipv4Addr,
     enclave_ip: Ipv4Addr,
     outbound_device: &str,
 ) -> Result<()> {
-    // HTTPS, NFS, Babylon gossip, respectively
-    for port in [443, 2049, 30000] {
+    // TCP ports
+    for port in [
+        111,   // RPC (NFS)
+        443,   // HTTPS
+        2049,  // NFS
+        20001, // NFS
+        20002, // NFS
+        20003, // NFS
+        30000, // Babylon (gossip)
+    ] {
         Command::new("iptables")
             .arg("-t")
             .arg("nat")
@@ -105,7 +113,52 @@ pub async fn configure_tcp_forwarding(
             .await?;
     }
 
-    info!("tcp forwarding to enclave created");
+    // UDP ports
+    for port in [
+        111,   // RPC (NFS)
+        2049,  // NFS
+        20001, // NFS
+        20002, // NFS
+        20003, // NFS
+    ] {
+        Command::new("iptables")
+            .arg("-t")
+            .arg("nat")
+            .arg("-A")
+            .arg("PREROUTING")
+            .arg("-i")
+            .arg(outbound_device)
+            .arg("-p")
+            .arg("udp")
+            .arg("--dport")
+            .arg(port.to_string())
+            .arg("-j")
+            .arg("DNAT")
+            .arg("--to-destination")
+            .arg(format!("{}:{}", enclave_ip, port).as_str())
+            .output()
+            .await?;
+
+        Command::new("iptables")
+            .arg("-t")
+            .arg("nat")
+            .arg("-A")
+            .arg("POSTROUTING")
+            .arg("-p")
+            .arg("udp")
+            .arg("-d")
+            .arg(enclave_ip.to_string())
+            .arg("--dport")
+            .arg(port.to_string())
+            .arg("-j")
+            .arg("SNAT")
+            .arg("--to-source")
+            .arg(ip.to_string())
+            .output()
+            .await?;
+    }
+
+    info!("port forwarding to enclave created");
 
     Ok(())
 }
