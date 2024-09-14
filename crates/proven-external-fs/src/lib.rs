@@ -80,6 +80,9 @@ impl ExternalFs {
                 info!("running integrity check...");
                 self.fsck_gocryptfs().await?;
                 info!("integrity check successful");
+                // remount
+                umount_nfs(self.nfs_mount_dir.clone()).await?;
+                mount_nfs(self.nfs_mount_point.clone(), self.nfs_mount_dir.clone()).await?;
             }
         } else {
             info!("gocryptfs not initialized, initializing...");
