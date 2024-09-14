@@ -100,6 +100,7 @@ impl ExternalFs {
                 .arg("-fg")
                 .arg("-noprealloc")
                 .arg("-nosyslog")
+                .arg("-kernel_cache")
                 .arg(nfs_mount_dir.as_str())
                 .arg(mount_dir.as_str())
                 .stdout(Stdio::piped())
@@ -240,9 +241,7 @@ async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()>
         .arg("-t")
         .arg("nfs")
         .arg("-o")
-        .arg(
-            "noatime,nolock,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576,lookupcache=none",
-        )
+        .arg("noatime,nolock,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576")
         .arg(nfs_mount_point.as_str())
         .arg(nfs_mount_dir.as_str())
         .stdout(Stdio::inherit())
