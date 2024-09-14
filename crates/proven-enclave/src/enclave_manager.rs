@@ -65,6 +65,10 @@ impl EnclaveManager {
 
         info!("tmp remounted with exec (babylon snappy java fix)");
 
+        // Log /etc/netconfig
+        let netconfig = std::fs::read_to_string("/etc/netconfig")?;
+        info!("netconfig: {}", netconfig);
+
         // Configure network
         write_dns_resolv(args.host_dns_resolv)?; // Use host's DNS resolver until dnscrypt-proxy is up
         bring_up_loopback().await?;
