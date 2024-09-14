@@ -176,8 +176,6 @@ impl ExternalFs {
         // Sleep for a bit to allow mount to complete
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-        log_ls(self.mount_dir.clone()).await?;
-
         Ok(gocryptfs_task)
     }
 
@@ -233,24 +231,6 @@ impl ExternalFs {
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
             Err(e) => Err(Error::Spawn(e)),
         }
-    }
-}
-
-async fn log_ls(mount_dir: String) -> Result<()> {
-    let cmd = Command::new("ls")
-        .arg("-lah")
-        .arg(mount_dir.as_str())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .output()
-        .await;
-
-    info!("{:?}", cmd);
-
-    match cmd {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-        Err(e) => Err(Error::Spawn(e)),
     }
 }
 
