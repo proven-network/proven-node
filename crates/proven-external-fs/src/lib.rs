@@ -273,6 +273,7 @@ async fn umount_nfs(nfs_mount_dir: String) -> Result<()> {
         .output()
         .await;
 
+    info!("{:?}", cmd);
     info!("unmounted nfs: {}", nfs_mount_dir);
 
     match cmd {
