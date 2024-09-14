@@ -43,7 +43,7 @@ struct Args {
     #[arg(long, default_value_t = 4)]
     enclave_cid: u32,
 
-    #[arg(long, default_value_t = 12)]
+    #[arg(long, default_value_t = 10)]
     enclave_cpus: u8,
 
     #[arg(long, default_value_t = Ipv4Addr::new(10, 0, 0, 2))]
@@ -83,7 +83,7 @@ struct Args {
     tun_device: String,
 }
 
-#[tokio::main(worker_threads = 8)]
+#[tokio::main(worker_threads = 10)]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
