@@ -86,12 +86,14 @@ RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babyl
 RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-v1.2.3.zip
 RUN wget https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
 RUN wget https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.5/dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
+RUN wget https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-aarch64.tgz
 
 # Unzip
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
 RUN unzip babylon-node-v1.2.3.zip
 RUN unzip nats-server-v2.10.20-linux-arm64.zip
 RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
+RUN tar -xvzf ookla-speedtest-1.2.0-linux-aarch64.tgz
 
 # Move to /bin
 RUN mkdir -p /bin/babylon-node
@@ -102,6 +104,8 @@ RUN mv nats-server-v2.10.20-linux-arm64/nats-server /bin/
 RUN chown root:root /bin/nats-server
 RUN mv linux-arm64/dnscrypt-proxy /bin/
 RUN chown root:root /bin/dnscrypt-proxy
+RUN mv speedtest /bin/
+RUN chown root:root /bin/speedtest
 
 # -----------
 # FINAL IMAGE
@@ -123,5 +127,6 @@ COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
+COPY --from=extra-binaries /bin/speedtest /bin/
 
 CMD proven-enclave

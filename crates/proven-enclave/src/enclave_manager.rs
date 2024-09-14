@@ -99,6 +99,8 @@ impl EnclaveManager {
 
         info!("network configured");
 
+        run_speedtest().await?;
+
         // Seed entropy
         let nsm = NsmAttestor::new();
         let secured_random_bytes = nsm.secure_random().await?;
@@ -323,6 +325,19 @@ async fn remount_tmp_with_exec() -> Result<()> {
         .arg("/tmp")
         .output()
         .await?;
+
+    Ok(())
+}
+
+// Run speedtest and log the results
+async fn run_speedtest() -> Result<()> {
+    let cmd = tokio::process::Command::new("speedtest")
+        .arg("--accept-license")
+        .arg("-f json")
+        .output()
+        .await?;
+
+    info!("speedtest results: {:?}", cmd);
 
     Ok(())
 }
