@@ -13,7 +13,7 @@ use proven_vsock_rpc::{handle_commands, listen_for_command, Command, InitializeA
 use tokio_vsock::{VsockAddr, VMADDR_CID_ANY};
 use tracing::error;
 
-#[tokio::main(worker_threads = 10)]
+#[tokio::main(worker_threads = 12)]
 async fn main() -> Result<()> {
     let initial_command = listen_for_command(VsockAddr::new(VMADDR_CID_ANY, 1024)).await?;
 
