@@ -240,7 +240,9 @@ async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()>
         .arg("-t")
         .arg("nfs")
         .arg("-o")
-        .arg("noac,noatime,nolock,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576")
+        .arg(
+            "noatime,nolock,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576,lookupcache=pos",
+        )
         .arg(nfs_mount_point.as_str())
         .arg(nfs_mount_dir.as_str())
         .stdout(Stdio::inherit())
