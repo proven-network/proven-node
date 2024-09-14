@@ -83,7 +83,7 @@ struct Args {
     tun_device: String,
 }
 
-#[tokio::main(worker_threads = 10)]
+#[tokio::main(worker_threads = 12)]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
