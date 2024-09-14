@@ -86,6 +86,8 @@ impl ExternalFs {
             self.init_gocryptfs().await?;
         }
 
+        log_lsof().await?;
+
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
         let passfile_path = self.passfile_path.clone();
@@ -226,15 +228,27 @@ impl ExternalFs {
 
         info!("{:?}", cmd);
 
-        // Check for file locks using lsof
-        let lsof_output = Command::new("lsof").arg(&self.nfs_mount_dir).output().await;
-        info!("{:?}", lsof_output);
-
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
             Err(e) => Err(Error::Spawn(e)),
         }
+    }
+}
+
+async fn log_lsof() -> Result<()> {
+    let cmd = Command::new("lsof")
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .output()
+        .await;
+
+    info!("{:?}", cmd);
+
+    match cmd {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+        Err(e) => Err(Error::Spawn(e)),
     }
 }
 
