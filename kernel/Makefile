@@ -50,6 +50,7 @@ config: extract
 	scripts/config --enable VIRTIO_VSOCKETS && \
 	scripts/config --enable CONFIG_IO_URING && \
 	scripts/config --enable CONFIG_FUSE_FS && \
+	scripts/config --enable CONFIG_NFS_V3 && \
 	echo "CONFIG_NSM=m" >> .config && \
 	make olddefconfig
 
