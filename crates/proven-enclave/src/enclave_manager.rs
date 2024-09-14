@@ -4,6 +4,7 @@ use crate::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 
 use std::convert::TryInto;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -333,7 +334,10 @@ async fn remount_tmp_with_exec() -> Result<()> {
 async fn run_speedtest() -> Result<()> {
     let cmd = tokio::process::Command::new("speedtest")
         .arg("--accept-license")
-        .arg("-f json")
+        .arg("-f csv")
+        .arg("--output-header")
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .output()
         .await?;
 
