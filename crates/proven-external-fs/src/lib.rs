@@ -226,6 +226,10 @@ impl ExternalFs {
 
         info!("{:?}", cmd);
 
+        // Check for file locks using lsof
+        let lsof_output = Command::new("lsof").arg(&self.nfs_mount_dir).output().await;
+        info!("{:?}", lsof_output);
+
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
