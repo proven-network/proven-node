@@ -14,7 +14,6 @@ use tokio_util::task::TaskTracker;
 use tracing::{info, warn};
 
 static CONF_FILENAME: &str = "gocryptfs.conf";
-static FSCK_DIR: &str = "/mnt/fsck";
 static MNT_DIR: &str = "/mnt";
 static PASSFILE_DIR: &str = "/var/lib/proven/gocryptfs";
 
@@ -22,7 +21,6 @@ pub struct ExternalFs {
     nfs_mount_point: String,
     mount_dir: String,
     nfs_mount_dir: String,
-    fsck_mount_dir: String,
     passfile_path: String,
     skip_fsck: bool,
     shutdown_token: CancellationToken,
@@ -45,13 +43,11 @@ impl ExternalFs {
 
         // Paths specific to this instance
         let nfs_mount_dir = format!("{}/{}", MNT_DIR, sub_dir);
-        let fsck_mount_dir = format!("{}/{}", FSCK_DIR, sub_dir);
         let passfile_path = format!("{}/{}.passfile", PASSFILE_DIR, sub_dir);
 
         // create directories
         std::fs::create_dir_all(&mount_dir).unwrap();
         std::fs::create_dir_all(&nfs_mount_dir).unwrap();
-        std::fs::create_dir_all(&fsck_mount_dir).unwrap();
         std::fs::create_dir_all(PASSFILE_DIR).unwrap();
 
         // create passfile with encryption key (needed for gocryptfs)
@@ -61,7 +57,6 @@ impl ExternalFs {
             nfs_mount_point,
             mount_dir,
             nfs_mount_dir,
-            fsck_mount_dir,
             passfile_path,
             skip_fsck,
             shutdown_token: CancellationToken::new(),
@@ -219,20 +214,17 @@ impl ExternalFs {
     }
 
     async fn fsck_gocryptfs(&self) -> Result<()> {
-        // Mounting to seperate directory for fsck to avoid babylon issue
-        mount_nfs(self.nfs_mount_point.clone(), self.fsck_mount_dir.clone()).await?;
-
         let cmd = Command::new("gocryptfs")
             .arg("-fsck")
             .arg("-passfile")
             .arg(self.passfile_path.as_str())
-            .arg(self.fsck_mount_dir.as_str())
+            .arg(self.nfs_mount_dir.as_str())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
             .await;
 
-        umount_nfs(self.fsck_mount_dir.clone()).await?;
+        info!("{:?}", cmd);
 
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
