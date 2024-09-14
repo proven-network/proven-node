@@ -86,7 +86,7 @@ impl ExternalFs {
             self.init_gocryptfs().await?;
         }
 
-        log_lsof().await?;
+        log_ls(self.mount_dir.clone()).await?;
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
@@ -236,8 +236,10 @@ impl ExternalFs {
     }
 }
 
-async fn log_lsof() -> Result<()> {
-    let cmd = Command::new("lsof")
+async fn log_ls(mount_dir: String) -> Result<()> {
+    let cmd = Command::new("ls")
+        .arg("-lah")
+        .arg(mount_dir.as_str())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()

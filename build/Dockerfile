@@ -115,7 +115,6 @@ RUN apt-get update && apt-get install -y \
     openjdk-17-jre-headless=17.0.12+7-2~deb12u1 \
     net-tools=2.10-0.1 \
     nfs-common=1:2.6.2-4 \
-    lsof \
     && rm -rf /var/lib/apt/lists/*
 
 # COPY --from=postgres-builder /usr/local/pgsql /bin/pgsql
