@@ -79,7 +79,9 @@ impl ExternalFs {
             } else {
                 info!("running integrity check...");
                 self.fsck_gocryptfs().await?;
-                info!("integrity check successful");
+                // remount because fsck will unmount nfs
+                info!("integrity check successful. remounting...");
+                mount_nfs(self.nfs_mount_point.clone(), self.nfs_mount_dir.clone()).await?;
             }
         } else {
             info!("gocryptfs not initialized, initializing...");
@@ -225,10 +227,6 @@ impl ExternalFs {
             .await;
 
         info!("{:?}", cmd);
-
-        // Check for file locks using lsof
-        let lsof_output = Command::new("lsof").arg(&self.nfs_mount_dir).output().await;
-        info!("{:?}", lsof_output);
 
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
