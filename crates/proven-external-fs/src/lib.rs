@@ -256,7 +256,6 @@ async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()>
         .output()
         .await;
 
-    info!("{:?}", cmd);
     info!("mounted nfs: {} -> {}", nfs_mount_point, nfs_mount_dir);
 
     match cmd {
