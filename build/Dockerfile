@@ -127,9 +127,8 @@ RUN mv librespeed-cli /bin/
 RUN chown root:root /bin/librespeed-cli
 RUN mv dotnet /bin/
 RUN chown root:root /bin/dotnet
-RUN mkdir -p /usr/share/dotnet
-RUN mv host /usr/share/dotnet
-RUN mv shared /usr/share/dotnet
+RUN mv host /bin/
+RUN mv shared /bin/
 RUN chown -R root:root /usr/share/dotnet
 
 # -----------
@@ -157,7 +156,8 @@ COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
 COPY --from=extra-binaries /bin/dotnet /bin/
-COPY --from=extra-binaries /usr/share/dotnet /usr/share/dotnet
+COPY --from=extra-binaries /bin/host /bin/
+COPY --from=extra-binaries /bin/shared /bin/
 
 # Test dotnet
 RUN dotnet /bin/DataAggregator/DataAggregator.dll --version
