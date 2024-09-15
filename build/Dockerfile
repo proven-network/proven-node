@@ -129,12 +129,12 @@ RUN chown root:root /bin/librespeed-cli
 # -----------
 FROM debian:bookworm-20240904-slim
 
-RUN apt-get update && apt-get install -y wget=1.21.3-1+b2
+RUN apt-get update && apt-get install -y wget
 RUN wget https://packages.microsoft.com/config/debian/11/packages-microsoft-prod.deb
+RUN apt-get purge -y wget
 RUN dpkg -i packages-microsoft-prod.deb
 RUN rm packages-microsoft-prod.deb
 
-# TODO: pin dotnet-runtime version
 RUN apt-get update && apt-get install -y \
     fuse=2.9.9-6+b1 \
     iproute2=6.1.0-3 \
