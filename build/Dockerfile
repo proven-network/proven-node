@@ -154,6 +154,6 @@ COPY --from=extra-binaries /bin/host /bin/host
 COPY --from=extra-binaries /bin/shared /bin/shared
 
 # Test dotnet
-RUN dotnet /bin/DataAggregator/DataAggregator.dll --version
+RUN DOTNET_ROOT=/bin/ dotnet /bin/DataAggregator/DataAggregator.dll --version
 
 CMD proven-enclave
