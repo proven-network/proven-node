@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
+use proven_babylon_aggregator::BabylonAggregator;
 use proven_babylon_node::BabylonNode;
 use proven_core::{Core, NewCoreArguments};
 use proven_dnscrypt_proxy::DnscryptProxy;
@@ -147,22 +148,25 @@ impl EnclaveManager {
         let postgres_handle = postgres.start().await?;
 
         // Boot babylon node
-        let babylon_store_dir = "/var/lib/babylon".to_string();
-        let babylon_external_fs = ExternalFs::new(
+        let babylon_node_store_dir = "/var/lib/babylon".to_string();
+        let babylon_node_external_fs = ExternalFs::new(
             "your-password".to_string(),
             "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/babylon/".to_string(),
-            babylon_store_dir.clone(),
+            babylon_node_store_dir.clone(),
             args.skip_fsck,
         );
-        let babylon_external_fs_handle = babylon_external_fs.start().await?;
+        let babylon_external_fs_handle = babylon_node_external_fs.start().await?;
 
         let network_definition = match args.stokenet {
             true => NetworkDefinition::stokenet(),
             false => NetworkDefinition::mainnet(),
         };
 
-        let babylon_node = BabylonNode::new(network_definition.clone(), babylon_store_dir);
+        let babylon_node = BabylonNode::new(network_definition.clone(), babylon_node_store_dir);
         let babylon_node_handle = babylon_node.start().await?;
+
+        let babylon_aggregator = BabylonAggregator::new();
+        let babylon_aggregator_handle = babylon_aggregator.start().await?;
 
         // Boot NATS server
         let nats_store_dir = "/var/lib/nats".to_string();
@@ -233,6 +237,9 @@ impl EnclaveManager {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
+                    Ok(Err(e)) = babylon_aggregator_handle => {
+                        error!("babylon_aggregator exited: {:?}", e);
+                    }
                     Ok(Err(e)) = babylon_external_fs_handle => {
                         error!("babylon_external_fs exited: {:?}", e);
                     }
@@ -268,10 +275,12 @@ impl EnclaveManager {
                     info!("shutdown command received. shutting down...");
                     enclave_clone.lock().await.shutdown().await;
                     nats_external_fs.shutdown().await;
-                    proxy_ct.cancel();
+                    babylon_aggregator.shutdown().await;
                     babylon_node.shutdown().await;
-                    babylon_external_fs.shutdown().await;
+                    babylon_node_external_fs.shutdown().await;
+                    postgres.shutdown().await;
                     dnscrypt_proxy.shutdown().await;
+                    proxy_ct.cancel();
                 }
                 _ = critical_tasks => {
                     error!("critical task failed - exiting");

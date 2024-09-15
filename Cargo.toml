@@ -5,6 +5,7 @@ members = [
     "crates/proven-attestation",
     "crates/proven-attestation-dev",
     "crates/proven-attestation-nsm",
+    "crates/proven-babylon-aggregator",
     "crates/proven-babylon-node",
     # "crates/proven-build",
     "crates/proven-core",
