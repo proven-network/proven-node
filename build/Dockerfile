@@ -159,5 +159,7 @@ COPY --from=extra-binaries /bin/librespeed-cli /bin/
 COPY --from=extra-binaries /bin/dotnet /bin/
 COPY --from=extra-binaries /usr/share/dotnet /usr/share/dotnet
 
+# Test dotnet
+RUN /bin/DataAggregator/DataAggregator --version
 
 CMD proven-enclave
