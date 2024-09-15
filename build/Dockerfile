@@ -22,6 +22,7 @@ WORKDIR /tmp/postgresql-16.4
 
 # Overwrite root check
 RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
+RUN sed -i 's/if (geteuid() == 0)/if (false)/g' src/bin/initdb/initdb.c
 
 # Build and install
 RUN ./configure
