@@ -218,6 +218,8 @@ impl ExternalFs {
     async fn fsck_gocryptfs(&self) -> Result<()> {
         let cmd = Command::new("gocryptfs")
             .arg("-fsck")
+            .arg("-kernel_cache")
+            .arg("-sharedstorage")
             .arg("-passfile")
             .arg(self.passfile_path.as_str())
             .arg(self.nfs_mount_dir.as_str())
