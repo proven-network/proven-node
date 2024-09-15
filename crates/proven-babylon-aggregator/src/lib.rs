@@ -60,7 +60,7 @@ impl BabylonAggregator {
                 .env(
                     "ConnectionStrings__NetworkGatewayReadWrite",
                     format!(
-                        "Host=postgres_db:5432;Database={};Username={};Password={}",
+                        "Host=127.0.0.1:5432;Database={};Username={};Password={}",
                         postgres_database, postgres_username, postgres_password
                     ),
                 )
@@ -185,7 +185,7 @@ impl BabylonAggregator {
             .env(
                 "ConnectionStrings__NetworkGatewayMigrations",
                 format!(
-                    "Host=postgres_db:5432;Database={};Username={};Password={}",
+                    "Host=127.0.0.1:5432;Database={};Username={};Password={}",
                     self.postgres_database, self.postgres_username, self.postgres_password
                 ),
             )

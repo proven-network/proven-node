@@ -159,6 +159,7 @@ impl Postgres {
             .unwrap();
 
         let cmd = Command::new("/usr/local/pgsql/bin/initdb")
+            .arg("--auth-local")
             .arg("-D")
             .arg(&self.store_dir)
             .arg("-U")
