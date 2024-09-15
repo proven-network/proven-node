@@ -127,8 +127,9 @@ RUN mv librespeed-cli /bin/
 RUN chown root:root /bin/librespeed-cli
 RUN mv dotnet /bin/
 RUN chown root:root /bin/dotnet
-RUN mv host /bin/
-RUN mv shared /bin/
+RUN mkdir -p /usr/share/dotnet
+RUN mv host /usr/share/dotnet
+RUN mv shared /usr/share/dotnet
 RUN chown -R root:root /usr/share/dotnet
 
 # -----------
