@@ -104,6 +104,7 @@ RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babyl
 RUN wget https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
 RUN wget https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.5/dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
 RUN wget https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
+RUN wget https://download.visualstudio.microsoft.com/download/pr/ac04b123-0542-4e80-9216-93f51a6814b3/d110733c152d34ab4eedb435ccfdab4d/dotnet-runtime-8.0.8-linux-arm64.tar.gz
 
 # Unzip
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
@@ -111,6 +112,7 @@ RUN unzip babylon-node-v1.2.3.zip
 RUN unzip nats-server-v2.10.20-linux-arm64.zip
 RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
 RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
+RUN tar -xvzf dotnet-runtime-8.0.8-linux-arm64.tar.gz
 
 # Move to /bin
 RUN mkdir -p /bin/babylon-node
@@ -123,17 +125,16 @@ RUN mv linux-arm64/dnscrypt-proxy /bin/
 RUN chown root:root /bin/dnscrypt-proxy
 RUN mv librespeed-cli /bin/
 RUN chown root:root /bin/librespeed-cli
+RUN mv dotnet /bin/
+RUN chown root:root /bin/dotnet
+RUN mkdir -p /usr/share/dotnet
+RUN mv host /usr/share/dotnet
+RUN chown -R root:root /usr/share/dotnet
 
 # -----------
 # FINAL IMAGE
 # -----------
 FROM debian:bookworm-20240904-slim
-
-RUN apt-get update && apt-get install -y wget
-RUN wget https://packages.microsoft.com/config/debian/11/packages-microsoft-prod.deb
-RUN apt-get purge -y wget
-RUN dpkg -i packages-microsoft-prod.deb
-RUN rm packages-microsoft-prod.deb
 
 RUN apt-get update && apt-get install -y \
     fuse=2.9.9-6+b1 \
@@ -155,6 +156,8 @@ COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
+COPY --from=extra-binaries /bin/dotnet /bin/
+COPY --from=extra-binaries /usr/share/dotnet /usr/share/dotnet
 
 
 CMD proven-enclave
