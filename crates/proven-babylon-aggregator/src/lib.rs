@@ -48,6 +48,21 @@ impl BabylonAggregator {
             // Start the babylon-aggregator process
             let mut cmd = Command::new("dotnet")
                 .arg(DATA_AGGREGATOR_PATH)
+                .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
+                .env("DataAggregator__Network__NetworkName", "stokenet")
+                .env(
+                    "DataAggregator__Network__DisableCoreApiHttpsCertificateChecks",
+                    "true",
+                )
+                .env(
+                    "DataAggregator__Network__CoreApiNodes__0__Name",
+                    "babylon-node",
+                )
+                .env(
+                    "DataAggregator__Network__CoreApiNodes__0__CoreApiAddress",
+                    "http://127.0.0.1:3333/core",
+                )
+                .env("DataAggregator__Network__CoreApiNodes__0__Enabled", "true")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
