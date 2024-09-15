@@ -137,7 +137,7 @@ RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime a
 RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 RUN apt-get purge -y curl
 
-COPY --from=postgres-builder /usr/local/pgsql /bin/pgsql
+COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi

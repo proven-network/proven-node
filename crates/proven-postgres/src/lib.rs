@@ -42,7 +42,7 @@ impl Postgres {
 
         let server_task = self.task_tracker.spawn(async move {
             // Start the postgres process
-            let mut cmd = Command::new("pgsql/postgres")
+            let mut cmd = Command::new("/usr/local/pgsql/bin/postgres")
                 .arg("-D")
                 .arg(&store_dir)
                 .stdout(Stdio::piped())
@@ -148,7 +148,7 @@ impl Postgres {
     }
 
     async fn initialize_database(&self) -> Result<()> {
-        let cmd = Command::new("pgsql/initdb")
+        let cmd = Command::new("/usr/local/pgsql/bin/initdb")
             .arg("-D")
             .arg(&self.store_dir)
             .arg("-U")
