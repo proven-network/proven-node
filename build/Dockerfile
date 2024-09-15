@@ -150,8 +150,8 @@ COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
 COPY --from=extra-binaries /bin/dotnet /bin/
-COPY --from=extra-binaries /bin/host /bin/
-COPY --from=extra-binaries /bin/shared /bin/
+COPY --from=extra-binaries /bin/host /bin/host
+COPY --from=extra-binaries /bin/shared /bin/shared
 
 # Test dotnet
 RUN dotnet /bin/DataAggregator/DataAggregator.dll --version
