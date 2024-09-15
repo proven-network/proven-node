@@ -118,18 +118,12 @@ RUN tar -xvzf dotnet-runtime-8.0.8-linux-arm64.tar.gz
 RUN mkdir -p /bin/babylon-node
 RUN mv core-v1.2.3 /bin/babylon-node
 RUN mv libcorerust.so /bin/babylon-node
-RUN chown -R root:root /bin/babylon-node
 RUN mv nats-server-v2.10.20-linux-arm64/nats-server /bin/
-RUN chown root:root /bin/nats-server
 RUN mv linux-arm64/dnscrypt-proxy /bin/
-RUN chown root:root /bin/dnscrypt-proxy
 RUN mv librespeed-cli /bin/
-RUN chown root:root /bin/librespeed-cli
 RUN mv dotnet /bin/
-RUN chown root:root /bin/dotnet
 RUN mv host /bin/
 RUN mv shared /bin/
-RUN chown -R root:root /usr/share/dotnet
 
 # -----------
 # FINAL IMAGE
