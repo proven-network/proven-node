@@ -33,18 +33,18 @@
 # ------------------
 # DOTNET BUILD STEPS
 # ------------------
-FROM mcr.microsoft.com/dotnet/sdk:8.0 as dotnet-builder
+FROM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim as dotnet-builder
 WORKDIR /
 
 RUN git clone https://github.com/radixdlt/babylon-gateway.git
-RUN mkdir -p /bin/dotnet
+RUN mkdir -p /bin/dotnet-apps
 
 WORKDIR /babylon-gateway/apps/DataAggregator
-RUN dotnet publish -c Release -o /bin/dotnet/DataAggregator
+RUN dotnet publish -c Release -o /bin/dotnet-apps/DataAggregator
 WORKDIR /babylon-gateway/apps/DatabaseMigrations
-RUN dotnet publish -c Release -o /bin/dotnet/DatabaseMigrations
+RUN dotnet publish -c Release -o /bin/dotnet-apps/DatabaseMigrations
 WORKDIR /babylon-gateway/apps/GatewayApi
-RUN dotnet publish -c Release -o /bin/dotnet/GatewayApi
+RUN dotnet publish -c Release -o /bin/dotnet-apps/GatewayApi
 
 # --------------
 # GO BUILD STEPS
@@ -138,7 +138,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # COPY --from=postgres-builder /usr/local/pgsql /bin/pgsql
-COPY --from=dotnet-builder /bin/dotnet /bin/dotnet
+COPY --from=dotnet-builder /bin/dotnet-apps /bin/dotnet-apps
 COPY --from=go-builder /bin/gocryptfs /bin/
 COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
