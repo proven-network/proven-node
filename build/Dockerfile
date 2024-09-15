@@ -129,6 +129,7 @@ RUN mv dotnet /bin/
 RUN chown root:root /bin/dotnet
 RUN mkdir -p /usr/share/dotnet
 RUN mv host /usr/share/dotnet
+RUN mv shared /usr/share/dotnet
 RUN chown -R root:root /usr/share/dotnet
 
 # -----------
