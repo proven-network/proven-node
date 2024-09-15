@@ -149,11 +149,11 @@ COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
-COPY --from=extra-binaries /bin/dotnet /bin/
-COPY --from=extra-binaries /bin/host /bin/host
-COPY --from=extra-binaries /bin/shared /bin/shared
+COPY --from=extra-binaries /bin/dotnet /usr/bin/
+COPY --from=extra-binaries /bin/host /usr/bin/host
+COPY --from=extra-binaries /bin/shared /usr/bin/shared
 
 # Test dotnet
-RUN DOTNET_ROOT=/bin/ dotnet /bin/DataAggregator/DataAggregator.dll --version
+RUN dotnet /bin/DataAggregator/DataAggregator.dll --version
 
 CMD proven-enclave
