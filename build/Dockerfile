@@ -1,34 +1,32 @@
 # --------------------
 # POSTGRES BUILD STEPS
 # --------------------
-# FROM debian:bookworm-20240904-slim as postgres-builder
+FROM debian:bookworm-20240904-slim as postgres-builder
 
-# RUN whoami
+# Install dependencies to build from source
+RUN apt-get update && apt-get install -y \
+    gcc \
+    build-essential \
+    zlib1g-dev \
+    libreadline6-dev \
+    libicu-dev \
+    pkg-config \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# # Install dependencies to build from source
-# RUN apt-get update && apt-get install -y \
-#     gcc \
-#     build-essential \
-#     zlib1g-dev \
-#     libreadline6-dev \
-#     libicu-dev \
-#     pkg-config \
-#     wget \
-#     && rm -rf /var/lib/apt/lists/*
+# Download source code
+WORKDIR /tmp
+RUN wget -q https://ftp.postgresql.org/pub/source/v16.4/postgresql-16.4.tar.bz2
+RUN tar -xvf postgresql-16.4.tar.bz2
+WORKDIR /tmp/postgresql-16.4
 
-# # Download source code
-# WORKDIR /tmp
-# RUN wget -q https://ftp.postgresql.org/pub/source/v16.4/postgresql-16.4.tar.bz2
-# RUN tar -xvf postgresql-16.4.tar.bz2
-# WORKDIR /tmp/postgresql-16.4
+# Overwrite root check
+RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
 
-# # Overwrite root check
-# RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
-
-# # Build and install
-# RUN ./configure
-# RUN make
-# RUN make install
+# Build and install
+RUN ./configure
+RUN make
+RUN make install
 
 # ------------------
 # DOTNET BUILD STEPS
@@ -139,7 +137,7 @@ RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime a
 RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 RUN apt-get purge -y curl
 
-# COPY --from=postgres-builder /usr/local/pgsql /bin/pgsql
+COPY --from=postgres-builder /usr/local/pgsql /bin/pgsql
 COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi

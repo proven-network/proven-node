@@ -41,8 +41,8 @@ impl Postgres {
         let store_dir = self.store_dir.clone();
 
         let server_task = self.task_tracker.spawn(async move {
-            // Start the babylon-node process
-            let mut cmd = Command::new("postgres")
+            // Start the postgres process
+            let mut cmd = Command::new("pgsql/postgres")
                 .arg("-D")
                 .arg(&store_dir)
                 .stdout(Stdio::piped())
@@ -53,7 +53,7 @@ impl Postgres {
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
-            // Spawn a task to read and process the stdout output of the babylon-node process
+            // Spawn a task to read and process the stdout output of the postgres process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
@@ -82,7 +82,7 @@ impl Postgres {
                 }
             });
 
-            // Spawn a task to read and process the stderr output of the babylon-node process
+            // Spawn a task to read and process the stderr output of the postgres process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
@@ -111,7 +111,7 @@ impl Postgres {
                 }
             });
 
-            // Wait for the babylon-node process to exit or for the shutdown token to be cancelled
+            // Wait for the postgres process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
                     let status = cmd.wait().await.unwrap();
@@ -139,16 +139,16 @@ impl Postgres {
 
     /// Shuts down the server.
     pub async fn shutdown(&self) {
-        info!("babylon-node shutting down...");
+        info!("postgres shutting down...");
 
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
-        info!("babylon-node shutdown");
+        info!("postgres shutdown");
     }
 
     async fn initialize_database(&self) -> Result<()> {
-        let cmd = Command::new("initdb")
+        let cmd = Command::new("pgsql/initdb")
             .arg("-D")
             .arg(&self.store_dir)
             .arg("-U")
