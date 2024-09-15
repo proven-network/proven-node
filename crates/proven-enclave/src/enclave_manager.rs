@@ -20,6 +20,7 @@ use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::Kms;
 // use proven_nats_monitor::NatsMonitor;
 use proven_nats_server::NatsServer;
+use proven_postgres::Postgres;
 use proven_sessions::{SessionManagement, SessionManager};
 use proven_store::Store;
 use proven_store_asm::AsmStore;
@@ -132,6 +133,19 @@ impl EnclaveManager {
         let dnscrypt_proxy_handle = dnscrypt_proxy.start().await?;
         write_dns_resolv("nameserver 127.0.0.1".to_string())?; // Switch to dnscrypt-proxy's DNS resolver
 
+        // Boot postgres
+        let postgres_store_dir = "/var/lib/postgres".to_string();
+        let postgres_external_fs = ExternalFs::new(
+            "your-password".to_string(),
+            "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/babylon/".to_string(),
+            postgres_store_dir.clone(),
+            args.skip_fsck,
+        );
+        let postgres_external_fs_handle = postgres_external_fs.start().await?;
+
+        let postgres = Postgres::new(postgres_store_dir);
+        let postgres_handle = postgres.start().await?;
+
         // Boot babylon node
         let babylon_store_dir = "/var/lib/babylon".to_string();
         let babylon_external_fs = ExternalFs::new(
@@ -233,6 +247,12 @@ impl EnclaveManager {
                     }
                     Ok(Err(e)) = nats_server_handle => {
                         error!("nats_server exited: {:?}", e);
+                    }
+                    Ok(Err(e)) = postgres_external_fs_handle => {
+                        error!("postgres_external_fs exited: {:?}", e);
+                    }
+                    Ok(Err(e)) = postgres_handle => {
+                        error!("postgres exited: {:?}", e);
                     }
                     Ok(Err(e)) = proxy_handle => {
                         error!("proxy exited: {:?}", e);

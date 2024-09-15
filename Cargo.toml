@@ -21,6 +21,7 @@ members = [
     "crates/proven-local",
     "crates/proven-nats-monitor",
     "crates/proven-nats-server",
+    "crates/proven-postgres",
     # "crates/proven-runtime",
     "crates/proven-sessions",
     "crates/proven-store",

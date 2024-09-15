@@ -3012,6 +3012,7 @@ dependencies = [
  "proven-kms",
  "proven-nats-monitor",
  "proven-nats-server",
+ "proven-postgres",
  "proven-sessions",
  "proven-store",
  "proven-store-asm",
@@ -3185,6 +3186,17 @@ version = "0.1.0"
 dependencies = [
  "async-nats",
  "nix 0.29.0",
+ "regex",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "proven-postgres"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
  "regex",
  "tokio",
  "tokio-util",

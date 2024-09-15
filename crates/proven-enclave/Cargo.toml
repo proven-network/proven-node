@@ -19,6 +19,7 @@ proven-instance-details = { path = "../proven-instance-details" }
 proven-kms = { path = "../proven-kms" }
 proven-nats-monitor = { path = "../proven-nats-monitor" }
 proven-nats-server = { path = "../proven-nats-server" }
+proven-postgres = { path = "../proven-postgres" }
 proven-sessions = { path = "../proven-sessions" }
 proven-store = { path = "../proven-store" }
 proven-store-asm = { path = "../proven-store-asm" }

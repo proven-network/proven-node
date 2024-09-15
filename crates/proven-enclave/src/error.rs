@@ -60,6 +60,9 @@ pub enum Error {
     Nsm(proven_attestation_nsm::Error),
 
     #[from]
+    Postgres(proven_postgres::Error),
+
+    #[from]
     S3Store(proven_store_s3_sse_c::Error),
 
     #[from]
@@ -94,6 +97,7 @@ impl core::fmt::Display for Error {
             Error::NatsStore(e) => write!(f, "{}", e),
             Error::Netlink(e) => write!(f, "{}", e),
             Error::Nsm(e) => write!(f, "{}", e),
+            Error::Postgres(e) => write!(f, "{}", e),
             Error::S3Store(e) => write!(f, "{}", e),
             Error::VsockProxy(e) => write!(f, "{}", e),
             Error::VsockRpc(e) => write!(f, "{}", e),
