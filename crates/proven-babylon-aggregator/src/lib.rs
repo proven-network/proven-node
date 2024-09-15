@@ -16,22 +16,26 @@ static DATA_AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator.dll";
 static DATABASE_MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations.dll";
 
 pub struct BabylonAggregator {
+    postgres_database: String,
+    postgres_username: String,
+    postgres_password: String,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl Default for BabylonAggregator {
-    fn default() -> Self {
+impl BabylonAggregator {
+    pub fn new(
+        postgres_database: String,
+        postgres_username: String,
+        postgres_password: String,
+    ) -> Self {
         Self {
+            postgres_database,
+            postgres_username,
+            postgres_password,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
-    }
-}
-
-impl BabylonAggregator {
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
@@ -43,12 +47,23 @@ impl BabylonAggregator {
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
+        let postgres_database = self.postgres_database.clone();
+        let postgres_username = self.postgres_username.clone();
+        let postgres_password = self.postgres_password.clone();
 
         let server_task = self.task_tracker.spawn(async move {
             // Start the babylon-aggregator process
             let mut cmd = Command::new("dotnet")
                 .arg(DATA_AGGREGATOR_PATH)
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
+                .env("PrometheusMetricsPort", "1234")
+                .env(
+                    "ConnectionStrings__NetworkGatewayReadWrite",
+                    format!(
+                        "Host=postgres_db:5432;Database={};Username={};Password={}",
+                        postgres_database, postgres_username, postgres_password
+                    ),
+                )
                 .env("DataAggregator__Network__NetworkName", "stokenet")
                 .env(
                     "DataAggregator__Network__DisableCoreApiHttpsCertificateChecks",
@@ -167,6 +182,13 @@ impl BabylonAggregator {
 
     async fn run_migrations(&self) -> Result<()> {
         let cmd = Command::new("dotnet")
+            .env(
+                "ConnectionStrings__NetworkGatewayMigrations",
+                format!(
+                    "Host=postgres_db:5432;Database={};Username={};Password={}",
+                    self.postgres_database, self.postgres_username, self.postgres_password
+                ),
+            )
             .arg(DATABASE_MIGRATIONS_PATH)
             .output()
             .await

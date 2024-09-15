@@ -14,14 +14,18 @@ use tracing::{info, warn};
 
 pub struct Postgres {
     store_dir: String,
+    username: String,
+    password: String,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
 impl Postgres {
-    pub fn new(store_dir: String) -> Self {
+    pub fn new(store_dir: String, username: String, password: String) -> Self {
         Self {
             store_dir,
+            username,
+            password,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -148,11 +152,19 @@ impl Postgres {
     }
 
     async fn initialize_database(&self) -> Result<()> {
+        // Write password to a file in tmp for use by initdb
+        let password_file = std::path::Path::new("/tmp/pgpass");
+        tokio::fs::write(password_file, self.password.clone())
+            .await
+            .unwrap();
+
         let cmd = Command::new("/usr/local/pgsql/bin/initdb")
             .arg("-D")
             .arg(&self.store_dir)
             .arg("-U")
-            .arg("root")
+            .arg(self.username.clone())
+            .arg("--pwfile")
+            .arg(password_file)
             .output()
             .await
             .map_err(Error::Spawn)?;

@@ -144,7 +144,13 @@ impl EnclaveManager {
         );
         let postgres_external_fs_handle = postgres_external_fs.start().await?;
 
-        let postgres = Postgres::new(postgres_store_dir);
+        let postgres_username = "your-username".to_string();
+        let postgres_password = "your-password".to_string();
+        let postgres = Postgres::new(
+            postgres_store_dir,
+            postgres_username.clone(),
+            postgres_password.clone(),
+        );
         let postgres_handle = postgres.start().await?;
 
         // Boot babylon node
@@ -165,7 +171,10 @@ impl EnclaveManager {
         let babylon_node = BabylonNode::new(network_definition.clone(), babylon_node_store_dir);
         let babylon_node_handle = babylon_node.start().await?;
 
-        let babylon_aggregator = BabylonAggregator::new();
+        // Boot babylon aggregator
+        let postgres_database = "babylon-db".to_string();
+        let babylon_aggregator =
+            BabylonAggregator::new(postgres_database, postgres_username, postgres_password);
         let babylon_aggregator_handle = babylon_aggregator.start().await?;
 
         // Boot NATS server
