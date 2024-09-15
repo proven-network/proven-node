@@ -136,7 +136,7 @@ RUN apt-get update && apt-get install -y \
 
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.8 --install-dir /usr/share/dotnet
 RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
-RUN apt-get purge -y curl
+RUN apt-get purge -y curl && apt-get autoremove -y
 
 COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
