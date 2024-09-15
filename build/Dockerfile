@@ -143,7 +143,6 @@ RUN apt-get update && apt-get install -y \
     net-tools=2.10-0.1 \
     nfs-common=1:2.6.2-4 \
     nfs-kernel-server=1:2.6.2-4 \
-    dotnet-runtime-8.0=8.0.8-1 \
     && rm -rf /var/lib/apt/lists/*
 
 # COPY --from=postgres-builder /usr/local/pgsql /bin/pgsql
