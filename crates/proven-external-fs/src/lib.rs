@@ -101,6 +101,7 @@ impl ExternalFs {
                 .arg("-noprealloc")
                 .arg("-nosyslog")
                 .arg("-kernel_cache")
+                .arg("-sharedstorage")
                 .arg(nfs_mount_dir.as_str())
                 .arg(mount_dir.as_str())
                 .stdout(Stdio::piped())
