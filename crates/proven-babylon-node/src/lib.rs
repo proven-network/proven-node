@@ -4,6 +4,7 @@ pub use error::{Error, Result};
 
 use std::process::Stdio;
 
+use httpclient::Client;
 use radix_common::network::NetworkDefinition;
 // use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -16,6 +17,8 @@ use tracing::{info, warn};
 static CONFIG_PATH: &str = "/var/lib/proven-node/babylon-node.config";
 static KEYSTORE_PATH: &str = "/var/lib/proven-node/babylon-keystore.ks";
 static KEYSTORE_PASS: &str = "notarealpassword"; // Irrelevant as keyfile never leaves TEE
+
+static NETWORK_STATUS_URL: &str = "http://127.0.0.1:3333/core/status/network-status";
 
 static MAINNET_SEED_NODES: &[&str] = &[
     "radix://node_rdx1qf2x63qx4jdaxj83kkw2yytehvvmu6r2xll5gcp6c9rancmrfsgfw0vnc65@babylon-mainnet-eu-west-1-node0.radixdlt.com",
@@ -170,9 +173,9 @@ impl BabylonNode {
             }
         });
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
         self.task_tracker.close();
+
+        self.wait_until_ready().await?;
 
         Ok(server_task)
     }
@@ -236,5 +239,24 @@ impl BabylonNode {
             .map_err(Error::ConfigWrite)?;
 
         Ok(())
+    }
+
+    async fn wait_until_ready(&self) -> Result<()> {
+        let client = Client::new();
+
+        loop {
+            info!("Checking if babylon-node is ready...");
+            let response = client.get(NETWORK_STATUS_URL).send().await;
+
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    info!("babylon-node is ready");
+                    return Ok(());
+                }
+                _ => {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                }
+            }
+        }
     }
 }

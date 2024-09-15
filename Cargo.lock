@@ -2954,6 +2954,8 @@ name = "proven-babylon-node"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "http 1.1.0",
+ "httpclient",
  "radix-common",
  "regex",
  "tokio",

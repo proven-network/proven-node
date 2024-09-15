@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+http = "1.1.0"
+httpclient = "0.23.9"
 radix-common = "1.2.0"
 regex = "1.10.5"
 tokio = { version = "1.38.0", features = ["io-util", "process"] }
