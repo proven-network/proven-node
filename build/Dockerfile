@@ -158,6 +158,8 @@ COPY --from=extra-binaries /bin/librespeed-cli /bin/
 COPY --from=extra-binaries /usr/bin/dotnet /usr/bin/
 COPY --from=extra-binaries /usr/share/dotnet /usr/share/dotnet
 
+ENV DOTNET_ROOT /usr/share/dotnet
+
 # Test dotnet
 RUN dotnet --info
 RUN dotnet /bin/DataAggregator/DataAggregator.dll --version
