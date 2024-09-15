@@ -18,7 +18,7 @@
 
 # # Download source code
 # WORKDIR /tmp
-# RUN wget https://ftp.postgresql.org/pub/source/v16.4/postgresql-16.4.tar.bz2
+# RUN wget -q https://ftp.postgresql.org/pub/source/v16.4/postgresql-16.4.tar.bz2
 # RUN tar -xvf postgresql-16.4.tar.bz2
 # WORKDIR /tmp/postgresql-16.4
 
@@ -99,12 +99,12 @@ RUN apk add --no-cache unzip wget
 WORKDIR /tmp
 
 # Download
-RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
-RUN wget https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-v1.2.3.zip
-RUN wget https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
-RUN wget https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.5/dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
-RUN wget https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
-RUN wget https://download.visualstudio.microsoft.com/download/pr/f6fcf2c9-39ad-49c7-80b5-92306309e796/3cac9217f55528cb60c95702ba92d78b/aspnetcore-runtime-8.0.8-linux-arm64.tar.gz
+RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
+RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-v1.2.3.zip
+RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
+RUN wget -q https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.5/dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
+RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
+RUN wget -q https://download.visualstudio.microsoft.com/download/pr/f6fcf2c9-39ad-49c7-80b5-92306309e796/3cac9217f55528cb60c95702ba92d78b/aspnetcore-runtime-8.0.8-linux-arm64.tar.gz
 
 # Unzip
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
@@ -121,7 +121,7 @@ RUN mv libcorerust.so /bin/babylon-node
 RUN mv nats-server-v2.10.20-linux-arm64/nats-server /bin/
 RUN mv linux-arm64/dnscrypt-proxy /bin/
 RUN mv librespeed-cli /bin/
-RUN mv dotnet /bin/
+RUN mv dotnet /usr/bin/
 RUN mkdir -p /usr/share/dotnet
 RUN mv host /usr/share/dotnet
 RUN mv shared /usr/share/dotnet
@@ -155,7 +155,7 @@ COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
-COPY --from=extra-binaries /bin/dotnet /bin/
+COPY --from=extra-binaries /usr/bin/dotnet /usr/bin/
 COPY --from=extra-binaries /usr/share/dotnet /usr/share/dotnet
 
 # Test dotnet
