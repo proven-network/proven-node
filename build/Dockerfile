@@ -129,6 +129,11 @@ RUN chown root:root /bin/librespeed-cli
 # -----------
 FROM debian:bookworm-20240904-slim
 
+RUN apt-get update && apt-get install -y wget=1.21.3-1+b2
+RUN wget https://packages.microsoft.com/config/debian/11/packages-microsoft-prod.deb
+RUN dpkg -i packages-microsoft-prod.deb
+RUN rm packages-microsoft-prod.deb
+
 # TODO: pin dotnet-runtime version
 RUN apt-get update && apt-get install -y \
     fuse=2.9.9-6+b1 \
@@ -137,7 +142,7 @@ RUN apt-get update && apt-get install -y \
     net-tools=2.10-0.1 \
     nfs-common=1:2.6.2-4 \
     nfs-kernel-server=1:2.6.2-4 \
-    dotnet-runtime-8.0 \
+    dotnet-runtime-8.0=8.0.8-1 \
     && rm -rf /var/lib/apt/lists/*
 
 # COPY --from=postgres-builder /usr/local/pgsql /bin/pgsql
