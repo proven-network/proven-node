@@ -294,6 +294,13 @@ impl EnclaveManager {
                 _ = critical_tasks => {
                     error!("critical task failed - exiting");
                     enclave_clone.lock().await.shutdown().await;
+                    nats_external_fs.shutdown().await;
+                    babylon_aggregator.shutdown().await;
+                    babylon_node.shutdown().await;
+                    babylon_node_external_fs.shutdown().await;
+                    postgres.shutdown().await;
+                    dnscrypt_proxy.shutdown().await;
+                    proxy_ct.cancel();
                 }
                 _ = core_handle => {
                     error!("core exited unexpectedly - exiting");
