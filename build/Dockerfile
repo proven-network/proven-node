@@ -50,21 +50,21 @@ RUN dotnet publish -c Release -o /bin/GatewayApi
 # --------------
 # GO BUILD STEPS
 # --------------
-FROM golang:alpine3.20 as go-builder
-WORKDIR /
+# FROM golang:alpine3.20 as go-builder
+# WORKDIR /
 
-# Install dependencies
-RUN apk add --no-cache bash git
+# # Install dependencies
+# RUN apk add --no-cache bash git
 
-# Build gocryptfs
-RUN git clone https://github.com/rfjakob/gocryptfs.git
-WORKDIR /gocryptfs
-RUN ./build-without-openssl.bash
+# # Build gocryptfs
+# RUN git clone https://github.com/rfjakob/gocryptfs.git
+# WORKDIR /gocryptfs
+# RUN ./build-without-openssl.bash
 
-# Move gocryptfs to /bin
-RUN cp /gocryptfs/gocryptfs /bin/
-RUN chown root:root /bin/gocryptfs
-RUN chmod 0755      /bin/gocryptfs
+# # Move gocryptfs to /bin
+# RUN cp /gocryptfs/gocryptfs /bin/
+# RUN chown root:root /bin/gocryptfs
+# RUN chmod 0755      /bin/gocryptfs
 
 # ----------------
 # RUST BUILD STEPS
@@ -82,12 +82,12 @@ ARG COMMIT
 RUN git clone git@github.com:proven-network/proven-node.git
 WORKDIR /proven-node
 RUN git checkout ${COMMIT}
-RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
+# RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
 
-# Move proven-enclave to /bin
-RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
-RUN chown root:root /bin/proven-enclave
-RUN chmod 0755      /bin/proven-enclave
+# # Move proven-enclave to /bin
+# RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
+# RUN chown root:root /bin/proven-enclave
+# RUN chmod 0755      /bin/proven-enclave
 
 # --------------
 # EXTRA BINARIES
@@ -143,8 +143,8 @@ RUN apt-get update && apt-get install -y \
 COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
-COPY --from=go-builder /bin/gocryptfs /bin/
-COPY --from=rust-builder /bin/proven-enclave /bin/
+# COPY --from=go-builder /bin/gocryptfs /bin/
+# COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
