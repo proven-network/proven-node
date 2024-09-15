@@ -50,21 +50,21 @@ RUN dotnet publish -c Release -o /bin/GatewayApi
 # --------------
 # GO BUILD STEPS
 # --------------
-# FROM golang:alpine3.20 as go-builder
-# WORKDIR /
+FROM golang:alpine3.20 as go-builder
+WORKDIR /
 
-# # Install dependencies
-# RUN apk add --no-cache bash git
+# Install dependencies
+RUN apk add --no-cache bash git
 
-# # Build gocryptfs
-# RUN git clone https://github.com/rfjakob/gocryptfs.git
-# WORKDIR /gocryptfs
-# RUN ./build-without-openssl.bash
+# Build gocryptfs
+RUN git clone https://github.com/rfjakob/gocryptfs.git
+WORKDIR /gocryptfs
+RUN ./build-without-openssl.bash
 
-# # Move gocryptfs to /bin
-# RUN cp /gocryptfs/gocryptfs /bin/
-# RUN chown root:root /bin/gocryptfs
-# RUN chmod 0755      /bin/gocryptfs
+# Move gocryptfs to /bin
+RUN cp /gocryptfs/gocryptfs /bin/
+RUN chown root:root /bin/gocryptfs
+RUN chmod 0755      /bin/gocryptfs
 
 # ----------------
 # RUST BUILD STEPS
@@ -82,12 +82,12 @@ ARG COMMIT
 RUN git clone git@github.com:proven-network/proven-node.git
 WORKDIR /proven-node
 RUN git checkout ${COMMIT}
-# RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
+RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
 
 # # Move proven-enclave to /bin
-# RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
-# RUN chown root:root /bin/proven-enclave
-# RUN chmod 0755      /bin/proven-enclave
+RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
+RUN chown root:root /bin/proven-enclave
+RUN chmod 0755      /bin/proven-enclave
 
 # --------------
 # EXTRA BINARIES
@@ -104,7 +104,6 @@ RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/ba
 RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
 RUN wget -q https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.5/dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
 RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
-# RUN wget -q https://download.visualstudio.microsoft.com/download/pr/f6fcf2c9-39ad-49c7-80b5-92306309e796/3cac9217f55528cb60c95702ba92d78b/aspnetcore-runtime-8.0.8-linux-arm64.tar.gz
 
 # Unzip
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
@@ -112,7 +111,6 @@ RUN unzip babylon-node-v1.2.3.zip
 RUN unzip nats-server-v2.10.20-linux-arm64.zip
 RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
 RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
-# RUN tar -xvzf aspnetcore-runtime-8.0.8-linux-arm64.tar.gz
 
 # Move to /bin
 RUN mkdir -p /bin/babylon-node
@@ -121,10 +119,6 @@ RUN mv libcorerust.so /bin/babylon-node
 RUN mv nats-server-v2.10.20-linux-arm64/nats-server /bin/
 RUN mv linux-arm64/dnscrypt-proxy /bin/
 RUN mv librespeed-cli /bin/
-# RUN mv dotnet /usr/bin/
-# RUN mkdir -p /usr/share/dotnet
-# RUN mv host /usr/share/dotnet
-# RUN mv shared /usr/share/dotnet
 
 # -----------
 # FINAL IMAGE
@@ -149,19 +143,11 @@ RUN apt-get purge -y curl
 COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
-# COPY --from=go-builder /bin/gocryptfs /bin/
-# COPY --from=rust-builder /bin/proven-enclave /bin/
+COPY --from=go-builder /bin/gocryptfs /bin/
+COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
-# COPY --from=extra-binaries /usr/bin/dotnet /usr/bin/
-# COPY --from=extra-binaries /usr/share/dotnet /usr/share/dotnet
-
-ENV DOTNET_ROOT /usr/share/dotnet
-
-# Test dotnet
-RUN dotnet --info
-RUN dotnet /bin/DataAggregator/DataAggregator.dll --version
 
 CMD proven-enclave
