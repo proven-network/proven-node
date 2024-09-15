@@ -137,7 +137,7 @@ impl EnclaveManager {
         let postgres_store_dir = "/var/lib/postgres".to_string();
         let postgres_external_fs = ExternalFs::new(
             "your-password".to_string(),
-            "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/babylon/".to_string(),
+            "fs-035b691e876c20f4c.fsx.us-east-2.amazonaws.com:/fsx/postgres/".to_string(),
             postgres_store_dir.clone(),
             args.skip_fsck,
         );
