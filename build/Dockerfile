@@ -127,9 +127,8 @@ RUN mv librespeed-cli /bin/
 RUN chown root:root /bin/librespeed-cli
 RUN mv dotnet /bin/
 RUN chown root:root /bin/dotnet
-RUN mkdir -p /usr/share/dotnet
-RUN mv host /usr/share/dotnet
-RUN mv shared /usr/share/dotnet
+RUN mv host /bin/
+RUN mv shared /bin/
 RUN chown -R root:root /usr/share/dotnet
 
 # -----------
@@ -160,6 +159,6 @@ COPY --from=extra-binaries /bin/dotnet /bin/
 COPY --from=extra-binaries /usr/share/dotnet /usr/share/dotnet
 
 # Test dotnet
-RUN DOTNET_ROOT=/usr/share/dotnet /bin/DataAggregator/DataAggregator --version
+RUN dotnet /bin/DataAggregator/DataAggregator.dll --version
 
 CMD proven-enclave
