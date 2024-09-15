@@ -37,6 +37,8 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 as dotnet-builder
 WORKDIR /
 
 RUN git clone https://github.com/radixdlt/babylon-gateway.git
+RUN mkdir -p /bin/dotnet
+
 WORKDIR /babylon-gateway/apps/DataAggregator
 RUN dotnet publish -c Release -o /bin/dotnet/DataAggregator
 WORKDIR /babylon-gateway/apps/DatabaseMigrations
