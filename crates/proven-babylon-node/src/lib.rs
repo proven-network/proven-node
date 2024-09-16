@@ -4,7 +4,7 @@ pub use error::{Error, Result};
 
 use std::process::Stdio;
 
-use httpclient::Client;
+use httpclient::{Client, InMemoryBody};
 use radix_common::network::NetworkDefinition;
 // use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -243,10 +243,19 @@ impl BabylonNode {
 
     async fn wait_until_ready(&self) -> Result<()> {
         let client = Client::new();
+        let payload = InMemoryBody::Text(format!(
+            "{{\"network\":\"{}\"}}",
+            self.network_definition.logical_name
+        ));
 
         loop {
-            info!("Checking if babylon-node is ready...");
-            let response = client.get(NETWORK_STATUS_URL).send().await;
+            info!("checking if babylon-node is ready...");
+            let response = client
+                .post(NETWORK_STATUS_URL)
+                .body(payload.clone())
+                .header("Content-Type", "application/json")
+                .send()
+                .await;
 
             match response {
                 Ok(resp) if resp.status().is_success() => {
