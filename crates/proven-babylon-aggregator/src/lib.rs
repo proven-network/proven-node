@@ -82,6 +82,7 @@ impl BabylonAggregator {
                     "Warning",
                 )
                 .env("Logging__Console__FormatterName", "Systemd")
+                .env("Logging__Console__FormatterOptions__IncludeScopes", "false")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
                 .env("PrometheusMetricsPort", "1234")
                 .env(
