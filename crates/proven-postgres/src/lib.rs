@@ -200,6 +200,7 @@ impl Postgres {
 
     async fn wait_until_ready(&self) -> Result<()> {
         loop {
+            info!("checking if postgres is ready...");
             let cmd = Command::new("/usr/local/pgsql/bin/pg_isready")
                 .arg("-h")
                 .arg("127.0.0.1")
@@ -210,6 +211,7 @@ impl Postgres {
                 .map_err(Error::Spawn)?;
 
             if cmd.status.success() {
+                info!("postgres is ready");
                 return Ok(());
             } else {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
