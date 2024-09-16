@@ -81,7 +81,8 @@ impl BabylonAggregator {
                     "Logging__LogLevel__System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler",
                     "Warning",
                 )
-                .env("Logging__Console__FormatterName", "Systemd")
+                .env("Logging__Console__FormatterName", "Simple")
+                .env("Logging__Console__FormatterOptions__SingleLine", "true")
                 .env("Logging__Console__FormatterOptions__IncludeScopes", "false")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
                 .env("PrometheusMetricsPort", "1234")
