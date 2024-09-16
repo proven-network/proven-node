@@ -144,9 +144,9 @@ impl Postgres {
             }
         });
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
         self.task_tracker.close();
+
+        self.wait_until_ready().await?;
 
         Ok(server_task)
     }
@@ -196,5 +196,24 @@ impl Postgres {
             && std::path::Path::new(&self.store_dir)
                 .join("PG_VERSION")
                 .exists()
+    }
+
+    async fn wait_until_ready(&self) -> Result<()> {
+        loop {
+            let cmd = Command::new("/usr/local/pgsql/bin/pg_isready")
+                .arg("-h")
+                .arg("127.0.0.1")
+                .arg("-p")
+                .arg("5432")
+                .output()
+                .await
+                .map_err(Error::Spawn)?;
+
+            if cmd.status.success() {
+                return Ok(());
+            } else {
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            }
+        }
     }
 }
