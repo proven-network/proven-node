@@ -2951,6 +2951,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-babylon-gateway"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "nix 0.29.0",
+ "regex",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "proven-babylon-node"
 version = "0.1.0"
 dependencies = [
@@ -3019,6 +3031,7 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-nsm",
  "proven-babylon-aggregator",
+ "proven-babylon-gateway",
  "proven-babylon-node",
  "proven-core",
  "proven-dnscrypt-proxy",

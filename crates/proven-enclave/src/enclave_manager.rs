@@ -11,6 +11,7 @@ use std::time::Duration;
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_babylon_aggregator::BabylonAggregator;
+use proven_babylon_gateway::BabylonGateway;
 use proven_babylon_node::BabylonNode;
 use proven_core::{Core, NewCoreArguments};
 use proven_dnscrypt_proxy::DnscryptProxy;
@@ -40,6 +41,9 @@ use tracing_panic::panic_hook;
 
 static VMADDR_CID_EC2_HOST: u32 = 3;
 
+static POSTGRES_USERNAME: &str = "your-username";
+static POSTGRES_PASSWORD: &str = "your-password";
+static POSTGRES_DATABASE: &str = "babylon-db";
 pub struct EnclaveManager {
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
@@ -148,12 +152,10 @@ impl EnclaveManager {
         );
         let postgres_external_fs_handle = postgres_external_fs.start().await?;
 
-        let postgres_username = "your-username".to_string();
-        let postgres_password = "your-password".to_string();
         let postgres = Postgres::new(
             postgres_store_dir,
-            postgres_username.clone(),
-            postgres_password.clone(),
+            POSTGRES_USERNAME.to_string(),
+            POSTGRES_PASSWORD.to_string(),
         );
         let postgres_handle = postgres.start().await?;
 
@@ -176,10 +178,20 @@ impl EnclaveManager {
         let babylon_node_handle = babylon_node.start().await?;
 
         // Boot babylon aggregator
-        let postgres_database = "babylon-db".to_string();
-        let babylon_aggregator =
-            BabylonAggregator::new(postgres_database, postgres_username, postgres_password);
+        let babylon_aggregator = BabylonAggregator::new(
+            POSTGRES_DATABASE.to_string(),
+            POSTGRES_USERNAME.to_string(),
+            POSTGRES_PASSWORD.to_string(),
+        );
         let babylon_aggregator_handle = babylon_aggregator.start().await?;
+
+        // Boot babylon gateway
+        let babylon_gateway = BabylonGateway::new(
+            POSTGRES_DATABASE.to_string(),
+            POSTGRES_USERNAME.to_string(),
+            POSTGRES_PASSWORD.to_string(),
+        );
+        let babylon_gateway_handle = babylon_gateway.start().await?;
 
         // Boot NATS server
         let nats_store_dir = "/var/lib/nats".to_string();
@@ -256,6 +268,9 @@ impl EnclaveManager {
                     Ok(Err(e)) = babylon_external_fs_handle => {
                         error!("babylon_external_fs exited: {:?}", e);
                     }
+                    Ok(Err(e)) = babylon_gateway_handle => {
+                        error!("babylon_gateway exited: {:?}", e);
+                    }
                     Ok(Err(e)) = babylon_node_handle => {
                         error!("babylon_node exited: {:?}", e);
                     }
@@ -288,6 +303,7 @@ impl EnclaveManager {
                     info!("shutdown command received. shutting down...");
                     enclave_clone.lock().await.shutdown().await;
                     nats_external_fs.shutdown().await;
+                    babylon_gateway.shutdown().await;
                     babylon_aggregator.shutdown().await;
                     babylon_node.shutdown().await;
                     babylon_node_external_fs.shutdown().await;
@@ -299,6 +315,7 @@ impl EnclaveManager {
                     error!("critical task failed - exiting");
                     enclave_clone.lock().await.shutdown().await;
                     nats_external_fs.shutdown().await;
+                    babylon_gateway.shutdown().await;
                     babylon_aggregator.shutdown().await;
                     babylon_node.shutdown().await;
                     babylon_node_external_fs.shutdown().await;

@@ -19,6 +19,9 @@ pub enum Error {
     BabylonAggregator(proven_babylon_aggregator::Error),
 
     #[from]
+    BabylonGateway(proven_babylon_gateway::Error),
+
+    #[from]
     BabylonNode(proven_babylon_node::Error),
 
     BadKey,
@@ -86,6 +89,7 @@ impl core::fmt::Display for Error {
             Error::AsmStore(e) => write!(f, "{}", e),
             Error::Async(e) => write!(f, "{}", e),
             Error::BabylonAggregator(e) => write!(f, "{}", e),
+            Error::BabylonGateway(e) => write!(f, "{}", e),
             Error::BabylonNode(e) => write!(f, "{}", e),
             Error::BadKey => write!(f, "The key is invalid"),
             Error::Cidr(e) => write!(f, "{}", e),

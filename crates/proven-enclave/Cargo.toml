@@ -10,6 +10,7 @@ derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 proven-attestation = { path = "../proven-attestation" }
 proven-attestation-nsm = { path = "../proven-attestation-nsm" }
 proven-babylon-aggregator = { path = "../proven-babylon-aggregator" }
+proven-babylon-gateway = { path = "../proven-babylon-gateway" }
 proven-babylon-node = { path = "../proven-babylon-node" }
 proven-core = { path = "../proven-core" }
 proven-dnscrypt-proxy = { path = "../proven-dnscrypt-proxy" }
