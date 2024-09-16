@@ -110,7 +110,7 @@ impl BabylonNode {
                 .unwrap();
 
                 let rre = regex::Regex::new(
-                    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) .+: (.*)",
+                    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+)\s+.+:\s+(.*)",
                 )
                 .unwrap();
 
