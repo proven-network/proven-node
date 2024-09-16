@@ -87,14 +87,14 @@ impl NatsServer {
                 let mut lines = reader.lines();
 
                 let re = Regex::new(
-                    r"\[\d+\] (\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6}) (\[[A-Z]+\]) (.*)",
+                    r"\[\d+\] \d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6} (\[[A-Z]+\]) (.*)",
                 )
                 .unwrap();
 
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(caps) = re.captures(&line) {
-                        let label = caps.get(2).unwrap().as_str();
-                        let message = caps.get(3).unwrap().as_str();
+                        let label = caps.get(1).unwrap().as_str();
+                        let message = caps.get(2).unwrap().as_str();
                         match label {
                             "[INF]" => info!("{}", message),
                             "[DBG]" => debug!("{}", message),
