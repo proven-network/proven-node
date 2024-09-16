@@ -4,13 +4,15 @@ pub use error::{Error, Result};
 
 use std::process::Stdio;
 
+use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
 // use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 pub struct Postgres {
     store_dir: String,
@@ -127,7 +129,15 @@ impl Postgres {
                     Ok(())
                 }
                 _ = shutdown_token.cancelled() => {
-                    cmd.kill().await.unwrap();
+                    let pid = Pid::from_raw(cmd.id().unwrap() as i32);
+
+                    if let Err(e) = signal::kill(pid, Signal::SIGTERM) {
+                        error!("Failed to send SIGTERM signal: {}", e);
+                    } else {
+                        info!("postgres entered smart shutdown...");
+                    }
+
+                    let _ = cmd.wait().await;
 
                     Ok(())
                 }

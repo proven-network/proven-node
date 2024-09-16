@@ -3210,6 +3210,7 @@ name = "proven-postgres"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "nix 0.29.0",
  "regex",
  "tokio",
  "tokio-util",
