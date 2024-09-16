@@ -182,6 +182,8 @@ impl Postgres {
                 .arg("127.0.0.1")
                 .arg("-p")
                 .arg("5432")
+                .arg("-U")
+                .arg(&self.username)
                 .output()
                 .await
                 .map_err(Error::Spawn)?;
