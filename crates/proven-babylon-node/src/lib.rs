@@ -14,7 +14,7 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 static CONFIG_PATH: &str = "/var/lib/proven-node/babylon-node.config";
 static KEYSTORE_PATH: &str = "/var/lib/proven-node/babylon-keystore.ks";
@@ -103,27 +103,27 @@ impl BabylonNode {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
 
-                // let re = Regex::new(r"(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]) (\[[A-Z]+\]) (.*)")
-                //     .unwrap();
+                let re = regex::Regex::new(
+                    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)",
+                )
+                .unwrap();
 
                 while let Ok(Some(line)) = lines.next_line().await {
-                    info!("{}", line);
-                    // if let Some(caps) = re.captures(&line) {
-                    //     let label = caps.get(2).unwrap().as_str();
-                    //     let message = caps.get(3).unwrap().as_str();
-                    //     match label {
-                    //         "[INFO]" => info!("{}", message),
-                    //         "[NOTICE]" => info!("{}", message),
-                    //         "[DEBUG]" => debug!("{}", message),
-                    //         "[WARNING]" => warn!("{}", message),
-                    //         "[CRITICAL]" => warn!("{}", message),
-                    //         "[ERROR]" => error!("{}", message),
-                    //         "[FATAL]" => error!("{}", message),
-                    //         _ => error!("{}", line),
-                    //     }
-                    // } else {
-                    //     error!("{}", line);
-                    // }
+                    if let Some(caps) = re.captures(&line) {
+                        let label = caps.get(1).unwrap().as_str();
+                        let message = caps.get(2).unwrap().as_str();
+                        match label {
+                            "FATAL" => error!("{}", message),
+                            "ERROR" => error!("{}", message),
+                            "WARN" => warn!("{}", message),
+                            "INFO" => info!("{}", message),
+                            "DEBUG" => debug!("{}", message),
+                            "TRACE" => trace!("{}", message),
+                            _ => error!("{}", line),
+                        }
+                    } else {
+                        error!("{}", line);
+                    }
                 }
             });
 
@@ -132,27 +132,8 @@ impl BabylonNode {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
 
-                // let re = Regex::new(r"(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]) (\[[A-Z]+\]) (.*)")
-                //     .unwrap();
-
                 while let Ok(Some(line)) = lines.next_line().await {
                     warn!("{}", line);
-                    // if let Some(caps) = re.captures(&line) {
-                    //     let label = caps.get(2).unwrap().as_str();
-                    //     let message = caps.get(3).unwrap().as_str();
-                    //     match label {
-                    //         "[INFO]" => info!("{}", message),
-                    //         "[NOTICE]" => info!("{}", message),
-                    //         "[DEBUG]" => debug!("{}", message),
-                    //         "[WARNING]" => warn!("{}", message),
-                    //         "[CRITICAL]" => warn!("{}", message),
-                    //         "[ERROR]" => error!("{}", message),
-                    //         "[FATAL]" => error!("{}", message),
-                    //         _ => error!("{}", line),
-                    //     }
-                    // } else {
-                    //     error!("{}", line);
-                    // }
                 }
             });
 
