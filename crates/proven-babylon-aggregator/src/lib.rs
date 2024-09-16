@@ -215,6 +215,32 @@ impl BabylonAggregator {
     async fn run_migrations(&self) -> Result<()> {
         let cmd = Command::new("dotnet")
             .env("ASPNETCORE_ENVIRONMENT", "Production")
+            .env("Logging__LogLevel__Default", "Information")
+            .env("Logging__LogLevel__Microsoft.AspNetCore", "Warning")
+            .env(
+                "Logging__LogLevel__Microsoft.Hosting.Lifetime",
+                "Information",
+            )
+            .env(
+                "Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command",
+                "Warning",
+            )
+            .env(
+                "Logging__LogLevel__Microsoft.EntityFrameworkCore.Infrastructure",
+                "Warning",
+            )
+            .env("Logging__LogLevel__Npgsql", "Warning")
+            .env(
+                "Logging__LogLevel__System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler",
+                "Warning",
+            )
+            .env(
+                "Logging__LogLevel__System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler",
+                "Warning",
+            )
+            .env("Logging__Console__FormatterName", "Simple")
+            .env("Logging__Console__FormatterOptions__SingleLine", "true")
+            .env("Logging__Console__FormatterOptions__IncludeScopes", "false")
             .env(
                 "ConnectionStrings__NetworkGatewayMigrations",
                 format!(
