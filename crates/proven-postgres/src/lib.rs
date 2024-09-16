@@ -184,6 +184,8 @@ impl Postgres {
                 .arg("5432")
                 .arg("-U")
                 .arg(&self.username)
+                .arg("-d")
+                .arg("postgres")
                 .output()
                 .await
                 .map_err(Error::Spawn)?;
