@@ -57,6 +57,7 @@ impl BabylonAggregator {
             // Start the babylon-aggregator process
             let mut cmd = Command::new("dotnet")
                 .arg(DATA_AGGREGATOR_PATH)
+                .env("ASPNETCORE_ENVIRONMENT", "Production")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
                 .env("PrometheusMetricsPort", "1234")
                 .env(
@@ -96,8 +97,8 @@ impl BabylonAggregator {
                 // let re = Regex::new(r"(\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]) (\[[A-Z]+\]) (.*)")
                 //     .unwrap();
 
-                while let Ok(Some(_line)) = lines.next_line().await {
-                    // info!("{}", line);
+                while let Ok(Some(line)) = lines.next_line().await {
+                    info!("{}", line);
                     // if let Some(caps) = re.captures(&line) {
                     //     let label = caps.get(2).unwrap().as_str();
                     //     let message = caps.get(3).unwrap().as_str();
@@ -187,6 +188,7 @@ impl BabylonAggregator {
 
     async fn run_migrations(&self) -> Result<()> {
         let cmd = Command::new("dotnet")
+            .env("ASPNETCORE_ENVIRONMENT", "Production")
             .env(
                 "ConnectionStrings__NetworkGatewayMigrations",
                 format!(
