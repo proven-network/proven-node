@@ -4,6 +4,8 @@ pub use error::{Error, Result};
 
 use std::process::Stdio;
 
+use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
 // use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -156,7 +158,10 @@ impl BabylonAggregator {
                     Ok(())
                 }
                 _ = shutdown_token.cancelled() => {
-                    cmd.kill().await.unwrap();
+                    let pid = Pid::from_raw(cmd.id().unwrap() as i32);
+                    signal::kill(pid, Signal::SIGTERM).unwrap();
+
+                    let _ = cmd.wait().await;
 
                     Ok(())
                 }

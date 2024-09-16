@@ -5,6 +5,8 @@ pub use error::{Error, Result};
 use std::process::Stdio;
 
 use httpclient::{Client, InMemoryBody};
+use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
 use radix_common::network::NetworkDefinition;
 // use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -166,7 +168,10 @@ impl BabylonNode {
                     Ok(())
                 }
                 _ = shutdown_token.cancelled() => {
-                    cmd.kill().await.unwrap();
+                    let pid = Pid::from_raw(cmd.id().unwrap() as i32);
+                    signal::kill(pid, Signal::SIGTERM).unwrap();
+
+                    let _ = cmd.wait().await;
 
                     Ok(())
                 }
