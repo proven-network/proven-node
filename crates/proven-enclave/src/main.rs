@@ -1,10 +1,10 @@
 #![allow(clippy::result_large_err)]
 mod enclave;
-mod enclave_manager;
+mod enclave_bootstrap;
 mod error;
 mod net;
 
-use enclave_manager::EnclaveManager;
+use enclave_bootstrap::EnclaveBootstrap;
 use error::Result;
 
 use std::sync::Arc;
@@ -30,13 +30,13 @@ async fn main() -> Result<()> {
 }
 
 async fn initialize(args: InitializeArgs) -> Result<()> {
-    let enclave_manager = Arc::new(EnclaveManager::new());
-    let enclave = enclave_manager.start(args).await?;
+    let enclave_bootstrap = Arc::new(EnclaveBootstrap::new());
+    let enclave = enclave_bootstrap.start(args).await?;
 
     handle_commands(
         VsockAddr::new(VMADDR_CID_ANY, 1024), // Control port is always at 1024
         move |command| {
-            let enclave_manager = enclave_manager.clone();
+            let enclave_bootstrap = enclave_bootstrap.clone();
             let enclave = enclave.clone();
 
             async move {
@@ -45,7 +45,7 @@ async fn initialize(args: InitializeArgs) -> Result<()> {
                         error!("already initialized");
                     }
                     Command::Shutdown => {
-                        enclave_manager.shutdown().await;
+                        enclave_bootstrap.shutdown().await;
                     }
                     command => {
                         enclave.lock().await.handle_command(command).await;

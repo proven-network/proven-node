@@ -44,12 +44,12 @@ static VMADDR_CID_EC2_HOST: u32 = 3;
 static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
 static POSTGRES_DATABASE: &str = "babylon-db";
-pub struct EnclaveManager {
+pub struct EnclaveBootstrap {
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl EnclaveManager {
+impl EnclaveBootstrap {
     pub fn new() -> Self {
         Self {
             shutdown_token: CancellationToken::new(),
