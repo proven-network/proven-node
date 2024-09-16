@@ -86,23 +86,10 @@ impl EnclaveBootstrap {
             args.host_ip,
             args.cidr,
             args.tun_device.clone(),
-        );
-
-        let connection_handler = proxy
-            .start(async {
-                setup_default_gateway(args.tun_device.as_str(), args.host_ip, args.cidr).await?;
-
-                Ok(())
-            })
-            .await
-            .unwrap();
-
-        let proxy_ct = CancellationToken::new();
-        let proxy_ct_clone = proxy_ct.clone();
-        let proxy_handle =
-            tokio::spawn(
-                async move { connection_handler.proxy(vsock_stream, proxy_ct_clone).await },
-            );
+        )
+        .await?;
+        setup_default_gateway(args.tun_device.as_str(), args.host_ip, args.cidr).await?;
+        let proxy_handle = proxy.start(vsock_stream);
 
         info!("network configured");
 
@@ -309,7 +296,7 @@ impl EnclaveBootstrap {
                     babylon_node_external_fs.shutdown().await;
                     postgres.shutdown().await;
                     dnscrypt_proxy.shutdown().await;
-                    proxy_ct.cancel();
+                    proxy.shutdown().await;
                 }
                 _ = critical_tasks => {
                     error!("critical task failed - exiting");
@@ -321,7 +308,7 @@ impl EnclaveBootstrap {
                     babylon_node_external_fs.shutdown().await;
                     postgres.shutdown().await;
                     dnscrypt_proxy.shutdown().await;
-                    proxy_ct.cancel();
+                    proxy.shutdown().await;
                 }
                 _ = core_handle => {
                     error!("core exited unexpectedly - exiting");

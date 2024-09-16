@@ -2,55 +2,41 @@ mod error;
 
 pub use crate::error::{Error, Result};
 
-use cidr::Ipv4Cidr;
+use std::net::Ipv4Addr;
 use std::sync::Arc;
-use std::{future::Future, net::Ipv4Addr};
+
+use cidr::Ipv4Cidr;
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::task::JoinHandle;
 use tokio_tun::{Tun, TunBuilder};
 use tokio_util::sync::CancellationToken;
-use tokio_vsock::VsockStream;
+use tokio_vsock::{VsockListener, VsockStream};
 use tracing::{error, info};
 
 const FRAME_LEN: usize = 0xffff;
 const FRAME_SIZE_LEN: usize = 2;
 
 pub struct Proxy {
-    pub dest_addr: Ipv4Addr,
-    pub ip_addr: Ipv4Addr,
-    pub cidr: Ipv4Cidr,
-    pub tun_interface_name: String,
+    tun: Arc<Tun>,
+    shutdown_token: CancellationToken,
 }
 
 impl Proxy {
-    pub fn new(
+    pub async fn new(
         ip_addr: Ipv4Addr,
         dest_addr: Ipv4Addr,
         cidr: Ipv4Cidr,
         tun_interface_name: String,
-    ) -> Proxy {
-        Proxy {
-            dest_addr,
-            ip_addr,
-            cidr,
-            tun_interface_name,
-        }
-    }
-
-    pub async fn start(
-        &self,
-        post_dev_create_fn: impl Future<
-            Output = std::result::Result<(), Box<dyn std::error::Error + Send + Sync>>,
-        >,
-    ) -> Result<ConnectionHandler> {
+    ) -> Result<Self> {
         let tun = Arc::new(
             TunBuilder::new()
-                .name(&self.tun_interface_name)
+                .name(&tun_interface_name)
                 .tap(false)
                 .packet_info(false)
                 .mtu(FRAME_LEN as i32)
-                .address(self.ip_addr)
-                .destination(self.dest_addr)
-                .netmask(self.cidr.mask())
+                .address(ip_addr)
+                .destination(dest_addr)
+                .netmask(cidr.mask())
                 .up()
                 .try_build()?,
         );
@@ -60,7 +46,7 @@ impl Proxy {
                 "qdisc",
                 "replace",
                 "dev",
-                &self.tun_interface_name,
+                &tun_interface_name,
                 "root",
                 "pfifo_fast",
             ])
@@ -69,48 +55,64 @@ impl Proxy {
 
         info!("created tun interface");
 
-        post_dev_create_fn.await.map_err(Error::Callback)?;
-
-        Ok(ConnectionHandler { tun })
+        Ok(Self {
+            tun,
+            shutdown_token: CancellationToken::new(),
+        })
     }
-}
 
-pub struct ConnectionHandler {
-    tun: Arc<Tun>,
-}
-
-impl ConnectionHandler {
-    pub async fn proxy(
-        &self,
-        vsock_stream: VsockStream,
-        cancellation_token: CancellationToken,
-    ) -> Result<()> {
+    pub fn start(&self, vsock_stream: VsockStream) -> JoinHandle<Result<()>> {
         let (vsock_read, vsock_write) = split(vsock_stream);
 
         let tun_read = Arc::clone(&self.tun);
         let tun_write = Arc::clone(&self.tun);
 
-        tokio::select! {
-            _ = cancellation_token.cancelled() => {
-                info!("proxy connection cancelled");
+        let shutdown_token = self.shutdown_token.clone();
 
-                return Ok(());
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = shutdown_token.cancelled() => {
+                    return Ok(());
+                }
+                e = tokio::spawn(tun_to_vsock(tun_read, vsock_write)) => {
+                    error!("tun_to_vsock error: {:?}", e);
+
+                    e?
+                }
+                e = tokio::spawn(vsock_to_tun(vsock_read, tun_write)) => {
+                    error!("vsock_to_tun error: {:?}", e);
+
+                    e?
+                }
+            }?;
+
+            Ok(())
+        })
+    }
+
+    pub async fn start_host(self: Arc<Self>, mut vsock: VsockListener) {
+        loop {
+            tokio::select! {
+                _ = self.shutdown_token.cancelled() => {
+                    break;
+                }
+                Ok((vsock_stream, remote_addr)) = vsock.accept() => {
+                    info!("accepted vsock connection from {}", remote_addr);
+                    let proxy_clone = Arc::clone(&self);
+                    tokio::spawn(async move {
+                        let _ = proxy_clone.start(vsock_stream).await;
+                    });
+                }
             }
-            e = tokio::spawn(tun_to_vsock(tun_read, vsock_write)) => {
-                error!("tun_to_vsock error: {:?}", e);
+        }
+    }
 
-                e?
-            }
-            e = tokio::spawn(vsock_to_tun(vsock_read, tun_write)) => {
-                error!("vsock_to_tun error: {:?}", e);
+    pub async fn shutdown(&self) {
+        info!("proxy shutting down...");
 
-                e?
-            }
-        }?;
+        self.shutdown_token.cancel();
 
-        info!("proxy connection closed");
-
-        Ok(())
+        info!("proxy shutdown");
     }
 }
 

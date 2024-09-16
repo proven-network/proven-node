@@ -8,6 +8,7 @@ use vsock_tracing::TracingService;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use axum::http::Uri;
 use axum::response::Redirect;
@@ -21,7 +22,6 @@ use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{send_command, Command, InitializeArgs};
 use tokio::process::Child;
-use tokio_util::sync::CancellationToken;
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 use tracing::{error, info};
 
@@ -108,50 +108,23 @@ async fn main() -> Result<()> {
 
     let mut enclave = start_enclave().await?;
 
-    let cancellation_token = CancellationToken::new();
-    let proxy_cancel_token = cancellation_token.clone();
-    let proxy_handle = tokio::spawn(async move {
-        let args = Args::parse();
+    let vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
 
-        let mut vsock =
-            VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
-        let connection_handler = Proxy::new(
+    let proxy = Arc::new(
+        Proxy::new(
             args.host_ip,
             args.enclave_ip,
             args.cidr,
             args.tun_device.clone(),
         )
-        .start(async {
-            configure_nat(&args.outbound_device, args.cidr).await?;
-            configure_route(&args.tun_device, args.cidr, args.enclave_ip).await?;
-            configure_port_forwarding(args.host_ip, args.enclave_ip, &args.outbound_device).await?;
+        .await?,
+    );
 
-            Ok(())
-        })
-        .await
-        .unwrap();
+    configure_nat(&args.outbound_device, args.cidr).await?;
+    configure_route(&args.tun_device, args.cidr, args.enclave_ip).await?;
+    configure_port_forwarding(args.host_ip, args.enclave_ip, &args.outbound_device).await?;
 
-        loop {
-            tokio::select! {
-                    _ = proxy_cancel_token.cancelled() => {
-                        info!("shutting down proxy server...");
-                        break;
-                    }
-                    result = vsock.accept() => {
-                        match result {
-                             Ok((vsock_stream, remote_addr)) => {
-                            info!("accepted connection from {:?}", remote_addr);
-
-                            let _ = connection_handler.proxy(vsock_stream, proxy_cancel_token.clone()).await;
-                        },
-                        Err(err) => {
-                            error!("error accepting connection: {:?}", err);
-                        }
-                    }
-                }
-            }
-        }
-    });
+    let proxy_handle = proxy.clone().start_host(vsock);
 
     let http_server = InsecureHttpServer::new(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 80)));
     let http_redirector = Router::new().route("/*path", any(redirect_to_https));
@@ -163,8 +136,8 @@ async fn main() -> Result<()> {
             Err(e) = http_server_handle => {
                 error!("http_server exited: {:?}", e);
             }
-            Err(e) = proxy_handle => {
-                error!("proxy exited: {:?}", e);
+            _ = proxy_handle => {
+                error!("proxy exited");
             }
             else => {
                 info!("all critical tasks exited normally");
@@ -183,12 +156,10 @@ async fn main() -> Result<()> {
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("shutting down...");
-            // Shutdown enclave first
             shutdown_enclave().await?;
             enclave.wait().await?; // TODO: this doesn't do anything - should poll active enclaves to check instead
-            // Cancel proxy and http server
-            cancellation_token.cancel();
             http_server.shutdown().await;
+            proxy.shutdown().await;
         }
         _ = critical_tasks => {
             error!("critical task failed - exiting");
