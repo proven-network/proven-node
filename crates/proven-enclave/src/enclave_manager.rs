@@ -121,8 +121,12 @@ impl EnclaveManager {
         info!("instance: {:?}", instance);
         let server_name = instance.instance_id.clone();
 
-        info!("initial speedtest...");
-        run_speedtest().await?;
+        if args.skip_speedtest {
+            info!("skipping speedtest...");
+        } else {
+            info!("running speedtest...");
+            run_speedtest().await?;
+        }
 
         // Boot dnscrypt-proxy
         let dnscrypt_proxy = DnscryptProxy::new(
