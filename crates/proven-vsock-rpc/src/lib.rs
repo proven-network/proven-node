@@ -4,13 +4,15 @@ mod error;
 pub use error::{Error, Result};
 use tracing::debug;
 
-use std::future::Future;
 use std::net::Shutdown;
+use std::{future::Future, pin::Pin};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_vsock::{VsockAddr, VsockListener, VsockStream};
 
 pub use command::{AddPeerArgs, Command, InitializeArgs};
+
+pub type Acknowledger = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 
 pub async fn send_command(vsock_addr: VsockAddr, command: Command) -> Result<()> {
     debug!("sending command: {:?}", command);
@@ -32,7 +34,7 @@ pub async fn send_command(vsock_addr: VsockAddr, command: Command) -> Result<()>
     Ok(())
 }
 
-pub async fn listen_for_command(vsock_addr: VsockAddr) -> Result<Command> {
+pub async fn listen_for_command(vsock_addr: VsockAddr) -> Result<(Command, Acknowledger)> {
     let mut listener = VsockListener::bind(vsock_addr)?;
     let (mut stream, _) = listener.accept().await?;
 
@@ -43,9 +45,12 @@ pub async fn listen_for_command(vsock_addr: VsockAddr) -> Result<Command> {
     let command: Command = serde_cbor::from_slice(&buffer)?;
     debug!("received command: {:?}", command);
 
-    stream.write_u8(1).await?; // Send acknowledgment
+    let ack = Box::pin(async move {
+        stream.write_u8(1).await?; // Send acknowledgment
+        Ok(())
+    });
 
-    Ok(command)
+    Ok((command, ack))
 }
 
 pub async fn handle_commands<F, Fut>(vsock_addr: VsockAddr, command_handler: F) -> Result<()>

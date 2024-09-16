@@ -9,17 +9,19 @@ use error::Result;
 
 use std::sync::Arc;
 
-use proven_vsock_rpc::{handle_commands, listen_for_command, Command, InitializeArgs};
+use proven_vsock_rpc::{
+    handle_commands, listen_for_command, Acknowledger, Command, InitializeArgs,
+};
 use tokio_vsock::{VsockAddr, VMADDR_CID_ANY};
 use tracing::error;
 
 #[tokio::main(worker_threads = 12)]
 async fn main() -> Result<()> {
-    let initial_command = listen_for_command(VsockAddr::new(VMADDR_CID_ANY, 1024)).await?;
+    let (command, acknowledger) = listen_for_command(VsockAddr::new(VMADDR_CID_ANY, 1024)).await?;
 
-    match initial_command {
+    match command {
         Command::Initialize(args) => {
-            initialize(args).await?;
+            initialize(args, acknowledger).await?;
         }
         _ => {
             error!("not initialized - cannot handle other commands");
@@ -29,9 +31,11 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn initialize(args: InitializeArgs) -> Result<()> {
+async fn initialize(args: InitializeArgs, acknowledger: Acknowledger) -> Result<()> {
     let enclave_bootstrap = Arc::new(EnclaveBootstrap::new());
     let enclave = enclave_bootstrap.start(args).await?;
+
+    acknowledger.await?;
 
     handle_commands(
         VsockAddr::new(VMADDR_CID_ANY, 1024), // Control port is always at 1024
