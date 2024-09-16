@@ -8,7 +8,8 @@ use httpclient::{Client, InMemoryBody};
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use radix_common::network::NetworkDefinition;
-// use regex::Regex;
+use regex::Regex;
+use strip_ansi_escapes::strip_str;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
@@ -104,15 +105,13 @@ impl BabylonNode {
                 let mut lines = reader.lines();
 
                 // Java log regexp
-                let jre = regex::Regex::new(
-                    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)",
-                )
-                .unwrap();
+                let jre =
+                    Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)")
+                        .unwrap();
 
-                let rre = regex::Regex::new(
-                    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+)\s+.+:\s+(.*)",
-                )
-                .unwrap();
+                let rre =
+                    Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) .+: (.*)")
+                        .unwrap();
 
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(caps) = jre.captures(&line) {
@@ -127,7 +126,7 @@ impl BabylonNode {
                             "TRACE" => trace!("{}", message),
                             _ => error!("{}", line),
                         }
-                    } else if let Some(caps) = rre.captures(&line) {
+                    } else if let Some(caps) = rre.captures(&strip_str(&line)) {
                         let label = caps.get(1).unwrap().as_str();
                         let message = caps.get(2).unwrap().as_str();
                         match label {

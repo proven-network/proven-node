@@ -6,7 +6,7 @@ use std::process::Stdio;
 
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
-// use regex::Regex;
+use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
@@ -63,7 +63,7 @@ impl Postgres {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
 
-                let re = regex::Regex::new(
+                let re = Regex::new(
                     r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3} UTC \[\d+\] (\w+):  (.*)",
                 )
                 .unwrap();
