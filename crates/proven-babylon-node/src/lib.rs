@@ -103,13 +103,19 @@ impl BabylonNode {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
 
-                let re = regex::Regex::new(
+                // Java log regexp
+                let jre = regex::Regex::new(
                     r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)",
                 )
                 .unwrap();
 
+                let rre = regex::Regex::new(
+                    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) .+: (.*)",
+                )
+                .unwrap();
+
                 while let Ok(Some(line)) = lines.next_line().await {
-                    if let Some(caps) = re.captures(&line) {
+                    if let Some(caps) = jre.captures(&line) {
                         let label = caps.get(1).unwrap().as_str();
                         let message = caps.get(2).unwrap().as_str();
                         match label {
@@ -119,6 +125,17 @@ impl BabylonNode {
                             "INFO" => info!("{}", message),
                             "DEBUG" => debug!("{}", message),
                             "TRACE" => trace!("{}", message),
+                            _ => error!("{}", line),
+                        }
+                    } else if let Some(caps) = rre.captures(&line) {
+                        let label = caps.get(1).unwrap().as_str();
+                        let message = caps.get(2).unwrap().as_str();
+                        match label {
+                            "DEBUG" => debug!("{}", message),
+                            "ERROR" => error!("{}", message),
+                            "INFO" => info!("{}", message),
+                            "TRACE" => trace!("{}", message),
+                            "WARN" => warn!("{}", message),
                             _ => error!("{}", line),
                         }
                     } else {
