@@ -118,6 +118,7 @@ impl BabylonNode {
                         let label = caps.get(1).unwrap().as_str();
                         let message = caps.get(2).unwrap().as_str();
                         match label {
+                            "OFF" => info!("{}", message),
                             "FATAL" => error!("{}", message),
                             "ERROR" => error!("{}", message),
                             "WARN" => warn!("{}", message),
