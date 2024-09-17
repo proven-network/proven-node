@@ -21,7 +21,9 @@ async fn main() -> Result<()> {
 
     match command {
         Command::Initialize(args) => {
-            initialize(args, acknowledger).await?;
+            if let Err(error) = initialize(args, acknowledger).await {
+                error!("failed to initialize: {:?}", error);
+            }
         }
         _ => {
             error!("not initialized - cannot handle other commands");
@@ -35,7 +37,7 @@ async fn initialize(args: InitializeArgs, acknowledger: Acknowledger) -> Result<
     let enclave_bootstrap = Arc::new(EnclaveBootstrap::new());
     let enclave = enclave_bootstrap.start(args).await?;
 
-    acknowledger.await?;
+    acknowledger(1).await?;
 
     handle_commands(
         VsockAddr::new(VMADDR_CID_ANY, 1024), // Control port is always at 1024

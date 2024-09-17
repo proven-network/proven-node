@@ -12,7 +12,9 @@ use tokio_vsock::{VsockAddr, VsockListener, VsockStream};
 
 pub use command::{AddPeerArgs, Command, InitializeArgs};
 
-pub type Acknowledger = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
+type Response = u8;
+type AcknowledgerFut = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
+pub type Acknowledger = Box<dyn FnOnce(Response) -> AcknowledgerFut>;
 
 pub async fn send_command(vsock_addr: VsockAddr, command: Command) -> Result<()> {
     debug!("sending command: {:?}", command);
@@ -45,9 +47,13 @@ pub async fn listen_for_command(vsock_addr: VsockAddr) -> Result<(Command, Ackno
     let command: Command = serde_cbor::from_slice(&buffer)?;
     debug!("received command: {:?}", command);
 
-    let ack = Box::pin(async move {
-        stream.write_u8(1).await?; // Send acknowledgment
-        Ok(())
+    // Define the acknowledgment closure
+    let ack: Acknowledger = Box::new(move |response| {
+        Box::pin(async move {
+            stream.write_u8(response).await?; // Send acknowledgment
+
+            Ok(())
+        })
     });
 
     Ok((command, ack))
