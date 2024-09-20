@@ -100,6 +100,10 @@ impl BabylonGateway {
                 )
                 .env("GatewayApi__AcceptableLedgerLag__ReadRequestAcceptableDbLedgerLagSeconds", "720")
                 .env("GatewayApi__AcceptableLedgerLag__ConstructionRequestsAcceptableDbLedgerLagSeconds", "720")
+                .env("GatewayApi__Endpoint__MaxPageSize", "100")
+                .env("GatewayApi__Endpoint__DefaultPageSize", "100")
+                .env("GatewayApi__AcceptableLedgerLag__PreventReadRequestsIfDbLedgerIsBehind", "true")
+                .env("GatewayApi__AcceptableLedgerLag__PreventConstructionRequestsIfDbLedgerIsBehind", "true")
                 .env("GatewayApi__Network__NetworkName", "stokenet")
                 .env(
                     "GatewayApi__Network__DisableCoreApiHttpsCertificateChecks",
@@ -113,6 +117,7 @@ impl BabylonGateway {
                     "GatewayApi__Network__CoreApiNodes__0__CoreApiAddress",
                     "http://127.0.0.1:3333/core",
                 )
+                .env("GatewayApi__Network__CoreApiNodes__0__RequestWeighting", "1")
                 .env("GatewayApi__Network__CoreApiNodes__0__Enabled", "true")
                 .env("GatewayApi__Network__CoreApiNodes__MaxAllowedStateVersionLagToBeConsideredSynced", "100")
                 .env("GatewayApi__Network__CoreApiNodes__IgnoreNonSyncedNodes", "true")

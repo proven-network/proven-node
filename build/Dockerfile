@@ -37,7 +37,7 @@ WORKDIR /
 
 RUN git clone https://github.com/radixdlt/babylon-gateway.git
 WORKDIR /babylon-gateway
-RUN git checkout v1.7.1
+RUN git checkout v1.7.2
 
 WORKDIR /babylon-gateway/apps/DataAggregator
 RUN dotnet publish -c Release -o /bin/DataAggregator
