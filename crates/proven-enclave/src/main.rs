@@ -9,58 +9,70 @@ use error::Result;
 
 use std::sync::Arc;
 
-use proven_vsock_rpc::{
-    handle_commands, listen_for_command, Acknowledger, Command, InitializeArgs,
-};
+use proven_vsock_rpc::{InitializeResponse, RpcCall, RpcServer, ShutdownResponse};
 use tokio_vsock::{VsockAddr, VMADDR_CID_ANY};
-use tracing::error;
+use tracing::{error, info};
 
 #[tokio::main(worker_threads = 12)]
 async fn main() -> Result<()> {
-    let (command, acknowledger) = listen_for_command(VsockAddr::new(VMADDR_CID_ANY, 1024)).await?;
+    let rpc_server = RpcServer::new(VsockAddr::new(VMADDR_CID_ANY, 1024));
+    info!("RPC server started");
 
-    match command {
-        Command::Initialize(args) => {
-            if let Err(error) = initialize(args, acknowledger).await {
-                error!("failed to initialize: {:?}", error);
-            }
-        }
-        _ => {
-            error!("not initialized - cannot handle other commands");
-        }
+    if let Err(e) = handle_initial_request(&rpc_server).await {
+        error!("Failed to handle initial request: {:?}", e);
     }
 
     Ok(())
 }
 
-async fn initialize(args: InitializeArgs, acknowledger: Acknowledger) -> Result<()> {
-    let enclave_bootstrap = Arc::new(EnclaveBootstrap::new());
-    let enclave = enclave_bootstrap.start(args).await?;
+async fn handle_initial_request(rpc_server: &RpcServer) -> Result<()> {
+    match rpc_server.accept().await {
+        Ok(RpcCall::Initialize(args, ack)) => {
+            let enclave_bootstrap = Arc::new(EnclaveBootstrap::new());
+            let enclave = enclave_bootstrap.start(args).await?;
+            ack(InitializeResponse { success: true }).await.unwrap();
+            info!("Enclave initialized successfully");
 
-    acknowledger(1).await?;
+            handle_requests_loop(rpc_server, enclave_bootstrap, enclave).await?;
+        }
+        Ok(_) => {
+            error!("Unexpected initial request");
+        }
+        Err(e) => {
+            error!("Failed to accept initial request: {:?}", e);
+        }
+    }
+    Ok(())
+}
 
-    handle_commands(
-        VsockAddr::new(VMADDR_CID_ANY, 1024), // Control port is always at 1024
-        move |command| {
-            let enclave_bootstrap = enclave_bootstrap.clone();
-            let enclave = enclave.clone();
-
-            async move {
-                match command {
-                    Command::Initialize(_) => {
-                        error!("already initialized");
-                    }
-                    Command::Shutdown => {
-                        enclave_bootstrap.shutdown().await;
-                    }
-                    command => {
-                        enclave.lock().await.handle_command(command).await;
-                    }
+async fn handle_requests_loop(
+    rpc_server: &RpcServer,
+    enclave_bootstrap: Arc<EnclaveBootstrap>,
+    enclave: Arc<tokio::sync::Mutex<enclave::Enclave>>,
+) -> Result<()> {
+    loop {
+        match rpc_server.accept().await {
+            Ok(acknowledger) => match acknowledger {
+                RpcCall::Initialize(_, ack) => {
+                    error!("Already initialized");
+                    ack(InitializeResponse { success: false }).await.unwrap();
                 }
+                RpcCall::AddPeer(args, ack) => {
+                    let response = enclave.lock().await.add_peer(args).await;
+                    ack(response).await.unwrap();
+                }
+                RpcCall::Shutdown(ack) => {
+                    enclave_bootstrap.shutdown().await;
+                    ack(ShutdownResponse { success: true }).await.unwrap();
+                    info!("Enclave shutdown successfully");
+                    break;
+                }
+            },
+            Err(e) => {
+                error!("Failed to accept request: {:?}", e);
             }
-        },
-    )
-    .await?;
+        }
+    }
 
     Ok(())
 }

@@ -20,7 +20,7 @@ use nix::unistd::Uid;
 use proven_http::HttpServer;
 use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
-use proven_vsock_rpc::{send_command, Command, InitializeArgs};
+use proven_vsock_rpc::{InitializeRequest, RpcClient};
 use tokio::process::Child;
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 use tracing::{error, info};
@@ -245,29 +245,27 @@ async fn initialize_enclave() -> Result<()> {
 
     let host_dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
 
-    let initialize_args = InitializeArgs {
-        certificates_bucket: args.certificates_bucket,
-        cidr: args.cidr,
-        email: args.email,
-        enclave_ip: args.enclave_ip,
-        fqdn: args.fqdn,
-        host_dns_resolv,
-        host_ip: args.host_ip,
-        https_port: args.https_port,
-        log_port: args.log_port,
-        nats_port: args.nats_port,
-        proxy_port: args.proxy_port,
-        skip_fsck: args.skip_fsck,
-        skip_speedtest: args.skip_speedtest,
-        stokenet: args.stokenet,
-        tun_device: args.tun_device,
-    };
+    let res = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
+        .initialize(InitializeRequest {
+            certificates_bucket: args.certificates_bucket,
+            cidr: args.cidr,
+            email: args.email,
+            enclave_ip: args.enclave_ip,
+            fqdn: args.fqdn,
+            host_dns_resolv,
+            host_ip: args.host_ip,
+            https_port: args.https_port,
+            log_port: args.log_port,
+            nats_port: args.nats_port,
+            proxy_port: args.proxy_port,
+            skip_fsck: args.skip_fsck,
+            skip_speedtest: args.skip_speedtest,
+            stokenet: args.stokenet,
+            tun_device: args.tun_device,
+        })
+        .await?;
 
-    send_command(
-        VsockAddr::new(args.enclave_cid, 1024),
-        Command::Initialize(initialize_args),
-    )
-    .await?;
+    info!("initialize response: {:?}", res);
 
     Ok(())
 }
@@ -275,7 +273,11 @@ async fn initialize_enclave() -> Result<()> {
 async fn shutdown_enclave() -> Result<()> {
     let args = Args::parse();
 
-    send_command(VsockAddr::new(args.enclave_cid, 1024), Command::Shutdown).await?;
+    let res = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
+        .shutdown()
+        .await?;
+
+    info!("shutdown response: {:?}", res);
 
     Ok(())
 }

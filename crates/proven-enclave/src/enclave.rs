@@ -1,5 +1,3 @@
-use crate::error::Result;
-
 use std::net::SocketAddrV4;
 
 use proven_attestation_nsm::NsmAttestor;
@@ -7,7 +5,7 @@ use proven_core::Core;
 use proven_nats_server::NatsServer;
 use proven_sessions::SessionManager;
 use proven_store_nats::NatsStore;
-use proven_vsock_rpc::{AddPeerArgs, Command};
+use proven_vsock_rpc::{AddPeerRequest, AddPeerResponse};
 use tracing::{error, info};
 
 pub struct Enclave {
@@ -23,25 +21,19 @@ impl Enclave {
         Self { core, nats_server }
     }
 
-    pub async fn handle_command(&self, command: Command) {
-        match command {
-            Command::AddPeer(args) => {
-                if let Err(e) = self.add_peer(args).await {
-                    error!("add_peer failed: {:?}", e);
-                }
-            }
-            _ => {
-                error!("unknown command");
+    pub async fn add_peer(&self, args: AddPeerRequest) -> AddPeerResponse {
+        match self
+            .nats_server
+            .add_peer(SocketAddrV4::new(args.peer_ip, args.peer_port))
+            .await
+        {
+            Ok(_) => AddPeerResponse { success: true },
+            Err(e) => {
+                error!("failed to add peer: {:?}", e);
+
+                AddPeerResponse { success: false }
             }
         }
-    }
-
-    async fn add_peer(&self, args: AddPeerArgs) -> Result<()> {
-        self.nats_server
-            .add_peer(SocketAddrV4::new(args.peer_ip, args.peer_port))
-            .await?;
-
-        Ok(())
     }
 
     pub async fn shutdown(&self) {

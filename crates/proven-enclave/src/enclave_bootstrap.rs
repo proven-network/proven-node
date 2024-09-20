@@ -29,7 +29,7 @@ use proven_store_asm::AsmStore;
 use proven_store_nats::{NatsKeyValueConfig, NatsStore};
 use proven_store_s3_sse_c::S3Store;
 use proven_vsock_proxy::Proxy;
-use proven_vsock_rpc::InitializeArgs;
+use proven_vsock_rpc::InitializeRequest;
 use proven_vsock_tracing::configure_logging_to_vsock;
 use radix_common::network::NetworkDefinition;
 use tokio::sync::Mutex;
@@ -57,7 +57,7 @@ impl EnclaveBootstrap {
         }
     }
 
-    pub async fn start(&self, args: InitializeArgs) -> Result<Arc<Mutex<Enclave>>> {
+    pub async fn start(&self, args: InitializeRequest) -> Result<Arc<Mutex<Enclave>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
