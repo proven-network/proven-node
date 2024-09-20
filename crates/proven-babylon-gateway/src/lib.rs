@@ -112,18 +112,54 @@ impl BabylonGateway {
                 )
                 .env(
                     "GatewayApi__Network__CoreApiNodes__0__Name",
-                    "babylon-node",
+                    "One",
                 )
                 .env(
                     "GatewayApi__Network__CoreApiNodes__0__CoreApiAddress",
                     "http://127.0.0.1:3333/core",
                 )
-                .env("GatewayApi__Network__CoreApiNodes__0__RequestWeighting", "1")
                 .env("GatewayApi__Network__CoreApiNodes__0__Enabled", "true")
+                .env("GatewayApi__Network__CoreApiNodes__0__RequestWeighting", "1")
+                .env(
+                    "GatewayApi__Network__CoreApiNodes__1__Name",
+                    "Two",
+                )
+                .env(
+                    "GatewayApi__Network__CoreApiNodes__1__CoreApiAddress",
+                    "",
+                )
                 .env("GatewayApi__Network__CoreApiNodes__1__Enabled", "false")
+                .env("GatewayApi__Network__CoreApiNodes__1__RequestWeighting", "1")
+                .env(
+                    "GatewayApi__Network__CoreApiNodes__2__Name",
+                    "Three",
+                )
+                .env(
+                    "GatewayApi__Network__CoreApiNodes__2__CoreApiAddress",
+                    "",
+                )
                 .env("GatewayApi__Network__CoreApiNodes__2__Enabled", "false")
+                .env("GatewayApi__Network__CoreApiNodes__2__RequestWeighting", "1")
+                .env(
+                    "GatewayApi__Network__CoreApiNodes__3__Name",
+                    "Four",
+                )
+                .env(
+                    "GatewayApi__Network__CoreApiNodes__3__CoreApiAddress",
+                    "",
+                )
                 .env("GatewayApi__Network__CoreApiNodes__3__Enabled", "false")
+                .env("GatewayApi__Network__CoreApiNodes__3__RequestWeighting", "1")
+                .env(
+                    "GatewayApi__Network__CoreApiNodes__4__Name",
+                    "Five",
+                )
+                .env(
+                    "GatewayApi__Network__CoreApiNodes__4__CoreApiAddress",
+                    "",
+                )
                 .env("GatewayApi__Network__CoreApiNodes__4__Enabled", "false")
+                .env("GatewayApi__Network__CoreApiNodes__4__RequestWeighting", "1")
                 .env("GatewayApi__Network__CoreApiNodes__MaxAllowedStateVersionLagToBeConsideredSynced", "100")
                 .env("GatewayApi__Network__CoreApiNodes__IgnoreNonSyncedNodes", "true")
                 .stdout(Stdio::piped())
