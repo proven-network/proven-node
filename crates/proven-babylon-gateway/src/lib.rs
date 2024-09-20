@@ -91,6 +91,7 @@ impl BabylonGateway {
                 .env("Logging__Console__FormatterOptions__IncludeScopes", "false")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
                 .env("PrometheusMetricsPort", "1235")
+                .env("EnableSwagger", "false")
                 .env(
                     "ConnectionStrings__NetworkGatewayReadWrite",
                     format!(
@@ -127,10 +128,37 @@ impl BabylonGateway {
                 .map_err(Error::Spawn)?;
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
+            let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
             // Spawn a task to read and process the stdout output of the babylon-gateway process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+
+                let re = Regex::new(r"(\w+): (.*)").unwrap();
+
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Some(caps) = re.captures(&line) {
+                        let label = caps.get(1).unwrap().as_str();
+                        let message = caps.get(2).unwrap().as_str();
+                        match label {
+                            "trce" => trace!("{}", message),
+                            "dbug" => debug!("{}", message),
+                            "info" => info!("{}", message),
+                            "warn" => warn!("{}", message),
+                            "fail" => error!("{}", message),
+                            "crit" => error!("{}", message),
+                            _ => error!("{}", line),
+                        }
+                    } else {
+                        error!("{}", line);
+                    }
+                }
+            });
+
+            // Spawn a task to read and process the stdout output of the babylon-gateway process
+            task_tracker.spawn(async move {
+                let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
 
                 let re = Regex::new(r"(\w+): (.*)").unwrap();
