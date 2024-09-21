@@ -15,8 +15,8 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
+static CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.json";
 static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi.dll";
-static CONFIG_PATH: &str = "/var/lib/proven/gateway-api.json";
 
 pub struct BabylonGateway {
     postgres_database: String,
@@ -46,7 +46,7 @@ impl BabylonGateway {
             return Err(Error::AlreadyStarted);
         }
 
-        self.update_config().await?;
+        self.update_config()?;
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
@@ -57,7 +57,6 @@ impl BabylonGateway {
                 .arg(GATEWAY_API_PATH)
                 .env("ASPNETCORE_ENVIRONMENT", "Production")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
-                .env("CustomJsonConfigurationFilePath", CONFIG_PATH)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -157,7 +156,7 @@ impl BabylonGateway {
         info!("babylon-gateway shutdown");
     }
 
-    async fn update_config(&self) -> Result<()> {
+    fn update_config(&self) -> Result<()> {
         let connection_string = format!(
             "Host=127.0.0.1:5432;Database={};Username={};Password={}",
             self.postgres_database, self.postgres_username, self.postgres_password

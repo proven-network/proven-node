@@ -15,8 +15,9 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static CONFIG_PATH: &str = "/var/lib/proven/data-aggregator.json";
+static DATA_AGGREGATOR_CONFIG_PATH: &str = "/bin/DataAggregator/appsettings.json";
 static DATA_AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator.dll";
+static DATABASE_MIGRATIONS_CONFIG_PATH: &str = "/bin/DatabaseMigrations/appsettings.json";
 static DATABASE_MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations.dll";
 
 pub struct BabylonAggregator {
@@ -47,7 +48,7 @@ impl BabylonAggregator {
             return Err(Error::AlreadyStarted);
         }
 
-        self.update_config().await?;
+        self.update_config()?;
         self.run_migrations().await?;
 
         let shutdown_token = self.shutdown_token.clone();
@@ -185,7 +186,6 @@ impl BabylonAggregator {
     async fn run_migrations(&self) -> Result<()> {
         let cmd = Command::new("dotnet")
             .env("ASPNETCORE_ENVIRONMENT", "Production")
-            .env("CustomJsonConfigurationFilePath", CONFIG_PATH)
             .arg(DATABASE_MIGRATIONS_PATH)
             .output()
             .await
@@ -201,7 +201,7 @@ impl BabylonAggregator {
         Ok(())
     }
 
-    async fn update_config(&self) -> Result<()> {
+    fn update_config(&self) -> Result<()> {
         let connection_string = format!(
             "Host=127.0.0.1:5432;Database={};Username={};Password={}",
             self.postgres_database, self.postgres_username, self.postgres_password
@@ -253,7 +253,20 @@ impl BabylonAggregator {
             .create(true)
             .truncate(true)
             .write(true)
-            .open(CONFIG_PATH)
+            .open(DATABASE_MIGRATIONS_CONFIG_PATH)
+            .unwrap();
+
+        std::io::Write::write_all(
+            &mut config_file,
+            serde_json::to_string_pretty(&config).unwrap().as_bytes(),
+        )
+        .map_err(Error::ConfigWrite)?;
+
+        let mut config_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(DATA_AGGREGATOR_CONFIG_PATH)
             .unwrap();
 
         std::io::Write::write_all(

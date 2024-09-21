@@ -46,6 +46,9 @@ RUN dotnet publish -c Release -o /bin/DatabaseMigrations
 WORKDIR /babylon-gateway/apps/GatewayApi
 RUN dotnet publish -c Release -o /bin/GatewayApi
 
+# Remove appsettings files (write these at runtime)
+RUN rm -f /bin/DataAggregator/appsettings.* /bin/DatabaseMigrations/appsettings.* /bin/GatewayApi/appsettings.*
+
 # --------------
 # GO BUILD STEPS
 # --------------

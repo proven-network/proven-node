@@ -77,7 +77,7 @@ impl BabylonNode {
         self.generate_node_key().await?;
         info!("generated node key");
 
-        self.update_node_config().await?;
+        self.update_node_config()?;
         info!("updated node config");
 
         let shutdown_token = self.shutdown_token.clone();
@@ -210,7 +210,7 @@ impl BabylonNode {
         Ok(())
     }
 
-    async fn update_node_config(&self) -> Result<()> {
+    fn update_node_config(&self) -> Result<()> {
         // Ensure store dir created
         std::fs::create_dir_all(&self.store_dir).unwrap();
 
