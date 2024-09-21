@@ -34,6 +34,7 @@ pub trait SessionManagement: Clone + Send + Sync {
     fn new(
         attestor: Self::A,
         challenge_store: Self::CS,
+        gateway_url: String,
         sessions_store: Self::SS,
         network_definition: NetworkDefinition,
     ) -> Self;
@@ -57,6 +58,7 @@ pub trait SessionManagement: Clone + Send + Sync {
 pub struct SessionManager<A: Attestor, CS: Store, SS: Store> {
     attestor: A,
     challenge_store: CS,
+    gateway_url: String,
     sessions_store: SS,
     network_definition: NetworkDefinition,
 }
@@ -75,12 +77,14 @@ where
     fn new(
         attestor: Self::A,
         challenge_store: Self::CS,
+        gateway_url: String,
         sessions_store: Self::SS,
         network_definition: NetworkDefinition,
     ) -> Self {
         SessionManager {
             attestor,
             challenge_store,
+            gateway_url,
             sessions_store,
             network_definition,
         }
@@ -112,7 +116,7 @@ where
     ) -> Result<Vec<u8>> {
         let rola = Rola::new(
             self.network_definition.clone(),
-            "http://127.0.0.1:8081".to_string(),
+            self.gateway_url.clone(),
             dapp_definition_address.clone(),
             origin.clone(),
             application_name.clone().unwrap_or_default(),

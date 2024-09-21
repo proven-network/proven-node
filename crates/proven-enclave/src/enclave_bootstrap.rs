@@ -41,6 +41,8 @@ use tracing_panic::panic_hook;
 
 static VMADDR_CID_EC2_HOST: u32 = 3;
 
+static GATEWAY_URL: &str = "http://127.0.0.1:8081";
+
 static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
 static POSTGRES_DATABASE: &str = "babylon-db";
@@ -221,8 +223,13 @@ impl EnclaveBootstrap {
         )
         .await?;
 
-        let session_manager =
-            SessionManager::new(nsm, challenge_store, sessions_store, network_definition);
+        let session_manager = SessionManager::new(
+            nsm,
+            challenge_store,
+            GATEWAY_URL.to_string(),
+            sessions_store,
+            network_definition,
+        );
 
         let cert_store = S3Store::new(
             args.certificates_bucket,
