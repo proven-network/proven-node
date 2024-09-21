@@ -17,12 +17,10 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static DATA_AGGREGATOR_CONFIG_PATH: &str =
-    "/bin/DataAggregator/appsettings.Production.overrides.json";
-static DATA_AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator";
-static DATABASE_MIGRATIONS_CONFIG_PATH: &str =
-    "/bin/DatabaseMigrations/appsettings.Production.overrides.json";
-static DATABASE_MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations";
+static AGGREGATOR_CONFIG_PATH: &str = "/var/lib/proven/babylon-aggregator.json";
+static AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator";
+static MIGRATIONS_CONFIG_PATH: &str = "/var/lib/proven/babylon-migrations.json";
+static MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations";
 
 pub struct BabylonAggregator {
     postgres_database: String,
@@ -60,9 +58,10 @@ impl BabylonAggregator {
 
         let server_task = self.task_tracker.spawn(async move {
             // Start the babylon-aggregator process
-            let mut cmd = Command::new(DATA_AGGREGATOR_PATH)
+            let mut cmd = Command::new(AGGREGATOR_PATH)
                 .env("ASPNETCORE_ENVIRONMENT", "Production")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
+                .env("CustomJsonConfigurationFilePath", AGGREGATOR_CONFIG_PATH)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .spawn()
@@ -170,7 +169,7 @@ impl BabylonAggregator {
             .create(true)
             .truncate(true)
             .write(true)
-            .open(DATABASE_MIGRATIONS_CONFIG_PATH)
+            .open(MIGRATIONS_CONFIG_PATH)
             .await
             .unwrap();
 
@@ -179,7 +178,8 @@ impl BabylonAggregator {
             .await
             .map_err(Error::ConfigWrite)?;
 
-        let cmd = Command::new(DATABASE_MIGRATIONS_PATH)
+        let cmd = Command::new(MIGRATIONS_PATH)
+            .env("CustomJsonConfigurationFilePath", MIGRATIONS_CONFIG_PATH)
             .output()
             .await
             .map_err(Error::Spawn)?;
@@ -245,7 +245,7 @@ impl BabylonAggregator {
             .create(true)
             .truncate(true)
             .write(true)
-            .open(DATA_AGGREGATOR_CONFIG_PATH)
+            .open(AGGREGATOR_CONFIG_PATH)
             .await
             .unwrap();
 
