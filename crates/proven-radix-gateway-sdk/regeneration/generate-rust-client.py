@@ -208,7 +208,7 @@ def generate_models(prepared_spec_file, tmp_client_folder, out_location):
         for line in check_output.splitlines():
             if "Default` is not satisfied" in line:
                 json_output = json.loads(line)
-                target_file = os.path.join("..", json_output["message"]["spans"][0]["file_name"])
+                target_file = os.path.join("../../..", json_output["message"]["spans"][0]["file_name"])
                 replace_in_file(target_file, ", Default", "")
                 replace_in_file(target_file, "Default, ", "")
 
