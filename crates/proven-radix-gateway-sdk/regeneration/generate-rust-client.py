@@ -148,7 +148,7 @@ def prepare_schema_for_generation(original_schema_file, api_schema_temp_filename
 def generate_models(prepared_spec_file, tmp_client_folder, out_location):
     safe_os_remove(tmp_client_folder, True)
 
-    run(['libninja', 'gen', '--lang', 'rust', '--derive', 'Clone', '-o', tmp_client_folder, 'LowLevel', prepared_spec_file], should_log=False)
+    run(['libninja', 'gen', '--lang', 'rust', '--repo', 'proven-network/radix-gateway-sdk', '--derive', 'Clone', '-o', tmp_client_folder, 'LowLevel', prepared_spec_file], should_log=False)
 
     logging.info("Successfully generated.")
 
