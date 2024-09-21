@@ -8,6 +8,8 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use regex::Regex;
 use serde_json::json;
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
@@ -46,7 +48,7 @@ impl BabylonGateway {
             return Err(Error::AlreadyStarted);
         }
 
-        self.update_config()?;
+        self.update_config().await?;
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
@@ -156,7 +158,7 @@ impl BabylonGateway {
         info!("babylon-gateway shutdown");
     }
 
-    fn update_config(&self) -> Result<()> {
+    async fn update_config(&self) -> Result<()> {
         let connection_string = format!(
             "Host=127.0.0.1:5432;Database={};Username={};Password={}",
             self.postgres_database, self.postgres_username, self.postgres_password
@@ -216,18 +218,18 @@ impl BabylonGateway {
             }
         });
 
-        let mut config_file = std::fs::OpenOptions::new()
+        let mut config_file = OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
             .open(GATEWAY_API_CONFIG_PATH)
+            .await
             .unwrap();
 
-        std::io::Write::write_all(
-            &mut config_file,
-            serde_json::to_string_pretty(&config).unwrap().as_bytes(),
-        )
-        .map_err(Error::ConfigWrite)?;
+        config_file
+            .write_all(serde_json::to_string_pretty(&config).unwrap().as_bytes())
+            .await
+            .map_err(Error::ConfigWrite)?;
 
         Ok(())
     }

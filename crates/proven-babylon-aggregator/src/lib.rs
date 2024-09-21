@@ -8,6 +8,8 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use regex::Regex;
 use serde_json::json;
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
@@ -50,7 +52,7 @@ impl BabylonAggregator {
             return Err(Error::AlreadyStarted);
         }
 
-        self.update_config()?;
+        self.update_config().await?;
         self.run_migrations().await?;
 
         let shutdown_token = self.shutdown_token.clone();
@@ -135,6 +137,49 @@ impl BabylonAggregator {
     }
 
     async fn run_migrations(&self) -> Result<()> {
+        let connection_string = format!(
+            "Host=127.0.0.1:5432;Database={};Username={};Password={};Include Error Detail=true",
+            self.postgres_database, self.postgres_username, self.postgres_password
+        );
+
+        let config = json!({
+            "Logging": {
+                "LogLevel": {
+                    "Default": "Information",
+                    "Microsoft.AspNetCore": "Warning",
+                    "Microsoft.Hosting.Lifetime": "Information",
+                    "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+                    "Microsoft.EntityFrameworkCore.Infrastructure": "Warning",
+                    "Npgsql": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler": "Warning"
+                },
+                "Console": {
+                    "FormatterName": "Simple",
+                    "FormatterOptions": {
+                        "SingleLine": true,
+                        "IncludeScopes": false
+                    }
+                }
+            },
+            "ConnectionStrings": {
+                "NetworkGatewayMigrations": connection_string
+            }
+        });
+
+        let mut config_file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(DATABASE_MIGRATIONS_CONFIG_PATH)
+            .await
+            .unwrap();
+
+        config_file
+            .write_all(serde_json::to_string_pretty(&config).unwrap().as_bytes())
+            .await
+            .map_err(Error::ConfigWrite)?;
+
         let cmd = Command::new("dotnet")
             .arg(DATABASE_MIGRATIONS_PATH)
             .output()
@@ -151,7 +196,7 @@ impl BabylonAggregator {
         Ok(())
     }
 
-    fn update_config(&self) -> Result<()> {
+    async fn update_config(&self) -> Result<()> {
         let connection_string = format!(
             "Host=127.0.0.1:5432;Database={};Username={};Password={}",
             self.postgres_database, self.postgres_username, self.postgres_password
@@ -180,8 +225,7 @@ impl BabylonAggregator {
             "PrometheusMetricsPort": 1234,
             "EnableSwagger": false,
             "ConnectionStrings": {
-                "NetworkGatewayReadWrite": connection_string,
-                "NetworkGatewayMigrations": connection_string
+                "NetworkGatewayReadWrite": connection_string
             },
             "DataAggregator": {
                 "Network": {
@@ -199,31 +243,18 @@ impl BabylonAggregator {
             }
         });
 
-        let mut config_file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(DATABASE_MIGRATIONS_CONFIG_PATH)
-            .unwrap();
-
-        std::io::Write::write_all(
-            &mut config_file,
-            serde_json::to_string_pretty(&config).unwrap().as_bytes(),
-        )
-        .map_err(Error::ConfigWrite)?;
-
-        let mut config_file = std::fs::OpenOptions::new()
+        let mut config_file = OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
             .open(DATA_AGGREGATOR_CONFIG_PATH)
+            .await
             .unwrap();
 
-        std::io::Write::write_all(
-            &mut config_file,
-            serde_json::to_string_pretty(&config).unwrap().as_bytes(),
-        )
-        .map_err(Error::ConfigWrite)?;
+        config_file
+            .write_all(serde_json::to_string_pretty(&config).unwrap().as_bytes())
+            .await
+            .map_err(Error::ConfigWrite)?;
 
         Ok(())
     }
