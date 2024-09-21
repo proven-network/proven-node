@@ -7,6 +7,7 @@ use std::process::Stdio;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use regex::Regex;
+use serde_json::json;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
@@ -14,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
+static CONFIG_PATH: &str = "/var/lib/proven/data-aggregator.json";
 static DATA_AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator.dll";
 static DATABASE_MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations.dll";
 
@@ -45,6 +47,7 @@ impl BabylonAggregator {
             return Err(Error::AlreadyStarted);
         }
 
+        self.update_config().await?;
         self.run_migrations().await?;
 
         let shutdown_token = self.shutdown_token.clone();
@@ -182,39 +185,7 @@ impl BabylonAggregator {
     async fn run_migrations(&self) -> Result<()> {
         let cmd = Command::new("dotnet")
             .env("ASPNETCORE_ENVIRONMENT", "Production")
-            .env("Logging__LogLevel__Default", "Information")
-            .env("Logging__LogLevel__Microsoft.AspNetCore", "Warning")
-            .env(
-                "Logging__LogLevel__Microsoft.Hosting.Lifetime",
-                "Information",
-            )
-            .env(
-                "Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command",
-                "Warning",
-            )
-            .env(
-                "Logging__LogLevel__Microsoft.EntityFrameworkCore.Infrastructure",
-                "Warning",
-            )
-            .env("Logging__LogLevel__Npgsql", "Warning")
-            .env(
-                "Logging__LogLevel__System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler",
-                "Warning",
-            )
-            .env(
-                "Logging__LogLevel__System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler",
-                "Warning",
-            )
-            .env("Logging__Console__FormatterName", "Simple")
-            .env("Logging__Console__FormatterOptions__SingleLine", "true")
-            .env("Logging__Console__FormatterOptions__IncludeScopes", "false")
-            .env(
-                "ConnectionStrings__NetworkGatewayMigrations",
-                format!(
-                    "Host=127.0.0.1:5432;Database={};Username={};Password={}",
-                    self.postgres_database, self.postgres_username, self.postgres_password
-                ),
-            )
+            .env("CustomJsonConfigurationFilePath", CONFIG_PATH)
             .arg(DATABASE_MIGRATIONS_PATH)
             .output()
             .await
@@ -226,6 +197,70 @@ impl BabylonAggregator {
         if !cmd.status.success() {
             return Err(Error::NonZeroExitCode(cmd.status));
         }
+
+        Ok(())
+    }
+
+    async fn update_config(&self) -> Result<()> {
+        let connection_string = format!(
+            "Host=127.0.0.1:5432;Database={};Username={};Password={}",
+            self.postgres_database, self.postgres_username, self.postgres_password
+        );
+
+        let config = json!({
+            "Logging": {
+                "LogLevel": {
+                    "Default": "Information",
+                    "Microsoft.AspNetCore": "Warning",
+                    "Microsoft.Hosting.Lifetime": "Information",
+                    "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+                    "Microsoft.EntityFrameworkCore.Infrastructure": "Warning",
+                    "Npgsql": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler": "Warning"
+                },
+                "Console": {
+                    "FormatterName": "Simple",
+                    "FormatterOptions": {
+                        "SingleLine": true,
+                        "IncludeScopes": false
+                    }
+                }
+            },
+            "PrometheusMetricsPort": 1235,
+            "EnableSwagger": false,
+            "ConnectionStrings": {
+                "NetworkGatewayReadWrite": connection_string,
+                "NetworkGatewayMigrations": connection_string
+            },
+            "DataAggregator": {
+                "Network": {
+                    "NetworkName": "stokenet",
+                    "DisableCoreApiHttpsCertificateChecks": true,
+                    "CoreApiNodes": [
+                        {
+                            "Name": "babylon-node",
+                            "CoreApiAddress": "http://127.0.0.1:3333/core",
+                            "Enabled": true,
+                            "RequestWeighting": 1
+                        }
+                    ]
+                }
+            }
+        });
+
+        let mut config_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(CONFIG_PATH)
+            .unwrap();
+
+        std::io::Write::write_all(
+            &mut config_file,
+            serde_json::to_string_pretty(&config).unwrap().as_bytes(),
+        )
+        .map_err(Error::ConfigWrite)?;
 
         Ok(())
     }

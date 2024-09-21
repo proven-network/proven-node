@@ -1,13 +1,13 @@
 mod error;
 
 pub use error::{Error, Result};
-use serde_json::json;
 
 use std::process::Stdio;
 
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use regex::Regex;
+use serde_json::json;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
