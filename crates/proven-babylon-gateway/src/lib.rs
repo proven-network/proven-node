@@ -1,6 +1,7 @@
 mod error;
 
 pub use error::{Error, Result};
+use serde_json::json;
 
 use std::process::Stdio;
 
@@ -15,6 +16,7 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
 static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi.dll";
+static CONFIG_PATH: &str = "/var/lib/proven/gateway-api.json";
 
 pub struct BabylonGateway {
     postgres_database: String,
@@ -44,124 +46,18 @@ impl BabylonGateway {
             return Err(Error::AlreadyStarted);
         }
 
+        self.update_config().await?;
+
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
-        let postgres_database = self.postgres_database.clone();
-        let postgres_username = self.postgres_username.clone();
-        let postgres_password = self.postgres_password.clone();
 
         let server_task = self.task_tracker.spawn(async move {
             // Start the babylon-gateway process
             let mut cmd = Command::new("dotnet")
                 .arg(GATEWAY_API_PATH)
                 .env("ASPNETCORE_ENVIRONMENT", "Production")
-                .env("Logging__LogLevel__Default", "Information")
-                .env("Logging__LogLevel__Microsoft.AspNetCore", "Warning")
-                .env(
-                    "Logging__LogLevel__Microsoft.Hosting.Lifetime",
-                    "Information",
-                )
-                .env(
-                    "Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command",
-                    "Warning",
-                )
-                .env(
-                    "Logging__LogLevel__Microsoft.EntityFrameworkCore.Infrastructure",
-                    "Warning",
-                )
-                .env("Logging__LogLevel__Npgsql", "Warning")
-                .env(
-                    "Logging__LogLevel__System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler",
-                    "Warning",
-                )
-                .env(
-                    "Logging__LogLevel__System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler",
-                    "Warning",
-                )
-                .env(
-                    "Logging__LogLevel__System.Net.Http.HttpClient.ICoreNodeHealthChecker.LogicalHandler",
-                    "Warning",
-                )
-                .env(
-                    "Logging__LogLevel__System.Net.Http.HttpClient.ICoreNodeHealthChecker.ClientHandler",
-                    "Warning",
-                )
-                .env("Logging__Console__FormatterName", "Simple")
-                .env("Logging__Console__FormatterOptions__SingleLine", "true")
-                .env("Logging__Console__FormatterOptions__IncludeScopes", "false")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
-                .env("PrometheusMetricsPort", "1235")
-                .env("EnableSwagger", "false")
-                .env(
-                    "ConnectionStrings__NetworkGatewayReadWrite",
-                    format!(
-                        "Host=127.0.0.1:5432;Database={};Username={};Password={}",
-                        postgres_database, postgres_username, postgres_password
-                    ),
-                )
-                .env("GatewayApi__AcceptableLedgerLag__ReadRequestAcceptableDbLedgerLagSeconds", "720")
-                .env("GatewayApi__AcceptableLedgerLag__ConstructionRequestsAcceptableDbLedgerLagSeconds", "720")
-                .env("GatewayApi__Endpoint__MaxPageSize", "100")
-                .env("GatewayApi__Endpoint__DefaultPageSize", "100")
-                .env("GatewayApi__AcceptableLedgerLag__PreventReadRequestsIfDbLedgerIsBehind", "true")
-                .env("GatewayApi__AcceptableLedgerLag__PreventConstructionRequestsIfDbLedgerIsBehind", "true")
-                .env("GatewayApi__Network__NetworkName", "stokenet")
-                .env(
-                    "GatewayApi__Network__DisableCoreApiHttpsCertificateChecks",
-                    "true",
-                )
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__0__Name",
-                    "One",
-                )
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__0__CoreApiAddress",
-                    "http://127.0.0.1:3333/core",
-                )
-                .env("GatewayApi__Network__CoreApiNodes__0__Enabled", "true")
-                .env("GatewayApi__Network__CoreApiNodes__0__RequestWeighting", "1")
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__1__Name",
-                    "Two",
-                )
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__1__CoreApiAddress",
-                    "",
-                )
-                .env("GatewayApi__Network__CoreApiNodes__1__Enabled", "false")
-                .env("GatewayApi__Network__CoreApiNodes__1__RequestWeighting", "1")
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__2__Name",
-                    "Three",
-                )
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__2__CoreApiAddress",
-                    "",
-                )
-                .env("GatewayApi__Network__CoreApiNodes__2__Enabled", "false")
-                .env("GatewayApi__Network__CoreApiNodes__2__RequestWeighting", "1")
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__3__Name",
-                    "Four",
-                )
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__3__CoreApiAddress",
-                    "",
-                )
-                .env("GatewayApi__Network__CoreApiNodes__3__Enabled", "false")
-                .env("GatewayApi__Network__CoreApiNodes__3__RequestWeighting", "1")
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__4__Name",
-                    "Five",
-                )
-                .env(
-                    "GatewayApi__Network__CoreApiNodes__4__CoreApiAddress",
-                    "",
-                )
-                .env("GatewayApi__Network__CoreApiNodes__4__Enabled", "false")
-                .env("GatewayApi__Network__CoreApiNodes__4__RequestWeighting", "1")
-                .env("GatewayApi__Network__CoreApiNodes__MaxAllowedStateVersionLagToBeConsideredSynced", "100")
-                .env("GatewayApi__Network__CoreApiNodes__IgnoreNonSyncedNodes", "true")
+                .env("CustomJsonConfigurationFilePath", CONFIG_PATH)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -259,5 +155,81 @@ impl BabylonGateway {
         self.task_tracker.wait().await;
 
         info!("babylon-gateway shutdown");
+    }
+
+    async fn update_config(&self) -> Result<()> {
+        let connection_string = format!(
+            "Host=127.0.0.1:5432;Database={};Username={};Password={}",
+            self.postgres_database, self.postgres_username, self.postgres_password
+        );
+
+        let config = json!({
+            "Logging": {
+                "LogLevel": {
+                    "Default": "Information",
+                    "Microsoft.Hosting.Lifetime": "Information",
+                    "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+                    "Microsoft.EntityFrameworkCore.Infrastructure": "Warning",
+                    "Npgsql": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreNodeHealthChecker.LogicalHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreNodeHealthChecker.ClientHandler": "Warning"
+                },
+                "Console": {
+                    "FormatterName": "Simple",
+                    "FormatterOptions": {
+                        "SingleLine": true,
+                        "IncludeScopes": false
+                    }
+                }
+            },
+            "PrometheusMetricsPort": 1235,
+            "EnableSwagger": false,
+            "ConnectionStrings": {
+                "NetworkGatewayReadWrite": connection_string
+            },
+            "GatewayApi": {
+                "AcceptableLedgerLag": {
+                    "ReadRequestAcceptableDbLedgerLagSeconds": 720,
+                    "ConstructionRequestsAcceptableDbLedgerLagSeconds": 720,
+                    "PreventReadRequestsIfDbLedgerIsBehind": true,
+                    "PreventConstructionRequestsIfDbLedgerIsBehind": true
+                },
+                "Endpoint": {
+                "MaxPageSize": 100,
+                "DefaultPageSize": 100
+                },
+                "Network": {
+                    "NetworkName": "stokenet",
+                    "DisableCoreApiHttpsCertificateChecks": true,
+                    "MaxAllowedStateVersionLagToBeConsideredSynced": 100,
+                    "IgnoreNonSyncedNodes": true,
+                    "CoreApiNodes": [
+                        {
+                            "Name": "babylon-node",
+                            "CoreApiAddress": "http://127.0.0.1:3333/core",
+                            "Enabled": true,
+                            "RequestWeighting": 1
+                        }
+                    ]
+                }
+            }
+        });
+
+        let mut config_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(CONFIG_PATH)
+            .unwrap();
+
+        std::io::Write::write_all(
+            &mut config_file,
+            serde_json::to_string_pretty(&config).unwrap().as_bytes(),
+        )
+        .map_err(Error::ConfigWrite)?;
+
+        Ok(())
     }
 }
