@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.json";
+static GATEWAY_API_CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.json";
 static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi.dll";
 
 pub struct BabylonGateway {
@@ -220,7 +220,7 @@ impl BabylonGateway {
             .create(true)
             .truncate(true)
             .write(true)
-            .open(CONFIG_PATH)
+            .open(GATEWAY_API_CONFIG_PATH)
             .unwrap();
 
         std::io::Write::write_all(
