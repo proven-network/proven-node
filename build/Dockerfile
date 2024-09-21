@@ -1,3 +1,20 @@
+# ------------------
+# DOTNET BUILD STEPS
+# ------------------
+FROM mcr.microsoft.com/dotnet/sdk:8.0 as dotnet-builder
+WORKDIR /
+
+RUN git clone https://github.com/radixdlt/babylon-gateway.git
+WORKDIR /babylon-gateway
+RUN git checkout v1.7.2
+
+WORKDIR /babylon-gateway/apps/DataAggregator
+RUN dotnet publish -c Release -o /bin/DataAggregator
+WORKDIR /babylon-gateway/apps/DatabaseMigrations
+RUN dotnet publish -c Release -o /bin/DatabaseMigrations
+WORKDIR /babylon-gateway/apps/GatewayApi
+RUN dotnet publish -c Release -o /bin/GatewayApi
+
 # --------------------
 # POSTGRES BUILD STEPS
 # --------------------
@@ -28,23 +45,6 @@ RUN sed -i 's/if (geteuid() == 0)/if (false)/g' src/bin/initdb/initdb.c
 RUN ./configure
 RUN make
 RUN make install
-
-# ------------------
-# DOTNET BUILD STEPS
-# ------------------
-FROM mcr.microsoft.com/dotnet/sdk:8.0 as dotnet-builder
-WORKDIR /
-
-RUN git clone https://github.com/radixdlt/babylon-gateway.git
-WORKDIR /babylon-gateway
-RUN git checkout v1.7.2
-
-WORKDIR /babylon-gateway/apps/DataAggregator
-RUN dotnet publish -c Release -o /bin/DataAggregator
-WORKDIR /babylon-gateway/apps/DatabaseMigrations
-RUN dotnet publish -c Release -o /bin/DatabaseMigrations
-WORKDIR /babylon-gateway/apps/GatewayApi
-RUN dotnet publish -c Release -o /bin/GatewayApi
 
 # --------------
 # GO BUILD STEPS
@@ -138,10 +138,10 @@ RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime a
 RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 RUN apt-get purge -y curl && apt-get autoremove -y
 
-COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
+COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 COPY --from=go-builder /bin/gocryptfs /bin/
 COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
