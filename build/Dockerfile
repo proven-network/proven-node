@@ -43,7 +43,7 @@ RUN sed -i 's/if (geteuid() == 0)/if (false)/g' src/bin/initdb/initdb.c
 
 # Build and install
 RUN ./configure
-RUN make
+RUN make -j$(nproc)
 RUN make install
 
 # --------------
