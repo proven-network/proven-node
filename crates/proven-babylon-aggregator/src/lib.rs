@@ -15,10 +15,11 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static DATA_AGGREGATOR_CONFIG_PATH: &str = "/bin/DataAggregator/appsettings.Production.json";
+static DATA_AGGREGATOR_CONFIG_PATH: &str =
+    "/bin/DataAggregator/appsettings.Production.overrides.json";
 static DATA_AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator.dll";
 static DATABASE_MIGRATIONS_CONFIG_PATH: &str =
-    "/bin/DatabaseMigrations/appsettings.Production.json";
+    "/bin/DatabaseMigrations/appsettings.Production.overrides.json";
 static DATABASE_MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations.dll";
 
 pub struct BabylonAggregator {

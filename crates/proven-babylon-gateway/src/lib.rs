@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static GATEWAY_API_CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.Production.json";
+static GATEWAY_API_CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.Production.overrides.json";
 static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi.dll";
 
 pub struct BabylonGateway {
