@@ -19,10 +19,10 @@ use tracing::{debug, error, info, trace, warn};
 
 static DATA_AGGREGATOR_CONFIG_PATH: &str =
     "/bin/DataAggregator/appsettings.Production.overrides.json";
-static DATA_AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator.dll";
+static DATA_AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator";
 static DATABASE_MIGRATIONS_CONFIG_PATH: &str =
     "/bin/DatabaseMigrations/appsettings.Production.overrides.json";
-static DATABASE_MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations.dll";
+static DATABASE_MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations";
 
 pub struct BabylonAggregator {
     postgres_database: String,
@@ -60,10 +60,9 @@ impl BabylonAggregator {
 
         let server_task = self.task_tracker.spawn(async move {
             // Start the babylon-aggregator process
-            let mut cmd = Command::new("dotnet")
+            let mut cmd = Command::new(DATA_AGGREGATOR_PATH)
                 .env("ASPNETCORE_ENVIRONMENT", "Production")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
-                .arg(DATA_AGGREGATOR_PATH)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .spawn()
@@ -180,8 +179,7 @@ impl BabylonAggregator {
             .await
             .map_err(Error::ConfigWrite)?;
 
-        let cmd = Command::new("dotnet")
-            .arg(DATABASE_MIGRATIONS_PATH)
+        let cmd = Command::new(DATABASE_MIGRATIONS_PATH)
             .output()
             .await
             .map_err(Error::Spawn)?;
