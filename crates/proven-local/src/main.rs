@@ -41,6 +41,7 @@ async fn main() -> Result<()> {
     let session_manager = SessionManager::new(
         dev_attestor,
         challenge_store,
+        "https://stokenet.radixdlt.com".to_string(),
         sessions_store,
         network_definition,
     );
