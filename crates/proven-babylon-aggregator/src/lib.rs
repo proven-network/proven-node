@@ -62,8 +62,6 @@ impl BabylonAggregator {
             // Start the babylon-aggregator process
             let mut cmd = Command::new(AGGREGATOR_PATH)
                 .current_dir(AGGREGATOR_DIR)
-                .env("ASPNETCORE_ENVIRONMENT", "Production")
-                .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .spawn()
@@ -203,6 +201,7 @@ impl BabylonAggregator {
         );
 
         let config = json!({
+            "urls": "http://127.0.0.1:8080",
             "Logging": {
                 "LogLevel": {
                     "Default": "Information",

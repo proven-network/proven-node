@@ -58,8 +58,6 @@ impl BabylonGateway {
             // Start the babylon-gateway process
             let mut cmd = Command::new(GATEWAY_API_PATH)
                 .current_dir(GATEWAY_API_DIR)
-                .env("ASPNETCORE_ENVIRONMENT", "Production")
-                .env("ASPNETCORE_URLS", "http://127.0.0.1.8081")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -166,6 +164,7 @@ impl BabylonGateway {
         );
 
         let config = json!({
+            "urls": "http://127.0.0.1:8081",
             "Logging": {
                 "LogLevel": {
                     "Default": "Information",
