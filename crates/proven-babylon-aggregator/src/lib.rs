@@ -224,6 +224,7 @@ impl BabylonAggregator {
             "PrometheusMetricsPort": 1234,
             "EnableSwagger": false,
             "ConnectionStrings": {
+                "NetworkGatewayReadOnly": connection_string,
                 "NetworkGatewayReadWrite": connection_string
             },
             "DataAggregator": {

@@ -188,6 +188,7 @@ impl BabylonGateway {
             "PrometheusMetricsPort": 1235,
             "EnableSwagger": false,
             "ConnectionStrings": {
+                "NetworkGatewayReadOnly": connection_string,
                 "NetworkGatewayReadWrite": connection_string
             },
             "GatewayApi": {
