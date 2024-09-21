@@ -17,7 +17,8 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static GATEWAY_API_CONFIG_PATH: &str = "/var/lib/proven/gateway-api.json";
+static GATEWAY_API_CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.Production.json";
+static GATEWAY_API_DIR: &str = "/bin/GatewayApi";
 static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi";
 
 pub struct BabylonGateway {
@@ -56,9 +57,9 @@ impl BabylonGateway {
         let server_task = self.task_tracker.spawn(async move {
             // Start the babylon-gateway process
             let mut cmd = Command::new(GATEWAY_API_PATH)
+                .current_dir(GATEWAY_API_DIR)
                 .env("ASPNETCORE_ENVIRONMENT", "Production")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8081")
-                .env("CustomJsonConfigurationFilePath", GATEWAY_API_CONFIG_PATH)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()

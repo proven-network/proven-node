@@ -17,9 +17,11 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static AGGREGATOR_CONFIG_PATH: &str = "/var/lib/proven/babylon-aggregator.json";
+static AGGREGATOR_CONFIG_PATH: &str = "/bin/DataAggregator/appsettings.Production.json";
+static AGGREGATOR_DIR: &str = "/bin/DataAggregator";
 static AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator";
-static MIGRATIONS_CONFIG_PATH: &str = "/var/lib/proven/babylon-migrations.json";
+static MIGRATIONS_CONFIG_PATH: &str = "/bin/DatabaseMigrations/appsettings.Production.json";
+static MIGRATIONS_DIR: &str = "/bin/DatabaseMigrations";
 static MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations";
 
 pub struct BabylonAggregator {
@@ -59,9 +61,9 @@ impl BabylonAggregator {
         let server_task = self.task_tracker.spawn(async move {
             // Start the babylon-aggregator process
             let mut cmd = Command::new(AGGREGATOR_PATH)
+                .current_dir(AGGREGATOR_DIR)
                 .env("ASPNETCORE_ENVIRONMENT", "Production")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
-                .env("CustomJsonConfigurationFilePath", AGGREGATOR_CONFIG_PATH)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .spawn()
@@ -171,7 +173,7 @@ impl BabylonAggregator {
             .write(true)
             .open(MIGRATIONS_CONFIG_PATH)
             .await
-            .unwrap();
+            .map_err(Error::ConfigWrite)?;
 
         config_file
             .write_all(serde_json::to_string_pretty(&config).unwrap().as_bytes())
@@ -179,7 +181,7 @@ impl BabylonAggregator {
             .map_err(Error::ConfigWrite)?;
 
         let cmd = Command::new(MIGRATIONS_PATH)
-            .env("CustomJsonConfigurationFilePath", MIGRATIONS_CONFIG_PATH)
+            .current_dir(MIGRATIONS_DIR)
             .output()
             .await
             .map_err(Error::Spawn)?;
@@ -247,7 +249,7 @@ impl BabylonAggregator {
             .write(true)
             .open(AGGREGATOR_CONFIG_PATH)
             .await
-            .unwrap();
+            .map_err(Error::ConfigWrite)?;
 
         config_file
             .write_all(serde_json::to_string_pretty(&config).unwrap().as_bytes())
