@@ -15,9 +15,10 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static DATA_AGGREGATOR_CONFIG_PATH: &str = "/bin/DataAggregator/appsettings.json";
+static DATA_AGGREGATOR_CONFIG_PATH: &str = "/bin/DataAggregator/appsettings.Production.json";
 static DATA_AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator.dll";
-static DATABASE_MIGRATIONS_CONFIG_PATH: &str = "/bin/DatabaseMigrations/appsettings.json";
+static DATABASE_MIGRATIONS_CONFIG_PATH: &str =
+    "/bin/DatabaseMigrations/appsettings.Production.json";
 static DATABASE_MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations.dll";
 
 pub struct BabylonAggregator {
@@ -53,64 +54,13 @@ impl BabylonAggregator {
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
-        let postgres_database = self.postgres_database.clone();
-        let postgres_username = self.postgres_username.clone();
-        let postgres_password = self.postgres_password.clone();
 
         let server_task = self.task_tracker.spawn(async move {
             // Start the babylon-aggregator process
             let mut cmd = Command::new("dotnet")
-                .arg(DATA_AGGREGATOR_PATH)
                 .env("ASPNETCORE_ENVIRONMENT", "Production")
-                .env("Logging__LogLevel__Default", "Information")
-                .env("Logging__LogLevel__Microsoft.AspNetCore", "Warning")
-                .env(
-                    "Logging__LogLevel__Microsoft.Hosting.Lifetime",
-                    "Information",
-                )
-                .env(
-                    "Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command",
-                    "Warning",
-                )
-                .env(
-                    "Logging__LogLevel__Microsoft.EntityFrameworkCore.Infrastructure",
-                    "Warning",
-                )
-                .env("Logging__LogLevel__Npgsql", "Warning")
-                .env(
-                    "Logging__LogLevel__System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler",
-                    "Warning",
-                )
-                .env(
-                    "Logging__LogLevel__System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler",
-                    "Warning",
-                )
-                .env("Logging__Console__FormatterName", "Simple")
-                .env("Logging__Console__FormatterOptions__SingleLine", "true")
-                .env("Logging__Console__FormatterOptions__IncludeScopes", "false")
                 .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
-                .env("PrometheusMetricsPort", "1234")
-                .env(
-                    "ConnectionStrings__NetworkGatewayReadWrite",
-                    format!(
-                        "Host=127.0.0.1:5432;Database={};Username={};Password={}",
-                        postgres_database, postgres_username, postgres_password
-                    ),
-                )
-                .env("DataAggregator__Network__NetworkName", "stokenet")
-                .env(
-                    "DataAggregator__Network__DisableCoreApiHttpsCertificateChecks",
-                    "true",
-                )
-                .env(
-                    "DataAggregator__Network__CoreApiNodes__0__Name",
-                    "babylon-node",
-                )
-                .env(
-                    "DataAggregator__Network__CoreApiNodes__0__CoreApiAddress",
-                    "http://127.0.0.1:3333/core",
-                )
-                .env("DataAggregator__Network__CoreApiNodes__0__Enabled", "true")
+                .arg(DATA_AGGREGATOR_PATH)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .spawn()
@@ -185,7 +135,6 @@ impl BabylonAggregator {
 
     async fn run_migrations(&self) -> Result<()> {
         let cmd = Command::new("dotnet")
-            .env("ASPNETCORE_ENVIRONMENT", "Production")
             .arg(DATABASE_MIGRATIONS_PATH)
             .output()
             .await
@@ -227,7 +176,7 @@ impl BabylonAggregator {
                     }
                 }
             },
-            "PrometheusMetricsPort": 1235,
+            "PrometheusMetricsPort": 1234,
             "EnableSwagger": false,
             "ConnectionStrings": {
                 "NetworkGatewayReadWrite": connection_string,

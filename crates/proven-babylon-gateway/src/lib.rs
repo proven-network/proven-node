@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static GATEWAY_API_CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.json";
+static GATEWAY_API_CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.Production.json";
 static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi.dll";
 
 pub struct BabylonGateway {
@@ -56,7 +56,7 @@ impl BabylonGateway {
             let mut cmd = Command::new("dotnet")
                 .arg(GATEWAY_API_PATH)
                 .env("ASPNETCORE_ENVIRONMENT", "Production")
-                .env("ASPNETCORE_URLS", "http://127.0.0.1.8080")
+                .env("ASPNETCORE_URLS", "http://127.0.0.1.8081")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
