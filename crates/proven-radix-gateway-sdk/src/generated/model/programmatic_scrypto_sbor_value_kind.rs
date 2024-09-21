@@ -1,0 +1,26 @@
+use serde::{Serialize, Deserialize};
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum ProgrammaticScryptoSborValueKind {
+    Bool,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+    String,
+    Enum,
+    Array,
+    Bytes,
+    Map,
+    Tuple,
+    Reference,
+    Own,
+    Decimal,
+    PreciseDecimal,
+    NonFungibleLocalId,
+}

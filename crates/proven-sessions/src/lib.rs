@@ -8,10 +8,10 @@ use std::vec;
 use async_trait::async_trait;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use proven_attestation::{AttestationParams, Attestor};
+use proven_radix_rola::{Rola, SignedChallenge, Type as SignedChallengeType};
 use proven_store::Store;
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
-use rola::{Rola, SignedChallenge, Type as SignedChallengeType};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -16,13 +16,13 @@ pub enum Error {
     Async(tokio::task::JoinError),
 
     #[from]
-    BabylonAggregator(proven_babylon_aggregator::Error),
+    BabylonAggregator(proven_radix_aggregator::Error),
 
     #[from]
-    BabylonGateway(proven_babylon_gateway::Error),
+    BabylonGateway(proven_radix_gateway::Error),
 
     #[from]
-    BabylonNode(proven_babylon_node::Error),
+    BabylonNode(proven_radix_node::Error),
 
     BadKey,
 

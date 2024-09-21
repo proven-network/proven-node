@@ -9,9 +9,6 @@ cidr = "0.2.3"
 derive_more = { version = "1.0.0-beta.6", features = ["from"] }
 proven-attestation = { path = "../proven-attestation" }
 proven-attestation-nsm = { path = "../proven-attestation-nsm" }
-proven-babylon-aggregator = { path = "../proven-babylon-aggregator" }
-proven-babylon-gateway = { path = "../proven-babylon-gateway" }
-proven-babylon-node = { path = "../proven-babylon-node" }
 proven-core = { path = "../proven-core" }
 proven-dnscrypt-proxy = { path = "../proven-dnscrypt-proxy" }
 proven-external-fs = { path = "../proven-external-fs" }
@@ -22,6 +19,9 @@ proven-kms = { path = "../proven-kms" }
 proven-nats-monitor = { path = "../proven-nats-monitor" }
 proven-nats-server = { path = "../proven-nats-server" }
 proven-postgres = { path = "../proven-postgres" }
+proven-radix-aggregator = { path = "../proven-radix-aggregator" }
+proven-radix-gateway = { path = "../proven-radix-gateway" }
+proven-radix-node = { path = "../proven-radix-node" }
 proven-sessions = { path = "../proven-sessions" }
 proven-store = { path = "../proven-store" }
 proven-store-asm = { path = "../proven-store-asm" }

@@ -7,8 +7,8 @@ use axum_typed_multipart::TypedMultipart;
 use bytes::Bytes;
 use ed25519_dalek::VerifyingKey;
 use headers::Origin;
+use proven_radix_rola::SignedChallenge;
 use proven_sessions::SessionManagement;
-use rola::SignedChallenge;
 use tracing::info;
 
 #[derive(TryFromMultipart)]
