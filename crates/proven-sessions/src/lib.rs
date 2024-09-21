@@ -112,6 +112,7 @@ where
     ) -> Result<Vec<u8>> {
         let rola = Rola::new(
             self.network_definition.clone(),
+            "http://127.0.0.1:8081".to_string(),
             dapp_definition_address.clone(),
             origin.clone(),
             application_name.clone().unwrap_or_default(),

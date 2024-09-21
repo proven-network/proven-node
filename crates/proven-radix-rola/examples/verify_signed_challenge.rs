@@ -15,6 +15,7 @@ async fn main() -> Result<()> {
 async fn verify_ed25519_identity() -> Result<()> {
     let rola = Rola::new(
         NetworkDefinition::stokenet(),
+        "https://stokenet.radixdlt.com".to_string(),
         "account_tdx_2_12xdm5g7xdhh73zkh7xkty0dsxw4rw0jl0sq4lr3erpc3xdn54zx0le".to_string(),
         "https://stokenet-dashboard.radixdlt.com".to_string(),
         "test".to_string(),
@@ -41,6 +42,7 @@ async fn verify_ed25519_identity() -> Result<()> {
 async fn verify_ed25519_account() -> Result<()> {
     let rola = Rola::new(
         NetworkDefinition::mainnet(),
+        "https://mainnet.radixdlt.com".to_string(),
         "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn".to_string(),
         "https://dev-sandbox.rdx-works-main.extratools.works".to_string(),
         "test".to_string(),
@@ -67,6 +69,7 @@ async fn verify_ed25519_account() -> Result<()> {
 async fn verify_secp256k1_account() -> Result<()> {
     let rola = Rola::new(
         NetworkDefinition::mainnet(),
+        "https://mainnet.radixdlt.com".to_string(),
         "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn".to_string(),
         "https://dev-sandbox.rdx-works-main.extratools.works".to_string(),
         "test".to_string(),

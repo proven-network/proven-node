@@ -6,8 +6,7 @@ use crate::error::Result;
 use proven_radix_gateway_sdk::generated::model::{
     ResourceAggregationLevel::Vault, StateEntityDetailsOptIns,
 };
-use proven_radix_gateway_sdk::{Client, Network};
-use radix_common::network::NetworkDefinition;
+use proven_radix_gateway_sdk::Client;
 
 pub struct GatewayService {
     client: Client,
@@ -15,13 +14,13 @@ pub struct GatewayService {
 
 impl GatewayService {
     pub fn new(
-        network_definition: NetworkDefinition,
+        gateway_url: String,
         dapp_definition: String,
         application_name: String,
     ) -> Result<Self> {
         Ok(Self {
             client: Client::new(
-                Network::from_network_id(network_definition.id).unwrap(),
+                gateway_url.as_str(),
                 Some(application_name),
                 Some(dapp_definition),
             )?,

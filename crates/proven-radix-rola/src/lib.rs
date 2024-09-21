@@ -15,12 +15,14 @@ pub struct Rola {
     application_name: String,
     dapp_definition_address: String,
     expected_origin: String,
+    gateway_url: String,
     network_definition: NetworkDefinition,
 }
 
 impl Rola {
     pub fn new(
         network_definition: NetworkDefinition,
+        gateway_url: String,
         dapp_definition_address: String,
         expected_origin: String,
         application_name: String,
@@ -29,6 +31,7 @@ impl Rola {
             application_name,
             dapp_definition_address,
             expected_origin,
+            gateway_url,
             network_definition,
         }
     }
@@ -38,7 +41,7 @@ impl Rola {
 
         let check_ledger_for_key_address_match = || async {
             gateway::GatewayService::new(
-                self.network_definition.clone(),
+                self.gateway_url.clone(),
                 self.dapp_definition_address.clone(),
                 self.application_name.clone(),
             )
