@@ -14,6 +14,7 @@ pub struct StreamTransactionsRequest {
     pub affected_global_entities_filter: Vec<String>,
     pub at_ledger_state: Option<LedgerStateSelector>,
     pub cursor: Option<String>,
+    pub event_global_emitters_filter: Vec<String>,
     pub events_filter: Vec<StreamTransactionsRequestEventFilterItem>,
     pub from_ledger_state: Option<LedgerStateSelector>,
     pub kind_filter: String,
@@ -31,6 +32,7 @@ pub struct StreamTransactionsRequired<'a> {
     pub accounts_with_manifest_owner_method_calls: &'a [&'a str],
     pub accounts_without_manifest_owner_method_calls: &'a [&'a str],
     pub affected_global_entities_filter: &'a [&'a str],
+    pub event_global_emitters_filter: &'a [&'a str],
     pub events_filter: Vec<StreamTransactionsRequestEventFilterItem>,
     pub kind_filter: &'a str,
     pub manifest_accounts_deposited_into_filter: &'a [&'a str],
@@ -98,6 +100,13 @@ impl<'a> ::std::future::IntoFuture for FluentRequest<'a, StreamTransactionsReque
             if let Some(ref unwrapped) = self.params.cursor {
                 r = r.json(json!({ "cursor" : unwrapped }));
             }
+            r = r
+                .json(
+                    json!(
+                        { "event_global_emitters_filter" : self.params
+                        .event_global_emitters_filter }
+                    ),
+                );
             r = r.json(json!({ "events_filter" : self.params.events_filter }));
             if let Some(ref unwrapped) = self.params.from_ledger_state {
                 r = r.json(json!({ "from_ledger_state" : unwrapped }));

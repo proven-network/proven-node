@@ -13,9 +13,11 @@ pub struct TransactionPreviewRequest {
     pub end_epoch_exclusive: i64,
     pub flags: serde_json::Value,
     pub manifest: String,
+    pub message: Option<serde_json::Value>,
     pub nonce: i64,
     pub notary_is_signatory: Option<bool>,
     pub notary_public_key: Option<PublicKey>,
+    pub opt_ins: Option<TransactionPreviewOptIns>,
     pub signer_public_keys: Vec<PublicKey>,
     pub start_epoch_inclusive: i64,
     pub tip_percentage: i64,
@@ -42,6 +44,11 @@ impl FluentRequest<'_, TransactionPreviewRequest> {
         );
         self
     }
+    ///Set the value of the message field.
+    pub fn message(mut self, message: serde_json::Value) -> Self {
+        self.params.message = Some(message);
+        self
+    }
     ///Set the value of the notary_is_signatory field.
     pub fn notary_is_signatory(mut self, notary_is_signatory: bool) -> Self {
         self.params.notary_is_signatory = Some(notary_is_signatory);
@@ -50,6 +57,11 @@ impl FluentRequest<'_, TransactionPreviewRequest> {
     ///Set the value of the notary_public_key field.
     pub fn notary_public_key(mut self, notary_public_key: PublicKey) -> Self {
         self.params.notary_public_key = Some(notary_public_key);
+        self
+    }
+    ///Set the value of the opt_ins field.
+    pub fn opt_ins(mut self, opt_ins: TransactionPreviewOptIns) -> Self {
+        self.params.opt_ins = Some(opt_ins);
         self
     }
 }
@@ -69,12 +81,18 @@ impl<'a> ::std::future::IntoFuture for FluentRequest<'a, TransactionPreviewReque
                 );
             r = r.json(json!({ "flags" : self.params.flags }));
             r = r.json(json!({ "manifest" : self.params.manifest }));
+            if let Some(ref unwrapped) = self.params.message {
+                r = r.json(json!({ "message" : unwrapped }));
+            }
             r = r.json(json!({ "nonce" : self.params.nonce }));
             if let Some(ref unwrapped) = self.params.notary_is_signatory {
                 r = r.json(json!({ "notary_is_signatory" : unwrapped }));
             }
             if let Some(ref unwrapped) = self.params.notary_public_key {
                 r = r.json(json!({ "notary_public_key" : unwrapped }));
+            }
+            if let Some(ref unwrapped) = self.params.opt_ins {
+                r = r.json(json!({ "opt_ins" : unwrapped }));
             }
             r = r.json(json!({ "signer_public_keys" : self.params.signer_public_keys }));
             r = r

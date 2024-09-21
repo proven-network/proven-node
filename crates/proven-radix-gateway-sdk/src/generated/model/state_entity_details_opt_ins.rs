@@ -11,9 +11,15 @@ pub struct StateEntityDetailsOptIns {
     ///if set to `true`, `royalty_vault_balance` for component entities is returned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub component_royalty_vault_balance: Option<bool>,
+    ///if set to `true`, on-ledger dApp two-way links (resolved & verified) are returned. See https://docs.radixdlt.com/docs/metadata-for-verification for more details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dapp_two_way_links: Option<bool>,
     ///allows specifying explicitly metadata properties which should be returned in response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub explicit_metadata: Option<Vec<String>>,
+    ///if set to `true`, additional details for the Network native resources are returned.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_resource_details: Option<bool>,
     ///if set to `true`, first page of non fungible ids are returned for each non fungible resource, with `next_cursor` which can be later used at `/state/entity/page/non-fungible-vault/ids` endpoint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub non_fungible_include_nfids: Option<bool>,

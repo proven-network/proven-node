@@ -33,7 +33,9 @@ impl GatewayService {
             ancestor_identities: None,
             component_royalty_config: None,
             component_royalty_vault_balance: None,
+            dapp_two_way_links: None,
             explicit_metadata: Some(vec!["owner_keys".to_string()]),
+            native_resource_details: None,
             non_fungible_include_nfids: None,
             package_royalty_vault_balance: None,
         };

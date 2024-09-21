@@ -109,9 +109,11 @@ This endpoint is effectively a proxy towards the Core API `/v0/transaction/previ
                 end_epoch_exclusive: args.end_epoch_exclusive,
                 flags: args.flags,
                 manifest: args.manifest.to_owned(),
+                message: None,
                 nonce: args.nonce,
                 notary_is_signatory: None,
                 notary_public_key: None,
+                opt_ins: None,
                 signer_public_keys: args.signer_public_keys,
                 start_epoch_inclusive: args.start_epoch_inclusive,
                 tip_percentage: args.tip_percentage,
@@ -213,6 +215,11 @@ Returns transactions which have been committed to the ledger.
                     .collect(),
                 at_ledger_state: None,
                 cursor: None,
+                event_global_emitters_filter: args
+                    .event_global_emitters_filter
+                    .iter()
+                    .map(|&x| x.to_owned())
+                    .collect(),
                 events_filter: args.events_filter,
                 from_ledger_state: None,
                 kind_filter: args.kind_filter.to_owned(),
@@ -635,6 +642,26 @@ Returns validators uptime data for time range limited by `from_state_version` an
                     .iter()
                     .map(|&x| x.to_owned())
                     .collect(),
+            },
+        }
+    }
+    /**Get Resource Holders Page
+
+A paginated endpoint to discover which global entities hold the most of a given resource.
+More specifically, it returns a page of global entities which hold the given resource, ordered descending by the total fungible balance / total count of non-fungibles stored in vaults in the state tree of that entity (excluding unclaimed royalty balances).
+This endpoint operates only at the **current state version**, it is not possible to browse historical data.
+Because of that, it is not possible to offer stable pagination as data constantly changes. Balances might change between pages being read, which might result in gaps or some entries being returned twice.
+Under default Gateway configuration, up to 100 entries are returned per response. This can be increased up to 1000 entries per page with the `limit_per_page` parameter.*/
+    pub fn resource_holders_page(
+        &self,
+        resource_address: &str,
+    ) -> FluentRequest<'_, request::ResourceHoldersPageRequest> {
+        FluentRequest {
+            client: self,
+            params: request::ResourceHoldersPageRequest {
+                cursor: None,
+                limit_per_page: None,
+                resource_address: resource_address.to_owned(),
             },
         }
     }
