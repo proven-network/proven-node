@@ -9,6 +9,7 @@ pub use error::{Error, Result};
 use util::*;
 
 use radix_common::network::NetworkDefinition;
+use tracing::error;
 
 #[derive(Debug)]
 pub struct Rola {
@@ -45,10 +46,18 @@ impl Rola {
                 self.dapp_definition_address.clone(),
                 self.application_name.clone(),
             )
+            .map_err(|e| {
+                error!("Error creating GatewayService: {:?}", e);
+                e
+            })
             .ok()
             .unwrap()
             .get_entity_owner_keys(signed_challenge.clone().address)
             .await
+            .map_err(|e| {
+                error!("Error getting entity owner keys: {:?}", e);
+                e
+            })
             .ok()
             .and_then(|owner_keys| {
                 if owner_keys.to_uppercase().contains(

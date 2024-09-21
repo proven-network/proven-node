@@ -3164,6 +3164,7 @@ dependencies = [
  "radix-common",
  "serde",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
