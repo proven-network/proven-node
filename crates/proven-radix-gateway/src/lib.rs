@@ -21,7 +21,7 @@ static GATEWAY_API_CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.Production.j
 static GATEWAY_API_DIR: &str = "/bin/GatewayApi";
 static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi";
 
-pub struct BabylonGateway {
+pub struct RadixGateway {
     postgres_database: String,
     postgres_username: String,
     postgres_password: String,
@@ -29,7 +29,7 @@ pub struct BabylonGateway {
     task_tracker: TaskTracker,
 }
 
-impl BabylonGateway {
+impl RadixGateway {
     pub fn new(
         postgres_database: String,
         postgres_username: String,
@@ -55,7 +55,7 @@ impl BabylonGateway {
         let task_tracker = self.task_tracker.clone();
 
         let server_task = self.task_tracker.spawn(async move {
-            // Start the babylon-gateway process
+            // Start the radix-gateway process
             let mut cmd = Command::new(GATEWAY_API_PATH)
                 .current_dir(GATEWAY_API_DIR)
                 .stdout(Stdio::piped())
@@ -66,7 +66,7 @@ impl BabylonGateway {
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
-            // Spawn a task to read and process the stdout output of the babylon-gateway process
+            // Spawn a task to read and process the stdout output of the radix-gateway process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
@@ -92,7 +92,7 @@ impl BabylonGateway {
                 }
             });
 
-            // Spawn a task to read and process the stdout output of the babylon-gateway process
+            // Spawn a task to read and process the stdout output of the radix-gateway process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
@@ -118,7 +118,7 @@ impl BabylonGateway {
                 }
             });
 
-            // Wait for the babylon-gateway process to exit or for the shutdown token to be cancelled
+            // Wait for the radix-gateway process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
                     let status = cmd.wait().await.unwrap();
@@ -149,12 +149,12 @@ impl BabylonGateway {
 
     /// Shuts down the server.
     pub async fn shutdown(&self) {
-        info!("babylon-gateway shutting down...");
+        info!("radix-gateway shutting down...");
 
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
-        info!("babylon-gateway shutdown");
+        info!("radix-gateway shutdown");
     }
 
     async fn update_config(&self) -> Result<()> {

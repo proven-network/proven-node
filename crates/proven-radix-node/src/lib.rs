@@ -17,8 +17,8 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static CONFIG_PATH: &str = "/var/lib/proven-node/babylon-node.config";
-static KEYSTORE_PATH: &str = "/var/lib/proven-node/babylon-keystore.ks";
+static CONFIG_PATH: &str = "/var/lib/proven-node/radix-node.config";
+static KEYSTORE_PATH: &str = "/var/lib/proven-node/radix-keystore.ks";
 static KEYSTORE_PASS: &str = "notarealpassword"; // Irrelevant as keyfile never leaves TEE
 
 static NETWORK_STATUS_URL: &str = "http://127.0.0.1:3333/core/status/network-status";
@@ -52,14 +52,14 @@ static JAVA_OPTS: &[&str] = &[
     "-DLog4jContextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector",
 ];
 
-pub struct BabylonNode {
+pub struct RadixNode {
     network_definition: NetworkDefinition,
     store_dir: String,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl BabylonNode {
+impl RadixNode {
     pub fn new(network_definition: NetworkDefinition, store_dir: String) -> Self {
         Self {
             network_definition,
@@ -84,7 +84,7 @@ impl BabylonNode {
         let task_tracker = self.task_tracker.clone();
 
         let server_task = self.task_tracker.spawn(async move {
-            // Start the babylon-node process
+            // Start the radix-node process
             let mut cmd = Command::new("/bin/babylon-node/core-v1.2.3/bin/core")
                 .env("RADIX_NODE_KEYSTORE_PASSWORD", KEYSTORE_PASS)
                 .env("JAVA_OPTS", JAVA_OPTS.join(" "))
@@ -99,7 +99,7 @@ impl BabylonNode {
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
-            // Spawn a task to read and process the stdout output of the babylon-node process
+            // Spawn a task to read and process the stdout output of the radix-node process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
@@ -144,7 +144,7 @@ impl BabylonNode {
                 }
             });
 
-            // Spawn a task to read and process the stderr output of the babylon-node process
+            // Spawn a task to read and process the stderr output of the radix-node process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
@@ -154,7 +154,7 @@ impl BabylonNode {
                 }
             });
 
-            // Wait for the babylon-node process to exit or for the shutdown token to be cancelled
+            // Wait for the radix-node process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
                     let status = cmd.wait().await.unwrap();
@@ -185,12 +185,12 @@ impl BabylonNode {
 
     /// Shuts down the server.
     pub async fn shutdown(&self) {
-        info!("babylon-node shutting down...");
+        info!("radix-node shutting down...");
 
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
-        info!("babylon-node shutdown");
+        info!("radix-node shutdown");
     }
 
     async fn generate_node_key(&self) -> Result<()> {
@@ -252,7 +252,7 @@ impl BabylonNode {
         ));
 
         loop {
-            info!("checking if babylon-node is ready...");
+            info!("checking if radix-node is ready...");
             let response = client
                 .post(NETWORK_STATUS_URL)
                 .body(payload.clone())
@@ -262,7 +262,7 @@ impl BabylonNode {
 
             match response {
                 Ok(resp) if resp.status().is_success() => {
-                    info!("babylon-node is ready");
+                    info!("radix-node is ready");
                     return Ok(());
                 }
                 _ => {

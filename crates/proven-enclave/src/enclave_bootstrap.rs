@@ -20,9 +20,9 @@ use proven_kms::Kms;
 // use proven_nats_monitor::NatsMonitor;
 use proven_nats_server::NatsServer;
 use proven_postgres::Postgres;
-use proven_radix_aggregator::BabylonAggregator;
-use proven_radix_gateway::BabylonGateway;
-use proven_radix_node::BabylonNode;
+use proven_radix_aggregator::RadixAggregator;
+use proven_radix_gateway::RadixGateway;
+use proven_radix_node::RadixNode;
 use proven_sessions::{SessionManagement, SessionManager};
 use proven_store::Store;
 use proven_store_asm::AsmStore;
@@ -149,38 +149,38 @@ impl EnclaveBootstrap {
         let postgres_handle = postgres.start().await?;
 
         // Boot babylon node
-        let babylon_node_store_dir = "/var/lib/babylon".to_string();
-        let babylon_node_external_fs = ExternalFs::new(
+        let radix_node_store_dir = "/var/lib/babylon".to_string();
+        let radix_node_external_fs = ExternalFs::new(
             "your-password".to_string(),
             "fs-0c858ba83f6e3b2a0.fsx.us-east-2.amazonaws.com:/fsx/babylon/".to_string(),
-            babylon_node_store_dir.clone(),
+            radix_node_store_dir.clone(),
             args.skip_fsck,
         );
-        let babylon_external_fs_handle = babylon_node_external_fs.start().await?;
+        let radix_external_fs_handle = radix_node_external_fs.start().await?;
 
         let network_definition = match args.stokenet {
             true => NetworkDefinition::stokenet(),
             false => NetworkDefinition::mainnet(),
         };
 
-        let babylon_node = BabylonNode::new(network_definition.clone(), babylon_node_store_dir);
-        let babylon_node_handle = babylon_node.start().await?;
+        let radix_node = RadixNode::new(network_definition.clone(), radix_node_store_dir);
+        let radix_node_handle = radix_node.start().await?;
 
         // Boot babylon aggregator
-        let babylon_aggregator = BabylonAggregator::new(
+        let radix_aggregator = RadixAggregator::new(
             POSTGRES_DATABASE.to_string(),
             POSTGRES_USERNAME.to_string(),
             POSTGRES_PASSWORD.to_string(),
         );
-        let babylon_aggregator_handle = babylon_aggregator.start().await?;
+        let radix_aggregator_handle = radix_aggregator.start().await?;
 
         // Boot babylon gateway
-        let babylon_gateway = BabylonGateway::new(
+        let radix_gateway = RadixGateway::new(
             POSTGRES_DATABASE.to_string(),
             POSTGRES_USERNAME.to_string(),
             POSTGRES_PASSWORD.to_string(),
         );
-        let babylon_gateway_handle = babylon_gateway.start().await?;
+        let radix_gateway_handle = radix_gateway.start().await?;
 
         // Boot NATS server
         let nats_store_dir = "/var/lib/nats".to_string();
@@ -256,17 +256,17 @@ impl EnclaveBootstrap {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
-                    Ok(Err(e)) = babylon_aggregator_handle => {
-                        error!("babylon_aggregator exited: {:?}", e);
+                    Ok(Err(e)) = radix_aggregator_handle => {
+                        error!("radix_aggregator exited: {:?}", e);
                     }
-                    Ok(Err(e)) = babylon_external_fs_handle => {
-                        error!("babylon_external_fs exited: {:?}", e);
+                    Ok(Err(e)) = radix_external_fs_handle => {
+                        error!("radix_external_fs exited: {:?}", e);
                     }
-                    Ok(Err(e)) = babylon_gateway_handle => {
-                        error!("babylon_gateway exited: {:?}", e);
+                    Ok(Err(e)) = radix_gateway_handle => {
+                        error!("radix_gateway exited: {:?}", e);
                     }
-                    Ok(Err(e)) = babylon_node_handle => {
-                        error!("babylon_node exited: {:?}", e);
+                    Ok(Err(e)) = radix_node_handle => {
+                        error!("radix_node exited: {:?}", e);
                     }
                     Ok(Err(e)) = dnscrypt_proxy_handle => {
                         error!("dnscrypt_proxy exited: {:?}", e);
@@ -297,10 +297,10 @@ impl EnclaveBootstrap {
                     info!("shutdown command received. shutting down...");
                     enclave_clone.lock().await.shutdown().await;
                     nats_external_fs.shutdown().await;
-                    babylon_gateway.shutdown().await;
-                    babylon_aggregator.shutdown().await;
-                    babylon_node.shutdown().await;
-                    babylon_node_external_fs.shutdown().await;
+                    radix_gateway.shutdown().await;
+                    radix_aggregator.shutdown().await;
+                    radix_node.shutdown().await;
+                    radix_node_external_fs.shutdown().await;
                     postgres.shutdown().await;
                     dnscrypt_proxy.shutdown().await;
                     proxy.shutdown().await;
@@ -309,10 +309,10 @@ impl EnclaveBootstrap {
                     error!("critical task failed - exiting");
                     enclave_clone.lock().await.shutdown().await;
                     nats_external_fs.shutdown().await;
-                    babylon_gateway.shutdown().await;
-                    babylon_aggregator.shutdown().await;
-                    babylon_node.shutdown().await;
-                    babylon_node_external_fs.shutdown().await;
+                    radix_gateway.shutdown().await;
+                    radix_aggregator.shutdown().await;
+                    radix_node.shutdown().await;
+                    radix_node_external_fs.shutdown().await;
                     postgres.shutdown().await;
                     dnscrypt_proxy.shutdown().await;
                     proxy.shutdown().await;

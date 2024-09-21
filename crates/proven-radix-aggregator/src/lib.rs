@@ -24,7 +24,7 @@ static MIGRATIONS_CONFIG_PATH: &str = "/bin/DatabaseMigrations/appsettings.Produ
 static MIGRATIONS_DIR: &str = "/bin/DatabaseMigrations";
 static MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations";
 
-pub struct BabylonAggregator {
+pub struct RadixAggregator {
     postgres_database: String,
     postgres_username: String,
     postgres_password: String,
@@ -32,7 +32,7 @@ pub struct BabylonAggregator {
     task_tracker: TaskTracker,
 }
 
-impl BabylonAggregator {
+impl RadixAggregator {
     pub fn new(
         postgres_database: String,
         postgres_username: String,
@@ -59,7 +59,7 @@ impl BabylonAggregator {
         let task_tracker = self.task_tracker.clone();
 
         let server_task = self.task_tracker.spawn(async move {
-            // Start the babylon-aggregator process
+            // Start the radix-aggregator process
             let mut cmd = Command::new(AGGREGATOR_PATH)
                 .current_dir(AGGREGATOR_DIR)
                 .stdout(Stdio::piped())
@@ -69,7 +69,7 @@ impl BabylonAggregator {
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
 
-            // Spawn a task to read and process the stdout output of the babylon-aggregator process
+            // Spawn a task to read and process the stdout output of the radix-aggregator process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
@@ -95,7 +95,7 @@ impl BabylonAggregator {
                 }
             });
 
-            // Wait for the babylon-aggregator process to exit or for the shutdown token to be cancelled
+            // Wait for the radix-aggregator process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
                     let status = cmd.wait().await.unwrap();
@@ -126,12 +126,12 @@ impl BabylonAggregator {
 
     /// Shuts down the server.
     pub async fn shutdown(&self) {
-        info!("babylon-aggregator shutting down...");
+        info!("radix-aggregator shutting down...");
 
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
-        info!("babylon-aggregator shutdown");
+        info!("radix-aggregator shutdown");
     }
 
     async fn run_migrations(&self) -> Result<()> {
