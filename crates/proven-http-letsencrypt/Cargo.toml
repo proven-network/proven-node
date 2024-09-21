@@ -4,14 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
 async-trait = "0.1.82"
 axum = { version = "0.7.5", features = ["ws"] }
-axum-server = { version = "0.7.1", features = ["tls-rustls"] }
 base64 = "0.22.1"
 proven-http = { path = "../proven-http" }
 proven-store = { path = "../proven-store" }
 ring = "0.17.8"
-rustls = "0.23.13"
+rustls = { version = "0.23.13", default-features = false, features = [
+  "std",
+  "ring",
+  "logging",
+  "tls12",
+] }
 tokio = "1.40.0"
 tokio-rustls-acme = { version = "0.4.0", features = ["axum"] }
 tokio-stream = "0.1.15"
