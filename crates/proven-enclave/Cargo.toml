@@ -6,7 +6,7 @@ rust-version = "1.79"
 
 [dependencies]
 cidr = "0.2.3"
-derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+derive_more = { version = "1.0.0", features = ["from"] }
 proven-attestation = { path = "../proven-attestation" }
 proven-attestation-nsm = { path = "../proven-attestation-nsm" }
 proven-core = { path = "../proven-core" }
@@ -33,14 +33,14 @@ proven-vsock-tracing = { path = "../proven-vsock-tracing" }
 radix-common = "1.2.0"
 rand = "0.8.5"
 rtnetlink = "0.14.1"
-tokio = { version = "1.38.0", features = [
+tokio = { version = "1.40.0", features = [
   "io-util",
   "macros",
   "process",
   "rt",
   "rt-multi-thread",
 ] }
-tokio-util = { version = "0.7.11", features = ["rt"] }
+tokio-util = { version = "0.7.12", features = ["rt"] }
 tokio-vsock = "0.5.0"
 tracing = "0.1.40"
 tracing-panic = "0.1.2"

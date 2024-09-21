@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.81"
+async-trait = "0.1.82"
 axum = "0.7.5"
-tokio = "1.38.0"
+tokio = "1.40.0"

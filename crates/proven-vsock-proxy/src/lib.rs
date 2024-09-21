@@ -31,8 +31,6 @@ impl Proxy {
         let tun = Arc::new(
             TunBuilder::new()
                 .name(&tun_interface_name)
-                .tap(false)
-                .packet_info(false)
                 .mtu(FRAME_LEN as i32)
                 .address(ip_addr)
                 .destination(dest_addr)

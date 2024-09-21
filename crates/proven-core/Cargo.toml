@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = { version = "0.7.5", features = ["ws"] }
-axum-extra = { version = "0.9.3", features = ["typed-header"] }
-axum_typed_multipart = "0.11.1"
-bytes = "1.6.0"
-coset = { version = "0.3.7", features = ["std"] }
-derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+axum = { version = "0.7.6", features = ["ws"] }
+axum-extra = { version = "0.9.4", features = ["typed-header"] }
+axum_typed_multipart = "0.12.1"
+bytes = "1.7.2"
+coset = { version = "0.3.8", features = ["std"] }
+derive_more = { version = "1.0.0", features = ["from"] }
 ed25519-dalek = { version = "2.1.1", features = ["rand_core", "signature"] }
 futures = "0.3.30"
 headers = "0.4.0"
@@ -22,15 +22,15 @@ proven-radix-rola = { path = "../proven-radix-rola" }
 radix-common = "1.2.0"
 rand = "0.8.5"
 ring = "0.17.8"
-serde = { version = "1.0.204", features = ["derive"] }
+serde = { version = "1.0.210", features = ["derive"] }
 serde_cbor = "0.11.2"
-serde_json = "1.0.120"
-tokio = { version = "1.38.0", features = [
+serde_json = "1.0.128"
+tokio = { version = "1.40.0", features = [
   "io-util",
   "macros",
   "process",
   "rt",
   "rt-multi-thread",
 ] }
-tokio-util = { version = "0.7.11", features = ["rt"] }
+tokio-util = { version = "0.7.12", features = ["rt"] }
 tracing = "0.1.40"

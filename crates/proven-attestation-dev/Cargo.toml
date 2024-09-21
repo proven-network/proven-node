@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.81"
-coset = { version = "0.3.7", features = ["std"] }
-derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+async-trait = "0.1.82"
+coset = { version = "0.3.8", features = ["std"] }
+derive_more = { version = "1.0.0", features = ["from"] }
 proven-attestation = { path = "../proven-attestation" }
 rand = "0.8.5"
-serde = { version = "1.0.204", features = ["derive"] }
+serde = { version = "1.0.210", features = ["derive"] }
 serde_cbor = "0.11.2"

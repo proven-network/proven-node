@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.81"
-aws-config = { version = "1.5.4", features = ["behavior-version-latest"] }
-aws-sdk-secretsmanager = "1.38.0"
-derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+async-trait = "0.1.82"
+aws-config = { version = "1.5.6", features = ["behavior-version-latest"] }
+aws-sdk-secretsmanager = "1.47.0"
+derive_more = { version = "1.0.0", features = ["from"] }
 proven-store = { path = "../proven-store" }
-serde_json = "1.0.120"
+serde_json = "1.0.128"

@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-aws-config = "1.5.4"
-aws-sdk-ec2 = "1.58.0"
-derive_more = { version = "1.0.0-beta.6", features = ["from"] }
+aws-config = "1.5.6"
+aws-sdk-ec2 = "1.73.0"
+derive_more = { version = "1.0.0", features = ["from"] }
