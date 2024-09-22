@@ -68,6 +68,8 @@ pub enum Error {
     #[from]
     Postgres(proven_postgres::Error),
 
+    RouteSetup,
+
     #[from]
     S3Store(proven_store_s3_sse_c::Error),
 
@@ -106,6 +108,7 @@ impl core::fmt::Display for Error {
             Error::Netlink(e) => write!(f, "{}", e),
             Error::Nsm(e) => write!(f, "{}", e),
             Error::Postgres(e) => write!(f, "{}", e),
+            Error::RouteSetup => write!(f, "Failed to set up route"),
             Error::S3Store(e) => write!(f, "{}", e),
             Error::VsockProxy(e) => write!(f, "{}", e),
             Error::VsockRpc(e) => write!(f, "{}", e),

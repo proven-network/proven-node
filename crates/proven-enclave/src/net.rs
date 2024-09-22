@@ -1,10 +1,10 @@
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 use cidr::Ipv4Cidr;
 use rtnetlink::LinkHandle;
 use std::net::Ipv4Addr;
 use tokio::process::Command;
-use tracing::info;
+use tracing::{error, info};
 
 pub async fn bring_up_loopback() -> Result<()> {
     let (conn, handle, _receiver) = rtnetlink::new_connection()?;
@@ -24,7 +24,7 @@ pub async fn setup_default_gateway(
     host_ip: Ipv4Addr,
     cidr: Ipv4Cidr,
 ) -> Result<()> {
-    Command::new("ip")
+    let cmd = Command::new("ip")
         .arg("route")
         .arg("add")
         .arg("default")
@@ -34,6 +34,14 @@ pub async fn setup_default_gateway(
         .arg(tun_device)
         .output()
         .await?;
+
+    if !cmd.status.success() {
+        error!("failed to setup default gateway");
+        error!("stdout: {}", String::from_utf8_lossy(&cmd.stdout));
+        error!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
+
+        return Err(Error::RouteSetup);
+    }
 
     Command::new("ip")
         .arg("route")
@@ -47,6 +55,14 @@ pub async fn setup_default_gateway(
         .arg(tun_device)
         .output()
         .await?;
+
+    if !cmd.status.success() {
+        error!("failed to setup default gateway");
+        error!("stdout: {}", String::from_utf8_lossy(&cmd.stdout));
+        error!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
+
+        return Err(Error::RouteSetup);
+    }
 
     info!("default gateway to host created");
 
