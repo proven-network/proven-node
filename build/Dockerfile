@@ -175,11 +175,9 @@ COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
-COPY --from=apt-get-files /tmp/final/bin/* /bin/
-COPY --from=apt-get-files /tmp/final/etc/* /etc/
-COPY --from=apt-get-files /tmp/final/lib/* /lib/
-COPY --from=apt-get-files /tmp/final/sbin/* /sbin/
-COPY --from=apt-get-files /tmp/final/usr/* /usr/
-COPY --from=apt-get-files /tmp/final/var/* /var/
+COPY --from=apt-get-files /tmp/final /tmp/final
+
+RUN cp -r /tmp/final/* /
+RUN rm -rf /tmp/final
 
 CMD proven-enclave
