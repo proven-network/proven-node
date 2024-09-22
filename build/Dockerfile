@@ -145,6 +145,9 @@ RUN apt-file list --from-file packages.txt | awk '{print $2}' > files.txt
 # Install packages (these are newline separated) and parse names of config files to copy also
 RUN xargs -a packages.txt apt-get install -y | grep "Creating config file " | awk '{print $4}' >> files.txt
 
+# Dedupe files.txt
+RUN sort -u -o files.txt files.txt
+
 # Copy files to /tmp/fakeroot
 RUN mkdir -p /tmp/fakeroot
 RUN xargs -a files.txt cp -r --parents -t /tmp/fakeroot
