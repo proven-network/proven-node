@@ -152,5 +152,6 @@ COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
+COPY --from=openjdk:17-jdk-slim /usr/local/openjdk-17/lib/security/cacerts /etc/ssl/certs/java/cacerts
 
 CMD proven-enclave

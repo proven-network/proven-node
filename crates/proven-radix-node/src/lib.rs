@@ -1,7 +1,5 @@
-mod cacerts;
 mod error;
 
-use cacerts::setup_keystore;
 pub use error::{Error, Result};
 
 use std::process::Stdio;
@@ -77,9 +75,6 @@ impl RadixNode {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
-
-        setup_keystore().await?;
-        info!("fresh keystore at /etc/ssl/certs/java/cacerts");
 
         self.generate_node_key().await?;
         info!("generated node key");
