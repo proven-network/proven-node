@@ -124,7 +124,7 @@
 # -----------
 FROM debian:bookworm-20240904-slim
 
-RUN apt-get update
+RUN apt-get update \
 # && apt-get install -y \
     # fuse=2.9.9-6+b1 \
     # iproute2=6.1.0-3 \
