@@ -157,7 +157,7 @@ RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/
 WORKDIR /etc/ssl/certs
 RUN rm -f java/cacerts
 # Create empty keystore
-RUN keytool -genkey -noprompt -alias dummy -dname "CN=Dummy" -keystore java/cacerts -storepass nothing -keypass nothing
+RUN keytool -genkey -noprompt -alias dummy -dname "CN=Dummy" -keystore java/cacerts -storepass nothing -keypass nothing -keyalg RSA -keysize 2048 -validity 3650
 # Remove dummy key
 RUN keytool -delete -noprompt -alias dummy -keystore java/cacerts -storepass nothing
 # Import all certificates
