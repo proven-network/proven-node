@@ -150,7 +150,7 @@ RUN sort -u -o files.txt files.txt
 
 # Copy files to /tmp/fakeroot
 RUN mkdir -p /tmp/fakeroot
-RUN xargs -a files.txt cp -r --parents -t /tmp/fakeroot
+RUN xargs -a files.txt cp -rf --parents -t /tmp/fakeroot
 RUN cp -r /etc/ssl/certs /tmp/fakeroot/etc/ssl
 
 # -----------
