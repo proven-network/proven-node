@@ -30,7 +30,7 @@ $(image_tar): Dockerfile
 		--reproducible \
 		--no-push \
 		--tarPath $(image_tar) \
-		--destination $(image_tag) \
+		--destination $(image_tag)-$(version) \
 		--build-arg COMMIT=$(version) \
 		--build-arg RUSTARCH=$(RUSTARCH) \
 		--build-arg RUSTTARGET=$(RUSTTARGET) \
@@ -42,7 +42,7 @@ $(image_tar): Dockerfile
 $(image_eif): $(image_tar)
 	docker load -i $<
 	nitro-cli build-enclave \
-		--docker-uri $(image_tag) \
+		--docker-uri $(image_tag)-$(version) \
 		--output-file $(image_eif)
 
 .PHONY: install
