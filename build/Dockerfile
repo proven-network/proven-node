@@ -131,6 +131,7 @@ RUN apt-get update && apt-get install -y apt-file && apt-file update
 
 # Compile list of packages to install (including dependencies)
 RUN apt-get install --dry-run -y \
+    curl=7.88.1-10+deb12u7 \
     fuse=2.9.9-6+b1 \
     iproute2=6.1.0-3 \
     openjdk-17-jre-headless=17.0.12+7-2~deb12u1 \
@@ -148,10 +149,10 @@ RUN xargs -a packages.txt apt-get install -y | grep "Creating config file " | aw
 # Dedupe files.txt
 RUN sort -u -o files.txt files.txt
 
-# Copy files to /tmp/fakeroot
-RUN mkdir -p /tmp/fakeroot
-RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/fakeroot || echo "File {} does not exist, skipping."'
-RUN cp -r /etc/ssl/certs /tmp/fakeroot/etc/ssl
+# Copy files to /tmp/final
+RUN mkdir -p /tmp/final
+RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/final || echo "File {} does not exist, skipping."'
+RUN cp -r /etc/ssl/certs /tmp/final/etc/ssl
 
 # -----------
 # FINAL IMAGE
@@ -160,9 +161,6 @@ FROM debian:bookworm-20240904-slim
 
 # RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.8 --install-dir /usr/share/dotnet
 # RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
-# RUN apt-get purge -y curl && apt-get autoremove -y
-
-# RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 # COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
@@ -174,6 +172,11 @@ FROM debian:bookworm-20240904-slim
 # COPY --from=extra-binaries /bin/nats-server /bin/
 # COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 # COPY --from=extra-binaries /bin/librespeed-cli /bin/
-COPY --from=apt-get-files /tmp/fakeroot /
+COPY --from=apt-get-files /tmp/final/bin/* /bin/
+COPY --from=apt-get-files /tmp/final/etc/* /etc/
+COPY --from=apt-get-files /tmp/final/lib/* /lib/
+COPY --from=apt-get-files /tmp/final/sbin/* /sbin/
+COPY --from=apt-get-files /tmp/final/usr/* /usr/
+COPY --from=apt-get-files /tmp/final/var/* /var/
 
 CMD proven-enclave
