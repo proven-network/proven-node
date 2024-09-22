@@ -1,19 +1,19 @@
-# # ------------------
-# # DOTNET BUILD STEPS
-# # ------------------
-# FROM mcr.microsoft.com/dotnet/sdk:8.0 as dotnet-builder
-# WORKDIR /
+# ------------------
+# DOTNET BUILD STEPS
+# ------------------
+FROM mcr.microsoft.com/dotnet/sdk:8.0 as dotnet-builder
+WORKDIR /
 
-# RUN git clone https://github.com/radixdlt/babylon-gateway.git
-# WORKDIR /babylon-gateway
-# RUN git checkout v1.7.2
+RUN git clone https://github.com/radixdlt/babylon-gateway.git
+WORKDIR /babylon-gateway
+RUN git checkout v1.7.2
 
-# WORKDIR /babylon-gateway/apps/DataAggregator
-# RUN dotnet publish -c Release -o /bin/DataAggregator
-# WORKDIR /babylon-gateway/apps/DatabaseMigrations
-# RUN dotnet publish -c Release -o /bin/DatabaseMigrations
-# WORKDIR /babylon-gateway/apps/GatewayApi
-# RUN dotnet publish -c Release -o /bin/GatewayApi
+WORKDIR /babylon-gateway/apps/DataAggregator
+RUN dotnet publish -c Release -o /bin/DataAggregator
+WORKDIR /babylon-gateway/apps/DatabaseMigrations
+RUN dotnet publish -c Release -o /bin/DatabaseMigrations
+WORKDIR /babylon-gateway/apps/GatewayApi
+RUN dotnet publish -c Release -o /bin/GatewayApi
 
 # # --------------------
 # # POSTGRES BUILD STEPS
@@ -165,9 +165,9 @@ FROM debian:bookworm-20240904-slim
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.8 --install-dir /usr/share/dotnet
 RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 
-# COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
-# COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
-# COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
+COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
+COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
+COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
 # COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 # COPY --from=go-builder /bin/gocryptfs /bin/
 # COPY --from=rust-builder /bin/proven-enclave /bin/
