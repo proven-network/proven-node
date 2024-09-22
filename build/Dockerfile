@@ -161,7 +161,7 @@ RUN keytool -genkey -noprompt -alias dummy -dname "CN=Dummy" -keystore /usr/lib/
 # Remove dummy key
 RUN keytool -delete -noprompt -alias dummy -keystore /usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts -storepass nothing
 # Import all certificates
-RUN ls *.pem | xargs -I {} sh -c 'cert="{}"; ca_alias=$(basename ${cert} .pem); echo "Importing certificate $ca_alias... "; echo -n " => "; keytool -cacerts -trustcacerts -storepass nothing -importcert -alias "${ca_alias}" -file /etc/ssl/certs/${cert} -noprompt'
+RUN ls *.pem | xargs -I {} sh -c 'cert="{}"; ca_alias=$(basename ${cert} .pem); echo "Importing certificate $ca_alias... "; echo -n " => "; keytool -cacerts -trustcacerts -storepass nothing -importcert -alias "${ca_alias}" -file /etc/ssl/certs/${cert} -noprompt || { echo "Failed to import certificate $ca_alias"; exit 1; }' || true
 RUN mkdir -p /tmp/final/etc/ssl/certs/java
 RUN cp /usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts /tmp/final/etc/ssl/certs/java/
 RUN env
