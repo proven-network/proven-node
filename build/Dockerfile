@@ -153,18 +153,9 @@ RUN sort -u -o files.txt files.txt
 RUN mkdir -p /tmp/final
 RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/final || echo "File {} does not exist, skipping."'
 
-# Rebuild Java certs sequentially as they were non-deterministic
-WORKDIR /etc/ssl/certs
-RUN rm -f java/cacerts
-# Create empty keystore
-RUN keytool -genkey -noprompt -alias dummy -dname "CN=Dummy" -keystore /usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts -storepass nothing -keypass nothing -keyalg RSA -keysize 2048 -validity 3650
-# Remove dummy key
-RUN keytool -delete -noprompt -alias dummy -keystore /usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts -storepass nothing
-# Import all certificates
-RUN ls *.pem | xargs -I {} sh -c 'cert="{}"; ca_alias=$(basename ${cert} .pem); echo "Importing certificate $ca_alias... "; echo -n " => "; keytool -cacerts -trustcacerts -storepass nothing -importcert -alias "${ca_alias}" -file /etc/ssl/certs/${cert} -noprompt || { echo "Failed to import certificate $ca_alias"; exit 1; }' || true
-RUN mkdir -p /tmp/final/etc/ssl/certs/java
-RUN cp /usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts /tmp/final/etc/ssl/certs/java/
-RUN env
+# Copy certs, but remove Java cacerts as they were non-deterministic (rebuild at runtime)
+RUN cp -r /etc/ssl/certs /tmp/final/etc/ssl/
+RUN rm -rf /tmp/final/etc/ssl/certs/java
 
 # -----------
 # FINAL IMAGE
