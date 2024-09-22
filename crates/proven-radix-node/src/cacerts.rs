@@ -8,7 +8,7 @@ use tokio::process::Command;
 const KEYSTORE_PATH: &str = "/usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts";
 const KEYSTORE_PASS: &str = "nothing";
 const CERTS_DIR: &str = "/etc/ssl/certs";
-const TARGET_DIR: &str = "/tmp/final/etc/ssl/certs/java";
+const TARGET_DIR: &str = "/etc/ssl/certs/java";
 
 async fn generate_dummy_keystore() -> Result<()> {
     let status = Command::new("keytool")
