@@ -147,7 +147,7 @@ RUN xargs -a packages.txt apt-get install -y | grep "Creating config file " | aw
 
 # Copy files to /tmp/fakeroot
 RUN mkdir -p /tmp/fakeroot
-RUN xargs -a files.txt cp --parents -t /tmp/fakeroot
+RUN xargs -a files.txt cp -r --parents -t /tmp/fakeroot
 RUN cp -r /etc/ssl/certs /tmp/fakeroot/etc/ssl
 
 # -----------
