@@ -157,13 +157,13 @@ RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/
 WORKDIR /etc/ssl/certs
 RUN rm -f java/cacerts
 # Create empty keystore
-RUN keytool -genkey -noprompt -alias dummy -dname "CN=Dummy" -keystore java/cacerts -storepass nothing -keypass nothing -keyalg RSA -keysize 2048 -validity 3650
+RUN keytool -genkey -noprompt -alias dummy -dname "CN=Dummy" -keystore /usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts -storepass nothing -keypass nothing -keyalg RSA -keysize 2048 -validity 3650
 # Remove dummy key
-RUN keytool -delete -noprompt -alias dummy -keystore java/cacerts -storepass nothing
+RUN keytool -delete -noprompt -alias dummy -keystore /usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts -storepass nothing
 # Import all certificates
-RUN ls *.pem | xargs -I {} sh -c 'cert="{}"; ca_alias=$(basename ${cert} .pem); echo "Importing certificate $ca_alias... "; echo -n " => "; keytool -cacerts -trustcacerts -storepass nothing -importcert -alias "${ca_alias}" -file /etc/ssl/certs/${cert} -noprompt -keystore /etc/ssl/certs/java/cacerts'
+RUN ls *.pem | xargs -I {} sh -c 'cert="{}"; ca_alias=$(basename ${cert} .pem); echo "Importing certificate $ca_alias... "; echo -n " => "; keytool -cacerts -trustcacerts -storepass nothing -importcert -alias "${ca_alias}" -file /etc/ssl/certs/${cert} -noprompt'
 RUN mkdir -p /tmp/final/etc/ssl/certs/java
-RUN cp -r /etc/ssl/certs/java/cacerts /tmp/final/etc/ssl/certs/java/
+RUN cp /usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts /tmp/final/etc/ssl/certs/java/
 RUN env
 
 # -----------
