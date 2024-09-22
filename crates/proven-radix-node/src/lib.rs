@@ -56,15 +56,17 @@ static JAVA_OPTS: &[&str] = &[
 
 pub struct RadixNode {
     network_definition: NetworkDefinition,
+    host_ip: String,
     store_dir: String,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
 impl RadixNode {
-    pub fn new(network_definition: NetworkDefinition, store_dir: String) -> Self {
+    pub fn new(network_definition: NetworkDefinition, host_ip: String, store_dir: String) -> Self {
         Self {
             network_definition,
+            host_ip,
             store_dir,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
@@ -228,12 +230,13 @@ impl RadixNode {
 
         let config = format!(
             r#"
+            network.host_ip={}
             network.id={}
             network.p2p.seed_nodes={}
             node.key.path={}
             db.location={}
         "#,
-            self.network_definition.id, seed_nodes, KEYSTORE_PATH, self.store_dir
+            self.host_ip, self.network_definition.id, seed_nodes, KEYSTORE_PATH, self.store_dir
         );
 
         let mut config_file = std::fs::OpenOptions::new()

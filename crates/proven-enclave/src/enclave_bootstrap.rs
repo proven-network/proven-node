@@ -163,7 +163,8 @@ impl EnclaveBootstrap {
             false => NetworkDefinition::mainnet(),
         };
 
-        let radix_node = RadixNode::new(network_definition.clone(), radix_node_store_dir);
+        let host_ip = instance.public_ip.unwrap().to_string();
+        let radix_node = RadixNode::new(network_definition.clone(), host_ip, radix_node_store_dir);
         let radix_node_handle = radix_node.start().await?;
 
         // Boot babylon aggregator
