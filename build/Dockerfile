@@ -119,25 +119,47 @@
 # RUN mv linux-arm64/dnscrypt-proxy /bin/
 # RUN mv librespeed-cli /bin/
 
+# -------------
+# APT-GET FILES
+# -------------
+FROM debian:bookworm-20240904-slim as apt-get-files
+
+WORKDIR /tmp
+
+# Install apt-files tool in order to find names to copy to final image
+RUN apt-get update && apt-get install -y apt-file && apt-file update
+
+# Compile list of packages to install (including dependencies)
+RUN apt-get install --dry-run -y \
+    fuse=2.9.9-6+b1 \
+    iproute2=6.1.0-3 \
+    openjdk-17-jre-headless=17.0.12+7-2~deb12u1 \
+    net-tools=2.10-0.1 \
+    nfs-common=1:2.6.2-4 \
+    nfs-kernel-server=1:2.6.2-4 \
+    | grep "Inst " | awk '{print $2}' > packages.txt
+
+# Compile list of files to copy to final image
+RUN apt-file list --from-file packages.txt | awk '{print $2}' > files.txt
+
+# Install packages (these are newline separated) and parse names of config files to copy also
+RUN xargs -a packages.txt apt-get install -y | grep "Creating config file " | awk '{print $4}' >> files.txt
+
+# Copy files to /tmp/fakeroot
+RUN mkdir -p /tmp/fakeroot
+RUN xargs -a files.txt cp --parents -t /tmp/fakeroot
+RUN cp -r /etc/ssl/certs /tmp/fakeroot/etc/ssl
+
 # -----------
 # FINAL IMAGE
 # -----------
 FROM debian:bookworm-20240904-slim
 
-RUN apt-get update && apt-get install -y \
-    fuse=2.9.9-6+b1
-    # iproute2=6.1.0-3 \
-    # openjdk-17-jre-headless=17.0.12+7-2~deb12u1 \
-    # net-tools=2.10-0.1 \
-    # nfs-common=1:2.6.2-4 \
-    # nfs-kernel-server=1:2.6.2-4 \
-    # curl
-
 # RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.8 --install-dir /usr/share/dotnet
 # RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 # RUN apt-get purge -y curl && apt-get autoremove -y
 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
+# RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/archives/*
 
 # COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 # COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
@@ -149,5 +171,6 @@ RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/ap
 # COPY --from=extra-binaries /bin/nats-server /bin/
 # COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 # COPY --from=extra-binaries /bin/librespeed-cli /bin/
+COPY --from=apt-get-files /tmp/fakeroot /
 
 CMD proven-enclave
