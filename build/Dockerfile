@@ -152,6 +152,10 @@ RUN sort -u -o files.txt files.txt
 # Copy files to /tmp/final
 RUN mkdir -p /tmp/final
 RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/final || echo "File {} does not exist, skipping."'
+RUN cp -r /etc/ssl/certs /tmp/final/etc/ssl
+
+# Remove Java certs as they make build non-deterministic (generate at runtime)
+RUN rm -rf /tmp/final/etc/ssl/certs/java
 
 # -----------
 # FINAL IMAGE
