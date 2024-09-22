@@ -154,9 +154,14 @@ RUN mkdir -p /tmp/final
 RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/final || echo "File {} does not exist, skipping."'
 
 # Rebuild Java certs sequentially as they were non-deterministic
-RUN rm -rf /etc/ssl/certs/java
 WORKDIR /etc/ssl/certs
-RUN ls *.pem | xargs -I {} sh -c 'cert="{}"; ca_alias=$(basename ${cert} .pem); echo "Importing certificate $ca_alias... "; echo -n " => "; keytool -cacerts -trustcacerts -storepass nothing -importcert -alias "${ca_alias}" -file /etc/ssl/certs/${cert} -noprompt'
+RUN rm -f java/cacerts
+# Create empty keystore
+RUN keytool -genkey -noprompt -alias dummy -dname "CN=Dummy" -keystore java/cacerts -storepass nothing -keypass nothing
+# Remove dummy key
+RUN keytool -delete -noprompt -alias dummy -keystore java/cacerts -storepass nothing
+# Import all certificates
+RUN ls *.pem | xargs -I {} sh -c 'cert="{}"; ca_alias=$(basename ${cert} .pem); echo "Importing certificate $ca_alias... "; echo -n " => "; keytool -cacerts -trustcacerts -storepass nothing -importcert -alias "${ca_alias}" -file /etc/ssl/certs/${cert} -noprompt -keystore /etc/ssl/certs/java/cacerts'
 RUN mkdir -p /tmp/final/etc/ssl/certs/java
 RUN cp -r /etc/ssl/certs/java/cacerts /tmp/final/etc/ssl/certs/java/
 RUN env
