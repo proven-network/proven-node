@@ -65,59 +65,59 @@ RUN cp /gocryptfs/gocryptfs /bin/
 RUN chown root:root /bin/gocryptfs
 RUN chmod 0755      /bin/gocryptfs
 
-# # ----------------
-# # RUST BUILD STEPS
-# # ----------------
-# FROM messense/rust-musl-cross:${RUSTARCH}-musl as rust-builder
-# WORKDIR /
+# ----------------
+# RUST BUILD STEPS
+# ----------------
+FROM messense/rust-musl-cross:${RUSTARCH}-musl as rust-builder
+WORKDIR /
 
-# # Set Rust target
-# ARG RUSTTARGET
-# RUN rustup target add ${RUSTTARGET}
+# Set Rust target
+ARG RUSTTARGET
+RUN rustup target add ${RUSTTARGET}
 
-# # Build proven-enclave
-# WORKDIR /
-# ARG COMMIT
-# RUN git clone git@github.com:proven-network/proven-node.git
-# WORKDIR /proven-node
-# RUN git checkout ${COMMIT}
-# RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
+# Build proven-enclave
+WORKDIR /
+ARG COMMIT
+RUN git clone git@github.com:proven-network/proven-node.git
+WORKDIR /proven-node
+RUN git checkout ${COMMIT}
+RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
 
-# # # Move proven-enclave to /bin
-# RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
-# RUN chown root:root /bin/proven-enclave
-# RUN chmod 0755      /bin/proven-enclave
+# # Move proven-enclave to /bin
+RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
+RUN chown root:root /bin/proven-enclave
+RUN chmod 0755      /bin/proven-enclave
 
-# # --------------
-# # EXTRA BINARIES
-# # --------------
-# FROM alpine:3.20 as extra-binaries
+# --------------
+# EXTRA BINARIES
+# --------------
+FROM alpine:3.20 as extra-binaries
 
-# RUN apk add --no-cache unzip wget
+RUN apk add --no-cache unzip wget
 
-# WORKDIR /tmp
+WORKDIR /tmp
 
-# # Download
-# RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
-# RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-v1.2.3.zip
-# RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
-# RUN wget -q https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.5/dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
-# RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
+# Download
+RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
+RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-v1.2.3.zip
+RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
+RUN wget -q https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.5/dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
+RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
 
-# # Unzip
-# RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
-# RUN unzip babylon-node-v1.2.3.zip
-# RUN unzip nats-server-v2.10.20-linux-arm64.zip
-# RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
-# RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
+# Unzip
+RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
+RUN unzip babylon-node-v1.2.3.zip
+RUN unzip nats-server-v2.10.20-linux-arm64.zip
+RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
+RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
 
-# # Move to /bin
-# RUN mkdir -p /bin/babylon-node
-# RUN mv core-v1.2.3 /bin/babylon-node
-# RUN mv libcorerust.so /bin/babylon-node
-# RUN mv nats-server-v2.10.20-linux-arm64/nats-server /bin/
-# RUN mv linux-arm64/dnscrypt-proxy /bin/
-# RUN mv librespeed-cli /bin/
+# Move to /bin
+RUN mkdir -p /bin/babylon-node
+RUN mv core-v1.2.3 /bin/babylon-node
+RUN mv libcorerust.so /bin/babylon-node
+RUN mv nats-server-v2.10.20-linux-arm64/nats-server /bin/
+RUN mv linux-arm64/dnscrypt-proxy /bin/
+RUN mv librespeed-cli /bin/
 
 # -------------
 # APT-GET FILES
@@ -170,11 +170,11 @@ COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
 COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 COPY --from=go-builder /bin/gocryptfs /bin/
-# COPY --from=rust-builder /bin/proven-enclave /bin/
-# COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
-# COPY --from=extra-binaries /bin/nats-server /bin/
-# COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
-# COPY --from=extra-binaries /bin/librespeed-cli /bin/
+COPY --from=rust-builder /bin/proven-enclave /bin/
+COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
+COPY --from=extra-binaries /bin/nats-server /bin/
+COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
+COPY --from=extra-binaries /bin/librespeed-cli /bin/
 COPY --from=apt-get-files /tmp/final/bin/* /bin/
 COPY --from=apt-get-files /tmp/final/etc/* /etc/
 COPY --from=apt-get-files /tmp/final/lib/* /lib/
