@@ -129,8 +129,8 @@ RUN apt-get update && apt-get install -y \
     iproute2=6.1.0-3 \
     openjdk-17-jre-headless=17.0.12+7-2~deb12u1 \
     net-tools=2.10-0.1 \
-    nfs-common=1:2.6.2-4 \
-    nfs-kernel-server=1:2.6.2-4 \
+    # nfs-common=1:2.6.2-4 \
+    # nfs-kernel-server=1:2.6.2-4 \
     curl
 
 # RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.8 --install-dir /usr/share/dotnet
