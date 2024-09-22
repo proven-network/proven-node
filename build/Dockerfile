@@ -152,10 +152,25 @@ RUN sort -u -o files.txt files.txt
 # Copy files to /tmp/final
 RUN mkdir -p /tmp/final
 RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/final || echo "File {} does not exist, skipping."'
-RUN cp -r /etc/ssl/certs /tmp/final/etc/ssl
 
-# Remove Java certs as they make build non-deterministic (generate at runtime)
-RUN rm -rf /tmp/final/etc/ssl/certs/java
+# Rebuild Java certs sequentially as they were non-deterministic
+RUN rm -rf /etc/ssl/certs/java
+WORKDIR /etc/ssl/certs
+RUN find . -type f -name ".pem" | xargs -I {} sh -c '
+cert="{}"
+ca_alias=$(basename ${cert} .pem)
+echo "Importing certificate $ca_alias... "
+echo -n " => "
+keytool -cacerts -trustcacerts \
+    -storepass nothing \
+    -importcert \
+    -alias "${ca_alias}" \
+    -file /etc/ssl/certs/${cert} \
+    -noprompt
+'
+RUN mkdir -p /tmp/final/etc/ssl/certs/java
+RUN cp -r /etc/ssl/certs/java/cacerts /tmp/final/etc/ssl/certs/java/
+RUN env
 
 # -----------
 # FINAL IMAGE
