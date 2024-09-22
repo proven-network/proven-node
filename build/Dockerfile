@@ -15,55 +15,55 @@ RUN dotnet publish -c Release -o /bin/DatabaseMigrations
 WORKDIR /babylon-gateway/apps/GatewayApi
 RUN dotnet publish -c Release -o /bin/GatewayApi
 
-# # --------------------
-# # POSTGRES BUILD STEPS
-# # --------------------
-# FROM debian:bookworm-20240904-slim as postgres-builder
+# --------------------
+# POSTGRES BUILD STEPS
+# --------------------
+FROM debian:bookworm-20240904-slim as postgres-builder
 
-# # Install dependencies to build from source
-# RUN apt-get update && apt-get install -y \
-#     gcc \
-#     build-essential \
-#     zlib1g-dev \
-#     libreadline6-dev \
-#     libicu-dev \
-#     pkg-config \
-#     wget \
-#     && rm -rf /var/lib/apt/lists/*
+# Install dependencies to build from source
+RUN apt-get update && apt-get install -y \
+    gcc \
+    build-essential \
+    zlib1g-dev \
+    libreadline6-dev \
+    libicu-dev \
+    pkg-config \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# # Download source code
-# WORKDIR /tmp
-# RUN wget -q https://ftp.postgresql.org/pub/source/v16.4/postgresql-16.4.tar.bz2
-# RUN tar -xvf postgresql-16.4.tar.bz2
-# WORKDIR /tmp/postgresql-16.4
+# Download source code
+WORKDIR /tmp
+RUN wget -q https://ftp.postgresql.org/pub/source/v16.4/postgresql-16.4.tar.bz2
+RUN tar -xvf postgresql-16.4.tar.bz2
+WORKDIR /tmp/postgresql-16.4
 
-# # Overwrite root check
-# RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
-# RUN sed -i 's/if (geteuid() == 0)/if (false)/g' src/bin/initdb/initdb.c
+# Overwrite root check
+RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
+RUN sed -i 's/if (geteuid() == 0)/if (false)/g' src/bin/initdb/initdb.c
 
-# # Build and install
-# RUN ./configure
-# RUN make -j$(nproc)
-# RUN make install
+# Build and install
+RUN ./configure
+RUN make -j$(nproc)
+RUN make install
 
-# # --------------
-# # GO BUILD STEPS
-# # --------------
-# FROM golang:alpine3.20 as go-builder
-# WORKDIR /
+# --------------
+# GO BUILD STEPS
+# --------------
+FROM golang:alpine3.20 as go-builder
+WORKDIR /
 
-# # Install dependencies
-# RUN apk add --no-cache bash git
+# Install dependencies
+RUN apk add --no-cache bash git
 
-# # Build gocryptfs
-# RUN git clone https://github.com/rfjakob/gocryptfs.git
-# WORKDIR /gocryptfs
-# RUN ./build-without-openssl.bash
+# Build gocryptfs
+RUN git clone https://github.com/rfjakob/gocryptfs.git
+WORKDIR /gocryptfs
+RUN ./build-without-openssl.bash
 
-# # Move gocryptfs to /bin
-# RUN cp /gocryptfs/gocryptfs /bin/
-# RUN chown root:root /bin/gocryptfs
-# RUN chmod 0755      /bin/gocryptfs
+# Move gocryptfs to /bin
+RUN cp /gocryptfs/gocryptfs /bin/
+RUN chown root:root /bin/gocryptfs
+RUN chmod 0755      /bin/gocryptfs
 
 # # ----------------
 # # RUST BUILD STEPS
@@ -168,8 +168,8 @@ RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
-# COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
-# COPY --from=go-builder /bin/gocryptfs /bin/
+COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
+COPY --from=go-builder /bin/gocryptfs /bin/
 # COPY --from=rust-builder /bin/proven-enclave /bin/
 # COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 # COPY --from=extra-binaries /bin/nats-server /bin/
