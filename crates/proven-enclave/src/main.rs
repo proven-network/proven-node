@@ -29,11 +29,17 @@ async fn handle_initial_request(rpc_server: &RpcServer) -> Result<()> {
     match rpc_server.accept().await {
         Ok(RpcCall::Initialize(args, ack)) => {
             let enclave_bootstrap = Arc::new(EnclaveBootstrap::new());
-            let enclave = enclave_bootstrap.start(args).await?;
-            ack(InitializeResponse { success: true }).await.unwrap();
-            info!("Enclave initialized successfully");
-
-            handle_requests_loop(rpc_server, enclave_bootstrap, enclave).await?;
+            match enclave_bootstrap.start(args).await {
+                Ok(enclave) => {
+                    info!("Enclave started successfully");
+                    ack(InitializeResponse { success: true }).await.unwrap();
+                    handle_requests_loop(rpc_server, enclave_bootstrap, enclave).await?;
+                }
+                Err(e) => {
+                    error!("Failed to start enclave: {:?}", e);
+                    ack(InitializeResponse { success: false }).await.unwrap();
+                }
+            }
         }
         Ok(_) => {
             error!("Unexpected initial request");
