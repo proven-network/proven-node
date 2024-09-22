@@ -177,7 +177,12 @@ COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
 COPY --from=apt-get-files /tmp/final /tmp/final
 
-RUN cp -r /tmp/final/* /
+RUN cp -r /tmp/final/bin/* /bin/
+RUN cp -r /tmp/final/etc/* /etc/
+RUN cp -r /tmp/final/lib/* /lib/
+RUN cp -r /tmp/final/sbin/* /sbin/
+RUN cp -r /tmp/final/usr/* /usr/
+RUN cp -r /tmp/final/var/* /var/
 RUN rm -rf /tmp/final
 
 CMD proven-enclave
