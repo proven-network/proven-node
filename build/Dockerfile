@@ -162,7 +162,7 @@
 # -----------
 FROM debian:bookworm-20240904-slim
 
-RUN apt-get update && apt-get install --dry-run -y \
+RUN apt-get update && apt-get install -y \
     curl=7.88.1-10+deb12u7 \
     fuse=2.9.9-6+b1 \
     iproute2=6.1.0-3 \
