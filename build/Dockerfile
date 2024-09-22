@@ -152,7 +152,6 @@ RUN sort -u -o files.txt files.txt
 # Copy files to /tmp/final
 RUN mkdir -p /tmp/final
 RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/final || echo "File {} does not exist, skipping."'
-RUN cp -r /etc/ssl/certs /tmp/final/etc/ssl
 
 # -----------
 # FINAL IMAGE
