@@ -156,7 +156,7 @@ RUN xargs -a files.txt -I {} sh -c '[ -e "{}" ] && cp -r --parents "{}" -t /tmp/
 # Rebuild Java certs sequentially as they were non-deterministic
 RUN rm -rf /etc/ssl/certs/java
 WORKDIR /etc/ssl/certs
-RUN find . -type f -name ".pem" | xargs -I {} sh -c 'cert="{}"; ca_alias=$(basename ${cert} .pem); echo "Importing certificate $ca_alias... "; echo -n " => "; keytool -cacerts -trustcacerts -storepass nothing -importcert -alias "${ca_alias}" -file /etc/ssl/certs/${cert} -noprompt'
+RUN ls *.pem | xargs -I {} sh -c 'cert="{}"; ca_alias=$(basename ${cert} .pem); echo "Importing certificate $ca_alias... "; echo -n " => "; keytool -cacerts -trustcacerts -storepass nothing -importcert -alias "${ca_alias}" -file /etc/ssl/certs/${cert} -noprompt'
 RUN mkdir -p /tmp/final/etc/ssl/certs/java
 RUN cp -r /etc/ssl/certs/java/cacerts /tmp/final/etc/ssl/certs/java/
 RUN env
