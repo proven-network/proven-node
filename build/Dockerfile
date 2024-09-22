@@ -162,8 +162,8 @@ RUN rm -rf /tmp/final/etc/ssl/certs/java
 # -----------
 FROM debian:bookworm-20240904-slim
 
-# RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.8 --install-dir /usr/share/dotnet
-# RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.8 --install-dir /usr/share/dotnet
+RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 
 # COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 # COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
