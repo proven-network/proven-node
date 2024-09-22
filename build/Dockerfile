@@ -135,7 +135,7 @@ RUN apt-get update && apt-get install -y \
 
 # RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.8 --install-dir /usr/share/dotnet
 # RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
-# RUN apt-get purge -y curl && apt-get autoremove -y
+RUN apt-get purge -y curl && apt-get autoremove -y
 
 RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/log/apt/* /var/log/dpkg.log
 
