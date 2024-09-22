@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use tokio::process::Command;
+use tracing::error;
 
 const KEYSTORE_PATH: &str = "/usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts";
 const KEYSTORE_PASS: &str = "changeit";
@@ -77,7 +78,7 @@ async fn import_certificates() -> Result<()> {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .ok_or(Error::CaCertsBadPath)?;
-            let status = Command::new("keytool")
+            let output = Command::new("keytool")
                 .args([
                     "-cacerts",
                     "-trustcacerts",
@@ -90,12 +91,14 @@ async fn import_certificates() -> Result<()> {
                     cert,
                     "-noprompt",
                 ])
-                .status()
+                .output()
                 .await
                 .map_err(Error::Spawn)?;
 
-            if !status.success() {
-                eprintln!("Failed to import certificate {}", ca_alias);
+            if !output.status.success() {
+                error!("Failed to import certificate {}", ca_alias);
+                error!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+                error!("stderr: {}", String::from_utf8_lossy(&output.stderr));
             }
         }
     }
