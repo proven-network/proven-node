@@ -137,7 +137,8 @@ RUN apt-get update && apt-get install -y \
 # RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 RUN apt-get purge -y curl && apt-get autoremove -y
 
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/log/apt/* /var/log/dpkg.log /var/cache/apt/archives
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/log/apt/* /var/log/dpkg.log /var/cache/apt/archives/* /var/cache/debconf/*
+# /var/cache/apt/* /var/log/* /var/lib/dpkg/* /var/lib/apt/lists/* /var/log/apt/* /var/log/dpkg.log /var/cache/apt/archives/* /var/cache/debconf/* /var/cache/apt/* /var/log/* /var/lib/dpkg/* /var/lib/apt/lists/*
 
 # COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 # COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
