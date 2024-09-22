@@ -6,7 +6,7 @@ use std::path::Path;
 use tokio::process::Command;
 
 const KEYSTORE_PATH: &str = "/usr/lib/jvm/java-17-openjdk-arm64/lib/security/cacerts";
-const KEYSTORE_PASS: &str = "nothing";
+const KEYSTORE_PASS: &str = "changeit";
 const CERTS_DIR: &str = "/etc/ssl/certs";
 const TARGET_DIR: &str = "/etc/ssl/certs/java";
 
