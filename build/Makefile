@@ -28,6 +28,7 @@ $(image_tar): Dockerfile
 		-v $(PWD):/workspace \
 		gcr.io/kaniko-project/executor:v1.23.1 \
 		--reproducible \
+		--single-snapshot \
 		--no-push \
 		--tarPath $(image_tar) \
 		--destination $(image_tag) \

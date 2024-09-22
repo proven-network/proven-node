@@ -171,11 +171,11 @@ RUN apt-get update && apt-get install -y \
     nfs-common=1:2.6.2-4 \
     nfs-kernel-server=1:2.6.2-4
 
-# Remove Java cacerts as they're non-deterministic (rebuild at runtime)
-RUN rm -rf /etc/ssl/certs/java
+# Remove non-deterministic items (rebuild at runtime)
+RUN rm -f /etc/ssl/certs/java/cacerts /var/lib/dbus/machine-id
 
 # Remove apt-get side effects
-RUN rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /var/log/apt/* /var/log/dpkg.log
+RUN rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /var/log/apt/* /var/log/dpkg.log /var/cache/ldconfig/aux-cache /var/log/alternatives.log /var/log/apt/history.log /var/log/apt/term.log /var/log/dpkg.log
 
 # RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.8 --install-dir /usr/share/dotnet
 # RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
