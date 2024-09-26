@@ -131,23 +131,6 @@ impl EnclaveBootstrap {
         let dnscrypt_proxy_handle = dnscrypt_proxy.start().await?;
         write_dns_resolv("nameserver 127.0.0.1".to_string())?; // Switch to dnscrypt-proxy's DNS resolver
 
-        // Boot postgres
-        let postgres_store_dir = "/var/lib/postgres".to_string();
-        let postgres_external_fs = ExternalFs::new(
-            "your-password".to_string(),
-            "fs-0c858ba83f6e3b2a0.fsx.us-east-2.amazonaws.com:/fsx/postgres/".to_string(),
-            postgres_store_dir.clone(),
-            args.skip_fsck,
-        );
-        let postgres_external_fs_handle = postgres_external_fs.start().await?;
-
-        let postgres = Postgres::new(
-            postgres_store_dir,
-            POSTGRES_USERNAME.to_string(),
-            POSTGRES_PASSWORD.to_string(),
-        );
-        let postgres_handle = postgres.start().await?;
-
         // Boot babylon node
         let radix_node_store_dir = "/var/lib/babylon".to_string();
         let radix_node_external_fs = ExternalFs::new(
@@ -166,6 +149,23 @@ impl EnclaveBootstrap {
         let host_ip = instance.public_ip.unwrap().to_string();
         let radix_node = RadixNode::new(network_definition.clone(), host_ip, radix_node_store_dir);
         let radix_node_handle = radix_node.start().await?;
+
+        // Boot postgres
+        let postgres_store_dir = "/var/lib/postgres".to_string();
+        let postgres_external_fs = ExternalFs::new(
+            "your-password".to_string(),
+            "fs-0c858ba83f6e3b2a0.fsx.us-east-2.amazonaws.com:/fsx/postgres/".to_string(),
+            postgres_store_dir.clone(),
+            args.skip_fsck,
+        );
+        let postgres_external_fs_handle = postgres_external_fs.start().await?;
+
+        let postgres = Postgres::new(
+            postgres_store_dir,
+            POSTGRES_USERNAME.to_string(),
+            POSTGRES_PASSWORD.to_string(),
+        );
+        let postgres_handle = postgres.start().await?;
 
         // Boot babylon aggregator
         let radix_aggregator = RadixAggregator::new(
