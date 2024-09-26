@@ -118,7 +118,6 @@ RUN mv libcorerust.so /bin/babylon-node
 RUN mv nats-server-v2.10.20-linux-arm64/nats-server /bin/
 RUN mv linux-arm64/dnscrypt-proxy /bin/
 RUN mv speedtest /bin/speedtest
-RUN mv speedtest.5 /bin/speedtest.5
 
 # -----------
 # FINAL IMAGE
