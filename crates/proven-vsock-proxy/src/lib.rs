@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use cidr::Ipv4Cidr;
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 use tokio_tun::{Tun, TunBuilder};
 use tokio_util::sync::CancellationToken;
@@ -72,12 +73,16 @@ impl Proxy {
                 _ = shutdown_token.cancelled() => {
                     return Ok(());
                 }
-                e = tokio::spawn(tun_to_vsock(tun_read, vsock_write)) => {
+                e = tokio::task::spawn_blocking(move || {
+                    Handle::current().block_on(tun_to_vsock(tun_read, vsock_write))
+                }) => {
                     error!("tun_to_vsock error: {:?}", e);
 
                     e?
                 }
-                e = tokio::spawn(vsock_to_tun(vsock_read, tun_write)) => {
+                e = tokio::task::spawn_blocking(move || {
+                    Handle::current().block_on(vsock_to_tun(vsock_read, tun_write))
+                }) => {
                     error!("vsock_to_tun error: {:?}", e);
 
                     e?
