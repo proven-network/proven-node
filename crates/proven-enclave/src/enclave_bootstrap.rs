@@ -399,6 +399,8 @@ async fn run_speedtest() -> Result<()> {
         .arg("--accept-gdpr")
         .arg("-f")
         .arg("json")
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .output()
         .await?;
 
