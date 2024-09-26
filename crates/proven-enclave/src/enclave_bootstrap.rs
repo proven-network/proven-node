@@ -394,8 +394,11 @@ async fn remount_tmp_with_exec() -> Result<()> {
 
 // Run speedtest and log the results
 async fn run_speedtest() -> Result<()> {
-    let cmd = tokio::process::Command::new("librespeed-cli")
-        .arg("--json")
+    let cmd = tokio::process::Command::new("speedtest")
+        .arg("--accept-license")
+        .arg("--accept-gdpr")
+        .arg("-f")
+        .arg("json")
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
