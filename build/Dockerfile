@@ -102,14 +102,14 @@ RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/ba
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.2.3/babylon-node-v1.2.3.zip
 RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.10.20/nats-server-v2.10.20-linux-arm64.zip
 RUN wget -q https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.5/dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
-RUN wget -q https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-aarch64.tgz
+RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
 
 # Unzip
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.2.3.zip
 RUN unzip babylon-node-v1.2.3.zip
 RUN unzip nats-server-v2.10.20-linux-arm64.zip
 RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.5.tar.gz
-RUN tar -xvzf ookla-speedtest-1.2.0-linux-aarch64.tgz
+RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
 
 # Move to /bin
 RUN mkdir -p /bin/babylon-node
@@ -117,7 +117,7 @@ RUN mv core-v1.2.3 /bin/babylon-node
 RUN mv libcorerust.so /bin/babylon-node
 RUN mv nats-server-v2.10.20-linux-arm64/nats-server /bin/
 RUN mv linux-arm64/dnscrypt-proxy /bin/
-RUN mv speedtest /bin/speedtest
+RUN mv librespeed-cli /bin/
 
 # -----------
 # FINAL IMAGE
@@ -151,8 +151,7 @@ COPY --from=rust-builder /bin/proven-enclave /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
-COPY --from=extra-binaries /bin/speedtest /bin/
-COPY --from=extra-binaries /bin/speedtest.5 /bin/
+COPY --from=extra-binaries /bin/librespeed-cli /bin/
 COPY --from=openjdk:17-jdk-slim /usr/local/openjdk-17/lib/security/cacerts /etc/ssl/certs/java/cacerts
 
 CMD proven-enclave
