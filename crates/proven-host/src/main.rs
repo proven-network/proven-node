@@ -263,7 +263,7 @@ async fn initialize_enclave() -> Result<()> {
             stokenet: args.stokenet,
             tun_device: args.tun_device,
         })
-        .await?;
+        .await;
 
     info!("initialize response: {:?}", res);
 
@@ -275,7 +275,7 @@ async fn shutdown_enclave() -> Result<()> {
 
     let res = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
         .shutdown()
-        .await?;
+        .await;
 
     info!("shutdown response: {:?}", res);
 
