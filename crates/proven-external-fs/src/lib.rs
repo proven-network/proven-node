@@ -70,6 +70,7 @@ impl ExternalFs {
         }
 
         mount_nfs(self.nfs_mount_point.clone(), self.nfs_mount_dir.clone()).await?;
+        ensure_permissions(self.nfs_mount_dir.as_str(), "0700").await?;
 
         if self.is_initialized() {
             info!("gocryptfs already initialized");
@@ -272,6 +273,21 @@ async fn umount_nfs(nfs_mount_dir: String) -> Result<()> {
     info!("unmounted nfs: {}", nfs_mount_dir);
 
     match cmd {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => Err(Error::NonZeroExitCode(output.status)),
+        Err(e) => Err(Error::Spawn(e)),
+    }
+}
+
+async fn ensure_permissions(path: &str, permissions: &str) -> Result<()> {
+    let output = Command::new("chmod")
+        .arg("-R")
+        .arg(permissions)
+        .arg(path)
+        .output()
+        .await;
+
+    match output {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => Err(Error::NonZeroExitCode(output.status)),
         Err(e) => Err(Error::Spawn(e)),
