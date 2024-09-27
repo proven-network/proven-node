@@ -54,6 +54,7 @@ impl RadixAggregator {
 
         self.update_config().await?;
         self.run_migrations().await?;
+        self.vacuum_database().await?;
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
@@ -255,6 +256,31 @@ impl RadixAggregator {
             .write_all(serde_json::to_string_pretty(&config).unwrap().as_bytes())
             .await
             .map_err(Error::ConfigWrite)?;
+
+        Ok(())
+    }
+
+    async fn vacuum_database(&self) -> Result<()> {
+        info!("vacuuming database...");
+
+        let cmd = Command::new("/usr/local/pgsql/bin/vacuumdb")
+            .arg("-U")
+            .arg(&self.postgres_username)
+            .arg("-d")
+            .arg(&self.postgres_database)
+            .arg("--analyze")
+            .arg("--full")
+            .arg("--jobs=4")
+            .output()
+            .await
+            .map_err(Error::Spawn)?;
+
+        info!("stdout: {}", String::from_utf8_lossy(&cmd.stdout));
+        info!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
+
+        if !cmd.status.success() {
+            return Err(Error::NonZeroExitCode(cmd.status));
+        }
 
         Ok(())
     }
