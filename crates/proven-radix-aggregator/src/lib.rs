@@ -263,7 +263,7 @@ impl RadixAggregator {
     async fn vacuum_database(&self) -> Result<()> {
         info!("vacuuming database...");
 
-        let cmd = Command::new("/usr/local/pgsql/bin/vacuumdb")
+        let mut cmd = Command::new("/usr/local/pgsql/bin/vacuumdb")
             .arg("-U")
             .arg(&self.postgres_username)
             .arg("-d")
@@ -271,15 +271,40 @@ impl RadixAggregator {
             .arg("--analyze")
             .arg("--full")
             .arg("--jobs=4")
-            .output()
-            .await
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(Error::Spawn)?;
 
-        info!("stdout: {}", String::from_utf8_lossy(&cmd.stdout));
-        info!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
+        let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
+        let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
-        if !cmd.status.success() {
-            return Err(Error::NonZeroExitCode(cmd.status));
+        let stdout_writer = tokio::spawn(async move {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+
+            // Read and log each line
+            while let Ok(Some(line)) = lines.next_line().await {
+                info!("{}", line)
+            }
+        });
+
+        let stderr_writer = tokio::spawn(async move {
+            let reader = BufReader::new(stderr);
+            let mut lines = reader.lines();
+
+            // Read and log each line
+            while let Ok(Some(line)) = lines.next_line().await {
+                error!("{}", line)
+            }
+        });
+
+        tokio::select! {
+            e = cmd.wait() => {
+                e.map_err(Error::Spawn)?;
+            }
+            _ = stdout_writer => {},
+            _ = stderr_writer => {},
         }
 
         Ok(())
