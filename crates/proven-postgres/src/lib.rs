@@ -42,6 +42,12 @@ impl Postgres {
             self.initialize_database().await?;
         }
 
+        // ensure postmaster.pid does not exist
+        let postmaster_pid = std::path::Path::new(&self.store_dir).join("postmaster.pid");
+        if postmaster_pid.exists() {
+            std::fs::remove_file(&postmaster_pid).unwrap();
+        }
+
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
         let store_dir = self.store_dir.clone();
