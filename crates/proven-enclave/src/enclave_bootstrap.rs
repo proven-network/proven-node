@@ -135,7 +135,7 @@ impl EnclaveBootstrap {
         let radix_node_store_dir = "/var/lib/babylon".to_string();
         let radix_node_external_fs = ExternalFs::new(
             "your-password".to_string(),
-            "fs-0d31c65baf4bdd587.fsx.us-east-2.amazonaws.com:/fsx/radix/".to_string(),
+            "fs-03cf9a76968466bcb.fsx.us-east-2.amazonaws.com:/fsx/babylon/".to_string(),
             radix_node_store_dir.clone(),
             args.skip_fsck,
         );
@@ -154,7 +154,7 @@ impl EnclaveBootstrap {
         let postgres_store_dir = "/var/lib/postgres".to_string();
         let postgres_external_fs = ExternalFs::new(
             "your-password".to_string(),
-            "fs-0d31c65baf4bdd587.fsx.us-east-2.amazonaws.com:/fsx/postgres/".to_string(),
+            "fs-03cf9a76968466bcb.fsx.us-east-2.amazonaws.com:/fsx/postgres/".to_string(),
             postgres_store_dir.clone(),
             args.skip_fsck,
         );
@@ -187,7 +187,7 @@ impl EnclaveBootstrap {
         let nats_store_dir = "/var/lib/nats".to_string();
         let nats_external_fs = ExternalFs::new(
             "your-password".to_string(),
-            "fs-0d31c65baf4bdd587.fsx.us-east-2.amazonaws.com:/fsx/nats/".to_string(),
+            "fs-03cf9a76968466bcb.fsx.us-east-2.amazonaws.com:/fsx/nats/".to_string(),
             nats_store_dir.clone(),
             args.skip_fsck,
         );
