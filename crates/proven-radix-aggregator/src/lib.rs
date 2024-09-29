@@ -271,6 +271,7 @@ impl RadixAggregator {
             .arg("--analyze")
             .arg("--full")
             .arg("--jobs=4")
+            .arg("--verbose")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
