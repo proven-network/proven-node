@@ -21,6 +21,8 @@ pub enum Error {
     #[from]
     Io(std::io::Error),
 
+    HttpServerStopped,
+
     #[from]
     Rpc(crate::rpc::RpcHandlerError), // shouldn't actually be here; handle in transport
 }
@@ -34,6 +36,7 @@ impl core::fmt::Display for Error {
             Error::Async(e) => write!(f, "{}", e),
             Error::Axum(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
+            Error::HttpServerStopped => write!(f, "HTTP server stopped"),
             Error::Rpc(e) => write!(f, "{:?}", e),
         }
     }

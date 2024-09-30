@@ -9,7 +9,7 @@ use tokio_vsock::{VsockAddr, VsockListener, VsockStream};
 use crate::common::*;
 
 type AcknowledgerFut = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
-type AcknowledgerFn<Res> = Box<dyn FnOnce(Res) -> AcknowledgerFut>;
+type AcknowledgerFn<Res> = Box<dyn FnOnce(Res) -> AcknowledgerFut + Send>;
 type InitializeAcknowledger = AcknowledgerFn<InitializeResponse>;
 type AddPeerAcknowledger = AcknowledgerFn<AddPeerResponse>;
 type ShutdownAcknowledger = AcknowledgerFn<ShutdownResponse>;

@@ -34,7 +34,10 @@ impl<SM: SessionManagement + 'static> Core<SM> {
         }
     }
 
-    pub async fn start<HS: HttpServer + 'static>(&self, http_server: HS) -> Result<JoinHandle<()>> {
+    pub async fn start<HS: HttpServer + 'static>(
+        &self,
+        http_server: HS,
+    ) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
@@ -66,9 +69,13 @@ impl<SM: SessionManagement + 'static> Core<SM> {
                 _ = shutdown_token.cancelled() => {
                     info!("shutdown command received");
                     http_server.shutdown().await;
+
+                    Ok(())
                 }
-                e = https_handle => {
-                    error!("https server exited: {:?}", e);
+                _ = https_handle => {
+                    error!("https server stopped unexpectedly");
+
+                    Err(Error::HttpServerStopped)
                 }
             }
         });

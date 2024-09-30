@@ -2888,6 +2888,7 @@ dependencies = [
 name = "proven-enclave"
 version = "0.1.0"
 dependencies = [
+ "async-nats",
  "cidr",
  "derive_more",
  "proven-attestation",
