@@ -80,6 +80,9 @@ struct Args {
     skip_speedtest: bool,
 
     #[arg(long, default_value_t = false)]
+    skip_vacuum: bool,
+
+    #[arg(long, default_value_t = false)]
     stokenet: bool,
 
     #[arg(long, default_value_t = format!("tun0"))]
@@ -260,6 +263,7 @@ async fn initialize_enclave() -> Result<()> {
             proxy_port: args.proxy_port,
             skip_fsck: args.skip_fsck,
             skip_speedtest: args.skip_speedtest,
+            skip_vacuum: args.skip_vacuum,
             stokenet: args.stokenet,
             tun_device: args.tun_device,
         })

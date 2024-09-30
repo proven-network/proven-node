@@ -28,6 +28,7 @@ pub struct RadixAggregator {
     postgres_database: String,
     postgres_username: String,
     postgres_password: String,
+    skip_vacuum: bool,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
@@ -37,11 +38,13 @@ impl RadixAggregator {
         postgres_database: String,
         postgres_username: String,
         postgres_password: String,
+        skip_vacuum: bool,
     ) -> Self {
         Self {
             postgres_database,
             postgres_username,
             postgres_password,
+            skip_vacuum,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -54,7 +57,9 @@ impl RadixAggregator {
 
         self.update_config().await?;
         self.run_migrations().await?;
-        self.vacuum_database().await?;
+        if !self.skip_vacuum {
+            self.vacuum_database().await?;
+        }
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();

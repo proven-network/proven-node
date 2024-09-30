@@ -18,6 +18,7 @@ pub struct InitializeRequest {
     pub proxy_port: u32,
     pub skip_fsck: bool,
     pub skip_speedtest: bool,
+    pub skip_vacuum: bool,
     pub stokenet: bool,
     pub tun_device: String,
 }

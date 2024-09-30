@@ -172,6 +172,7 @@ impl EnclaveBootstrap {
             POSTGRES_DATABASE.to_string(),
             POSTGRES_USERNAME.to_string(),
             POSTGRES_PASSWORD.to_string(),
+            args.skip_vacuum,
         );
         let radix_aggregator_handle = radix_aggregator.start().await?;
 
