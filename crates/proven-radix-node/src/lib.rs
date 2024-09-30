@@ -180,7 +180,7 @@ impl RadixNode {
 
         self.task_tracker.close();
 
-        self.wait_until_ready().await?;
+        self.wait_until_ready(&server_task).await?;
 
         Ok(server_task)
     }
@@ -247,7 +247,7 @@ impl RadixNode {
         Ok(())
     }
 
-    async fn wait_until_ready(&self) -> Result<()> {
+    async fn wait_until_ready(&self, server_task: &JoinHandle<Result<()>>) -> Result<()> {
         let client = Client::new();
         let payload = InMemoryBody::Text(format!(
             "{{\"network\":\"{}\"}}",
@@ -255,6 +255,10 @@ impl RadixNode {
         ));
 
         loop {
+            if server_task.is_finished() {
+                return Err(Error::Crashed);
+            }
+
             info!("checking if radix-node is ready...");
             let response = client
                 .post(NETWORK_STATUS_URL)

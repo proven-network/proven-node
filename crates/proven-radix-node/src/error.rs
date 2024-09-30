@@ -6,6 +6,7 @@ pub enum Error {
     CaCertsBadPath,
     CaCertsWrite(std::io::Error),
     ConfigWrite(std::io::Error),
+    Crashed,
     OutputParse,
     NonZeroExitCode(std::process::ExitStatus),
     Spawn(std::io::Error),
@@ -18,6 +19,7 @@ impl core::fmt::Display for Error {
             Error::CaCertsBadPath => write!(f, "bad path"),
             Error::CaCertsWrite(e) => write!(f, "failed to write cacerts: {}", e),
             Error::ConfigWrite(e) => write!(f, "failed to write config: {}", e),
+            Error::Crashed => write!(f, "crashed"),
             Error::NonZeroExitCode(status) => {
                 write!(f, "exited with non-zero: {}", status)
             }
