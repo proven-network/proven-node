@@ -284,7 +284,6 @@ impl RadixAggregator {
             let reader = BufReader::new(stdout);
             let mut lines = reader.lines();
 
-            // Read and log each line
             while let Ok(Some(line)) = lines.next_line().await {
                 info!("{}", line)
             }
@@ -294,7 +293,6 @@ impl RadixAggregator {
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
 
-            // Read and log each line
             while let Ok(Some(line)) = lines.next_line().await {
                 error!("{}", line)
             }
