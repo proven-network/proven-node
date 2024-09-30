@@ -56,7 +56,8 @@ impl RpcServer {
 }
 
 async fn send_response<Res: Into<Response>>(mut stream: VsockStream, response: Res) -> Result<()> {
-    let encoded = serde_cbor::to_vec(&response.into())?;
+    let response_enum: Response = response.into();
+    let encoded = serde_cbor::to_vec(&response_enum)?;
     let length_prefix = (encoded.len() as u32).to_be_bytes();
 
     stream.write_all(&length_prefix).await?;
