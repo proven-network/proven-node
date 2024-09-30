@@ -3,7 +3,6 @@ use crate::error::{Error, Result};
 
 use std::net::Shutdown;
 
-use serde::de::DeserializeOwned;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_vsock::{VsockAddr, VsockStream};
 use tracing::debug;
@@ -18,18 +17,30 @@ impl RpcClient {
     }
 
     pub async fn initialize(&self, args: InitializeRequest) -> Result<InitializeResponse> {
-        self.send(Request::Initialize(args)).await
+        if let Response::Initialize(response) = self.send(Request::Initialize(args)).await? {
+            Ok(response)
+        } else {
+            Err(Error::BadResponseType)
+        }
     }
 
     pub async fn add_peer(&self, args: AddPeerRequest) -> Result<AddPeerResponse> {
-        self.send(Request::AddPeer(args)).await
+        if let Response::AddPeer(response) = self.send(Request::AddPeer(args)).await? {
+            Ok(response)
+        } else {
+            Err(Error::BadResponseType)
+        }
     }
 
     pub async fn shutdown(&self) -> Result<ShutdownResponse> {
-        self.send(Request::Shutdown).await
+        if let Response::Shutdown(response) = self.send(Request::Shutdown).await? {
+            Ok(response)
+        } else {
+            Err(Error::BadResponseType)
+        }
     }
 
-    async fn send<Res: Into<Response> + DeserializeOwned>(&self, command: Request) -> Result<Res> {
+    async fn send(&self, command: Request) -> Result<Response> {
         debug!("sending command: {:?}", command);
 
         let mut stream = VsockStream::connect(self.vsock_addr).await?;
@@ -44,7 +55,8 @@ impl RpcClient {
 
         stream.shutdown(Shutdown::Both)?;
 
-        let response: Res = serde_cbor::from_slice(&buffer).map_err(|_| Error::BadResponseType)?;
+        let response: Response =
+            serde_cbor::from_slice(&buffer).map_err(|_| Error::BadResponseType)?;
 
         Ok(response)
     }
