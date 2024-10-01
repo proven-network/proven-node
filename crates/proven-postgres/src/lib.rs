@@ -221,8 +221,6 @@ impl Postgres {
             .arg("-U")
             .arg(&self.username)
             .arg("--all")
-            .arg("--analyze")
-            .arg("--full")
             .arg("--verbose")
             .arg("--parallel=4")
             .arg("--buffer-usage-limit")
