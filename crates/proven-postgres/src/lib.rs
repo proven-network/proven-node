@@ -137,6 +137,7 @@ impl Postgres {
         if !self.skip_vacuum && self.vacuum_database().await.is_err() {
             // If vacuuming fails, shutdown the server
             self.shutdown().await;
+            return Err(Error::VacuumFailed);
         }
 
         Ok(server_task)

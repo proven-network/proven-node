@@ -7,6 +7,7 @@ pub enum Error {
     OutputParse,
     NonZeroExitCode(std::process::ExitStatus),
     Spawn(std::io::Error),
+    VacuumFailed,
 }
 
 impl core::fmt::Display for Error {
@@ -19,6 +20,7 @@ impl core::fmt::Display for Error {
             }
             Error::OutputParse => write!(f, "failed to parse output"),
             Error::Spawn(e) => write!(f, "failed to spawn: {}", e),
+            Error::VacuumFailed => write!(f, "vacuum failed"),
         }
     }
 }
