@@ -677,6 +677,7 @@ impl Bootstrap {
             POSTGRES_STORE_DIR.to_string(),
             POSTGRES_USERNAME.to_string(),
             POSTGRES_PASSWORD.to_string(),
+            self.args.skip_vacuum,
         );
 
         let postgres_handle = postgres.start().await?;
@@ -695,7 +696,6 @@ impl Bootstrap {
             POSTGRES_DATABASE.to_string(),
             POSTGRES_USERNAME.to_string(),
             POSTGRES_PASSWORD.to_string(),
-            self.args.skip_vacuum,
         );
 
         let radix_aggregator_handle = radix_aggregator.start().await?;

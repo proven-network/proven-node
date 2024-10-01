@@ -28,7 +28,6 @@ pub struct RadixAggregator {
     postgres_database: String,
     postgres_username: String,
     postgres_password: String,
-    skip_vacuum: bool,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
@@ -38,13 +37,11 @@ impl RadixAggregator {
         postgres_database: String,
         postgres_username: String,
         postgres_password: String,
-        skip_vacuum: bool,
     ) -> Self {
         Self {
             postgres_database,
             postgres_username,
             postgres_password,
-            skip_vacuum,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -57,9 +54,6 @@ impl RadixAggregator {
 
         self.update_config().await?;
         self.run_migrations().await?;
-        if !self.skip_vacuum {
-            self.vacuum_database().await?;
-        }
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
@@ -287,58 +281,6 @@ impl RadixAggregator {
             .write_all(serde_json::to_string_pretty(&config).unwrap().as_bytes())
             .await
             .map_err(Error::ConfigWrite)?;
-
-        Ok(())
-    }
-
-    async fn vacuum_database(&self) -> Result<()> {
-        info!("vacuuming database...");
-
-        let mut cmd = Command::new("/usr/local/pgsql/bin/vacuumdb")
-            .arg("-U")
-            .arg(&self.postgres_username)
-            .arg("-d")
-            .arg(&self.postgres_database)
-            .arg("--analyze")
-            .arg("--full")
-            .arg("--jobs=4")
-            .arg("--verbose")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(Error::Spawn)?;
-
-        let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
-        let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
-
-        let stdout_writer = tokio::spawn(async move {
-            let reader = BufReader::new(stdout);
-            let mut lines = reader.lines();
-
-            while let Ok(Some(line)) = lines.next_line().await {
-                info!("{}", line)
-            }
-        });
-
-        let stderr_writer = tokio::spawn(async move {
-            let reader = BufReader::new(stderr);
-            let mut lines = reader.lines();
-
-            while let Ok(Some(line)) = lines.next_line().await {
-                info!("{}", line)
-            }
-        });
-
-        tokio::select! {
-            e = cmd.wait() => {
-                let exit_status = e.map_err(Error::Spawn)?;
-                if !exit_status.success() {
-                    return Err(Error::NonZeroExitCode(exit_status));
-                }
-            }
-            _ = stdout_writer => {},
-            _ = stderr_writer => {},
-        }
 
         Ok(())
     }
