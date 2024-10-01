@@ -134,8 +134,9 @@ impl Postgres {
 
         self.wait_until_ready().await?;
 
-        if !self.skip_vacuum {
-            self.vacuum_database().await?;
+        if !self.skip_vacuum && self.vacuum_database().await.is_err() {
+            // If vacuuming fails, shutdown the server
+            self.shutdown().await;
         }
 
         Ok(server_task)
@@ -221,7 +222,6 @@ impl Postgres {
             .arg("--all")
             .arg("--analyze")
             .arg("--full")
-            .arg("--jobs=4")
             .arg("--verbose")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
