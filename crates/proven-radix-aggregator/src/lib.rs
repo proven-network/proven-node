@@ -184,17 +184,43 @@ impl RadixAggregator {
             .await
             .map_err(Error::ConfigWrite)?;
 
-        let cmd = Command::new(MIGRATIONS_PATH)
+        let mut cmd = Command::new(MIGRATIONS_PATH)
             .current_dir(MIGRATIONS_DIR)
-            .output()
-            .await
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(Error::Spawn)?;
 
-        info!("stdout: {}", String::from_utf8_lossy(&cmd.stdout));
-        info!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
+        let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
+        let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
-        if !cmd.status.success() {
-            return Err(Error::NonZeroExitCode(cmd.status));
+        let stdout_writer = tokio::spawn(async move {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+
+            while let Ok(Some(line)) = lines.next_line().await {
+                info!("{}", line)
+            }
+        });
+
+        let stderr_writer = tokio::spawn(async move {
+            let reader = BufReader::new(stderr);
+            let mut lines = reader.lines();
+
+            while let Ok(Some(line)) = lines.next_line().await {
+                info!("{}", line)
+            }
+        });
+
+        tokio::select! {
+            e = cmd.wait() => {
+                let exit_status = e.map_err(Error::Spawn)?;
+                if !exit_status.success() {
+                    return Err(Error::NonZeroExitCode(exit_status));
+                }
+            }
+            _ = stdout_writer => {},
+            _ = stderr_writer => {},
         }
 
         Ok(())
@@ -305,7 +331,10 @@ impl RadixAggregator {
 
         tokio::select! {
             e = cmd.wait() => {
-                e.map_err(Error::Spawn)?;
+                let exit_status = e.map_err(Error::Spawn)?;
+                if !exit_status.success() {
+                    return Err(Error::NonZeroExitCode(exit_status));
+                }
             }
             _ = stdout_writer => {},
             _ = stderr_writer => {},
