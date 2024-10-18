@@ -4,9 +4,10 @@ use futures::future::join_all;
 use proven_runtime::{Context, ExecutionRequest, Worker};
 use rustyscript::Error;
 use serde_json::json;
-use tokio::{sync::Mutex, time::Instant};
+use tokio::sync::Mutex;
+use tokio::time::Instant;
 
-static EXECUTIONS: usize = 10000;
+static EXECUTIONS: usize = 100;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -26,9 +27,11 @@ async fn main() -> Result<(), Error> {
 
     let worker = Arc::new(Mutex::new(Worker::new(user_module)));
     let mut handles = vec![];
+    let durations = Arc::new(Mutex::new(vec![]));
 
     for _ in 0..EXECUTIONS {
         let worker = Arc::clone(&worker);
+        let durations = Arc::clone(&durations);
         let handle = tokio::spawn(async move {
             let request = ExecutionRequest {
                 context: Context {
@@ -39,7 +42,10 @@ async fn main() -> Result<(), Error> {
                 args: vec![json!(10), json!(20)],
             };
 
+            let start = Instant::now();
             let result = worker.lock().await.execute(request).await.unwrap();
+            let duration = start.elapsed();
+            durations.lock().await.push(duration);
 
             assert!(result.output.is_number());
             let output = result.output.as_i64().unwrap();
@@ -53,6 +59,24 @@ async fn main() -> Result<(), Error> {
     join_all(handles).await;
     let duration = start.elapsed();
     println!("{} tasks completed in {:?}", EXECUTIONS, duration);
+
+    let durations = durations.lock().await;
+    let mut durations_vec: Vec<_> = durations.iter().cloned().collect();
+    durations_vec.sort();
+
+    let min_duration = durations_vec.first().unwrap();
+    let max_duration = durations_vec.last().unwrap();
+    let average_duration = durations_vec.iter().sum::<std::time::Duration>() / EXECUTIONS as u32;
+    let median_duration = if EXECUTIONS % 2 == 0 {
+        (durations_vec[EXECUTIONS / 2 - 1] + durations_vec[EXECUTIONS / 2]) / 2
+    } else {
+        durations_vec[EXECUTIONS / 2]
+    };
+
+    println!("Min execution time: {:?}", min_duration);
+    println!("Max execution time: {:?}", max_duration);
+    println!("Average execution time: {:?}", average_duration);
+    println!("Median execution time: {:?}", median_duration);
 
     Ok(())
 }
