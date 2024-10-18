@@ -4,7 +4,9 @@ use futures::future::join_all;
 use proven_runtime::{Context, ExecutionRequest, Worker};
 use rustyscript::Error;
 use serde_json::json;
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, time::Instant};
+
+static EXECUTIONS: usize = 10000;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -25,7 +27,7 @@ async fn main() -> Result<(), Error> {
     let worker = Arc::new(Mutex::new(Worker::new(user_module)));
     let mut handles = vec![];
 
-    for i in 0..1000 {
+    for _ in 0..EXECUTIONS {
         let worker = Arc::clone(&worker);
         let handle = tokio::spawn(async move {
             let request = ExecutionRequest {
@@ -42,14 +44,15 @@ async fn main() -> Result<(), Error> {
             assert!(result.output.is_number());
             let output = result.output.as_i64().unwrap();
             assert_eq!(output, 30);
-
-            println!("[{i}] Result: {:?}", result);
         });
         handles.push(handle);
     }
 
     // Wait for all tasks to complete
+    let start = Instant::now();
     join_all(handles).await;
+    let duration = start.elapsed();
+    println!("{} tasks completed in {:?}", EXECUTIONS, duration);
 
     Ok(())
 }
