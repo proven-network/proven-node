@@ -71,12 +71,17 @@ impl Pool {
                 let mut worker = Worker::new(module.to_string());
                 let result = worker.execute(request).await;
 
-                self.workers
-                    .lock()
-                    .await
-                    .entry(module.to_string())
-                    .or_default()
-                    .push(worker);
+                if let Err(rustyscript::Error::HeapExhausted) = result {
+                    // Remove the worker from the pool if the heap is exhausted (can't recover)
+                    self.total_workers.fetch_sub(1, Ordering::SeqCst);
+                } else {
+                    self.workers
+                        .lock()
+                        .await
+                        .entry(module.to_string())
+                        .or_default()
+                        .push(worker);
+                }
 
                 self.last_used
                     .lock()
