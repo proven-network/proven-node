@@ -1,9 +1,9 @@
-mod attestation;
 mod error;
 mod rpc;
+mod sessions;
 
-use attestation::create_session_router;
 pub use error::{Error, Result};
+use sessions::create_session_router;
 
 use axum::response::Response;
 use axum::routing::get;
