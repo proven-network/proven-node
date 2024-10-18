@@ -1,8 +1,10 @@
 use crate::{ExecutionRequest, ExecutionResult, Worker};
 
-use rustyscript::Error;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use rustyscript::Error;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration, Instant};
 
@@ -13,7 +15,7 @@ type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 pub struct Pool {
     workers: SharedWorkerMap,
     max_workers: usize,
-    total_workers: Arc<Mutex<usize>>,
+    total_workers: AtomicUsize,
     last_used: LastUsedMap,
 }
 
@@ -22,7 +24,7 @@ impl Pool {
         Arc::new(Self {
             workers: Arc::new(Mutex::new(HashMap::new())),
             max_workers,
-            total_workers: Arc::new(Mutex::new(0)),
+            total_workers: AtomicUsize::new(0),
             last_used: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -43,15 +45,15 @@ impl Pool {
 
                     let result = worker.execute(request).await;
 
-                    // Re-add the worker to the map
                     let mut worker_map = self.workers.lock().await;
                     worker_map.entry(module.clone()).or_default().push(worker);
+
                     drop(worker_map);
 
-                    // Update the last used time for the module
-                    let mut last_used = self.last_used.lock().await;
-                    last_used.insert(module.clone(), Instant::now());
-                    drop(last_used);
+                    self.last_used
+                        .lock()
+                        .await
+                        .insert(module.to_string(), Instant::now());
 
                     return result;
                 } else {
@@ -61,11 +63,10 @@ impl Pool {
                 drop(worker_map);
             }
 
-            let mut total_workers = self.total_workers.lock().await;
-
-            if *total_workers < self.max_workers || self.remove_idle_worker().await {
-                *total_workers += 1;
-                drop(total_workers);
+            if self.total_workers.load(Ordering::SeqCst) < self.max_workers
+                || self.remove_idle_worker().await
+            {
+                self.total_workers.fetch_add(1, Ordering::SeqCst);
 
                 let mut worker = Worker::new(module.to_string());
                 let result = worker.execute(request).await;
@@ -77,14 +78,13 @@ impl Pool {
                     .or_default()
                     .push(worker);
 
-                // Update the last used time for the module
-                let mut last_used = self.last_used.lock().await;
-                last_used.insert(module.to_string(), Instant::now());
-                drop(last_used);
+                self.last_used
+                    .lock()
+                    .await
+                    .insert(module.to_string(), Instant::now());
 
                 return result;
             } else {
-                drop(total_workers);
                 sleep(retry_delay).await;
                 tokio::task::yield_now().await;
             }
@@ -101,26 +101,22 @@ impl Pool {
             .map(|(module, _)| module.clone());
 
         if let Some(module) = oldest_module {
-            // Remove a worker from the pool
             let mut workers = self.workers.lock().await;
             if let Some(worker_list) = workers.get_mut(&module) {
                 if worker_list.pop().is_some() {
                     // Remove the module from the pool if there are no workers left
                     if worker_list.is_empty() {
                         workers.remove(&module);
+                        self.last_used.lock().await.remove(&module);
                     }
-                    drop(workers);
-                    // Update the last used time for the module
-                    let mut last_used = self.last_used.lock().await;
-                    last_used.insert(module.clone(), Instant::now());
-                    drop(last_used);
 
-                    let mut total_workers = self.total_workers.lock().await;
-                    *total_workers -= 1;
-                    drop(total_workers);
+                    drop(workers);
+
+                    self.total_workers.fetch_sub(1, Ordering::SeqCst);
 
                     return true;
                 } else {
+                    workers.remove(&module);
                     drop(workers);
                 }
             }

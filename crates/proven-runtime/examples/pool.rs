@@ -2,15 +2,12 @@ use proven_runtime::{Context, ExecutionRequest, Pool};
 
 use std::sync::Arc;
 
-use futures::future::join_all;
 use rustyscript::Error;
 use serde_json::json;
 use tokio::time::{sleep, Duration, Instant};
 
-#[tokio::main(worker_threads = 4)]
+#[tokio::main(worker_threads = 8)]
 async fn main() -> Result<(), Error> {
-    console_subscriber::init();
-
     let user_module = r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:sessions";
 
@@ -28,7 +25,7 @@ async fn main() -> Result<(), Error> {
     let pool = Pool::new(50).await;
     let mut handles = vec![];
 
-    for batch in 0..20 {
+    for batch in 0..10 {
         for i in 0..100 {
             let pool = Arc::clone(&pool);
             let user_module = user_module.clone();
@@ -53,7 +50,7 @@ async fn main() -> Result<(), Error> {
                         assert_eq!(output, 30);
                         println!(
                             "[{}] (Thread ID: {:?}) Result: {:?} executed in {:?}, total time: {:?}",
-                            batch * 1000 + i + 1,
+                            batch * 100 + i + 1,
                             std::thread::current().id(),
                             output,
                             result.duration,
@@ -69,7 +66,7 @@ async fn main() -> Result<(), Error> {
     }
 
     // Wait for all tasks to complete
-    join_all(handles).await;
+    futures::future::try_join_all(handles).await.unwrap();
 
     Ok(())
 }

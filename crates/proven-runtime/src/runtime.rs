@@ -14,9 +14,10 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new(module: &str) -> Result<Self, Error> {
-        let mut schema_whlist = HashSet::new();
+        let mut schema_whlist = HashSet::with_capacity(1);
         schema_whlist.insert("proven:".to_string());
         let mut runtime = rustyscript::Runtime::new(RuntimeOptions {
+            timeout: std::time::Duration::from_secs(5),
             max_heap_size: Some(10 * 1024 * 1024),
             schema_whlist,
             extensions: vec![
