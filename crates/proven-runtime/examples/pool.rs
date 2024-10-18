@@ -5,18 +5,11 @@ use std::sync::Arc;
 use futures::future::join_all;
 use rustyscript::Error;
 use serde_json::json;
-
-use std::panic;
-use std::process;
+use tokio::time::{sleep, Duration, Instant};
 
 #[tokio::main(worker_threads = 4)]
 async fn main() -> Result<(), Error> {
-    let orig_hook = panic::take_hook();
-    panic::set_hook(Box::new(move |panic_info| {
-        eprintln!("Panic occurred: {:?}", panic_info);
-        orig_hook(panic_info);
-        process::exit(1);
-    }));
+    console_subscriber::init();
 
     let user_module = r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:sessions";
@@ -32,36 +25,47 @@ async fn main() -> Result<(), Error> {
     "#
     .to_string();
 
-    let pool = Pool::new(25);
+    let pool = Pool::new(50).await;
     let mut handles = vec![];
 
-    for i in 0..1000 {
-        let pool = Arc::clone(&pool);
-        let user_module = user_module.clone();
-        let handle = tokio::spawn(async move {
-            let request = ExecutionRequest {
-                context: Context {
-                    identity: Some("identity".to_string()),
-                    accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
-                },
-                handler_name: "handler".to_string(),
-                args: vec![json!(10), json!(20)],
-            };
+    for batch in 0..20 {
+        for i in 0..100 {
+            let pool = Arc::clone(&pool);
+            let user_module = user_module.clone();
+            let handle = tokio::spawn(async move {
+                let request = ExecutionRequest {
+                    context: Context {
+                        identity: Some("identity".to_string()),
+                        accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
+                    },
+                    handler_name: "handler".to_string(),
+                    args: vec![json!(10), json!(20)],
+                };
 
-            match pool.execute(user_module, request).await.await {
-                Ok(result) => match result {
+                let start = Instant::now();
+                let result = pool.execute(user_module, request).await;
+                let duration = start.elapsed();
+
+                match result {
                     Ok(result) => {
                         assert!(result.output.is_number());
                         let output = result.output.as_i64().unwrap();
                         assert_eq!(output, 30);
-                        println!("[{i}] Result: {:?}", result);
+                        println!(
+                            "[{}] (Thread ID: {:?}) Result: {:?} executed in {:?}, total time: {:?}",
+                            batch * 1000 + i + 1,
+                            std::thread::current().id(),
+                            output,
+                            result.duration,
+                            duration
+                        );
                     }
                     Err(e) => eprintln!("Error in result: {:?}", e),
-                },
-                Err(e) => eprintln!("Error executing request: {:?}", e),
-            }
-        });
-        handles.push(handle);
+                }
+            });
+            handles.push(handle);
+        }
+        sleep(Duration::from_millis(100)).await;
     }
 
     // Wait for all tasks to complete

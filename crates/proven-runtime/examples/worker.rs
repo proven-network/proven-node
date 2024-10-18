@@ -4,6 +4,7 @@ use futures::future::join_all;
 use proven_runtime::{Context, ExecutionRequest, Worker};
 use rustyscript::Error;
 use serde_json::json;
+use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -21,7 +22,7 @@ async fn main() -> Result<(), Error> {
     "#
     .to_string();
 
-    let worker = Worker::new(user_module);
+    let worker = Arc::new(Mutex::new(Worker::new(user_module)));
     let mut handles = vec![];
 
     for i in 0..1000 {

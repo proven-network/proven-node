@@ -3,9 +3,9 @@ use crate::extensions::{sessions_ext, SessionsState};
 use crate::{ExecutionRequest, ExecutionResult};
 
 use std::collections::HashSet;
-use std::time::Instant;
 
 use rustyscript::{js_value::Value, Error, Module, RuntimeOptions};
+use tokio::time::Instant;
 
 pub struct Runtime {
     module_handle: rustyscript::ModuleHandle,
@@ -17,7 +17,7 @@ impl Runtime {
         let mut schema_whlist = HashSet::new();
         schema_whlist.insert("proven:".to_string());
         let mut runtime = rustyscript::Runtime::new(RuntimeOptions {
-            // max_heap_size: Some(10 * 1024 * 1024),
+            max_heap_size: Some(10 * 1024 * 1024),
             schema_whlist,
             extensions: vec![
                 console_ext::init_ops_and_esm(),
