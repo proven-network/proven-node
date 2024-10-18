@@ -7,6 +7,6 @@ edition = "2021"
 derive_more = { version = "1.0.0", features = ["from"] }
 rand = "0.8.5"
 regex = "1.10.6"
-tokio = { version = "1.40.0", features = ["io-util", "process"] }
+tokio = { version = "1.36.0", features = ["io-util", "process"] }
 tokio-util = { version = "0.7.12", features = ["rt"] }
 tracing = "0.1.40"

@@ -10,6 +10,6 @@ derive_more = { version = "1.0.0", features = ["from"] }
 dns-stamp-parser = "3.0.0"
 nix = { version = "0.29.0", features = ["signal"] }
 regex = "1.10.6"
-tokio = { version = "1.40.0", features = ["io-util", "process"] }
+tokio = { version = "1.36.0", features = ["io-util", "process"] }
 tokio-util = { version = "0.7.12", features = ["rt"] }
 tracing = "0.1.40"

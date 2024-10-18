@@ -6,4 +6,4 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.82"
 axum = "0.7.5"
-tokio = "1.40.0"
+tokio = "1.36.0"

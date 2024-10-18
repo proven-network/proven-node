@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 cidr = "0.2.3"
 derive_more = { version = "1.0.0", features = ["from"] }
-tokio = { version = "1.40.0", features = [
+tokio = { version = "1.36.0", features = [
   "io-util",
   "macros",
   "process",

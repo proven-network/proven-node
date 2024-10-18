@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-aes = "0.8.4"
+aes = "0.8.3"
 anyhow = "1.0.89"
 asn1-rs = "0.6.2"
 aws-config = { version = "1.5.6", features = ["behavior-version-latest"] }

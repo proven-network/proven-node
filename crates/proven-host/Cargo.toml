@@ -13,7 +13,7 @@ proven-http = { path = "../proven-http" }
 proven-http-insecure = { path = "../proven-http-insecure" }
 proven-vsock-proxy = { path = "../proven-vsock-proxy" }
 proven-vsock-rpc = { path = "../proven-vsock-rpc" }
-tokio = { version = "1.40.0", features = [
+tokio = { version = "1.36.0", features = [
   "io-util",
   "macros",
   "process",
