@@ -16,9 +16,6 @@ use tracing_subscriber::FmtSubscriber;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    #[arg(long, default_value_t = 4222)]
-    nats_port: u16,
-
     #[arg(long, default_value_t = 3200)]
     port: u16,
 }
