@@ -1,4 +1,4 @@
-use crate::error::Result;
+use super::error::Result;
 
 use std::net::Ipv4Addr;
 

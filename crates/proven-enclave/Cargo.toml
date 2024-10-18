@@ -5,6 +5,15 @@ edition = "2021"
 rust-version = "1.79"
 
 [dependencies]
+tokio = { version = "1.36.0", features = [
+  "io-util",
+  "macros",
+  "process",
+  "rt",
+  "rt-multi-thread",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
 async-nats = "0.36.0"
 cidr = "0.2.3"
 derive_more = { version = "1.0.0", features = ["from"] }
@@ -34,13 +43,6 @@ proven-vsock-tracing = { path = "../proven-vsock-tracing" }
 radix-common = "1.2.0"
 rand = "0.8.5"
 rtnetlink = "0.14.1"
-tokio = { version = "1.36.0", features = [
-  "io-util",
-  "macros",
-  "process",
-  "rt",
-  "rt-multi-thread",
-] }
 tokio-util = { version = "0.7.12", features = ["rt"] }
 tokio-vsock = "0.5.0"
 tracing = "0.1.40"

@@ -1,6 +1,6 @@
-use crate::enclave::{Enclave, EnclaveServices};
-use crate::error::{Error, Result};
-use crate::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
+use super::enclave::{Enclave, EnclaveServices};
+use super::error::{Error, Result};
+use super::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 
 use std::convert::TryInto;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};

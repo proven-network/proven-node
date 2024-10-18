@@ -17,7 +17,7 @@ pub enum Error {
     NotRoot,
 
     #[from]
-    TracingService(crate::vsock_tracing::TracingServiceError),
+    TracingService(super::vsock_tracing::TracingServiceError),
 
     #[from]
     VsockProxy(proven_vsock_proxy::Error),

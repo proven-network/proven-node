@@ -1,4 +1,4 @@
-use crate::error::{Error, Result};
+use super::error::{Error, Result};
 
 use cidr::Ipv4Cidr;
 use rtnetlink::LinkHandle;

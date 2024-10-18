@@ -12,6 +12,7 @@ pub enum Error {
     #[from]
     Io(std::io::Error),
 
+    #[cfg(target_os = "linux")]
     #[from]
     Tun(tokio_tun::Error),
 }
@@ -22,6 +23,7 @@ impl core::fmt::Display for Error {
             Error::Async(e) => write!(f, "{}", e),
             Error::Callback(e) => write!(f, "{}", e),
             Error::Io(e) => write!(f, "{}", e),
+            #[cfg(target_os = "linux")]
             Error::Tun(e) => write!(f, "{}", e),
         }
     }
