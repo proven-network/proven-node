@@ -178,7 +178,7 @@ impl Pool {
         }
 
         if self.total_workers.load(Ordering::SeqCst) < self.max_workers
-            || self.kill_idle_worker().await
+            || self.maybe_kill_idle_worker().await
         {
             self.total_workers.fetch_add(1, Ordering::SeqCst);
 
@@ -239,7 +239,7 @@ impl Pool {
         }
     }
 
-    async fn kill_idle_worker(&self) -> bool {
+    async fn maybe_kill_idle_worker(&self) -> bool {
         // Only allow killing workers every `try_kill_interval` duration
         let mut last_killed_guard = self.last_killed.lock().await;
         if let Some(last_killed) = last_killed_guard.as_ref() {
@@ -252,6 +252,10 @@ impl Pool {
             }
         }
 
+        self.kill_idle_worker().await
+    }
+
+    async fn kill_idle_worker(&self) -> bool {
         let last_used = self.last_used.lock().await.clone();
 
         // Find the module type that was used the least recently

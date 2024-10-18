@@ -11,7 +11,11 @@ static EXECUTIONS: usize = 100;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let user_module = r#"
+    let pool = Pool::new(100).await;
+    let mut handles = vec![];
+    let durations = Arc::new(Mutex::new(vec![]));
+
+    let base_script = r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:sessions";
 
         export const handler = async (a, b) => {
@@ -22,16 +26,18 @@ async fn main() -> Result<(), Error> {
 
             return a + b;
         }
-    "#
-    .to_string();
+    "#;
 
-    let pool = Pool::new(8).await;
-    let mut handles = vec![];
-    let durations = Arc::new(Mutex::new(vec![]));
+    for i in 0..EXECUTIONS {
+        // Add the invocation number to every 2nd script to make it unique
+        // This tests a mix of unique and duplicate scripts
+        let user_module = if i % 2 == 0 {
+            format!("// Invocation: {}\n{}", i, base_script)
+        } else {
+            base_script.to_string()
+        };
 
-    for _ in 0..EXECUTIONS {
         let pool = Arc::clone(&pool);
-        let user_module = user_module.clone();
         let durations = Arc::clone(&durations);
         let handle = tokio::spawn(async move {
             let request = ExecutionRequest {

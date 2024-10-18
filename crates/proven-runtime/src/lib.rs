@@ -9,6 +9,7 @@ pub use worker::*;
 
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub struct Context {
@@ -22,7 +23,7 @@ pub struct ExecutionRequest {
     pub args: Vec<Value>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ExecutionResult {
     pub output: Value,
     pub duration: Duration,
