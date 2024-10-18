@@ -1,11 +1,14 @@
 use super::RpcHandler;
 
+use std::sync::Arc;
+
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Query;
 use axum::routing::get;
 use axum::Router;
 use futures::{sink::SinkExt, stream::StreamExt};
+use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -16,13 +19,16 @@ struct QueryParams {
     session: String,
 }
 
-pub async fn create_rpc_router<T: SessionManagement + 'static>(session_manager: T) -> Router {
+pub async fn create_rpc_router<T: SessionManagement + 'static>(
+    session_manager: T,
+    runtime_pool: Arc<Pool>,
+) -> Router {
     Router::new().route(
         "/ws",
         get(
             |ws: WebSocketUpgrade, query: Query<QueryParams>| async move {
                 match session_manager.get_session(query.session.clone()).await {
-                    Ok(Some(session)) => match RpcHandler::new(session.clone()) {
+                    Ok(Some(session)) => match RpcHandler::new(session.clone(), runtime_pool) {
                         Ok(rpc_handler) => {
                             ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
                         }

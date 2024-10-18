@@ -1,14 +1,17 @@
 mod error;
-mod rpc;
+pub mod rpc;
 mod sessions;
 
 pub use error::{Error, Result};
 use sessions::create_session_router;
 
+use std::sync::Arc;
+
 use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 use proven_http::HttpServer;
+use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -42,9 +45,12 @@ impl<SM: SessionManagement + 'static> Core<SM> {
             return Err(Error::AlreadyStarted);
         }
 
+        let pool = Pool::new(8).await;
+
         let session_router = create_session_router(self.session_manager.clone()).await;
-        let http_rpc_router = rpc::http::create_rpc_router(self.session_manager.clone()).await;
-        let websocket_router = rpc::ws::create_rpc_router(self.session_manager.clone()).await;
+        let http_rpc_router =
+            rpc::http::create_rpc_router(self.session_manager.clone(), Arc::clone(&pool)).await;
+        let websocket_router = rpc::ws::create_rpc_router(self.session_manager.clone(), pool).await;
 
         let https_app = Router::new()
             .route(

@@ -1,10 +1,13 @@
 use super::RpcHandler;
 
+use std::sync::Arc;
+
 use axum::extract::Query;
 use axum::response::Response;
 use axum::routing::post;
 use axum::Router;
 use bytes::Bytes;
+use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
 use serde::Deserialize;
 use tracing::error;
@@ -14,12 +17,15 @@ struct QueryParams {
     session: String,
 }
 
-pub async fn create_rpc_router<T: SessionManagement + 'static>(session_manager: T) -> Router {
+pub async fn create_rpc_router<T: SessionManagement + 'static>(
+    session_manager: T,
+    runtime_pool: Arc<Pool>,
+) -> Router {
     Router::new().route(
         "/rpc",
         post(|query: Query<QueryParams>, body: Bytes| async move {
             match session_manager.get_session(query.session.clone()).await {
-                Ok(Some(session)) => match RpcHandler::new(session) {
+                Ok(Some(session)) => match RpcHandler::new(session, runtime_pool) {
                     Ok(mut rpc_handler) => match rpc_handler.handle_rpc(body.to_vec()).await {
                         Ok(response) => {
                             let bytes = bytes::Bytes::from(response);

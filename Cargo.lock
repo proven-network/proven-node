@@ -3727,6 +3727,7 @@ dependencies = [
  "proven-attestation",
  "proven-http",
  "proven-radix-rola",
+ "proven-runtime",
  "proven-sessions",
  "radix-common",
  "rand 0.8.5",
@@ -4705,7 +4706,7 @@ checksum = "0e819f2bc632f285be6d7cd36e25940d45b2391dd6d9b939e79de557f7014248"
 [[package]]
 name = "rustyscript"
 version = "0.8.3"
-source = "git+https://github.com/flightofthefox/rustyscript?branch=max-heap-size#5886347f54583fbf7463a16caba7ff72cb40c427"
+source = "git+https://github.com/rscarson/rustyscript#988c196040bda5d34ad5b56e794a4f369ba6bcde"
 dependencies = [
  "deno_ast",
  "deno_console",
