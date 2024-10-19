@@ -133,6 +133,7 @@ impl RpcHandler {
 
                 match pool.execute_prehashed(options_hash, request).await {
                     Ok(result) => Ok(Response::ExecuteSuccess(result)),
+                    Err(proven_runtime::Error::HashUnknown) => Ok(Response::ExecuteHashUnknown),
                     Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
                 }
             }
@@ -166,7 +167,6 @@ impl RpcHandler {
                     .await
                 {
                     Ok(result) => Ok(Response::ExecuteSuccess(result)),
-                    Err(proven_runtime::Error::HashUnknown) => Ok(Response::ExecuteHashUnknown),
                     Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
                 }
             }
