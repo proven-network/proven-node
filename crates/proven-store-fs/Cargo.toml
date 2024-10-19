@@ -7,4 +7,4 @@ edition = "2021"
 async-trait = "0.1.82"
 derive_more = { version = "1.0.0", features = ["from"] }
 proven-store = { path = "../proven-store" }
-tokio = "1.36.0"
+tokio = { version = "1.36.0", features = ["fs", "io-util"] }

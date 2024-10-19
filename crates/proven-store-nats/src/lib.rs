@@ -2,27 +2,73 @@ mod error;
 
 pub use error::Error;
 
-pub use async_nats::jetstream::kv::Config as NatsKeyValueConfig;
+use std::time::Duration;
+
+use async_nats::jetstream::kv::{Config, Store as KvStore};
 use async_trait::async_trait;
-use proven_store::Store;
+use proven_store::{Store, Store1, Store2};
 
 #[derive(Clone, Debug)]
 pub struct NatsStore {
-    nats_kv_store: async_nats::jetstream::kv::Store,
+    bucket: String,
+    jetstream_context: async_nats::jetstream::Context,
+    max_age: Duration,
 }
 
 impl NatsStore {
     pub async fn new(
         client: async_nats::Client,
-        config: NatsKeyValueConfig,
+        bucket: String,
+        max_age: Duration,
     ) -> Result<Self, Error> {
         let jetstream_context = async_nats::jetstream::new(client.clone());
-        let nats_kv_store = jetstream_context
+
+        Ok(NatsStore {
+            bucket,
+            jetstream_context,
+            max_age,
+        })
+    }
+
+    fn with_scope(&self, scope: String) -> Self {
+        Self {
+            bucket: scope,
+            jetstream_context: self.jetstream_context.clone(),
+            max_age: self.max_age,
+        }
+    }
+
+    async fn get_kv_store(&self) -> Result<KvStore, Error> {
+        let config = Config {
+            bucket: self.bucket.clone(),
+            max_age: self.max_age,
+            ..Default::default()
+        };
+
+        self.jetstream_context
             .create_key_value(config)
             .await
-            .map_err(|e| Error::Create(e.kind()))?;
+            .map_err(|e| Error::Create(e.kind()))
+    }
+}
 
-        Ok(NatsStore { nats_kv_store })
+#[async_trait]
+impl Store1 for NatsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        self.with_scope(format!("{}.{}", self.bucket, scope))
+    }
+}
+
+#[async_trait]
+impl Store2 for NatsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        self.with_scope(format!("{}.{}", self.bucket, scope))
     }
 }
 
@@ -31,7 +77,8 @@ impl Store for NatsStore {
     type SE = Error;
 
     async fn del(&self, key: String) -> Result<(), Self::SE> {
-        self.nats_kv_store
+        self.get_kv_store()
+            .await?
             .delete(key)
             .await
             .map_err(|e| Error::Delete(e.kind()))?;
@@ -40,7 +87,8 @@ impl Store for NatsStore {
     }
 
     async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
-        self.nats_kv_store
+        self.get_kv_store()
+            .await?
             .get(key)
             .await
             .map_err(|e| Error::Get(e.kind()))
@@ -48,7 +96,8 @@ impl Store for NatsStore {
     }
 
     async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
-        self.nats_kv_store
+        self.get_kv_store()
+            .await?
             .put(key, bytes.into())
             .await
             .map_err(|e| Error::Put(e.kind()))?;

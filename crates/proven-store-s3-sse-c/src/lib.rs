@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use aws_config::Region;
 use base64::{engine::general_purpose::STANDARD as base64, Engine};
 use blake3::Hasher;
-use proven_store::Store;
+use proven_store::{Store, Store1, Store2};
 use tokio::io::AsyncReadExt;
 
 #[derive(Clone, Debug)]
@@ -14,6 +14,7 @@ pub struct S3Store {
     bucket: String,
     client: aws_sdk_s3::Client,
     secret_key: [u8; 32],
+    prefix: Option<String>,
 }
 
 impl S3Store {
@@ -27,6 +28,7 @@ impl S3Store {
             bucket,
             client: aws_sdk_s3::Client::new(&config),
             secret_key,
+            prefix: None,
         }
     }
 
@@ -34,6 +36,51 @@ impl S3Store {
         let mut hasher = Hasher::new_keyed(&self.secret_key);
         hasher.update(key.as_bytes());
         *hasher.finalize().as_bytes()
+    }
+
+    fn get_key(&self, key: String) -> String {
+        match &self.prefix {
+            Some(prefix) => format!("{}/{}", prefix, key),
+            None => key,
+        }
+    }
+}
+
+#[async_trait]
+impl Store1 for S3Store {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let prefix = match &self.prefix {
+            Some(prefix) => format!("{}/{}", prefix, scope),
+            None => scope,
+        };
+        S3Store {
+            bucket: self.bucket.clone(),
+            client: self.client.clone(),
+            secret_key: self.secret_key,
+            prefix: Some(prefix),
+        }
+    }
+}
+
+#[async_trait]
+impl Store2 for S3Store {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let prefix = match &self.prefix {
+            Some(prefix) => format!("{}/{}", prefix, scope),
+            None => scope,
+        };
+        S3Store {
+            bucket: self.bucket.clone(),
+            client: self.client.clone(),
+            secret_key: self.secret_key,
+            prefix: Some(prefix),
+        }
     }
 }
 
@@ -57,6 +104,7 @@ impl Store for S3Store {
     }
 
     async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
+        let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
         let resp = self
@@ -89,6 +137,7 @@ impl Store for S3Store {
     }
 
     async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
+        let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
         let resp = self

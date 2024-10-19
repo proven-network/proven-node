@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub struct Context {
+    pub dapp_definition_address: String,
     pub identity: Option<String>,
     pub accounts: Option<Vec<String>>,
 }

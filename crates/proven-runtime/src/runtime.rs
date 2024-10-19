@@ -4,7 +4,7 @@ use crate::{Error, ExecutionRequest, ExecutionResult};
 use std::collections::HashSet;
 use std::time::Duration;
 
-use proven_store::Store;
+use proven_store::Store1;
 use rustyscript::{js_value::Value, Module, RuntimeOptions as RustyScriptOptions};
 use tokio::time::Instant;
 
@@ -15,13 +15,13 @@ pub struct RuntimeOptions {
     pub timeout_millis: u32,
 }
 
-pub struct Runtime<AS: Store> {
+pub struct Runtime<AS: Store1> {
     module_handle: rustyscript::ModuleHandle,
     runtime: rustyscript::Runtime,
     application_store: AS,
 }
 
-impl<AS: Store> Runtime<AS> {
+impl<AS: Store1> Runtime<AS> {
     pub fn new(options: RuntimeOptions, application_store: AS) -> Result<Self, Error> {
         let mut schema_whlist = HashSet::with_capacity(1);
         schema_whlist.insert("proven:".to_string());
@@ -32,7 +32,7 @@ impl<AS: Store> Runtime<AS> {
             extensions: vec![
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
-                storage_ext::init_ops_and_esm::<AS>(),
+                storage_ext::init_ops_and_esm::<AS::Scoped>(),
             ],
             ..Default::default()
         })?;
@@ -68,7 +68,10 @@ impl<AS: Store> Runtime<AS> {
 
         // Set the store for the storage extension
         self.runtime.put(StorageState {
-            application_store: Some(self.application_store.clone()),
+            application_store: self
+                .application_store
+                .clone()
+                .scope(context.dapp_definition_address),
         })?;
 
         let output: Value =

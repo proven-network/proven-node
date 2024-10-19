@@ -45,6 +45,7 @@ async fn main() -> Result<(), Error> {
         let handle = tokio::spawn(async move {
             let request = ExecutionRequest {
                 context: Context {
+                    dapp_definition_address: "dapp_definition_address".to_string(),
                     identity: Some("identity".to_string()),
                     accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
                 },

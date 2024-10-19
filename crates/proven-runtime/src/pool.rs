@@ -5,7 +5,7 @@ use std::fmt::Write;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use proven_store::Store;
+use proven_store::Store1;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
@@ -20,7 +20,7 @@ type QueueItem = (RuntimeOptions, ExecutionRequest, SendChannel);
 type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
 
-pub struct Pool<AS: Store> {
+pub struct Pool<AS: Store1> {
     application_store: AS,
     workers: SharedWorkerMap<AS>,
     known_hashes: Arc<Mutex<HashMap<String, RuntimeOptions>>>,
@@ -35,7 +35,7 @@ pub struct Pool<AS: Store> {
     last_killed: Arc<Mutex<Option<Instant>>>,
 }
 
-impl<AS: Store> Pool<AS> {
+impl<AS: Store1> Pool<AS> {
     pub async fn new(max_workers: usize, application_store: AS) -> Arc<Self> {
         let (queue_sender, queue_receiver) = mpsc::channel(max_workers * 10);
 

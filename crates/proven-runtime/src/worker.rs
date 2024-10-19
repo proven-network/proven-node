@@ -3,11 +3,11 @@ use crate::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 use std::marker::PhantomData;
 use std::thread;
 
-use proven_store::Store;
+use proven_store::Store1;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-pub struct Worker<AS: Store> {
+pub struct Worker<AS: Store1> {
     sender: mpsc::Sender<WorkerRequest>,
     _marker: PhantomData<AS>,
 }
@@ -19,7 +19,7 @@ pub enum WorkerRequest {
     },
 }
 
-impl<AS: Store> Worker<AS> {
+impl<AS: Store1> Worker<AS> {
     pub fn new(runtime_options: RuntimeOptions, application_store: AS) -> Self {
         let (sender, mut receiver) = mpsc::channel(1);
 

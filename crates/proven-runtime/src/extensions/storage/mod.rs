@@ -4,7 +4,7 @@ use deno_core::{extension, op2, OpDecl};
 
 #[derive(Clone, Default)]
 pub struct StorageState<AS: Store> {
-    pub application_store: Option<AS>,
+    pub application_store: AS,
 }
 
 #[op2]
@@ -13,11 +13,10 @@ pub fn op_get_application_bytes<AS: Store>(
     #[state] state: &mut StorageState<AS>,
     #[string] key: String,
 ) -> Option<Vec<u8>> {
-    if let Some(store) = state.application_store.as_ref() {
-        store.get_blocking(key).unwrap_or_default()
-    } else {
-        None
-    }
+    state
+        .application_store
+        .get_blocking(key)
+        .unwrap_or_default()
 }
 
 #[op2(fast)]
@@ -26,11 +25,7 @@ pub fn op_set_application_bytes<AS: Store>(
     #[string] key: String,
     #[arraybuffer(copy)] value: Vec<u8>,
 ) -> bool {
-    if let Some(store) = state.application_store.as_ref() {
-        store.put_blocking(key, value).is_ok()
-    } else {
-        false
-    }
+    state.application_store.put_blocking(key, value).is_ok()
 }
 
 #[op2]
@@ -39,13 +34,9 @@ pub fn op_get_application_string<AS: Store>(
     #[state] state: &mut StorageState<AS>,
     #[string] key: String,
 ) -> Option<String> {
-    if let Some(store) = state.application_store.as_ref() {
-        match store.get_blocking(key) {
-            Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
-            _ => None,
-        }
-    } else {
-        None
+    match state.application_store.get_blocking(key) {
+        Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
+        _ => None,
     }
 }
 
@@ -55,11 +46,10 @@ pub fn op_set_application_string<AS: Store>(
     #[string] key: String,
     #[string] value: String,
 ) -> bool {
-    if let Some(store) = state.application_store.as_ref() {
-        store.put_blocking(key, value.as_bytes().to_vec()).is_ok()
-    } else {
-        false
-    }
+    state
+        .application_store
+        .put_blocking(key, value.as_bytes().to_vec())
+        .is_ok()
 }
 
 extension!(

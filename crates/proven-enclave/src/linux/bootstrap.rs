@@ -27,7 +27,7 @@ use proven_radix_node::RadixNode;
 use proven_sessions::{SessionManagement, SessionManager};
 use proven_store::Store;
 use proven_store_asm::AsmStore;
-use proven_store_nats::{NatsKeyValueConfig, NatsStore};
+use proven_store_nats::NatsStore;
 use proven_store_s3_sse_c::S3Store;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
@@ -785,22 +785,13 @@ impl Bootstrap {
 
         let challenge_store = NatsStore::new(
             nats_client.clone(),
-            NatsKeyValueConfig {
-                bucket: "challenges".to_string(),
-                max_age: Duration::from_secs(5 * 60), // 5 minutes
-                ..Default::default()
-            },
+            "challenges".to_string(),
+            Duration::from_secs(5 * 60),
         )
         .await?;
 
-        let sessions_store = NatsStore::new(
-            nats_client.clone(),
-            NatsKeyValueConfig {
-                bucket: "sessions".to_string(),
-                ..Default::default()
-            },
-        )
-        .await?;
+        let sessions_store =
+            NatsStore::new(nats_client.clone(), "sessions".to_string(), Duration::MAX).await?;
 
         let session_manager = SessionManager::new(
             self.nsm.clone(),
@@ -831,10 +822,8 @@ impl Bootstrap {
 
         let application_store = NatsStore::new(
             nats_client.clone(),
-            NatsKeyValueConfig {
-                bucket: "application_data".to_string(),
-                ..Default::default()
-            },
+            "applications".to_string(),
+            Duration::MAX,
         )
         .await?;
 

@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use proven_store::Store;
+use proven_store::{Store, Store1, Store2};
 use tokio::fs;
 use tokio::io::{self, AsyncWriteExt};
 
@@ -22,6 +22,30 @@ impl FsStore {
 
     fn get_file_path(&self, key: &str) -> PathBuf {
         self.dir.join(key)
+    }
+}
+
+#[async_trait]
+impl Store1 for FsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let mut dir = self.dir.clone();
+        dir.push(scope);
+        Self::new(dir)
+    }
+}
+
+#[async_trait]
+impl Store2 for FsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let mut dir = self.dir.clone();
+        dir.push(scope);
+        Self::new(dir)
     }
 }
 

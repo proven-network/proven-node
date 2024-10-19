@@ -13,7 +13,7 @@ use axum::Router;
 use proven_http::HttpServer;
 use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
-use proven_store::Store;
+use proven_store::Store1;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -38,7 +38,7 @@ impl<SM: SessionManagement + 'static> Core<SM> {
         }
     }
 
-    pub async fn start<HS: HttpServer + 'static, AS: Store>(
+    pub async fn start<HS: HttpServer + 'static, AS: Store1>(
         &self,
         http_server: HS,
         application_store: AS,

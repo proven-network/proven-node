@@ -8,7 +8,7 @@ use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_runtime::{Context, ExecutionRequest, ExecutionResult, Pool, RuntimeOptions};
 use proven_sessions::Session;
-use proven_store::Store;
+use proven_store::Store1;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
@@ -22,10 +22,11 @@ pub enum RpcHandlerError {
     VerifyingKeyInvalid,
 }
 
-pub struct RpcHandler<AS: Store> {
+pub struct RpcHandler<AS: Store1> {
     aad: Vec<u8>,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
+    dapp_definition_address: String,
     identity_address: String,
     account_addresses: Vec<String>,
     runtime_pool: Arc<Pool<AS>>,
@@ -61,7 +62,7 @@ pub struct WhoAmIResponse {
     pub account_addresses: Vec<String>,
 }
 
-impl<AS: Store> RpcHandler<AS> {
+impl<AS: Store1> RpcHandler<AS> {
     pub fn new(session: Session, runtime_pool: Arc<Pool<AS>>) -> Result<Self, RpcHandlerError> {
         let signing_key_bytes: [u8; 32] = session
             .signing_key
@@ -83,6 +84,7 @@ impl<AS: Store> RpcHandler<AS> {
             aad,
             signing_key,
             verifying_key,
+            dapp_definition_address: session.dapp_definition_address,
             identity_address: session.identity_address,
             account_addresses: session.account_addresses,
             runtime_pool,
@@ -125,6 +127,7 @@ impl<AS: Store> RpcHandler<AS> {
 
                 let request = ExecutionRequest {
                     context: Context {
+                        dapp_definition_address: self.dapp_definition_address.clone(),
                         identity: Some(self.identity_address.clone()),
                         accounts: Some(self.account_addresses.clone()),
                     },
@@ -149,6 +152,7 @@ impl<AS: Store> RpcHandler<AS> {
 
                 let request = ExecutionRequest {
                     context: Context {
+                        dapp_definition_address: self.dapp_definition_address.clone(),
                         identity: Some(self.identity_address.clone()),
                         accounts: Some(self.account_addresses.clone()),
                     },
