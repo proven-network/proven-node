@@ -1,7 +1,5 @@
 use proven_runtime::{Context, Error, ExecutionRequest, Runtime, RuntimeOptions};
 
-use std::time::Duration;
-
 use serde_json::json;
 
 fn main() -> Result<(), Error> {

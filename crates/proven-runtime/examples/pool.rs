@@ -1,7 +1,6 @@
 use proven_runtime::{Context, Error, ExecutionRequest, Pool, RuntimeOptions};
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use serde_json::json;
 use tokio::sync::Mutex;

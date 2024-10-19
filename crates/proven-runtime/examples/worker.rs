@@ -1,7 +1,6 @@
 use proven_runtime::{Context, ExecutionRequest, RuntimeOptions, Worker};
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::join_all;
 use rustyscript::Error;
