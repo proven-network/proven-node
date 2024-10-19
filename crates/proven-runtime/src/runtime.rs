@@ -27,7 +27,7 @@ impl Runtime {
             ..Default::default()
         })?;
 
-        let module = Module::new("test.js", module);
+        let module = Module::new("module.ts", module);
         let module_handle = runtime.load_module(&module)?;
 
         Ok(Self {
