@@ -1,5 +1,7 @@
 use proven_runtime::{Context, Error, ExecutionRequest, Runtime, RuntimeOptions};
 
+use proven_store_memory::MemoryStore;
+
 use serde_json::json;
 
 fn main() -> Result<(), Error> {
@@ -16,11 +18,15 @@ fn main() -> Result<(), Error> {
         }
     "#;
 
-    let mut runtime = Runtime::new(RuntimeOptions {
-        module: user_module.to_string(),
-        max_heap_mbs: 10,
-        timeout_millis: 5000,
-    })?;
+    let store = MemoryStore::new();
+    let mut runtime = Runtime::new(
+        RuntimeOptions {
+            module: user_module.to_string(),
+            max_heap_mbs: 10,
+            timeout_millis: 5000,
+        },
+        store,
+    )?;
 
     let request = ExecutionRequest {
         context: Context {

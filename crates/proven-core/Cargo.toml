@@ -20,6 +20,7 @@ proven-http = { path = "../proven-http" }
 proven-radix-rola = { path = "../proven-radix-rola" }
 proven-runtime = { path = "../proven-runtime" }
 proven-sessions = { path = "../proven-sessions" }
+proven-store = { path = "../proven-store" }
 radix-common = "1.2.0"
 rand = "0.8.5"
 ring = "0.17.8"

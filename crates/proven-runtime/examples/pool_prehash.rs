@@ -2,6 +2,7 @@ use proven_runtime::{hash_options, Context, Error, ExecutionRequest, Pool, Runti
 
 use std::sync::Arc;
 
+use proven_store_memory::MemoryStore;
 use serde_json::json;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
@@ -10,7 +11,8 @@ static EXECUTIONS: usize = 100;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let pool = Pool::new(100).await;
+    let store = MemoryStore::new();
+    let pool = Pool::new(100, store).await;
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 

@@ -9,6 +9,7 @@ use axum::Router;
 use bytes::Bytes;
 use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
+use proven_store::Store;
 use serde::Deserialize;
 use tracing::error;
 
@@ -17,9 +18,9 @@ struct QueryParams {
     session: String,
 }
 
-pub async fn create_rpc_router<T: SessionManagement + 'static>(
+pub async fn create_rpc_router<T: SessionManagement + 'static, AS: Store>(
     session_manager: T,
-    runtime_pool: Arc<Pool>,
+    runtime_pool: Arc<Pool<AS>>,
 ) -> Router {
     Router::new().route(
         "/rpc",

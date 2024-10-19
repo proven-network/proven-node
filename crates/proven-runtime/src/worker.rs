@@ -1,12 +1,15 @@
 use crate::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 
+use std::marker::PhantomData;
 use std::thread;
 
+use proven_store::Store;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-pub struct Worker {
+pub struct Worker<AS: Store> {
     sender: mpsc::Sender<WorkerRequest>,
+    _marker: PhantomData<AS>,
 }
 
 pub enum WorkerRequest {
@@ -16,12 +19,12 @@ pub enum WorkerRequest {
     },
 }
 
-impl Worker {
-    pub fn new(runtime_options: RuntimeOptions) -> Self {
+impl<AS: Store> Worker<AS> {
+    pub fn new(runtime_options: RuntimeOptions, application_store: AS) -> Self {
         let (sender, mut receiver) = mpsc::channel(1);
 
         thread::spawn(move || {
-            let mut runtime = Runtime::new(runtime_options).unwrap();
+            let mut runtime = Runtime::new(runtime_options, application_store).unwrap();
 
             while let Some(request) = receiver.blocking_recv() {
                 match request {
@@ -36,7 +39,10 @@ impl Worker {
             }
         });
 
-        Self { sender }
+        Self {
+            sender,
+            _marker: PhantomData,
+        }
     }
 
     pub async fn execute(&mut self, request: ExecutionRequest) -> Result<ExecutionResult, Error> {

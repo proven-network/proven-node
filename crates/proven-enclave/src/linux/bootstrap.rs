@@ -829,8 +829,17 @@ impl Bootstrap {
             cert_store,
         );
 
+        let application_store = NatsStore::new(
+            nats_client.clone(),
+            NatsKeyValueConfig {
+                bucket: "application_data".to_string(),
+                ..Default::default()
+            },
+        )
+        .await?;
+
         let core = Core::new(NewCoreArguments { session_manager });
-        let core_handle = core.start(http_server).await?;
+        let core_handle = core.start(http_server, application_store).await?;
 
         self.core = Some(core);
         self.core_handle = Some(core_handle);

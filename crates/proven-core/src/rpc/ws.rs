@@ -10,6 +10,7 @@ use axum::Router;
 use futures::{sink::SinkExt, stream::StreamExt};
 use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
+use proven_store::Store;
 use serde::Deserialize;
 use std::borrow::Cow;
 use tracing::{error, info};
@@ -19,9 +20,9 @@ struct QueryParams {
     session: String,
 }
 
-pub async fn create_rpc_router<T: SessionManagement + 'static>(
+pub async fn create_rpc_router<T: SessionManagement + 'static, AS: Store>(
     session_manager: T,
-    runtime_pool: Arc<Pool>,
+    runtime_pool: Arc<Pool<AS>>,
 ) -> Router {
     Router::new().route(
         "/ws",
@@ -58,7 +59,7 @@ async fn handle_socket_error(mut socket: WebSocket, reason: Cow<'static, str>) {
         .ok();
 }
 
-async fn handle_socket(socket: WebSocket, mut rpc_handler: RpcHandler) {
+async fn handle_socket<AS: Store>(socket: WebSocket, mut rpc_handler: RpcHandler<AS>) {
     let (mut sender, mut receiver) = socket.split();
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);

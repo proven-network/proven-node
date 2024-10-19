@@ -5,12 +5,13 @@ use std::fmt::Write;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use proven_store::Store;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
 
-type WorkerMap = HashMap<String, Vec<Worker>>;
-type SharedWorkerMap = Arc<Mutex<WorkerMap>>;
+type WorkerMap<AS> = HashMap<String, Vec<Worker<AS>>>;
+type SharedWorkerMap<AS> = Arc<Mutex<WorkerMap<AS>>>;
 type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 
 type SendChannel = oneshot::Sender<Result<ExecutionResult, Error>>;
@@ -19,8 +20,9 @@ type QueueItem = (RuntimeOptions, ExecutionRequest, SendChannel);
 type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
 
-pub struct Pool {
-    workers: SharedWorkerMap,
+pub struct Pool<AS: Store> {
+    application_store: AS,
+    workers: SharedWorkerMap<AS>,
     known_hashes: Arc<Mutex<HashMap<String, RuntimeOptions>>>,
     max_workers: usize,
     total_workers: AtomicUsize,
@@ -33,11 +35,12 @@ pub struct Pool {
     last_killed: Arc<Mutex<Option<Instant>>>,
 }
 
-impl Pool {
-    pub async fn new(max_workers: usize) -> Arc<Self> {
+impl<AS: Store> Pool<AS> {
+    pub async fn new(max_workers: usize, application_store: AS) -> Arc<Self> {
         let (queue_sender, queue_receiver) = mpsc::channel(max_workers * 10);
 
         let pool = Arc::new(Self {
+            application_store,
             workers: Arc::new(Mutex::new(HashMap::new())),
             known_hashes: Arc::new(Mutex::new(HashMap::new())),
             max_workers,
@@ -100,7 +103,8 @@ impl Pool {
                 {
                     self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    let mut worker = Worker::new(runtime_options.clone());
+                    let mut worker =
+                        Worker::<AS>::new(runtime_options.clone(), self.application_store.clone());
                     let result = worker.execute(request).await;
 
                     if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
@@ -196,7 +200,8 @@ impl Pool {
         {
             self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-            let mut worker = Worker::new(runtime_options.clone());
+            let mut worker =
+                Worker::<AS>::new(runtime_options.clone(), self.application_store.clone());
             let result = worker.execute(request).await;
 
             if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
@@ -273,7 +278,8 @@ impl Pool {
                 {
                     self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    let mut worker = Worker::new(runtime_options.clone());
+                    let mut worker =
+                        Worker::<AS>::new(runtime_options.clone(), self.application_store.clone());
                     let result = worker.execute(request).await;
 
                     if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {

@@ -1,10 +1,10 @@
-use crate::extensions::{console_ext, ConsoleState};
-use crate::extensions::{sessions_ext, SessionsState};
+use crate::extensions::*;
 use crate::{Error, ExecutionRequest, ExecutionResult};
 
 use std::collections::HashSet;
 use std::time::Duration;
 
+use proven_store::Store;
 use rustyscript::{js_value::Value, Module, RuntimeOptions as RustyScriptOptions};
 use tokio::time::Instant;
 
@@ -15,13 +15,14 @@ pub struct RuntimeOptions {
     pub timeout_millis: u32,
 }
 
-pub struct Runtime {
+pub struct Runtime<AS: Store> {
     module_handle: rustyscript::ModuleHandle,
     runtime: rustyscript::Runtime,
+    application_store: AS,
 }
 
-impl Runtime {
-    pub fn new(options: RuntimeOptions) -> Result<Self, Error> {
+impl<AS: Store> Runtime<AS> {
+    pub fn new(options: RuntimeOptions, application_store: AS) -> Result<Self, Error> {
         let mut schema_whlist = HashSet::with_capacity(1);
         schema_whlist.insert("proven:".to_string());
         let mut runtime = rustyscript::Runtime::new(RustyScriptOptions {
@@ -31,6 +32,7 @@ impl Runtime {
             extensions: vec![
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
+                storage_ext::init_ops_and_esm::<AS>(),
             ],
             ..Default::default()
         })?;
@@ -41,6 +43,7 @@ impl Runtime {
         Ok(Self {
             module_handle,
             runtime,
+            application_store,
         })
     }
 
@@ -61,6 +64,11 @@ impl Runtime {
         self.runtime.put(SessionsState {
             identity: context.identity,
             accounts: context.accounts,
+        })?;
+
+        // Set the store for the storage extension
+        self.runtime.put(StorageState {
+            application_store: Some(self.application_store.clone()),
         })?;
 
         let output: Value =

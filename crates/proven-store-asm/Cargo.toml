@@ -10,3 +10,4 @@ aws-sdk-secretsmanager = "1.47.0"
 derive_more = { version = "1.0.0", features = ["from"] }
 proven-store = { path = "../proven-store" }
 serde_json = "1.0.128"
+tokio = "1.36.0"

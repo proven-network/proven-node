@@ -3729,6 +3729,7 @@ dependencies = [
  "proven-radix-rola",
  "proven-runtime",
  "proven-sessions",
+ "proven-store",
  "radix-common",
  "rand 0.8.5",
  "ring",
@@ -4048,6 +4049,8 @@ dependencies = [
  "derive_more",
  "futures",
  "once_cell",
+ "proven-store",
+ "proven-store-memory",
  "rustyscript",
  "serde",
  "serde_json",
@@ -4089,6 +4092,7 @@ dependencies = [
  "derive_more",
  "proven-store",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -4117,6 +4121,7 @@ dependencies = [
  "async-trait",
  "derive_more",
  "proven-store",
+ "tokio",
 ]
 
 [[package]]

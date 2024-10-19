@@ -3,6 +3,7 @@ use proven_runtime::{Context, ExecutionRequest, RuntimeOptions, Worker};
 use std::sync::Arc;
 
 use futures::future::join_all;
+use proven_store_memory::MemoryStore;
 use rustyscript::Error;
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -26,11 +27,15 @@ async fn main() -> Result<(), Error> {
     "#
     .to_string();
 
-    let worker = Arc::new(Mutex::new(Worker::new(RuntimeOptions {
-        module,
-        max_heap_mbs: 10,
-        timeout_millis: 5000,
-    })));
+    let store = MemoryStore::new();
+    let worker = Arc::new(Mutex::new(Worker::new(
+        RuntimeOptions {
+            module,
+            max_heap_mbs: 10,
+            timeout_millis: 5000,
+        },
+        store,
+    )));
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 
