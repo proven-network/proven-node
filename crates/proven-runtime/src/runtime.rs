@@ -4,7 +4,7 @@ use crate::{Error, ExecutionRequest, ExecutionResult};
 use std::collections::HashSet;
 use std::time::Duration;
 
-use proven_store::Store1;
+use proven_store::{Store1, Store2};
 use rustyscript::{js_value::Value, Module, RuntimeOptions as RustyScriptOptions};
 use tokio::time::Instant;
 
@@ -15,14 +15,19 @@ pub struct RuntimeOptions {
     pub timeout_millis: u32,
 }
 
-pub struct Runtime<AS: Store1> {
+pub struct Runtime<AS: Store1, PS: Store2> {
     module_handle: rustyscript::ModuleHandle,
     runtime: rustyscript::Runtime,
     application_store: AS,
+    personal_store: PS,
 }
 
-impl<AS: Store1> Runtime<AS> {
-    pub fn new(options: RuntimeOptions, application_store: AS) -> Result<Self, Error> {
+impl<AS: Store1, PS: Store2> Runtime<AS, PS> {
+    pub fn new(
+        options: RuntimeOptions,
+        application_store: AS,
+        personal_store: PS,
+    ) -> Result<Self, Error> {
         let mut schema_whlist = HashSet::with_capacity(1);
         schema_whlist.insert("proven:".to_string());
         let mut runtime = rustyscript::Runtime::new(RustyScriptOptions {
@@ -32,7 +37,10 @@ impl<AS: Store1> Runtime<AS> {
             extensions: vec![
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
-                storage_ext::init_ops_and_esm::<AS::Scoped>(),
+                // Split into seperate extensions to avoid issue with macro supporting only 1 generic
+                storage_application_ext::init_ops::<AS::Scoped>(),
+                storage_personal_ext::init_ops::<<<PS as Store2>::Scoped as Store1>::Scoped>(),
+                storage_ext::init_ops_and_esm(),
             ],
             ..Default::default()
         })?;
@@ -44,6 +52,7 @@ impl<AS: Store1> Runtime<AS> {
             module_handle,
             runtime,
             application_store,
+            personal_store,
         })
     }
 
@@ -60,18 +69,30 @@ impl<AS: Store1> Runtime<AS> {
         // Reset the console state before each execution
         self.runtime.put(ConsoleState::default())?;
 
+        // Set the store for the storage extension
+
+        let personal_store = match context.identity.as_ref() {
+            Some(current_identity) => Some(
+                self.personal_store
+                    .clone()
+                    .scope(context.dapp_definition_address.clone())
+                    .scope(current_identity.clone()),
+            ),
+            None => None,
+        };
+
+        self.runtime.put(personal_store)?;
+
+        self.runtime.put(
+            self.application_store
+                .clone()
+                .scope(context.dapp_definition_address),
+        )?;
+
         // Set the context for the session extension
         self.runtime.put(SessionsState {
             identity: context.identity,
             accounts: context.accounts,
-        })?;
-
-        // Set the store for the storage extension
-        self.runtime.put(StorageState {
-            application_store: self
-                .application_store
-                .clone()
-                .scope(context.dapp_definition_address),
         })?;
 
         let output: Value =

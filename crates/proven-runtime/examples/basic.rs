@@ -18,14 +18,16 @@ fn main() -> Result<(), Error> {
         }
     "#;
 
-    let store = MemoryStore::new();
+    let application_store = MemoryStore::new();
+    let personal_store = MemoryStore::new();
     let mut runtime = Runtime::new(
         RuntimeOptions {
             module: user_module.to_string(),
             max_heap_mbs: 10,
             timeout_millis: 5000,
         },
-        store,
+        application_store,
+        personal_store,
     )?;
 
     let request = ExecutionRequest {

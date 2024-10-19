@@ -49,8 +49,11 @@ async fn main() -> Result<()> {
     let http_sock_addr = SocketAddr::from((Ipv4Addr::LOCALHOST, args.port));
     let http_server = InsecureHttpServer::new(http_sock_addr);
 
-    let application_store = FsStore::new("/tmp/proven/applications".into());
-    let core_handle = core.start(http_server, application_store).await?;
+    let application_store = FsStore::new("/tmp/proven/application".into());
+    let personal_store = FsStore::new("/tmp/proven/personal".into());
+    let core_handle = core
+        .start(http_server, application_store, personal_store)
+        .await?;
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {

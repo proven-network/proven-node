@@ -13,7 +13,7 @@ use axum::Router;
 use proven_http::HttpServer;
 use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
-use proven_store::Store1;
+use proven_store::{Store1, Store2};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -38,16 +38,17 @@ impl<SM: SessionManagement + 'static> Core<SM> {
         }
     }
 
-    pub async fn start<HS: HttpServer + 'static, AS: Store1>(
+    pub async fn start<HS: HttpServer + 'static, AS: Store1, PS: Store2>(
         &self,
         http_server: HS,
         application_store: AS,
+        personal_store: PS,
     ) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
 
-        let pool = Pool::new(8, application_store).await;
+        let pool = Pool::new(8, application_store, personal_store).await;
 
         let session_router = create_session_router(self.session_manager.clone()).await;
         let http_rpc_router =

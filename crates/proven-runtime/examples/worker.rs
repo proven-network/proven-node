@@ -27,14 +27,16 @@ async fn main() -> Result<(), Error> {
     "#
     .to_string();
 
-    let store = MemoryStore::new();
+    let application_store = MemoryStore::new();
+    let personal_store = MemoryStore::new();
     let worker = Arc::new(Mutex::new(Worker::new(
         RuntimeOptions {
             module,
             max_heap_mbs: 10,
             timeout_millis: 5000,
         },
-        store,
+        application_store,
+        personal_store,
     )));
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));

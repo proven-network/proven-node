@@ -4,12 +4,14 @@ use std::marker::PhantomData;
 use std::thread;
 
 use proven_store::Store1;
+use proven_store::Store2;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-pub struct Worker<AS: Store1> {
+pub struct Worker<AS: Store1, PS: Store2> {
     sender: mpsc::Sender<WorkerRequest>,
     _marker: PhantomData<AS>,
+    _marker2: PhantomData<PS>,
 }
 
 pub enum WorkerRequest {
@@ -19,12 +21,13 @@ pub enum WorkerRequest {
     },
 }
 
-impl<AS: Store1> Worker<AS> {
-    pub fn new(runtime_options: RuntimeOptions, application_store: AS) -> Self {
+impl<AS: Store1, PS: Store2> Worker<AS, PS> {
+    pub fn new(runtime_options: RuntimeOptions, application_store: AS, personal_store: PS) -> Self {
         let (sender, mut receiver) = mpsc::channel(1);
 
         thread::spawn(move || {
-            let mut runtime = Runtime::new(runtime_options, application_store).unwrap();
+            let mut runtime =
+                Runtime::new(runtime_options, application_store, personal_store).unwrap();
 
             while let Some(request) = receiver.blocking_recv() {
                 match request {
@@ -42,6 +45,7 @@ impl<AS: Store1> Worker<AS> {
         Self {
             sender,
             _marker: PhantomData,
+            _marker2: PhantomData,
         }
     }
 

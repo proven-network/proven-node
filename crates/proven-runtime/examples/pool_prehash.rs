@@ -11,8 +11,9 @@ static EXECUTIONS: usize = 100;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let store = MemoryStore::new();
-    let pool = Pool::new(100, store).await;
+    let application_store = MemoryStore::new();
+    let personal_store = MemoryStore::new();
+    let pool = Pool::new(100, application_store, personal_store).await;
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 
