@@ -30,11 +30,15 @@ pub struct RpcHandler {
     runtime_pool: Arc<Pool>,
 }
 
+
+type Module = String;
+type HandlerName = String;
+type Args = Vec<serde_json::Value>;
 #[repr(u8)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub enum Request {
     WhoAmI = 0x0,
-    Execute(String, String) = 0x1,
+    Execute(Module, HandlerName, Args) = 0x1,
     Watch(String) = 0x2,
 }
 
@@ -111,7 +115,7 @@ impl RpcHandler {
                 identity_address: self.identity_address.clone(),
                 account_addresses: self.account_addresses.clone(),
             })),
-            Request::Execute(module, handler_name) => {
+            Request::Execute(module, handler_name, args) => {
                 let pool = Arc::clone(&self.runtime_pool);
 
                 let request = ExecutionRequest {
@@ -120,7 +124,7 @@ impl RpcHandler {
                         accounts: Some(self.account_addresses.clone()),
                     },
                     handler_name,
-                    args: vec![],
+                    args,
                 };
 
                 match pool.execute(module, request).await {

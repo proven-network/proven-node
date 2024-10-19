@@ -1,11 +1,13 @@
 use proven_core::rpc::Request;
+use serde_json::json;
 
 fn main() {
     let requests = vec![
         Request::WhoAmI,
         Request::Execute(
-            "export function handler () { console.log('Hello, world!') }".to_string(),
+            "export function handler (a, b) { console.log(a + b) }".to_string(),
             "handler".to_string(),
+            vec![json!(10), json!(20), json!("hello"), json!(true)],
         ),
         Request::Watch("resource".to_string()),
     ];
