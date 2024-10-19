@@ -388,8 +388,8 @@ impl Pool {
 pub fn hash_options(options: &RuntimeOptions) -> String {
     let mut hasher = Sha256::new();
 
-    // Concatenate module, timeout, and max_heap_size
-    let mut data = options.module.clone();
+    // Concatenate module, timeout, and max_heap_size - newline separated
+    let mut data = format!("{}\n", options.module);
     writeln!(&mut data, "{:?}", options.timeout_millis).unwrap();
     write!(&mut data, "{:?}", options.max_heap_mbs).unwrap();
 
