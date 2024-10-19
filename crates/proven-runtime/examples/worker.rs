@@ -1,7 +1,9 @@
+use proven_runtime::{Context, ExecutionRequest, RuntimeOptions, Worker};
+
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::future::join_all;
-use proven_runtime::{Context, ExecutionRequest, Worker};
 use rustyscript::Error;
 use serde_json::json;
 use tokio::sync::Mutex;
@@ -11,7 +13,7 @@ static EXECUTIONS: usize = 100;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let user_module = r#"
+    let module = r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:sessions";
 
         export const handler = async (a, b) => {
@@ -25,7 +27,11 @@ async fn main() -> Result<(), Error> {
     "#
     .to_string();
 
-    let worker = Arc::new(Mutex::new(Worker::new(user_module)));
+    let worker = Arc::new(Mutex::new(Worker::new(RuntimeOptions {
+        module,
+        timeout: Duration::from_secs(5),
+        max_heap_size: Some(10 * 1024 * 1024),
+    })));
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 

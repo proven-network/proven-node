@@ -1,8 +1,8 @@
-use proven_runtime::{Context, ExecutionRequest, Pool};
+use proven_runtime::{Context, Error, ExecutionRequest, Pool, RuntimeOptions};
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use rustyscript::Error;
 use serde_json::json;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
@@ -31,7 +31,7 @@ async fn main() -> Result<(), Error> {
     for i in 0..EXECUTIONS {
         // Add the invocation number to every 2nd script to make it unique
         // This tests a mix of unique and duplicate scripts
-        let user_module = if i % 2 == 0 {
+        let module = if i % 2 == 0 {
             format!("// Invocation: {}\n{}", i, base_script)
         } else {
             base_script.to_string()
@@ -50,7 +50,16 @@ async fn main() -> Result<(), Error> {
             };
 
             let start = Instant::now();
-            let result = pool.execute(user_module, request).await;
+            let result = pool
+                .execute(
+                    RuntimeOptions {
+                        module,
+                        timeout: Duration::from_secs(5),
+                        max_heap_size: Some(10 * 1024 * 1024),
+                    },
+                    request,
+                )
+                .await;
             let duration = start.elapsed();
             durations.lock().await.push(duration);
 

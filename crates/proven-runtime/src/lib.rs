@@ -1,8 +1,10 @@
+mod error;
 mod extensions;
 mod pool;
 mod runtime;
 mod worker;
 
+pub use error::*;
 pub use pool::*;
 pub use runtime::*;
 pub use worker::*;

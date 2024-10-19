@@ -1,10 +1,11 @@
-use crate::{ExecutionRequest, ExecutionResult, Worker};
+use crate::{Error, ExecutionRequest, ExecutionResult, RuntimeOptions, Worker};
 
 use std::collections::{HashMap, VecDeque};
+use std::fmt::Write;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use rustyscript::Error;
+use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
 
@@ -14,16 +15,13 @@ type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 
 type SendChannel = oneshot::Sender<Result<ExecutionResult, Error>>;
 
-type QueueItem = (
-    String,           // module
-    ExecutionRequest, // request
-    SendChannel,      // tx
-);
+type QueueItem = (RuntimeOptions, ExecutionRequest, SendChannel);
 type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
 
 pub struct Pool {
     workers: SharedWorkerMap,
+    known_hashes: Arc<Mutex<HashMap<String, RuntimeOptions>>>,
     max_workers: usize,
     total_workers: AtomicUsize,
     last_used: LastUsedMap,
@@ -41,6 +39,7 @@ impl Pool {
 
         let pool = Arc::new(Self {
             workers: Arc::new(Mutex::new(HashMap::new())),
+            known_hashes: Arc::new(Mutex::new(HashMap::new())),
             max_workers,
             total_workers: AtomicUsize::new(0),
             last_used: Arc::new(Mutex::new(HashMap::new())),
@@ -63,24 +62,29 @@ impl Pool {
     async fn start_queue_processor(self: Arc<Self>, mut queue_receiver: QueueReceiver) {
         let pool = Arc::clone(&self);
         let handle = tokio::spawn(async move {
-            'outer: while let Some((module, request, sender)) = queue_receiver.recv().await {
+            'outer: while let Some((runtime_options, request, sender)) = queue_receiver.recv().await
+            {
+                let options_hash = hash_options(&runtime_options);
                 let mut worker_map = self.workers.lock().await;
 
-                if let Some(workers) = worker_map.get_mut(&module) {
+                if let Some(workers) = worker_map.get_mut(&options_hash) {
                     if let Some(mut worker) = workers.pop() {
                         drop(worker_map); // Unlock the worker map
 
                         let result = worker.execute(request).await;
 
                         let mut worker_map = self.workers.lock().await;
-                        worker_map.entry(module.clone()).or_default().push(worker);
+                        worker_map
+                            .entry(options_hash.clone())
+                            .or_default()
+                            .push(worker);
 
                         drop(worker_map);
 
                         self.last_used
                             .lock()
                             .await
-                            .insert(module.to_string(), Instant::now());
+                            .insert(options_hash, Instant::now());
 
                         sender.send(result).unwrap();
                         continue 'outer;
@@ -96,17 +100,17 @@ impl Pool {
                 {
                     self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    let mut worker = Worker::new(module.to_string());
+                    let mut worker = Worker::new(runtime_options.clone());
                     let result = worker.execute(request).await;
 
-                    if let Err(rustyscript::Error::HeapExhausted) = result {
+                    if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
                         // Remove the worker from the pool if the heap is exhausted (can't recover)
                         self.total_workers.fetch_sub(1, Ordering::SeqCst);
                     } else {
                         self.workers
                             .lock()
                             .await
-                            .entry(module.to_string())
+                            .entry(options_hash.clone())
                             .or_default()
                             .push(worker);
                     }
@@ -114,12 +118,18 @@ impl Pool {
                     self.last_used
                         .lock()
                         .await
-                        .insert(module.to_string(), Instant::now());
+                        .insert(options_hash.clone(), Instant::now());
+
+                    self.known_hashes
+                        .lock()
+                        .await
+                        .insert(options_hash.clone(), runtime_options);
 
                     sender.send(result).unwrap();
                     continue 'outer;
                 } else {
-                    self.queue_request(module, request, sender, true).await;
+                    self.queue_request(runtime_options, request, sender, true)
+                        .await;
                 }
             }
         });
@@ -134,9 +144,9 @@ impl Pool {
             loop {
                 sleep(duration).await;
                 let mut overflow_queue = self.overflow_queue.lock().await;
-                while let Some((module, request, tx)) = overflow_queue.pop_front() {
+                while let Some((runtime_options, request, tx)) = overflow_queue.pop_front() {
                     drop(overflow_queue);
-                    self.queue_request(module, request, tx, true).await;
+                    self.queue_request(runtime_options, request, tx, true).await;
                     overflow_queue = self.overflow_queue.lock().await;
                 }
             }
@@ -146,28 +156,32 @@ impl Pool {
 
     pub async fn execute(
         self: Arc<Self>,
-        module: String,
+        runtime_options: RuntimeOptions,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult, Error> {
+        let options_hash = hash_options(&runtime_options);
         let (sender, reciever) = oneshot::channel();
 
         let mut worker_map = self.workers.lock().await;
 
-        if let Some(workers) = worker_map.get_mut(&module) {
+        if let Some(workers) = worker_map.get_mut(&options_hash) {
             if let Some(mut worker) = workers.pop() {
                 drop(worker_map); // Unlock the worker map
 
                 let result = worker.execute(request).await;
 
                 let mut worker_map = self.workers.lock().await;
-                worker_map.entry(module.clone()).or_default().push(worker);
+                worker_map
+                    .entry(options_hash.clone())
+                    .or_default()
+                    .push(worker);
 
                 drop(worker_map);
 
                 self.last_used
                     .lock()
                     .await
-                    .insert(module.to_string(), Instant::now());
+                    .insert(options_hash.to_string(), Instant::now());
 
                 return result;
             } else {
@@ -182,17 +196,17 @@ impl Pool {
         {
             self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-            let mut worker = Worker::new(module.to_string());
+            let mut worker = Worker::new(runtime_options.clone());
             let result = worker.execute(request).await;
 
-            if let Err(rustyscript::Error::HeapExhausted) = result {
+            if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
                 // Remove the worker from the pool if the heap is exhausted (can't recover)
                 self.total_workers.fetch_sub(1, Ordering::SeqCst);
             } else {
                 self.workers
                     .lock()
                     .await
-                    .entry(module.to_string())
+                    .entry(options_hash.to_string())
                     .or_default()
                     .push(worker);
             }
@@ -200,37 +214,118 @@ impl Pool {
             self.last_used
                 .lock()
                 .await
-                .insert(module.to_string(), Instant::now());
+                .insert(options_hash.to_string(), Instant::now());
+
+            self.known_hashes
+                .lock()
+                .await
+                .insert(options_hash.clone(), runtime_options);
 
             result
         } else {
-            self.queue_request(module, request, sender, false).await;
+            self.queue_request(runtime_options, request, sender, false)
+                .await;
             reciever.await.unwrap()
+        }
+    }
+
+    pub async fn execute_prehashed(
+        self: Arc<Self>,
+        options_hash: String,
+        request: ExecutionRequest,
+    ) -> Result<ExecutionResult, Error> {
+        match self.known_hashes.lock().await.get(&options_hash) {
+            Some(runtime_options) => {
+                let runtime_options = runtime_options.clone();
+                let (sender, reciever) = oneshot::channel();
+
+                let mut worker_map = self.workers.lock().await;
+
+                if let Some(workers) = worker_map.get_mut(&options_hash) {
+                    if let Some(mut worker) = workers.pop() {
+                        drop(worker_map); // Unlock the worker map
+
+                        let result = worker.execute(request).await;
+
+                        let mut worker_map = self.workers.lock().await;
+                        worker_map
+                            .entry(options_hash.clone())
+                            .or_default()
+                            .push(worker);
+
+                        drop(worker_map);
+
+                        self.last_used
+                            .lock()
+                            .await
+                            .insert(options_hash.to_string(), Instant::now());
+
+                        return result;
+                    } else {
+                        drop(worker_map);
+                    }
+                } else {
+                    drop(worker_map);
+                }
+
+                if self.total_workers.load(Ordering::SeqCst) < self.max_workers
+                    || self.maybe_kill_idle_worker().await
+                {
+                    self.total_workers.fetch_add(1, Ordering::SeqCst);
+
+                    let mut worker = Worker::new(runtime_options.clone());
+                    let result = worker.execute(request).await;
+
+                    if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
+                        // Remove the worker from the pool if the heap is exhausted (can't recover)
+                        self.total_workers.fetch_sub(1, Ordering::SeqCst);
+                    } else {
+                        self.workers
+                            .lock()
+                            .await
+                            .entry(options_hash.to_string())
+                            .or_default()
+                            .push(worker);
+                    }
+
+                    self.last_used
+                        .lock()
+                        .await
+                        .insert(options_hash.to_string(), Instant::now());
+
+                    result
+                } else {
+                    self.queue_request(runtime_options, request, sender, false)
+                        .await;
+                    reciever.await.unwrap()
+                }
+            }
+            None => Err(Error::HashUnknown),
         }
     }
 
     async fn queue_request(
         &self,
-        module: String,
+        runtime_options: RuntimeOptions,
         request: ExecutionRequest,
         tx: SendChannel,
         queue_front: bool,
     ) {
         match self.queue_sender.try_reserve() {
             Ok(permit) => {
-                permit.send((module, request, tx));
+                permit.send((runtime_options, request, tx));
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
                 if queue_front {
                     self.overflow_queue
                         .lock()
                         .await
-                        .push_front((module, request, tx));
+                        .push_front((runtime_options, request, tx));
                 } else {
                     self.overflow_queue
                         .lock()
                         .await
-                        .push_back((module, request, tx));
+                        .push_back((runtime_options, request, tx));
                 }
             }
             Err(e) => {
@@ -288,4 +383,22 @@ impl Pool {
 
         false
     }
+}
+
+fn hash_options(options: &RuntimeOptions) -> String {
+    let mut hasher = Sha256::new();
+
+    // Concatenate module, timeout, and max_heap_size
+    let mut data = options.module.clone();
+    writeln!(&mut data, "{:?}", options.timeout.as_millis()).unwrap();
+    writeln!(&mut data, "{:?}", options.max_heap_size).unwrap();
+
+    // Hash the concatenated string
+    hasher.update(data);
+    let result = hasher.finalize();
+
+    // Convert the hash result to a hexadecimal string
+    let hash_string = format!("{:x}", result);
+
+    hash_string
 }

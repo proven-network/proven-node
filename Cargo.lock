@@ -4044,11 +4044,13 @@ name = "proven-runtime"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "derive_more",
  "futures",
  "once_cell",
  "rustyscript",
  "serde",
  "serde_json",
+ "sha2 0.10.8",
  "tokio",
 ]
 

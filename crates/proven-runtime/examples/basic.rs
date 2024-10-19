@@ -1,5 +1,7 @@
-use proven_runtime::{Context, ExecutionRequest, Runtime};
-use rustyscript::Error;
+use proven_runtime::{Context, Error, ExecutionRequest, Runtime, RuntimeOptions};
+
+use std::time::Duration;
+
 use serde_json::json;
 
 fn main() -> Result<(), Error> {
@@ -16,7 +18,11 @@ fn main() -> Result<(), Error> {
         }
     "#;
 
-    let mut runtime = Runtime::new(user_module)?;
+    let mut runtime = Runtime::new(RuntimeOptions {
+        module: user_module.to_string(),
+        timeout: Duration::from_secs(5),
+        max_heap_size: Some(10 * 1024 * 1024),
+    })?;
 
     let request = ExecutionRequest {
         context: Context {

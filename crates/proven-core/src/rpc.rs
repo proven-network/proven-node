@@ -6,7 +6,7 @@ use std::sync::Arc;
 use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
-use proven_runtime::{Context, ExecutionRequest, ExecutionResult, Pool};
+use proven_runtime::{Context, ExecutionRequest, ExecutionResult, Pool, RuntimeOptions};
 use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
 
@@ -30,21 +30,25 @@ pub struct RpcHandler {
     runtime_pool: Arc<Pool>,
 }
 
-
-type Module = String;
+type OptionsHash = String;
 type HandlerName = String;
 type Args = Vec<serde_json::Value>;
+type Module = String;
+type TimeoutMillis = u32;
+type MaxHeapSizeMbs = u16;
 #[repr(u8)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub enum Request {
     WhoAmI = 0x0,
-    Execute(Module, HandlerName, Args) = 0x1,
-    Watch(String) = 0x2,
+    Execute(OptionsHash, HandlerName, Args) = 0x1,
+    ExecuteWithOptions(Module, TimeoutMillis, MaxHeapSizeMbs, HandlerName, Args) = 0x2,
+    Watch(String) = 0x3,
 }
 
 #[derive(Debug, Serialize)]
 pub enum Response {
     Ok,
+    ExecuteHashUnknown,
     ExecuteSuccess(ExecutionResult),
     ExecuteFailure(String),
     WhoAmI(WhoAmIResponse),
@@ -115,7 +119,7 @@ impl RpcHandler {
                 identity_address: self.identity_address.clone(),
                 account_addresses: self.account_addresses.clone(),
             })),
-            Request::Execute(module, handler_name, args) => {
+            Request::Execute(options_hash, handler_name, args) => {
                 let pool = Arc::clone(&self.runtime_pool);
 
                 let request = ExecutionRequest {
@@ -127,10 +131,42 @@ impl RpcHandler {
                     args,
                 };
 
-                match pool.execute(module, request).await {
-                    Ok(result) => {
-                        Ok(Response::ExecuteSuccess(result))
-                    }
+                match pool.execute_prehashed(options_hash, request).await {
+                    Ok(result) => Ok(Response::ExecuteSuccess(result)),
+                    Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
+                }
+            }
+            Request::ExecuteWithOptions(
+                module,
+                timeout_millis,
+                max_heap_mbs,
+                handler_name,
+                args,
+            ) => {
+                let pool = Arc::clone(&self.runtime_pool);
+
+                let request = ExecutionRequest {
+                    context: Context {
+                        identity: Some(self.identity_address.clone()),
+                        accounts: Some(self.account_addresses.clone()),
+                    },
+                    handler_name,
+                    args,
+                };
+
+                match pool
+                    .execute(
+                        RuntimeOptions {
+                            module,
+                            timeout: std::time::Duration::from_millis(timeout_millis as u64),
+                            max_heap_size: Some(max_heap_mbs as usize * 1024 * 1024),
+                        },
+                        request,
+                    )
+                    .await
+                {
+                    Ok(result) => Ok(Response::ExecuteSuccess(result)),
+                    Err(proven_runtime::Error::HashUnknown) => Ok(Response::ExecuteHashUnknown),
                     Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
                 }
             }

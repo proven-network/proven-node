@@ -1,8 +1,7 @@
-use crate::{ExecutionRequest, ExecutionResult, Runtime};
+use crate::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 
 use std::thread;
 
-use rustyscript::Error;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -18,11 +17,11 @@ pub enum WorkerRequest {
 }
 
 impl Worker {
-    pub fn new(module: String) -> Self {
+    pub fn new(runtime_options: RuntimeOptions) -> Self {
         let (sender, mut receiver) = mpsc::channel(1);
 
         thread::spawn(move || {
-            let mut runtime = Runtime::new(&module).unwrap();
+            let mut runtime = Runtime::new(runtime_options).unwrap();
 
             while let Some(request) = receiver.blocking_recv() {
                 match request {
