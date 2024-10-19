@@ -390,8 +390,8 @@ pub fn hash_options(options: &RuntimeOptions) -> String {
 
     // Concatenate module, timeout, and max_heap_size
     let mut data = options.module.clone();
-    writeln!(&mut data, "{:?}", options.timeout.as_millis()).unwrap();
-    writeln!(&mut data, "{:?}", options.max_heap_size).unwrap();
+    writeln!(&mut data, "{:?}", options.timeout_millis).unwrap();
+    write!(&mut data, "{:?}", options.max_heap_mbs).unwrap();
 
     // Hash the concatenated string
     hasher.update(data);

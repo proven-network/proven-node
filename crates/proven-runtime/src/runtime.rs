@@ -10,9 +10,9 @@ use tokio::time::Instant;
 
 #[derive(Clone)]
 pub struct RuntimeOptions {
-    pub max_heap_size: Option<usize>,
+    pub max_heap_mbs: u16,
     pub module: String,
-    pub timeout: Duration,
+    pub timeout_millis: u32,
 }
 
 pub struct Runtime {
@@ -25,8 +25,8 @@ impl Runtime {
         let mut schema_whlist = HashSet::with_capacity(1);
         schema_whlist.insert("proven:".to_string());
         let mut runtime = rustyscript::Runtime::new(RustyScriptOptions {
-            timeout: options.timeout,
-            max_heap_size: options.max_heap_size,
+            timeout: Duration::from_millis(options.timeout_millis as u64),
+            max_heap_size: Some(options.max_heap_mbs as usize * 1024 * 1024),
             schema_whlist,
             extensions: vec![
                 console_ext::init_ops_and_esm(),

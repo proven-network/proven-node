@@ -30,8 +30,8 @@ async fn main() -> Result<(), Error> {
 
     let runtime_options = RuntimeOptions {
         module: module.to_string(),
-        timeout: Duration::from_secs(5),
-        max_heap_size: Some(10 * 1024 * 1024),
+        max_heap_mbs: 10,
+        timeout_millis: 5000,
     };
     let options_hash = hash_options(&runtime_options);
 

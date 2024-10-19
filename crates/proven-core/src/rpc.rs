@@ -159,8 +159,8 @@ impl RpcHandler {
                     .execute(
                         RuntimeOptions {
                             module,
-                            timeout: std::time::Duration::from_millis(timeout_millis as u64),
-                            max_heap_size: Some(max_heap_mbs as usize * 1024 * 1024),
+                            timeout_millis,
+                            max_heap_mbs,
                         },
                         request,
                     )
