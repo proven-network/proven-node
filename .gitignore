@@ -1,3 +1,4 @@
 /target
 /kernel/build
 /kernel/output
+.vscode
