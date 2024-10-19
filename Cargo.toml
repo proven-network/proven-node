@@ -29,6 +29,7 @@ members = [
     "crates/proven-sessions",
     "crates/proven-store",
     "crates/proven-store-asm",
+    "crates/proven-store-fs",
     "crates/proven-store-memory",
     "crates/proven-store-nats",
     "crates/proven-store-s3-sse-c",

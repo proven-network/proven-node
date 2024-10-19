@@ -11,6 +11,7 @@ proven-attestation-dev = { path = "../proven-attestation-dev" }
 proven-http-insecure = { path = "../proven-http-insecure" }
 proven-sessions = { path = "../proven-sessions" }
 proven-store = { path = "../proven-store" }
+proven-store-fs = { path = "../proven-store-fs" }
 proven-store-memory = { path = "../proven-store-memory" }
 proven-core = { path = "../proven-core" }
 radix-common = "1.2.0"

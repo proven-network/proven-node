@@ -3925,6 +3925,7 @@ dependencies = [
  "proven-http-insecure",
  "proven-sessions",
  "proven-store",
+ "proven-store-fs",
  "proven-store-memory",
  "radix-common",
  "tokio",
@@ -4088,6 +4089,16 @@ dependencies = [
  "derive_more",
  "proven-store",
  "serde_json",
+]
+
+[[package]]
+name = "proven-store-fs"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "derive_more",
+ "proven-store",
+ "tokio",
 ]
 
 [[package]]

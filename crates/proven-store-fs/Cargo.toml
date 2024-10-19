@@ -1,0 +1,10 @@
+[package]
+name = "proven-store-fs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.82"
+derive_more = { version = "1.0.0", features = ["from"] }
+proven-store = { path = "../proven-store" }
+tokio = "1.36.0"

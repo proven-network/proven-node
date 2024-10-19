@@ -8,6 +8,7 @@ use proven_attestation_dev::DevAttestor;
 use proven_core::{Core, NewCoreArguments};
 use proven_http_insecure::InsecureHttpServer;
 use proven_sessions::{SessionManagement, SessionManager};
+use proven_store_fs::FsStore;
 use proven_store_memory::MemoryStore;
 use radix_common::network::NetworkDefinition;
 use tracing::{error, info, Level};
@@ -31,7 +32,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
     let challenge_store = MemoryStore::new();
-    let sessions_store = MemoryStore::new();
+    let sessions_store = FsStore::new("/tmp/proven/sessions".into());
     let network_definition = NetworkDefinition::stokenet();
     let dev_attestor = DevAttestor::new();
 
