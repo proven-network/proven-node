@@ -385,7 +385,7 @@ impl Pool {
     }
 }
 
-fn hash_options(options: &RuntimeOptions) -> String {
+pub fn hash_options(options: &RuntimeOptions) -> String {
     let mut hasher = Sha256::new();
 
     // Concatenate module, timeout, and max_heap_size
