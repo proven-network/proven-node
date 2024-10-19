@@ -121,7 +121,7 @@ impl RpcHandler {
                 let request = ExecutionRequest {
                     context: Context {
                         identity: Some(self.identity_address.clone()),
-                        accounts: Some(vec![]),
+                        accounts: Some(self.account_addresses.clone()),
                     },
                     handler_name,
                     args: vec![],
