@@ -9,7 +9,6 @@ use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_runtime::{Context, ExecutionRequest, ExecutionResult, Pool};
 use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 #[derive(Debug)]
 pub enum RpcHandlerError {
@@ -43,7 +42,7 @@ pub enum Request {
 pub enum Response {
     Ok,
     ExecuteSuccess(ExecutionResult),
-    ExecuteFailure,
+    ExecuteFailure(String),
     WhoAmI(WhoAmIResponse),
 }
 
@@ -104,9 +103,6 @@ impl RpcHandler {
             })
             .map_err(|_| RpcHandlerError::SignatureInvalid)?;
 
-        let payload_hex = hex::encode(payload);
-        println!("Payload: {:?}", payload_hex);
-
         let method: Request =
             serde_cbor::from_slice(payload).map_err(|_| RpcHandlerError::PayloadInvalid)?;
 
@@ -129,10 +125,9 @@ impl RpcHandler {
 
                 match pool.execute(module, request).await {
                     Ok(result) => {
-                        info!("Successful execution: {:?}", result);
                         Ok(Response::ExecuteSuccess(result))
                     }
-                    Err(_) => Ok(Response::ExecuteFailure),
+                    Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
                 }
             }
             Request::Watch(_) => Ok(Response::Ok),
