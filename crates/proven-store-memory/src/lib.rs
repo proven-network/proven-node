@@ -85,21 +85,4 @@ impl Store for MemoryStore {
         map.insert(self.get_key(key), bytes);
         Ok(())
     }
-
-    fn del_blocking(&self, key: String) -> Result<(), Self::SE> {
-        let mut map = self.map.lock().unwrap();
-        map.remove(&self.get_key(key));
-        Ok(())
-    }
-
-    fn get_blocking(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
-        let map = self.map.lock().unwrap();
-        Ok(map.get(&self.get_key(key)).cloned())
-    }
-
-    fn put_blocking(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
-        let mut map = self.map.lock().unwrap();
-        map.insert(self.get_key(key), bytes);
-        Ok(())
-    }
 }

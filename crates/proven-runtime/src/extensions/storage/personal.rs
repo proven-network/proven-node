@@ -1,60 +1,147 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use proven_store::Store;
 
-use deno_core::{extension, op2, OpDecl};
+use deno_core::{extension, op2, OpDecl, OpState};
 
-#[op2]
+#[op2(async)]
 #[buffer]
-pub fn op_get_personal_bytes<PS: Store>(
-    #[state] personal_store: &mut Option<PS>,
+pub async fn op_get_personal_bytes<PS: Store>(
+    state: Rc<RefCell<OpState>>,
     #[string] key: String,
 ) -> Option<Vec<u8>> {
-    if let Some(store) = personal_store.as_ref() {
-        store.get_blocking(key).unwrap_or_default()
+    let personal_store = {
+        loop {
+            let personal_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<Option<PS>>()
+            };
+
+            match personal_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    };
+
+    let result = if let Some(store) = personal_store.as_ref() {
+        store.get(key).await.unwrap_or_default()
     } else {
         None
-    }
+    };
+
+    state.borrow_mut().put(personal_store);
+
+    result
 }
 
-#[op2(fast)]
-pub fn op_set_personal_bytes<PS: Store>(
-    #[state] personal_store: &mut Option<PS>,
+#[op2(async)]
+pub async fn op_set_personal_bytes<PS: Store>(
+    state: Rc<RefCell<OpState>>,
     #[string] key: String,
     #[arraybuffer(copy)] value: Vec<u8>,
 ) -> bool {
-    if let Some(store) = personal_store.as_mut() {
-        store.put_blocking(key, value).is_ok()
+    let personal_store = {
+        loop {
+            let personal_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<Option<PS>>()
+            };
+
+            match personal_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    };
+
+    let result = if let Some(store) = personal_store.as_ref() {
+        store.put(key, value).await.is_ok()
     } else {
         false
-    }
+    };
+
+    state.borrow_mut().put(personal_store);
+
+    result
 }
 
-#[op2]
+#[op2(async)]
 #[string]
-pub fn op_get_personal_string<PS: Store>(
-    #[state] personal_store: &mut Option<PS>,
+pub async fn op_get_personal_string<PS: Store>(
+    state: Rc<RefCell<OpState>>,
     #[string] key: String,
 ) -> Option<String> {
-    if let Some(store) = personal_store.as_ref() {
-        match store.get_blocking(key) {
+    let personal_store = {
+        loop {
+            let personal_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<Option<PS>>()
+            };
+
+            match personal_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    };
+
+    let result = if let Some(store) = personal_store.as_ref() {
+        match store.get(key).await {
             Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
             _ => None,
         }
     } else {
         None
-    }
+    };
+
+    state.borrow_mut().put(personal_store);
+
+    result
 }
 
-#[op2(fast)]
-pub fn op_set_personal_string<PS: Store>(
-    #[state] personal_store: &mut Option<PS>,
+#[op2(async)]
+pub async fn op_set_personal_string<PS: Store>(
+    state: Rc<RefCell<OpState>>,
     #[string] key: String,
     #[string] value: String,
 ) -> bool {
-    if let Some(store) = personal_store.as_mut() {
-        store.put_blocking(key, value.as_bytes().to_vec()).is_ok()
+    let personal_store = {
+        loop {
+            let personal_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<Option<PS>>()
+            };
+
+            match personal_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    };
+
+    let result = if let Some(store) = personal_store.as_ref() {
+        store.put(key, value.as_bytes().to_vec()).await.is_ok()
     } else {
         false
-    }
+    };
+
+    state.borrow_mut().put(personal_store);
+
+    result
 }
 
 extension!(
@@ -63,7 +150,7 @@ extension!(
     ops_fn = get_ops<PS>,
 );
 
-fn get_ops<PS: Store + 'static>() -> Vec<OpDecl> {
+fn get_ops<PS: Store>() -> Vec<OpDecl> {
     let get_personal_bytes = op_get_personal_bytes::<PS>();
     let set_personal_bytes = op_set_personal_bytes::<PS>();
     let get_personal_string = op_get_personal_string::<PS>();

@@ -86,16 +86,4 @@ impl Store for AsmStore {
 
         self.update_secret_map(secret_map).await
     }
-
-    fn del_blocking(&self, key: String) -> Result<(), Self::SE> {
-        tokio::runtime::Handle::current().block_on(self.del(key))
-    }
-
-    fn get_blocking(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
-        tokio::runtime::Handle::current().block_on(self.get(key))
-    }
-
-    fn put_blocking(&self, key: String, value: Vec<u8>) -> Result<(), Self::SE> {
-        tokio::runtime::Handle::current().block_on(self.put(key, value))
-    }
 }
