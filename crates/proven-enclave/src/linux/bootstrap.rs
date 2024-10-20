@@ -822,13 +822,21 @@ impl Bootstrap {
 
         let application_store = NatsStore::new(
             nats_client.clone(),
-            "applications".to_string(),
+            "application".to_string(),
             Duration::MAX,
         )
         .await?;
 
+        let personal_store =
+            NatsStore::new(nats_client.clone(), "personal".to_string(), Duration::MAX).await?;
+
+        let nft_store =
+            NatsStore::new(nats_client.clone(), "nft".to_string(), Duration::MAX).await?;
+
         let core = Core::new(NewCoreArguments { session_manager });
-        let core_handle = core.start(http_server, application_store).await?;
+        let core_handle = core
+            .start(http_server, application_store, personal_store, nft_store)
+            .await?;
 
         self.core = Some(core);
         self.core_handle = Some(core_handle);
