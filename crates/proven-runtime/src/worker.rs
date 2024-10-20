@@ -8,10 +8,11 @@ use proven_store::Store2;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-pub struct Worker<AS: Store1, PS: Store2> {
+pub struct Worker<AS: Store1, PS: Store2, NS: Store2> {
     sender: mpsc::Sender<WorkerRequest>,
     _marker: PhantomData<AS>,
     _marker2: PhantomData<PS>,
+    _marker3: PhantomData<NS>,
 }
 
 pub enum WorkerRequest {
@@ -21,13 +22,23 @@ pub enum WorkerRequest {
     },
 }
 
-impl<AS: Store1, PS: Store2> Worker<AS, PS> {
-    pub fn new(runtime_options: RuntimeOptions, application_store: AS, personal_store: PS) -> Self {
+impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
+    pub fn new(
+        runtime_options: RuntimeOptions,
+        application_store: AS,
+        personal_store: PS,
+        nft_store: NS,
+    ) -> Self {
         let (sender, mut receiver) = mpsc::channel(1);
 
         thread::spawn(move || {
-            let mut runtime =
-                Runtime::new(runtime_options, application_store, personal_store).unwrap();
+            let mut runtime = Runtime::new(
+                runtime_options,
+                application_store,
+                personal_store,
+                nft_store,
+            )
+            .unwrap();
 
             while let Some(request) = receiver.blocking_recv() {
                 match request {
@@ -46,6 +57,7 @@ impl<AS: Store1, PS: Store2> Worker<AS, PS> {
             sender,
             _marker: PhantomData,
             _marker2: PhantomData,
+            _marker3: PhantomData,
         }
     }
 

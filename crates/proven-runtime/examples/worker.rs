@@ -29,6 +29,7 @@ async fn main() -> Result<(), Error> {
 
     let application_store = MemoryStore::new();
     let personal_store = MemoryStore::new();
+    let nft_store = MemoryStore::new();
     let worker = Arc::new(Mutex::new(Worker::new(
         RuntimeOptions {
             module,
@@ -37,6 +38,7 @@ async fn main() -> Result<(), Error> {
         },
         application_store,
         personal_store,
+        nft_store,
     )));
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));

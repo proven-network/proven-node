@@ -51,8 +51,9 @@ async fn main() -> Result<()> {
 
     let application_store = FsStore::new("/tmp/proven/application".into());
     let personal_store = FsStore::new("/tmp/proven/personal".into());
+    let nft_store = FsStore::new("/tmp/proven/nft".into());
     let core_handle = core
-        .start(http_server, application_store, personal_store)
+        .start(http_server, application_store, personal_store, nft_store)
         .await?;
 
     tokio::select! {

@@ -13,7 +13,8 @@ static EXECUTIONS: usize = 100;
 async fn main() -> Result<(), Error> {
     let application_store = MemoryStore::new();
     let personal_store = MemoryStore::new();
-    let pool = Pool::new(100, application_store, personal_store).await;
+    let nft_store = MemoryStore::new();
+    let pool = Pool::new(100, application_store, personal_store, nft_store).await;
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 

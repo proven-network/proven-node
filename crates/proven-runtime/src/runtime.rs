@@ -15,18 +15,20 @@ pub struct RuntimeOptions {
     pub timeout_millis: u32,
 }
 
-pub struct Runtime<AS: Store1, PS: Store2> {
+pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
     module_handle: rustyscript::ModuleHandle,
     runtime: rustyscript::Runtime,
     application_store: AS,
     personal_store: PS,
+    nft_store: NS,
 }
 
-impl<AS: Store1, PS: Store2> Runtime<AS, PS> {
+impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
     pub fn new(
         options: RuntimeOptions,
         application_store: AS,
         personal_store: PS,
+        nft_store: NS,
     ) -> Result<Self, Error> {
         let mut schema_whlist = HashSet::with_capacity(1);
         schema_whlist.insert("proven:".to_string());
@@ -40,6 +42,7 @@ impl<AS: Store1, PS: Store2> Runtime<AS, PS> {
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
                 storage_application_ext::init_ops::<AS::Scoped>(),
                 storage_personal_ext::init_ops::<<<PS as Store2>::Scoped as Store1>::Scoped>(),
+                storage_nft_ext::init_ops_and_esm::<NS::Scoped>(),
                 storage_ext::init_ops_and_esm(),
             ],
             ..Default::default()
@@ -53,6 +56,7 @@ impl<AS: Store1, PS: Store2> Runtime<AS, PS> {
             runtime,
             application_store,
             personal_store,
+            nft_store,
         })
     }
 
@@ -70,7 +74,6 @@ impl<AS: Store1, PS: Store2> Runtime<AS, PS> {
         self.runtime.put(ConsoleState::default())?;
 
         // Set the store for the storage extension
-
         let personal_store = match context.identity.as_ref() {
             Some(current_identity) => Some(
                 self.personal_store
@@ -80,11 +83,16 @@ impl<AS: Store1, PS: Store2> Runtime<AS, PS> {
             ),
             None => None,
         };
-
         self.runtime.put(personal_store)?;
 
         self.runtime.put(
             self.application_store
+                .clone()
+                .scope(context.dapp_definition_address.clone()),
+        )?;
+
+        self.runtime.put(
+            self.nft_store
                 .clone()
                 .scope(context.dapp_definition_address),
         )?;

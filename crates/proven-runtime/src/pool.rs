@@ -10,8 +10,8 @@ use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
 
-type WorkerMap<AS, PS> = HashMap<String, Vec<Worker<AS, PS>>>;
-type SharedWorkerMap<AS, PS> = Arc<Mutex<WorkerMap<AS, PS>>>;
+type WorkerMap<AS, PS, NS> = HashMap<String, Vec<Worker<AS, PS, NS>>>;
+type SharedWorkerMap<AS, PS, NS> = Arc<Mutex<WorkerMap<AS, PS, NS>>>;
 type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 
 type SendChannel = oneshot::Sender<Result<ExecutionResult, Error>>;
@@ -20,10 +20,11 @@ type QueueItem = (RuntimeOptions, ExecutionRequest, SendChannel);
 type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
 
-pub struct Pool<AS: Store1, PS: Store2> {
+pub struct Pool<AS: Store1, PS: Store2, NS: Store2> {
     application_store: AS,
     personal_store: PS,
-    workers: SharedWorkerMap<AS, PS>,
+    nft_store: NS,
+    workers: SharedWorkerMap<AS, PS, NS>,
     known_hashes: Arc<Mutex<HashMap<String, RuntimeOptions>>>,
     max_workers: usize,
     total_workers: AtomicUsize,
@@ -36,13 +37,19 @@ pub struct Pool<AS: Store1, PS: Store2> {
     last_killed: Arc<Mutex<Option<Instant>>>,
 }
 
-impl<AS: Store1, PS: Store2> Pool<AS, PS> {
-    pub async fn new(max_workers: usize, application_store: AS, personal_store: PS) -> Arc<Self> {
+impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
+    pub async fn new(
+        max_workers: usize,
+        application_store: AS,
+        personal_store: PS,
+        nft_store: NS,
+    ) -> Arc<Self> {
         let (queue_sender, queue_receiver) = mpsc::channel(max_workers * 10);
 
         let pool = Arc::new(Self {
             application_store,
             personal_store,
+            nft_store,
             workers: Arc::new(Mutex::new(HashMap::new())),
             known_hashes: Arc::new(Mutex::new(HashMap::new())),
             max_workers,
@@ -105,10 +112,11 @@ impl<AS: Store1, PS: Store2> Pool<AS, PS> {
                 {
                     self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    let mut worker = Worker::<AS, PS>::new(
+                    let mut worker = Worker::<AS, PS, NS>::new(
                         runtime_options.clone(),
                         self.application_store.clone(),
                         self.personal_store.clone(),
+                        self.nft_store.clone(),
                     );
                     let result = worker.execute(request).await;
 
@@ -205,10 +213,11 @@ impl<AS: Store1, PS: Store2> Pool<AS, PS> {
         {
             self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-            let mut worker = Worker::<AS, PS>::new(
+            let mut worker = Worker::<AS, PS, NS>::new(
                 runtime_options.clone(),
                 self.application_store.clone(),
                 self.personal_store.clone(),
+                self.nft_store.clone(),
             );
             let result = worker.execute(request).await;
 
@@ -286,10 +295,11 @@ impl<AS: Store1, PS: Store2> Pool<AS, PS> {
                 {
                     self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    let mut worker = Worker::<AS, PS>::new(
+                    let mut worker = Worker::<AS, PS, NS>::new(
                         runtime_options.clone(),
                         self.application_store.clone(),
                         self.personal_store.clone(),
+                        self.nft_store.clone(),
                     );
                     let result = worker.execute(request).await;
 

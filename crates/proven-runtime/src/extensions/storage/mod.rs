@@ -1,7 +1,9 @@
 mod application;
+mod nft;
 mod personal;
 
 pub use application::storage_application_ext;
+pub use nft::storage_nft_ext;
 pub use personal::storage_personal_ext;
 
 use deno_core::extension;

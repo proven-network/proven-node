@@ -22,14 +22,14 @@ pub enum RpcHandlerError {
     VerifyingKeyInvalid,
 }
 
-pub struct RpcHandler<AS: Store1, PS: Store2> {
+pub struct RpcHandler<AS: Store1, PS: Store2, NS: Store2> {
     aad: Vec<u8>,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
     dapp_definition_address: String,
     identity_address: String,
     account_addresses: Vec<String>,
-    runtime_pool: Arc<Pool<AS, PS>>,
+    runtime_pool: Arc<Pool<AS, PS, NS>>,
 }
 
 type OptionsHash = String;
@@ -62,8 +62,11 @@ pub struct WhoAmIResponse {
     pub account_addresses: Vec<String>,
 }
 
-impl<AS: Store1, PS: Store2> RpcHandler<AS, PS> {
-    pub fn new(session: Session, runtime_pool: Arc<Pool<AS, PS>>) -> Result<Self, RpcHandlerError> {
+impl<AS: Store1, PS: Store2, NS: Store2> RpcHandler<AS, PS, NS> {
+    pub fn new(
+        session: Session,
+        runtime_pool: Arc<Pool<AS, PS, NS>>,
+    ) -> Result<Self, RpcHandlerError> {
         let signing_key_bytes: [u8; 32] = session
             .signing_key
             .try_into()

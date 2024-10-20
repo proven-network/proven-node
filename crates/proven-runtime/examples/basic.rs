@@ -20,6 +20,7 @@ fn main() -> Result<(), Error> {
 
     let application_store = MemoryStore::new();
     let personal_store = MemoryStore::new();
+    let nft_store = MemoryStore::new();
     let mut runtime = Runtime::new(
         RuntimeOptions {
             module: user_module.to_string(),
@@ -28,6 +29,7 @@ fn main() -> Result<(), Error> {
         },
         application_store,
         personal_store,
+        nft_store,
     )?;
 
     let request = ExecutionRequest {

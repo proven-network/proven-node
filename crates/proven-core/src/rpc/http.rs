@@ -18,9 +18,14 @@ struct QueryParams {
     session: String,
 }
 
-pub async fn create_rpc_router<T: SessionManagement + 'static, AS: Store1, PS: Store2>(
+pub async fn create_rpc_router<
+    T: SessionManagement + 'static,
+    AS: Store1,
+    PS: Store2,
+    NS: Store2,
+>(
     session_manager: T,
-    runtime_pool: Arc<Pool<AS, PS>>,
+    runtime_pool: Arc<Pool<AS, PS, NS>>,
 ) -> Router {
     Router::new().route(
         "/rpc",

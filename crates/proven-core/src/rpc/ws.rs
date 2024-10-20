@@ -20,9 +20,14 @@ struct QueryParams {
     session: String,
 }
 
-pub async fn create_rpc_router<T: SessionManagement + 'static, AS: Store1, PS: Store2>(
+pub async fn create_rpc_router<
+    T: SessionManagement + 'static,
+    AS: Store1,
+    PS: Store2,
+    NS: Store2,
+>(
     session_manager: T,
-    runtime_pool: Arc<Pool<AS, PS>>,
+    runtime_pool: Arc<Pool<AS, PS, NS>>,
 ) -> Router {
     Router::new().route(
         "/ws",
@@ -59,9 +64,9 @@ async fn handle_socket_error(mut socket: WebSocket, reason: Cow<'static, str>) {
         .ok();
 }
 
-async fn handle_socket<AS: Store1, PS: Store2>(
+async fn handle_socket<AS: Store1, PS: Store2, NS: Store2>(
     socket: WebSocket,
-    mut rpc_handler: RpcHandler<AS, PS>,
+    mut rpc_handler: RpcHandler<AS, PS, NS>,
 ) {
     let (mut sender, mut receiver) = socket.split();
 
