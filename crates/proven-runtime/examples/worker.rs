@@ -30,16 +30,20 @@ async fn main() -> Result<(), Error> {
     let application_store = MemoryStore::new();
     let personal_store = MemoryStore::new();
     let nft_store = MemoryStore::new();
-    let worker = Arc::new(Mutex::new(Worker::new(
-        RuntimeOptions {
-            module,
-            max_heap_mbs: 10,
-            timeout_millis: 5000,
-        },
-        application_store,
-        personal_store,
-        nft_store,
-    )));
+    let worker = Arc::new(Mutex::new(
+        Worker::new(
+            RuntimeOptions {
+                module,
+                max_heap_mbs: 10,
+                timeout_millis: 5000,
+            },
+            application_store,
+            personal_store,
+            nft_store,
+        )
+        .await
+        .unwrap(),
+    ));
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 

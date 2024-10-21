@@ -112,38 +112,53 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
                 {
                     self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    let mut worker = Worker::<AS, PS, NS>::new(
+                    match Worker::<AS, PS, NS>::new(
                         runtime_options.clone(),
                         self.application_store.clone(),
                         self.personal_store.clone(),
                         self.nft_store.clone(),
-                    );
-                    let result = worker.execute(request).await;
+                    )
+                    .await
+                    {
+                        Ok(mut worker) => {
+                            let result = worker.execute(request).await;
 
-                    if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
-                        // Remove the worker from the pool if the heap is exhausted (can't recover)
-                        self.total_workers.fetch_sub(1, Ordering::SeqCst);
-                    } else {
-                        self.workers
-                            .lock()
-                            .await
-                            .entry(options_hash.clone())
-                            .or_default()
-                            .push(worker);
+                            if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) =
+                                result
+                            {
+                                // Remove the worker from the pool if the heap is exhausted (can't recover)
+                                self.total_workers.fetch_sub(1, Ordering::SeqCst);
+                            } else {
+                                self.workers
+                                    .lock()
+                                    .await
+                                    .entry(options_hash.clone())
+                                    .or_default()
+                                    .push(worker);
+                            }
+
+                            self.last_used
+                                .lock()
+                                .await
+                                .insert(options_hash.clone(), Instant::now());
+
+                            self.known_hashes
+                                .lock()
+                                .await
+                                .insert(options_hash.clone(), runtime_options);
+
+                            sender.send(result).unwrap();
+                            continue 'outer;
+                        }
+                        Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) => {
+                            // Remove the worker from the pool if the heap is exhausted (can't recover)
+                            self.total_workers.fetch_sub(1, Ordering::SeqCst);
+                        }
+                        Err(e) => {
+                            sender.send(Err(e)).unwrap();
+                            continue 'outer;
+                        }
                     }
-
-                    self.last_used
-                        .lock()
-                        .await
-                        .insert(options_hash.clone(), Instant::now());
-
-                    self.known_hashes
-                        .lock()
-                        .await
-                        .insert(options_hash.clone(), runtime_options);
-
-                    sender.send(result).unwrap();
-                    continue 'outer;
                 } else {
                     self.queue_request(runtime_options, request, sender, true)
                         .await;
@@ -218,7 +233,8 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
                 self.application_store.clone(),
                 self.personal_store.clone(),
                 self.nft_store.clone(),
-            );
+            )
+            .await?;
             let result = worker.execute(request).await;
 
             if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
@@ -300,7 +316,8 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
                         self.application_store.clone(),
                         self.personal_store.clone(),
                         self.nft_store.clone(),
-                    );
+                    )
+                    .await?;
                     let result = worker.execute(request).await;
 
                     if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
@@ -428,4 +445,143 @@ pub fn hash_options(options: &RuntimeOptions) -> String {
     let hash_string = format!("{:x}", result);
 
     hash_string
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Context;
+
+    use proven_store_memory::MemoryStore;
+
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_pool_creation() {
+        let application_store = MemoryStore::new();
+        let personal_store = MemoryStore::new();
+        let nft_store = MemoryStore::new();
+
+        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
+        assert_eq!(pool.max_workers, 10);
+        assert_eq!(pool.total_workers.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn test_execute() {
+        let application_store = MemoryStore::new();
+        let personal_store = MemoryStore::new();
+        let nft_store = MemoryStore::new();
+
+        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
+
+        let runtime_options = RuntimeOptions {
+            module: "export const test = (a, b) => a + b;".to_string(),
+            timeout_millis: 1000,
+            max_heap_mbs: 10,
+        };
+        let request = ExecutionRequest {
+            context: Context {
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                identity: None,
+                accounts: None,
+            },
+            handler_name: "test".to_string(),
+            args: vec![json!(10), json!(20)],
+        };
+
+        let result = pool.execute(runtime_options, request).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_execute_prehashed() {
+        let application_store = MemoryStore::new();
+        let personal_store = MemoryStore::new();
+        let nft_store = MemoryStore::new();
+
+        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
+
+        let runtime_options = RuntimeOptions {
+            module: "export const test = (a, b) => a + b;".to_string(),
+            timeout_millis: 1000,
+            max_heap_mbs: 10,
+        };
+        let options_hash = hash_options(&runtime_options);
+        pool.known_hashes
+            .lock()
+            .await
+            .insert(options_hash.clone(), runtime_options.clone());
+
+        let request = ExecutionRequest {
+            context: Context {
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                identity: None,
+                accounts: None,
+            },
+            handler_name: "test".to_string(),
+            args: vec![json!(10), json!(20)],
+        };
+
+        let result = pool.execute_prehashed(options_hash, request).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_queue_request() {
+        let application_store = MemoryStore::new();
+        let personal_store = MemoryStore::new();
+        let nft_store = MemoryStore::new();
+
+        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
+
+        let runtime_options = RuntimeOptions {
+            module: "export const test = (a, b) => a + b;".to_string(),
+            timeout_millis: 1000,
+            max_heap_mbs: 10,
+        };
+        let request = ExecutionRequest {
+            context: Context {
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                identity: None,
+                accounts: None,
+            },
+            handler_name: "test".to_string(),
+            args: vec![json!(10), json!(20)],
+        };
+        let (tx, rx) = oneshot::channel();
+
+        pool.queue_request(runtime_options, request, tx, false)
+            .await;
+        assert!(rx.await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_kill_idle_worker() {
+        let application_store = MemoryStore::new();
+        let personal_store = MemoryStore::new();
+        let nft_store = MemoryStore::new();
+
+        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
+
+        let runtime_options = RuntimeOptions {
+            module: "export const test = (a, b) => a + b;".to_string(),
+            timeout_millis: 1000,
+            max_heap_mbs: 10,
+        };
+        let request = ExecutionRequest {
+            context: Context {
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                identity: None,
+                accounts: None,
+            },
+            handler_name: "test".to_string(),
+            args: vec![json!(10), json!(20)],
+        };
+
+        let pool_clone = Arc::clone(&pool);
+        let _ = pool_clone.execute(runtime_options.clone(), request).await;
+
+        let killed = pool.kill_idle_worker().await;
+        assert!(killed);
+    }
 }

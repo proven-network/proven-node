@@ -63,7 +63,9 @@ type WorkerRequest = (
 ///         application_store,
 ///         personal_store,
 ///         nft_store,
-///     );
+///     )
+///     .await
+///     .expect("Failed to create worker");
 ///     let result = worker.execute(request).await;
 /// }
 /// ```
@@ -82,36 +84,48 @@ impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
     /// - `nft_store`: The NFT store to use.
     ///
     /// # Returns
-    /// The new worker.
-    pub fn new(
+    /// The created worker.
+    pub async fn new(
         runtime_options: RuntimeOptions,
         application_store: AS,
         personal_store: PS,
         nft_store: NS,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let (sender, mut receiver) = mpsc::channel::<WorkerRequest>(1);
 
+        let (error_sender, error_reciever) = oneshot::channel();
+
         thread::spawn(move || {
-            let mut runtime = Runtime::new(
+            match Runtime::new(
                 runtime_options,
                 application_store,
                 personal_store,
                 nft_store,
-            )
-            .unwrap();
+            ) {
+                Ok(mut runtime) => {
+                    error_sender.send(None).unwrap();
 
-            while let Some((request, responder)) = receiver.blocking_recv() {
-                let result = runtime.execute(request);
-                responder.send(result).unwrap();
+                    while let Some((request, responder)) = receiver.blocking_recv() {
+                        let result = runtime.execute(request);
+                        responder.send(result).unwrap();
+                    }
+                }
+                Err(e) => {
+                    error_sender.send(Some(e)).unwrap();
+                }
             }
         });
 
-        Self {
+        if let Some(e) = error_reciever.await.unwrap() {
+            return Err(e);
+        }
+
+        Ok(Self {
             sender,
             _marker: PhantomData,
             _marker2: PhantomData,
             _marker3: PhantomData,
-        }
+        })
     }
 
     /// Executes the given request and awaits the result.
@@ -162,7 +176,9 @@ mod tests {
             application_store,
             personal_store,
             nft_store,
-        );
+        )
+        .await
+        .unwrap();
 
         let request = ExecutionRequest {
             context: Context {
