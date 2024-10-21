@@ -20,6 +20,51 @@ type QueueItem = (RuntimeOptions, ExecutionRequest, SendChannel);
 type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
 
+/// A pool of workers that can execute tasks concurrently.
+///
+/// The `Pool` struct manages a set of workers that can execute tasks concurrently. It maintains
+/// a queue of tasks and distributes them to available workers. If the number of workers exceeds
+/// the maximum allowed, tasks are queued until a worker becomes available.
+///
+/// # Type Parameters
+///
+/// * `AS`: The type of the application store, which must implement the `Store1` trait.
+/// * `PS`: The type of the personal store, which must implement the `Store2` trait.
+/// * `NS`: The type of the NFT store, which must implement the `Store2` trait.
+///
+/// # Example
+///
+/// ```rust
+/// use proven_runtime::{Context, Error, ExecutionRequest, ExecutionResult, Pool, RuntimeOptions};
+/// use proven_store_memory::MemoryStore;
+/// use serde_json::json;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let application_store = MemoryStore::new();
+///     let personal_store = MemoryStore::new();
+///     let nft_store = MemoryStore::new();
+///
+///     let pool = Pool::new(10, application_store, personal_store, nft_store).await;
+///     let runtime_options = RuntimeOptions {
+///         module: "export const test = (a, b) => a + b;".to_string(),
+///         timeout_millis: 1000,
+///         max_heap_mbs: 10,
+///     };
+///     let request = ExecutionRequest {
+///         context: Context {
+///             dapp_definition_address: "dapp_definition_address".to_string(),
+///             identity: None,
+///             accounts: None,
+///         },
+///         handler_name: "test".to_string(),
+///         args: vec![json!(10), json!(20)],
+///     };
+///
+///     let result = pool.execute(runtime_options, request).await;
+///     assert!(result.is_ok());
+/// }
+/// ```
 pub struct Pool<AS: Store1, PS: Store2, NS: Store2> {
     application_store: AS,
     personal_store: PS,

@@ -27,10 +27,6 @@ type WorkerRequest = (
 /// - `PS`: Personal Store type implementing `Store2`.
 /// - `NS`: NFT Store type implementing `Store2`.
 ///
-/// # Methods
-/// - `new`: Creates a new worker with the given runtime options and stores.
-/// - `execute`: Sends an execution request to the worker and awaits the result.
-///
 /// # Example
 /// ```rust
 /// use proven_runtime::{
@@ -71,11 +67,6 @@ type WorkerRequest = (
 /// ```
 impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
     /// Creates a new worker with the given runtime options and stores.
-    ///
-    /// # Type Parameters
-    /// - `AS`: Application Store type implementing `Store1`.
-    /// - `PS`: Personal Store type implementing `Store2`.
-    /// - `NS`: NFT Store type implementing `Store2`.
     ///
     /// # Parameters
     /// - `runtime_options`: The runtime options to use.

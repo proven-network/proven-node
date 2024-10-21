@@ -31,10 +31,6 @@ pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
 /// - `PS`: Personal Store type implementing `Store2`.
 /// - `NS`: NFT Store type implementing `Store2`.
 ///
-/// # Methods
-/// - `new`: Creates a new runtime with the given runtime options and stores.
-/// - `execute`: Sends an execution request to the runtime and awaits the result.
-///
 /// # Example
 /// ```rust
 /// use proven_runtime::{
@@ -70,6 +66,16 @@ pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
 /// let result = runtime.execute(request);
 /// ```
 impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
+    /// Creates a new runtime with the given runtime options and stores.
+    ///
+    /// # Parameters
+    /// - `options`: The runtime options to use.
+    /// - `application_store`: The application store to use.
+    /// - `personal_store`: The personal store to use.
+    /// - `nft_store`: The NFT store to use.
+    ///
+    /// # Returns
+    /// The created runtime.
     pub fn new(
         options: RuntimeOptions,
         application_store: AS,
@@ -109,6 +115,13 @@ impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
         })
     }
 
+    /// Executes the given execution request.
+    ///
+    /// # Parameters
+    /// - `request`: The execution request to execute.
+    ///
+    /// # Returns
+    /// An a result containing the execution result.
     pub fn execute(
         &mut self,
         ExecutionRequest {
