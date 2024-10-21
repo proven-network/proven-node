@@ -1,8 +1,8 @@
-use serde::{Serialize, Deserialize};
 use super::{
     TransactionFungibleBalanceChanges, TransactionFungibleFeeBalanceChanges,
     TransactionNonFungibleBalanceChanges,
 };
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct TransactionBalanceChanges {
     ///A list of all non-fee-related fungible balance changes per entity and resource.

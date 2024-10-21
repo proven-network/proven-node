@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::EntityMetadataItemValue;
+use serde::{Deserialize, Serialize};
 ///Entity metadata key-value pair.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct EntityMetadataItem {

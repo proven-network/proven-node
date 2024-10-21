@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::account_resource_preferences_page`].
 
 On request success, this will return a [`StateAccountResourcePreferencesPageResponse`].*/
@@ -32,11 +32,8 @@ impl FluentRequest<'_, AccountResourcePreferencesPageRequest> {
         self
     }
 }
-impl<'a> ::std::future::IntoFuture
-for FluentRequest<'a, AccountResourcePreferencesPageRequest> {
-    type Output = crate::Result<
-        StateAccountResourcePreferencesPageResponse,
-    >;
+impl<'a> ::std::future::IntoFuture for FluentRequest<'a, AccountResourcePreferencesPageRequest> {
+    type Output = crate::Result<StateAccountResourcePreferencesPageResponse>;
     type IntoFuture = ::futures::future::BoxFuture<'a, Self::Output>;
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(async move {

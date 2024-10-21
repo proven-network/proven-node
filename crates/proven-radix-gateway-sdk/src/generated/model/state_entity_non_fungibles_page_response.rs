@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{LedgerStateMixin, NonFungibleResourcesCollection};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateEntityNonFungiblesPageResponse {
     #[serde(flatten)]

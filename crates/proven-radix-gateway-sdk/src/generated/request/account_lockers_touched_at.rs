@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::account_lockers_touched_at`].
 
 On request success, this will return a [`StateAccountLockersTouchedAtResponse`].*/
@@ -20,8 +20,7 @@ impl FluentRequest<'_, AccountLockersTouchedAtRequest> {
         self
     }
 }
-impl<'a> ::std::future::IntoFuture
-for FluentRequest<'a, AccountLockersTouchedAtRequest> {
+impl<'a> ::std::future::IntoFuture for FluentRequest<'a, AccountLockersTouchedAtRequest> {
     type Output = crate::Result<StateAccountLockersTouchedAtResponse>;
     type IntoFuture = ::futures::future::BoxFuture<'a, Self::Output>;
     fn into_future(self) -> Self::IntoFuture {

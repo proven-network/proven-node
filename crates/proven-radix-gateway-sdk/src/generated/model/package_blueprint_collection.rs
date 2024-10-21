@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{PackageBlueprintCollectionItem, ResultSetCursorMixin};
+use serde::{Deserialize, Serialize};
 ///Package blueprint collection.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct PackageBlueprintCollection {

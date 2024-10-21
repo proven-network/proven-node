@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::entity_non_fungible_resource_vault_page`].
 
 On request success, this will return a [`StateEntityNonFungibleResourceVaultsPageResponse`].*/
@@ -35,10 +35,9 @@ impl FluentRequest<'_, EntityNonFungibleResourceVaultPageRequest> {
     }
 }
 impl<'a> ::std::future::IntoFuture
-for FluentRequest<'a, EntityNonFungibleResourceVaultPageRequest> {
-    type Output = crate::Result<
-        StateEntityNonFungibleResourceVaultsPageResponse,
-    >;
+    for FluentRequest<'a, EntityNonFungibleResourceVaultPageRequest>
+{
+    type Output = crate::Result<StateEntityNonFungibleResourceVaultsPageResponse>;
     type IntoFuture = ::futures::future::BoxFuture<'a, Self::Output>;
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(async move {

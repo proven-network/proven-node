@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::transaction_submit`].
 
 On request success, this will return a [`TransactionSubmitResponse`].*/
@@ -20,13 +20,10 @@ impl<'a> ::std::future::IntoFuture for FluentRequest<'a, TransactionSubmitReques
         Box::pin(async move {
             let url = "/transaction/submit";
             let mut r = self.client.client.post(url);
-            r = r
-                .json(
-                    json!(
-                        { "notarized_transaction_hex" : self.params
-                        .notarized_transaction_hex }
-                    ),
-                );
+            r = r.json(json!(
+                { "notarized_transaction_hex" : self.params
+                .notarized_transaction_hex }
+            ));
             let res = r.await?;
             res.json().map_err(|e| crate::Error::LowLevel(e.into()))
         })

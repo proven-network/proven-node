@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 ///This type is defined in the Core API as `InstructionResourceChanges`. See the Core API documentation for more details.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ResourceChange {}

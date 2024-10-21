@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct TransactionNonFungibleBalanceChanges {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{AccountResourcePreferencesCollection, LedgerStateMixin};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateAccountResourcePreferencesPageResponse {
     ///Account resource preferences collection

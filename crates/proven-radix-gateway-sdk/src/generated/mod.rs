@@ -5,28 +5,25 @@
 #![allow(unused)]
 pub mod model;
 pub mod request;
-pub use httpclient::{Error, Result, InMemoryResponseExt};
-use std::sync::{Arc, OnceLock};
-use std::borrow::Cow;
 use crate::generated::model::*;
+pub use httpclient::{Error, InMemoryResponseExt, Result};
+use std::borrow::Cow;
+use std::sync::{Arc, OnceLock};
 mod serde;
 static SHARED_HTTPCLIENT: OnceLock<httpclient::Client> = OnceLock::new();
 pub fn default_http_client() -> httpclient::Client {
-    httpclient::Client::new()
-        .base_url(
-            std::env::var("LOW_LEVEL_BASE_URL")
-                .expect("Missing environment variable LOW_LEVEL_BASE_URL")
-                .as_str(),
-        )
+    httpclient::Client::new().base_url(
+        std::env::var("LOW_LEVEL_BASE_URL")
+            .expect("Missing environment variable LOW_LEVEL_BASE_URL")
+            .as_str(),
+    )
 }
 /// Use this method if you want to add custom middleware to the httpclient.
 /// It must be called before any requests are made, otherwise it will have no effect.
 /// Example usage:
 ///
 /// ```
-/// init_http_client(default_http_client()
-///     .with_middleware(..)
-/// );
+/// init_http_client(default_http_client().with_middleware(..));
 /// ```
 pub fn init_http_client(init: httpclient::Client) {
     let _ = SHARED_HTTPCLIENT.set(init);
@@ -63,7 +60,7 @@ impl LowLevelClient {
 impl LowLevelClient {
     /**Get Gateway Status
 
-Returns the Gateway API version and current ledger state.*/
+    Returns the Gateway API version and current ledger state.*/
     pub fn gateway_status(&self) -> FluentRequest<'_, request::GatewayStatusRequest> {
         FluentRequest {
             client: self,
@@ -72,32 +69,28 @@ Returns the Gateway API version and current ledger state.*/
     }
     /**Get Network Configuration
 
-Returns network identifier, network name and well-known network addresses.*/
-    pub fn network_configuration(
-        &self,
-    ) -> FluentRequest<'_, request::NetworkConfigurationRequest> {
+    Returns network identifier, network name and well-known network addresses.*/
+    pub fn network_configuration(&self) -> FluentRequest<'_, request::NetworkConfigurationRequest> {
         FluentRequest {
             client: self,
-            params: request::NetworkConfigurationRequest {
-            },
+            params: request::NetworkConfigurationRequest {},
         }
     }
     /**Get Construction Metadata
 
-Returns information needed to construct a new transaction including current `epoch` number.*/
+    Returns information needed to construct a new transaction including current `epoch` number.*/
     pub fn transaction_construction(
         &self,
     ) -> FluentRequest<'_, request::TransactionConstructionRequest> {
         FluentRequest {
             client: self,
-            params: request::TransactionConstructionRequest {
-            },
+            params: request::TransactionConstructionRequest {},
         }
     }
     /**Preview Transaction
 
-Previews transaction against the network.
-This endpoint is effectively a proxy towards the Core API `/v0/transaction/preview` endpoint. See the Core API documentation for more details.*/
+    Previews transaction against the network.
+    This endpoint is effectively a proxy towards the Core API `/v0/transaction/preview` endpoint. See the Core API documentation for more details.*/
     pub fn transaction_preview(
         &self,
         args: request::TransactionPreviewRequired,
@@ -122,7 +115,7 @@ This endpoint is effectively a proxy towards the Core API `/v0/transaction/previ
     }
     /**Submit Transaction
 
-Submits a signed transaction payload to the network.*/
+    Submits a signed transaction payload to the network.*/
     pub fn transaction_submit(
         &self,
         notarized_transaction_hex: &str,
@@ -136,8 +129,8 @@ Submits a signed transaction payload to the network.*/
     }
     /**Get Committed Transaction Details
 
-Returns the committed details and receipt of the transaction for a given transaction identifier.
-Transaction identifiers which don't correspond to a committed transaction will return a `TransactionNotFoundError`.*/
+    Returns the committed details and receipt of the transaction for a given transaction identifier.
+    Transaction identifiers which don't correspond to a committed transaction will return a `TransactionNotFoundError`.*/
     pub fn transaction_committed_details(
         &self,
         intent_hash: &str,
@@ -154,7 +147,7 @@ Transaction identifiers which don't correspond to a committed transaction will r
     }
     /**Get Transaction Status
 
-Returns overall transaction status and all of its known payloads based on supplied intent hash.*/
+    Returns overall transaction status and all of its known payloads based on supplied intent hash.*/
     pub fn transaction_status(
         &self,
         intent_hash: &str,
@@ -168,7 +161,7 @@ Returns overall transaction status and all of its known payloads based on suppli
     }
     /**PreValidate deposit of resources to an account
 
-Helper endpoint that allows pre-validation if a deposit of certain resources to a given account can succeed or not. It is only meant for pre-validation usage, it does not guarantee that execution will succeed.*/
+    Helper endpoint that allows pre-validation if a deposit of certain resources to a given account can succeed or not. It is only meant for pre-validation usage, it does not guarantee that execution will succeed.*/
     pub fn account_deposit_pre_validation(
         &self,
         account_address: &str,
@@ -180,17 +173,14 @@ Helper endpoint that allows pre-validation if a deposit of certain resources to 
             params: request::AccountDepositPreValidationRequest {
                 account_address: account_address.to_owned(),
                 badge,
-                resource_addresses: resource_addresses
-                    .iter()
-                    .map(|&x| x.to_owned())
-                    .collect(),
+                resource_addresses: resource_addresses.iter().map(|&x| x.to_owned()).collect(),
             },
         }
     }
     /**Get Transactions Stream
 
-Returns transactions which have been committed to the ledger.
-[Check detailed documentation for brief explanation](#section/Using-the-streamtransactions-endpoint)*/
+    Returns transactions which have been committed to the ledger.
+    [Check detailed documentation for brief explanation](#section/Using-the-streamtransactions-endpoint)*/
     pub fn stream_transactions(
         &self,
         args: request::StreamTransactionsRequired,
@@ -252,7 +242,7 @@ Returns transactions which have been committed to the ledger.
     }
     /**Get Entity Details
 
-Returns detailed information for collection of entities. Aggregate resources globally by default.*/
+    Returns detailed information for collection of entities. Aggregate resources globally by default.*/
     pub fn state_entity_details(
         &self,
         addresses: &[&str],
@@ -271,8 +261,8 @@ Returns detailed information for collection of entities. Aggregate resources glo
     }
     /**Get Entity Metadata Page
 
-Returns all the metadata properties associated with a given global entity.
-The returned response is in a paginated format, ordered by first appearance on the ledger.*/
+    Returns all the metadata properties associated with a given global entity.
+    The returned response is in a paginated format, ordered by first appearance on the ledger.*/
     pub fn entity_metadata_page(
         &self,
         address: &str,
@@ -289,8 +279,8 @@ The returned response is in a paginated format, ordered by first appearance on t
     }
     /**Get Entity Schema Page
 
-Returns all the schemas associated with a given global entity.
-The returned response is in a paginated format, ordered by first appearance on the ledger.*/
+    Returns all the schemas associated with a given global entity.
+    The returned response is in a paginated format, ordered by first appearance on the ledger.*/
     pub fn entity_schema_page(
         &self,
         address: &str,
@@ -307,9 +297,9 @@ The returned response is in a paginated format, ordered by first appearance on t
     }
     /**Get page of Global Entity Fungible Resource Balances
 
-Returns the total amount of each fungible resource owned by a given global entity.
-Result can be aggregated globally or per vault.
-The returned response is in a paginated format, ordered by the resource's first appearance on the ledger.*/
+    Returns the total amount of each fungible resource owned by a given global entity.
+    Result can be aggregated globally or per vault.
+    The returned response is in a paginated format, ordered by the resource's first appearance on the ledger.*/
     pub fn entity_fungibles_page(
         &self,
         address: &str,
@@ -330,8 +320,8 @@ The returned response is in a paginated format, ordered by the resource's first 
     }
     /**Get page of Global Entity Fungible Resource Vaults
 
-Returns vaults for fungible resource owned by a given global entity.
-The returned response is in a paginated format, ordered by the resource's first appearance on the ledger.*/
+    Returns vaults for fungible resource owned by a given global entity.
+    The returned response is in a paginated format, ordered by the resource's first appearance on the ledger.*/
     pub fn entity_fungible_resource_vault_page(
         &self,
         address: &str,
@@ -350,9 +340,9 @@ The returned response is in a paginated format, ordered by the resource's first 
     }
     /**Get page of Global Entity Non-Fungible Resource Balances
 
-Returns the total amount of each non-fungible resource owned by a given global entity.
-Result can be aggregated globally or per vault.
-The returned response is in a paginated format, ordered by the resource's first appearance on the ledger.*/
+    Returns the total amount of each non-fungible resource owned by a given global entity.
+    Result can be aggregated globally or per vault.
+    The returned response is in a paginated format, ordered by the resource's first appearance on the ledger.*/
     pub fn entity_non_fungibles_page(
         &self,
         address: &str,
@@ -373,8 +363,8 @@ The returned response is in a paginated format, ordered by the resource's first 
     }
     /**Get page of Global Entity Non-Fungible Resource Vaults
 
-Returns vaults for non fungible resource owned by a given global entity.
-The returned response is in a paginated format, ordered by the resource's first appearance on the ledger.*/
+    Returns vaults for non fungible resource owned by a given global entity.
+    The returned response is in a paginated format, ordered by the resource's first appearance on the ledger.*/
     pub fn entity_non_fungible_resource_vault_page(
         &self,
         address: &str,
@@ -395,8 +385,8 @@ The returned response is in a paginated format, ordered by the resource's first 
     }
     /**Get page of Non-Fungibles in Vault
 
-Returns all non-fungible IDs of a given non-fungible resource owned by a given entity.
-The returned response is in a paginated format, ordered by the resource's first appearence on the ledger.*/
+    Returns all non-fungible IDs of a given non-fungible resource owned by a given entity.
+    The returned response is in a paginated format, ordered by the resource's first appearence on the ledger.*/
     pub fn entity_non_fungible_ids_page(
         &self,
         address: &str,
@@ -417,8 +407,8 @@ The returned response is in a paginated format, ordered by the resource's first 
     }
     /**Get page of Non-Fungible Ids in Resource Collection
 
-Returns the non-fungible IDs of a given non-fungible resource.
-Returned response is in a paginated format, ordered by their first appearance on the ledger.*/
+    Returns the non-fungible IDs of a given non-fungible resource.
+    Returned response is in a paginated format, ordered by their first appearance on the ledger.*/
     pub fn non_fungible_ids(
         &self,
         resource_address: &str,
@@ -435,7 +425,7 @@ Returned response is in a paginated format, ordered by their first appearance on
     }
     /**Get Non-Fungible Data
 
-Returns data associated with a given non-fungible ID of a given non-fungible resource.*/
+    Returns data associated with a given non-fungible ID of a given non-fungible resource.*/
     pub fn non_fungible_data(
         &self,
         non_fungible_ids: &[&str],
@@ -445,17 +435,14 @@ Returns data associated with a given non-fungible ID of a given non-fungible res
             client: self,
             params: request::NonFungibleDataRequest {
                 at_ledger_state: None,
-                non_fungible_ids: non_fungible_ids
-                    .iter()
-                    .map(|&x| x.to_owned())
-                    .collect(),
+                non_fungible_ids: non_fungible_ids.iter().map(|&x| x.to_owned()).collect(),
                 resource_address: resource_address.to_owned(),
             },
         }
     }
     /**Get Non-Fungible Location
 
-Returns location of a given non-fungible ID.*/
+    Returns location of a given non-fungible ID.*/
     pub fn non_fungible_location(
         &self,
         non_fungible_ids: &[&str],
@@ -465,17 +452,14 @@ Returns location of a given non-fungible ID.*/
             client: self,
             params: request::NonFungibleLocationRequest {
                 at_ledger_state: None,
-                non_fungible_ids: non_fungible_ids
-                    .iter()
-                    .map(|&x| x.to_owned())
-                    .collect(),
+                non_fungible_ids: non_fungible_ids.iter().map(|&x| x.to_owned()).collect(),
                 resource_address: resource_address.to_owned(),
             },
         }
     }
     /**Get KeyValueStore Keys
 
-Allows to iterate over key value store keys.*/
+    Allows to iterate over key value store keys.*/
     pub fn key_value_store_keys(
         &self,
         key_value_store_address: &str,
@@ -492,8 +476,8 @@ Allows to iterate over key value store keys.*/
     }
     /**Get KeyValueStore Data
 
-Returns data (value) associated with a given key of a given key-value store.
-[Check detailed documentation for explanation](#section/How-to-query-the-content-of-a-key-value-store-inside-a-component)*/
+    Returns data (value) associated with a given key of a given key-value store.
+    [Check detailed documentation for explanation](#section/How-to-query-the-content-of-a-key-value-store-inside-a-component)*/
     pub fn key_value_store_data(
         &self,
         key_value_store_address: &str,
@@ -509,9 +493,7 @@ Returns data (value) associated with a given key of a given key-value store.
         }
     }
     ///Get Validators List
-    pub fn state_validators_list(
-        &self,
-    ) -> FluentRequest<'_, request::StateValidatorsListRequest> {
+    pub fn state_validators_list(&self) -> FluentRequest<'_, request::StateValidatorsListRequest> {
         FluentRequest {
             client: self,
             params: request::StateValidatorsListRequest {
@@ -522,7 +504,7 @@ Returns data (value) associated with a given key of a given key-value store.
     }
     /**Get Account resource preferences
 
-Returns paginable collection of resource preference rules for given account.*/
+    Returns paginable collection of resource preference rules for given account.*/
     pub fn account_resource_preferences_page(
         &self,
         account_address: &str,
@@ -539,7 +521,7 @@ Returns paginable collection of resource preference rules for given account.*/
     }
     /**Get Account authorized depositors
 
-Returns paginable collection of authorized depositors for given account.*/
+    Returns paginable collection of authorized depositors for given account.*/
     pub fn account_authorized_depositors_page(
         &self,
         account_address: &str,
@@ -556,8 +538,8 @@ Returns paginable collection of authorized depositors for given account.*/
     }
     /**Get Package Blueprints Page
 
-Returns all the blueprints associated with a given package entity.
-The returned response is in a paginated format, ordered by first appearance on the ledger.*/
+    Returns all the blueprints associated with a given package entity.
+    The returned response is in a paginated format, ordered by first appearance on the ledger.*/
     pub fn package_blueprint_page(
         &self,
         package_address: &str,
@@ -574,8 +556,8 @@ The returned response is in a paginated format, ordered by first appearance on t
     }
     /**Get Package Codes Page
 
-Returns all the codes associated with a given package entity.
-The returned response is in a paginated format, ordered by first appearance on the ledger.*/
+    Returns all the codes associated with a given package entity.
+    The returned response is in a paginated format, ordered by first appearance on the ledger.*/
     pub fn package_code_page(
         &self,
         package_address: &str,
@@ -592,8 +574,8 @@ The returned response is in a paginated format, ordered by first appearance on t
     }
     /**Get Account Locker Vaults Page
 
-Returns all the resource vaults associated with a given account locker.
-The returned response is in a paginated format, ordered by the most recent resource vault creation on the ledger.*/
+    Returns all the resource vaults associated with a given account locker.
+    The returned response is in a paginated format, ordered by the most recent resource vault creation on the ledger.*/
     pub fn account_locker_vaults_page(
         &self,
         account_address: &str,
@@ -612,8 +594,8 @@ The returned response is in a paginated format, ordered by the most recent resou
     }
     /**Get Most Recent Touch of Account Lockers
 
-Returns most recent state version given account locker has been touched. Touch refers to the creation of the account locker itself as well as any modification to its contents, such as
-resource claim, airdrop or store.*/
+    Returns most recent state version given account locker has been touched. Touch refers to the creation of the account locker itself as well as any modification to its contents, such as
+    resource claim, airdrop or store.*/
     pub fn account_lockers_touched_at(
         &self,
         account_lockers: Vec<AccountLockerAddress>,
@@ -628,7 +610,7 @@ resource claim, airdrop or store.*/
     }
     /**Get Validators Uptime
 
-Returns validators uptime data for time range limited by `from_state_version` and `at_state_version`.*/
+    Returns validators uptime data for time range limited by `from_state_version` and `at_state_version`.*/
     pub fn validators_uptime(
         &self,
         validator_addresses: &[&str],
@@ -638,20 +620,17 @@ Returns validators uptime data for time range limited by `from_state_version` an
             params: request::ValidatorsUptimeRequest {
                 at_ledger_state: None,
                 from_ledger_state: None,
-                validator_addresses: validator_addresses
-                    .iter()
-                    .map(|&x| x.to_owned())
-                    .collect(),
+                validator_addresses: validator_addresses.iter().map(|&x| x.to_owned()).collect(),
             },
         }
     }
     /**Get Resource Holders Page
 
-A paginated endpoint to discover which global entities hold the most of a given resource.
-More specifically, it returns a page of global entities which hold the given resource, ordered descending by the total fungible balance / total count of non-fungibles stored in vaults in the state tree of that entity (excluding unclaimed royalty balances).
-This endpoint operates only at the **current state version**, it is not possible to browse historical data.
-Because of that, it is not possible to offer stable pagination as data constantly changes. Balances might change between pages being read, which might result in gaps or some entries being returned twice.
-Under default Gateway configuration, up to 100 entries are returned per response. This can be increased up to 1000 entries per page with the `limit_per_page` parameter.*/
+    A paginated endpoint to discover which global entities hold the most of a given resource.
+    More specifically, it returns a page of global entities which hold the given resource, ordered descending by the total fungible balance / total count of non-fungibles stored in vaults in the state tree of that entity (excluding unclaimed royalty balances).
+    This endpoint operates only at the **current state version**, it is not possible to browse historical data.
+    Because of that, it is not possible to offer stable pagination as data constantly changes. Balances might change between pages being read, which might result in gaps or some entries being returned twice.
+    Under default Gateway configuration, up to 100 entries are returned per response. This can be increased up to 1000 entries per page with the `limit_per_page` parameter.*/
     pub fn resource_holders_page(
         &self,
         resource_address: &str,

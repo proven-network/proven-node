@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::transaction_committed_details`].
 
 On request success, this will return a [`TransactionCommittedDetailsResponse`].*/
@@ -21,8 +21,7 @@ impl FluentRequest<'_, TransactionCommittedDetailsRequest> {
         self
     }
 }
-impl<'a> ::std::future::IntoFuture
-for FluentRequest<'a, TransactionCommittedDetailsRequest> {
+impl<'a> ::std::future::IntoFuture for FluentRequest<'a, TransactionCommittedDetailsRequest> {
     type Output = crate::Result<TransactionCommittedDetailsResponse>;
     type IntoFuture = ::futures::future::BoxFuture<'a, Self::Output>;
     fn into_future(self) -> Self::IntoFuture {

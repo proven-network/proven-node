@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::AccountResourcePreferenceRule;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AccountResourcePreferencesResponseItem {
     ///The most recent state version underlying object was modified at.

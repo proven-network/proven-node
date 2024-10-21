@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{GatewayInfoResponseReleaseInfo, LedgerStateMixin};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct GatewayStatusResponse {
     #[serde(flatten)]

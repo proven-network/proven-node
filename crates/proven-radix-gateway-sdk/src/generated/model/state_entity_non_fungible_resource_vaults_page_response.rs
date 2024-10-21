@@ -1,11 +1,12 @@
-use serde::{Serialize, Deserialize};
 use super::{LedgerStateMixin, NonFungibleResourcesCollectionItemVaultAggregatedVault};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateEntityNonFungibleResourceVaultsPageResponse {
     #[serde(flatten)]
     pub ledger_state_mixin: LedgerStateMixin,
     #[serde(flatten)]
-    pub non_fungible_resources_collection_item_vault_aggregated_vault: NonFungibleResourcesCollectionItemVaultAggregatedVault,
+    pub non_fungible_resources_collection_item_vault_aggregated_vault:
+        NonFungibleResourcesCollectionItemVaultAggregatedVault,
     ///Bech32m-encoded human readable version of the address.
     pub address: String,
     ///Bech32m-encoded human readable version of the address.

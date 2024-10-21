@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{FungibleResourcesCollectionItem, ResultSetCursorMixin};
+use serde::{Deserialize, Serialize};
 ///Fungible resources collection.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct FungibleResourcesCollection {

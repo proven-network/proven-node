@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{NonFungibleResourcesCollectionItem, ResultSetCursorMixin};
+use serde::{Deserialize, Serialize};
 ///Non-fungible resources collection.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct NonFungibleResourcesCollection {

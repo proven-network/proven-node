@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::RoleKey;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ComponentEntityRoleAssignmentEntry {
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]

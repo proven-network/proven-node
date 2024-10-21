@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::key_value_store_data`].
 
 On request success, this will return a [`StateKeyValueStoreDataResponse`].*/
@@ -31,13 +31,10 @@ impl<'a> ::std::future::IntoFuture for FluentRequest<'a, KeyValueStoreDataReques
             if let Some(ref unwrapped) = self.params.at_ledger_state {
                 r = r.json(json!({ "at_ledger_state" : unwrapped }));
             }
-            r = r
-                .json(
-                    json!(
-                        { "key_value_store_address" : self.params.key_value_store_address
-                        }
-                    ),
-                );
+            r = r.json(json!(
+                { "key_value_store_address" : self.params.key_value_store_address
+                }
+            ));
             r = r.json(json!({ "keys" : self.params.keys }));
             let res = r.await?;
             res.json().map_err(|e| crate::Error::LowLevel(e.into()))

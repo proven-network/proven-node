@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct TwoWayLinkedEntitiesCollectionItem {
     ///Bech32m-encoded human readable version of the address.

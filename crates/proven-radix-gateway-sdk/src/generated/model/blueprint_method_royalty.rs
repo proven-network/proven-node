@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::RoyaltyAmount;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct BlueprintMethodRoyalty {
     pub method_name: String,

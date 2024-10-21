@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{ResultSetCursorMixin, TwoWayLinkedDappsCollectionItem};
+use serde::{Deserialize, Serialize};
 ///A collection of two-way linked (resolved & verified) dApps linked to the entity defining this collection.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct TwoWayLinkedDappsCollection {

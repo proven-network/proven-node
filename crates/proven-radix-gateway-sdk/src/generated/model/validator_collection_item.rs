@@ -1,7 +1,5 @@
-use serde::{Serialize, Deserialize};
-use super::{
-    EntityMetadataCollection, ValidatorCollectionItemActiveInEpoch, ValidatorVaultItem,
-};
+use super::{EntityMetadataCollection, ValidatorCollectionItemActiveInEpoch, ValidatorVaultItem};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ValidatorCollectionItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -17,7 +15,7 @@ pub struct ValidatorCollectionItem {
     pub pending_xrd_withdraw_vault: ValidatorVaultItem,
     pub stake_vault: ValidatorVaultItem,
     /**Validator inner state representation.
-This type is defined in the Core API as `ValidatorFieldStateValue`. See the Core API documentation for more details.*/
+    This type is defined in the Core API as `ValidatorFieldStateValue`. See the Core API documentation for more details.*/
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state: Option<serde_json::Value>,
 }

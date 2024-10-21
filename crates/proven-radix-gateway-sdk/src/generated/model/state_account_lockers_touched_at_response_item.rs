@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::AccountLockerAddress;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateAccountLockersTouchedAtResponseItem {
     #[serde(flatten)]

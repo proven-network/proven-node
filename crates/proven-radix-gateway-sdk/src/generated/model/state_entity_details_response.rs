@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{LedgerStateMixin, StateEntityDetailsResponseItem};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateEntityDetailsResponse {
     #[serde(flatten)]

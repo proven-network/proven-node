@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{LedgerStateMixin, ValidatorUptimeCollection};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ValidatorsUptimeResponse {
     #[serde(flatten)]

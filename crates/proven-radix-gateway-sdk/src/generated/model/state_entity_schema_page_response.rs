@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{EntitySchemaCollection, LedgerStateMixin};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateEntitySchemaPageResponse {
     #[serde(flatten)]

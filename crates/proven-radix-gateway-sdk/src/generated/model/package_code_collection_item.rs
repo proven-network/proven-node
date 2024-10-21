@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::PackageVmType;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PackageCodeCollectionItem {
     ///Hex-encoded binary blob.

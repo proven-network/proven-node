@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{AccountLockerAddress, AccountLockerVaultCollection, LedgerStateMixin};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateAccountLockerPageVaultsResponse {
     #[serde(flatten)]

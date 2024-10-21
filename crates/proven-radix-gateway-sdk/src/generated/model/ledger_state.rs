@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 /**The ledger state against which the response was generated.
 Can be used to detect if the Network Gateway is returning up-to-date information.*/
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -8,9 +8,9 @@ pub struct LedgerState {
     ///The logical name of the network
     pub network: String,
     /**The proposer round timestamp of the consensus round when this transaction was committed to ledger.
-This is not guaranteed to be strictly increasing, as it is computed as an average across the validator set.
-If this is significantly behind the current timestamp, the Network Gateway is likely reporting out-dated
-information, or the network has stalled.*/
+    This is not guaranteed to be strictly increasing, as it is computed as an average across the validator set.
+    If this is significantly behind the current timestamp, the Network Gateway is likely reporting out-dated
+    information, or the network has stalled.*/
     pub proposer_round_timestamp: String,
     ///The consensus round in the epoch that this state version was committed in.
     pub round: i64,

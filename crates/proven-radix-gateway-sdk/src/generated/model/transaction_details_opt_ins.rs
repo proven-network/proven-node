@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct TransactionDetailsOptIns {
     ///if set to `true`, all affected global entities by given transaction are returned.
@@ -6,7 +6,7 @@ pub struct TransactionDetailsOptIns {
     pub affected_global_entities: Option<bool>,
     /**if set to `true`, returns the fungible and non-fungible balance changes.
 
-**Warning!** This opt-in might be missing for recently committed transactions, in that case a `null` value will be returned. Retry the request until non-null value is returned.*/
+    **Warning!** This opt-in might be missing for recently committed transactions, in that case a `null` value will be returned. Retry the request until non-null value is returned.*/
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub balance_changes: Option<bool>,
     ///if set to `true`, manifest instructions for user transactions are returned.

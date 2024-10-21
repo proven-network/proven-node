@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{AccountResourcePreferencesResponseItem, ResultSetCursorMixin};
+use serde::{Deserialize, Serialize};
 ///Account resource preferences collection
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct AccountResourcePreferencesCollection {

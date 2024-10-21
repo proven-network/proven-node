@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{EventsItem, TransactionStatus};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct TransactionReceipt {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -20,18 +20,18 @@ pub struct TransactionReceipt {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fee_summary: Option<serde_json::Value>,
     /**Information (number and active validator list) about new epoch if occured.
-This type is defined in the Core API as `NextEpoch`. See the Core API documentation for more details.*/
+    This type is defined in the Core API as `NextEpoch`. See the Core API documentation for more details.*/
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_epoch: Option<serde_json::Value>,
     /**The manifest line-by-line engine return data (only present if `status` is `CommittedSuccess`).
-This type is defined in the Core API as `SborData`. See the Core API documentation for more details.*/
+    This type is defined in the Core API as `SborData`. See the Core API documentation for more details.*/
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<serde_json::Value>,
     ///This type is defined in the Core API as `StateUpdates`. See the Core API documentation for more details.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state_updates: Option<serde_json::Value>,
     /**A top-level intent status, left in for backwards compatibility.
-It doesn't give much information. Rejected means PermanentRejection.*/
+    It doesn't give much information. Rejected means PermanentRejection.*/
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<TransactionStatus>,
 }

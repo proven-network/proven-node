@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{LedgerStateMixin, StateAccountLockersTouchedAtResponseItem};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateAccountLockersTouchedAtResponse {
     #[serde(flatten)]

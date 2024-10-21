@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{AccountAuthorizedDepositorsCollection, LedgerStateMixin};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateAccountAuthorizedDepositorsPageResponse {
     ///Account resource preferences collection

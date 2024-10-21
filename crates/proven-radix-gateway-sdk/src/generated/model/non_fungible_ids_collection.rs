@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::ResultSetCursorMixin;
+use serde::{Deserialize, Serialize};
 ///Non-fungible resource IDs collection.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct NonFungibleIdsCollection {

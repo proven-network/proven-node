@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::RoyaltyAmount;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ComponentMethodRoyalty {
     pub method_name: String,

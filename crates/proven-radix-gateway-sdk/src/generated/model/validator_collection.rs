@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{ResultSetCursorMixin, ValidatorCollectionItem};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ValidatorCollection {
     #[serde(flatten)]

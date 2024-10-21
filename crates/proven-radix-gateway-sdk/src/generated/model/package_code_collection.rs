@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{PackageCodeCollectionItem, ResultSetCursorMixin};
+use serde::{Deserialize, Serialize};
 ///Package code collection.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct PackageCodeCollection {

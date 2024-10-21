@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct RoyaltyAmount {
     ///String-encoded decimal representing the amount of a related fungible resource.

@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{EntityMetadataItem, ResultSetCursorMixin};
+use serde::{Deserialize, Serialize};
 ///Entity metadata collection.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct EntityMetadataCollection {

@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{CommittedTransactionInfo, LedgerStateMixin};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransactionCommittedDetailsResponse {
     #[serde(flatten)]

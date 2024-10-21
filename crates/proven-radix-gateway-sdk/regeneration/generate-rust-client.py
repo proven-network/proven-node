@@ -244,3 +244,6 @@ if __name__ == "__main__":
     logging.info("Running clippy...")
 
     run(['cargo', 'clippy', '--fix', '--allow-dirty'])
+
+    logging.info("Running fmt...")
+    run(['cargo', 'fmt', '--all'])

@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::stream_transactions`].
 
 On request success, this will return a [`StreamTransactionsResponse`].*/
@@ -43,7 +43,7 @@ pub struct StreamTransactionsRequired<'a> {
     pub opt_ins: TransactionDetailsOptIns,
     pub order: &'a str,
 }
-impl<'a> StreamTransactionsRequired<'a> {}
+impl StreamTransactionsRequired<'_> {}
 impl FluentRequest<'_, StreamTransactionsRequest> {
     ///Set the value of the at_ledger_state field.
     pub fn at_ledger_state(mut self, at_ledger_state: LedgerStateSelector) -> Self {
@@ -73,40 +73,28 @@ impl<'a> ::std::future::IntoFuture for FluentRequest<'a, StreamTransactionsReque
         Box::pin(async move {
             let url = "/stream/transactions";
             let mut r = self.client.client.post(url);
-            r = r
-                .json(
-                    json!(
-                        { "accounts_with_manifest_owner_method_calls" : self.params
-                        .accounts_with_manifest_owner_method_calls }
-                    ),
-                );
-            r = r
-                .json(
-                    json!(
-                        { "accounts_without_manifest_owner_method_calls" : self.params
-                        .accounts_without_manifest_owner_method_calls }
-                    ),
-                );
-            r = r
-                .json(
-                    json!(
-                        { "affected_global_entities_filter" : self.params
-                        .affected_global_entities_filter }
-                    ),
-                );
+            r = r.json(json!(
+                { "accounts_with_manifest_owner_method_calls" : self.params
+                .accounts_with_manifest_owner_method_calls }
+            ));
+            r = r.json(json!(
+                { "accounts_without_manifest_owner_method_calls" : self.params
+                .accounts_without_manifest_owner_method_calls }
+            ));
+            r = r.json(json!(
+                { "affected_global_entities_filter" : self.params
+                .affected_global_entities_filter }
+            ));
             if let Some(ref unwrapped) = self.params.at_ledger_state {
                 r = r.json(json!({ "at_ledger_state" : unwrapped }));
             }
             if let Some(ref unwrapped) = self.params.cursor {
                 r = r.json(json!({ "cursor" : unwrapped }));
             }
-            r = r
-                .json(
-                    json!(
-                        { "event_global_emitters_filter" : self.params
-                        .event_global_emitters_filter }
-                    ),
-                );
+            r = r.json(json!(
+                { "event_global_emitters_filter" : self.params
+                .event_global_emitters_filter }
+            ));
             r = r.json(json!({ "events_filter" : self.params.events_filter }));
             if let Some(ref unwrapped) = self.params.from_ledger_state {
                 r = r.json(json!({ "from_ledger_state" : unwrapped }));
@@ -115,40 +103,25 @@ impl<'a> ::std::future::IntoFuture for FluentRequest<'a, StreamTransactionsReque
             if let Some(ref unwrapped) = self.params.limit_per_page {
                 r = r.json(json!({ "limit_per_page" : unwrapped }));
             }
-            r = r
-                .json(
-                    json!(
-                        { "manifest_accounts_deposited_into_filter" : self.params
-                        .manifest_accounts_deposited_into_filter }
-                    ),
-                );
-            r = r
-                .json(
-                    json!(
-                        { "manifest_accounts_withdrawn_from_filter" : self.params
-                        .manifest_accounts_withdrawn_from_filter }
-                    ),
-                );
-            r = r
-                .json(
-                    json!(
-                        { "manifest_badges_presented_filter" : self.params
-                        .manifest_badges_presented_filter }
-                    ),
-                );
-            r = r
-                .json(
-                    json!(
-                        { "manifest_class_filter" : self.params.manifest_class_filter }
-                    ),
-                );
-            r = r
-                .json(
-                    json!(
-                        { "manifest_resources_filter" : self.params
-                        .manifest_resources_filter }
-                    ),
-                );
+            r = r.json(json!(
+                { "manifest_accounts_deposited_into_filter" : self.params
+                .manifest_accounts_deposited_into_filter }
+            ));
+            r = r.json(json!(
+                { "manifest_accounts_withdrawn_from_filter" : self.params
+                .manifest_accounts_withdrawn_from_filter }
+            ));
+            r = r.json(json!(
+                { "manifest_badges_presented_filter" : self.params
+                .manifest_badges_presented_filter }
+            ));
+            r = r.json(json!(
+                { "manifest_class_filter" : self.params.manifest_class_filter }
+            ));
+            r = r.json(json!(
+                { "manifest_resources_filter" : self.params
+                .manifest_resources_filter }
+            ));
             r = r.json(json!({ "opt_ins" : self.params.opt_ins }));
             r = r.json(json!({ "order" : self.params.order }));
             let res = r.await?;

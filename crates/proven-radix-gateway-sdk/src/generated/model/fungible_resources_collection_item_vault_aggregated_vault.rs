@@ -1,7 +1,5 @@
-use serde::{Serialize, Deserialize};
-use super::{
-    FungibleResourcesCollectionItemVaultAggregatedVaultItem, ResultSetCursorMixin,
-};
+use super::{FungibleResourcesCollectionItemVaultAggregatedVaultItem, ResultSetCursorMixin};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct FungibleResourcesCollectionItemVaultAggregatedVault {
     #[serde(flatten)]

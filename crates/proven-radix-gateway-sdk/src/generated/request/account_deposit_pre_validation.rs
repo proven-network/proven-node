@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::account_deposit_pre_validation`].
 
 On request success, this will return a [`AccountDepositPreValidationResponse`].*/
@@ -15,8 +15,7 @@ pub struct AccountDepositPreValidationRequest {
 }
 impl AccountDepositPreValidationRequest {}
 impl FluentRequest<'_, AccountDepositPreValidationRequest> {}
-impl<'a> ::std::future::IntoFuture
-for FluentRequest<'a, AccountDepositPreValidationRequest> {
+impl<'a> ::std::future::IntoFuture for FluentRequest<'a, AccountDepositPreValidationRequest> {
     type Output = crate::Result<AccountDepositPreValidationResponse>;
     type IntoFuture = ::futures::future::BoxFuture<'a, Self::Output>;
     fn into_future(self) -> Self::IntoFuture {

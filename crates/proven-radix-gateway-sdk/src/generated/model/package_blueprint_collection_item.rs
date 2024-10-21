@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::BlueprintRoyaltyConfig;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct PackageBlueprintCollectionItem {
     ///This type is defined in the Core API as `AuthConfig`. See the Core API documentation for more details.

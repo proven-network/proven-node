@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::ProgrammaticScryptoSborValue;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct EventsItem {
     pub data: ProgrammaticScryptoSborValue,

@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{ResultSetCursorMixin, StateKeyValueStoreKeysResponseItem};
+use serde::{Deserialize, Serialize};
 ///Key value store items collection.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateKeyValueStoreKeysCollection {

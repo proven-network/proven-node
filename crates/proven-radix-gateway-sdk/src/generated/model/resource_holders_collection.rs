@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{ResourceHoldersCollectionItem, ResultSetCursorMixin};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ResourceHoldersCollection {
     #[serde(flatten)]

@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::ObjectModuleId;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RoleKey {
     pub module: ObjectModuleId,

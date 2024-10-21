@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::ValidatorUptimeCollectionItem;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ValidatorUptimeCollection {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

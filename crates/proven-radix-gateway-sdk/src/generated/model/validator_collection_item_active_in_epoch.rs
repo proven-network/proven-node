@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::PublicKey;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ValidatorCollectionItemActiveInEpoch {
     pub key: PublicKey,

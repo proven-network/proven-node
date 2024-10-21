@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::BlueprintMethodRoyalty;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct BlueprintRoyaltyConfig {
     pub is_enabled: bool,

@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct ResultSetCursorMixin {
     ///If specified, contains a cursor to query next page of the `items` collection.

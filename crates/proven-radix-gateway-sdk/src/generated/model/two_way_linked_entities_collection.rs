@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{ResultSetCursorMixin, TwoWayLinkedEntitiesCollectionItem};
+use serde::{Deserialize, Serialize};
 ///A collection of two-way linked (resolved & verified) entities linked to the entity defining this collection.
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct TwoWayLinkedEntitiesCollection {

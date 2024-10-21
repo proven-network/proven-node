@@ -1,9 +1,8 @@
-use serde::{Serialize, Deserialize};
 use super::{
-    EntityMetadataCollection, FungibleResourcesCollection,
-    NonFungibleResourcesCollection, StateEntityDetailsResponseItemAncestorIdentities,
-    StateEntityDetailsResponseItemDetails,
+    EntityMetadataCollection, FungibleResourcesCollection, NonFungibleResourcesCollection,
+    StateEntityDetailsResponseItemAncestorIdentities, StateEntityDetailsResponseItemDetails,
 };
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateEntityDetailsResponseItem {
     ///Bech32m-encoded human readable version of the address.

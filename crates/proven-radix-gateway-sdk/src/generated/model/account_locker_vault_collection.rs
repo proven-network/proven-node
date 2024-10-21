@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::{AccountLockerVaultCollectionItem, ResultSetCursorMixin};
+use serde::{Deserialize, Serialize};
 ///Account Locker Account Resources Collection
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct AccountLockerVaultCollection {

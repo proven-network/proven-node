@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::key_value_store_keys`].
 
 On request success, this will return a [`StateKeyValueStoreKeysResponse`].*/
@@ -45,13 +45,10 @@ impl<'a> ::std::future::IntoFuture for FluentRequest<'a, KeyValueStoreKeysReques
             if let Some(ref unwrapped) = self.params.cursor {
                 r = r.json(json!({ "cursor" : unwrapped }));
             }
-            r = r
-                .json(
-                    json!(
-                        { "key_value_store_address" : self.params.key_value_store_address
-                        }
-                    ),
-                );
+            r = r.json(json!(
+                { "key_value_store_address" : self.params.key_value_store_address
+                }
+            ));
             if let Some(ref unwrapped) = self.params.limit_per_page {
                 r = r.json(json!({ "limit_per_page" : unwrapped }));
             }

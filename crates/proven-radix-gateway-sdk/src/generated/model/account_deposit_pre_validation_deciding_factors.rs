@@ -1,8 +1,8 @@
-use serde::{Serialize, Deserialize};
 use super::{
     AccountDefaultDepositRule,
     AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem,
 };
+use serde::{Deserialize, Serialize};
 ///Deciding factors used to calculate response.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AccountDepositPreValidationDecidingFactors {
@@ -13,9 +13,8 @@ pub struct AccountDepositPreValidationDecidingFactors {
     pub is_badge_authorized_depositor: Option<bool>,
     ///Returns deciding factors for each resource. Contains only information about resources presented in the request, not all resource preference rules for queried account.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resource_specific_details: Option<
-        Vec<AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem>,
-    >,
+    pub resource_specific_details:
+        Option<Vec<AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem>>,
 }
 impl std::fmt::Display for AccountDepositPreValidationDecidingFactors {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {

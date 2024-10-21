@@ -1,5 +1,5 @@
-use serde::{Serialize, Deserialize};
 use super::AccountResourcePreferenceRule;
+use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem {
     pub is_xrd: bool,
@@ -9,8 +9,7 @@ pub struct AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem
     pub resource_preference_rule: Option<AccountResourcePreferenceRule>,
     pub vault_exists: bool,
 }
-impl std::fmt::Display
-for AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem {
+impl std::fmt::Display for AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "{}", serde_json::to_string(self).unwrap())
     }

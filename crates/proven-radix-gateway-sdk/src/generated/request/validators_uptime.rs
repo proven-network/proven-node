@@ -1,9 +1,9 @@
-use serde_json::json;
 use crate::generated::model::*;
 use crate::generated::FluentRequest;
-use serde::{Serialize, Deserialize};
-use httpclient::InMemoryResponseExt;
 use crate::generated::LowLevelClient;
+use httpclient::InMemoryResponseExt;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 /**You should use this struct via [`LowLevelClient::validators_uptime`].
 
 On request success, this will return a [`ValidatorsUptimeResponse`].*/
@@ -39,10 +39,7 @@ impl<'a> ::std::future::IntoFuture for FluentRequest<'a, ValidatorsUptimeRequest
             if let Some(ref unwrapped) = self.params.from_ledger_state {
                 r = r.json(json!({ "from_ledger_state" : unwrapped }));
             }
-            r = r
-                .json(
-                    json!({ "validator_addresses" : self.params.validator_addresses }),
-                );
+            r = r.json(json!({ "validator_addresses" : self.params.validator_addresses }));
             let res = r.await?;
             res.json().map_err(|e| crate::Error::LowLevel(e.into()))
         })

@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 ///Check detailed [OptIns](#section/Using-endpoints-with-opt-in-features) documentation for more details
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct StateEntityNonFungiblesPageRequestOptIns {
