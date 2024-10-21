@@ -15,12 +15,10 @@ pub struct Worker<AS: Store1, PS: Store2, NS: Store2> {
     _marker3: PhantomData<NS>,
 }
 
-enum WorkerRequest {
-    Execute {
-        request: ExecutionRequest,
-        sender: oneshot::Sender<Result<ExecutionResult, Error>>,
-    },
-}
+type WorkerRequest = (
+    ExecutionRequest,
+    oneshot::Sender<Result<ExecutionResult, Error>>,
+);
 
 /// A worker that handles execution requests using a runtime. Can be run async in tokio.
 ///
@@ -35,8 +33,32 @@ enum WorkerRequest {
 ///
 /// # Example
 /// ```rust
-/// let worker = Worker::new(runtime_options, application_store, personal_store, nft_store);
-/// let result = worker.execute(request).await;
+/// use proven_runtime::{Context, Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions, Worker};
+/// use proven_store_memory::MemoryStore;
+/// use serde_json::json;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let runtime_options = RuntimeOptions {
+///         max_heap_mbs: 10,
+///         module: "export const test = (a, b) => a + b;".to_string(),
+///         timeout_millis: 1000,
+///     };
+///     let application_store = MemoryStore::new();
+///     let personal_store = MemoryStore::new();
+///     let nft_store = MemoryStore::new();
+///     let request = ExecutionRequest {
+///         context: Context {
+///             dapp_definition_address: "dapp_definition_address".to_string(),
+///             identity: None,
+///             accounts: None,
+///         },
+///         handler_name: "test".to_string(),
+///         args: vec![json!(10), json!(20)],
+///     };
+///     let mut worker = Worker::new(runtime_options, application_store, personal_store, nft_store);
+///     let result = worker.execute(request).await;
+/// }
 /// ```
 impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
     /// Creates a new worker with the given runtime options and stores.
@@ -60,7 +82,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
         personal_store: PS,
         nft_store: NS,
     ) -> Self {
-        let (sender, mut receiver) = mpsc::channel(1);
+        let (sender, mut receiver) = mpsc::channel::<WorkerRequest>(1);
 
         thread::spawn(move || {
             let mut runtime = Runtime::new(
@@ -71,16 +93,9 @@ impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
             )
             .unwrap();
 
-            while let Some(request) = receiver.blocking_recv() {
-                match request {
-                    WorkerRequest::Execute {
-                        request,
-                        sender: response,
-                    } => {
-                        let result = runtime.execute(request);
-                        let _ = response.send(result);
-                    }
-                }
+            while let Some((request, responder)) = receiver.blocking_recv() {
+                let result = runtime.execute(request);
+                responder.send(result).unwrap();
             }
         });
 
@@ -101,7 +116,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
     /// An a result containing the execution result.
     pub async fn execute(&mut self, request: ExecutionRequest) -> Result<ExecutionResult, Error> {
         let (sender, reciever) = oneshot::channel();
-        let worker_request = WorkerRequest::Execute { request, sender };
+        let worker_request = (request, sender);
 
         if (self.sender.send(worker_request).await).is_err() {
             eprintln!("Failed to send request to worker");
