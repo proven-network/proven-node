@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use proven_radix_rola::{Curve, Proof, Result, Rola, SignedChallenge, Type};
 
 use radix_common::crypto::{Ed25519PublicKey, Secp256k1PublicKey};
