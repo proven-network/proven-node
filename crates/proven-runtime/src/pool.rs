@@ -2,7 +2,7 @@ use crate::{Error, ExecutionRequest, ExecutionResult, RuntimeOptions, Worker};
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use proven_store::{Store1, Store2};
@@ -26,8 +26,8 @@ pub struct Pool<AS: Store1, PS: Store2, NS: Store2> {
     nft_store: NS,
     workers: SharedWorkerMap<AS, PS, NS>,
     known_hashes: Arc<Mutex<HashMap<String, RuntimeOptions>>>,
-    max_workers: usize,
-    total_workers: AtomicUsize,
+    max_workers: u32,
+    total_workers: AtomicU32,
     last_used: LastUsedMap,
     queue_sender: QueueSender,
     overflow_queue: Arc<Mutex<VecDeque<QueueItem>>>,
@@ -39,12 +39,14 @@ pub struct Pool<AS: Store1, PS: Store2, NS: Store2> {
 
 impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
     pub async fn new(
-        max_workers: usize,
+        max_workers: u32,
         application_store: AS,
         personal_store: PS,
         nft_store: NS,
     ) -> Arc<Self> {
-        let (queue_sender, queue_receiver) = mpsc::channel(max_workers * 10);
+        rustyscript::init_platform(max_workers, true);
+
+        let (queue_sender, queue_receiver) = mpsc::channel(max_workers as usize * 10);
 
         let pool = Arc::new(Self {
             application_store,
@@ -53,7 +55,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
             workers: Arc::new(Mutex::new(HashMap::new())),
             known_hashes: Arc::new(Mutex::new(HashMap::new())),
             max_workers,
-            total_workers: AtomicUsize::new(0),
+            total_workers: AtomicU32::new(0),
             last_used: Arc::new(Mutex::new(HashMap::new())),
             queue_sender,
             overflow_queue: Arc::new(Mutex::new(VecDeque::new())),
