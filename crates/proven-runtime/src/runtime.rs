@@ -5,7 +5,8 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use proven_store::{Store1, Store2};
-use rustyscript::{js_value::Value, Module, RuntimeOptions as RustyScriptOptions};
+use rustyscript::js_value::Value;
+use rustyscript::{Module, RuntimeOptions as RustyScriptOptions};
 use tokio::time::Instant;
 
 #[derive(Clone)]
@@ -47,6 +48,9 @@ impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
             ],
             ..Default::default()
         })?;
+
+        // In case there are any to-level console.* calls in the module
+        runtime.put(ConsoleState::default())?;
 
         let module = Module::new("module.ts", options.module.as_str());
         let module_handle = runtime.load_module(&module)?;
@@ -116,5 +120,148 @@ impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
             duration,
             logs: console_state.messages,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Context;
+
+    use proven_store_memory::MemoryStore;
+    use serde_json::json;
+
+    // spawn in std::thread to avoid rustyscript panic
+    fn run_in_thread<F: FnOnce() + Send + 'static>(f: F) {
+        std::thread::spawn(f).join().unwrap();
+    }
+
+    fn create_runtime_options(script: &str) -> RuntimeOptions {
+        RuntimeOptions {
+            max_heap_mbs: 10,
+            module: script.to_string(),
+            timeout_millis: 1000,
+        }
+    }
+
+    fn create_execution_request() -> ExecutionRequest {
+        ExecutionRequest {
+            context: Context {
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                identity: None,
+                accounts: None,
+            },
+            handler_name: "test".to_string(),
+            args: vec![json!(10), json!(20)],
+        }
+    }
+
+    #[tokio::test]
+    async fn test_runtime_new() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                "export const test = () => { console.log('Hello, world!'); }",
+            );
+            let application_store = MemoryStore::new();
+            let personal_store = MemoryStore::new();
+            let nft_store = MemoryStore::new();
+
+            let runtime = Runtime::new(options, application_store, personal_store, nft_store);
+            assert!(runtime.is_ok());
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                "export const test = () => { console.log('Hello, world!'); }",
+            );
+            let application_store = MemoryStore::new();
+            let personal_store = MemoryStore::new();
+            let nft_store = MemoryStore::new();
+
+            let mut runtime =
+                Runtime::new(options, application_store, personal_store, nft_store).unwrap();
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            assert!(result.is_ok());
+
+            let execution_result = result.unwrap();
+            assert!(execution_result.output.is_null());
+            assert!(execution_result.duration.as_millis() < 1000);
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_with_identity() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { getCurrentIdentity } from "proven:sessions";
+
+                export const test = () => {
+                    const identity = getCurrentIdentity();
+                    return identity;
+                }
+            "#,
+            );
+            let application_store = MemoryStore::new();
+            let personal_store = MemoryStore::new();
+            let nft_store = MemoryStore::new();
+
+            let mut runtime =
+                Runtime::new(options, application_store, personal_store, nft_store).unwrap();
+            let mut request = create_execution_request();
+            request.context.identity = Some("test_identity".to_string());
+
+            let result = runtime.execute(request);
+            assert!(result.is_ok());
+
+            let execution_result = result.unwrap();
+            assert!(execution_result.output.is_string());
+            assert_eq!(execution_result.output.as_str().unwrap(), "test_identity");
+            assert!(execution_result.duration.as_millis() < 1000);
+        })
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_with_accounts() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { getCurrentAccounts } from "proven:sessions";
+
+                export const test = () => {
+                    const accounts = getCurrentAccounts();
+                    return accounts;
+                }
+            "#,
+            );
+
+            let application_store = MemoryStore::new();
+            let personal_store = MemoryStore::new();
+            let nft_store = MemoryStore::new();
+
+            let mut runtime =
+                Runtime::new(options, application_store, personal_store, nft_store).unwrap();
+            let mut request = create_execution_request();
+            request.context.accounts = Some(vec!["account1".to_string(), "account2".to_string()]);
+
+            let result = runtime.execute(request);
+            assert!(result.is_ok());
+
+            let execution_result = result.unwrap();
+            assert!(execution_result.output.is_array());
+            assert_eq!(execution_result.output.as_array().unwrap().len(), 2);
+            assert_eq!(
+                execution_result.output.as_array().unwrap()[0]
+                    .as_str()
+                    .unwrap(),
+                "account1"
+            );
+            assert!(execution_result.duration.as_millis() < 1000);
+        });
     }
 }
