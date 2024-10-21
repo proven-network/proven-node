@@ -33,7 +33,9 @@ type WorkerRequest = (
 ///
 /// # Example
 /// ```rust
-/// use proven_runtime::{Context, Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions, Worker};
+/// use proven_runtime::{
+///     Context, Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions, Worker,
+/// };
 /// use proven_store_memory::MemoryStore;
 /// use serde_json::json;
 ///
@@ -56,7 +58,12 @@ type WorkerRequest = (
 ///         handler_name: "test".to_string(),
 ///         args: vec![json!(10), json!(20)],
 ///     };
-///     let mut worker = Worker::new(runtime_options, application_store, personal_store, nft_store);
+///     let mut worker = Worker::new(
+///         runtime_options,
+///         application_store,
+///         personal_store,
+///         nft_store,
+///     );
 ///     let result = worker.execute(request).await;
 /// }
 /// ```

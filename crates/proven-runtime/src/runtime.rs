@@ -24,6 +24,51 @@ pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
     nft_store: NS,
 }
 
+/// Executes ESM modules in a single-threaded environment. Cannot use in tokio without spawning in dedicated thread.
+///
+/// # Type Parameters
+/// - `AS`: Application Store type implementing `Store1`.
+/// - `PS`: Personal Store type implementing `Store2`.
+/// - `NS`: NFT Store type implementing `Store2`.
+///
+/// # Methods
+/// - `new`: Creates a new runtime with the given runtime options and stores.
+/// - `execute`: Sends an execution request to the runtime and awaits the result.
+///
+/// # Example
+/// ```rust
+/// use proven_runtime::{
+///     Context, Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions,
+/// };
+/// use proven_store_memory::MemoryStore;
+/// use serde_json::json;
+///
+/// let runtime_options = RuntimeOptions {
+///     max_heap_mbs: 10,
+///     module: "export const test = (a, b) => a + b;".to_string(),
+///     timeout_millis: 1000,
+/// };
+/// let application_store = MemoryStore::new();
+/// let personal_store = MemoryStore::new();
+/// let nft_store = MemoryStore::new();
+/// let request = ExecutionRequest {
+///     context: Context {
+///         dapp_definition_address: "dapp_definition_address".to_string(),
+///         identity: None,
+///         accounts: None,
+///     },
+///     handler_name: "test".to_string(),
+///     args: vec![json!(10), json!(20)],
+/// };
+/// let mut runtime = Runtime::new(
+///     runtime_options,
+///     application_store,
+///     personal_store,
+///     nft_store,
+/// )
+/// .expect("Failed to create runtime");
+/// let result = runtime.execute(request);
+/// ```
 impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
     pub fn new(
         options: RuntimeOptions,
