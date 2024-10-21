@@ -27,7 +27,6 @@ struct Attestation {
     public_key: Vec<u8>,
 }
 
-
 #[async_trait]
 impl Attestor for DevAttestor {
     type AE = Error;
