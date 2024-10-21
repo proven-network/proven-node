@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use proven_store::{Store1, Store2};
 use rustyscript::js_value::Value;
-use rustyscript::{Module, RuntimeOptions as RustyScriptOptions};
+use rustyscript::{Module, ModuleHandle};
 use tokio::time::Instant;
 
 #[derive(Clone)]
@@ -17,7 +17,7 @@ pub struct RuntimeOptions {
 }
 
 pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
-    module_handle: rustyscript::ModuleHandle,
+    module_handle: ModuleHandle,
     runtime: rustyscript::Runtime,
     application_store: AS,
     personal_store: PS,
@@ -84,7 +84,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
     ) -> Result<Self, Error> {
         let mut schema_whlist = HashSet::with_capacity(1);
         schema_whlist.insert("proven:".to_string());
-        let mut runtime = rustyscript::Runtime::new(RustyScriptOptions {
+        let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
             timeout: Duration::from_millis(options.timeout_millis as u64),
             max_heap_size: Some(options.max_heap_mbs as usize * 1024 * 1024),
             schema_whlist,
