@@ -78,3 +78,43 @@ impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
         response.unwrap()
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Context;
+
+    use proven_store_memory::MemoryStore;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn test_worker_execute_in_tokio() {
+        let runtime_options = RuntimeOptions {
+            max_heap_mbs: 10,
+            module: "export const test = (a, b) => a + b;".to_string(),
+            timeout_millis: 1000,
+        };
+        let application_store = MemoryStore::new();
+        let personal_store = MemoryStore::new();
+        let nft_store = MemoryStore::new();
+
+        let mut worker = Worker::new(
+            runtime_options,
+            application_store,
+            personal_store,
+            nft_store,
+        );
+
+        let request = ExecutionRequest {
+            context: Context {
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                identity: None,
+                accounts: None,
+            },
+            handler_name: "test".to_string(),
+            args: vec![json!(10), json!(20)],
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+    }
+}
