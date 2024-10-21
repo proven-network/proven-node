@@ -15,14 +15,45 @@ pub struct Worker<AS: Store1, PS: Store2, NS: Store2> {
     _marker3: PhantomData<NS>,
 }
 
-pub enum WorkerRequest {
+enum WorkerRequest {
     Execute {
         request: ExecutionRequest,
         sender: oneshot::Sender<Result<ExecutionResult, Error>>,
     },
 }
 
+/// A worker that handles execution requests using a runtime. Can be run async in tokio.
+///
+/// # Type Parameters
+/// - `AS`: Application Store type implementing `Store1`.
+/// - `PS`: Personal Store type implementing `Store2`.
+/// - `NS`: NFT Store type implementing `Store2`.
+///
+/// # Methods
+/// - `new`: Creates a new worker with the given runtime options and stores.
+/// - `execute`: Sends an execution request to the worker and awaits the result.
+///
+/// # Example
+/// ```rust
+/// let worker = Worker::new(runtime_options, application_store, personal_store, nft_store);
+/// let result = worker.execute(request).await;
+/// ```
 impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
+    /// Creates a new worker with the given runtime options and stores.
+    ///
+    /// # Type Parameters
+    /// - `AS`: Application Store type implementing `Store1`.
+    /// - `PS`: Personal Store type implementing `Store2`.
+    /// - `NS`: NFT Store type implementing `Store2`.
+    ///
+    /// # Parameters
+    /// - `runtime_options`: The runtime options to use.
+    /// - `application_store`: The application store to use.
+    /// - `personal_store`: The personal store to use.
+    /// - `nft_store`: The NFT store to use.
+    ///
+    /// # Returns
+    /// The new worker.
     pub fn new(
         runtime_options: RuntimeOptions,
         application_store: AS,
@@ -61,6 +92,13 @@ impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
         }
     }
 
+    /// Executes the given request and awaits the result.
+    ///
+    /// # Parameters
+    /// - `request`: The execution request to execute.
+    ///
+    /// # Returns
+    /// An a result containing the execution result.
     pub async fn execute(&mut self, request: ExecutionRequest) -> Result<ExecutionResult, Error> {
         let (sender, reciever) = oneshot::channel();
         let worker_request = WorkerRequest::Execute { request, sender };
