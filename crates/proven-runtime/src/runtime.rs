@@ -2,12 +2,19 @@ use crate::extensions::*;
 use crate::{Error, ExecutionRequest, ExecutionResult};
 
 use std::collections::HashSet;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use proven_store::{Store1, Store2};
 use rustyscript::js_value::Value;
 use rustyscript::{Module, ModuleHandle};
 use tokio::time::Instant;
+
+static SCHEMA_WHLIST: LazyLock<HashSet<String>> = LazyLock::new(|| {
+    let mut set = HashSet::with_capacity(1);
+    set.insert("proven:".to_string());
+    set
+});
 
 #[derive(Clone)]
 pub struct RuntimeOptions {
@@ -82,12 +89,10 @@ impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
         personal_store: PS,
         nft_store: NS,
     ) -> Result<Self, Error> {
-        let mut schema_whlist = HashSet::with_capacity(1);
-        schema_whlist.insert("proven:".to_string());
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
             timeout: Duration::from_millis(options.timeout_millis as u64),
             max_heap_size: Some(options.max_heap_mbs as usize * 1024 * 1024),
-            schema_whlist,
+            schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
