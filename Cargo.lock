@@ -3935,6 +3935,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-locks"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+]
+
+[[package]]
+name = "proven-locks-memory"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "proven-locks",
+ "tokio",
+]
+
+[[package]]
 name = "proven-nats-monitor"
 version = "0.1.0"
 dependencies = [

@@ -17,6 +17,8 @@ members = [
     "crates/proven-imds",
     "crates/proven-kms",
     "crates/proven-local",
+    "crates/proven-locks",
+    "crates/proven-locks-memory",
     "crates/proven-nats-monitor",
     "crates/proven-nats-server",
     "crates/proven-postgres",
