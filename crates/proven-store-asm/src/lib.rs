@@ -6,24 +6,49 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use aws_config::Region;
-use proven_store::Store;
+use aws_sdk_secretsmanager::Client;
+use proven_store::{Store, Store1, Store2};
 
 #[derive(Clone, Debug)]
 pub struct AsmStore {
     client: aws_sdk_secretsmanager::Client,
-    secret_id: String,
+    prefix: Option<String>,
+    secret_name: String,
 }
 
+/// AsmStore is an AWS Secrets Manager implementation of the `Store`, `Store1`, and `Store2` traits.
+/// It uses AWS Secrets Manager to store key-value pairs, where keys are strings and values are byte vectors.
+/// The store supports optional scoping of keys using prefixes in the secret name.
 impl AsmStore {
-    pub async fn new(region: String, secret_id: String) -> Self {
+    pub async fn new(region: String, secret_name: String) -> Self {
         let config = aws_config::from_env()
             .region(Region::new(region))
             .load()
             .await;
 
         Self {
-            client: aws_sdk_secretsmanager::Client::new(&config),
-            secret_id,
+            client: Client::new(&config),
+            prefix: None,
+            secret_name,
+        }
+    }
+
+    fn new_with_client_and_prefix(
+        client: Client,
+        secret_name: String,
+        prefix: Option<String>,
+    ) -> Self {
+        Self {
+            client,
+            prefix,
+            secret_name,
+        }
+    }
+
+    fn get_secret_name(&self) -> String {
+        match &self.prefix {
+            Some(prefix) => format!("{}-{}", prefix, self.secret_name),
+            None => self.secret_name.clone(),
         }
     }
 
@@ -31,7 +56,7 @@ impl AsmStore {
         let resp = self
             .client
             .get_secret_value()
-            .secret_id(&self.secret_id)
+            .secret_id(self.get_secret_name())
             .send()
             .await;
 
@@ -49,7 +74,7 @@ impl AsmStore {
         let update_resp = self
             .client
             .update_secret()
-            .secret_id(&self.secret_id)
+            .secret_id(&self.secret_name)
             .secret_string(&updated_secret_string)
             .send()
             .await;
@@ -85,5 +110,43 @@ impl Store for AsmStore {
         secret_map.insert(key, value);
 
         self.update_secret_map(secret_map).await
+    }
+}
+
+#[async_trait]
+impl Store1 for AsmStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let new_scope = match &self.prefix {
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
+            None => scope,
+        };
+
+        Self::new_with_client_and_prefix(
+            self.client.clone(),
+            self.secret_name.clone(),
+            Some(new_scope),
+        )
+    }
+}
+
+#[async_trait]
+impl Store2 for AsmStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let new_scope = match &self.prefix {
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
+            None => scope,
+        };
+
+        Self::new_with_client_and_prefix(
+            self.client.clone(),
+            self.secret_name.clone(),
+            Some(new_scope),
+        )
     }
 }

@@ -14,6 +14,9 @@ pub struct FsStore {
     dir: PathBuf,
 }
 
+/// FsStore is a file system implementation of the `Store`, `Store1`, and `Store2` traits.
+/// It uses the file system to store key-value pairs, where keys are strings and values are byte vectors.
+/// The store supports optional scoping of keys using a directory.
 impl FsStore {
     pub fn new(dir: PathBuf) -> Self {
         FsStore { dir }

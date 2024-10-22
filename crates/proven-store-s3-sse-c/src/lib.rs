@@ -17,6 +17,10 @@ pub struct S3Store {
     prefix: Option<String>,
 }
 
+/// S3Store is an Amazon S3 implementation of the `Store`, `Store1`, and `Store2` traits.
+/// It uses Amazon S3 to store key-value pairs, where keys are strings and values are byte vectors.
+/// The store supports optional scoping of keys using a prefix.
+/// The store uses AES-256 encryption with a secret key to encrypt values before storing them.
 impl S3Store {
     pub async fn new(bucket: String, region: String, secret_key: [u8; 32]) -> Self {
         let config = aws_config::from_env()

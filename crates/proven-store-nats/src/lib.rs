@@ -15,6 +15,9 @@ pub struct NatsStore {
     max_age: Duration,
 }
 
+/// NatsStore is a NATS JetStream implementation of the `Store`, `Store1`, and `Store2` traits.
+/// It uses NATS JetStream to store key-value pairs, where keys are strings and values are byte vectors.
+/// The store supports optional scoping of keys using bucket name prefixes.
 impl NatsStore {
     pub async fn new(
         client: async_nats::Client,
