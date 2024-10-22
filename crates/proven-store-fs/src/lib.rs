@@ -82,3 +82,79 @@ impl Store for FsStore {
         Ok(())
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_put_and_get() {
+        let dir = tempdir().unwrap();
+        let store = FsStore::new(dir.path().to_path_buf());
+
+        let key = "test_key".to_string();
+        let value = b"test_value".to_vec();
+
+        store.put(key.clone(), value.clone()).await.unwrap();
+        let result = store.get(key.clone()).await.unwrap();
+
+        assert_eq!(result, Some(value));
+    }
+
+    #[tokio::test]
+    async fn test_get_nonexistent_key() {
+        let dir = tempdir().unwrap();
+        let store = FsStore::new(dir.path().to_path_buf());
+
+        let key = "nonexistent_key".to_string();
+        let result = store.get(key).await.unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn test_del() {
+        let dir = tempdir().unwrap();
+        let store = FsStore::new(dir.path().to_path_buf());
+
+        let key = "test_key".to_string();
+        let value = b"test_value".to_vec();
+
+        store.put(key.clone(), value.clone()).await.unwrap();
+        store.del(key.clone()).await.unwrap();
+        let result = store.get(key).await.unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn test_scope() {
+        let dir = tempdir().unwrap();
+        let store = FsStore::new(dir.path().to_path_buf());
+
+        let scoped_store = Store1::scope(&store, "scope".to_string());
+
+        let key = "test_key".to_string();
+        let value = b"test_value".to_vec();
+
+        scoped_store.put(key.clone(), value.clone()).await.unwrap();
+        let result = scoped_store.get(key.clone()).await.unwrap();
+
+        assert_eq!(result, Some(value));
+    }
+
+    #[tokio::test]
+    async fn test_put_creates_directories() {
+        let dir = tempdir().unwrap();
+        let store = FsStore::new(dir.path().to_path_buf());
+
+        let key = "nested/directory/test_key".to_string();
+        let value = b"test_value".to_vec();
+
+        store.put(key.clone(), value.clone()).await.unwrap();
+        let result = store.get(key.clone()).await.unwrap();
+
+        assert_eq!(result, Some(value));
+    }
+}

@@ -4118,6 +4118,7 @@ dependencies = [
  "async-trait",
  "derive_more",
  "proven-store",
+ "tempfile",
  "tokio",
 ]
 
