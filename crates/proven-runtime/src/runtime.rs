@@ -17,18 +17,21 @@ static SCHEMA_WHLIST: LazyLock<HashSet<String>> = LazyLock::new(|| {
 });
 
 #[derive(Clone)]
-pub struct RuntimeOptions {
+pub struct RuntimeOptions<AS: Store1, PS: Store2, NS: Store2> {
+    pub application_store: AS,
     pub max_heap_mbs: u16,
     pub module: String,
+    pub nft_store: NS,
+    pub personal_store: PS,
     pub timeout_millis: u32,
 }
 
 pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
-    module_handle: ModuleHandle,
-    runtime: rustyscript::Runtime,
     application_store: AS,
-    personal_store: PS,
+    module_handle: ModuleHandle,
     nft_store: NS,
+    personal_store: PS,
+    runtime: rustyscript::Runtime,
 }
 
 /// Executes ESM modules in a single-threaded environment. Cannot use in tokio without spawning in dedicated thread.
@@ -46,15 +49,17 @@ pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
 /// use proven_store_memory::MemoryStore;
 /// use serde_json::json;
 ///
-/// let runtime_options = RuntimeOptions {
+/// let mut runtime = Runtime::new(RuntimeOptions {
+///     application_store: MemoryStore::new(),
 ///     max_heap_mbs: 10,
 ///     module: "export const test = (a, b) => a + b;".to_string(),
+///     nft_store: MemoryStore::new(),
+///     personal_store: MemoryStore::new(),
 ///     timeout_millis: 1000,
-/// };
-/// let application_store = MemoryStore::new();
-/// let personal_store = MemoryStore::new();
-/// let nft_store = MemoryStore::new();
-/// let request = ExecutionRequest {
+/// })
+/// .expect("Failed to create runtime");
+///
+/// runtime.execute(ExecutionRequest {
 ///     context: Context {
 ///         dapp_definition_address: "dapp_definition_address".to_string(),
 ///         identity: None,
@@ -62,15 +67,7 @@ pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
 ///     },
 ///     handler_name: "test".to_string(),
 ///     args: vec![json!(10), json!(20)],
-/// };
-/// let mut runtime = Runtime::new(
-///     runtime_options,
-///     application_store,
-///     personal_store,
-///     nft_store,
-/// )
-/// .expect("Failed to create runtime");
-/// let result = runtime.execute(request);
+/// });
 /// ```
 impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
     /// Creates a new runtime with the given runtime options and stores.
@@ -83,12 +80,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
     ///
     /// # Returns
     /// The created runtime.
-    pub fn new(
-        options: RuntimeOptions,
-        application_store: AS,
-        personal_store: PS,
-        nft_store: NS,
-    ) -> Result<Self, Error> {
+    pub fn new(options: RuntimeOptions<AS, PS, NS>) -> Result<Self, Error> {
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
             timeout: Duration::from_millis(options.timeout_millis as u64),
             max_heap_size: Some(options.max_heap_mbs as usize * 1024 * 1024),
@@ -114,9 +106,9 @@ impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
         Ok(Self {
             module_handle,
             runtime,
-            application_store,
-            personal_store,
-            nft_store,
+            application_store: options.application_store,
+            personal_store: options.personal_store,
+            nft_store: options.nft_store,
         })
     }
 
@@ -199,10 +191,15 @@ mod tests {
         std::thread::spawn(f).join().unwrap();
     }
 
-    fn create_runtime_options(script: &str) -> RuntimeOptions {
+    fn create_runtime_options(
+        script: &str,
+    ) -> RuntimeOptions<MemoryStore, MemoryStore, MemoryStore> {
         RuntimeOptions {
+            application_store: MemoryStore::new(),
             max_heap_mbs: 10,
             module: script.to_string(),
+            nft_store: MemoryStore::new(),
+            personal_store: MemoryStore::new(),
             timeout_millis: 1000,
         }
     }
@@ -225,11 +222,8 @@ mod tests {
             let options = create_runtime_options(
                 "export const test = () => { console.log('Hello, world!'); }",
             );
-            let application_store = MemoryStore::new();
-            let personal_store = MemoryStore::new();
-            let nft_store = MemoryStore::new();
 
-            let runtime = Runtime::new(options, application_store, personal_store, nft_store);
+            let runtime = Runtime::new(options);
             assert!(runtime.is_ok());
         });
     }
@@ -240,12 +234,8 @@ mod tests {
             let options = create_runtime_options(
                 "export const test = () => { console.log('Hello, world!'); }",
             );
-            let application_store = MemoryStore::new();
-            let personal_store = MemoryStore::new();
-            let nft_store = MemoryStore::new();
 
-            let mut runtime =
-                Runtime::new(options, application_store, personal_store, nft_store).unwrap();
+            let mut runtime = Runtime::new(options).unwrap();
             let request = create_execution_request();
 
             let result = runtime.execute(request);
@@ -270,12 +260,8 @@ mod tests {
                 }
             "#,
             );
-            let application_store = MemoryStore::new();
-            let personal_store = MemoryStore::new();
-            let nft_store = MemoryStore::new();
 
-            let mut runtime =
-                Runtime::new(options, application_store, personal_store, nft_store).unwrap();
+            let mut runtime = Runtime::new(options).unwrap();
             let mut request = create_execution_request();
             request.context.identity = Some("test_identity".to_string());
 
@@ -303,12 +289,7 @@ mod tests {
             "#,
             );
 
-            let application_store = MemoryStore::new();
-            let personal_store = MemoryStore::new();
-            let nft_store = MemoryStore::new();
-
-            let mut runtime =
-                Runtime::new(options, application_store, personal_store, nft_store).unwrap();
+            let mut runtime = Runtime::new(options).unwrap();
             let mut request = create_execution_request();
             request.context.accounts = Some(vec!["account1".to_string(), "account2".to_string()]);
 

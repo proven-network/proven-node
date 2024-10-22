@@ -6,7 +6,7 @@ use std::sync::Arc;
 use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
-use proven_runtime::{Context, ExecutionRequest, ExecutionResult, Pool, RuntimeOptions};
+use proven_runtime::{Context, ExecutionRequest, ExecutionResult, Pool, PoolRuntimeOptions};
 use proven_sessions::Session;
 use proven_store::{Store1, Store2};
 use serde::{Deserialize, Serialize};
@@ -165,10 +165,10 @@ impl<AS: Store1, PS: Store2, NS: Store2> RpcHandler<AS, PS, NS> {
 
                 match pool
                     .execute(
-                        RuntimeOptions {
+                        PoolRuntimeOptions {
+                            max_heap_mbs,
                             module,
                             timeout_millis,
-                            max_heap_mbs,
                         },
                         request,
                     )

@@ -18,19 +18,14 @@ fn main() -> Result<(), Error> {
         }
     "#;
 
-    let application_store = MemoryStore::new();
-    let personal_store = MemoryStore::new();
-    let nft_store = MemoryStore::new();
-    let mut runtime = Runtime::new(
-        RuntimeOptions {
-            module: user_module.to_string(),
-            max_heap_mbs: 10,
-            timeout_millis: 5000,
-        },
-        application_store,
-        personal_store,
-        nft_store,
-    )?;
+    let mut runtime = Runtime::new(RuntimeOptions {
+        application_store: MemoryStore::new(),
+        max_heap_mbs: 10,
+        module: user_module.to_string(),
+        nft_store: MemoryStore::new(),
+        personal_store: MemoryStore::new(),
+        timeout_millis: 5000,
+    })?;
 
     let request = ExecutionRequest {
         context: Context {

@@ -1,4 +1,4 @@
-use proven_runtime::{Context, Error, ExecutionRequest, Pool, RuntimeOptions};
+use proven_runtime::{Context, Error, ExecutionRequest, Pool, PoolOptions, PoolRuntimeOptions};
 
 use std::sync::Arc;
 
@@ -11,10 +11,14 @@ static EXECUTIONS: usize = 100;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let application_store = MemoryStore::new();
-    let personal_store = MemoryStore::new();
-    let nft_store = MemoryStore::new();
-    let pool = Pool::new(100, application_store, personal_store, nft_store).await;
+    let pool = Pool::new(PoolOptions {
+        application_store: MemoryStore::new(),
+        max_workers: 10,
+        nft_store: MemoryStore::new(),
+        personal_store: MemoryStore::new(),
+    })
+    .await;
+
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 
@@ -56,9 +60,9 @@ async fn main() -> Result<(), Error> {
             let start = Instant::now();
             let result = pool
                 .execute(
-                    RuntimeOptions {
-                        module,
+                    PoolRuntimeOptions {
                         max_heap_mbs: 10,
+                        module,
                         timeout_millis: 5000,
                     },
                     request,

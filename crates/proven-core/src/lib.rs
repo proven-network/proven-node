@@ -11,7 +11,7 @@ use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 use proven_http::HttpServer;
-use proven_runtime::Pool;
+use proven_runtime::{Pool, PoolOptions};
 use proven_sessions::SessionManagement;
 use proven_store::{Store1, Store2};
 use tokio::task::JoinHandle;
@@ -49,7 +49,13 @@ impl<SM: SessionManagement + 'static> Core<SM> {
             return Err(Error::AlreadyStarted);
         }
 
-        let pool = Pool::new(8, application_store, personal_store, nft_store).await;
+        let pool = Pool::new(PoolOptions {
+            application_store,
+            max_workers: 100,
+            nft_store,
+            personal_store,
+        })
+        .await;
 
         let session_router = create_session_router(self.session_manager.clone()).await;
         let http_rpc_router =

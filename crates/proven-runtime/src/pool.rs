@@ -16,7 +16,7 @@ type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 
 type SendChannel = oneshot::Sender<Result<ExecutionResult, Error>>;
 
-type QueueItem = (RuntimeOptions, ExecutionRequest, SendChannel);
+type QueueItem = (PoolRuntimeOptions, ExecutionRequest, SendChannel);
 type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
 
@@ -35,22 +35,28 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 /// # Example
 ///
 /// ```rust
-/// use proven_runtime::{Context, Error, ExecutionRequest, ExecutionResult, Pool, RuntimeOptions};
+/// use proven_runtime::{
+///     Context, Error, ExecutionRequest, ExecutionResult, Pool, PoolOptions, PoolRuntimeOptions,
+/// };
 /// use proven_store_memory::MemoryStore;
 /// use serde_json::json;
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let application_store = MemoryStore::new();
-///     let personal_store = MemoryStore::new();
-///     let nft_store = MemoryStore::new();
+///     let pool = Pool::new(PoolOptions {
+///         application_store: MemoryStore::new(),
+///         max_workers: 10,
+///         nft_store: MemoryStore::new(),
+///         personal_store: MemoryStore::new(),
+///     })
+///     .await;
 ///
-///     let pool = Pool::new(10, application_store, personal_store, nft_store).await;
-///     let runtime_options = RuntimeOptions {
+///     let runtime_options = PoolRuntimeOptions {
+///         max_heap_mbs: 10,
 ///         module: "export const test = (a, b) => a + b;".to_string(),
 ///         timeout_millis: 1000,
-///         max_heap_mbs: 10,
 ///     };
+///
 ///     let request = ExecutionRequest {
 ///         context: Context {
 ///             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -67,47 +73,56 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 /// ```
 pub struct Pool<AS: Store1, PS: Store2, NS: Store2> {
     application_store: AS,
-    personal_store: PS,
-    nft_store: NS,
-    workers: SharedWorkerMap<AS, PS, NS>,
-    known_hashes: Arc<Mutex<HashMap<String, RuntimeOptions>>>,
-    max_workers: u32,
-    total_workers: AtomicU32,
-    last_used: LastUsedMap,
-    queue_sender: QueueSender,
-    overflow_queue: Arc<Mutex<VecDeque<QueueItem>>>,
-    queue_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
-    overflow_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
-    try_kill_interval: Duration,
+    known_hashes: Arc<Mutex<HashMap<String, PoolRuntimeOptions>>>,
     last_killed: Arc<Mutex<Option<Instant>>>,
+    last_used: LastUsedMap,
+    max_workers: u32,
+    nft_store: NS,
+    overflow_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    overflow_queue: Arc<Mutex<VecDeque<QueueItem>>>,
+    personal_store: PS,
+    queue_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    queue_sender: QueueSender,
+    total_workers: AtomicU32,
+    try_kill_interval: Duration,
+    workers: SharedWorkerMap<AS, PS, NS>,
+}
+
+pub struct PoolOptions<AS, PS, NS> {
+    pub application_store: AS,
+    pub max_workers: u32,
+    pub nft_store: NS,
+    pub personal_store: PS,
+}
+
+#[derive(Clone)]
+pub struct PoolRuntimeOptions {
+    pub max_heap_mbs: u16,
+    pub module: String,
+    pub timeout_millis: u32,
 }
 
 impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
-    pub async fn new(
-        max_workers: u32,
-        application_store: AS,
-        personal_store: PS,
-        nft_store: NS,
-    ) -> Arc<Self> {
-        rustyscript::init_platform(max_workers, true);
+    pub async fn new(options: PoolOptions<AS, PS, NS>) -> Arc<Self> {
+        rustyscript::init_platform(options.max_workers, true);
 
-        let (queue_sender, queue_receiver) = mpsc::channel(max_workers as usize * 10);
+        let (queue_sender, queue_receiver) = mpsc::channel(options.max_workers as usize * 10);
 
         let pool = Arc::new(Self {
-            application_store,
-            personal_store,
-            nft_store,
-            workers: Arc::new(Mutex::new(HashMap::new())),
+            application_store: options.application_store,
             known_hashes: Arc::new(Mutex::new(HashMap::new())),
-            max_workers,
-            total_workers: AtomicU32::new(0),
-            last_used: Arc::new(Mutex::new(HashMap::new())),
-            queue_sender,
-            overflow_queue: Arc::new(Mutex::new(VecDeque::new())),
-            queue_processor: Arc::new(Mutex::new(None)),
-            overflow_processor: Arc::new(Mutex::new(None)),
-            try_kill_interval: Duration::from_millis(20),
             last_killed: Arc::new(Mutex::new(Some(Instant::now()))),
+            last_used: Arc::new(Mutex::new(HashMap::new())),
+            max_workers: options.max_workers,
+            nft_store: options.nft_store,
+            overflow_processor: Arc::new(Mutex::new(None)),
+            overflow_queue: Arc::new(Mutex::new(VecDeque::new())),
+            personal_store: options.personal_store,
+            queue_processor: Arc::new(Mutex::new(None)),
+            queue_sender,
+            total_workers: AtomicU32::new(0),
+            try_kill_interval: Duration::from_millis(20),
+            workers: Arc::new(Mutex::new(HashMap::new())),
         });
 
         Arc::clone(&pool)
@@ -124,7 +139,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
             'outer: while let Some((runtime_options, request, sender)) = queue_receiver.recv().await
             {
                 let options_hash = hash_options(&runtime_options);
-                let mut worker_map = self.workers.lock().await;
+                let mut worker_map = pool.workers.lock().await;
 
                 if let Some(workers) = worker_map.get_mut(&options_hash) {
                     if let Some(mut worker) = workers.pop() {
@@ -132,7 +147,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
 
                         let result = worker.execute(request).await;
 
-                        let mut worker_map = self.workers.lock().await;
+                        let mut worker_map = pool.workers.lock().await;
                         worker_map
                             .entry(options_hash.clone())
                             .or_default()
@@ -140,7 +155,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
 
                         drop(worker_map);
 
-                        self.last_used
+                        pool.last_used
                             .lock()
                             .await
                             .insert(options_hash, Instant::now());
@@ -154,17 +169,19 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
                     drop(worker_map);
                 }
 
-                if self.total_workers.load(Ordering::SeqCst) < self.max_workers
-                    || self.kill_idle_worker().await
+                if pool.total_workers.load(Ordering::SeqCst) < pool.max_workers
+                    || pool.kill_idle_worker().await
                 {
-                    self.total_workers.fetch_add(1, Ordering::SeqCst);
+                    pool.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    match Worker::<AS, PS, NS>::new(
-                        runtime_options.clone(),
-                        self.application_store.clone(),
-                        self.personal_store.clone(),
-                        self.nft_store.clone(),
-                    )
+                    match Worker::<AS, PS, NS>::new(RuntimeOptions {
+                        application_store: pool.application_store.clone(),
+                        max_heap_mbs: runtime_options.max_heap_mbs,
+                        module: runtime_options.module.clone(),
+                        nft_store: pool.nft_store.clone(),
+                        personal_store: pool.personal_store.clone(),
+                        timeout_millis: runtime_options.timeout_millis,
+                    })
                     .await
                     {
                         Ok(mut worker) => {
@@ -174,9 +191,9 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
                                 result
                             {
                                 // Remove the worker from the pool if the heap is exhausted (can't recover)
-                                self.total_workers.fetch_sub(1, Ordering::SeqCst);
+                                pool.total_workers.fetch_sub(1, Ordering::SeqCst);
                             } else {
-                                self.workers
+                                pool.workers
                                     .lock()
                                     .await
                                     .entry(options_hash.clone())
@@ -184,12 +201,12 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
                                     .push(worker);
                             }
 
-                            self.last_used
+                            pool.last_used
                                 .lock()
                                 .await
                                 .insert(options_hash.clone(), Instant::now());
 
-                            self.known_hashes
+                            pool.known_hashes
                                 .lock()
                                 .await
                                 .insert(options_hash.clone(), runtime_options);
@@ -199,7 +216,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
                         }
                         Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) => {
                             // Remove the worker from the pool if the heap is exhausted (can't recover)
-                            self.total_workers.fetch_sub(1, Ordering::SeqCst);
+                            pool.total_workers.fetch_sub(1, Ordering::SeqCst);
                         }
                         Err(e) => {
                             sender.send(Err(e)).unwrap();
@@ -207,13 +224,13 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
                         }
                     }
                 } else {
-                    self.queue_request(runtime_options, request, sender, true)
+                    pool.queue_request(runtime_options, request, sender, true)
                         .await;
                 }
             }
         });
 
-        pool.queue_processor.lock().await.replace(handle);
+        self.queue_processor.lock().await.replace(handle);
     }
 
     async fn start_overflow_processor(self: Arc<Self>) {
@@ -235,7 +252,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
 
     pub async fn execute(
         self: Arc<Self>,
-        runtime_options: RuntimeOptions,
+        runtime_options: PoolRuntimeOptions,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult, Error> {
         let options_hash = hash_options(&runtime_options);
@@ -275,12 +292,14 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
         {
             self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-            let mut worker = Worker::<AS, PS, NS>::new(
-                runtime_options.clone(),
-                self.application_store.clone(),
-                self.personal_store.clone(),
-                self.nft_store.clone(),
-            )
+            let mut worker = Worker::<AS, PS, NS>::new(RuntimeOptions {
+                application_store: self.application_store.clone(),
+                max_heap_mbs: runtime_options.max_heap_mbs,
+                module: runtime_options.module.clone(),
+                nft_store: self.nft_store.clone(),
+                personal_store: self.personal_store.clone(),
+                timeout_millis: runtime_options.timeout_millis,
+            })
             .await?;
             let result = worker.execute(request).await;
 
@@ -358,12 +377,14 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
                 {
                     self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    let mut worker = Worker::<AS, PS, NS>::new(
-                        runtime_options.clone(),
-                        self.application_store.clone(),
-                        self.personal_store.clone(),
-                        self.nft_store.clone(),
-                    )
+                    let mut worker = Worker::<AS, PS, NS>::new(RuntimeOptions {
+                        application_store: self.application_store.clone(),
+                        max_heap_mbs: runtime_options.max_heap_mbs,
+                        module: runtime_options.module.clone(),
+                        nft_store: self.nft_store.clone(),
+                        personal_store: self.personal_store.clone(),
+                        timeout_millis: runtime_options.timeout_millis,
+                    })
                     .await?;
                     let result = worker.execute(request).await;
 
@@ -397,7 +418,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
 
     async fn queue_request(
         &self,
-        runtime_options: RuntimeOptions,
+        runtime_options: PoolRuntimeOptions,
         request: ExecutionRequest,
         tx: SendChannel,
         queue_front: bool,
@@ -476,7 +497,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
     }
 }
 
-pub fn hash_options(options: &RuntimeOptions) -> String {
+pub fn hash_options(options: &PoolRuntimeOptions) -> String {
     let mut hasher = Sha256::new();
 
     // Concatenate module, timeout, and max_heap_size - newline separated
@@ -493,6 +514,7 @@ pub fn hash_options(options: &RuntimeOptions) -> String {
 
     hash_string
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -504,28 +526,34 @@ mod tests {
 
     #[tokio::test]
     async fn test_pool_creation() {
-        let application_store = MemoryStore::new();
-        let personal_store = MemoryStore::new();
-        let nft_store = MemoryStore::new();
+        let pool = Pool::new(PoolOptions {
+            application_store: MemoryStore::new(),
+            max_workers: 10,
+            nft_store: MemoryStore::new(),
+            personal_store: MemoryStore::new(),
+        })
+        .await;
 
-        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
         assert_eq!(pool.max_workers, 10);
         assert_eq!(pool.total_workers.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
     async fn test_execute() {
-        let application_store = MemoryStore::new();
-        let personal_store = MemoryStore::new();
-        let nft_store = MemoryStore::new();
+        let pool = Pool::new(PoolOptions {
+            application_store: MemoryStore::new(),
+            max_workers: 10,
+            nft_store: MemoryStore::new(),
+            personal_store: MemoryStore::new(),
+        })
+        .await;
 
-        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
-
-        let runtime_options = RuntimeOptions {
+        let runtime_options = PoolRuntimeOptions {
+            max_heap_mbs: 10,
             module: "export const test = (a, b) => a + b;".to_string(),
             timeout_millis: 1000,
-            max_heap_mbs: 10,
         };
+
         let request = ExecutionRequest {
             context: Context {
                 dapp_definition_address: "dapp_definition_address".to_string(),
@@ -542,17 +570,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_prehashed() {
-        let application_store = MemoryStore::new();
-        let personal_store = MemoryStore::new();
-        let nft_store = MemoryStore::new();
+        let pool = Pool::new(PoolOptions {
+            application_store: MemoryStore::new(),
+            max_workers: 10,
+            nft_store: MemoryStore::new(),
+            personal_store: MemoryStore::new(),
+        })
+        .await;
 
-        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
-
-        let runtime_options = RuntimeOptions {
+        let runtime_options = PoolRuntimeOptions {
+            max_heap_mbs: 10,
             module: "export const test = (a, b) => a + b;".to_string(),
             timeout_millis: 1000,
-            max_heap_mbs: 10,
         };
+
         let options_hash = hash_options(&runtime_options);
         pool.known_hashes
             .lock()
@@ -575,16 +606,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_queue_request() {
-        let application_store = MemoryStore::new();
-        let personal_store = MemoryStore::new();
-        let nft_store = MemoryStore::new();
+        let pool = Pool::new(PoolOptions {
+            application_store: MemoryStore::new(),
+            max_workers: 10,
+            nft_store: MemoryStore::new(),
+            personal_store: MemoryStore::new(),
+        })
+        .await;
 
-        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
-
-        let runtime_options = RuntimeOptions {
+        let runtime_options = PoolRuntimeOptions {
+            max_heap_mbs: 10,
             module: "export const test = (a, b) => a + b;".to_string(),
             timeout_millis: 1000,
-            max_heap_mbs: 10,
         };
         let request = ExecutionRequest {
             context: Context {
@@ -604,16 +637,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_kill_idle_worker() {
-        let application_store = MemoryStore::new();
-        let personal_store = MemoryStore::new();
-        let nft_store = MemoryStore::new();
+        let pool = Pool::new(PoolOptions {
+            application_store: MemoryStore::new(),
+            max_workers: 10,
+            nft_store: MemoryStore::new(),
+            personal_store: MemoryStore::new(),
+        })
+        .await;
 
-        let pool = Pool::new(10, application_store, personal_store, nft_store).await;
-
-        let runtime_options = RuntimeOptions {
+        let runtime_options = PoolRuntimeOptions {
+            max_heap_mbs: 10,
             module: "export const test = (a, b) => a + b;".to_string(),
             timeout_millis: 1000,
-            max_heap_mbs: 10,
         };
         let request = ExecutionRequest {
             context: Context {

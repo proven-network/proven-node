@@ -27,20 +27,15 @@ async fn main() -> Result<(), Error> {
     "#
     .to_string();
 
-    let application_store = MemoryStore::new();
-    let personal_store = MemoryStore::new();
-    let nft_store = MemoryStore::new();
     let worker = Arc::new(Mutex::new(
-        Worker::new(
-            RuntimeOptions {
-                module,
-                max_heap_mbs: 10,
-                timeout_millis: 5000,
-            },
-            application_store,
-            personal_store,
-            nft_store,
-        )
+        Worker::new(RuntimeOptions {
+            application_store: MemoryStore::new(),
+            module,
+            max_heap_mbs: 10,
+            nft_store: MemoryStore::new(),
+            personal_store: MemoryStore::new(),
+            timeout_millis: 5000,
+        })
         .await
         .unwrap(),
     ));

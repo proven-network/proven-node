@@ -37,32 +37,28 @@ type WorkerRequest = (
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let runtime_options = RuntimeOptions {
+///     let mut worker = Worker::new(RuntimeOptions {
+///         application_store: MemoryStore::new(),
 ///         max_heap_mbs: 10,
 ///         module: "export const test = (a, b) => a + b;".to_string(),
+///         nft_store: MemoryStore::new(),
+///         personal_store: MemoryStore::new(),
 ///         timeout_millis: 1000,
-///     };
-///     let application_store = MemoryStore::new();
-///     let personal_store = MemoryStore::new();
-///     let nft_store = MemoryStore::new();
-///     let request = ExecutionRequest {
-///         context: Context {
-///             dapp_definition_address: "dapp_definition_address".to_string(),
-///             identity: None,
-///             accounts: None,
-///         },
-///         handler_name: "test".to_string(),
-///         args: vec![json!(10), json!(20)],
-///     };
-///     let mut worker = Worker::new(
-///         runtime_options,
-///         application_store,
-///         personal_store,
-///         nft_store,
-///     )
+///     })
 ///     .await
 ///     .expect("Failed to create worker");
-///     let result = worker.execute(request).await;
+///
+///     worker
+///         .execute(ExecutionRequest {
+///             context: Context {
+///                 dapp_definition_address: "dapp_definition_address".to_string(),
+///                 identity: None,
+///                 accounts: None,
+///             },
+///             handler_name: "test".to_string(),
+///             args: vec![json!(10), json!(20)],
+///         })
+///         .await;
 /// }
 /// ```
 impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
@@ -76,34 +72,22 @@ impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
     ///
     /// # Returns
     /// The created worker.
-    pub async fn new(
-        runtime_options: RuntimeOptions,
-        application_store: AS,
-        personal_store: PS,
-        nft_store: NS,
-    ) -> Result<Self, Error> {
+    pub async fn new(runtime_options: RuntimeOptions<AS, PS, NS>) -> Result<Self, Error> {
         let (sender, mut receiver) = mpsc::channel::<WorkerRequest>(1);
 
         let (error_sender, error_reciever) = oneshot::channel();
 
-        thread::spawn(move || {
-            match Runtime::new(
-                runtime_options,
-                application_store,
-                personal_store,
-                nft_store,
-            ) {
-                Ok(mut runtime) => {
-                    error_sender.send(None).unwrap();
+        thread::spawn(move || match Runtime::new(runtime_options) {
+            Ok(mut runtime) => {
+                error_sender.send(None).unwrap();
 
-                    while let Some((request, responder)) = receiver.blocking_recv() {
-                        let result = runtime.execute(request);
-                        responder.send(result).unwrap();
-                    }
+                while let Some((request, responder)) = receiver.blocking_recv() {
+                    let result = runtime.execute(request);
+                    responder.send(result).unwrap();
                 }
-                Err(e) => {
-                    error_sender.send(Some(e)).unwrap();
-                }
+            }
+            Err(e) => {
+                error_sender.send(Some(e)).unwrap();
             }
         });
 
@@ -151,25 +135,23 @@ mod tests {
     use proven_store_memory::MemoryStore;
     use serde_json::json;
 
+    fn create_runtime_options(
+        script: &str,
+    ) -> RuntimeOptions<MemoryStore, MemoryStore, MemoryStore> {
+        RuntimeOptions {
+            application_store: MemoryStore::new(),
+            max_heap_mbs: 10,
+            module: script.to_string(),
+            nft_store: MemoryStore::new(),
+            personal_store: MemoryStore::new(),
+            timeout_millis: 1000,
+        }
+    }
+
     #[tokio::test]
     async fn test_worker_execute_in_tokio() {
-        let runtime_options = RuntimeOptions {
-            max_heap_mbs: 10,
-            module: "export const test = (a, b) => a + b;".to_string(),
-            timeout_millis: 1000,
-        };
-        let application_store = MemoryStore::new();
-        let personal_store = MemoryStore::new();
-        let nft_store = MemoryStore::new();
-
-        let mut worker = Worker::new(
-            runtime_options,
-            application_store,
-            personal_store,
-            nft_store,
-        )
-        .await
-        .unwrap();
+        let runtime_options = create_runtime_options("export const test = (a, b) => a + b;");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest {
             context: Context {
