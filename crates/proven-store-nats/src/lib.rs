@@ -4,15 +4,26 @@ pub use error::Error;
 
 use std::time::Duration;
 
+use async_nats::jetstream;
 use async_nats::jetstream::kv::{Config, Store as KvStore};
+use async_nats::jetstream::Context as JetStreamContext;
+use async_nats::Client;
 use async_trait::async_trait;
 use proven_store::{Store, Store1, Store2};
+
+pub struct NatsStoreOptions {
+    pub client: Client,
+    pub bucket: String,
+    pub max_age: Duration,
+    pub persist: bool,
+}
 
 #[derive(Clone, Debug)]
 pub struct NatsStore {
     bucket: String,
-    jetstream_context: async_nats::jetstream::Context,
+    jetstream_context: JetStreamContext,
     max_age: Duration,
+    persist: bool,
 }
 
 /// NatsStore is a NATS JetStream implementation of the `Store`, `Store1`, and `Store2` traits.
@@ -20,17 +31,35 @@ pub struct NatsStore {
 /// The store supports optional scoping of keys using bucket name prefixes.
 impl NatsStore {
     pub async fn new(
-        client: async_nats::Client,
-        bucket: String,
-        max_age: Duration,
+        NatsStoreOptions {
+            client,
+            bucket,
+            max_age,
+            persist,
+        }: NatsStoreOptions,
     ) -> Result<Self, Error> {
-        let jetstream_context = async_nats::jetstream::new(client.clone());
+        let jetstream_context = jetstream::new(client.clone());
 
         Ok(NatsStore {
             bucket,
             jetstream_context,
             max_age,
+            persist,
         })
+    }
+
+    pub async fn new_with_jetstream_context(
+        jetstream_context: JetStreamContext,
+        bucket: String,
+        max_age: Duration,
+        persist: bool,
+    ) -> Self {
+        NatsStore {
+            bucket,
+            jetstream_context,
+            max_age,
+            persist,
+        }
     }
 
     fn with_scope(&self, scope: String) -> Self {
@@ -38,6 +67,7 @@ impl NatsStore {
             bucket: scope,
             jetstream_context: self.jetstream_context.clone(),
             max_age: self.max_age,
+            persist: self.persist,
         }
     }
 
@@ -45,6 +75,11 @@ impl NatsStore {
         let config = Config {
             bucket: self.bucket.clone(),
             max_age: self.max_age,
+            storage: if self.persist {
+                jetstream::stream::StorageType::File
+            } else {
+                jetstream::stream::StorageType::Memory
+            },
             ..Default::default()
         };
 

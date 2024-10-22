@@ -27,7 +27,7 @@ use proven_radix_node::RadixNode;
 use proven_sessions::{SessionManagement, SessionManager};
 use proven_store::Store;
 use proven_store_asm::AsmStore;
-use proven_store_nats::NatsStore;
+use proven_store_nats::{NatsStore, NatsStoreOptions};
 use proven_store_s3_sse_c::S3Store;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
@@ -783,15 +783,21 @@ impl Bootstrap {
             panic!("nats client not fetched before core");
         });
 
-        let challenge_store = NatsStore::new(
-            nats_client.clone(),
-            "challenges".to_string(),
-            Duration::from_secs(5 * 60),
-        )
+        let challenge_store = NatsStore::new(NatsStoreOptions {
+            bucket: "challenges".to_string(),
+            nats_client: nats_client.clone(),
+            max_age: Duration::from_secs(5 * 60),
+            persist: false,
+        })
         .await?;
 
-        let sessions_store =
-            NatsStore::new(nats_client.clone(), "sessions".to_string(), Duration::MAX).await?;
+        let sessions_store = NatsStore::new(NatsStoreOptions {
+            bucket: "sessions".to_string(),
+            nats_client: nats_client.clone(),
+            max_age: Duration::MAX,
+            persist: true,
+        })
+        .await?;
 
         let session_manager = SessionManager::new(
             self.nsm.clone(),
@@ -820,18 +826,29 @@ impl Bootstrap {
             cert_store,
         );
 
-        let application_store = NatsStore::new(
-            nats_client.clone(),
-            "application".to_string(),
-            Duration::MAX,
-        )
+        let application_store = NatsStore::new(NatsStoreOptions {
+            bucket: "application".to_string(),
+            nats_client: nats_client.clone(),
+            max_age: Duration::MAX,
+            persist: true,
+        })
         .await?;
 
-        let personal_store =
-            NatsStore::new(nats_client.clone(), "personal".to_string(), Duration::MAX).await?;
+        let personal_store = NatsStore::new(NatsStoreOptions {
+            bucket: "personal".to_string(),
+            nats_client: nats_client.clone(),
+            max_age: Duration::MAX,
+            persist: true,
+        })
+        .await?;
 
-        let nft_store =
-            NatsStore::new(nats_client.clone(), "nft".to_string(), Duration::MAX).await?;
+        let nft_store = NatsStore::new(NatsStoreOptions {
+            bucket: "nft".to_string(),
+            nats_client: nats_client.clone(),
+            max_age: Duration::MAX,
+            persist: true,
+        })
+        .await?;
 
         let core = Core::new(NewCoreArguments { session_manager });
         let core_handle = core
