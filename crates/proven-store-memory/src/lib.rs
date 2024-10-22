@@ -3,10 +3,11 @@ mod error;
 use error::Error;
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use proven_store::{Store, Store1, Store2};
+use tokio::sync::Mutex;
 
 #[derive(Clone, Debug, Default)]
 pub struct MemoryStore {
@@ -73,19 +74,88 @@ impl Store for MemoryStore {
     type SE = Error;
 
     async fn del(&self, key: String) -> Result<(), Self::SE> {
-        let mut map = self.map.lock().unwrap();
+        let mut map = self.map.lock().await;
         map.remove(&self.get_key(key));
         Ok(())
     }
 
     async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
-        let map = self.map.lock().unwrap();
+        let map = self.map.lock().await;
         Ok(map.get(&self.get_key(key)).cloned())
     }
 
     async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
-        let mut map = self.map.lock().unwrap();
+        let mut map = self.map.lock().await;
         map.insert(self.get_key(key), bytes);
         Ok(())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_put_and_get() {
+        let store = MemoryStore::new();
+        let key = "test_key".to_string();
+        let value = b"test_value".to_vec();
+
+        store.put(key.clone(), value.clone()).await.unwrap();
+        let result = store.get(key).await.unwrap();
+
+        assert_eq!(result, Some(value));
+    }
+
+    #[tokio::test]
+    async fn test_del() {
+        let store = MemoryStore::new();
+        let key = "test_key".to_string();
+        let value = b"test_value".to_vec();
+
+        store.put(key.clone(), value.clone()).await.unwrap();
+        store.del(key.clone()).await.unwrap();
+        let result = store.get(key).await.unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn test_scope() {
+        let store = MemoryStore::new();
+        let scoped_store = Store1::scope(&store, "scope".to_string());
+
+        let key = "test_key".to_string();
+        let value = b"test_value".to_vec();
+
+        scoped_store.put(key.clone(), value.clone()).await.unwrap();
+        let result = scoped_store.get(key.clone()).await.unwrap();
+
+        assert_eq!(result, Some(value));
+
+        // Ensure the value is not accessible without the scope
+        let result_without_scope = store.get(key).await.unwrap();
+        assert_eq!(result_without_scope, None);
+    }
+
+    #[tokio::test]
+    async fn test_nested_scope() {
+        let store = MemoryStore::new();
+        let partial_scoped_store = Store1::scope(&store, "scope1".to_string());
+        let scoped_store = Store2::scope(&partial_scoped_store, "scope2".to_string());
+
+        let key = "test_key".to_string();
+        let value = b"test_value".to_vec();
+
+        scoped_store.put(key.clone(), value.clone()).await.unwrap();
+        let result = scoped_store.get(key.clone()).await.unwrap();
+
+        assert_eq!(result, Some(value));
+
+        // Ensure the value is not accessible without the nested scope
+        let result_without_scope = store.get(key.clone()).await.unwrap();
+        assert_eq!(result_without_scope, None);
+
+        let result_with_partial_scope = partial_scoped_store.get(key).await.unwrap();
+        assert_eq!(result_with_partial_scope, None);
     }
 }

@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 async-trait = "0.1.82"
 proven-store = { path = "../proven-store" }
+tokio =  { version = "1.36.0", features = ["macros", "rt-multi-thread", "sync"]}
