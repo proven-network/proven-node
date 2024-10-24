@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use proven_store::{Store, Store1, Store2};
+use proven_store::{Store, Store1, Store2, Store3};
 use tokio::sync::Mutex;
 
 #[derive(Clone, Debug, Default)]
@@ -15,7 +15,7 @@ pub struct MemoryStore {
     prefix: Option<String>,
 }
 
-/// MemoryStore is an in-memory implementation of the `Store`, `Store1`, and `Store2` traits.
+/// MemoryStore is an in-memory implementation of the `Store`, `Store2`, and `Store3` traits.
 /// It uses a `HashMap` protected by a `Mutex` to store key-value pairs, where keys are strings
 /// and values are byte vectors. The store supports optional scoping of keys using a prefix.
 impl MemoryStore {
@@ -38,6 +38,28 @@ impl MemoryStore {
             Some(prefix) => format!("{}:{}", prefix, key),
             None => key,
         }
+    }
+}
+
+#[async_trait]
+impl Store for MemoryStore {
+    type SE = Error;
+
+    async fn del(&self, key: String) -> Result<(), Self::SE> {
+        let mut map = self.map.lock().await;
+        map.remove(&self.get_key(key));
+        Ok(())
+    }
+
+    async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
+        let map = self.map.lock().await;
+        Ok(map.get(&self.get_key(key)).cloned())
+    }
+
+    async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
+        let mut map = self.map.lock().await;
+        map.insert(self.get_key(key), bytes);
+        Ok(())
     }
 }
 
@@ -70,26 +92,19 @@ impl Store2 for MemoryStore {
 }
 
 #[async_trait]
-impl Store for MemoryStore {
+impl Store3 for MemoryStore {
     type SE = Error;
+    type Scoped = Self;
 
-    async fn del(&self, key: String) -> Result<(), Self::SE> {
-        let mut map = self.map.lock().await;
-        map.remove(&self.get_key(key));
-        Ok(())
-    }
-
-    async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
-        let map = self.map.lock().await;
-        Ok(map.get(&self.get_key(key)).cloned())
-    }
-
-    async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
-        let mut map = self.map.lock().await;
-        map.insert(self.get_key(key), bytes);
-        Ok(())
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let new_scope = match &self.prefix {
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
+            None => scope,
+        };
+        Self::with_scope(new_scope)
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,7 +137,7 @@ mod tests {
     #[tokio::test]
     async fn test_scope() {
         let store = MemoryStore::new();
-        let scoped_store = Store1::scope(&store, "scope".to_string());
+        let scoped_store = Store2::scope(&store, "scope".to_string());
 
         let key = "test_key".to_string();
         let value = b"test_value".to_vec();
@@ -140,8 +155,8 @@ mod tests {
     #[tokio::test]
     async fn test_nested_scope() {
         let store = MemoryStore::new();
-        let partial_scoped_store = Store1::scope(&store, "scope1".to_string());
-        let scoped_store = Store2::scope(&partial_scoped_store, "scope2".to_string());
+        let partial_scoped_store = Store2::scope(&store, "scope1".to_string());
+        let scoped_store = Store3::scope(&partial_scoped_store, "scope2".to_string());
 
         let key = "test_key".to_string();
         let value = b"test_value".to_vec();

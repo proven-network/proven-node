@@ -1,14 +1,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use proven_store::Store;
+use proven_store::{Store, Store1};
 
 use deno_core::{extension, op2, OpDecl, OpState};
 
 #[op2(async)]
 #[buffer]
-pub async fn op_get_personal_bytes<PS: Store>(
+pub async fn op_get_personal_bytes<PS: Store1>(
     state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
     #[string] key: String,
 ) -> Option<Vec<u8>> {
     let personal_store = {
@@ -29,7 +30,11 @@ pub async fn op_get_personal_bytes<PS: Store>(
     };
 
     let result = if let Some(store) = personal_store.as_ref() {
-        store.get(key).await.unwrap_or_default()
+        store
+            .scope(format!("{}:bytes", store_name))
+            .get(key)
+            .await
+            .unwrap_or_default()
     } else {
         None
     };
@@ -40,8 +45,9 @@ pub async fn op_get_personal_bytes<PS: Store>(
 }
 
 #[op2(async)]
-pub async fn op_set_personal_bytes<PS: Store>(
+pub async fn op_set_personal_bytes<PS: Store1>(
     state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
     #[string] key: String,
     #[arraybuffer(copy)] value: Vec<u8>,
 ) -> bool {
@@ -63,7 +69,11 @@ pub async fn op_set_personal_bytes<PS: Store>(
     };
 
     let result = if let Some(store) = personal_store.as_ref() {
-        store.put(key, value).await.is_ok()
+        store
+            .scope(format!("{}:bytes", store_name))
+            .put(key, value)
+            .await
+            .is_ok()
     } else {
         false
     };
@@ -75,8 +85,9 @@ pub async fn op_set_personal_bytes<PS: Store>(
 
 #[op2(async)]
 #[string]
-pub async fn op_get_personal_string<PS: Store>(
+pub async fn op_get_personal_string<PS: Store1>(
     state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
     #[string] key: String,
 ) -> Option<String> {
     let personal_store = {
@@ -97,7 +108,7 @@ pub async fn op_get_personal_string<PS: Store>(
     };
 
     let result = if let Some(store) = personal_store.as_ref() {
-        match store.get(key).await {
+        match store.scope(format!("{}:string", store_name)).get(key).await {
             Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
             _ => None,
         }
@@ -111,8 +122,9 @@ pub async fn op_get_personal_string<PS: Store>(
 }
 
 #[op2(async)]
-pub async fn op_set_personal_string<PS: Store>(
+pub async fn op_set_personal_string<PS: Store1>(
     state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
     #[string] key: String,
     #[string] value: String,
 ) -> bool {
@@ -134,7 +146,11 @@ pub async fn op_set_personal_string<PS: Store>(
     };
 
     let result = if let Some(store) = personal_store.as_ref() {
-        store.put(key, value.as_bytes().to_vec()).await.is_ok()
+        store
+            .scope(format!("{}:string", store_name))
+            .put(key, value.as_bytes().to_vec())
+            .await
+            .is_ok()
     } else {
         false
     };
@@ -146,11 +162,11 @@ pub async fn op_set_personal_string<PS: Store>(
 
 extension!(
     storage_personal_ext,
-    parameters = [ PS: Store ],
+    parameters = [ PS: Store1 ],
     ops_fn = get_ops<PS>,
 );
 
-fn get_ops<PS: Store>() -> Vec<OpDecl> {
+fn get_ops<PS: Store1>() -> Vec<OpDecl> {
     let get_personal_bytes = op_get_personal_bytes::<PS>();
     let set_personal_bytes = op_set_personal_bytes::<PS>();
     let get_personal_string = op_get_personal_string::<PS>();

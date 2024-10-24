@@ -1,92 +1,217 @@
-function getApplicationBytes (key) {
-  const { op_get_application_bytes } = Deno.core.ops;
-  return op_get_application_bytes(key)
+function getApplicationBytes (store_name, key) {
+  const { op_get_application_bytes } = globalThis.Deno.core.ops;
+  return op_get_application_bytes(store_name, key)
 }
 
-function setApplicationBytes (key, value) {
-  const { op_set_application_bytes } = Deno.core.ops;
-  return op_set_application_bytes(key, value)
+function setApplicationBytes (store_name, key, value) {
+  const { op_set_application_bytes } = globalThis.Deno.core.ops;
+  return op_set_application_bytes(store_name, key, value)
 }
 
-function getApplicationString (key) {
-  const { op_get_application_string } = Deno.core.ops;
-  return op_get_application_string(key)
+function getApplicationString (store_name, key) {
+  const { op_get_application_string } = globalThis.Deno.core.ops;
+  return op_get_application_string(store_name, key)
 }
 
-function setApplicationString (key, value) {
-  const { op_set_application_string } = Deno.core.ops;
-  return op_set_application_string(key, value)
+function setApplicationString (store_name, key, value) {
+  const { op_set_application_string } = globalThis.Deno.core.ops;
+  return op_set_application_string(store_name, key, value)
 }
 
-function getPersonalBytes (key) {
-  const { op_get_personal_bytes } = Deno.core.ops;
-  return op_get_personal_bytes(key)
+function getPersonalBytes (store_name, key) {
+  const { op_get_personal_bytes } = globalThis.Deno.core.ops;
+  return op_get_personal_bytes(store_name, key)
 }
 
-function setPersonalBytes (key, value) {
-  const { op_set_personal_bytes } = Deno.core.ops;
-  return op_set_personal_bytes(key, value)
+function setPersonalBytes (store_name, key, value) {
+  const { op_set_personal_bytes } = globalThis.Deno.core.ops;
+  return op_set_personal_bytes(store_name, key, value)
 }
 
-function getPersonalString (key) {
-  const { op_get_personal_string } = Deno.core.ops;
-  return op_get_personal_string(key)
+function getPersonalString (store_name, key) {
+  const { op_get_personal_string } = globalThis.Deno.core.ops;
+  return op_get_personal_string(store_name, key)
 }
 
-function setPersonalString (key, value) {
-  const { op_set_personal_string } = Deno.core.ops;
-  return op_set_personal_string(key, value)
+function setPersonalString (store_name, key, value) {
+  const { op_set_personal_string } = globalThis.Deno.core.ops;
+  return op_set_personal_string(store_name, key, value)
 }
 
-function getNftBytes (nft_id, key) {
-  const { op_get_nft_bytes } = Deno.core.ops;
-  return op_get_nft_bytes(nft_id, key)
+function getNftBytes (store_name, nft_id, key) {
+  const { op_get_nft_bytes } = globalThis.Deno.core.ops;
+  return op_get_nft_bytes(store_name, nft_id, key)
 }
 
-function setNftBytes (nft_id, key, value) {
-  const { op_set_nft_bytes } = Deno.core.ops;
-  return op_set_nft_bytes(nft_id, key, value)
+function setNftBytes (store_name, nft_id, key, value) {
+  const { op_set_nft_bytes } = globalThis.Deno.core.ops;
+  return op_set_nft_bytes(store_name, nft_id, key, value)
 }
 
-function getNftString (nft_id, key) {
-  const { op_get_nft_string } = Deno.core.ops;
-  return op_get_nft_string(nft_id, key)
+function getNftString (store_name, nft_id, key) {
+  const { op_get_nft_string } = globalThis.Deno.core.ops;
+  return op_get_nft_string(store_name, nft_id, key)
 }
 
-function setNftString (nft_id, key, value) {
-  const { op_set_nft_string } = Deno.core.ops;
-  return op_set_nft_string(nft_id, key, value)
+function setNftString (store_name, nft_id, key, value) {
+  const { op_set_nft_string } = globalThis.Deno.core.ops;
+  return op_set_nft_string(store_name, nft_id, key, value)
 }
 
-export const applicationStore = {
-  bytes: {
-    get: getApplicationBytes,
-    set: setApplicationBytes
-  },
-  string: {
-    get: getApplicationString,
-    set: setApplicationString
+class ApplicationStingStore {
+  constructor (storeName) {
+    this.storeName = storeName
+  }
+
+  get (key) {
+    return getApplicationString(this.storeName, key)
+  }
+
+  set (key, value) {
+    return setApplicationString(this.storeName, key, value)
   }
 }
 
-export const personalStore = {
-  bytes: {
-    get: getPersonalBytes,
-    set: setPersonalBytes
-  },
-  string: {
-    get: getPersonalString,
-    set: setPersonalString
+class ApplicationBytesStore {
+  constructor (storeName) {
+    this.storeName = storeName
+  }
+
+  get (key) {
+    return getApplicationBytes(this.storeName, key)
+  }
+
+  set (key, value) {
+    return setApplicationBytes(this.storeName, key, value)
   }
 }
 
-export const nftStore = {
-  bytes: {
-    get: getNftBytes,
-    set: setNftBytes
-  },
-  string: {
-    get: getNftString,
-    set: setNftString
+export const getApplicationStore = (storeName) => {
+  if (storeName === 'DEFAULT') {
+    throw new Error('DEFAULT store name is reserved for system use')
   }
+
+  if (!storeName) {
+    storeName = 'DEFAULT'
+  }
+
+  return new ApplicationStingStore(storeName)
+}
+
+export const getApplicationBytesStore = (storeName) => {
+  if (storeName === 'DEFAULT') {
+    throw new Error('DEFAULT store name is reserved for system use')
+  }
+
+  if (!storeName) {
+    storeName = 'DEFAULT'
+  }
+
+  return new ApplicationBytesStore(storeName)
+}
+
+class PersonalStingStore {
+  constructor (storeName) {
+    this.storeName = storeName
+  }
+
+  get (key) {
+    return getPersonalString(this.storeName, key)
+  }
+
+  set (key, value) {
+    return setPersonalString(this.storeName, key, value)
+  }
+}
+
+class PersonalBytesStore {
+  constructor (storeName) {
+    this.storeName = storeName
+  }
+
+  get (key) {
+    return getPersonalBytes(this.storeName, key)
+  }
+
+  set (key, value) {
+    return setPersonalBytes(this.storeName, key, value)
+  }
+}
+
+export const getPersonalStore = (storeName) => {
+  if (storeName === 'DEFAULT') {
+    throw new Error('DEFAULT store name is reserved for system use')
+  }
+
+  if (!storeName) {
+    storeName = 'DEFAULT'
+  }
+
+  return new PersonalStingStore(storeName)
+}
+
+export const getPersonalBytesStore = (storeName) => {
+  if (storeName === 'DEFAULT') {
+    throw new Error('DEFAULT store name is reserved for system use')
+  }
+
+  if (!storeName) {
+    storeName = 'DEFAULT'
+  }
+
+  return new PersonalBytesStore(storeName)
+}
+
+class NftStingStore {
+  constructor (storeName, nftId) {
+    this.storeName = storeName
+    this.nftId = nftId
+  }
+
+  get (key) {
+    return getNftString(this.storeName, this.nftId, key)
+  }
+
+  set (key, value) {
+    return setNftString(this.storeName, this.nftId, key, value)
+  }
+}
+
+class NftBytesStore {
+  constructor (storeName, nftId) {
+    this.storeName = storeName
+    this.nftId = nftId
+  }
+
+  get (key) {
+    return getNftBytes(this.storeName, this.nftId, key)
+  }
+
+  set (key, value) {
+    return setNftBytes(this.storeName, this.nftId, key, value)
+  }
+}
+
+export const getNftStore = (storeName, nftId) => {
+  if (storeName === 'DEFAULT') {
+    throw new Error('DEFAULT store name is reserved for system use')
+  }
+
+  if (!storeName) {
+    storeName = 'DEFAULT'
+  }
+
+  return new NftStingStore(storeName, nftId)
+}
+
+export const getNftBytesStore = (storeName, nftId) => {
+  if (storeName === 'DEFAULT') {
+    throw new Error('DEFAULT store name is reserved for system use')
+  }
+
+  if (!storeName) {
+    storeName = 'DEFAULT'
+  }
+
+  return new NftBytesStore(storeName, nftId)
 }

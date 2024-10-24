@@ -8,7 +8,7 @@ use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_runtime::{Context, ExecutionRequest, ExecutionResult, Pool, PoolRuntimeOptions};
 use proven_sessions::Session;
-use proven_store::{Store1, Store2};
+use proven_store::{Store2, Store3};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ pub enum RpcHandlerError {
     VerifyingKeyInvalid,
 }
 
-pub struct RpcHandler<AS: Store1, PS: Store2, NS: Store2> {
+pub struct RpcHandler<AS: Store2, PS: Store3, NS: Store3> {
     aad: Vec<u8>,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
@@ -62,7 +62,7 @@ pub struct WhoAmIResponse {
     pub account_addresses: Vec<String>,
 }
 
-impl<AS: Store1, PS: Store2, NS: Store2> RpcHandler<AS, PS, NS> {
+impl<AS: Store2, PS: Store3, NS: Store3> RpcHandler<AS, PS, NS> {
     pub fn new(
         session: Session,
         runtime_pool: Arc<Pool<AS, PS, NS>>,

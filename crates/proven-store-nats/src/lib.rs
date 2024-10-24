@@ -9,7 +9,7 @@ use async_nats::jetstream::kv::{Config, Store as KvStore};
 use async_nats::jetstream::Context as JetStreamContext;
 use async_nats::Client;
 use async_trait::async_trait;
-use proven_store::{Store, Store1, Store2};
+use proven_store::{Store, Store1, Store2, Store3};
 
 pub struct NatsStoreOptions {
     pub client: Client,
@@ -26,7 +26,7 @@ pub struct NatsStore {
     persist: bool,
 }
 
-/// NatsStore is a NATS JetStream implementation of the `Store`, `Store1`, and `Store2` traits.
+/// NatsStore is a NATS JetStream implementation of the `Store`, `Store2`, and `Store3` traits.
 /// It uses NATS JetStream to store key-value pairs, where keys are strings and values are byte vectors.
 /// The store supports optional scoping of keys using bucket name prefixes.
 impl NatsStore {
@@ -91,26 +91,6 @@ impl NatsStore {
 }
 
 #[async_trait]
-impl Store1 for NatsStore {
-    type SE = Error;
-    type Scoped = Self;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        self.with_scope(format!("{}.{}", self.bucket, scope))
-    }
-}
-
-#[async_trait]
-impl Store2 for NatsStore {
-    type SE = Error;
-    type Scoped = Self;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        self.with_scope(format!("{}.{}", self.bucket, scope))
-    }
-}
-
-#[async_trait]
 impl Store for NatsStore {
     type SE = Error;
 
@@ -141,5 +121,35 @@ impl Store for NatsStore {
             .map_err(|e| Error::Put(e.kind()))?;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Store1 for NatsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        self.with_scope(format!("{}.{}", self.bucket, scope))
+    }
+}
+
+#[async_trait]
+impl Store2 for NatsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        self.with_scope(format!("{}.{}", self.bucket, scope))
+    }
+}
+
+#[async_trait]
+impl Store3 for NatsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        self.with_scope(format!("{}.{}", self.bucket, scope))
     }
 }

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use aws_config::Region;
 use base64::{engine::general_purpose::STANDARD as base64, Engine};
 use blake3::Hasher;
-use proven_store::{Store, Store1, Store2};
+use proven_store::{Store, Store1, Store2, Store3};
 use tokio::io::AsyncReadExt;
 
 #[derive(Clone, Debug)]
@@ -17,7 +17,7 @@ pub struct S3Store {
     prefix: Option<String>,
 }
 
-/// S3Store is an Amazon S3 implementation of the `Store`, `Store1`, and `Store2` traits.
+/// S3Store is an Amazon S3 implementation of the `Store`, `Store2`, and `Store3` traits.
 /// It uses Amazon S3 to store key-value pairs, where keys are strings and values are byte vectors.
 /// The store supports optional scoping of keys using a prefix.
 /// The store uses AES-256 encryption with a secret key to encrypt values before storing them.
@@ -46,44 +46,6 @@ impl S3Store {
         match &self.prefix {
             Some(prefix) => format!("{}/{}", prefix, key),
             None => key,
-        }
-    }
-}
-
-#[async_trait]
-impl Store1 for S3Store {
-    type SE = Error;
-    type Scoped = Self;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        let prefix = match &self.prefix {
-            Some(prefix) => format!("{}/{}", prefix, scope),
-            None => scope,
-        };
-        S3Store {
-            bucket: self.bucket.clone(),
-            client: self.client.clone(),
-            secret_key: self.secret_key,
-            prefix: Some(prefix),
-        }
-    }
-}
-
-#[async_trait]
-impl Store2 for S3Store {
-    type SE = Error;
-    type Scoped = Self;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        let prefix = match &self.prefix {
-            Some(prefix) => format!("{}/{}", prefix, scope),
-            None => scope,
-        };
-        S3Store {
-            bucket: self.bucket.clone(),
-            client: self.client.clone(),
-            secret_key: self.secret_key,
-            prefix: Some(prefix),
         }
     }
 }
@@ -159,6 +121,63 @@ impl Store for S3Store {
         match resp {
             Ok(_) => Ok(()),
             Err(e) => Err(Error::S3(e.into())),
+        }
+    }
+}
+
+#[async_trait]
+impl Store1 for S3Store {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let prefix = match &self.prefix {
+            Some(prefix) => format!("{}/{}", prefix, scope),
+            None => scope,
+        };
+        S3Store {
+            bucket: self.bucket.clone(),
+            client: self.client.clone(),
+            secret_key: self.secret_key,
+            prefix: Some(prefix),
+        }
+    }
+}
+
+#[async_trait]
+impl Store2 for S3Store {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let prefix = match &self.prefix {
+            Some(prefix) => format!("{}/{}", prefix, scope),
+            None => scope,
+        };
+        S3Store {
+            bucket: self.bucket.clone(),
+            client: self.client.clone(),
+            secret_key: self.secret_key,
+            prefix: Some(prefix),
+        }
+    }
+}
+
+#[async_trait]
+impl Store3 for S3Store {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let prefix = match &self.prefix {
+            Some(prefix) => format!("{}/{}", prefix, scope),
+            None => scope,
+        };
+        S3Store {
+            bucket: self.bucket.clone(),
+            client: self.client.clone(),
+            secret_key: self.secret_key,
+            prefix: Some(prefix),
         }
     }
 }

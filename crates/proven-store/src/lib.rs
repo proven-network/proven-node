@@ -37,18 +37,34 @@ pub trait Store1: Clone + Send + Sync + 'static {
     fn scope(&self, scope: String) -> Self::Scoped;
 }
 
-/// A trait representing a double-scoped key-value store with asynchronous operations.
+#[async_trait]
+/// A trait representing a dobule-scoped key-value store with asynchronous operations.
 ///
 /// # Associated Types
 /// - `SE`: The error type that implements `Debug`, `Error`, `Send`, and `Sync`.
-/// - `Scoped`: The double-scoped store type that implements the `Store1` trait.
+/// - `Scoped`: The scoped store type that implements the `Store1` trait.
 ///
 /// # Required Methods
-/// - `fn scope(&self, scope: String) -> Self::Scoped`: Add one of two scopee.
-#[async_trait]
+/// - `fn scope(&self, scope: String) -> Self::Scoped`: Add a scope and make the store usable.
 pub trait Store2: Clone + Send + Sync + 'static {
     type SE: Debug + Error + Send + Sync;
     type Scoped: Store1<SE = Self::SE>;
+
+    fn scope(&self, scope: String) -> Self::Scoped;
+}
+
+/// A trait representing a tripe-scoped key-value store with asynchronous operations.
+///
+/// # Associated Types
+/// - `SE`: The error type that implements `Debug`, `Error`, `Send`, and `Sync`.
+/// - `Scoped`: The double-scoped store type that implements the `Store2` trait.
+///
+/// # Required Methods
+/// - `fn scope(&self, scope: String) -> Self::Scoped`: Add one of three scopee.
+#[async_trait]
+pub trait Store3: Clone + Send + Sync + 'static {
+    type SE: Debug + Error + Send + Sync;
+    type Scoped: Store2<SE = Self::SE>;
 
     fn scope(&self, scope: String) -> Self::Scoped;
 }

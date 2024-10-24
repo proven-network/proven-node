@@ -3,12 +3,12 @@ use crate::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 use std::marker::PhantomData;
 use std::thread;
 
-use proven_store::Store1;
 use proven_store::Store2;
+use proven_store::Store3;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-pub struct Worker<AS: Store1, PS: Store2, NS: Store2> {
+pub struct Worker<AS: Store2, PS: Store3, NS: Store3> {
     sender: mpsc::Sender<WorkerRequest>,
     _marker: PhantomData<AS>,
     _marker2: PhantomData<PS>,
@@ -23,9 +23,9 @@ type WorkerRequest = (
 /// A worker that handles execution requests using a runtime. Can be run async in tokio.
 ///
 /// # Type Parameters
-/// - `AS`: Application Store type implementing `Store1`.
-/// - `PS`: Personal Store type implementing `Store2`.
-/// - `NS`: NFT Store type implementing `Store2`.
+/// - `AS`: Application Store type implementing `Store2`.
+/// - `PS`: Personal Store type implementing `Store3`.
+/// - `NS`: NFT Store type implementing `Store3`.
 ///
 /// # Example
 /// ```rust
@@ -61,7 +61,7 @@ type WorkerRequest = (
 ///         .await;
 /// }
 /// ```
-impl<AS: Store1, PS: Store2, NS: Store2> Worker<AS, PS, NS> {
+impl<AS: Store2, PS: Store3, NS: Store3> Worker<AS, PS, NS> {
     /// Creates a new worker with the given runtime options and stores.
     ///
     /// # Parameters

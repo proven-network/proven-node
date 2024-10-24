@@ -1,14 +1,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use proven_store::{Store, Store1};
+use proven_store::{Store, Store1, Store2};
 
 use deno_core::{extension, op2, OpDecl, OpState};
 
 #[op2(async)]
 #[buffer]
-pub async fn op_get_nft_bytes<NS: Store1>(
+pub async fn op_get_nft_bytes<NS: Store2>(
     state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
     #[string] nft_id: String,
     #[string] key: String,
 ) -> Option<Vec<u8>> {
@@ -30,7 +31,12 @@ pub async fn op_get_nft_bytes<NS: Store1>(
     };
 
     let result = if let Some(store) = nft_store.as_ref() {
-        store.scope(nft_id).get(key).await.unwrap_or_default()
+        store
+            .scope(format!("{}:bytes", store_name))
+            .scope(nft_id)
+            .get(key)
+            .await
+            .unwrap_or_default()
     } else {
         None
     };
@@ -41,8 +47,9 @@ pub async fn op_get_nft_bytes<NS: Store1>(
 }
 
 #[op2(async)]
-pub async fn op_set_nft_bytes<NS: Store1>(
+pub async fn op_set_nft_bytes<NS: Store2>(
     state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
     #[string] nft_id: String,
     #[string] key: String,
     #[arraybuffer(copy)] value: Vec<u8>,
@@ -65,7 +72,12 @@ pub async fn op_set_nft_bytes<NS: Store1>(
     };
 
     let result = if let Some(store) = nft_store.as_ref() {
-        store.scope(nft_id).put(key, value).await.is_ok()
+        store
+            .scope(format!("{}:bytes", store_name))
+            .scope(nft_id)
+            .put(key, value)
+            .await
+            .is_ok()
     } else {
         false
     };
@@ -77,8 +89,9 @@ pub async fn op_set_nft_bytes<NS: Store1>(
 
 #[op2(async)]
 #[string]
-pub async fn op_get_nft_string<NS: Store1>(
+pub async fn op_get_nft_string<NS: Store2>(
     state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
     #[string] nft_id: String,
     #[string] key: String,
 ) -> Option<String> {
@@ -100,7 +113,12 @@ pub async fn op_get_nft_string<NS: Store1>(
     };
 
     let result = if let Some(store) = nft_store.as_ref() {
-        match store.scope(nft_id).get(key).await {
+        match store
+            .scope(format!("{}:string", store_name))
+            .scope(nft_id)
+            .get(key)
+            .await
+        {
             Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
             _ => None,
         }
@@ -114,8 +132,9 @@ pub async fn op_get_nft_string<NS: Store1>(
 }
 
 #[op2(async)]
-pub async fn op_set_nft_string<NS: Store1>(
+pub async fn op_set_nft_string<NS: Store2>(
     state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
     #[string] nft_id: String,
     #[string] key: String,
     #[string] value: String,
@@ -139,6 +158,7 @@ pub async fn op_set_nft_string<NS: Store1>(
 
     let result = if let Some(store) = nft_store.as_ref() {
         store
+            .scope(format!("{}:string", store_name))
             .scope(nft_id)
             .put(key, value.as_bytes().to_vec())
             .await
@@ -154,11 +174,11 @@ pub async fn op_set_nft_string<NS: Store1>(
 
 extension!(
     storage_nft_ext,
-    parameters = [ NS: Store1 ],
+    parameters = [ NS: Store2 ],
     ops_fn = get_ops<NS>,
 );
 
-fn get_ops<NS: Store1>() -> Vec<OpDecl> {
+fn get_ops<NS: Store2>() -> Vec<OpDecl> {
     let get_nft_bytes = op_get_nft_bytes::<NS>();
     let set_nft_bytes = op_set_nft_bytes::<NS>();
     let get_nft_string = op_get_nft_string::<NS>();

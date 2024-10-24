@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use aws_config::Region;
 use aws_sdk_secretsmanager::Client;
-use proven_store::{Store, Store1, Store2};
+use proven_store::{Store, Store1, Store2, Store3};
 
 #[derive(Clone, Debug)]
 pub struct AsmStore {
@@ -16,7 +16,7 @@ pub struct AsmStore {
     secret_name: String,
 }
 
-/// AsmStore is an AWS Secrets Manager implementation of the `Store`, `Store1`, and `Store2` traits.
+/// AsmStore is an AWS Secrets Manager implementation of the `Store`, `Store2`, and `Store3` traits.
 /// It uses AWS Secrets Manager to store key-value pairs, where keys are strings and values are byte vectors.
 /// The store supports optional scoping of keys using prefixes in the secret name.
 impl AsmStore {
@@ -134,6 +134,25 @@ impl Store1 for AsmStore {
 
 #[async_trait]
 impl Store2 for AsmStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let new_scope = match &self.prefix {
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
+            None => scope,
+        };
+
+        Self::new_with_client_and_prefix(
+            self.client.clone(),
+            self.secret_name.clone(),
+            Some(new_scope),
+        )
+    }
+}
+
+#[async_trait]
+impl Store3 for AsmStore {
     type SE = Error;
     type Scoped = Self;
 

@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use proven_store::{Store1, Store2};
+use proven_store::{Store2, Store3};
 use rustyscript::js_value::Value;
 use rustyscript::{Module, ModuleHandle};
 use tokio::time::Instant;
@@ -17,7 +17,7 @@ static SCHEMA_WHLIST: LazyLock<HashSet<String>> = LazyLock::new(|| {
 });
 
 #[derive(Clone)]
-pub struct RuntimeOptions<AS: Store1, PS: Store2, NS: Store2> {
+pub struct RuntimeOptions<AS: Store2, PS: Store3, NS: Store3> {
     pub application_store: AS,
     pub max_heap_mbs: u16,
     pub module: String,
@@ -26,7 +26,7 @@ pub struct RuntimeOptions<AS: Store1, PS: Store2, NS: Store2> {
     pub timeout_millis: u32,
 }
 
-pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
+pub struct Runtime<AS: Store2, PS: Store3, NS: Store3> {
     application_store: AS,
     module_handle: ModuleHandle,
     nft_store: NS,
@@ -37,9 +37,9 @@ pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
 /// Executes ESM modules in a single-threaded environment. Cannot use in tokio without spawning in dedicated thread.
 ///
 /// # Type Parameters
-/// - `AS`: Application Store type implementing `Store1`.
-/// - `PS`: Personal Store type implementing `Store2`.
-/// - `NS`: NFT Store type implementing `Store2`.
+/// - `AS`: Application Store type implementing `Store2`.
+/// - `PS`: Personal Store type implementing `Store3`.
+/// - `NS`: NFT Store type implementing `Store3`.
 ///
 /// # Example
 /// ```rust
@@ -69,7 +69,7 @@ pub struct Runtime<AS: Store1, PS: Store2, NS: Store2> {
 ///     args: vec![json!(10), json!(20)],
 /// });
 /// ```
-impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
+impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
     /// Creates a new runtime with the given runtime options and stores.
     ///
     /// # Parameters
@@ -90,7 +90,7 @@ impl<AS: Store1, PS: Store2, NS: Store2> Runtime<AS, PS, NS> {
                 sessions_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
                 storage_application_ext::init_ops::<AS::Scoped>(),
-                storage_personal_ext::init_ops::<<<PS as Store2>::Scoped as Store1>::Scoped>(),
+                storage_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
                 storage_nft_ext::init_ops_and_esm::<NS::Scoped>(),
                 storage_ext::init_ops_and_esm(),
             ],

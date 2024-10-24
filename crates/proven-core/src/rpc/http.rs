@@ -9,7 +9,7 @@ use axum::Router;
 use bytes::Bytes;
 use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
-use proven_store::{Store1, Store2};
+use proven_store::{Store2, Store3};
 use serde::Deserialize;
 use tracing::error;
 
@@ -20,9 +20,9 @@ struct QueryParams {
 
 pub async fn create_rpc_router<
     T: SessionManagement + 'static,
-    AS: Store1,
-    PS: Store2,
-    NS: Store2,
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
 >(
     session_manager: T,
     runtime_pool: Arc<Pool<AS, PS, NS>>,

@@ -5,7 +5,7 @@ use std::fmt::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use proven_store::{Store1, Store2};
+use proven_store::{Store2, Store3};
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
@@ -28,9 +28,9 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 ///
 /// # Type Parameters
 ///
-/// * `AS`: The type of the application store, which must implement the `Store1` trait.
-/// * `PS`: The type of the personal store, which must implement the `Store2` trait.
-/// * `NS`: The type of the NFT store, which must implement the `Store2` trait.
+/// * `AS`: The type of the application store, which must implement the `Store2` trait.
+/// * `PS`: The type of the personal store, which must implement the `Store3` trait.
+/// * `NS`: The type of the NFT store, which must implement the `Store3` trait.
 ///
 /// # Example
 ///
@@ -71,7 +71,7 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 ///     assert!(result.is_ok());
 /// }
 /// ```
-pub struct Pool<AS: Store1, PS: Store2, NS: Store2> {
+pub struct Pool<AS: Store2, PS: Store3, NS: Store3> {
     application_store: AS,
     known_hashes: Arc<Mutex<HashMap<String, PoolRuntimeOptions>>>,
     last_killed: Arc<Mutex<Option<Instant>>>,
@@ -102,7 +102,7 @@ pub struct PoolRuntimeOptions {
     pub timeout_millis: u32,
 }
 
-impl<AS: Store1, PS: Store2, NS: Store2> Pool<AS, PS, NS> {
+impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
     pub async fn new(options: PoolOptions<AS, PS, NS>) -> Arc<Self> {
         rustyscript::init_platform(options.max_workers, true);
 

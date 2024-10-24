@@ -5,7 +5,7 @@ use error::Error;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use proven_store::{Store, Store1, Store2};
+use proven_store::{Store, Store1, Store2, Store3};
 use tokio::fs;
 use tokio::io::{self, AsyncWriteExt};
 
@@ -14,7 +14,7 @@ pub struct FsStore {
     dir: PathBuf,
 }
 
-/// FsStore is a file system implementation of the `Store`, `Store1`, and `Store2` traits.
+/// FsStore is a file system implementation of the `Store`, `Store2`, and `Store3` traits.
 /// It uses the file system to store key-value pairs, where keys are strings and values are byte vectors.
 /// The store supports optional scoping of keys using a directory.
 impl FsStore {
@@ -24,30 +24,6 @@ impl FsStore {
 
     fn get_file_path(&self, key: &str) -> PathBuf {
         self.dir.join(key)
-    }
-}
-
-#[async_trait]
-impl Store1 for FsStore {
-    type SE = Error;
-    type Scoped = Self;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        let mut dir = self.dir.clone();
-        dir.push(scope);
-        Self::new(dir)
-    }
-}
-
-#[async_trait]
-impl Store2 for FsStore {
-    type SE = Error;
-    type Scoped = Self;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        let mut dir = self.dir.clone();
-        dir.push(scope);
-        Self::new(dir)
     }
 }
 
@@ -82,6 +58,43 @@ impl Store for FsStore {
         Ok(())
     }
 }
+
+#[async_trait]
+impl Store1 for FsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let mut dir = self.dir.clone();
+        dir.push(scope);
+        Self::new(dir)
+    }
+}
+
+#[async_trait]
+impl Store2 for FsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let mut dir = self.dir.clone();
+        dir.push(scope);
+        Self::new(dir)
+    }
+}
+
+#[async_trait]
+impl Store3 for FsStore {
+    type SE = Error;
+    type Scoped = Self;
+
+    fn scope(&self, scope: String) -> Self::Scoped {
+        let mut dir = self.dir.clone();
+        dir.push(scope);
+        Self::new(dir)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,7 +146,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = FsStore::new(dir.path().to_path_buf());
 
-        let scoped_store = Store1::scope(&store, "scope".to_string());
+        let scoped_store = Store2::scope(&store, "scope".to_string());
 
         let key = "test_key".to_string();
         let value = b"test_value".to_vec();
