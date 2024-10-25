@@ -36,7 +36,7 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 ///
 /// ```rust
 /// use proven_runtime::{
-///     Context, Error, ExecutionRequest, ExecutionResult, Pool, PoolOptions, PoolRuntimeOptions,
+///     Error, ExecutionRequest, ExecutionResult, Pool, PoolOptions, PoolRuntimeOptions,
 /// };
 /// use proven_store_memory::MemoryStore;
 /// use serde_json::json;
@@ -52,19 +52,15 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 ///     .await;
 ///
 ///     let runtime_options = PoolRuntimeOptions {
-///         max_heap_mbs: 10,
-///         module: "export const test = (a, b) => a + b;".to_string(),
-///         timeout_millis: 1000,
+///         handler_name: Some("handler".to_string()),
+///         module: "export const handler = (a, b) => a + b;".to_string(),
 ///     };
 ///
 ///     let request = ExecutionRequest {
-///         context: Context {
-///             dapp_definition_address: "dapp_definition_address".to_string(),
-///             identity: None,
-///             accounts: None,
-///         },
-///         handler_name: "test".to_string(),
+///         accounts: None,
 ///         args: vec![json!(10), json!(20)],
+///         dapp_definition_address: "dapp_definition_address".to_string(),
+///         identity: None,
 ///     };
 ///
 ///     let result = pool.execute(runtime_options, request).await;
@@ -97,9 +93,8 @@ pub struct PoolOptions<AS, PS, NS> {
 
 #[derive(Clone)]
 pub struct PoolRuntimeOptions {
-    pub max_heap_mbs: u16,
+    pub handler_name: Option<String>,
     pub module: String,
-    pub timeout_millis: u32,
 }
 
 impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
@@ -176,11 +171,10 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
 
                     match Worker::<AS, PS, NS>::new(RuntimeOptions {
                         application_store: pool.application_store.clone(),
-                        max_heap_mbs: runtime_options.max_heap_mbs,
+                        handler_name: runtime_options.handler_name.clone(),
                         module: runtime_options.module.clone(),
                         nft_store: pool.nft_store.clone(),
                         personal_store: pool.personal_store.clone(),
-                        timeout_millis: runtime_options.timeout_millis,
                     })
                     .await
                     {
@@ -294,11 +288,10 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
 
             let mut worker = Worker::<AS, PS, NS>::new(RuntimeOptions {
                 application_store: self.application_store.clone(),
-                max_heap_mbs: runtime_options.max_heap_mbs,
+                handler_name: runtime_options.handler_name.clone(),
                 module: runtime_options.module.clone(),
                 nft_store: self.nft_store.clone(),
                 personal_store: self.personal_store.clone(),
-                timeout_millis: runtime_options.timeout_millis,
             })
             .await?;
             let result = worker.execute(request).await;
@@ -379,11 +372,10 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
 
                     let mut worker = Worker::<AS, PS, NS>::new(RuntimeOptions {
                         application_store: self.application_store.clone(),
-                        max_heap_mbs: runtime_options.max_heap_mbs,
+                        handler_name: runtime_options.handler_name.clone(),
                         module: runtime_options.module.clone(),
                         nft_store: self.nft_store.clone(),
                         personal_store: self.personal_store.clone(),
-                        timeout_millis: runtime_options.timeout_millis,
                     })
                     .await?;
                     let result = worker.execute(request).await;
@@ -500,10 +492,9 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
 pub fn hash_options(options: &PoolRuntimeOptions) -> String {
     let mut hasher = Sha256::new();
 
-    // Concatenate module, timeout, and max_heap_size - newline separated
+    // Concatenate module and handler_name - newline separated
     let mut data = format!("{}\n", options.module);
-    writeln!(&mut data, "{:?}", options.timeout_millis).unwrap();
-    write!(&mut data, "{:?}", options.max_heap_mbs).unwrap();
+    write!(&mut data, "{:?}", options.handler_name).unwrap();
 
     // Hash the concatenated string
     hasher.update(data);
@@ -518,7 +509,6 @@ pub fn hash_options(options: &PoolRuntimeOptions) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Context;
 
     use proven_store_memory::MemoryStore;
 
@@ -549,19 +539,15 @@ mod tests {
         .await;
 
         let runtime_options = PoolRuntimeOptions {
-            max_heap_mbs: 10,
+            handler_name: Some("test".to_string()),
             module: "export const test = (a, b) => a + b;".to_string(),
-            timeout_millis: 1000,
         };
 
         let request = ExecutionRequest {
-            context: Context {
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                identity: None,
-                accounts: None,
-            },
-            handler_name: "test".to_string(),
+            accounts: None,
             args: vec![json!(10), json!(20)],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
         };
 
         let result = pool.execute(runtime_options, request).await;
@@ -579,9 +565,8 @@ mod tests {
         .await;
 
         let runtime_options = PoolRuntimeOptions {
-            max_heap_mbs: 10,
+            handler_name: Some("test".to_string()),
             module: "export const test = (a, b) => a + b;".to_string(),
-            timeout_millis: 1000,
         };
 
         let options_hash = hash_options(&runtime_options);
@@ -591,13 +576,10 @@ mod tests {
             .insert(options_hash.clone(), runtime_options.clone());
 
         let request = ExecutionRequest {
-            context: Context {
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                identity: None,
-                accounts: None,
-            },
-            handler_name: "test".to_string(),
+            accounts: None,
             args: vec![json!(10), json!(20)],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
         };
 
         let result = pool.execute_prehashed(options_hash, request).await;
@@ -615,18 +597,15 @@ mod tests {
         .await;
 
         let runtime_options = PoolRuntimeOptions {
-            max_heap_mbs: 10,
+            handler_name: Some("test".to_string()),
             module: "export const test = (a, b) => a + b;".to_string(),
-            timeout_millis: 1000,
         };
+
         let request = ExecutionRequest {
-            context: Context {
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                identity: None,
-                accounts: None,
-            },
-            handler_name: "test".to_string(),
+            accounts: None,
             args: vec![json!(10), json!(20)],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
         };
         let (tx, rx) = oneshot::channel();
 
@@ -646,18 +625,15 @@ mod tests {
         .await;
 
         let runtime_options = PoolRuntimeOptions {
-            max_heap_mbs: 10,
+            handler_name: Some("test".to_string()),
             module: "export const test = (a, b) => a + b;".to_string(),
-            timeout_millis: 1000,
         };
+
         let request = ExecutionRequest {
-            context: Context {
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                identity: None,
-                accounts: None,
-            },
-            handler_name: "test".to_string(),
+            accounts: None,
             args: vec![json!(10), json!(20)],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
         };
 
         let pool_clone = Arc::clone(&pool);

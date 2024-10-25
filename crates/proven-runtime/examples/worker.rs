@@ -1,4 +1,4 @@
-use proven_runtime::{Context, ExecutionRequest, RuntimeOptions, Worker};
+use proven_runtime::{ExecutionRequest, RuntimeOptions, Worker};
 
 use std::sync::Arc;
 
@@ -30,11 +30,10 @@ async fn main() -> Result<(), Error> {
     let worker = Arc::new(Mutex::new(
         Worker::new(RuntimeOptions {
             application_store: MemoryStore::new(),
+            handler_name: Some("handler".to_string()),
             module,
-            max_heap_mbs: 10,
             nft_store: MemoryStore::new(),
             personal_store: MemoryStore::new(),
-            timeout_millis: 5000,
         })
         .await
         .unwrap(),
@@ -47,13 +46,10 @@ async fn main() -> Result<(), Error> {
         let durations = Arc::clone(&durations);
         let handle = tokio::spawn(async move {
             let request = ExecutionRequest {
-                context: Context {
-                    dapp_definition_address: "dapp_definition_address".to_string(),
-                    identity: Some("identity".to_string()),
-                    accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
-                },
-                handler_name: "handler".to_string(),
+                accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
                 args: vec![json!(10), json!(20)],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                identity: Some("identity".to_string()),
             };
 
             let start = Instant::now();

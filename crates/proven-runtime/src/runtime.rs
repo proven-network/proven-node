@@ -6,6 +6,7 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use proven_store::{Store2, Store3};
+use regex::Regex;
 use rustyscript::js_value::Value;
 use rustyscript::{Module, ModuleHandle};
 use tokio::time::Instant;
@@ -19,15 +20,15 @@ static SCHEMA_WHLIST: LazyLock<HashSet<String>> = LazyLock::new(|| {
 #[derive(Clone)]
 pub struct RuntimeOptions<AS: Store2, PS: Store3, NS: Store3> {
     pub application_store: AS,
-    pub max_heap_mbs: u16,
+    pub handler_name: Option<String>,
     pub module: String,
     pub nft_store: NS,
     pub personal_store: PS,
-    pub timeout_millis: u32,
 }
 
 pub struct Runtime<AS: Store2, PS: Store3, NS: Store3> {
     application_store: AS,
+    handler_name: Option<String>,
     module_handle: ModuleHandle,
     nft_store: NS,
     personal_store: PS,
@@ -43,30 +44,24 @@ pub struct Runtime<AS: Store2, PS: Store3, NS: Store3> {
 ///
 /// # Example
 /// ```rust
-/// use proven_runtime::{
-///     Context, Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions,
-/// };
+/// use proven_runtime::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 /// use proven_store_memory::MemoryStore;
 /// use serde_json::json;
 ///
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_store: MemoryStore::new(),
-///     max_heap_mbs: 10,
-///     module: "export const test = (a, b) => a + b;".to_string(),
+///     handler_name: Some("handler".to_string()),
+///     module: "export const handler = (a, b) => a + b;".to_string(),
 ///     nft_store: MemoryStore::new(),
 ///     personal_store: MemoryStore::new(),
-///     timeout_millis: 1000,
 /// })
 /// .expect("Failed to create runtime");
 ///
 /// runtime.execute(ExecutionRequest {
-///     context: Context {
-///         dapp_definition_address: "dapp_definition_address".to_string(),
-///         identity: None,
-///         accounts: None,
-///     },
-///     handler_name: "test".to_string(),
+///     accounts: None,
 ///     args: vec![json!(10), json!(20)],
+///     dapp_definition_address: "dapp_definition_address".to_string(),
+///     identity: None,
 /// });
 /// ```
 impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
@@ -81,11 +76,15 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
     /// # Returns
     /// The created runtime.
     pub fn new(options: RuntimeOptions<AS, PS, NS>) -> Result<Self, Error> {
+        let handler_options =
+            Self::get_options_for_handler(options.module.clone(), options.handler_name.clone())?;
+
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
-            timeout: Duration::from_millis(options.timeout_millis as u64),
-            max_heap_size: Some(options.max_heap_mbs as usize * 1024 * 1024),
+            timeout: Duration::from_millis(handler_options.timeout_millis.unwrap_or(1000) as u64),
+            max_heap_size: Some(handler_options.max_heap_mbs.unwrap_or(10) as usize * 1024 * 1024),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
+                run_mock_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
@@ -104,11 +103,12 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         let module_handle = runtime.load_module(&module)?;
 
         Ok(Self {
-            module_handle,
-            runtime,
             application_store: options.application_store,
-            personal_store: options.personal_store,
+            handler_name: options.handler_name,
+            module_handle,
             nft_store: options.nft_store,
+            personal_store: options.personal_store,
+            runtime,
         })
     }
 
@@ -122,9 +122,10 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
     pub fn execute(
         &mut self,
         ExecutionRequest {
-            context,
-            handler_name,
+            accounts,
             args,
+            dapp_definition_address,
+            identity,
         }: ExecutionRequest,
     ) -> Result<ExecutionResult, Error> {
         let start = Instant::now();
@@ -133,11 +134,11 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         self.runtime.put(ConsoleState::default())?;
 
         // Set the store for the storage extension
-        let personal_store = match context.identity.as_ref() {
+        let personal_store = match identity.as_ref() {
             Some(current_identity) => Some(
                 self.personal_store
                     .clone()
-                    .scope(context.dapp_definition_address.clone())
+                    .scope(dapp_definition_address.clone())
                     .scope(current_identity.clone()),
             ),
             None => None,
@@ -147,24 +148,23 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         self.runtime.put(
             self.application_store
                 .clone()
-                .scope(context.dapp_definition_address.clone()),
+                .scope(dapp_definition_address.clone()),
         )?;
 
-        self.runtime.put(
-            self.nft_store
-                .clone()
-                .scope(context.dapp_definition_address),
-        )?;
+        self.runtime
+            .put(self.nft_store.clone().scope(dapp_definition_address))?;
 
         // Set the context for the session extension
-        self.runtime.put(SessionsState {
-            identity: context.identity,
-            accounts: context.accounts,
-        })?;
+        self.runtime.put(SessionsState { identity, accounts })?;
 
-        let output: Value =
-            self.runtime
-                .call_function(Some(&self.module_handle), handler_name.as_str(), &args)?;
+        let output: Value = match self.handler_name {
+            Some(ref handler_name) => {
+                self.runtime
+                    .call_function(Some(&self.module_handle), handler_name, &args)?
+            }
+            None => self.runtime.call_entrypoint(&self.module_handle, &args)?,
+        };
+
         let output: rustyscript::serde_json::Value = output.try_into(&mut self.runtime)?;
 
         let console_state: ConsoleState = self.runtime.take().unwrap_or_default();
@@ -176,12 +176,78 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             logs: console_state.messages,
         })
     }
+
+    fn get_options_for_handler(
+        module: String,
+        handler_name: Option<String>,
+    ) -> Result<HandlerOptions, Error> {
+        // Prepare the module for option extraction using run extenstion
+        let module = Self::strip_comments(module.as_str());
+        let module = Self::name_default_export(module.as_str());
+        let module = Self::rewrite_run_functions(module.as_str());
+
+        let module = Module::new("tmp.ts", module.as_str());
+        let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
+            timeout: Duration::from_millis(1000),
+            max_heap_size: Some(10 * 1024 * 1024),
+            schema_whlist: SCHEMA_WHLIST.clone(),
+            extensions: vec![
+                run_ext::init_ops_and_esm(),
+                console_ext::init_ops_and_esm(),
+                sessions_ext::init_ops_and_esm(),
+                // Split into seperate extensions to avoid issue with macro supporting only 1 generic
+                storage_application_ext::init_ops::<AS::Scoped>(),
+                storage_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
+                storage_nft_ext::init_ops_and_esm::<NS::Scoped>(),
+                storage_ext::init_ops_and_esm(),
+            ],
+            ..Default::default()
+        })?;
+
+        runtime.put(ConsoleState::default())?;
+        runtime.put(HandlerOptionsMap::default())?;
+
+        runtime.load_module(&module)?;
+
+        let mut options: HandlerOptionsMap = runtime.take().unwrap();
+
+        let options = options
+            .entry(
+                handler_name
+                    .as_ref()
+                    .unwrap_or(&"__default__".to_string())
+                    .clone(),
+            )
+            .or_default();
+
+        Ok(options.clone())
+    }
+
+    fn strip_comments(module: &str) -> String {
+        let comment_re = Regex::new(r"(?m)//.*|/\*[\s\S]*?\*/").unwrap();
+        comment_re.replace_all(module, "").to_string()
+    }
+
+    fn name_default_export(module: &str) -> String {
+        module.replace("export default ", "export const __default__ = ")
+    }
+
+    fn rewrite_run_functions(input: &str) -> String {
+        // Define the regex to match `export const` declarations with the specified functions
+        let re = Regex::new(r"(?m)^\s*export\s+const\s+(\w+)\s*=\s*(runWithOptions|runOnSchedule|runOnRadixEvent|runOnProvenEvent)\(").unwrap();
+
+        // Replace the matched string with the modified version
+        let result = re.replace_all(input, |caps: &regex::Captures| {
+            format!("export const {} = {}('{}', ", &caps[1], &caps[2], &caps[1])
+        });
+
+        result.to_string()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Context;
 
     use proven_store_memory::MemoryStore;
     use serde_json::json;
@@ -193,26 +259,23 @@ mod tests {
 
     fn create_runtime_options(
         script: &str,
+        handler_name: Option<String>,
     ) -> RuntimeOptions<MemoryStore, MemoryStore, MemoryStore> {
         RuntimeOptions {
             application_store: MemoryStore::new(),
-            max_heap_mbs: 10,
+            handler_name,
             module: script.to_string(),
             nft_store: MemoryStore::new(),
             personal_store: MemoryStore::new(),
-            timeout_millis: 1000,
         }
     }
 
     fn create_execution_request() -> ExecutionRequest {
         ExecutionRequest {
-            context: Context {
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                identity: None,
-                accounts: None,
-            },
-            handler_name: "test".to_string(),
+            accounts: None,
             args: vec![json!(10), json!(20)],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
         }
     }
 
@@ -221,6 +284,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 "export const test = () => { console.log('Hello, world!'); }",
+                Some("test".to_string()),
             );
 
             let runtime = Runtime::new(options);
@@ -233,6 +297,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 "export const test = () => { console.log('Hello, world!'); }",
+                Some("test".to_string()),
             );
 
             let mut runtime = Runtime::new(options).unwrap();
@@ -248,6 +313,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_runtime_execute_with_default_export() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                "export default () => { console.log('Hello, world!'); }",
+                None,
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            assert!(result.is_ok());
+        });
+    }
+
+    #[tokio::test]
     async fn test_runtime_execute_with_identity() {
         run_in_thread(|| {
             let options = create_runtime_options(
@@ -259,11 +340,12 @@ mod tests {
                     return identity;
                 }
             "#,
+                Some("test".to_string()),
             );
 
             let mut runtime = Runtime::new(options).unwrap();
             let mut request = create_execution_request();
-            request.context.identity = Some("test_identity".to_string());
+            request.identity = Some("test_identity".to_string());
 
             let result = runtime.execute(request);
             assert!(result.is_ok());
@@ -287,11 +369,12 @@ mod tests {
                     return accounts;
                 }
             "#,
+                Some("test".to_string()),
             );
 
             let mut runtime = Runtime::new(options).unwrap();
             let mut request = create_execution_request();
-            request.context.accounts = Some(vec!["account1".to_string(), "account2".to_string()]);
+            request.accounts = Some(vec!["account1".to_string(), "account2".to_string()]);
 
             let result = runtime.execute(request);
             assert!(result.is_ok());
@@ -306,6 +389,31 @@ mod tests {
                 "account1"
             );
             assert!(execution_result.duration.as_millis() < 1000);
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_sets_timeout() {
+        run_in_thread(|| {
+            // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
+            let options = create_runtime_options(
+                r#"
+                import { runWithOptions } from "proven:run";
+
+                export const test = runWithOptions(async () => {
+                    return new Promise((resolve) => {
+                        setTimeout(() => resolve(), 1500);
+                    });
+                }, { timeout: 2000 });
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            assert!(result.is_ok());
         });
     }
 }

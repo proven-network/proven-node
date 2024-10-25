@@ -8,6 +8,7 @@ deno_core = "=0.313.0"
 derive_more = { version = "1.0.0", features = ["from"] }
 proven-locks = { path = "../proven-locks" }
 proven-store = { path = "../proven-store" }
+regex = "1.11.1"
 # Using git for now until new crate is published
 rustyscript = { git = "https://github.com/rscarson/rustyscript" }
 serde = "1.0.210"

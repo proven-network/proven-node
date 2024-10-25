@@ -1,5 +1,5 @@
 use proven_runtime::{
-    hash_options, Context, Error, ExecutionRequest, Pool, PoolOptions, PoolRuntimeOptions,
+    hash_options, Error, ExecutionRequest, Pool, PoolOptions, PoolRuntimeOptions,
 };
 
 use std::sync::Arc;
@@ -37,9 +37,8 @@ async fn main() -> Result<(), Error> {
     "#;
 
     let runtime_options = PoolRuntimeOptions {
+        handler_name: Some("handler".to_string()),
         module: module.to_string(),
-        max_heap_mbs: 10,
-        timeout_millis: 5000,
     };
     let options_hash = hash_options(&runtime_options);
 
@@ -48,13 +47,10 @@ async fn main() -> Result<(), Error> {
         .execute(
             runtime_options,
             ExecutionRequest {
-                context: Context {
-                    dapp_definition_address: "dapp_definition_address".to_string(),
-                    identity: Some("identity".to_string()),
-                    accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
-                },
-                handler_name: "handler".to_string(),
+                accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
                 args: vec![json!(10), json!(20)],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                identity: Some("identity".to_string()),
             },
         )
         .await
@@ -66,13 +62,10 @@ async fn main() -> Result<(), Error> {
         let options_hash = options_hash.clone();
         let handle = tokio::spawn(async move {
             let request = ExecutionRequest {
-                context: Context {
-                    dapp_definition_address: "dapp_definition_address".to_string(),
-                    identity: Some("identity".to_string()),
-                    accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
-                },
-                handler_name: "handler".to_string(),
+                accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
                 args: vec![json!(10), json!(20)],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                identity: Some("identity".to_string()),
             };
 
             let start = Instant::now();

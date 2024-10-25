@@ -6,7 +6,7 @@ use std::sync::Arc;
 use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
-use proven_runtime::{Context, ExecutionRequest, ExecutionResult, Pool, PoolRuntimeOptions};
+use proven_runtime::{ExecutionRequest, ExecutionResult, Pool, PoolRuntimeOptions};
 use proven_sessions::Session;
 use proven_store::{Store2, Store3};
 use serde::{Deserialize, Serialize};
@@ -32,18 +32,16 @@ pub struct RpcHandler<AS: Store2, PS: Store3, NS: Store3> {
     runtime_pool: Arc<Pool<AS, PS, NS>>,
 }
 
-type OptionsHash = String;
-type HandlerName = String;
 type Args = Vec<serde_json::Value>;
+type HandlerName = String;
 type Module = String;
-type TimeoutMillis = u32;
-type MaxHeapSizeMbs = u16;
+type ModuleHash = String;
 #[repr(u8)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub enum Request {
     WhoAmI = 0x0,
-    Execute(OptionsHash, HandlerName, Args) = 0x1,
-    ExecuteWithOptions(Module, TimeoutMillis, MaxHeapSizeMbs, HandlerName, Args) = 0x2,
+    Execute(Module, HandlerName, Args) = 0x1,
+    ExecuteHash(ModuleHash, Args) = 0x2,
     Watch(String) = 0x3,
 }
 
@@ -125,17 +123,14 @@ impl<AS: Store2, PS: Store3, NS: Store3> RpcHandler<AS, PS, NS> {
                 identity_address: self.identity_address.clone(),
                 account_addresses: self.account_addresses.clone(),
             })),
-            Request::Execute(options_hash, handler_name, args) => {
+            Request::ExecuteHash(options_hash, args) => {
                 let pool = Arc::clone(&self.runtime_pool);
 
                 let request = ExecutionRequest {
-                    context: Context {
-                        dapp_definition_address: self.dapp_definition_address.clone(),
-                        identity: Some(self.identity_address.clone()),
-                        accounts: Some(self.account_addresses.clone()),
-                    },
-                    handler_name,
+                    accounts: Some(self.account_addresses.clone()),
                     args,
+                    dapp_definition_address: self.dapp_definition_address.clone(),
+                    identity: Some(self.identity_address.clone()),
                 };
 
                 match pool.execute_prehashed(options_hash, request).await {
@@ -144,31 +139,21 @@ impl<AS: Store2, PS: Store3, NS: Store3> RpcHandler<AS, PS, NS> {
                     Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
                 }
             }
-            Request::ExecuteWithOptions(
-                module,
-                timeout_millis,
-                max_heap_mbs,
-                handler_name,
-                args,
-            ) => {
+            Request::Execute(module, handler_name, args) => {
                 let pool = Arc::clone(&self.runtime_pool);
 
                 let request = ExecutionRequest {
-                    context: Context {
-                        dapp_definition_address: self.dapp_definition_address.clone(),
-                        identity: Some(self.identity_address.clone()),
-                        accounts: Some(self.account_addresses.clone()),
-                    },
-                    handler_name,
                     args,
+                    accounts: Some(self.account_addresses.clone()),
+                    dapp_definition_address: self.dapp_definition_address.clone(),
+                    identity: Some(self.identity_address.clone()),
                 };
 
                 match pool
                     .execute(
                         PoolRuntimeOptions {
-                            max_heap_mbs,
+                            handler_name: Some(handler_name.clone()),
                             module,
-                            timeout_millis,
                         },
                         request,
                     )

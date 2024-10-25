@@ -14,16 +14,11 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-pub struct Context {
+pub struct ExecutionRequest {
+    pub accounts: Option<Vec<String>>,
+    pub args: Vec<Value>,
     pub dapp_definition_address: String,
     pub identity: Option<String>,
-    pub accounts: Option<Vec<String>>,
-}
-
-pub struct ExecutionRequest {
-    pub context: Context,
-    pub handler_name: String,
-    pub args: Vec<Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -30,7 +30,7 @@ type WorkerRequest = (
 /// # Example
 /// ```rust
 /// use proven_runtime::{
-///     Context, Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions, Worker,
+///     Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions, Worker,
 /// };
 /// use proven_store_memory::MemoryStore;
 /// use serde_json::json;
@@ -39,24 +39,20 @@ type WorkerRequest = (
 /// async fn main() {
 ///     let mut worker = Worker::new(RuntimeOptions {
 ///         application_store: MemoryStore::new(),
-///         max_heap_mbs: 10,
-///         module: "export const test = (a, b) => a + b;".to_string(),
+///         handler_name: Some("handler".to_string()),
+///         module: "export const handler = (a, b) => a + b;".to_string(),
 ///         nft_store: MemoryStore::new(),
 ///         personal_store: MemoryStore::new(),
-///         timeout_millis: 1000,
 ///     })
 ///     .await
 ///     .expect("Failed to create worker");
 ///
 ///     worker
 ///         .execute(ExecutionRequest {
-///             context: Context {
-///                 dapp_definition_address: "dapp_definition_address".to_string(),
-///                 identity: None,
-///                 accounts: None,
-///             },
-///             handler_name: "test".to_string(),
+///             accounts: None,
 ///             args: vec![json!(10), json!(20)],
+///             dapp_definition_address: "dapp_definition_address".to_string(),
+///             identity: None,
 ///         })
 ///         .await;
 /// }
@@ -130,37 +126,36 @@ impl<AS: Store2, PS: Store3, NS: Store3> Worker<AS, PS, NS> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Context;
 
     use proven_store_memory::MemoryStore;
     use serde_json::json;
 
     fn create_runtime_options(
         script: &str,
+        handler_name: Option<String>,
     ) -> RuntimeOptions<MemoryStore, MemoryStore, MemoryStore> {
         RuntimeOptions {
             application_store: MemoryStore::new(),
-            max_heap_mbs: 10,
+            handler_name,
             module: script.to_string(),
             nft_store: MemoryStore::new(),
             personal_store: MemoryStore::new(),
-            timeout_millis: 1000,
         }
     }
 
     #[tokio::test]
     async fn test_worker_execute_in_tokio() {
-        let runtime_options = create_runtime_options("export const test = (a, b) => a + b;");
+        let runtime_options = create_runtime_options(
+            "export const test = (a, b) => a + b;",
+            Some("test".to_string()),
+        );
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest {
-            context: Context {
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                identity: None,
-                accounts: None,
-            },
-            handler_name: "test".to_string(),
+            accounts: None,
             args: vec![json!(10), json!(20)],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
         };
         let result = worker.execute(request).await;
 
