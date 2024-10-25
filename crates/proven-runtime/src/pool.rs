@@ -494,7 +494,17 @@ pub fn hash_options(options: &PoolRuntimeOptions) -> String {
 
     // Concatenate module and handler_name - newline separated
     let mut data = format!("{}\n", options.module);
-    write!(&mut data, "{:?}", options.handler_name).unwrap();
+    write!(
+        &mut data,
+        "{}",
+        options
+            .handler_name
+            .clone()
+            .unwrap_or("<DEFAULT>".to_string())
+    )
+    .unwrap();
+
+    println!("'{}'", data);
 
     // Hash the concatenated string
     hasher.update(data);
