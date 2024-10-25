@@ -504,8 +504,6 @@ pub fn hash_options(options: &PoolRuntimeOptions) -> String {
     )
     .unwrap();
 
-    println!("'{}'", data);
-
     // Hash the concatenated string
     hasher.update(data);
     let result = hasher.finalize();
