@@ -1,0 +1,6 @@
+[submodule "vendor/rustyscript"]
+	path = vendor/rustyscript
+	url = https://github.com/rscarson/rustyscript.git
+[submodule "vendor/deno"]
+	path = vendor/deno
+	url = https://github.com/denoland/deno.git
