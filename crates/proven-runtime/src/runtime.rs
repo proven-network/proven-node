@@ -92,6 +92,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 storage_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
                 storage_nft_ext::init_ops_and_esm::<NS::Scoped>(),
                 storage_ext::init_ops_and_esm(),
+                sql_ext::init_ops_and_esm(),
             ],
             ..Default::default()
         })?;
@@ -200,6 +201,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 storage_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
                 storage_nft_ext::init_ops_and_esm::<NS::Scoped>(),
                 storage_ext::init_ops_and_esm(),
+                sql_ext::init_ops_and_esm(),
             ],
             ..Default::default()
         })?;
