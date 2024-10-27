@@ -1,0 +1,11 @@
+[package]
+name = "proven-applications"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.82"
+proven-store = { path = "../store" }
+radix-common = "1.2.0"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_cbor = "0.11.2"

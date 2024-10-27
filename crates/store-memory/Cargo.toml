@@ -1,0 +1,9 @@
+[package]
+name = "proven-store-memory"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.82"
+proven-store = { path = "../store" }
+tokio =  { version = "1.36.0", features = ["macros", "rt-multi-thread", "sync"]}
