@@ -2,48 +2,41 @@
 name = "proven-enclave"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.79"
 
 [dependencies]
-tokio = { version = "1.36.0", features = [
-  "io-util",
-  "macros",
-  "process",
-  "rt",
-  "rt-multi-thread",
-] }
+tokio = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-async-nats = "0.36.0"
-cidr = "0.2.3"
-derive_more = { version = "1.0.0", features = ["from"] }
-proven-attestation = { path = "../attestation" }
-proven-attestation-nsm = { path = "../attestation-nsm" }
-proven-core = { path = "../core" }
-proven-dnscrypt-proxy = { path = "../dnscrypt-proxy" }
-proven-external-fs = { path = "../external-fs" }
-proven-http-letsencrypt = { path = "../http-letsencrypt" }
-proven-imds = { path = "../imds" }
-proven-instance-details = { path = "../instance-details" }
-proven-kms = { path = "../kms" }
-proven-nats-monitor = { path = "../nats-monitor" }
-proven-nats-server = { path = "../nats-server" }
-proven-postgres = { path = "../postgres" }
-proven-radix-aggregator = { path = "../radix-aggregator" }
-proven-radix-gateway = { path = "../radix-gateway" }
-proven-radix-node = { path = "../radix-node" }
-proven-sessions = { path = "../sessions" }
-proven-store = { path = "../store" }
-proven-store-asm = { path = "../store-asm" }
-proven-store-nats = { path = "../store-nats" }
-proven-vsock-proxy = { path = "../vsock-proxy" }
-proven-vsock-rpc = { path = "../vsock-rpc" }
-proven-vsock-tracing = { path = "../vsock-tracing" }
-radix-common = "1.2.0"
-rand = "0.8.5"
-rtnetlink = "0.14.1"
-tokio-util = { version = "0.7.12", features = ["rt"] }
-tokio-vsock = "0.5.0"
-tracing = "0.1.40"
-tracing-panic = "0.1.2"
-tracing-subscriber = "0.3.18"
+async-nats = { workspace = true }
+cidr = { workspace = true }
+derive_more = { workspace = true }
+proven-attestation = { workspace = true }
+proven-attestation-nsm = { workspace = true }
+proven-core = { workspace = true }
+proven-dnscrypt-proxy = { workspace = true }
+proven-external-fs = { workspace = true }
+proven-http-letsencrypt = { workspace = true }
+proven-imds = { workspace = true }
+proven-instance-details = { workspace = true }
+proven-kms = { workspace = true }
+proven-nats-monitor = { workspace = true }
+proven-nats-server = { workspace = true }
+proven-postgres = { workspace = true }
+proven-radix-aggregator = { workspace = true }
+proven-radix-gateway = { workspace = true }
+proven-radix-node = { workspace = true }
+proven-sessions = { workspace = true }
+proven-store = { workspace = true }
+proven-store-asm = { workspace = true }
+proven-store-nats = { workspace = true }
+proven-vsock-proxy = { workspace = true }
+proven-vsock-rpc = { workspace = true }
+proven-vsock-tracing = { workspace = true }
+radix-common = { workspace = true }
+rand = { workspace = true }
+rtnetlink = { workspace = true }
+tokio-util = { workspace = true }
+tokio-vsock = { workspace = true }
+tracing = { workspace = true }
+tracing-panic = { workspace = true }
+tracing-subscriber = { workspace = true }

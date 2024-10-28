@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.82"
-proven-locks = { path = "../locks" }
-tokio =  { version = "1.36.0", features = ["macros", "rt-multi-thread", "sync"]}
+async-trait = { workspace = true }
+proven-locks = { workspace = true }
+tokio = { workspace = true }

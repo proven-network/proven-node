@@ -78,7 +78,7 @@ RUN rustup target add ${RUSTTARGET}
 # Build proven-enclave
 WORKDIR /
 ARG COMMIT
-RUN git clone git@github.com:proven-network/proven-node.git
+RUN git clone --recurse-submodules git@github.com:proven-network/proven-node.git
 WORKDIR /proven-node
 RUN git checkout ${COMMIT}
 RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave

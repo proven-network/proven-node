@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.82"
-coset = { version = "0.3.8", features = ["std"] }
-derive_more = { version = "1.0.0", features = ["from"] }
-proven-attestation = { path = "../attestation" }
-rand = "0.8.5"
-serde = { version = "1.0.210", features = ["derive"] }
-serde_cbor = "0.11.2"
+async-trait = { workspace = true }
+coset = { workspace = true }
+derive_more = { workspace = true }
+proven-attestation = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_cbor = { workspace = true }

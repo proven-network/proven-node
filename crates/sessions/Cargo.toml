@@ -4,14 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.82"
-derive_more = { version = "1.0.0", features = ["from"] }
-ed25519-dalek = { version = "2.1.1", features = ["rand_core", "signature"] }
-hex = "0.4.3"
-proven-attestation = { path = "../attestation" }
-proven-radix-rola = { path = "../radix-rola" }
-proven-store = { path = "../store" }
-radix-common = "1.2.0"
-rand = "0.8.5"
-serde = { version = "1.0.210", features = ["derive"] }
-serde_cbor = "0.11.2"
+async-trait = { workspace = true }
+derive_more = { workspace = true }
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
+proven-attestation = { workspace = true }
+proven-radix-rola = { workspace = true }
+proven-store = { workspace = true }
+radix-common = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_cbor = { workspace = true }

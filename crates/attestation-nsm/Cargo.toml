@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.82"
-aws-nitro-enclaves-nsm-api = "0.4.0"
-proven-attestation = { path = "../attestation" }
-serde_bytes = "0.11.15"
-tokio = "1.36.0"
+async-trait = { workspace = true }
+aws-nitro-enclaves-nsm-api = { workspace = true }
+proven-attestation = { workspace = true }
+serde_bytes = { workspace = true }
+tokio = { workspace = true }

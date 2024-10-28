@@ -4,16 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-aes = "0.8.3"
-anyhow = "1.0.89"
-asn1-rs = "0.6.2"
-aws-config = { version = "1.5.6", features = ["behavior-version-latest"] }
-aws-sdk-kms = "1.44.0"
-block-padding = { version = "0.3.3", features = ["std"] }
-cbc = { version = "0.1.2", features = ["std", "block-padding"] }
-derive_more = { version = "1.0.0", features = ["from"] }
-proven-attestation = { path = "../attestation" }
-proven-attestation-nsm = { path = "../attestation-nsm" }
-rand = "0.8.5"
-rsa = "0.9.6"
-sha2 = "0.10.8"
+aes = { workspace = true }
+anyhow = { workspace = true }
+asn1-rs = { workspace = true }
+aws-config = { workspace = true }
+aws-sdk-kms = { workspace = true }
+block-padding = { workspace = true }
+cbc = { workspace = true }
+derive_more = { workspace = true }
+proven-attestation = { workspace = true }
+proven-attestation-nsm = { workspace = true }
+rand = { workspace = true }
+rsa = { workspace = true }
+sha2 = { workspace = true }

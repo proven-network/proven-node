@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.82"
-axum = { version = "0.7.5", features = ["ws"] }
-proven-http = { path = "../http" }
-tokio = "1.36.0"
-tokio-util = { version = "0.7.12", features = ["rt"] }
-tower-http = { version = "0.6.0", features = ["cors"] }
-tracing = "0.1.40"
+async-trait = { workspace = true }
+axum = { workspace = true }
+proven-http = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }

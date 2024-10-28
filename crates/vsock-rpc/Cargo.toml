@@ -4,18 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-cidr = { version = "0.2.3", features = ["serde"] }
-derive_more = { version = "1.0.0", features = ["from"] }
-serde = { version = "1.0.210", features = ["derive"] }
-serde_cbor = "0.11.2"
-tokio = { version = "1.36.0", features = [
-  "io-util",
-  "macros",
-  "process",
-  "test-util",
-  "rt",
-] }
-tracing = "0.1.40"
+cidr = { workspace = true }
+derive_more = { workspace = true }
+serde = { workspace = true }
+serde_cbor = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-tokio-vsock = "0.5.0"
+tokio-vsock = { workspace = true }

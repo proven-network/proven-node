@@ -4,17 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bech32 = "0.11.0"
-derive_more = { version = "1.0.0", features = ["from"] }
-futures = "0.3.30"
-hex = { version = "0.4.3" }
-proven-radix-gateway-sdk = { path = "../radix-gateway-sdk" }
-radix-common = { version = "1.2.0", features = [
-  "secp256k1_sign_and_validate",
-  "serde",
-] }
-serde = { version = "1.0.200", features = ["derive"] }
-tracing = "0.1.40"
+bech32 = { workspace = true }
+derive_more = { workspace = true }
+futures = { workspace = true }
+hex = { workspace = true }
+proven-radix-gateway-sdk = { workspace = true }
+radix-common = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1.18.2", features = ["full"] }
+tokio = { workspace = true }

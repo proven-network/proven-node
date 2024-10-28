@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait = "0.1.82"
-aws-config = { version = "1.5.6", features = ["behavior-version-latest"] }
-aws-sdk-s3 = "1.51.0"
-base64 = "0.22.1"
-blake3 = "1.5.4"
-derive_more = { version = "1.0.0", features = ["from"] }
-md5 = "0.7.0"
-proven-store = { path = "../store" }
-tokio = "1.36.0"
+async-trait = { workspace = true }
+aws-config = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+base64 = { workspace = true }
+blake3 = { workspace = true }
+derive_more = { workspace = true }
+md5 = { workspace = true }
+proven-store = { workspace = true }
+tokio = { workspace = true }

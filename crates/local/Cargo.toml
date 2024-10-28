@@ -4,23 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = { version = "4.5.9", features = ["derive"] }
-derive_more = { version = "1.0.0", features = ["from"] }
-proven-attestation = { path = "../attestation" }
-proven-attestation-dev = { path = "../attestation-dev" }
-proven-http-insecure = { path = "../http-insecure" }
-proven-sessions = { path = "../sessions" }
-proven-store = { path = "../store" }
-proven-store-fs = { path = "../store-fs" }
-proven-store-memory = { path = "../store-memory" }
-proven-core = { path = "../core" }
-radix-common = "1.2.0"
-tokio = { version = "1.36.0", features = [
-  "io-util",
-  "macros",
-  "process",
-  "rt",
-  "rt-multi-thread",
-] }
-tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
+clap = { workspace = true }
+derive_more = { workspace = true }
+proven-attestation = { workspace = true }
+proven-attestation-dev = { workspace = true }
+proven-http-insecure = { workspace = true }
+proven-sessions = { workspace = true }
+proven-store = { workspace = true }
+proven-store-fs = { workspace = true }
+proven-store-memory = { workspace = true }
+proven-core = { workspace = true }
+radix-common = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

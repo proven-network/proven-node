@@ -1,5 +1,12 @@
-[workspace]
+[workspace.package]
+rust-version = "1.80"
+authors = ["the Proven authors"]
+edition = "2021"
+license = "BSL-1.1"
+repository = "https://github.com/proven-network/proven-node"
 
+[workspace]
+resolver = "2"
 members = [
     "crates/applications",
     "crates/attestation",
@@ -38,6 +45,172 @@ members = [
     "crates/vsock-proxy",
     "crates/vsock-rpc",
     "crates/vsock-tracing",
+    "vendor/deno/ext/crypto",
+    "vendor/deno/ext/fetch",
+    "vendor/deno/ext/tls",
+    "vendor/deno/ext/net",
+    "vendor/deno/ext/webidl",
+    "vendor/deno/ext/url",
+    "vendor/deno/ext/io",
+    "vendor/deno/runtime/permissions",
+    "vendor/rustyscript",
 ]
 
-resolver = "2"
+[workspace.dependencies]
+aes = "0.8.4"
+anyhow = "1.0.91"
+asn1-rs = "0.6.2"
+async-nats = "0.37.0"
+async-trait = "0.1.82"
+aws-config = { version = "1.5.9", features = ["behavior-version-latest"] }
+aws-nitro-enclaves-nsm-api = "0.4.0"
+aws-sdk-ec2 = "1.83.0"
+aws-sdk-kms = "1.48.0"
+aws-sdk-route53resolver = "1.51.0"
+aws-sdk-s3 = "1.58.0"
+aws-sdk-secretsmanager = "1.51.0"
+axum = { version = "0.7.6", features = ["ws"] }
+axum-extra = { version = "0.9.4", features = ["typed-header"] }
+axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
+axum_typed_multipart = "0.13.1"
+base64 = "0.22.1"
+bech32 = "0.11.0"
+bencher = "0.1"
+blake3 = "1.5.4"
+block-padding = { version = "0.3.3", features = ["std"] }
+bytes = "1.4.0"
+cbc = { version = "=0.1.2", features = ["alloc"] }
+chrono = { version = "0.4.26", features = ["serde"] }
+cidr = { version = "0.3.0", features = ["serde"] }
+clap = { version = "4.5.9", features = ["derive"] }
+coset = { version = "0.3.8", features = ["std"] }
+data-url = "0.3.1"
+deno_bench_util = { version = "0.168.0", path = "vendor/deno/bench_util" }
+deno_console = { path = "vendor/deno/ext/console" }
+deno_core = { version = "0.316.0" }
+deno_io = { path = "vendor/deno/runtime/io" }
+deno_net = { path = "vendor/deno/ext/net" }
+deno_path_util = "=0.2.1"
+deno_permissions = { path = "vendor/deno/runtime/permissions" }
+deno_terminal = "0.2.0"
+deno_tls = { path = "vendor/deno/ext/tls" }
+deno_url = { path = "vendor/deno/ext/url" }
+deno_web = { path = "vendor/deno/ext/web" }
+deno_webidl = { path = "vendor/deno/ext/webidl" }
+derive_more = { version = "1.0.0", features = ["from"] }
+dns-stamp-parser = "3.0.0"
+dyn-clone = "1"
+ed25519-dalek = { version = "2.1.1", features = ["rand_core", "signature"] }
+encoding_rs = "0.8.35"
+error_reporter = "1"
+fast-socks5 = "0.9.6"
+fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
+filetime = "0.2.16"
+flate2 = { version = "1.0.30", default-features = false }
+fs3 = "0.5.0"
+futures = "0.3.21"
+h2 = "0.4.6"
+headers = "0.4.0"
+hex = "0.4.3"
+hkdf = "0.12.3"
+http = "1.1.0"
+http-body = "1.0"
+http-body-util = "0.1.2"
+httpclient = "0.23.9"
+hyper = { version = "1.5.0", features = ["full"] }
+hyper-rustls = { version = "0.27.3", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
+hyper-util = { version = "0.1.9", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
+ipnet = "2.3"
+lazy_static = "1.4.0"
+libc = "0.2.126"
+log = "0.4.20"
+md5 = "0.7.0"
+nix = { version = "0.29.0", features = ["signal"] }
+once_cell = "1.17.1"
+os_pipe = { version = "1.2.1", features = ["io_safety"] }
+parking_lot = "0.12.0"
+pem = "3.0.4"
+percent-encoding = "2.3.0"
+pin-project = "1.1.7"
+proven-applications = { path = "crates/applications" }
+proven-attestation = { path = "crates/attestation" }
+proven-attestation-dev = { path = "crates/attestation-dev" }
+proven-attestation-nsm = { path = "crates/attestation-nsm" }
+proven-core = { path = "crates/core" }
+proven-dnscrypt-proxy = { path = "crates/dnscrypt-proxy" }
+proven-enclave = { path = "crates/enclave" }
+proven-external-fs = { path = "crates/external-fs" }
+proven-host = { path = "crates/host" }
+proven-http = { path = "crates/http" }
+proven-http-insecure = { path = "crates/http-insecure" }
+proven-http-letsencrypt = { path = "crates/http-letsencrypt" }
+proven-imds = { path = "crates/imds" }
+proven-instance-details = { path = "crates/instance-details" }
+proven-kms = { path = "crates/kms" }
+proven-local = { path = "crates/local" }
+proven-locks = { path = "crates/locks" }
+proven-locks-memory = { path = "crates/locks-memory" }
+proven-nats-monitor = { path = "crates/nats-monitor" }
+proven-nats-server = { path = "crates/nats-server" }
+proven-postgres = { path = "crates/postgres" }
+proven-radix-aggregator = { path = "crates/radix-aggregator" }
+proven-radix-gateway = { path = "crates/radix-gateway" }
+proven-radix-gateway-sdk = { path = "crates/radix-gateway-sdk" }
+proven-radix-node = { path = "crates/radix-node" }
+proven-radix-rola = { path = "crates/radix-rola" }
+proven-runtime = { path = "crates/runtime" }
+proven-sessions = { path = "crates/sessions" }
+proven-store = { path = "crates/store" }
+proven-store-asm = { path = "crates/store-asm" }
+proven-store-fs = { path = "crates/store-fs" }
+proven-store-memory = { path = "crates/store-memory" }
+proven-store-nats = { path = "crates/store-nats" }
+proven-store-s3 = { path = "crates/store-s3" }
+proven-vsock-proxy = { path = "crates/vsock-proxy" }
+proven-vsock-rpc = { path = "crates/vsock-rpc" }
+proven-vsock-tracing = { path = "crates/vsock-tracing" }
+radix-common = { version = "1.2.0", features = ["secp256k1_sign_and_validate", "serde"] }
+rand = "=0.8.5"
+regex = "1.10.6"
+ring = "^0.17.0"
+rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
+rtnetlink = "0.14.1"
+rusqlite = { version = "0.32.0", features = ["unlock_notify", "bundled"] }
+rustls = { version = "0.23.15", default-features = false, features = ["logging", "std", "tls12", "ring"] }
+rustls-pemfile = "2"
+rustls-tokio-stream = "=0.3.0"
+rustls-webpki = "0.102"
+rustyscript = { path = "vendor/rustyscript", features = ["web"]}
+sec1 = "0.7"
+serde = { version = "1.0.213", features = ["derive"] }
+serde_bytes = "0.11"
+serde_cbor = "0.11.2"
+serde_json = "1.0.132"
+sha1 = { version = "0.10.6", features = ["oid"] }
+sha2 = { version = "0.10.8", features = ["oid"] }
+signature = "2.2.0"
+socket2 = { version = "0.5.3", features = ["all"] }
+spki = "0.7.3"
+strip-ansi-escapes = "0.2.0"
+tempfile = "3.13.0"
+thiserror = "1.0.65"
+tokio = { version = "1.41.0", features = ["full"] }
+tokio-rustls = { version = "0.26.0", default-features = false, features = ["ring", "tls12"] }
+tokio-rustls-acme = { version = "0.4.0", features = ["axum"] }
+tokio-socks = "0.5.1"
+tokio-stream = "0.1.15"
+tokio-tun = "0.12.1"
+tokio-util = { version = "0.7.4", features = ["rt"] }
+tokio-vsock = "0.5.0"
+tower = { version = "0.5.1", default-features = false, features = ["util"] }
+tower-http = { version = "0.6.1", features = ["decompression-br", "decompression-gzip", "cors"] }
+tower-service = "0.3.2"
+tracing = "0.1.40"
+tracing-panic = "0.1.2"
+tracing-subscriber = "0.3.18"
+uuid = { version = "1.3.0", features = ["v4"] }
+webpki-roots = "0.26"
+which = "4.4.2" # Can't upgrade currently
+winapi = "=0.3.9"
+windows-sys = { version = "0.52.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel"] }
+x509-parser = { version = "0.16.0", features = ["ring", "verify"] }

@@ -1,6 +1,6 @@
 [submodule "vendor/rustyscript"]
 	path = vendor/rustyscript
-	url = https://github.com/rscarson/rustyscript.git
+	url = https://github.com/flightofthefox/rustyscript.git
 [submodule "vendor/deno"]
 	path = vendor/deno
-	url = https://github.com/denoland/deno.git
+	url = https://github.com/flightofthefox/deno.git

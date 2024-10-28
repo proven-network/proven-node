@@ -4,22 +4,17 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
-async-trait = "0.1.82"
-axum = { version = "0.7.5", features = ["ws"] }
-base64 = "0.22.1"
-proven-http = { path = "../http" }
-proven-store = { path = "../store" }
-ring = "0.17.8"
-rustls = { version = "0.23.13", default-features = false, features = [
-  "std",
-  "ring",
-  "logging",
-  "tls12",
-] }
-tokio = "1.36.0"
-tokio-rustls-acme = { version = "0.4.0", features = ["axum"] }
-tokio-stream = "0.1.15"
-tokio-util = { version = "0.7.12", features = ["rt"] }
-tower-http = { version = "0.6.0", features = ["cors"] }
-tracing = "0.1.40"
+axum-server = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+base64 = { workspace = true }
+proven-http = { workspace = true }
+proven-store = { workspace = true }
+ring = { workspace = true }
+rustls = { workspace = true }
+tokio = { workspace = true }
+tokio-rustls-acme = { workspace = true }
+tokio-stream = { workspace = true }
+tokio-util = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }

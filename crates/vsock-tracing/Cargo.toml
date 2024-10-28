@@ -4,16 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-derive_more = { version = "1.0.0", features = ["from"] }
-tokio = { version = "1.36.0", features = [
-  "io-util",
-  "macros",
-  "process",
-  "test-util",
-  "rt",
-] }
-tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
+derive_more = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-tokio-vsock = "0.5.0"
+tokio-vsock = { workspace = true }
