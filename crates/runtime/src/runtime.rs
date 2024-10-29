@@ -100,7 +100,8 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         // In case there are any to-level console.* calls in the module
         runtime.put(ConsoleState::default())?;
 
-        let module = Module::new("module.ts", options.module.as_str());
+        let async_module = Self::ensure_exported_functions_are_async(options.module.as_str());
+        let module = Module::new("module.ts", async_module.as_str());
         let module_handle = runtime.load_module(&module)?;
 
         Ok(Self {
@@ -234,13 +235,45 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         module.replace("export default ", "export const __default__ = ")
     }
 
-    fn rewrite_run_functions(input: &str) -> String {
-        // Define the regex to match `export const` declarations with the specified functions
-        let re = Regex::new(r"(?m)^\s*export\s+const\s+(\w+)\s*=\s*(runWithOptions|runOnSchedule|runOnRadixEvent|runOnProvenEvent)\(").unwrap();
+    fn ensure_exported_functions_are_async(module: &str) -> String {
+        // Find matches like `export const test = function () { console.log('Hello, world!'); }`
+        let re_fn =
+            Regex::new(r"(?m)^\s*export\s+(const|let)\s+(\w+)\s*=\s*function\s*\(").unwrap();
+
+        let result = re_fn.replace_all(module, |caps: &regex::Captures| {
+            format!("export {} {} = async function (", &caps[1], &caps[2])
+        });
+
+        // Find matches like `export const test = () => { console.log('Hello, world!'); }`
+        let re_arrow = Regex::new(r"(?m)^\s*export\s+(const|let)\s+(\w+)\s*=\s*\(").unwrap();
+
+        let result = re_arrow.replace_all(result.as_ref(), |caps: &regex::Captures| {
+            format!("export {} {} = async (", &caps[1], &caps[2])
+        });
+
+        // Find matches like `export const test = runWithOptions(() => { console.log('Hello, world!'); }, {})`
+        let re_run =
+            Regex::new(r"(?m)^\s*export\s+(const|let)\s+(\w+)\s*=\s*(runWithOptions|runOnSchedule|runOnRadixEvent|runOnProvenEvent)\s*\(").unwrap();
+
+        let result = re_run.replace_all(result.as_ref(), |caps: &regex::Captures| {
+            format!("export {} {} = {}(async ", &caps[1], &caps[2], &caps[3])
+        });
+
+        let result = result.replace("async async", "async");
+
+        result.to_string()
+    }
+
+    fn rewrite_run_functions(module: &str) -> String {
+        // Define the regex to match `export const/let` declarations with the specified functions
+        let re = Regex::new(r"(?m)^\s*export\s+(const|let)\s+(\w+)\s*=\s*(runWithOptions|runOnSchedule|runOnRadixEvent|runOnProvenEvent)\(").unwrap();
 
         // Replace the matched string with the modified version
-        let result = re.replace_all(input, |caps: &regex::Captures| {
-            format!("export const {} = {}('{}', ", &caps[1], &caps[2], &caps[1])
+        let result = re.replace_all(module, |caps: &regex::Captures| {
+            format!(
+                "export {} {} = {}('{}', ",
+                &caps[1], &caps[2], &caps[3], &caps[2]
+            )
         });
 
         result.to_string()
@@ -415,6 +448,56 @@ mod tests {
             let request = create_execution_request();
 
             let result = runtime.execute(request);
+            assert!(result.is_ok());
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_default_max_heap_size() {
+        run_in_thread(|| {
+            // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
+            let options = create_runtime_options(
+                r#"
+                import { runWithOptions } from "proven:run";
+
+                export const test = runWithOptions(() => {
+                    const largeArray = new Array(40 * 1024 * 1024).fill('a');
+                    return largeArray;
+                }, { timeout: 30000 });
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            assert!(result.is_err());
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_custom_max_heap_size() {
+        run_in_thread(|| {
+            // The script will allocate 40MB of memory, and the max heap size is set to 2048MB
+            let options = create_runtime_options(
+                r#"
+                import { runWithOptions } from "proven:run";
+
+                export const test = runWithOptions(() => {
+                    const largeArray = new Array(40 * 1024 * 1024).fill('a');
+                    return largeArray;
+                }, { memory: 2048, timeout: 30000 });
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            println!("{:?}", result);
             assert!(result.is_ok());
         });
     }
