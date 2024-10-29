@@ -1,14 +1,20 @@
+mod host_web_permissions;
+mod no_web_permissions;
+
 use crate::extensions::*;
 use crate::{Error, ExecutionRequest, ExecutionResult};
+use host_web_permissions::HostWebPermissions;
+use no_web_permissions::NoWebPermissions;
 
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::sync::LazyLock;
 use std::time::Duration;
 
 use proven_store::{Store2, Store3};
 use regex::Regex;
 use rustyscript::js_value::Value;
-use rustyscript::{Module, ModuleHandle};
+use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
 use tokio::time::Instant;
 
 static SCHEMA_WHLIST: LazyLock<HashSet<String>> = LazyLock::new(|| {
@@ -94,6 +100,15 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 storage_ext::init_ops_and_esm(),
                 sql_ext::init_ops_and_esm(),
             ],
+            extension_options: ExtensionOptions {
+                web: WebOptions {
+                    permissions: Rc::new(HostWebPermissions::new(
+                        handler_options.allowed_web_hosts,
+                    )),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             ..Default::default()
         })?;
 
@@ -101,6 +116,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         runtime.put(ConsoleState::default())?;
 
         let async_module = Self::ensure_exported_functions_are_async(options.module.as_str());
+        println!("{}", async_module);
         let module = Module::new("module.ts", async_module.as_str());
         let module_handle = runtime.load_module(&module)?;
 
@@ -204,6 +220,14 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 storage_ext::init_ops_and_esm(),
                 sql_ext::init_ops_and_esm(),
             ],
+            extension_options: ExtensionOptions {
+                web: WebOptions {
+                    // No access to web during option extraction
+                    permissions: Rc::new(NoWebPermissions::new()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             ..Default::default()
         })?;
 
@@ -227,7 +251,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
     }
 
     fn strip_comments(module: &str) -> String {
-        let comment_re = Regex::new(r"(?m)//.*|/\*[\s\S]*?\*/").unwrap();
+        let comment_re = Regex::new(r"(?m)^\s*//.*|/\*[\s\S]*?\*/").unwrap();
         comment_re.replace_all(module, "").to_string()
     }
 
@@ -494,6 +518,53 @@ mod tests {
 
             let mut runtime = Runtime::new(options).unwrap();
 
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            println!("{:?}", result);
+            assert!(result.is_ok());
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_with_disallowed_hosts() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { runWithOptions } from "proven:run";
+
+                export const test = runWithOptions(async () => {
+                    const response = await fetch("https://example.com");
+                    return response;
+                }, { timeout: 10000 });
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            assert!(result.is_err());
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_with_allowed_hosts() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { runWithOptions } from "proven:run";
+
+                export const test = runWithOptions(async () => {
+                    const response = await fetch("https://example.com");
+                    return response;
+                }, { allowedHosts: ["example.com"], timeout: 10000 });
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
             let request = create_execution_request();
 
             let result = runtime.execute(request);
