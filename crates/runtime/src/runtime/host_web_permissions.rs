@@ -32,6 +32,14 @@ impl WebPermissions for HostWebPermissions {
         url: &deno_core::url::Url,
         _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
+        if url.scheme() != "https" {
+            return Err(anyhow!("Only HTTPS URLs are allowed"));
+        }
+
+        if url.host_str().unwrap() == "localhost" {
+            return Err(anyhow!("Localhost URLs are not allowed"));
+        }
+
         if self.allowed_hosts.contains(url.host_str().unwrap()) {
             Ok(())
         } else {
