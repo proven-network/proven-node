@@ -7,6 +7,7 @@ edition = "2021"
 deno_core = { workspace = true }
 derive_more = { workspace = true }
 proven-locks = { workspace = true }
+proven-sql = { workspace = true }
 proven-store = { workspace = true }
 regex = { workspace = true }
 rustyscript = { workspace = true }

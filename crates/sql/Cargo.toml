@@ -1,0 +1,17 @@
+[package]
+name = "proven-sql"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+derive_more = { workspace = true }
+libsql = { workspace = true }
+proven-store = { workspace = true }
+proven-stream = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+async-nats = { workspace = true }
+proven-store-memory = { workspace = true }
+proven-stream-nats = { workspace = true }
+tempfile = { workspace = true }

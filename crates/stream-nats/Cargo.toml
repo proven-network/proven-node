@@ -1,0 +1,12 @@
+[package]
+name = "proven-stream-nats"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-nats = { workspace = true }
+async-trait = { workspace = true }
+derive_more = { workspace = true }
+futures = { workspace = true }
+proven-stream = { workspace = true }
+tokio = { workspace = true }

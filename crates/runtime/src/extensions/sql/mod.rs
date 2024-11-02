@@ -1,3 +1,5 @@
+mod application;
+
 use deno_core::extension;
 
 extension!(

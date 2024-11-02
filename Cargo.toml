@@ -36,12 +36,15 @@ members = [
     "crates/radix-rola",
     "crates/runtime",
     "crates/sessions",
+    "crates/sql",
     "crates/store",
     "crates/store-asm",
     "crates/store-fs",
     "crates/store-memory",
     "crates/store-nats",
     "crates/store-s3",
+    "crates/stream",
+    "crates/stream-nats",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
     "crates/vsock-tracing",
@@ -122,6 +125,7 @@ hyper-rustls = { version = "0.27.3", default-features = false, features = ["http
 hyper-util = { version = "0.1.9", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 ipnet = "2.3"
 lazy_static = "1.4.0"
+libsql = { version = "0.6.0", default-features = false, features = ["core"] }
 libc = "0.2.126"
 log = "0.4.20"
 md5 = "0.7.0"
@@ -160,12 +164,15 @@ proven-radix-node = { path = "crates/radix-node" }
 proven-radix-rola = { path = "crates/radix-rola" }
 proven-runtime = { path = "crates/runtime" }
 proven-sessions = { path = "crates/sessions" }
+proven-sql = { path = "crates/sql" }
 proven-store = { path = "crates/store" }
 proven-store-asm = { path = "crates/store-asm" }
 proven-store-fs = { path = "crates/store-fs" }
 proven-store-memory = { path = "crates/store-memory" }
 proven-store-nats = { path = "crates/store-nats" }
 proven-store-s3 = { path = "crates/store-s3" }
+proven-stream = { path = "crates/stream" }
+proven-stream-nats = { path = "crates/stream-nats" }
 proven-vsock-proxy = { path = "crates/vsock-proxy" }
 proven-vsock-rpc = { path = "crates/vsock-rpc" }
 proven-vsock-tracing = { path = "crates/vsock-tracing" }
