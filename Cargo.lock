@@ -4864,6 +4864,8 @@ dependencies = [
  "derive_more",
  "futures",
  "proven-stream",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
