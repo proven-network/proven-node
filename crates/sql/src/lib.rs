@@ -9,9 +9,18 @@ use proven_stream::{Stream, Stream1};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Serialize)]
+pub enum SqlParam {
+    Null,
+    Integer(i64),
+    Real(f64),
+    Text(String),
+    Blob(Vec<u8>),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub enum Request {
-    Execute(String),
-    Query(String),
+    Execute(String, Vec<SqlParam>),
+    Query(String, Vec<SqlParam>),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -33,8 +42,8 @@ pub struct Connection<S: Stream<Error>> {
 }
 
 impl<S: Stream<Error>> Connection<S> {
-    pub async fn execute(&self, sql: String) -> Result<u64> {
-        let request = Request::Execute(sql);
+    pub async fn execute(&self, sql: String, params: Vec<SqlParam>) -> Result<u64> {
+        let request = Request::Execute(sql, params);
         let bytes = serde_cbor::to_vec(&request).unwrap();
 
         let raw_response = self
@@ -50,8 +59,8 @@ impl<S: Stream<Error>> Connection<S> {
         }
     }
 
-    pub async fn query(&self, sql: String) -> Result<Rows> {
-        let request = Request::Query(sql);
+    pub async fn query(&self, sql: String, params: Vec<SqlParam>) -> Result<Rows> {
+        let request = Request::Query(sql, params);
         let bytes = serde_cbor::to_vec(&request).unwrap();
 
         let raw_response = self
@@ -128,13 +137,13 @@ impl<LS: Store1, S: Stream1<Error>> SqlManager<LS, S> {
                             println!("Request: {:?}", request);
 
                             match request {
-                                Request::Execute(sql) => {
-                                    let affected_rows = database.execute(&sql, ()).await?;
+                                Request::Execute(sql, params) => {
+                                    let affected_rows = database.execute(&sql, params).await?;
 
                                     Ok(serde_cbor::to_vec(&Response::Execute(affected_rows))?)
                                 }
-                                Request::Query(sql) => {
-                                    let mut libsql_rows = database.query(&sql, ()).await?;
+                                Request::Query(sql, params) => {
+                                    let mut libsql_rows = database.query(&sql, params).await?;
 
                                     let column_count = libsql_rows.column_count();
 
@@ -221,21 +230,27 @@ mod tests {
                 .await;
 
             let response = connection
-                .execute("CREATE TABLE IF NOT EXISTS users (email TEXT)".to_string())
+                .execute(
+                    "CREATE TABLE IF NOT EXISTS users (email TEXT)".to_string(),
+                    vec![],
+                )
                 .await
                 .unwrap();
 
             assert_eq!(response, 0);
 
             let response = connection
-                .execute("INSERT INTO users (email) VALUES ('test@example.com')".to_string())
+                .execute(
+                    "INSERT INTO users (email) VALUES ('test@example.com')".to_string(),
+                    vec![],
+                )
                 .await
                 .unwrap();
 
             assert_eq!(response, 1);
 
             let response = connection
-                .query("SELECT * FROM users".to_string())
+                .query("SELECT * FROM users".to_string(), vec![])
                 .await
                 .unwrap();
 
