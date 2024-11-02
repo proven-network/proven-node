@@ -4778,6 +4778,8 @@ dependencies = [
  "proven-store-memory",
  "proven-stream",
  "proven-stream-nats",
+ "serde",
+ "serde_cbor",
  "tempfile",
  "tokio",
 ]
