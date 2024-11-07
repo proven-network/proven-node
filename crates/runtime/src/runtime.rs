@@ -94,10 +94,10 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
-                storage_application_ext::init_ops::<AS::Scoped>(),
-                storage_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
-                storage_nft_ext::init_ops_and_esm::<NS::Scoped>(),
-                storage_ext::init_ops_and_esm(),
+                kv_application_ext::init_ops::<AS::Scoped>(),
+                kv_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
+                kv_nft_ext::init_ops_and_esm::<NS::Scoped>(),
+                kv_ext::init_ops_and_esm(),
                 sql_ext::init_ops_and_esm(),
             ],
             extension_options: ExtensionOptions {
@@ -214,10 +214,10 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
-                storage_application_ext::init_ops::<AS::Scoped>(),
-                storage_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
-                storage_nft_ext::init_ops_and_esm::<NS::Scoped>(),
-                storage_ext::init_ops_and_esm(),
+                kv_application_ext::init_ops::<AS::Scoped>(),
+                kv_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
+                kv_nft_ext::init_ops_and_esm::<NS::Scoped>(),
+                kv_ext::init_ops_and_esm(),
                 sql_ext::init_ops_and_esm(),
             ],
             extension_options: ExtensionOptions {

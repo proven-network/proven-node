@@ -152,7 +152,7 @@ pub async fn op_set_application_string<AS: Store1>(
 }
 
 extension!(
-    storage_application_ext,
+    kv_application_ext,
     parameters = [ AS: Store1 ],
     ops_fn = get_ops<AS>,
 );

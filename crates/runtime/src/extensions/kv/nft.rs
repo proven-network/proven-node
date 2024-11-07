@@ -1,26 +1,27 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use proven_store::{Store, Store1};
+use proven_store::{Store, Store1, Store2};
 
 use deno_core::{extension, op2, OpDecl, OpState};
 
 #[op2(async)]
 #[buffer]
-pub async fn op_get_personal_bytes<PS: Store1>(
+pub async fn op_get_nft_bytes<NS: Store2>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
+    #[string] nft_id: String,
     #[string] key: String,
 ) -> Option<Vec<u8>> {
-    let personal_store = {
+    let nft_store = {
         loop {
-            let personal_store = {
+            let nft_store = {
                 let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<Option<PS>>()
+                borrowed_state.try_take::<Option<NS>>()
             };
 
-            match personal_store {
+            match nft_store {
                 Some(store) => break store,
                 None => {
                     tokio::task::yield_now().await;
@@ -29,9 +30,10 @@ pub async fn op_get_personal_bytes<PS: Store1>(
         }
     };
 
-    let result = if let Some(store) = personal_store.as_ref() {
+    let result = if let Some(store) = nft_store.as_ref() {
         store
             .scope(format!("{}:bytes", store_name))
+            .scope(nft_id)
             .get(key)
             .await
             .unwrap_or_default()
@@ -39,27 +41,28 @@ pub async fn op_get_personal_bytes<PS: Store1>(
         None
     };
 
-    state.borrow_mut().put(personal_store);
+    state.borrow_mut().put(nft_store);
 
     result
 }
 
 #[op2(async)]
-pub async fn op_set_personal_bytes<PS: Store1>(
+pub async fn op_set_nft_bytes<NS: Store2>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
+    #[string] nft_id: String,
     #[string] key: String,
     #[arraybuffer(copy)] value: Vec<u8>,
 ) -> bool {
-    let personal_store = {
+    let nft_store = {
         loop {
-            let personal_store = {
+            let nft_store = {
                 let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<Option<PS>>()
+                borrowed_state.try_take::<Option<NS>>()
             };
 
-            match personal_store {
+            match nft_store {
                 Some(store) => break store,
                 None => {
                     tokio::task::yield_now().await;
@@ -68,9 +71,10 @@ pub async fn op_set_personal_bytes<PS: Store1>(
         }
     };
 
-    let result = if let Some(store) = personal_store.as_ref() {
+    let result = if let Some(store) = nft_store.as_ref() {
         store
             .scope(format!("{}:bytes", store_name))
+            .scope(nft_id)
             .put(key, value)
             .await
             .is_ok()
@@ -78,27 +82,28 @@ pub async fn op_set_personal_bytes<PS: Store1>(
         false
     };
 
-    state.borrow_mut().put(personal_store);
+    state.borrow_mut().put(nft_store);
 
     result
 }
 
 #[op2(async)]
 #[string]
-pub async fn op_get_personal_string<PS: Store1>(
+pub async fn op_get_nft_string<NS: Store2>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
+    #[string] nft_id: String,
     #[string] key: String,
 ) -> Option<String> {
-    let personal_store = {
+    let nft_store = {
         loop {
-            let personal_store = {
+            let nft_store = {
                 let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<Option<PS>>()
+                borrowed_state.try_take::<Option<NS>>()
             };
 
-            match personal_store {
+            match nft_store {
                 Some(store) => break store,
                 None => {
                     tokio::task::yield_now().await;
@@ -107,8 +112,13 @@ pub async fn op_get_personal_string<PS: Store1>(
         }
     };
 
-    let result = if let Some(store) = personal_store.as_ref() {
-        match store.scope(format!("{}:string", store_name)).get(key).await {
+    let result = if let Some(store) = nft_store.as_ref() {
+        match store
+            .scope(format!("{}:string", store_name))
+            .scope(nft_id)
+            .get(key)
+            .await
+        {
             Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
             _ => None,
         }
@@ -116,27 +126,28 @@ pub async fn op_get_personal_string<PS: Store1>(
         None
     };
 
-    state.borrow_mut().put(personal_store);
+    state.borrow_mut().put(nft_store);
 
     result
 }
 
 #[op2(async)]
-pub async fn op_set_personal_string<PS: Store1>(
+pub async fn op_set_nft_string<NS: Store2>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
+    #[string] nft_id: String,
     #[string] key: String,
     #[string] value: String,
 ) -> bool {
-    let personal_store = {
+    let nft_store = {
         loop {
-            let personal_store = {
+            let nft_store = {
                 let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<Option<PS>>()
+                borrowed_state.try_take::<Option<NS>>()
             };
 
-            match personal_store {
+            match nft_store {
                 Some(store) => break store,
                 None => {
                     tokio::task::yield_now().await;
@@ -145,9 +156,10 @@ pub async fn op_set_personal_string<PS: Store1>(
         }
     };
 
-    let result = if let Some(store) = personal_store.as_ref() {
+    let result = if let Some(store) = nft_store.as_ref() {
         store
             .scope(format!("{}:string", store_name))
+            .scope(nft_id)
             .put(key, value.as_bytes().to_vec())
             .await
             .is_ok()
@@ -155,27 +167,22 @@ pub async fn op_set_personal_string<PS: Store1>(
         false
     };
 
-    state.borrow_mut().put(personal_store);
+    state.borrow_mut().put(nft_store);
 
     result
 }
 
 extension!(
-    storage_personal_ext,
-    parameters = [ PS: Store1 ],
-    ops_fn = get_ops<PS>,
+    kv_nft_ext,
+    parameters = [ NS: Store2 ],
+    ops_fn = get_ops<NS>,
 );
 
-fn get_ops<PS: Store1>() -> Vec<OpDecl> {
-    let get_personal_bytes = op_get_personal_bytes::<PS>();
-    let set_personal_bytes = op_set_personal_bytes::<PS>();
-    let get_personal_string = op_get_personal_string::<PS>();
-    let set_personal_string = op_set_personal_string::<PS>();
+fn get_ops<NS: Store2>() -> Vec<OpDecl> {
+    let get_nft_bytes = op_get_nft_bytes::<NS>();
+    let set_nft_bytes = op_set_nft_bytes::<NS>();
+    let get_nft_string = op_get_nft_string::<NS>();
+    let set_nft_string = op_set_nft_string::<NS>();
 
-    vec![
-        get_personal_bytes,
-        set_personal_bytes,
-        get_personal_string,
-        set_personal_string,
-    ]
+    vec![get_nft_bytes, set_nft_bytes, get_nft_string, set_nft_string]
 }
