@@ -283,7 +283,8 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             format!("export {} {} = {}(async ", &caps[1], &caps[2], &caps[3])
         });
 
-        let result = result.replace("async async", "async");
+        let re_duplicate_async = Regex::new(r"async\s*\r?\n?\s*async").unwrap();
+        let result = re_duplicate_async.replace_all(&result, "async");
 
         result.to_string()
     }
