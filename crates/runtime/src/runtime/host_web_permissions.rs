@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use deno_core::anyhow::anyhow;
+use deno_permissions::{PermissionCheckError, PermissionDeniedError};
 use rustyscript::WebPermissions;
 
 pub struct HostWebPermissions {
@@ -19,11 +19,15 @@ impl WebPermissions for HostWebPermissions {
         host: &str,
         _port: Option<u16>,
         _api_name: &str,
-    ) -> Result<(), deno_core::error::AnyError> {
+    ) -> Result<(), PermissionCheckError> {
         if self.allowed_hosts.contains(host) {
             Ok(())
         } else {
-            Err(anyhow!("Host '{}' is not allowed", host))
+            Err(PermissionDeniedError {
+                access: host.to_string(),
+                name: "check_host",
+            }
+            .into())
         }
     }
 
@@ -31,35 +35,57 @@ impl WebPermissions for HostWebPermissions {
         &self,
         url: &deno_core::url::Url,
         _api_name: &str,
-    ) -> Result<(), deno_core::error::AnyError> {
+    ) -> Result<(), PermissionCheckError> {
         if url.scheme() != "https" {
-            return Err(anyhow!("Only HTTPS URLs are allowed"));
+            return Err(PermissionDeniedError {
+                access: url.to_string(),
+                name: "check_url - not https",
+            }
+            .into());
         }
 
         if url.host_str().unwrap() == "localhost" {
-            return Err(anyhow!("Localhost URLs are not allowed"));
+            return Err(PermissionDeniedError {
+                access: url.to_string(),
+                name: "check_url - localhost",
+            }
+            .into());
         }
 
         if self.allowed_hosts.contains(url.host_str().unwrap()) {
             Ok(())
         } else {
-            Err(anyhow!("URL '{}' is not allowed", url))
+            Err(PermissionDeniedError {
+                access: url.to_string(),
+                name: "check_url",
+            }
+            .into())
         }
     }
 
     fn check_read<'a>(
         &self,
-        _path: &'a std::path::Path,
+        path: &'a std::path::Path,
         _api_name: &str,
-    ) -> Result<std::borrow::Cow<'a, std::path::Path>, deno_core::error::AnyError> {
-        Err(anyhow!("Read access is not allowed")) // Disallow all file reads
+    ) -> Result<std::borrow::Cow<'a, std::path::Path>, PermissionCheckError> {
+        // Disallow all file reads
+        Err(PermissionDeniedError {
+            access: path.display().to_string(),
+            name: "check_read",
+        }
+        .into())
     }
 
     fn check_write<'a>(
         &self,
-        _path: &'a std::path::Path,
+        path: &'a std::path::Path,
         _api_name: &str,
-    ) -> Result<std::borrow::Cow<'a, std::path::Path>, deno_core::error::AnyError> {
-        Err(anyhow!("Write access is not allowed")) // Disallow all file writes
+    ) -> Result<std::borrow::Cow<'a, std::path::Path>, PermissionCheckError> {
+        // Disallow all file writes
+        Err(PermissionDeniedError {
+            access: path.display().to_string(),
+            name: "check_write",
+        }
+        .into())
     }
 }

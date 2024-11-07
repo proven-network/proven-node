@@ -1802,7 +1802,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.168.0"
+version = "0.170.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -1811,7 +1811,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.106.0"
+version = "0.108.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1824,7 +1824,7 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.174.0"
+version = "0.176.0"
 dependencies = [
  "deno_core",
 ]
@@ -1869,7 +1869,7 @@ checksum = "a13951ea98c0a4c372f162d669193b4c9d991512de9f2381dd161027f34b26b1"
 
 [[package]]
 name = "deno_crypto"
-version = "0.188.0"
+version = "0.190.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1906,7 +1906,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.198.0"
+version = "0.200.0"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -1939,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.84.0"
+version = "0.86.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1984,19 +1984,19 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.166.0"
+version = "0.168.0"
 dependencies = [
  "deno_core",
  "deno_permissions",
  "deno_tls",
+ "hickory-proto",
+ "hickory-resolver",
  "pin-project",
  "rustls-tokio-stream",
  "serde",
  "socket2",
  "thiserror",
  "tokio",
- "trust-dns-proto",
- "trust-dns-resolver",
 ]
 
 [[package]]
@@ -2027,7 +2027,7 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
-version = "0.34.0"
+version = "0.36.0"
 dependencies = [
  "deno_core",
  "deno_path_util",
@@ -2038,6 +2038,7 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "serde",
+ "thiserror",
  "which 4.4.2",
  "winapi",
 ]
@@ -2064,7 +2065,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.161.0"
+version = "0.163.0"
 dependencies = [
  "deno_core",
  "deno_native_certs",
@@ -2090,7 +2091,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.174.0"
+version = "0.176.0"
 dependencies = [
  "deno_bench_util",
  "deno_console",
@@ -2102,7 +2103,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.205.0"
+version = "0.207.0"
 dependencies = [
  "async-trait",
  "base64-simd 0.8.0",
@@ -2124,7 +2125,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.174.0"
+version = "0.176.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -2132,7 +2133,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.179.0"
+version = "0.181.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -2154,7 +2155,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.169.0"
+version = "0.171.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2999,6 +3000,53 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "hickory-proto"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07698b8420e2f0d6447a436ba999ec85d8fbf2a398bbd737b82cac4a2e96e512"
+dependencies = [
+ "async-trait",
+ "cfg-if",
+ "data-encoding",
+ "enum-as-inner",
+ "futures-channel",
+ "futures-io",
+ "futures-util",
+ "idna 0.4.0",
+ "ipnet",
+ "once_cell",
+ "rand 0.8.5",
+ "serde",
+ "thiserror",
+ "tinyvec",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "hickory-resolver"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28757f23aa75c98f254cf0405e6d8c25b831b32921b050a66692427679b1f243"
+dependencies = [
+ "cfg-if",
+ "futures-util",
+ "hickory-proto",
+ "ipconfig",
+ "lru-cache",
+ "once_cell",
+ "parking_lot",
+ "rand 0.8.5",
+ "resolv-conf",
+ "serde",
+ "smallvec",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -4735,6 +4783,7 @@ name = "proven-runtime"
 version = "0.1.0"
 dependencies = [
  "deno_core",
+ "deno_permissions",
  "derive_more",
  "futures",
  "proven-locks",
@@ -5573,6 +5622,7 @@ dependencies = [
  "deno_fetch",
  "deno_io",
  "deno_net",
+ "deno_permissions",
  "deno_tls",
  "deno_unsync",
  "deno_url",
@@ -7102,54 +7152,6 @@ checksum = "ef8f7726da4807b58ea5c96fdc122f80702030edc33b35aff9190a51148ccc85"
 dependencies = [
  "serde",
  "stable_deref_trait",
-]
-
-[[package]]
-name = "trust-dns-proto"
-version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3119112651c157f4488931a01e586aa459736e9d6046d3bd9105ffb69352d374"
-dependencies = [
- "async-trait",
- "cfg-if",
- "data-encoding",
- "enum-as-inner",
- "futures-channel",
- "futures-io",
- "futures-util",
- "idna 0.4.0",
- "ipnet",
- "once_cell",
- "rand 0.8.5",
- "serde",
- "smallvec",
- "thiserror",
- "tinyvec",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "trust-dns-resolver"
-version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10a3e6c3aff1718b3c73e395d1f35202ba2ffa847c6a62eea0db8fb4cfe30be6"
-dependencies = [
- "cfg-if",
- "futures-util",
- "ipconfig",
- "lru-cache",
- "once_cell",
- "parking_lot",
- "rand 0.8.5",
- "resolv-conf",
- "serde",
- "smallvec",
- "thiserror",
- "tokio",
- "tracing",
- "trust-dns-proto",
 ]
 
 [[package]]

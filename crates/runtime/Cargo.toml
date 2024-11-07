@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 deno_core = { workspace = true }
+deno_permissions = { workspace = true }
 derive_more = { workspace = true }
 proven-locks = { workspace = true }
 proven-sql = { workspace = true }

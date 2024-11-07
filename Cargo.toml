@@ -88,10 +88,13 @@ cidr = { version = "0.3.0", features = ["serde"] }
 clap = { version = "4.5.9", features = ["derive"] }
 coset = { version = "0.3.8", features = ["std"] }
 data-url = "0.3.1"
-deno_bench_util = { version = "0.168.0", path = "vendor/deno/bench_util" }
+deno_bench_util = { path = "vendor/deno/bench_util" }
+deno_cache = { path = "vendor/deno/ext/cache" }
 deno_console = { path = "vendor/deno/ext/console" }
 deno_core = { version = "0.316.0" }
-deno_io = { path = "vendor/deno/runtime/io" }
+deno_crypto = { path = "vendor/deno/ext/crypto" }
+deno_fetch = { path = "vendor/deno/ext/fetch" }
+deno_io = { path = "vendor/deno/ext/io" }
 deno_net = { path = "vendor/deno/ext/net" }
 deno_path_util = "=0.2.1"
 deno_permissions = { path = "vendor/deno/runtime/permissions" }
@@ -100,6 +103,8 @@ deno_tls = { path = "vendor/deno/ext/tls" }
 deno_url = { path = "vendor/deno/ext/url" }
 deno_web = { path = "vendor/deno/ext/web" }
 deno_webidl = { path = "vendor/deno/ext/webidl" }
+deno_websocket = { path = "vendor/deno/ext/websocket" }
+deno_webstorage = { path = "vendor/deno/ext/webstorage" }
 derive_more = { version = "1.0.0", features = ["from"] }
 dns-stamp-parser = "3.0.0"
 dyn-clone = "1"
