@@ -68,20 +68,18 @@ RUN chmod 0755      /bin/gocryptfs
 # ----------------
 # RUST BUILD STEPS
 # ----------------
-FROM messense/rust-musl-cross:${RUSTARCH}-musl as rust-builder
+FROM rust:1.82.0-slim-bookworm as rust-builder
 WORKDIR /
-
-# Set Rust target to nightly
-ARG RUSTTARGET
-RUN rustup update nightly && \
-    rustup target add --toolchain nightly ${RUSTTARGET}
 
 # Build proven-enclave
 ARG COMMIT
 RUN git clone --recurse-submodules git@github.com:proven-network/proven-node.git
 WORKDIR /proven-node
 RUN git checkout ${COMMIT}
-RUN cargo +nightly build --release --target ${RUSTTARGET} --package proven-enclave
+RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
+
+# Debugging info to ensure I get all deps
+RUN ldd /proven-node/target/${RUSTTARGET}/release/proven-enclave
 
 # Move proven-enclave to /bin
 RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
