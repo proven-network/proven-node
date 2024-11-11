@@ -81,13 +81,13 @@ ARG COMMIT
 RUN git clone --recurse-submodules git@github.com:proven-network/proven-node.git
 WORKDIR /proven-node
 RUN git checkout ${COMMIT}
-RUN cargo build --release --target ${RUSTTARGET} --package proven-enclave
+RUN cargo build --release --package proven-enclave
 
 # Debugging info to ensure I get all deps
-RUN ldd /proven-node/target/${RUSTTARGET}/release/proven-enclave
+RUN ldd /proven-node/target/release/proven-enclave
 
 # Move proven-enclave to /bin
-RUN cp /proven-node/target/${RUSTTARGET}/release/proven-enclave /bin/
+RUN cp /proven-node/target/release/proven-enclave /bin/
 RUN chown root:root /bin/proven-enclave
 RUN chmod 0755      /bin/proven-enclave
 

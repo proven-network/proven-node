@@ -7,8 +7,6 @@ image_eif := $(image_tar:%.tar=%.eif)
 dest_dir := /var/lib/proven
 dest_file := $(dest_dir)/enclave.eif
 
-RUSTARCH ?= $(shell uname -m)
-RUSTTARGET ?= $(RUSTARCH)-unknown-linux-musl
 ARCH ?= $(shell uname -m)
 ifeq ($(ARCH),aarch64)
 	override ARCH=arm64
@@ -33,8 +31,6 @@ $(image_tar): Dockerfile
 		--tarPath $(image_tar) \
 		--destination $(image_tag) \
 		--build-arg COMMIT=$(version) \
-		--build-arg RUSTARCH=$(RUSTARCH) \
-		--build-arg RUSTTARGET=$(RUSTTARGET) \
 		--build-arg TARGETPLATFORM=linux/$(ARCH) \
 		--build-arg TARGETOS=linux \
 		--build-arg TARGET=$(ARCH) \
