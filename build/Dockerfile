@@ -24,9 +24,11 @@ FROM debian:bookworm-20240904-slim as postgres-builder
 RUN apt-get update && apt-get install -y \
     bison \
     build-essential \
+    flex \
     gcc \
     libicu-dev \
     libreadline6-dev \
+    perl \
     pkg-config \
     wget \
     zlib1g-dev \
