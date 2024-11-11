@@ -84,9 +84,6 @@ WORKDIR /proven-node
 RUN git checkout ${COMMIT}
 RUN cargo build --release --package proven-enclave
 
-# Debugging info to ensure I get all deps
-RUN ldd /proven-node/target/release/proven-enclave
-
 # Move proven-enclave to /bin
 RUN cp /proven-node/target/release/proven-enclave /bin/
 RUN chown root:root /bin/proven-enclave
