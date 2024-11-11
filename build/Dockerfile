@@ -71,6 +71,11 @@ RUN chmod 0755      /bin/gocryptfs
 FROM rust:1.82.0-slim-bookworm as rust-builder
 WORKDIR /
 
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
 # Build proven-enclave
 ARG COMMIT
 RUN git clone --recurse-submodules git@github.com:proven-network/proven-node.git
