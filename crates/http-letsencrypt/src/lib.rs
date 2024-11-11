@@ -1,8 +1,10 @@
 mod cert_cache;
 mod error;
+mod multi_resolver;
 
 use cert_cache::CertCache;
 use error::Error;
+use multi_resolver::MultiResolver;
 
 use std::future::IntoFuture;
 use std::net::SocketAddr;
@@ -36,23 +38,46 @@ impl LetsEncryptHttpServer {
         email: Vec<String>,
         cert_store: S,
     ) -> Self {
-        let mut state = AcmeConfig::new(domains.clone())
+        let mut node_endpoints_state = AcmeConfig::new(domains.clone())
+            .contact(email.iter().map(|e| format!("mailto:{}", e)))
+            .cache(CertCache::new(cert_store.clone()))
+            .directory_lets_encrypt(true)
+            .state();
+
+        // Create a second AcmeState to simulate also issuing certificates for individual client endpoints on different certs
+        let example_client_domains = vec!["example.is.proven.network".to_string()];
+        let mut example_client_state = AcmeConfig::new(example_client_domains.clone())
             .contact(email.iter().map(|e| format!("mailto:{}", e)))
             .cache(CertCache::new(cert_store))
             .directory_lets_encrypt(true)
             .state();
 
+        // Now instead of using the default resolver, we will use a custom one that will resolve across eiter group of domains
+        let mut multi_resolver = MultiResolver::new(node_endpoints_state.resolver());
+
+        // Add the resolver for the example client domains
+        multi_resolver.add_resolver(example_client_domains, example_client_state.resolver());
+
         let mut rustls_config = ServerConfig::builder()
             .with_no_client_auth()
-            .with_cert_resolver(state.resolver());
+            .with_cert_resolver(Arc::new(multi_resolver));
 
         rustls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
 
-        let acceptor = state.axum_acceptor(Arc::new(rustls_config));
+        let acceptor = node_endpoints_state.axum_acceptor(Arc::new(rustls_config));
 
         tokio::spawn(async move {
             loop {
-                match state.next().await.unwrap() {
+                match node_endpoints_state.next().await.unwrap() {
+                    Ok(ok) => info!("event: {:?}", ok),
+                    Err(err) => info!("error: {:?}", err),
+                }
+            }
+        });
+
+        tokio::spawn(async move {
+            loop {
+                match example_client_state.next().await.unwrap() {
                     Ok(ok) => info!("event: {:?}", ok),
                     Err(err) => info!("error: {:?}", err),
                 }
