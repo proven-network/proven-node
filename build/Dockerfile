@@ -22,13 +22,14 @@ FROM debian:bookworm-20240904-slim as postgres-builder
 
 # Install dependencies to build from source
 RUN apt-get update && apt-get install -y \
-    gcc \
+    bison \
     build-essential \
-    zlib1g-dev \
-    libreadline6-dev \
+    gcc \
     libicu-dev \
+    libreadline6-dev \
     pkg-config \
     wget \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Download source code
