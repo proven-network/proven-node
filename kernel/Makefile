@@ -1,6 +1,6 @@
 # Makefile to build Linux kernel version 6.9 with custom config
 
-KERNEL_VERSION = 6.10.10
+KERNEL_VERSION = 6.11.7
 BUILD_DIR = build
 OUTPUT_DIR = output
 BLOBS_DIR = /usr/share/nitro_enclaves/blobs
