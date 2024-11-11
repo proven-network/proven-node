@@ -106,6 +106,29 @@ impl<I: AsyncRead + AsyncWrite + Unpin + Send + 'static, S: Send + 'static> Futu
     }
 }
 
+#[derive(Clone)]
+pub struct MultiAcmeAcceptor {
+    configs: MultiKeyMap<String, Arc<ServerConfig>>,
+    default_config: Arc<ServerConfig>,
+}
+
+impl MultiAcmeAcceptor {
+    pub fn new(default_config: Arc<ServerConfig>) -> Self {
+        Self {
+            configs: MultiKeyMap::new(),
+            default_config,
+        }
+    }
+
+    pub fn add_config(&mut self, domains: Vec<String>, config: Arc<ServerConfig>) {
+        self.configs.insert_many(domains, config);
+    }
+
+    pub fn accept<IO: AsyncRead + AsyncWrite + Unpin>(&self, io: IO) -> MultiAcmeAccept<IO> {
+        MultiAcmeAccept::new(io, self.configs.clone(), self.default_config.clone())
+    }
+}
+
 pub struct MultiAcmeAccept<IO: AsyncRead + AsyncWrite + Unpin> {
     acceptor: LazyConfigAcceptor<IO>,
     configs: MultiKeyMap<String, Arc<ServerConfig>>,
@@ -170,28 +193,5 @@ impl<IO: AsyncRead + AsyncWrite + Unpin> Future for MultiAcmeAccept<IO> {
                 Poll::Pending => Poll::Pending,
             };
         }
-    }
-}
-
-#[derive(Clone)]
-pub struct MultiAcmeAcceptor {
-    configs: MultiKeyMap<String, Arc<ServerConfig>>,
-    default_config: Arc<ServerConfig>,
-}
-
-impl MultiAcmeAcceptor {
-    pub fn new(default_config: Arc<ServerConfig>) -> Self {
-        Self {
-            configs: MultiKeyMap::new(),
-            default_config,
-        }
-    }
-
-    pub fn add_config(&mut self, domains: Vec<String>, config: Arc<ServerConfig>) {
-        self.configs.insert_many(domains, config);
-    }
-
-    pub fn accept<IO: AsyncRead + AsyncWrite + Unpin>(&self, io: IO) -> MultiAcmeAccept<IO> {
-        MultiAcmeAccept::new(io, self.configs.clone(), self.default_config.clone())
     }
 }
