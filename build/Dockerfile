@@ -33,9 +33,9 @@ RUN apt-get update && apt-get install -y \
 
 # Download source code
 WORKDIR /tmp
-RUN wget -q https://ftp.postgresql.org/pub/source/v16.4/postgresql-16.4.tar.bz2
-RUN tar -xvf postgresql-16.4.tar.bz2
-WORKDIR /tmp/postgresql-16.4
+RUN wget -q https://ftp.postgresql.org/pub/source/v17.0/postgresql-17.0.tar.bz2
+RUN tar -xvf postgresql-17.0.tar.bz2
+WORKDIR /tmp/postgresql-17.0
 
 # Overwrite root check
 RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
