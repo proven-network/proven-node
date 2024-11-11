@@ -8,6 +8,7 @@ pub use error::{Error, Result};
 use aws_config::Region;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::{KeyEncryptionMechanism, RecipientInfo};
+use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor};
 use proven_attestation_nsm::NsmAttestor;
 use rand::rngs::OsRng;
@@ -34,7 +35,7 @@ impl Kms {
         }
     }
 
-    pub async fn encrypt(&self, plaintext: Vec<u8>) -> Result<Vec<u8>> {
+    pub async fn encrypt(&self, plaintext: Bytes) -> Result<Bytes> {
         let ciphertext = self
             .client
             .encrypt()
@@ -43,12 +44,12 @@ impl Kms {
             .send()
             .await
             .map_err(|e| Error::Kms(e.into()))
-            .map(|output| output.ciphertext_blob.unwrap().into_inner())?;
+            .map(|output| Bytes::from(output.ciphertext_blob.unwrap().into_inner()))?;
 
         Ok(ciphertext)
     }
 
-    pub async fn decrypt(&self, ciphertext: Vec<u8>) -> Result<Vec<u8>> {
+    pub async fn decrypt(&self, ciphertext: Bytes) -> Result<Bytes> {
         let (private_key, public_key) = Self::generate_keypair().await?;
 
         let attestation_document = self
@@ -78,7 +79,7 @@ impl Kms {
             .into_inner();
 
         let content_info = ContentInfo::parse_ber(ciphertext.as_slice())?;
-        let plaintext = content_info.decrypt_content(&private_key)?;
+        let plaintext = Bytes::from(content_info.decrypt_content(&private_key)?);
 
         Ok(plaintext)
     }

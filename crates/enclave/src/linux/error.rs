@@ -71,7 +71,7 @@ pub enum Error {
     RouteSetup,
 
     #[from]
-    S3Store(proven_store_s3_sse_c::Error),
+    S3Store(proven_store_s3::Error),
 
     #[from]
     VsockProxy(proven_vsock_proxy::Error),

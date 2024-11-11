@@ -8,6 +8,7 @@ tokio = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 async-nats = { workspace = true }
+bytes = { workspace = true }
 cidr = { workspace = true }
 derive_more = { workspace = true }
 proven-attestation = { workspace = true }
@@ -29,6 +30,7 @@ proven-sessions = { workspace = true }
 proven-store = { workspace = true }
 proven-store-asm = { workspace = true }
 proven-store-nats = { workspace = true }
+proven-store-s3 = { workspace = true }
 proven-vsock-proxy = { workspace = true }
 proven-vsock-rpc = { workspace = true }
 proven-vsock-tracing = { workspace = true }

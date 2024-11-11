@@ -61,11 +61,17 @@ struct Args {
     #[arg(long, default_value_t = 443)]
     https_port: u16,
 
+    #[clap(long, required = true)]
+    kms_key_id: String,
+
     #[arg(long, default_value_t = 1026)]
     log_port: u32,
 
     #[arg(long, default_value_t = 4222)]
     nats_port: u16,
+
+    #[clap(long, required = true)]
+    nfs_mount_point: String,
 
     #[arg(long, default_value_t = format!("ens5"))]
     outbound_device: String,
@@ -257,8 +263,10 @@ async fn initialize_enclave() -> Result<()> {
             host_dns_resolv,
             host_ip: args.host_ip,
             https_port: args.https_port,
+            kms_key_id: args.kms_key_id,
             log_port: args.log_port,
             nats_port: args.nats_port,
+            nfs_mount_point: args.nfs_mount_point,
             proxy_port: args.proxy_port,
             skip_fsck: args.skip_fsck,
             skip_speedtest: args.skip_speedtest,

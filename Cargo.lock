@@ -4484,6 +4484,7 @@ name = "proven-enclave"
 version = "0.1.0"
 dependencies = [
  "async-nats",
+ "bytes",
  "cidr",
  "derive_more",
  "proven-attestation",
@@ -4505,6 +4506,7 @@ dependencies = [
  "proven-store",
  "proven-store-asm",
  "proven-store-nats",
+ "proven-store-s3",
  "proven-vsock-proxy",
  "proven-vsock-rpc",
  "proven-vsock-tracing",
@@ -4628,6 +4630,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-kms",
  "block-padding",
+ "bytes",
  "cbc",
  "derive_more",
  "proven-attestation",

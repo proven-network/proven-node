@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_nats::Client as NatsClient;
+use bytes::Bytes;
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, NewCoreArguments};
@@ -28,7 +29,7 @@ use proven_sessions::{SessionManagement, SessionManager};
 use proven_store::Store;
 use proven_store_asm::AsmStore;
 use proven_store_nats::{NatsStore, NatsStoreOptions};
-use proven_store_s3_sse_c::S3Store;
+use proven_store_s3::S3Store;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
 use proven_vsock_tracing::configure_logging_to_vsock;
@@ -614,7 +615,7 @@ impl Bootstrap {
     async fn start_radix_node_fs(&mut self) -> Result<()> {
         let radix_node_fs = ExternalFs::new(
             "your-password".to_string(),
-            "fs-03cf9a76968466bcb.fsx.us-east-2.amazonaws.com:/fsx/babylon/".to_string(),
+            format!("{}/babylon/", self.args.nfs_mount_point),
             RADIX_NODE_STORE_DIR.to_string(),
             self.args.skip_fsck,
         );
@@ -656,7 +657,7 @@ impl Bootstrap {
     async fn start_postgres_fs(&mut self) -> Result<()> {
         let postgres_fs = ExternalFs::new(
             "your-password".to_string(),
-            "fs-03cf9a76968466bcb.fsx.us-east-2.amazonaws.com:/fsx/postgres/".to_string(),
+            format!("{}/postgres/", self.args.nfs_mount_point),
             POSTGRES_STORE_DIR.to_string(),
             self.args.skip_fsck,
         );
@@ -730,7 +731,7 @@ impl Bootstrap {
     async fn start_nats_fs(&mut self) -> Result<()> {
         let nats_server_fs = ExternalFs::new(
             "your-password".to_string(),
-            "fs-03cf9a76968466bcb.fsx.us-east-2.amazonaws.com:/fsx/nats/".to_string(),
+            format!("{}/nats/", self.args.nfs_mount_point),
             "/var/lib/nats".to_string(),
             self.args.skip_fsck,
         );
@@ -785,7 +786,7 @@ impl Bootstrap {
 
         let challenge_store = NatsStore::new(NatsStoreOptions {
             bucket: "challenges".to_string(),
-            nats_client: nats_client.clone(),
+            client: nats_client.clone(),
             max_age: Duration::from_secs(5 * 60),
             persist: false,
         })
@@ -793,7 +794,7 @@ impl Bootstrap {
 
         let sessions_store = NatsStore::new(NatsStoreOptions {
             bucket: "sessions".to_string(),
-            nats_client: nats_client.clone(),
+            client: nats_client.clone(),
             max_age: Duration::MAX,
             persist: true,
         })
@@ -810,7 +811,12 @@ impl Bootstrap {
         let cert_store = S3Store::new(
             self.args.certificates_bucket.clone(),
             id.region.clone(),
-            get_or_init_encrypted_key(id.region.clone(), "CERTIFICATES_KEY".to_string()).await?,
+            get_or_init_encrypted_key(
+                id.region.clone(),
+                self.args.kms_key_id.clone(),
+                "CERTIFICATES_KEY".to_string(),
+            )
+            .await?,
         )
         .await;
 
@@ -828,7 +834,7 @@ impl Bootstrap {
 
         let application_store = NatsStore::new(NatsStoreOptions {
             bucket: "application".to_string(),
-            nats_client: nats_client.clone(),
+            client: nats_client.clone(),
             max_age: Duration::MAX,
             persist: true,
         })
@@ -836,7 +842,7 @@ impl Bootstrap {
 
         let personal_store = NatsStore::new(NatsStoreOptions {
             bucket: "personal".to_string(),
-            nats_client: nats_client.clone(),
+            client: nats_client.clone(),
             max_age: Duration::MAX,
             persist: true,
         })
@@ -844,7 +850,7 @@ impl Bootstrap {
 
         let nft_store = NatsStore::new(NatsStoreOptions {
             bucket: "nft".to_string(),
-            nats_client: nats_client.clone(),
+            client: nats_client.clone(),
             max_age: Duration::MAX,
             persist: true,
         })
@@ -864,25 +870,26 @@ impl Bootstrap {
     }
 }
 
-async fn get_or_init_encrypted_key(region: String, key_name: String) -> Result<[u8; 32]> {
+async fn get_or_init_encrypted_key(
+    region: String,
+    key_id: String,
+    key_name: String,
+) -> Result<[u8; 32]> {
     let secret_id = format!("proven-{}", region.clone());
     let store = AsmStore::new(region.clone(), secret_id).await;
-    let kms = Kms::new(
-        "2aae0800-75c8-4ca1-aff4-8b1fc885a8ce".to_string(),
-        region.clone(),
-    )
-    .await;
+    let kms = Kms::new(key_id, region.clone()).await;
 
     let key_opt = store.get(key_name.clone()).await?;
     let key: [u8; 32] = match key_opt {
         Some(encrypted_key) => kms
             .decrypt(encrypted_key)
             .await?
+            .to_vec()
             .try_into()
             .map_err(|_| Error::BadKey)?,
         None => {
             let unencrypted_key = rand::random::<[u8; 32]>();
-            let encrypted_key = kms.encrypt(unencrypted_key.to_vec()).await?;
+            let encrypted_key = kms.encrypt(Bytes::from(unencrypted_key.to_vec())).await?;
             store.put(key_name, encrypted_key).await?;
             unencrypted_key
         }

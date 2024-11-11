@@ -10,6 +10,7 @@ asn1-rs = { workspace = true }
 aws-config = { workspace = true }
 aws-sdk-kms = { workspace = true }
 block-padding = { workspace = true }
+bytes = { workspace = true }
 cbc = { workspace = true }
 derive_more = { workspace = true }
 proven-attestation = { workspace = true }
