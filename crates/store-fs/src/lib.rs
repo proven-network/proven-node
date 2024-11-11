@@ -5,6 +5,7 @@ use error::Error;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
 use tokio::fs;
 use tokio::io::{self, AsyncWriteExt};
@@ -37,10 +38,10 @@ impl Store for FsStore {
         Ok(())
     }
 
-    async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
+    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
         let path = self.get_file_path(&key);
         match fs::read(path).await {
-            Ok(data) => Ok(Some(data)),
+            Ok(data) => Ok(Some(Bytes::from(data))),
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(Error::Io(e)),
         }
@@ -59,7 +60,7 @@ impl Store for FsStore {
         Ok(keys)
     }
 
-    async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
+    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE> {
         let path = self.get_file_path(&key);
         if let Some(parent) = path.parent() {
             if !parent.exists() {
@@ -120,7 +121,7 @@ mod tests {
         let store = FsStore::new(dir.path().to_path_buf());
 
         let key = "test_key".to_string();
-        let value = b"test_value".to_vec();
+        let value = Bytes::from_static(b"test_value");
 
         store.put(key.clone(), value.clone()).await.unwrap();
         let result = store.get(key.clone()).await.unwrap();
@@ -145,7 +146,7 @@ mod tests {
         let store = FsStore::new(dir.path().to_path_buf());
 
         let key = "test_key".to_string();
-        let value = b"test_value".to_vec();
+        let value = Bytes::from_static(b"test_value");
 
         store.put(key.clone(), value.clone()).await.unwrap();
         store.del(key.clone()).await.unwrap();
@@ -162,7 +163,7 @@ mod tests {
         let scoped_store = Store2::scope(&store, "scope".to_string());
 
         let key = "test_key".to_string();
-        let value = b"test_value".to_vec();
+        let value = Bytes::from_static(b"test_value");
 
         scoped_store.put(key.clone(), value.clone()).await.unwrap();
         let result = scoped_store.get(key.clone()).await.unwrap();
@@ -176,7 +177,7 @@ mod tests {
         let store = FsStore::new(dir.path().to_path_buf());
 
         let key = "nested/directory/test_key".to_string();
-        let value = b"test_value".to_vec();
+        let value = Bytes::from_static(b"test_value");
 
         store.put(key.clone(), value.clone()).await.unwrap();
         let result = store.get(key.clone()).await.unwrap();

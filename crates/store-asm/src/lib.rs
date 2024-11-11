@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use aws_config::Region;
 use aws_sdk_secretsmanager::Client;
+use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
 
 #[derive(Clone, Debug)]
@@ -52,7 +53,7 @@ impl AsmStore {
         }
     }
 
-    async fn get_secret_map(&self) -> Result<HashMap<String, Vec<u8>>, Error> {
+    async fn get_secret_map(&self) -> Result<HashMap<String, Bytes>, Error> {
         let resp = self
             .client
             .get_secret_value()
@@ -69,7 +70,7 @@ impl AsmStore {
         }
     }
 
-    async fn update_secret_map(&self, secret_map: HashMap<String, Vec<u8>>) -> Result<(), Error> {
+    async fn update_secret_map(&self, secret_map: HashMap<String, Bytes>) -> Result<(), Error> {
         let updated_secret_string = serde_json::to_string(&secret_map).unwrap();
         let update_resp = self
             .client
@@ -98,7 +99,7 @@ impl Store for AsmStore {
         self.update_secret_map(secret_map).await
     }
 
-    async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
+    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
         let secret_map = self.get_secret_map().await?;
 
         Ok(secret_map.get(&key).cloned())
@@ -109,7 +110,7 @@ impl Store for AsmStore {
         Ok(secret_map.keys().cloned().collect())
     }
 
-    async fn put(&self, key: String, value: Vec<u8>) -> Result<(), Self::SE> {
+    async fn put(&self, key: String, value: Bytes) -> Result<(), Self::SE> {
         let mut secret_map = self.get_secret_map().await?;
 
         secret_map.insert(key, value);

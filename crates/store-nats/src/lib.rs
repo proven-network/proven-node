@@ -9,6 +9,7 @@ use async_nats::jetstream::kv::{Config, Store as KvStore};
 use async_nats::jetstream::Context as JetStreamContext;
 use async_nats::Client;
 use async_trait::async_trait;
+use bytes::Bytes;
 use futures::TryStreamExt;
 use proven_store::{Store, Store1, Store2, Store3};
 
@@ -105,13 +106,12 @@ impl Store for NatsStore {
         Ok(())
     }
 
-    async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
+    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
         self.get_kv_store()
             .await?
             .get(key)
             .await
             .map_err(|e| Error::Get(e.kind()))
-            .map(|v| v.map(|v| v.to_vec()))
     }
 
     // TODO: Better error handling
@@ -127,10 +127,10 @@ impl Store for NatsStore {
             .unwrap())
     }
 
-    async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
+    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE> {
         self.get_kv_store()
             .await?
-            .put(key, bytes.into())
+            .put(key, bytes)
             .await
             .map_err(|e| Error::Put(e.kind()))?;
 

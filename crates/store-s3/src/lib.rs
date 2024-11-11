@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use aws_config::Region;
 use base64::{engine::general_purpose::STANDARD as base64, Engine};
 use blake3::Hasher;
+use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
 use tokio::io::AsyncReadExt;
 
@@ -69,7 +70,7 @@ impl Store for S3Store {
         }
     }
 
-    async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
+    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -94,10 +95,10 @@ impl Store for S3Store {
             }
             Ok(resp) => {
                 let mut body = resp.body.into_async_read();
-                let mut buf = Vec::<u8>::new();
+                let mut buf = Vec::<u8>::with_capacity(resp.content_length.unwrap_or(0) as usize);
                 body.read_to_end(&mut buf).await?;
 
-                Ok(Some(buf))
+                Ok(Some(Bytes::from(buf)))
             }
         }
     }
@@ -148,7 +149,7 @@ impl Store for S3Store {
         }
     }
 
-    async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
+    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 

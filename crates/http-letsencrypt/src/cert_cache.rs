@@ -3,6 +3,7 @@ use crate::Error;
 use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use bytes::Bytes;
 use proven_store::Store;
 use ring::digest::{Context, SHA256};
 
@@ -19,12 +20,13 @@ impl<S: Store> CertCache<S> {
         self.store
             .get(key.as_ref().to_string())
             .await
+            .map(|opt| opt.map(|bytes| bytes.to_vec()))
             .map_err(|_| Error::CertRetrieve)
     }
 
     async fn write(&self, key: impl AsRef<str>, contents: Vec<u8>) -> Result<(), Error> {
         self.store
-            .put(key.as_ref().to_string(), contents)
+            .put(key.as_ref().to_string(), Bytes::from(contents))
             .await
             .map_err(|_| Error::CertStore)
     }

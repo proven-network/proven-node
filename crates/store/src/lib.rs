@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 
 /// A trait representing a key-value store with asynchronous operations.
 ///
@@ -10,17 +11,17 @@ use async_trait::async_trait;
 ///
 /// # Required Methods
 /// - `async fn del(&self, key: String) -> Result<(), Self::SE>`: Deletes a key from the store.
-/// - `async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE>`: Retrieves the value associated with a key.
+/// - `async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE>`: Retrieves the value associated with a key.
 /// - `async fn keys(&self) -> Result<Vec<String>, Self::SE>`: Retrieves all keys in the store.
-/// - `async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE>`: Stores a key-value pair.
+/// - `async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE>`: Stores a key-value pair.
 #[async_trait]
 pub trait Store: Clone + Send + Sync + 'static {
     type SE: Debug + Error + Send + Sync;
 
     async fn del(&self, key: String) -> Result<(), Self::SE>;
-    async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE>;
+    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE>;
     async fn keys(&self) -> Result<Vec<String>, Self::SE>;
-    async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE>;
+    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE>;
 }
 
 #[async_trait]

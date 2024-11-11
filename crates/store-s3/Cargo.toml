@@ -9,6 +9,7 @@ aws-config = { workspace = true }
 aws-sdk-s3 = { workspace = true }
 base64 = { workspace = true }
 blake3 = { workspace = true }
+bytes = { workspace = true }
 derive_more = { workspace = true }
 md5 = { workspace = true }
 proven-store = { workspace = true }

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 async-trait = { workspace = true }
+bytes = { workspace = true }
 derive_more = { workspace = true }
 proven-store = { workspace = true }
 tokio = { workspace = true }

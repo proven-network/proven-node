@@ -3,9 +3,9 @@ mod error;
 use error::{Error, Result};
 
 use std::collections::HashSet;
-use std::vec;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use proven_attestation::{AttestationParams, Attestor};
 use proven_radix_rola::{Rola, SignedChallenge, Type as SignedChallengeType};
@@ -98,7 +98,7 @@ where
         }
 
         self.challenge_store
-            .put(challenge.clone(), vec![1])
+            .put(challenge.clone(), Bytes::from_static(&[1u8]))
             .await
             .map_err(|_| Error::ChallengeStore)?;
 
@@ -178,7 +178,7 @@ where
 
         let session_cbor = serde_cbor::to_vec(&session).unwrap();
         self.sessions_store
-            .put(session.session_id.clone(), session_cbor)
+            .put(session.session_id.clone(), Bytes::from(session_cbor))
             .await
             .map_err(|_| Error::SessionStore)?;
 

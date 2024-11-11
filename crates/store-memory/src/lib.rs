@@ -6,12 +6,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
 use tokio::sync::Mutex;
 
 #[derive(Clone, Debug, Default)]
 pub struct MemoryStore {
-    map: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    map: Arc<Mutex<HashMap<String, Bytes>>>,
     prefix: Option<String>,
 }
 
@@ -51,7 +52,7 @@ impl Store for MemoryStore {
         Ok(())
     }
 
-    async fn get(&self, key: String) -> Result<Option<Vec<u8>>, Self::SE> {
+    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
         let map = self.map.lock().await;
         Ok(map.get(&self.get_key(key)).cloned())
     }
@@ -71,7 +72,7 @@ impl Store for MemoryStore {
             .collect())
     }
 
-    async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
+    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE> {
         let mut map = self.map.lock().await;
         map.insert(self.get_key(key), bytes);
         Ok(())
@@ -128,7 +129,7 @@ mod tests {
     async fn test_put_and_get() {
         let store = MemoryStore::new();
         let key = "test_key".to_string();
-        let value = b"test_value".to_vec();
+        let value = Bytes::from_static(b"test_value");
 
         store.put(key.clone(), value.clone()).await.unwrap();
         let result = store.get(key).await.unwrap();
@@ -140,7 +141,7 @@ mod tests {
     async fn test_del() {
         let store = MemoryStore::new();
         let key = "test_key".to_string();
-        let value = b"test_value".to_vec();
+        let value = Bytes::from_static(b"test_value");
 
         store.put(key.clone(), value.clone()).await.unwrap();
         store.del(key.clone()).await.unwrap();
@@ -155,7 +156,7 @@ mod tests {
         let scoped_store = Store2::scope(&store, "scope".to_string());
 
         let key = "test_key".to_string();
-        let value = b"test_value".to_vec();
+        let value = Bytes::from_static(b"test_value");
 
         scoped_store.put(key.clone(), value.clone()).await.unwrap();
         let result = scoped_store.get(key.clone()).await.unwrap();
@@ -174,7 +175,7 @@ mod tests {
         let scoped_store = Store3::scope(&partial_scoped_store, "scope2".to_string());
 
         let key = "test_key".to_string();
-        let value = b"test_value".to_vec();
+        let value = Bytes::from_static(b"test_value");
 
         scoped_store.put(key.clone(), value.clone()).await.unwrap();
         let result = scoped_store.get(key.clone()).await.unwrap();

@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use proven_store::{Store, Store1};
-
+use bytes::{Bytes, BytesMut};
 use deno_core::{extension, op2, OpDecl, OpState};
+use proven_store::{Store, Store1};
 
 #[op2(async)]
 #[buffer]
@@ -11,7 +11,7 @@ pub async fn op_get_personal_bytes<PS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-) -> Option<Vec<u8>> {
+) -> Option<BytesMut> {
     let personal_store = {
         loop {
             let personal_store = {
@@ -34,6 +34,7 @@ pub async fn op_get_personal_bytes<PS: Store1>(
             .scope(format!("{}:bytes", store_name))
             .get(key)
             .await
+            .map(|bytes| bytes.map(BytesMut::from))
             .unwrap_or_default()
     } else {
         None
@@ -49,7 +50,7 @@ pub async fn op_set_personal_bytes<PS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-    #[arraybuffer(copy)] value: Vec<u8>,
+    #[buffer(copy)] value: Bytes,
 ) -> bool {
     let personal_store = {
         loop {
@@ -148,7 +149,7 @@ pub async fn op_set_personal_string<PS: Store1>(
     let result = if let Some(store) = personal_store.as_ref() {
         store
             .scope(format!("{}:string", store_name))
-            .put(key, value.as_bytes().to_vec())
+            .put(key, Bytes::from(value))
             .await
             .is_ok()
     } else {

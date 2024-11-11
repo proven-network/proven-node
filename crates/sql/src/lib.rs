@@ -4,6 +4,7 @@ mod error;
 pub use database::Database;
 pub use error::{Error, Result};
 
+use bytes::Bytes;
 use proven_store::{Store, Store1};
 use proven_stream::{Stream, Stream1};
 use serde::{Deserialize, Serialize};
@@ -113,10 +114,14 @@ impl<LS: Store1, S: Stream1<Error>> SqlManager<LS, S> {
         // If no current_leader, then we will try become the leader
         // If we are the leader, then we extend the lease
         if current_leader.is_none()
-            || self.local_name == String::from_utf8(current_leader.clone().unwrap()).unwrap()
+            || self.local_name
+                == String::from_utf8(current_leader.clone().unwrap().to_vec()).unwrap()
         {
             scoped_leader_store
-                .put(db_name.clone(), self.local_name.clone().into_bytes())
+                .put(
+                    db_name.clone(),
+                    Bytes::from(self.local_name.clone().into_bytes()),
+                )
                 .await
                 .unwrap();
         }

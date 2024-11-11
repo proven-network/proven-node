@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use proven_store::{Store, Store1};
-
+use bytes::{Bytes, BytesMut};
 use deno_core::{extension, op2, OpDecl, OpState};
+use proven_store::{Store, Store1};
 
 #[op2(async)]
 #[buffer]
@@ -11,7 +11,7 @@ pub async fn op_get_application_bytes<AS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-) -> Option<Vec<u8>> {
+) -> Option<BytesMut> {
     let application_store = {
         loop {
             let application_store = {
@@ -34,7 +34,7 @@ pub async fn op_get_application_bytes<AS: Store1>(
         .get(key)
         .await
     {
-        Ok(Some(bytes)) => Some(bytes),
+        Ok(Some(bytes)) => Some(BytesMut::from(bytes)),
         _ => None,
     };
 
@@ -48,7 +48,7 @@ pub async fn op_set_application_bytes<AS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-    #[arraybuffer(copy)] value: Vec<u8>,
+    #[buffer(copy)] value: Bytes,
 ) -> bool {
     let application_store = {
         loop {
@@ -142,7 +142,7 @@ pub async fn op_set_application_string<AS: Store1>(
 
     let result = application_store
         .scope(format!("{}:string", store_name))
-        .put(key, value.as_bytes().to_vec())
+        .put(key, Bytes::from(value))
         .await
         .is_ok();
 

@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use proven_store::{Store, Store1, Store2};
-
+use bytes::{Bytes, BytesMut};
 use deno_core::{extension, op2, OpDecl, OpState};
+use proven_store::{Store, Store1, Store2};
 
 #[op2(async)]
 #[buffer]
@@ -12,7 +12,7 @@ pub async fn op_get_nft_bytes<NS: Store2>(
     #[string] store_name: String,
     #[string] nft_id: String,
     #[string] key: String,
-) -> Option<Vec<u8>> {
+) -> Option<BytesMut> {
     let nft_store = {
         loop {
             let nft_store = {
@@ -36,6 +36,7 @@ pub async fn op_get_nft_bytes<NS: Store2>(
             .scope(nft_id)
             .get(key)
             .await
+            .map(|bytes| bytes.map(BytesMut::from))
             .unwrap_or_default()
     } else {
         None
@@ -52,7 +53,7 @@ pub async fn op_set_nft_bytes<NS: Store2>(
     #[string] store_name: String,
     #[string] nft_id: String,
     #[string] key: String,
-    #[arraybuffer(copy)] value: Vec<u8>,
+    #[buffer(copy)] value: Bytes,
 ) -> bool {
     let nft_store = {
         loop {
@@ -160,7 +161,7 @@ pub async fn op_set_nft_string<NS: Store2>(
         store
             .scope(format!("{}:string", store_name))
             .scope(nft_id)
-            .put(key, value.as_bytes().to_vec())
+            .put(key, Bytes::from(value))
             .await
             .is_ok()
     } else {

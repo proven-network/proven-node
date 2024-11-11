@@ -1,6 +1,7 @@
 use std::vec;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_store::Store;
 use radix_common::network::NetworkDefinition;
 use serde::{Deserialize, Serialize};
@@ -68,7 +69,10 @@ where
 
         let application_cbor = serde_cbor::to_vec(&application).unwrap();
         self.applications_store
-            .put(application.application_id.clone(), application_cbor)
+            .put(
+                application.application_id.clone(),
+                Bytes::from(application_cbor),
+            )
             .await
             .map_err(|_| Error::ApplicationStoreError)?;
 

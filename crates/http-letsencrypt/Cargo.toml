@@ -8,6 +8,7 @@ axum-server = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
 base64 = { workspace = true }
+bytes = { workspace = true }
 proven-http = { workspace = true }
 proven-store = { workspace = true }
 ring = { workspace = true }
