@@ -89,6 +89,9 @@ RUN cp /proven-node/target/release/proven-enclave /bin/
 RUN chown root:root /bin/proven-enclave
 RUN chmod 0755      /bin/proven-enclave
 
+# Remove target dir to speed up snapshot
+RUN rm -rf /proven-node/target
+
 # --------------
 # EXTRA BINARIES
 # --------------
