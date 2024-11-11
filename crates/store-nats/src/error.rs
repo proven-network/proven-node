@@ -12,6 +12,9 @@ pub enum Error {
     Get(async_nats::jetstream::kv::EntryErrorKind),
 
     #[from]
+    Keys(async_nats::jetstream::kv::WatchErrorKind),
+
+    #[from]
     Put(async_nats::jetstream::kv::PutErrorKind),
 }
 

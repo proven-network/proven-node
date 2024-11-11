@@ -46,6 +46,19 @@ impl Store for FsStore {
         }
     }
 
+    async fn keys(&self) -> Result<Vec<String>, Self::SE> {
+        let mut entries = fs::read_dir(&self.dir).await?;
+        let mut keys = Vec::new();
+
+        while let Some(entry) = entries.next_entry().await? {
+            if let Some(key) = entry.file_name().to_str() {
+                keys.push(key.to_string());
+            }
+        }
+
+        Ok(keys)
+    }
+
     async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
         let path = self.get_file_path(&key);
         if let Some(parent) = path.parent() {

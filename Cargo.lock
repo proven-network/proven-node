@@ -4880,6 +4880,7 @@ dependencies = [
  "async-nats",
  "async-trait",
  "derive_more",
+ "futures",
  "proven-store",
  "tokio",
 ]

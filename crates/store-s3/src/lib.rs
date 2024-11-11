@@ -102,6 +102,52 @@ impl Store for S3Store {
         }
     }
 
+    async fn keys(&self) -> Result<Vec<String>, Self::SE> {
+        if let Some(prefix) = &self.prefix {
+            let resp = self
+                .client
+                .list_objects_v2()
+                .bucket(&self.bucket)
+                .prefix(prefix)
+                .send()
+                .await;
+
+            match resp {
+                Ok(resp) => {
+                    let keys = resp
+                        .contents
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|obj| obj.key)
+                        .filter_map(|key| key.strip_prefix(prefix).map(String::from))
+                        .collect();
+                    Ok(keys)
+                }
+                Err(e) => Err(Error::S3(e.into())),
+            }
+        } else {
+            let resp = self
+                .client
+                .list_objects_v2()
+                .bucket(&self.bucket)
+                .send()
+                .await;
+
+            match resp {
+                Ok(resp) => {
+                    let keys = resp
+                        .contents
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|obj| obj.key)
+                        .collect();
+                    Ok(keys)
+                }
+                Err(e) => Err(Error::S3(e.into())),
+            }
+        }
+    }
+
     async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);

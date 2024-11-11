@@ -56,6 +56,21 @@ impl Store for MemoryStore {
         Ok(map.get(&self.get_key(key)).cloned())
     }
 
+    async fn keys(&self) -> Result<Vec<String>, Self::SE> {
+        let map = self.map.lock().await;
+        Ok(map
+            .keys()
+            .filter(|&key| {
+                if let Some(prefix) = &self.prefix {
+                    key.starts_with(prefix)
+                } else {
+                    true
+                }
+            })
+            .cloned()
+            .collect())
+    }
+
     async fn put(&self, key: String, bytes: Vec<u8>) -> Result<(), Self::SE> {
         let mut map = self.map.lock().await;
         map.insert(self.get_key(key), bytes);

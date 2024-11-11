@@ -104,6 +104,11 @@ impl Store for AsmStore {
         Ok(secret_map.get(&key).cloned())
     }
 
+    async fn keys(&self) -> Result<Vec<String>, Self::SE> {
+        let secret_map = self.get_secret_map().await?;
+        Ok(secret_map.keys().cloned().collect())
+    }
+
     async fn put(&self, key: String, value: Vec<u8>) -> Result<(), Self::SE> {
         let mut secret_map = self.get_secret_map().await?;
 
