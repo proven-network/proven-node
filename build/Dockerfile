@@ -126,13 +126,13 @@ RUN mv librespeed-cli /bin/
 FROM debian:bookworm-20240904-slim
 
 RUN apt-get update && apt-get install -y \
-    curl=7.88.1-10+deb12u7 \
-    fuse=2.9.9-6+b1 \
-    iproute2=6.1.0-3 \
-    openjdk-17-jre-headless=17.0.12+7-2~deb12u1 \
-    net-tools=2.10-0.1 \
-    nfs-common=1:2.6.2-4 \
-    nfs-kernel-server=1:2.6.2-4
+    curl \
+    fuse \
+    iproute2 \
+    openjdk-17-jre-headless \
+    net-tools \
+    nfs-common \
+    nfs-kernel-server
 
 # Remove non-deterministic items (rebuild at runtime)
 RUN rm -f /etc/ssl/certs/java/cacerts /var/lib/dbus/machine-id
