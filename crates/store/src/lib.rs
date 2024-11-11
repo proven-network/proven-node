@@ -18,10 +18,10 @@ use bytes::Bytes;
 pub trait Store: Clone + Send + Sync + 'static {
     type SE: Debug + Error + Send + Sync;
 
-    async fn del(&self, key: String) -> Result<(), Self::SE>;
-    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE>;
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE>;
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE>;
     async fn keys(&self) -> Result<Vec<String>, Self::SE>;
-    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE>;
+    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::SE>;
 }
 
 #[async_trait]
@@ -37,7 +37,7 @@ pub trait Store1: Clone + Send + Sync + 'static {
     type SE: Debug + Error + Send + Sync;
     type Scoped: Store<SE = Self::SE>;
 
-    fn scope(&self, scope: String) -> Self::Scoped;
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
 }
 
 #[async_trait]
@@ -53,7 +53,7 @@ pub trait Store2: Clone + Send + Sync + 'static {
     type SE: Debug + Error + Send + Sync;
     type Scoped: Store1<SE = Self::SE>;
 
-    fn scope(&self, scope: String) -> Self::Scoped;
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
 }
 
 /// A trait representing a tripe-scoped key-value store with asynchronous operations.
@@ -69,5 +69,5 @@ pub trait Store3: Clone + Send + Sync + 'static {
     type SE: Debug + Error + Send + Sync;
     type Scoped: Store2<SE = Self::SE>;
 
-    fn scope(&self, scope: String) -> Self::Scoped;
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
 }

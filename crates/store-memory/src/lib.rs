@@ -34,10 +34,10 @@ impl MemoryStore {
         }
     }
 
-    fn get_key(&self, key: String) -> String {
+    fn get_key<K: Into<String>>(&self, key: K) -> String {
         match &self.prefix {
-            Some(prefix) => format!("{}:{}", prefix, key),
-            None => key,
+            Some(prefix) => format!("{}:{}", prefix, key.into()),
+            None => key.into(),
         }
     }
 }
@@ -46,13 +46,13 @@ impl MemoryStore {
 impl Store for MemoryStore {
     type SE = Error;
 
-    async fn del(&self, key: String) -> Result<(), Self::SE> {
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE> {
         let mut map = self.map.lock().await;
         map.remove(&self.get_key(key));
         Ok(())
     }
 
-    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE> {
         let map = self.map.lock().await;
         Ok(map.get(&self.get_key(key)).cloned())
     }
@@ -72,7 +72,7 @@ impl Store for MemoryStore {
             .collect())
     }
 
-    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE> {
+    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::SE> {
         let mut map = self.map.lock().await;
         map.insert(self.get_key(key), bytes);
         Ok(())
@@ -84,10 +84,10 @@ impl Store1 for MemoryStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
-            None => scope,
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+            None => scope.into(),
         };
         Self::with_scope(new_scope)
     }
@@ -98,10 +98,10 @@ impl Store2 for MemoryStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
-            None => scope,
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+            None => scope.into(),
         };
         Self::with_scope(new_scope)
     }
@@ -112,10 +112,10 @@ impl Store3 for MemoryStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
-            None => scope,
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+            None => scope.into(),
         };
         Self::with_scope(new_scope)
     }

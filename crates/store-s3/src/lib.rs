@@ -43,10 +43,10 @@ impl S3Store {
         *hasher.finalize().as_bytes()
     }
 
-    fn get_key(&self, key: String) -> String {
+    fn get_key<K: Into<String>>(&self, key: K) -> String {
         match &self.prefix {
-            Some(prefix) => format!("{}/{}", prefix, key),
-            None => key,
+            Some(prefix) => format!("{}/{}", prefix, key.into()),
+            None => key.into(),
         }
     }
 }
@@ -55,7 +55,9 @@ impl S3Store {
 impl Store for S3Store {
     type SE = Error;
 
-    async fn del(&self, key: String) -> Result<(), Self::SE> {
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE> {
+        let key = self.get_key(key);
+
         let resp = self
             .client
             .delete_object()
@@ -70,7 +72,7 @@ impl Store for S3Store {
         }
     }
 
-    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -149,7 +151,7 @@ impl Store for S3Store {
         }
     }
 
-    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE> {
+    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::SE> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -177,10 +179,10 @@ impl Store1 for S3Store {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let prefix = match &self.prefix {
-            Some(prefix) => format!("{}/{}", prefix, scope),
-            None => scope,
+            Some(prefix) => format!("{}/{}", prefix, scope.into()),
+            None => scope.into(),
         };
         S3Store {
             bucket: self.bucket.clone(),
@@ -196,10 +198,10 @@ impl Store2 for S3Store {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let prefix = match &self.prefix {
-            Some(prefix) => format!("{}/{}", prefix, scope),
-            None => scope,
+            Some(prefix) => format!("{}/{}", prefix, scope.into()),
+            None => scope.into(),
         };
         S3Store {
             bucket: self.bucket.clone(),
@@ -215,10 +217,10 @@ impl Store3 for S3Store {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let prefix = match &self.prefix {
-            Some(prefix) => format!("{}/{}", prefix, scope),
-            None => scope,
+            Some(prefix) => format!("{}/{}", prefix, scope.into()),
+            None => scope.into(),
         };
         S3Store {
             bucket: self.bucket.clone(),

@@ -96,17 +96,17 @@ impl NatsStore {
 impl Store for NatsStore {
     type SE = Error;
 
-    async fn del(&self, key: String) -> Result<(), Self::SE> {
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE> {
         self.get_kv_store()
             .await?
-            .delete(key)
+            .delete(key.into())
             .await
             .map_err(|e| Error::Delete(e.kind()))?;
 
         Ok(())
     }
 
-    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE> {
         self.get_kv_store()
             .await?
             .get(key)
@@ -127,10 +127,10 @@ impl Store for NatsStore {
             .unwrap())
     }
 
-    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE> {
+    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::SE> {
         self.get_kv_store()
             .await?
-            .put(key, bytes)
+            .put(key.into(), bytes)
             .await
             .map_err(|e| Error::Put(e.kind()))?;
 
@@ -143,8 +143,8 @@ impl Store1 for NatsStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
-        self.with_scope(format!("{}.{}", self.bucket, scope))
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+        self.with_scope(format!("{}.{}", self.bucket, scope.into()))
     }
 }
 
@@ -153,8 +153,8 @@ impl Store2 for NatsStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
-        self.with_scope(format!("{}.{}", self.bucket, scope))
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+        self.with_scope(format!("{}.{}", self.bucket, scope.into()))
     }
 }
 
@@ -163,7 +163,7 @@ impl Store3 for NatsStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
-        self.with_scope(format!("{}.{}", self.bucket, scope))
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+        self.with_scope(format!("{}.{}", self.bucket, scope.into()))
     }
 }

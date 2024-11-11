@@ -18,7 +18,7 @@ impl<S: Store> CertCache<S> {
 
     async fn read_if_exist(&self, key: impl AsRef<str>) -> Result<Option<Vec<u8>>, Error> {
         self.store
-            .get(key.as_ref().to_string())
+            .get(key.as_ref())
             .await
             .map(|opt| opt.map(|bytes| bytes.to_vec()))
             .map_err(|_| Error::CertRetrieve)
@@ -26,7 +26,7 @@ impl<S: Store> CertCache<S> {
 
     async fn write(&self, key: impl AsRef<str>, contents: Vec<u8>) -> Result<(), Error> {
         self.store
-            .put(key.as_ref().to_string(), Bytes::from(contents))
+            .put(key.as_ref(), Bytes::from(contents))
             .await
             .map_err(|_| Error::CertStore)
     }

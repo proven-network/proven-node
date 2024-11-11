@@ -32,14 +32,14 @@ impl FsStore {
 impl Store for FsStore {
     type SE = Error;
 
-    async fn del(&self, key: String) -> Result<(), Self::SE> {
-        let path = self.get_file_path(&key);
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE> {
+        let path = self.get_file_path(&key.into());
         fs::remove_file(path).await?;
         Ok(())
     }
 
-    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
-        let path = self.get_file_path(&key);
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE> {
+        let path = self.get_file_path(&key.into());
         match fs::read(path).await {
             Ok(data) => Ok(Some(Bytes::from(data))),
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -60,8 +60,8 @@ impl Store for FsStore {
         Ok(keys)
     }
 
-    async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE> {
-        let path = self.get_file_path(&key);
+    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::SE> {
+        let path = self.get_file_path(&key.into());
         if let Some(parent) = path.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent).await?;
@@ -78,9 +78,9 @@ impl Store1 for FsStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let mut dir = self.dir.clone();
-        dir.push(scope);
+        dir.push(scope.into());
         Self::new(dir)
     }
 }
@@ -90,9 +90,9 @@ impl Store2 for FsStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let mut dir = self.dir.clone();
-        dir.push(scope);
+        dir.push(scope.into());
         Self::new(dir)
     }
 }
@@ -102,9 +102,9 @@ impl Store3 for FsStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let mut dir = self.dir.clone();
-        dir.push(scope);
+        dir.push(scope.into());
         Self::new(dir)
     }
 }

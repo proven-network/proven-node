@@ -91,18 +91,18 @@ impl AsmStore {
 impl Store for AsmStore {
     type SE = Error;
 
-    async fn del(&self, key: String) -> Result<(), Self::SE> {
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE> {
         let mut secret_map = self.get_secret_map().await?;
 
-        secret_map.remove(&key);
+        secret_map.remove(&key.into());
 
         self.update_secret_map(secret_map).await
     }
 
-    async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE> {
         let secret_map = self.get_secret_map().await?;
 
-        Ok(secret_map.get(&key).cloned())
+        Ok(secret_map.get(&key.into()).cloned())
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::SE> {
@@ -110,10 +110,10 @@ impl Store for AsmStore {
         Ok(secret_map.keys().cloned().collect())
     }
 
-    async fn put(&self, key: String, value: Bytes) -> Result<(), Self::SE> {
+    async fn put<K: Into<String> + Send>(&self, key: K, value: Bytes) -> Result<(), Self::SE> {
         let mut secret_map = self.get_secret_map().await?;
 
-        secret_map.insert(key, value);
+        secret_map.insert(key.into(), value);
 
         self.update_secret_map(secret_map).await
     }
@@ -124,10 +124,10 @@ impl Store1 for AsmStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
-            None => scope,
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+            None => scope.into(),
         };
 
         Self::new_with_client_and_prefix(
@@ -143,10 +143,10 @@ impl Store2 for AsmStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
-            None => scope,
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+            None => scope.into(),
         };
 
         Self::new_with_client_and_prefix(
@@ -162,10 +162,10 @@ impl Store3 for AsmStore {
     type SE = Error;
     type Scoped = Self;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
-            None => scope,
+            Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+            None => scope.into(),
         };
 
         Self::new_with_client_and_prefix(
