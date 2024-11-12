@@ -161,4 +161,11 @@ COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
 COPY --from=extra-binaries /bin/librespeed-cli /bin/
 COPY --from=openjdk:17-jdk-slim /usr/local/openjdk-17/lib/security/cacerts /etc/ssl/certs/java/cacerts
 
+# Increase file descriptor limit (have bumped up against this at default)
+RUN echo "* soft nofile 524288" >> /etc/security/limits.conf && \
+    echo "* hard nofile 524288" >> /etc/security/limits.conf && \
+    echo "root soft nofile 524288" >> /etc/security/limits.conf && \
+    echo "root hard nofile 524288" >> /etc/security/limits.conf && \
+    echo "fs.file-max = 524288" >> /etc/sysctl.conf
+
 CMD proven-enclave
