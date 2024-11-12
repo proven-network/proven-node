@@ -52,9 +52,15 @@ config: extract
 	scripts/config --enable CONFIG_FUSE_FS && \
 	scripts/config --enable CONFIG_NFS_V3 && \
 	echo "CONFIG_NSM=m" >> .config && \
+	scripts/config --set-val NR_OPEN 524288 && \
+	scripts/config --set-val SYSVIPC y && \
+	echo "CONFIG_MAX_MAP_COUNT=524288" >> .config && \
 	echo "CONFIG_NR_FILE=524288" >> .config && \
+	echo "CONFIG_SYSCTL=y" >> .config && \
+	echo "CONFIG_PROC_FS=y" >> .config && \
 	echo "CONFIG_FILE_MAX=524288" >> .config && \
 	echo "CONFIG_BASE_SMALL=0" >> .config && \
+	scripts/config --set-val FILE_MAX 524288 && \
 	make olddefconfig
 
 build: config
