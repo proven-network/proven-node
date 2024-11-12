@@ -52,15 +52,18 @@ config: extract
 	scripts/config --enable CONFIG_FUSE_FS && \
 	scripts/config --enable CONFIG_NFS_V3 && \
 	echo "CONFIG_NSM=m" >> .config && \
+	# Resource limits - order matters
+	scripts/config --set-val TASK_MAX_FD 524288 && \
 	scripts/config --set-val NR_OPEN 524288 && \
-	scripts/config --set-val SYSVIPC y && \
-	echo "CONFIG_MAX_MAP_COUNT=524288" >> .config && \
-	echo "CONFIG_NR_FILE=524288" >> .config && \
+	scripts/config --set-val FILE_MAX 524288 && \
+	echo "CONFIG_BASE_SMALL=0" >> .config && \
 	echo "CONFIG_SYSCTL=y" >> .config && \
 	echo "CONFIG_PROC_FS=y" >> .config && \
-	echo "CONFIG_FILE_MAX=524288" >> .config && \
-	echo "CONFIG_BASE_SMALL=0" >> .config && \
-	scripts/config --set-val FILE_MAX 524288 && \
+	echo "CONFIG_MAX_FILES=524288" >> .config && \
+	echo "CONFIG_NR_FILE=524288" >> .config && \
+	echo "CONFIG_FILE_TABLE_HASH_BITS=11" >> .config && \
+	echo "CONFIG_RESOURCE_LIMITS=y" >> .config && \
+	scripts/config --set-val SYSVIPC y && \
 	make olddefconfig
 
 build: config
