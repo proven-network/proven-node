@@ -140,7 +140,7 @@ RUN apt-get update && apt-get install -y \
     nfs-common \
     nfs-kernel-server
 
-# Remove non-deterministic items (rebuild at runtime)
+# Remove non-deterministic items (copy in from known image at the end)
 RUN rm -f /etc/ssl/certs/java/cacerts /var/lib/dbus/machine-id
 
 # Remove apt-get side effects
