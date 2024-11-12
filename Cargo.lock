@@ -2568,6 +2568,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fdlimit"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e182f7dbc2ef73d9ef67351c5fbbea084729c48362d3ce9dd44c28e32e277fe5"
+dependencies = [
+ "libc",
+ "thiserror 1.0.65",
+]
+
+[[package]]
 name = "ff"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4493,6 +4503,7 @@ dependencies = [
  "bytes",
  "cidr",
  "derive_more",
+ "fdlimit",
  "proven-attestation",
  "proven-attestation-nsm",
  "proven-core",
@@ -4518,6 +4529,7 @@ dependencies = [
  "proven-vsock-tracing",
  "radix-common",
  "rand 0.8.5",
+ "rlimit",
  "rtnetlink",
  "tokio",
  "tokio-util",
@@ -5382,6 +5394,15 @@ dependencies = [
  "spin",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rlimit"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7043b63bd0cd1aaa628e476b80e6d4023a3b50eb32789f2728908107bd0c793a"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

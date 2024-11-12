@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use async_nats::Client as NatsClient;
 use bytes::Bytes;
+use fdlimit::{raise_fd_limit, Outcome as FdOutcome};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, NewCoreArguments};
@@ -39,7 +40,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockStream};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_panic::panic_hook;
 
 static VMADDR_CID_EC2_HOST: u32 = 3;
@@ -177,8 +178,8 @@ impl Bootstrap {
             return Err(e);
         }
 
-        if let Err(e) = self.show_ulimits().await {
-            error!("failed to show ulimits: {:?}", e);
+        if let Err(e) = self.raise_fdlimit().await {
+            error!("failed to raise fdlimit: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
@@ -463,17 +464,31 @@ impl Bootstrap {
         Ok(())
     }
 
-    async fn show_ulimits(&self) -> Result<()> {
-        info!("getting ulimits...");
+    async fn raise_fdlimit(&self) -> Result<()> {
+        info!("raising fdlimit...");
 
-        let cmd = tokio::process::Command::new("ulimit")
-            .arg("-a")
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .output()
-            .await?;
+        let limit = match fdlimit::raise_fd_limit() {
+            // New fd limit
+            Ok(FdOutcome::LimitRaised { from, to }) => {
+                info!("raised fd limit from {} to {}", from, to);
+                to
+            }
+            // Current soft limit
+            Err(e) => {
+                error!("failed to raise fd limit: {:?}", e);
+                rlimit::getrlimit(rlimit::Resource::NOFILE)
+                    .unwrap_or((256, 0))
+                    .0
+            }
+            Ok(FdOutcome::Unsupported) => {
+                warn!("fd limit raising is not supported on this platform");
+                rlimit::getrlimit(rlimit::Resource::NOFILE)
+                    .unwrap_or((256, 0))
+                    .0
+            }
+        };
 
-        info!("ulimits: {:?}", cmd);
+        info!("fd limit: {}", limit);
 
         Ok(())
     }

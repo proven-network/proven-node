@@ -11,6 +11,7 @@ async-nats = { workspace = true }
 bytes = { workspace = true }
 cidr = { workspace = true }
 derive_more = { workspace = true }
+fdlimit = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-nsm = { workspace = true }
 proven-core = { workspace = true }
@@ -36,6 +37,7 @@ proven-vsock-rpc = { workspace = true }
 proven-vsock-tracing = { workspace = true }
 radix-common = { workspace = true }
 rand = { workspace = true }
+rlimit = { workspace = true }
 rtnetlink = { workspace = true }
 tokio-util = { workspace = true }
 tokio-vsock = { workspace = true }
