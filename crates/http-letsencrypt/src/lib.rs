@@ -1,10 +1,12 @@
+mod acceptor;
 mod cert_cache;
 mod error;
-mod multi_acceptor;
+mod multi_resolver;
 
+use acceptor::AxumAcceptor;
 use cert_cache::CertCache;
 use error::Error;
-use multi_acceptor::MultiAxumAcceptor;
+use multi_resolver::MultiResolver;
 
 use std::future::IntoFuture;
 use std::net::SocketAddr;
@@ -15,7 +17,6 @@ use axum::http::Method;
 use axum::Router;
 use proven_http::HttpServer;
 use proven_store::Store;
-use rustls::ServerConfig;
 use tokio::task::JoinHandle;
 use tokio_rustls_acme::AcmeConfig;
 use tokio_stream::StreamExt;
@@ -25,7 +26,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 pub struct LetsEncryptHttpServer {
-    acceptor: MultiAxumAcceptor,
+    acceptor: AxumAcceptor,
     listen_addr: SocketAddr,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
@@ -44,11 +45,6 @@ impl LetsEncryptHttpServer {
             .directory_lets_encrypt(true)
             .state();
 
-        let mut node_rustls_config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_cert_resolver(node_endpoints_state.resolver());
-        node_rustls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-
         // Create a second AcmeState to simulate also issuing certificates for individual client endpoints on different certs
         let example_client_domains = vec!["example.is.proven.network".to_string()];
         let mut example_client_state = AcmeConfig::new(example_client_domains.clone())
@@ -57,16 +53,11 @@ impl LetsEncryptHttpServer {
             .directory_lets_encrypt(true)
             .state();
 
-        let mut example_client_rustls_config = ServerConfig::builder()
-            .with_no_client_auth()
-            .with_cert_resolver(example_client_state.resolver());
-        example_client_rustls_config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+        let mut resolver = MultiResolver::new(node_endpoints_state.resolver());
+        resolver.add_resolver(example_client_domains, example_client_state.resolver());
+        let resolver = Arc::new(resolver);
 
-        let mut acceptor = MultiAxumAcceptor::new(Arc::new(node_rustls_config));
-        acceptor.add_config(
-            example_client_domains,
-            Arc::new(example_client_rustls_config),
-        );
+        let acceptor = AxumAcceptor::new(resolver);
 
         tokio::spawn(async move {
             loop {
