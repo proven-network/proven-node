@@ -52,6 +52,9 @@ config: extract
 	scripts/config --enable CONFIG_FUSE_FS && \
 	scripts/config --enable CONFIG_NFS_V3 && \
 	echo "CONFIG_NSM=m" >> .config && \
+	echo "CONFIG_NR_FILE=524288" >> .config && \
+	echo "CONFIG_FILE_MAX=524288" >> .config && \
+	echo "CONFIG_BASE_SMALL=0" >> .config && \
 	make olddefconfig
 
 build: config
