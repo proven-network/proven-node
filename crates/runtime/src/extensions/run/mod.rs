@@ -1,54 +1,89 @@
-use std::collections::{HashMap, HashSet};
+use crate::options::{HandlerOptions, ModuleHandlerOptions};
 
 use deno_core::{extension, op2};
 
-#[derive(Clone, Debug, Default)]
-pub struct HandlerOptions {
-    pub allowed_web_hosts: HashSet<String>,
-    pub max_heap_mbs: Option<u16>,
-    pub path: Option<String>,
-    pub timeout_millis: Option<u32>,
-}
-pub type HandlerOptionsMap = HashMap<String, HandlerOptions>;
-
 #[op2(fast)]
 pub fn op_add_allowed_host(
-    #[state] state: &mut HandlerOptionsMap,
+    #[state] state: &mut ModuleHandlerOptions,
+    #[string] handler_type: String,
     #[string] handler_name: String,
     #[string] host: String,
 ) {
-    let options = state.entry(handler_name).or_default();
-    options.allowed_web_hosts.insert(host.to_ascii_lowercase());
+    let options = state
+        .entry(handler_name)
+        .or_insert(match handler_type.as_str() {
+            "http" => HandlerOptions::Http(Default::default()),
+            "rpc" => HandlerOptions::Rpc(Default::default()),
+            _ => unreachable!(),
+        });
+
+    match options {
+        HandlerOptions::Http(options) => {
+            options.allowed_web_hosts.insert(host.to_ascii_lowercase())
+        }
+        HandlerOptions::Rpc(options) => options.allowed_web_hosts.insert(host.to_ascii_lowercase()),
+    };
 }
 
 #[op2(fast)]
 pub fn op_set_memory_option(
-    #[state] state: &mut HandlerOptionsMap,
+    #[state] state: &mut ModuleHandlerOptions,
+    #[string] handler_type: String,
     #[string] handler_name: String,
     value: u16,
 ) {
-    let options = state.entry(handler_name).or_default();
-    options.max_heap_mbs.replace(value);
+    let options = state
+        .entry(handler_name)
+        .or_insert(match handler_type.as_str() {
+            "http" => HandlerOptions::Http(Default::default()),
+            "rpc" => HandlerOptions::Rpc(Default::default()),
+            _ => unreachable!(),
+        });
+
+    match options {
+        HandlerOptions::Http(options) => options.max_heap_mbs.replace(value),
+        HandlerOptions::Rpc(options) => options.max_heap_mbs.replace(value),
+    };
 }
 
 #[op2(fast)]
 pub fn op_set_path_option(
-    #[state] state: &mut HandlerOptionsMap,
+    #[state] state: &mut ModuleHandlerOptions,
+    #[string] handler_type: String,
     #[string] handler_name: String,
     #[string] value: String,
 ) {
-    let options = state.entry(handler_name).or_default();
-    options.path.replace(value);
+    assert_eq!(handler_type, "http");
+
+    let options = state
+        .entry(handler_name)
+        .or_insert(HandlerOptions::Http(Default::default()));
+
+    match options {
+        HandlerOptions::Http(options) => options.path.replace(value),
+        _ => unreachable!(),
+    };
 }
 
 #[op2(fast)]
 pub fn op_set_timeout_option(
-    #[state] state: &mut HandlerOptionsMap,
+    #[state] state: &mut ModuleHandlerOptions,
+    #[string] handler_type: String,
     #[string] handler_name: String,
     value: u32,
 ) {
-    let options = state.entry(handler_name).or_default();
-    options.timeout_millis.replace(value);
+    let options = state
+        .entry(handler_name)
+        .or_insert(match handler_type.as_str() {
+            "http" => HandlerOptions::Http(Default::default()),
+            "rpc" => HandlerOptions::Rpc(Default::default()),
+            _ => unreachable!(),
+        });
+
+    match options {
+        HandlerOptions::Http(options) => options.timeout_millis.replace(value),
+        HandlerOptions::Rpc(options) => options.timeout_millis.replace(value),
+    };
 }
 
 extension!(

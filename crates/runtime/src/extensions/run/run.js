@@ -29,10 +29,10 @@ export const runWithOptions = (handlerName, fn, options = {}) => {
           throw new Error('allowedHosts must be an array of strings')
         }
 
-        Deno.core.ops[`op_add_allowed_host`](handlerName, host);
+        Deno.core.ops[`op_add_allowed_host`]('rpc', handlerName, host);
       }
     } else {
-      Deno.core.ops[`op_set_${key}_option`](handlerName, options[key]);
+      Deno.core.ops[`op_set_${key}_option`]('rpc', handlerName, options[key]);
     }
   }
 
@@ -52,11 +52,11 @@ const requiredHttpOptions = [
 // Handler name is dynamically inserted and should not be part of exported types.
 export const runOnHttp = (handlerName, fn, options = {}) => {
   if (typeof handlerName !== 'string') {
-    throw new Error('runWithOptions must be used in confunction with the export keyword')
+    throw new Error('runOnHttp must be used in confunction with the export keyword')
   }
 
   if (typeof fn !== 'function') {
-    throw new Error('No function passed to runWithOptions')
+    throw new Error('No function passed to runOnHttp')
   }
 
   for (const key of requiredHttpOptions) {
@@ -70,7 +70,7 @@ export const runOnHttp = (handlerName, fn, options = {}) => {
       throw new Error(`Invalid option: ${key}`)
     }
 
-    Deno.core.ops[`op_set_${key}_option`](handlerName, options[key]);
+    Deno.core.ops[`op_set_${key}_option`]('http', handlerName, options[key]);
   }
 
   return fn

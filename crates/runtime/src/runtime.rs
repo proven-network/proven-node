@@ -1,14 +1,11 @@
-mod host_web_permissions;
-mod no_web_permissions;
-
 use crate::extensions::*;
+use crate::options::HandlerOptions;
+use crate::options_parser::OptionsParser;
+use crate::schema::SCHEMA_WHLIST;
+use crate::web_permissions::HostWebPermissions;
 use crate::{Error, ExecutionRequest, ExecutionResult};
-use host_web_permissions::HostWebPermissions;
-use no_web_permissions::NoWebPermissions;
 
-use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::LazyLock;
 use std::time::Duration;
 
 use proven_store::{Store2, Store3};
@@ -16,12 +13,6 @@ use regex::Regex;
 use rustyscript::js_value::Value;
 use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
 use tokio::time::Instant;
-
-static SCHEMA_WHLIST: LazyLock<HashSet<String>> = LazyLock::new(|| {
-    let mut set = HashSet::with_capacity(1);
-    set.insert("proven:".to_string());
-    set
-});
 
 #[derive(Clone)]
 pub struct RuntimeOptions<AS: Store2, PS: Store3, NS: Store3> {
@@ -82,12 +73,64 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
     /// # Returns
     /// The created runtime.
     pub fn new(options: RuntimeOptions<AS, PS, NS>) -> Result<Self, Error> {
-        let handler_options =
-            Self::get_options_for_handler(options.module.clone(), options.handler_name.clone())?;
+        let handler_options = OptionsParser::new()?
+            .parse(options.module.as_str())?
+            .handler_options;
+
+        let timeout_millis = handler_options
+            .get(
+                options
+                    .handler_name
+                    .as_ref()
+                    .unwrap_or(&"__default__".to_string()),
+            )
+            .map(|handler_options| match handler_options {
+                HandlerOptions::Http(http_handler_options) => {
+                    http_handler_options.timeout_millis.unwrap_or(1000)
+                }
+                HandlerOptions::Rpc(rpc_handler_options) => {
+                    rpc_handler_options.timeout_millis.unwrap_or(1000)
+                }
+            })
+            .unwrap_or(1000);
+
+        let max_heap_mbs = handler_options
+            .get(
+                options
+                    .handler_name
+                    .as_ref()
+                    .unwrap_or(&"__default__".to_string()),
+            )
+            .map(|handler_options| match handler_options {
+                HandlerOptions::Http(http_handler_options) => {
+                    http_handler_options.max_heap_mbs.unwrap_or(10)
+                }
+                HandlerOptions::Rpc(rpc_handler_options) => {
+                    rpc_handler_options.max_heap_mbs.unwrap_or(10)
+                }
+            })
+            .unwrap_or(10);
+
+        let allowed_web_hosts = handler_options
+            .get(
+                options
+                    .handler_name
+                    .as_ref()
+                    .unwrap_or(&"__default__".to_string()),
+            )
+            .map(|handler_options| match handler_options {
+                HandlerOptions::Http(http_handler_options) => {
+                    http_handler_options.allowed_web_hosts.clone()
+                }
+                HandlerOptions::Rpc(rpc_handler_options) => {
+                    rpc_handler_options.allowed_web_hosts.clone()
+                }
+            })
+            .unwrap_or_default();
 
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
-            timeout: Duration::from_millis(handler_options.timeout_millis.unwrap_or(1000) as u64),
-            max_heap_size: Some(handler_options.max_heap_mbs.unwrap_or(10) as usize * 1024 * 1024),
+            timeout: Duration::from_millis(timeout_millis as u64),
+            max_heap_size: Some(max_heap_mbs as usize * 1024 * 1024),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
                 run_mock_ext::init_ops_and_esm(),
@@ -102,9 +145,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             ],
             extension_options: ExtensionOptions {
                 web: WebOptions {
-                    permissions: Rc::new(HostWebPermissions::new(
-                        handler_options.allowed_web_hosts,
-                    )),
+                    permissions: Rc::new(HostWebPermissions::new(allowed_web_hosts)),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -195,70 +236,6 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         })
     }
 
-    fn get_options_for_handler(
-        module: String,
-        handler_name: Option<String>,
-    ) -> Result<HandlerOptions, Error> {
-        // Prepare the module for option extraction using run extenstion
-        let module = Self::strip_comments(module.as_str());
-        let module = Self::name_default_export(module.as_str());
-        let module = Self::rewrite_run_functions(module.as_str());
-
-        let module = Module::new("tmp.ts", module.as_str());
-        let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
-            timeout: Duration::from_millis(1000),
-            max_heap_size: Some(10 * 1024 * 1024),
-            schema_whlist: SCHEMA_WHLIST.clone(),
-            extensions: vec![
-                run_ext::init_ops_and_esm(),
-                console_ext::init_ops_and_esm(),
-                sessions_ext::init_ops_and_esm(),
-                // Split into seperate extensions to avoid issue with macro supporting only 1 generic
-                kv_application_ext::init_ops::<AS::Scoped>(),
-                kv_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
-                kv_nft_ext::init_ops_and_esm::<NS::Scoped>(),
-                kv_ext::init_ops_and_esm(),
-                sql_ext::init_ops_and_esm(),
-            ],
-            extension_options: ExtensionOptions {
-                web: WebOptions {
-                    // No access to web during option extraction
-                    permissions: Rc::new(NoWebPermissions::new()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        })?;
-
-        runtime.put(ConsoleState::default())?;
-        runtime.put(HandlerOptionsMap::default())?;
-
-        runtime.load_module(&module)?;
-
-        let mut options: HandlerOptionsMap = runtime.take().unwrap();
-
-        let options = options
-            .entry(
-                handler_name
-                    .as_ref()
-                    .unwrap_or(&"__default__".to_string())
-                    .clone(),
-            )
-            .or_default();
-
-        Ok(options.clone())
-    }
-
-    fn strip_comments(module: &str) -> String {
-        let comment_re = Regex::new(r"(?m)^\s*//.*|/\*[\s\S]*?\*/").unwrap();
-        comment_re.replace_all(module, "").to_string()
-    }
-
-    fn name_default_export(module: &str) -> String {
-        module.replace("export default ", "export const __default__ = ")
-    }
-
     fn ensure_exported_functions_are_async(module: &str) -> String {
         // Find matches like `export const test = function () { console.log('Hello, world!'); }`
         let re_fn =
@@ -285,21 +262,6 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
 
         let re_duplicate_async = Regex::new(r"async\s*\r?\n?\s*async").unwrap();
         let result = re_duplicate_async.replace_all(&result, "async");
-
-        result.to_string()
-    }
-
-    fn rewrite_run_functions(module: &str) -> String {
-        // Define the regex to match `export const/let` declarations with the specified functions
-        let re = Regex::new(r"(?m)^\s*export\s+(const|let)\s+(\w+)\s*=\s*(runWithOptions|runOnSchedule|runOnRadixEvent|runOnProvenEvent)\(").unwrap();
-
-        // Replace the matched string with the modified version
-        let result = re.replace_all(module, |caps: &regex::Captures| {
-            format!(
-                "export {} {} = {}('{}', ",
-                &caps[1], &caps[2], &caps[3], &caps[2]
-            )
-        });
 
         result.to_string()
     }

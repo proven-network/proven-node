@@ -1,7 +1,11 @@
 mod error;
 mod extensions;
+mod options;
+mod options_parser;
 mod pool;
 mod runtime;
+mod schema;
+mod web_permissions;
 mod worker;
 
 pub use error::*;
