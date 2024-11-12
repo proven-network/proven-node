@@ -177,6 +177,12 @@ impl Bootstrap {
             return Err(e);
         }
 
+        if let Err(e) = self.show_ulimits().await {
+            error!("failed to show ulimits: {:?}", e);
+            self.unwind_services().await;
+            return Err(e);
+        }
+
         if let Err(e) = self.remount_tmp_with_exec().await {
             error!("failed to remount tmp with exec: {:?}", e);
             self.unwind_services().await;
@@ -453,6 +459,21 @@ impl Bootstrap {
         configure_logging_to_vsock(VsockAddr::new(VMADDR_CID_EC2_HOST, self.args.log_port)).await?;
 
         info!("tracing configured");
+
+        Ok(())
+    }
+
+    async fn show_ulimits(&self) -> Result<()> {
+        info!("getting ulimits...");
+
+        let cmd = tokio::process::Command::new("ulimit")
+            .arg("-a")
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .output()
+            .await?;
+
+        info!("ulimits: {:?}", cmd);
 
         Ok(())
     }
