@@ -52,7 +52,6 @@ config: extract
 	scripts/config --enable CONFIG_FUSE_FS && \
 	scripts/config --enable CONFIG_NFS_V3 && \
 	echo "CONFIG_NSM=m" >> .config && \
-	# Resource limits - order matters
 	scripts/config --set-val TASK_MAX_FD 524288 && \
 	scripts/config --set-val NR_OPEN 524288 && \
 	scripts/config --set-val FILE_MAX 524288 && \
