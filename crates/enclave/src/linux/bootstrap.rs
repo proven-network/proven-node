@@ -467,7 +467,7 @@ impl Bootstrap {
     async fn raise_fdlimit(&self) -> Result<()> {
         info!("raising fdlimit...");
 
-        let limit = match fdlimit::raise_fd_limit() {
+        let limit = match raise_fd_limit() {
             // New fd limit
             Ok(FdOutcome::LimitRaised { from, to }) => {
                 info!("raised fd limit from {} to {}", from, to);
