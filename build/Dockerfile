@@ -168,4 +168,4 @@ RUN echo "* soft nofile 524288" >> /etc/security/limits.conf && \
     echo "root hard nofile 524288" >> /etc/security/limits.conf && \
     echo "fs.file-max = 524288" >> /etc/sysctl.conf
 
-CMD proven-enclave
+CMD ulimit -n 524288 && proven-enclave
