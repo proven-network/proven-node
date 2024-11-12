@@ -448,7 +448,6 @@ impl Bootstrap {
         }
     }
 
-    // Stage 1
     async fn configure_tracing(&self) -> Result<()> {
         std::panic::set_hook(Box::new(panic_hook));
         configure_logging_to_vsock(VsockAddr::new(VMADDR_CID_EC2_HOST, self.args.log_port)).await?;
@@ -458,7 +457,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 2
     async fn remount_tmp_with_exec(&self) -> Result<()> {
         tokio::process::Command::new("mount")
             .arg("-o")
@@ -473,14 +471,12 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 3
     async fn configure_temp_dns_resolv(&self) -> Result<()> {
         write_dns_resolv(self.args.host_dns_resolv.clone())?;
 
         Ok(())
     }
 
-    // Stage 4
     async fn bring_up_loopback(&self) -> Result<()> {
         bring_up_loopback().await?;
 
@@ -489,7 +485,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 5
     async fn start_network_proxy(&mut self) -> Result<()> {
         let vsock_stream =
             VsockStream::connect(VsockAddr::new(VMADDR_CID_EC2_HOST, self.args.proxy_port))
@@ -521,7 +516,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 6
     async fn seed_entropy(&self) -> Result<()> {
         let secured_random_bytes = self.nsm.secure_random().await?;
         let mut rng = std::fs::OpenOptions::new()
@@ -534,7 +528,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 7
     async fn fetch_imds_identity(&mut self) -> Result<()> {
         let imds = Imds::new().await?;
         let identity = imds.get_verified_identity_document().await?;
@@ -546,7 +539,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 8
     async fn fetch_instance_details(&mut self) -> Result<()> {
         let id = self.imds_identity.as_ref().unwrap_or_else(|| {
             panic!("imds identity not fetched before instance details");
@@ -562,7 +554,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 9
     async fn perform_speedtest(&self) -> Result<()> {
         if !self.args.skip_speedtest {
             info!("running speedtest...");
@@ -582,7 +573,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 10
     async fn start_dnscrypt_proxy(&mut self) -> Result<()> {
         let id = self.imds_identity.as_ref().unwrap_or_else(|| {
             panic!("imds identity not fetched before dnscrypt-proxy");
@@ -611,7 +601,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 11
     async fn start_radix_node_fs(&mut self) -> Result<()> {
         let radix_node_fs = ExternalFs::new(
             "your-password".to_string(),
@@ -630,7 +619,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 12
     async fn start_radix_node(&mut self) -> Result<()> {
         let instance_details = self.instance_details.as_ref().unwrap_or_else(|| {
             panic!("instance details not fetched before radix-node");
@@ -653,7 +641,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 13
     async fn start_postgres_fs(&mut self) -> Result<()> {
         let postgres_fs = ExternalFs::new(
             "your-password".to_string(),
@@ -672,7 +659,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 14
     async fn start_postgres(&mut self) -> Result<()> {
         let postgres = Postgres::new(
             POSTGRES_STORE_DIR.to_string(),
@@ -691,7 +677,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 15
     async fn start_radix_aggregator(&mut self) -> Result<()> {
         let radix_aggregator = RadixAggregator::new(
             POSTGRES_DATABASE.to_string(),
@@ -709,7 +694,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 16
     async fn start_radix_gateway(&mut self) -> Result<()> {
         let radix_gateway = RadixGateway::new(
             POSTGRES_DATABASE.to_string(),
@@ -727,7 +711,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 17
     async fn start_nats_fs(&mut self) -> Result<()> {
         let nats_server_fs = ExternalFs::new(
             "your-password".to_string(),
@@ -746,7 +729,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 18
     async fn start_nats_server(&mut self) -> Result<()> {
         let instance_details = self.instance_details.as_ref().unwrap_or_else(|| {
             panic!("instance details not fetched before nats-server");
@@ -770,7 +752,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    // Stage 19
     async fn start_core(&mut self) -> Result<()> {
         let id = self.imds_identity.as_ref().unwrap_or_else(|| {
             panic!("imds identity not fetched before core");
