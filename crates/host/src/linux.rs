@@ -15,7 +15,7 @@ use axum::response::Redirect;
 use axum::routing::any;
 use axum::Router;
 use cidr::Ipv4Cidr;
-use clap::Parser;
+use clap::{arg, command, Parser};
 use nix::unistd::Uid;
 use proven_http::HttpServer;
 use proven_http_insecure::InsecureHttpServer;
@@ -27,7 +27,22 @@ use tracing::{error, info};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-struct Args {
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Parser, Debug)]
+enum Commands {
+    /// Initialize and start a new enclave
+    Initialize(Box<InitializeArgs>),
+    /// Connect to an existing enclave's logs
+    Connect(Box<ConnectArgs>),
+}
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct InitializeArgs {
     #[arg(long, required = true)]
     certificates_bucket: String,
 
@@ -95,9 +110,22 @@ struct Args {
     tun_device: String,
 }
 
-pub async fn main() -> Result<()> {
-    let args = Args::parse();
+#[derive(Parser, Debug)]
+struct ConnectArgs {
+    #[arg(long, default_value_t = 1026)]
+    log_port: u32,
+}
 
+pub async fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Initialize(args) => initialize(*args).await,
+        Commands::Connect(args) => connect(*args).await,
+    }
+}
+
+async fn initialize(args: InitializeArgs) -> Result<()> {
     if !Uid::effective().is_root() {
         return Err(Error::NotRoot);
     }
@@ -114,7 +142,7 @@ pub async fn main() -> Result<()> {
     info!("allocating enclave resources...");
     allocate_enclave_resources(args.enclave_cpus, args.enclave_memory).await?;
 
-    let mut enclave = start_enclave().await?;
+    let mut enclave = start_enclave(&args).await?;
 
     let vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
 
@@ -135,7 +163,17 @@ pub async fn main() -> Result<()> {
     let proxy_handle = proxy.clone().start_host(vsock);
 
     let http_server = InsecureHttpServer::new(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 80)));
-    let http_redirector = Router::new().route("/*path", any(redirect_to_https));
+    let fqdn = args.fqdn.clone();
+    let http_redirector = Router::new().route(
+        "/*path",
+        any(move |uri: Uri| {
+            let fqdn = fqdn.clone();
+            async move {
+                let https_uri = format!("https://{}{}", fqdn, uri);
+                Redirect::permanent(&https_uri)
+            }
+        }),
+    );
     let http_server_handle = http_server.start(http_redirector).await?;
 
     // Tasks that must be running for the host to function
@@ -157,14 +195,14 @@ pub async fn main() -> Result<()> {
 
     // sleep for a bit to allow everything to start
     tokio::time::sleep(std::time::Duration::from_secs(20)).await;
-    initialize_enclave().await?;
+    initialize_enclave(&args).await?;
 
     info!("enclave initialized successfully");
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("shutting down...");
-            shutdown_enclave().await?;
+            shutdown_enclave(&args).await?;
             enclave.wait().await?; // TODO: this doesn't do anything - should poll active enclaves to check instead
             http_server.shutdown().await;
             proxy.shutdown().await;
@@ -183,6 +221,23 @@ pub async fn main() -> Result<()> {
     Ok(())
 }
 
+async fn connect(args: ConnectArgs) -> Result<()> {
+    let tracing_service = TracingService::new();
+    let tracing_handle = tracing_service.start(args.log_port)?;
+
+    info!("Connected to enclave logs. Press Ctrl+C to exit.");
+
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            info!("shutting down...");
+            tracing_service.shutdown().await;
+            tracing_handle.await.unwrap();
+        }
+    }
+
+    Ok(())
+}
+
 async fn stop_existing_enclaves() -> Result<()> {
     tokio::process::Command::new("nitro-cli")
         .arg("terminate-enclave")
@@ -193,9 +248,7 @@ async fn stop_existing_enclaves() -> Result<()> {
     Ok(())
 }
 
-async fn start_enclave() -> Result<Child> {
-    let args = Args::parse();
-
+async fn start_enclave(args: &InitializeArgs) -> Result<Child> {
     let handle = tokio::process::Command::new("nitro-cli")
         .arg("run-enclave")
         .arg("--cpu-count")
@@ -205,7 +258,7 @@ async fn start_enclave() -> Result<Child> {
         .arg("--enclave-cid")
         .arg(args.enclave_cid.to_string())
         .arg("--eif-path")
-        .arg(args.eif_path)
+        .arg(args.eif_path.clone())
         .spawn()?;
 
     Ok(handle)
@@ -248,31 +301,29 @@ cpu_count: {}
     Ok(())
 }
 
-async fn initialize_enclave() -> Result<()> {
-    let args = Args::parse();
-
+async fn initialize_enclave(args: &InitializeArgs) -> Result<()> {
     let host_dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
 
     let res = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
         .initialize(InitializeRequest {
-            certificates_bucket: args.certificates_bucket,
+            certificates_bucket: args.certificates_bucket.clone(),
             cidr: args.cidr,
-            email: args.email,
+            email: args.email.clone(),
             enclave_ip: args.enclave_ip,
-            fqdn: args.fqdn,
+            fqdn: args.fqdn.clone(),
             host_dns_resolv,
             host_ip: args.host_ip,
             https_port: args.https_port,
-            kms_key_id: args.kms_key_id,
+            kms_key_id: args.kms_key_id.clone(),
             log_port: args.log_port,
             nats_port: args.nats_port,
-            nfs_mount_point: args.nfs_mount_point,
+            nfs_mount_point: args.nfs_mount_point.clone(),
             proxy_port: args.proxy_port,
             skip_fsck: args.skip_fsck,
             skip_speedtest: args.skip_speedtest,
             skip_vacuum: args.skip_vacuum,
             stokenet: args.stokenet,
-            tun_device: args.tun_device,
+            tun_device: args.tun_device.clone(),
         })
         .await;
 
@@ -281,9 +332,7 @@ async fn initialize_enclave() -> Result<()> {
     Ok(())
 }
 
-async fn shutdown_enclave() -> Result<()> {
-    let args = Args::parse();
-
+async fn shutdown_enclave(args: &InitializeArgs) -> Result<()> {
     let res = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
         .shutdown()
         .await;
@@ -291,10 +340,4 @@ async fn shutdown_enclave() -> Result<()> {
     info!("shutdown response: {:?}", res);
 
     Ok(())
-}
-
-async fn redirect_to_https(uri: Uri) -> Redirect {
-    let args = Args::parse();
-    let https_uri = format!("https://{}{}", args.fqdn, uri);
-    Redirect::permanent(&https_uri)
 }
