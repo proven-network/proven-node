@@ -19,3 +19,11 @@ extension!(
         "proven:radixdlt_babylon_gateway_api" = "dist/babylon-gateway-api-sdk.mjs"
     ],
 );
+
+extension!(
+    uuid_ext,
+    esm_entry_point = "proven:uuid",
+    esm = [dir "vendor/uuid",
+        "proven:uuid" = "uuid.mjs"
+    ],
+);

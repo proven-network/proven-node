@@ -145,6 +145,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 sql_ext::init_ops_and_esm(),
                 // Vendered modules
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
+                uuid_ext::init_ops_and_esm(),
             ],
             extension_options: ExtensionOptions {
                 web: WebOptions {
@@ -378,6 +379,32 @@ mod tests {
 
             // RadixNetwork.Mainnet should be 1
             assert_eq!(execution_result.output, 1);
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_uuid() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { v4 as uuidv4 } from "uuid";
+
+                export const test = () => {
+                    return uuidv4();
+                }
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            assert!(result.is_ok());
+
+            let execution_result = result.unwrap();
+            assert!(execution_result.output.is_string());
+            assert_eq!(execution_result.output.as_str().unwrap().len(), 36);
         });
     }
 

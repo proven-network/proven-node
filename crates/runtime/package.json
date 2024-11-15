@@ -1,6 +1,14 @@
 {
   "name": "proven-runtime",
+  "scripts": {
+    "bundle:uuid": "rollup -c"
+  },
   "dependencies": {
-    "@radixdlt/babylon-gateway-api-sdk": "^1.7.3"
+    "@radixdlt/babylon-gateway-api-sdk": "^1.7.3",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.3.0",
+    "rollup": "^4.27.0"
   }
 }
