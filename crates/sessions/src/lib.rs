@@ -13,6 +13,7 @@ use proven_store::Store;
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Session {
@@ -176,16 +177,16 @@ where
             account_addresses,
         };
 
-        println!("session: {:?}", session);
+        info!("session: {:?}", session);
 
         let session_cbor = serde_cbor::to_vec(&session).unwrap();
 
-        println!("cbored");
+        info!("cbored");
         self.sessions_store
             .put(session.session_id.clone(), Bytes::from(session_cbor))
             .await
             .map_err(|_| Error::SessionStore)?;
-        println!("stored");
+        info!("stored");
 
         match self
             .attestor
