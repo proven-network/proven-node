@@ -144,6 +144,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 kv_ext::init_ops_and_esm(),
                 sql_ext::init_ops_and_esm(),
                 // Vendered modules
+                openai_ext::init_ops_and_esm(),
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
                 uuid_ext::init_ops_and_esm(),
                 zod_ext::init_ops_and_esm(),

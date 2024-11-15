@@ -11,6 +11,8 @@ static VENDOR_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
         "proven:radixdlt_babylon_gateway_api".to_string(),
     );
 
+    map.insert("openai".to_string(), "proven:openai".to_string());
+
     map.insert("uuid".to_string(), "proven:uuid".to_string());
 
     map.insert("zod".to_string(), "proven:zod".to_string());
