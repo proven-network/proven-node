@@ -774,6 +774,7 @@ impl Bootstrap {
             instance_details.instance_id.clone(),
             SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
             "/var/lib/nats/nats".to_string(),
+            self.args.stokenet,
         );
 
         let nats_server_handle = nats_server.start().await?;

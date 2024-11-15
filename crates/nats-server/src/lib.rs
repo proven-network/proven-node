@@ -20,6 +20,7 @@ use tracing::{debug, error, info, trace, warn};
 
 pub struct NatsServer {
     clients: Arc<Mutex<Vec<Client>>>,
+    debug: bool,
     listen_addr: SocketAddrV4,
     server_name: String,
     store_dir: String,
@@ -34,9 +35,15 @@ impl NatsServer {
     ///
     /// * `server_name` - The name of the server.
     /// * `listen_addr` - The address to listen on.
-    pub fn new(server_name: String, listen_addr: SocketAddrV4, store_dir: String) -> Self {
+    pub fn new(
+        server_name: String,
+        listen_addr: SocketAddrV4,
+        store_dir: String,
+        debug: bool,
+    ) -> Self {
         Self {
             clients: Arc::new(Mutex::new(Vec::new())),
+            debug,
             listen_addr,
             server_name,
             store_dir,
@@ -68,12 +75,22 @@ impl NatsServer {
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
+        let debug = self.debug;
 
         let server_task = self.task_tracker.spawn(async move {
+            let mut args = vec!["--config", "/etc/nats/nats-server.conf"];
+
+            if debug {
+                args.extend_from_slice(&["-DV"]);
+            }
+
+            let mut cmd = Command::new("nats-server");
+            for arg in args {
+                cmd.arg(arg);
+            }
+
             // Start the nats-server process
-            let mut cmd = Command::new("nats-server")
-                .arg("--config")
-                .arg("/etc/nats/nats-server.conf")
+            let mut cmd = cmd
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
                 .spawn()
