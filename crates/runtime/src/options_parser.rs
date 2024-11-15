@@ -1,6 +1,7 @@
 use crate::extensions::*;
 use crate::options::{ModuleHandlerOptions, ModuleOptions};
 use crate::schema::SCHEMA_WHLIST;
+use crate::vendor_replacements::replace_vendor_imports;
 use crate::web_permissions::NoWebPermissions;
 use crate::Error;
 
@@ -26,6 +27,8 @@ impl OptionsParser {
                 sessions_ext::init_ops_and_esm(),
                 kv_ext::init_ops_and_esm(),
                 sql_ext::init_ops_and_esm(),
+                // Vendered modules
+                radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
             ],
             extension_options: ExtensionOptions {
                 web: WebOptions {
@@ -67,6 +70,7 @@ impl OptionsParser {
     }
 
     fn preprocess_source(module_source: String) -> String {
+        let module_source = replace_vendor_imports(module_source);
         let module_source = Self::strip_comments(module_source);
         let module_source = Self::name_default_export(module_source);
         Self::rewrite_run_functions(module_source)

@@ -1,0 +1,6 @@
+{
+  "name": "proven-runtime",
+  "dependencies": {
+    "@radixdlt/babylon-gateway-api-sdk": "^1.7.3"
+  }
+}

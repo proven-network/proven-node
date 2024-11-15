@@ -5,6 +5,7 @@ mod options_parser;
 mod pool;
 mod runtime;
 mod schema;
+mod vendor_replacements;
 mod web_permissions;
 mod worker;
 

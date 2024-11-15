@@ -75,9 +75,11 @@ FROM rust:1.82.0-slim-bookworm as rust-builder
 WORKDIR /
 
 # Install dependencies
-RUN apt-get update && apt-get install -y \
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get update && apt-get install -y \
     curl \
     git \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Build proven-enclave

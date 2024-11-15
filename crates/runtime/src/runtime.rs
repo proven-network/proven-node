@@ -2,6 +2,7 @@ use crate::extensions::*;
 use crate::options::HandlerOptions;
 use crate::options_parser::OptionsParser;
 use crate::schema::SCHEMA_WHLIST;
+use crate::vendor_replacements::replace_vendor_imports;
 use crate::web_permissions::HostWebPermissions;
 use crate::{Error, ExecutionRequest, ExecutionResult};
 
@@ -142,6 +143,8 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 kv_nft_ext::init_ops_and_esm::<NS::Scoped>(),
                 kv_ext::init_ops_and_esm(),
                 sql_ext::init_ops_and_esm(),
+                // Vendered modules
+                radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
             ],
             extension_options: ExtensionOptions {
                 web: WebOptions {
@@ -157,7 +160,8 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         runtime.put(ConsoleState::default())?;
 
         let async_module = Self::ensure_exported_functions_are_async(options.module.as_str());
-        println!("{}", async_module);
+        let async_module = replace_vendor_imports(async_module);
+
         let module = Module::new("module.ts", async_module.as_str());
         let module_handle = runtime.load_module(&module)?;
 
@@ -347,6 +351,33 @@ mod tests {
 
             let result = runtime.execute(request);
             assert!(result.is_ok());
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_sdk() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { RadixNetwork } from "@radixdlt/babylon-gateway-api-sdk";
+
+                export const test = () => {
+                    return RadixNetwork.Mainnet;
+                }
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            assert!(result.is_ok());
+
+            let execution_result = result.unwrap();
+
+            // RadixNetwork.Mainnet should be 1
+            assert_eq!(execution_result.output, 1);
         });
     }
 
