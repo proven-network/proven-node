@@ -23,3 +23,6 @@ tokio = { workspace = true }
 futures = { workspace = true }
 proven-locks-memory = { workspace = true }
 proven-store-memory = { workspace = true }
+
+[build-dependencies]
+regex = { workspace = true }

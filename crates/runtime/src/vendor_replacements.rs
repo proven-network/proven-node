@@ -13,6 +13,8 @@ static VENDOR_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
 
     map.insert("uuid".to_string(), "proven:uuid".to_string());
 
+    map.insert("zod".to_string(), "proven:zod".to_string());
+
     map
 });
 

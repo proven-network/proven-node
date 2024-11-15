@@ -146,6 +146,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 // Vendered modules
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
                 uuid_ext::init_ops_and_esm(),
+                zod_ext::init_ops_and_esm(),
             ],
             extension_options: ExtensionOptions {
                 web: WebOptions {
@@ -405,6 +406,55 @@ mod tests {
             let execution_result = result.unwrap();
             assert!(execution_result.output.is_string());
             assert_eq!(execution_result.output.as_str().unwrap().len(), 36);
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_zod() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { z } from "zod";
+
+                export const test = () => {
+                    const schema = z.object({
+                        name: z.string(),
+                        age: z.number(),
+                    });
+
+                    return schema.parse({ name: "Alice", age: 30 });
+                }
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            assert!(result.is_ok());
+
+            let execution_result = result.unwrap();
+            assert!(execution_result.output.is_object());
+            assert_eq!(execution_result.output.as_object().unwrap().len(), 2);
+            assert_eq!(
+                execution_result
+                    .output
+                    .as_object()
+                    .unwrap()
+                    .get("name")
+                    .unwrap(),
+                "Alice"
+            );
+            assert_eq!(
+                execution_result
+                    .output
+                    .as_object()
+                    .unwrap()
+                    .get("age")
+                    .unwrap(),
+                30
+            );
         });
     }
 

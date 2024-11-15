@@ -24,6 +24,14 @@ extension!(
     uuid_ext,
     esm_entry_point = "proven:uuid",
     esm = [dir "vendor/uuid",
-        "proven:uuid" = "uuid.mjs"
+        "proven:uuid" = "index.mjs"
+    ],
+);
+
+extension!(
+    zod_ext,
+    esm_entry_point = "proven:zod",
+    esm = [dir "vendor/zod",
+        "proven:zod" = "index.mjs"
     ],
 );

@@ -5,7 +5,8 @@
   },
   "dependencies": {
     "@radixdlt/babylon-gateway-api-sdk": "^1.7.3",
-    "uuid": "^11.0.3"
+    "uuid": "^11.0.3",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^15.3.0",

@@ -30,6 +30,7 @@ impl OptionsParser {
                 // Vendered modules
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
                 uuid_ext::init_ops_and_esm(),
+                zod_ext::init_ops_and_esm(),
             ],
             extension_options: ExtensionOptions {
                 web: WebOptions {
