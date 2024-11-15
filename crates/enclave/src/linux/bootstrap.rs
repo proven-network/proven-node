@@ -813,7 +813,7 @@ impl Bootstrap {
         let sessions_store = NatsStore::new(NatsStoreOptions {
             bucket: "sessions".to_string(),
             client: nats_client.clone(),
-            max_age: Duration::MAX,
+            max_age: Duration::new(0, 0),
             persist: true,
         })
         .await?;
@@ -853,7 +853,7 @@ impl Bootstrap {
         let application_store = NatsStore::new(NatsStoreOptions {
             bucket: "application".to_string(),
             client: nats_client.clone(),
-            max_age: Duration::MAX,
+            max_age: Duration::new(0, 0),
             persist: true,
         })
         .await?;
@@ -861,7 +861,7 @@ impl Bootstrap {
         let personal_store = NatsStore::new(NatsStoreOptions {
             bucket: "personal".to_string(),
             client: nats_client.clone(),
-            max_age: Duration::MAX,
+            max_age: Duration::new(0, 0),
             persist: true,
         })
         .await?;
@@ -869,7 +869,7 @@ impl Bootstrap {
         let nft_store = NatsStore::new(NatsStoreOptions {
             bucket: "nft".to_string(),
             client: nats_client.clone(),
-            max_age: Duration::MAX,
+            max_age: Duration::new(0, 0),
             persist: true,
         })
         .await?;
