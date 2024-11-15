@@ -13,7 +13,7 @@ use proven_store::Store;
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Session {
@@ -185,7 +185,10 @@ where
         self.sessions_store
             .put(session.session_id.clone(), Bytes::from(session_cbor))
             .await
-            .map_err(|_| Error::SessionStore)?;
+            .map_err(|e| {
+                error!("error: {:?}", e);
+                Error::SessionStore
+            })?;
         info!("stored");
 
         match self
