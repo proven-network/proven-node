@@ -1,4 +1,6 @@
-use axum::response::Response;
+use axum::body::Body;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Router;
 use axum_extra::TypedHeader;
@@ -26,9 +28,23 @@ pub async fn create_session_router<T: SessionManagement + 'static>(session_manag
         .route(
             "/create-challenge",
             get(|| async move {
-                let challenge = session_manager_clone.create_challenge().await.unwrap();
-
-                Response::builder().body(challenge).unwrap()
+                match session_manager_clone.create_challenge().await {
+                    Ok(challenge) => Response::builder()
+                        .status(StatusCode::OK)
+                        .body(Body::from(challenge))
+                        .unwrap_or_else(|_| {
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Body::from("Failed to construct response"),
+                            )
+                                .into_response()
+                        }),
+                    Err(err) => (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Body::from(format!("Failed to create challenge: {:?}", err)),
+                    )
+                        .into_response(),
+                }
             }),
         )
         .route(
