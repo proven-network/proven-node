@@ -3,16 +3,15 @@ use crate::options::HandlerOptions;
 use crate::options_parser::OptionsParser;
 use crate::schema::SCHEMA_WHLIST;
 use crate::vendor_replacements::replace_vendor_imports;
-use crate::web_permissions::HostWebPermissions;
 use crate::{Error, ExecutionRequest, ExecutionResult};
 
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use proven_store::{Store2, Store3};
 use regex::Regex;
 use rustyscript::js_value::Value;
-use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
+use rustyscript::{AllowlistWebPermissions, ExtensionOptions, Module, ModuleHandle, WebOptions};
 use tokio::time::Instant;
 
 #[derive(Clone)]
@@ -129,6 +128,12 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             })
             .unwrap_or_default();
 
+        let allowlist_web_permissions = AllowlistWebPermissions::new();
+        // call allowlist_web_permissions.allow_host for each host in allowed_web_hosts
+        allowed_web_hosts.iter().for_each(|host| {
+            allowlist_web_permissions.allow_host(host);
+        });
+
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
             timeout: Duration::from_millis(timeout_millis as u64),
             max_heap_size: Some(max_heap_mbs as usize * 1024 * 1024),
@@ -151,7 +156,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             ],
             extension_options: ExtensionOptions {
                 web: WebOptions {
-                    permissions: Rc::new(HostWebPermissions::new(allowed_web_hosts)),
+                    permissions: Arc::new(allowlist_web_permissions),
                     ..Default::default()
                 },
                 ..Default::default()

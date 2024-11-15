@@ -2,14 +2,13 @@ use crate::extensions::*;
 use crate::options::{ModuleHandlerOptions, ModuleOptions};
 use crate::schema::SCHEMA_WHLIST;
 use crate::vendor_replacements::replace_vendor_imports;
-use crate::web_permissions::NoWebPermissions;
 use crate::Error;
 
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use regex::Regex;
-use rustyscript::{ExtensionOptions, Module, WebOptions};
+use rustyscript::{AllowlistWebPermissions, ExtensionOptions, Module, WebOptions};
 use sha2::{Digest, Sha256};
 
 pub struct OptionsParser {
@@ -36,7 +35,7 @@ impl OptionsParser {
             extension_options: ExtensionOptions {
                 web: WebOptions {
                     // No access to web during option extraction
-                    permissions: Rc::new(NoWebPermissions::new()),
+                    permissions: Arc::new(AllowlistWebPermissions::new()),
                     ..Default::default()
                 },
                 ..Default::default()
