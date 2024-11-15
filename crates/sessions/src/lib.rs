@@ -176,11 +176,16 @@ where
             account_addresses,
         };
 
+        println!("session: {:?}", session);
+
         let session_cbor = serde_cbor::to_vec(&session).unwrap();
+
+        println!("cbored");
         self.sessions_store
             .put(session.session_id.clone(), Bytes::from(session_cbor))
             .await
             .map_err(|_| Error::SessionStore)?;
+        println!("stored");
 
         match self
             .attestor
