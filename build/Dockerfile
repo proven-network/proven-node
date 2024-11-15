@@ -74,11 +74,15 @@ RUN chmod 0755      /bin/gocryptfs
 FROM rust:1.82.0-slim-bookworm as rust-builder
 WORKDIR /
 
-# Install dependencies
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get update && apt-get install -y \
+# Install base dependencies
+RUN apt-get update && apt-get install -y \
     curl \
     git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js (for vendored runtime dependencies)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get update && apt-get install -y \
     nodejs \
     && rm -rf /var/lib/apt/lists/*
 
