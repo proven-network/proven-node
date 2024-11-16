@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct HttpHandlerOptions {
-    pub allowed_web_hosts: HashSet<String>,
+    pub allowed_web_origins: HashSet<String>,
     pub max_heap_mbs: Option<u16>,
     pub path: Option<String>,
     pub timeout_millis: Option<u32>,
@@ -10,7 +10,7 @@ pub struct HttpHandlerOptions {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RpcHandlerOptions {
-    pub allowed_web_hosts: HashSet<String>,
+    pub allowed_web_origins: HashSet<String>,
     pub max_heap_mbs: Option<u16>,
     pub timeout_millis: Option<u32>,
 }

@@ -2,6 +2,7 @@ mod error;
 mod extensions;
 mod options;
 mod options_parser;
+mod permissions;
 mod pool;
 mod runtime;
 mod schema;

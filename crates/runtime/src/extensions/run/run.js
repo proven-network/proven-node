@@ -1,5 +1,5 @@
 const validOptions = [
-  'allowedHosts',
+  'allowedOrigins',
   'memory',
   'timeout'
 ]
@@ -19,17 +19,17 @@ export const runWithOptions = (handlerName, fn, options = {}) => {
       throw new Error(`Invalid option: ${key}`)
     }
 
-    if (key === 'allowedHosts') {
+    if (key === 'allowedOrigins') {
       if (!Array.isArray(options[key])) {
-        throw new Error('allowedHosts must be an array')
+        throw new Error('allowedOrigins must be an array')
       }
 
-      for (const host of options[key]) {
-        if (typeof host !== 'string') {
-          throw new Error('allowedHosts must be an array of strings')
+      for (const origin of options[key]) {
+        if (typeof origin !== 'string') {
+          throw new Error('allowedOrigins must be an array of strings')
         }
 
-        Deno.core.ops[`op_add_allowed_host`]('rpc', handlerName, host);
+        Deno.core.ops[`op_add_allowed_origin`]('rpc', handlerName, origin);
       }
     } else {
       Deno.core.ops[`op_set_${key}_option`]('rpc', handlerName, options[key]);

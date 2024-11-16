@@ -1,6 +1,7 @@
 use crate::extensions::*;
 use crate::options::HandlerOptions;
 use crate::options_parser::OptionsParser;
+use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
 use crate::vendor_replacements::replace_vendor_imports;
 use crate::{Error, ExecutionRequest, ExecutionResult};
@@ -11,7 +12,7 @@ use std::time::Duration;
 use proven_store::{Store2, Store3};
 use regex::Regex;
 use rustyscript::js_value::Value;
-use rustyscript::{AllowlistWebPermissions, ExtensionOptions, Module, ModuleHandle, WebOptions};
+use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
 use tokio::time::Instant;
 
 #[derive(Clone)]
@@ -111,7 +112,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             })
             .unwrap_or(32);
 
-        let allowed_web_hosts = handler_options
+        let allowed_web_origins = handler_options
             .get(
                 options
                     .handler_name
@@ -120,18 +121,17 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             )
             .map(|handler_options| match handler_options {
                 HandlerOptions::Http(http_handler_options) => {
-                    http_handler_options.allowed_web_hosts.clone()
+                    http_handler_options.allowed_web_origins.clone()
                 }
                 HandlerOptions::Rpc(rpc_handler_options) => {
-                    rpc_handler_options.allowed_web_hosts.clone()
+                    rpc_handler_options.allowed_web_origins.clone()
                 }
             })
             .unwrap_or_default();
 
-        let allowlist_web_permissions = AllowlistWebPermissions::new();
-        // call allowlist_web_permissions.allow_host for each host in allowed_web_hosts
-        allowed_web_hosts.iter().for_each(|host| {
-            allowlist_web_permissions.allow_host(host);
+        let allowlist_web_permissions = OriginAllowlistWebPermissions::new();
+        allowed_web_origins.iter().for_each(|origin| {
+            allowlist_web_permissions.allow_origin(origin);
         });
 
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
@@ -635,7 +635,7 @@ mod tests {
     // }
 
     #[tokio::test]
-    async fn test_runtime_execute_with_disallowed_hosts() {
+    async fn test_runtime_execute_with_disallowed_origins() {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
@@ -658,7 +658,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_execute_with_allowed_hosts() {
+    async fn test_runtime_execute_with_allowed_origins() {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
@@ -667,7 +667,7 @@ mod tests {
                 export const test = runWithOptions(async () => {
                     const response = await fetch("https://example.com/");
                     return response;
-                }, { allowedHosts: ["example.com"], timeout: 10000 });
+                }, { allowedOrigins: ["https://example.com"], timeout: 10000 });
             "#,
                 Some("test".to_string()),
             );

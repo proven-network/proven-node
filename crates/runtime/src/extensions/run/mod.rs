@@ -3,11 +3,11 @@ use crate::options::{HandlerOptions, ModuleHandlerOptions};
 use deno_core::{extension, op2};
 
 #[op2(fast)]
-pub fn op_add_allowed_host(
+pub fn op_add_allowed_origin(
     #[state] state: &mut ModuleHandlerOptions,
     #[string] handler_type: String,
     #[string] handler_name: String,
-    #[string] host: String,
+    #[string] origin: String,
 ) {
     let options = state
         .entry(handler_name)
@@ -18,10 +18,12 @@ pub fn op_add_allowed_host(
         });
 
     match options {
-        HandlerOptions::Http(options) => {
-            options.allowed_web_hosts.insert(host.to_ascii_lowercase())
-        }
-        HandlerOptions::Rpc(options) => options.allowed_web_hosts.insert(host.to_ascii_lowercase()),
+        HandlerOptions::Http(options) => options
+            .allowed_web_origins
+            .insert(origin.to_ascii_lowercase()),
+        HandlerOptions::Rpc(options) => options
+            .allowed_web_origins
+            .insert(origin.to_ascii_lowercase()),
     };
 }
 
@@ -91,7 +93,7 @@ pub fn op_set_timeout_option(
 extension!(
     run_ext,
     ops = [
-        op_add_allowed_host,
+        op_add_allowed_origin,
         op_set_memory_option,
         op_set_path_option,
         op_set_timeout_option
