@@ -170,7 +170,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             ..Default::default()
         })?;
 
-        // In case there are any to-level console.* calls in the module
+        // In case there are any top-level console.* calls in the module
         runtime.put(ConsoleState::default())?;
 
         let async_module = Self::ensure_exported_functions_are_async(options.module.as_str());
