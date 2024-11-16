@@ -158,6 +158,11 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             extension_options: ExtensionOptions {
                 web: WebOptions {
                     permissions: Arc::new(allowlist_web_permissions),
+                    user_agent: format!(
+                        "Proven Network {} (https://proven.network)",
+                        env!("CARGO_PKG_VERSION")
+                    )
+                    .to_string(),
                     ..Default::default()
                 },
                 ..Default::default()
