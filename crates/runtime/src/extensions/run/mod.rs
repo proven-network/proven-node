@@ -32,6 +32,8 @@ pub fn op_set_memory_option(
     #[string] handler_name: String,
     value: u16,
 ) {
+    let value = std::cmp::max(value, 32); // 32 MB is the minimum heap size
+
     let options = state
         .entry(handler_name)
         .or_insert(match handler_type.as_str() {
