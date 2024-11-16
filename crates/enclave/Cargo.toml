@@ -44,3 +44,6 @@ tokio-vsock = { workspace = true }
 tracing = { workspace = true }
 tracing-panic = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[lints.rust]
+long_running_const_eval = "allow"
