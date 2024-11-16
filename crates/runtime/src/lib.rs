@@ -27,8 +27,14 @@ pub struct ExecutionRequest {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct ExecutionLogs {
+    pub level: String,
+    pub args: Value, // Will be array
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ExecutionResult {
     pub output: Value,
     pub duration: Duration,
-    pub logs: Vec<String>,
+    pub logs: Vec<ExecutionLogs>,
 }

@@ -4,7 +4,7 @@ use crate::options_parser::OptionsParser;
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
 use crate::vendor_replacements::replace_vendor_imports;
-use crate::{Error, ExecutionRequest, ExecutionResult};
+use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -250,10 +250,25 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         let console_state: ConsoleState = self.runtime.take().unwrap_or_default();
         let duration = start.elapsed();
 
+        let logs = console_state
+            .messages
+            .into_iter()
+            .map(|message| {
+                let args: rustyscript::serde_json::Value = Value::from_v8(message.args)
+                    .try_into(&mut self.runtime)
+                    .unwrap();
+
+                ExecutionLogs {
+                    level: message.level,
+                    args,
+                }
+            })
+            .collect();
+
         Ok(ExecutionResult {
             output,
             duration,
-            logs: console_state.messages,
+            logs,
         })
     }
 

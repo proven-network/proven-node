@@ -1,17 +1,23 @@
-use deno_core::{extension, op2};
+use deno_core::{extension, op2, v8};
 
 #[derive(Default)]
 pub struct ConsoleState {
-    pub messages: Vec<String>,
+    pub messages: Vec<LogMessage>,
 }
 
-#[op2(fast)]
+#[derive(Debug)]
+pub struct LogMessage {
+    pub level: String,
+    pub args: v8::Global<v8::Value>,
+}
+
+#[op2]
 pub fn op_console_log(
     #[state] state: &mut ConsoleState,
-    #[string] msg: String,
     #[string] level: String,
+    #[global] args: v8::Global<v8::Value>,
 ) {
-    state.messages.push(format!("[{}] {}", level, msg));
+    state.messages.push(LogMessage { args, level });
 }
 
 extension!(

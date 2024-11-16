@@ -1,7 +1,6 @@
 function logMessage(level, ...args) {
-  const message = args.join(' ');
   const { op_console_log } = Deno.core.ops;
-  op_console_log(message, level);
+  op_console_log(level, args);
 }
 
 globalThis.console.debug = function debug(...args) {
