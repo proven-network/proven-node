@@ -3,6 +3,12 @@ use std::path::Path;
 use std::process::Command;
 
 use regex::Regex;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct PackageJson {
+    module: Option<String>,
+}
 
 fn strip_comments(content: &str) -> String {
     // Handle multiline comments first
@@ -24,13 +30,26 @@ fn strip_comments(content: &str) -> String {
         .join("\n")
 }
 
-fn copy_and_clean_zod() -> std::io::Result<()> {
-    let source_path = "node_modules/zod/lib/index.mjs";
-    let target_dir = Path::new("vendor/zod");
+fn copy_and_clean_package(package_name: &str) -> std::io::Result<()> {
+    // Read package.json
+    let package_json_path = format!("node_modules/{}/package.json", package_name);
+    let package_json_content = fs::read_to_string(package_json_path)?;
+    let package_json: PackageJson = serde_json::from_str(&package_json_content)?;
+
+    // Get source path from module field, fallback to lib/index.mjs
+    let source_path = format!(
+        "node_modules/{}/{}",
+        package_name,
+        package_json
+            .module
+            .unwrap_or_else(|| "lib/index.mjs".to_string())
+    );
+
+    let target_dir = Path::new("vendor").join(package_name);
     let target_path = target_dir.join("index.mjs");
 
-    // Create vendor/zod directory
-    create_dir_all(target_dir)?;
+    // Create vendor/<package> directory
+    create_dir_all(&target_dir)?;
 
     // Read, clean and write
     let content = fs::read_to_string(source_path)?;
@@ -90,8 +109,12 @@ fn main() {
     }
     clean_vendor_file("openai").expect("Failed to clean openai bundle");
 
-    // Copy and clean Zod
-    copy_and_clean_zod().expect("Failed to process Zod files");
+    // Copy and clean other packages
+    copy_and_clean_package("zod").expect("Failed to process zod files");
+    copy_and_clean_package("@radixdlt/babylon-gateway-api-sdk")
+        .expect("Failed to process @radixdlt/babylon-gateway-api-sdk files");
+    copy_and_clean_package("@radixdlt/radix-engine-toolkit")
+        .expect("Failed to process @radixdlt/radix-engine-toolkit files");
 
     // Tell Cargo when to rerun
     println!("cargo:rerun-if-changed=package.json");

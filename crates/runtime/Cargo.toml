@@ -26,3 +26,8 @@ proven-store-memory = { workspace = true }
 
 [build-dependencies]
 regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints.rust]
+long_running_const_eval = "allow"

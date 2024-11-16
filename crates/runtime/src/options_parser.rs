@@ -29,6 +29,7 @@ impl OptionsParser {
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
+                radixdlt_radix_engine_toolkit_ext::init_ops_and_esm(),
                 uuid_ext::init_ops_and_esm(),
                 zod_ext::init_ops_and_esm(),
             ],

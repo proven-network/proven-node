@@ -1,3 +1,5 @@
+#![allow(long_running_const_eval)]
+
 use deno_core::extension;
 
 mod console;
@@ -23,8 +25,16 @@ extension!(
 extension!(
     radixdlt_babylon_gateway_api_ext,
     esm_entry_point = "proven:radixdlt_babylon_gateway_api",
-    esm = [dir "node_modules/@radixdlt/babylon-gateway-api-sdk",
-        "proven:radixdlt_babylon_gateway_api" = "dist/babylon-gateway-api-sdk.mjs"
+    esm = [dir "vendor/@radixdlt/babylon-gateway-api-sdk",
+        "proven:radixdlt_babylon_gateway_api" = "index.mjs"
+    ],
+);
+
+extension!(
+    radixdlt_radix_engine_toolkit_ext,
+    esm_entry_point = "proven:radixdlt_radix_engine_toolkit",
+    esm = [dir "vendor/@radixdlt/radix-engine-toolkit",
+        "proven:radixdlt_radix_engine_toolkit" = "index.mjs"
     ],
 );
 

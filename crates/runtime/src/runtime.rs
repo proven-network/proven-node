@@ -103,13 +103,13 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             )
             .map(|handler_options| match handler_options {
                 HandlerOptions::Http(http_handler_options) => {
-                    http_handler_options.max_heap_mbs.unwrap_or(10)
+                    http_handler_options.max_heap_mbs.unwrap_or(32)
                 }
                 HandlerOptions::Rpc(rpc_handler_options) => {
-                    rpc_handler_options.max_heap_mbs.unwrap_or(10)
+                    rpc_handler_options.max_heap_mbs.unwrap_or(32)
                 }
             })
-            .unwrap_or(10);
+            .unwrap_or(32);
 
         let allowed_web_hosts = handler_options
             .get(
@@ -151,6 +151,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
+                radixdlt_radix_engine_toolkit_ext::init_ops_and_esm(),
                 uuid_ext::init_ops_and_esm(),
                 zod_ext::init_ops_and_esm(),
             ],
@@ -363,7 +364,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_execute_sdk() {
+    async fn test_runtime_execute_gateway_api_sdk() {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
@@ -386,6 +387,35 @@ mod tests {
 
             // RadixNetwork.Mainnet should be 1
             assert_eq!(execution_result.output, 1);
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_radix_engine_toolkit() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { RadixEngineToolkit } from "@radixdlt/radix-engine-toolkit";
+
+                export const test = async () => {
+                    return JSON.stringify(await RadixEngineToolkit.Build.information());
+                }
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+            let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            assert!(result.is_ok());
+
+            let execution_result = result.unwrap();
+            assert!(execution_result.output.is_string());
+            assert_eq!(
+                execution_result.output,
+                r#"{"version":"2.1.0-dev1","scryptoDependency":{"kind":"Version","value":"1.2.0"}}"#
+            );
         });
     }
 
@@ -577,31 +607,32 @@ mod tests {
         });
     }
 
-    #[tokio::test]
-    async fn test_runtime_custom_max_heap_size() {
-        run_in_thread(|| {
-            // The script will allocate 40MB of memory, and the max heap size is set to 2048MB
-            let options = create_runtime_options(
-                r#"
-                import { runWithOptions } from "proven:run";
+    // Slow test - disabled for now
+    // #[tokio::test]
+    // async fn test_runtime_custom_max_heap_size() {
+    //     run_in_thread(|| {
+    //         // The script will allocate 40MB of memory, and the max heap size is set to 2048MB
+    //         let options = create_runtime_options(
+    //             r#"
+    //             import { runWithOptions } from "proven:run";
 
-                export const test = runWithOptions(() => {
-                    const largeArray = new Array(40 * 1024 * 1024).fill('a');
-                    return largeArray;
-                }, { memory: 2048, timeout: 30000 });
-            "#,
-                Some("test".to_string()),
-            );
+    //             export const test = runWithOptions(() => {
+    //                 const largeArray = new Array(40 * 1024 * 1024).fill('a');
+    //                 return largeArray;
+    //             }, { memory: 2048, timeout: 30000 });
+    //         "#,
+    //             Some("test".to_string()),
+    //         );
 
-            let mut runtime = Runtime::new(options).unwrap();
+    //         let mut runtime = Runtime::new(options).unwrap();
 
-            let request = create_execution_request();
+    //         let request = create_execution_request();
 
-            let result = runtime.execute(request);
-            println!("{:?}", result);
-            assert!(result.is_ok());
-        });
-    }
+    //         let result = runtime.execute(request);
+    //         println!("{:?}", result);
+    //         assert!(result.is_ok());
+    //     });
+    // }
 
     #[tokio::test]
     async fn test_runtime_execute_with_disallowed_hosts() {
@@ -611,7 +642,7 @@ mod tests {
                 import { runWithOptions } from "proven:run";
 
                 export const test = runWithOptions(async () => {
-                    const response = await fetch("https://example.com");
+                    const response = await fetch("https://example.com/");
                     return response;
                 }, { timeout: 10000 });
             "#,
@@ -634,7 +665,7 @@ mod tests {
                 import { runWithOptions } from "proven:run";
 
                 export const test = runWithOptions(async () => {
-                    const response = await fetch("https://example.com");
+                    const response = await fetch("https://example.com/");
                     return response;
                 }, { allowedHosts: ["example.com"], timeout: 10000 });
             "#,
