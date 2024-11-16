@@ -15,6 +15,8 @@ use rustyscript::js_value::Value;
 use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
 use tokio::time::Instant;
 
+static LOCAL_GATEWAY_ORIGIN: &str = "http://127.0.0.1:8081";
+
 #[derive(Clone)]
 pub struct RuntimeOptions<AS: Store2, PS: Store3, NS: Store3> {
     pub application_store: AS,
@@ -130,6 +132,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             .unwrap_or_default();
 
         let allowlist_web_permissions = OriginAllowlistWebPermissions::new();
+        allowlist_web_permissions.allow_origin(LOCAL_GATEWAY_ORIGIN); // Always allow local Radix gateway origin
         allowed_web_origins.iter().for_each(|origin| {
             allowlist_web_permissions.allow_origin(origin);
         });

@@ -3,12 +3,14 @@
 use deno_core::extension;
 
 mod console;
+mod gateway_api_sdk;
 mod kv;
 mod run;
 mod sessions;
 mod sql;
 
 pub use console::*;
+pub use gateway_api_sdk::*;
 pub use kv::*;
 pub use run::*;
 pub use sessions::*;
@@ -19,14 +21,6 @@ extension!(
     esm_entry_point = "proven:openai",
     esm = [dir "vendor/openai",
         "proven:openai" = "index.mjs"
-    ],
-);
-
-extension!(
-    radixdlt_babylon_gateway_api_ext,
-    esm_entry_point = "proven:radixdlt_babylon_gateway_api",
-    esm = [dir "vendor/@radixdlt/babylon-gateway-api-sdk",
-        "proven:radixdlt_babylon_gateway_api" = "index.mjs"
     ],
 );
 
