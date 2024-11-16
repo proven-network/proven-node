@@ -666,7 +666,7 @@ mod tests {
 
                 export const test = runWithOptions(async () => {
                     const response = await fetch("https://example.com/");
-                    return response;
+                    return response.status;
                 }, { allowedOrigins: ["https://example.com"], timeout: 10000 });
             "#,
                 Some("test".to_string()),
@@ -678,6 +678,8 @@ mod tests {
             let result = runtime.execute(request);
             println!("{:?}", result);
             assert!(result.is_ok());
+            let execution_result = result.unwrap();
+            assert_eq!(execution_result.output, 200);
         });
     }
 }
