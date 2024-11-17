@@ -881,7 +881,7 @@ impl Bootstrap {
                 application_store,
                 personal_store,
                 nft_store,
-                "http://127.0.0.1:8081", // Local gateway
+                "http://127.0.0.1:8081".to_string(), // Local gateway
             )
             .await?;
 
