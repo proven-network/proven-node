@@ -43,6 +43,7 @@ fn main() -> Result<(), Error> {
 
     let mut runtime = Runtime::new(RuntimeOptions {
         application_store: MemoryStore::new(),
+        gateway_origin: "https://stokenet.radixdlt.com".to_string(),
         handler_name: Some("handler".to_string()),
         module: user_module.to_string(),
         nft_store: MemoryStore::new(),

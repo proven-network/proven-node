@@ -876,7 +876,13 @@ impl Bootstrap {
 
         let core = Core::new(NewCoreArguments { session_manager });
         let core_handle = core
-            .start(http_server, application_store, personal_store, nft_store)
+            .start(
+                http_server,
+                application_store,
+                personal_store,
+                nft_store,
+                "http://127.0.0.1:8081", // Local gateway
+            )
             .await?;
 
         self.core = Some(core);

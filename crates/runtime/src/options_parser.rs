@@ -18,7 +18,7 @@ pub struct OptionsParser {
 
 impl OptionsParser {
     pub fn new() -> Result<Self, Error> {
-        let runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
+        let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
             timeout: Duration::from_millis(5000),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
@@ -44,6 +44,8 @@ impl OptionsParser {
             },
             ..Default::default()
         })?;
+
+        runtime.put(GatewayDetailsState::default())?;
 
         Ok(Self { runtime })
     }

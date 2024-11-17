@@ -45,6 +45,7 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 /// async fn main() {
 ///     let pool = Pool::new(PoolOptions {
 ///         application_store: MemoryStore::new(),
+///         gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         max_workers: 10,
 ///         nft_store: MemoryStore::new(),
 ///         personal_store: MemoryStore::new(),
@@ -69,6 +70,7 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 /// ```
 pub struct Pool<AS: Store2, PS: Store3, NS: Store3> {
     application_store: AS,
+    gateway_origin: String,
     known_hashes: Arc<Mutex<HashMap<String, PoolRuntimeOptions>>>,
     last_killed: Arc<Mutex<Option<Instant>>>,
     last_used: LastUsedMap,
@@ -86,6 +88,7 @@ pub struct Pool<AS: Store2, PS: Store3, NS: Store3> {
 
 pub struct PoolOptions<AS, PS, NS> {
     pub application_store: AS,
+    pub gateway_origin: String,
     pub max_workers: u32,
     pub nft_store: NS,
     pub personal_store: PS,
@@ -105,6 +108,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
 
         let pool = Arc::new(Self {
             application_store: options.application_store,
+            gateway_origin: options.gateway_origin,
             known_hashes: Arc::new(Mutex::new(HashMap::new())),
             last_killed: Arc::new(Mutex::new(Some(Instant::now()))),
             last_used: Arc::new(Mutex::new(HashMap::new())),
@@ -171,6 +175,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
 
                     match Worker::<AS, PS, NS>::new(RuntimeOptions {
                         application_store: pool.application_store.clone(),
+                        gateway_origin: pool.gateway_origin.clone(),
                         handler_name: runtime_options.handler_name.clone(),
                         module: runtime_options.module.clone(),
                         nft_store: pool.nft_store.clone(),
@@ -288,6 +293,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
 
             let mut worker = Worker::<AS, PS, NS>::new(RuntimeOptions {
                 application_store: self.application_store.clone(),
+                gateway_origin: self.gateway_origin.clone(),
                 handler_name: runtime_options.handler_name.clone(),
                 module: runtime_options.module.clone(),
                 nft_store: self.nft_store.clone(),
@@ -372,6 +378,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
 
                     let mut worker = Worker::<AS, PS, NS>::new(RuntimeOptions {
                         application_store: self.application_store.clone(),
+                        gateway_origin: self.gateway_origin.clone(),
                         handler_name: runtime_options.handler_name.clone(),
                         module: runtime_options.module.clone(),
                         nft_store: self.nft_store.clone(),
@@ -526,6 +533,7 @@ mod tests {
     async fn test_pool_creation() {
         let pool = Pool::new(PoolOptions {
             application_store: MemoryStore::new(),
+            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             max_workers: 10,
             nft_store: MemoryStore::new(),
             personal_store: MemoryStore::new(),
@@ -540,6 +548,7 @@ mod tests {
     async fn test_execute() {
         let pool = Pool::new(PoolOptions {
             application_store: MemoryStore::new(),
+            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             max_workers: 10,
             nft_store: MemoryStore::new(),
             personal_store: MemoryStore::new(),
@@ -566,6 +575,7 @@ mod tests {
     async fn test_execute_prehashed() {
         let pool = Pool::new(PoolOptions {
             application_store: MemoryStore::new(),
+            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             max_workers: 10,
             nft_store: MemoryStore::new(),
             personal_store: MemoryStore::new(),
@@ -598,6 +608,7 @@ mod tests {
     async fn test_queue_request() {
         let pool = Pool::new(PoolOptions {
             application_store: MemoryStore::new(),
+            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             max_workers: 10,
             nft_store: MemoryStore::new(),
             personal_store: MemoryStore::new(),
@@ -626,6 +637,7 @@ mod tests {
     async fn test_kill_idle_worker() {
         let pool = Pool::new(PoolOptions {
             application_store: MemoryStore::new(),
+            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             max_workers: 10,
             nft_store: MemoryStore::new(),
             personal_store: MemoryStore::new(),

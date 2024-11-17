@@ -36,10 +36,12 @@ async fn main() -> Result<()> {
     let network_definition = NetworkDefinition::stokenet();
     let dev_attestor = DevAttestor::new();
 
+    let gateway_origin = "https://stokenet.radixdlt.com".to_string();
+
     let session_manager = SessionManager::new(
         dev_attestor,
         challenge_store,
-        "https://stokenet.radixdlt.com".to_string(),
+        gateway_origin.clone(),
         sessions_store,
         network_definition,
     );
@@ -53,7 +55,13 @@ async fn main() -> Result<()> {
     let personal_store = FsStore::new("/tmp/proven/personal".into());
     let nft_store = FsStore::new("/tmp/proven/nft".into());
     let core_handle = core
-        .start(http_server, application_store, personal_store, nft_store)
+        .start(
+            http_server,
+            application_store,
+            personal_store,
+            nft_store,
+            gateway_origin,
+        )
         .await?;
 
     tokio::select! {

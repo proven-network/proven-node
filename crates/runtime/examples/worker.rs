@@ -30,6 +30,7 @@ async fn main() -> Result<(), Error> {
     let worker = Arc::new(Mutex::new(
         Worker::new(RuntimeOptions {
             application_store: MemoryStore::new(),
+            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name: Some("handler".to_string()),
             module,
             nft_store: MemoryStore::new(),

@@ -15,6 +15,7 @@ static EXECUTIONS: usize = 100;
 async fn main() -> Result<(), Error> {
     let pool = Pool::new(PoolOptions {
         application_store: MemoryStore::new(),
+        gateway_origin: "https://stokenet.radixdlt.com".to_string(),
         max_workers: 100,
         nft_store: MemoryStore::new(),
         personal_store: MemoryStore::new(),

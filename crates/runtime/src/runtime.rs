@@ -15,11 +15,10 @@ use rustyscript::js_value::Value;
 use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
 use tokio::time::Instant;
 
-static LOCAL_GATEWAY_ORIGIN: &str = "http://127.0.0.1:8081";
-
 #[derive(Clone)]
 pub struct RuntimeOptions<AS: Store2, PS: Store3, NS: Store3> {
     pub application_store: AS,
+    pub gateway_origin: String,
     pub handler_name: Option<String>,
     pub module: String,
     pub nft_store: NS,
@@ -50,6 +49,7 @@ pub struct Runtime<AS: Store2, PS: Store3, NS: Store3> {
 ///
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_store: MemoryStore::new(),
+///     gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///     handler_name: Some("handler".to_string()),
 ///     module: "export const handler = (a, b) => a + b;".to_string(),
 ///     nft_store: MemoryStore::new(),
@@ -132,7 +132,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             .unwrap_or_default();
 
         let allowlist_web_permissions = OriginAllowlistWebPermissions::new();
-        allowlist_web_permissions.allow_origin(LOCAL_GATEWAY_ORIGIN); // Always allow local Radix gateway origin
+        allowlist_web_permissions.allow_origin(&options.gateway_origin); // Always allow Radix gateway origin
         allowed_web_origins.iter().for_each(|origin| {
             allowlist_web_permissions.allow_origin(origin);
         });
@@ -171,6 +171,12 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 ..Default::default()
             },
             ..Default::default()
+        })?;
+
+        // Set the gateway origin and id for the gateway API SDK extension
+        runtime.put(GatewayDetailsState {
+            gateway_origin: options.gateway_origin.clone(),
+            network_id: 2, // TODO: Add to options
         })?;
 
         // In case there are any top-level console.* calls in the module
@@ -321,6 +327,7 @@ mod tests {
     ) -> RuntimeOptions<MemoryStore, MemoryStore, MemoryStore> {
         RuntimeOptions {
             application_store: MemoryStore::new(),
+            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name,
             module: script.to_string(),
             nft_store: MemoryStore::new(),

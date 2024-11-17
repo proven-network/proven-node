@@ -39,6 +39,7 @@ type WorkerRequest = (
 /// async fn main() {
 ///     let mut worker = Worker::new(RuntimeOptions {
 ///         application_store: MemoryStore::new(),
+///         gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         handler_name: Some("handler".to_string()),
 ///         module: "export const handler = (a, b) => a + b;".to_string(),
 ///         nft_store: MemoryStore::new(),
@@ -136,6 +137,7 @@ mod tests {
     ) -> RuntimeOptions<MemoryStore, MemoryStore, MemoryStore> {
         RuntimeOptions {
             application_store: MemoryStore::new(),
+            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name,
             module: script.to_string(),
             nft_store: MemoryStore::new(),

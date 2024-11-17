@@ -44,6 +44,7 @@ impl<SM: SessionManagement + 'static> Core<SM> {
         application_store: AS,
         personal_store: PS,
         nft_store: NS,
+        gateway_origin: String,
     ) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
@@ -51,6 +52,7 @@ impl<SM: SessionManagement + 'static> Core<SM> {
 
         let pool = Pool::new(PoolOptions {
             application_store,
+            gateway_origin,
             max_workers: 100,
             nft_store,
             personal_store,
