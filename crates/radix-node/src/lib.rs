@@ -87,7 +87,7 @@ impl RadixNode {
 
         let server_task = self.task_tracker.spawn(async move {
             // Start the radix-node process
-            let mut cmd = Command::new("/bin/babylon-node/core-v1.2.4/bin/core")
+            let mut cmd = Command::new("/bin/babylon-node/core-v1.3.0-rc3/bin/core")
                 .env("RADIX_NODE_KEYSTORE_PASSWORD", KEYSTORE_PASS)
                 .env("JAVA_OPTS", JAVA_OPTS.join(" "))
                 .env("LD_PRELOAD", "/bin/babylon-node/libcorerust.so")
@@ -196,7 +196,7 @@ impl RadixNode {
     }
 
     async fn generate_node_key(&self) -> Result<()> {
-        let output = Command::new("/bin/babylon-node/core-v1.2.4/bin/keygen")
+        let output = Command::new("/bin/babylon-node/core-v1.3.0-rc3/bin/keygen")
             .arg("-k")
             .arg(KEYSTORE_PATH)
             .arg("-p")
