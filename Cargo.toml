@@ -146,6 +146,7 @@ bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
 chrono = { version = "0.4.26", features = ["serde"] }
+ciborium = "0.2"
 cidr = { version = "0.3.0", features = ["serde"] }
 clap = { version = "4.5.21", features = ["derive"] }
 color-print = "0.3.5"
@@ -325,7 +326,6 @@ scopeguard = "1.2.0"
 sec1 = "0.7"
 serde = { version = "1.0.215", features = ["derive"] }
 serde_bytes = "0.11"
-serde_cbor = "0.11.2"
 serde_json = "1.0.133"
 sha1 = { version = "0.10.6", features = ["oid"] }
 sha2 = { version = "0.10.8", features = ["oid"] }

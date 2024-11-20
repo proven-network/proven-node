@@ -45,7 +45,8 @@ impl Attestor for DevAttestor {
             public_key: params.public_key.unwrap_or_default(),
         };
 
-        let payload = serde_cbor::to_vec(&attestation)?;
+        let mut payload = Vec::new();
+        ciborium::ser::into_writer(&attestation, &mut payload).map_err(|_| Error::Cbor)?;
 
         let sign1 = coset::CoseSign1Builder::new()
             .payload(payload)

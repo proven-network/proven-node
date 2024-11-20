@@ -115,8 +115,8 @@ impl<AS: Store2, PS: Store3, NS: Store3> RpcHandler<AS, PS, NS> {
             })
             .map_err(|_| RpcHandlerError::SignatureInvalid)?;
 
-        let method: Request =
-            serde_cbor::from_slice(payload).map_err(|_| RpcHandlerError::PayloadInvalid)?;
+        let method: Request = ciborium::de::from_reader(payload.as_slice())
+            .map_err(|_| RpcHandlerError::PayloadInvalid)?;
 
         let response = match method {
             Request::WhoAmI => Ok(Response::WhoAmI(WhoAmIResponse {
@@ -166,7 +166,9 @@ impl<AS: Store2, PS: Store3, NS: Store3> RpcHandler<AS, PS, NS> {
             Request::Watch(_) => Ok(Response::Ok),
         }?;
 
-        let payload = serde_cbor::to_vec(&response).map_err(|_| RpcHandlerError::PayloadInvalid)?;
+        let mut payload = Vec::new();
+        ciborium::ser::into_writer(&response, &mut payload)
+            .map_err(|_| RpcHandlerError::PayloadInvalid)?;
 
         let sign1_builder = match seq {
             None => coset::CoseSign1Builder::new(),

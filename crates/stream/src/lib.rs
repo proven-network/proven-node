@@ -4,6 +4,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 
 #[async_trait]
 pub trait Stream<HandlerError>: Clone + Send + Sync + 'static
@@ -12,12 +13,12 @@ where
 {
     type Error: Debug + Error + Send + Sync;
 
-    async fn request(&self, subject: String, data: Vec<u8>) -> Result<Vec<u8>, Self::Error>;
+    async fn request(&self, subject: String, data: Bytes) -> Result<Bytes, Self::Error>;
 
     async fn handle(
         &self,
         subject: String,
-        handler: impl Fn(Vec<u8>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, HandlerError>> + Send>>
+        handler: impl Fn(Bytes) -> Pin<Box<dyn Future<Output = Result<Bytes, HandlerError>> + Send>>
             + Send
             + Sync,
     ) -> Result<(), Self::Error>;

@@ -13,6 +13,7 @@ use async_nats::jetstream::stream::Config as StreamConfig;
 use async_nats::jetstream::Context as JetStreamContext;
 use async_nats::Client;
 use async_trait::async_trait;
+use bytes::Bytes;
 use futures::StreamExt;
 use proven_stream::{Stream, Stream1, Stream2, Stream3};
 use serde::Deserialize;
@@ -146,7 +147,7 @@ where
 {
     type Error = Error<HE>;
 
-    async fn request(&self, subject: String, data: Vec<u8>) -> Result<Vec<u8>, Self::Error> {
+    async fn request(&self, subject: String, data: Bytes) -> Result<Bytes, Self::Error> {
         // Ensure request stream exists
         self.get_request_stream().await?;
 
@@ -159,7 +160,7 @@ where
         let response = loop {
             match self
                 .client
-                .request(self.get_request_stream_name(), data.clone().into())
+                .request(self.get_request_stream_name(), data.clone())
                 .await
             {
                 Ok(response) => break response,
@@ -188,7 +189,7 @@ where
                         .delete_message(response.seq)
                         .await
                         .map_err(|e| Error::ReplyDelete(e.kind()))?;
-                    return Ok(message.payload.to_vec());
+                    return Ok(message.payload);
                 }
                 Err(e) => {
                     if e.kind() == async_nats::jetstream::stream::DirectGetErrorKind::NotFound {
@@ -206,9 +207,7 @@ where
     async fn handle(
         &self,
         subject: String,
-        handler: impl Fn(Vec<u8>) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, HE>> + Send>>
-            + Send
-            + Sync,
+        handler: impl Fn(Bytes) -> Pin<Box<dyn Future<Output = Result<Bytes, HE>> + Send>> + Send + Sync,
     ) -> Result<(), Self::Error> {
         println!(
             "Subscribing to {} {}",
@@ -243,7 +242,7 @@ where
             // Grab message seq number
             let seq = message.info().map_err(|_| Error::NoInfo)?.stream_sequence;
 
-            let response = handler(message.payload.to_vec())
+            let response = handler(message.payload.clone())
                 .await
                 .map_err(|e| Error::Handler(e))?;
 
@@ -255,7 +254,7 @@ where
             headers.insert("Nats-Expected-Last-Sequence", (seq - 1).to_string());
 
             self.client
-                .publish_with_headers(self.get_reply_stream_name(), headers, response.into())
+                .publish_with_headers(self.get_reply_stream_name(), headers, response)
                 .await
                 .map_err(|e| Error::ReplyPublish(e.kind()))?;
 

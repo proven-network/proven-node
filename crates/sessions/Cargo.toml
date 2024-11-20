@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
+ciborium = { workspace = true }
 derive_more = { workspace = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
@@ -15,5 +16,4 @@ proven-store = { workspace = true }
 radix-common = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
-serde_cbor = { workspace = true }
 tracing = { workspace = true }

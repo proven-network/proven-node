@@ -179,7 +179,8 @@ where
 
         info!("session: {:?}", session);
 
-        let session_cbor = serde_cbor::to_vec(&session).unwrap();
+        let mut session_cbor = Vec::new();
+        ciborium::ser::into_writer(&session, &mut session_cbor).map_err(|_| Error::Cbor)?;
 
         info!("cbored");
         self.sessions_store
@@ -209,7 +210,8 @@ where
         match self.sessions_store.get(session_id.clone()).await {
             Ok(session_opt) => match session_opt {
                 Some(session_cbor) => {
-                    let session: Session = serde_cbor::from_slice(&session_cbor).unwrap();
+                    let session: Session = ciborium::de::from_reader(session_cbor.as_ref())
+                        .map_err(|_| Error::Cbor)?;
                     Ok(Some(session))
                 }
                 None => Ok(None),

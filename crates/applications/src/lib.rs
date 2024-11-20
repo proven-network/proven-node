@@ -67,7 +67,9 @@ where
             dapp_definition_addresses: vec![],
         };
 
-        let application_cbor = serde_cbor::to_vec(&application).unwrap();
+        let mut application_cbor = Vec::new();
+        ciborium::ser::into_writer(&application, &mut application_cbor)
+            .map_err(|_| Error::ApplicationStoreError)?;
         self.applications_store
             .put(
                 application.application_id.clone(),
@@ -88,7 +90,8 @@ where
             Ok(application_opt) => match application_opt {
                 Some(application_cbor) => {
                     let application: Application =
-                        serde_cbor::from_slice(&application_cbor).unwrap();
+                        ciborium::de::from_reader(application_cbor.as_ref())
+                            .map_err(|_| Error::ApplicationStoreError)?;
                     Ok(Some(application))
                 }
                 None => Ok(None),

@@ -13,12 +13,13 @@ fn main() {
     ];
 
     for request in requests {
-        let cbor_bytes = serde_cbor::to_vec(&request).unwrap();
+        let mut cbor_bytes = Vec::new();
+        ciborium::ser::into_writer(&request, &mut cbor_bytes).unwrap();
         let hex_string = hex::encode(&cbor_bytes);
         println!("{:?}: {:?}", request, hex_string);
 
         // Check that the deserialized value is the same as the original value
-        let deserialized: Request = serde_cbor::from_slice(&cbor_bytes).unwrap();
+        let deserialized: Request = ciborium::de::from_reader(&cbor_bytes[..]).unwrap();
         assert_eq!(request, deserialized);
     }
 }

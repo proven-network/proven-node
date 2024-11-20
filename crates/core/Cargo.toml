@@ -8,6 +8,7 @@ axum = { workspace = true }
 axum-extra = { workspace = true }
 axum_typed_multipart = { workspace = true }
 bytes = { workspace = true }
+ciborium = { workspace = true }
 coset = { workspace = true }
 derive_more = { workspace = true }
 ed25519-dalek = { workspace = true }
@@ -25,7 +26,6 @@ radix-common = { workspace = true }
 rand = { workspace = true }
 ring = { workspace = true }
 serde = { workspace = true }
-serde_cbor = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

@@ -45,7 +45,9 @@ pub struct Connection<S: Stream<Error>> {
 impl<S: Stream<Error>> Connection<S> {
     pub async fn execute(&self, sql: String, params: Vec<SqlParam>) -> Result<u64> {
         let request = Request::Execute(sql, params);
-        let bytes = serde_cbor::to_vec(&request).unwrap();
+        let mut bytes = Vec::new();
+        ciborium::ser::into_writer(&request, &mut bytes).map_err(|_| Error::Cbor)?;
+        let bytes = Bytes::from(bytes);
 
         let raw_response = self
             .stream
@@ -53,7 +55,8 @@ impl<S: Stream<Error>> Connection<S> {
             .await
             .unwrap();
 
-        let response: Response = serde_cbor::from_slice(&raw_response)?;
+        let response: Response =
+            ciborium::de::from_reader(raw_response.as_ref()).map_err(|_| Error::Cbor)?;
         match response {
             Response::Execute(affected_rows) => Ok(affected_rows),
             _ => unreachable!(),
@@ -62,7 +65,9 @@ impl<S: Stream<Error>> Connection<S> {
 
     pub async fn query(&self, sql: String, params: Vec<SqlParam>) -> Result<Rows> {
         let request = Request::Query(sql, params);
-        let bytes = serde_cbor::to_vec(&request).unwrap();
+        let mut bytes = Vec::new();
+        ciborium::ser::into_writer(&request, &mut bytes).map_err(|_| Error::Cbor)?;
+        let bytes = Bytes::from(bytes);
 
         let raw_response = self
             .stream
@@ -70,7 +75,8 @@ impl<S: Stream<Error>> Connection<S> {
             .await
             .unwrap();
 
-        let response: Response = serde_cbor::from_slice(&raw_response)?;
+        let response: Response =
+            ciborium::de::from_reader(raw_response.as_ref()).map_err(|_| Error::Cbor)?;
         match response {
             Response::Query(rows) => Ok(rows),
             _ => unreachable!(),
@@ -135,17 +141,25 @@ impl<LS: Store1, S: Stream1<Error>> SqlManager<LS, S> {
 
             async move {
                 scoped_stream
-                    .handle(db_name, move |bytes: Vec<u8>| {
+                    .handle(db_name, move |bytes: Bytes| {
                         let database = database.clone();
                         Box::pin(async move {
-                            let request: Request = serde_cbor::from_slice(&bytes)?;
+                            let request: Request = ciborium::de::from_reader(bytes.as_ref())
+                                .map_err(|_| Error::Cbor)?;
                             println!("Request: {:?}", request);
 
                             match request {
                                 Request::Execute(sql, params) => {
                                     let affected_rows = database.execute(&sql, params).await?;
 
-                                    Ok(serde_cbor::to_vec(&Response::Execute(affected_rows))?)
+                                    let mut response_bytes = Vec::new();
+                                    ciborium::ser::into_writer(
+                                        &Response::Execute(affected_rows),
+                                        &mut response_bytes,
+                                    )
+                                    .map_err(|_| Error::Cbor)?;
+                                    let response_bytes = Bytes::from(response_bytes);
+                                    Ok(response_bytes)
                                 }
                                 Request::Query(sql, params) => {
                                     let mut libsql_rows = database.query(&sql, params).await?;
@@ -186,7 +200,14 @@ impl<LS: Store1, S: Stream1<Error>> SqlManager<LS, S> {
                                         rows: rows_vec,
                                     };
 
-                                    Ok(serde_cbor::to_vec(&Response::Query(final_rows))?)
+                                    let mut response_bytes = Vec::new();
+                                    ciborium::ser::into_writer(
+                                        &Response::Query(final_rows),
+                                        &mut response_bytes,
+                                    )
+                                    .map_err(|_| Error::Cbor)?;
+                                    let response_bytes = Bytes::from(response_bytes);
+                                    Ok(response_bytes)
                                 }
                             }
                         })

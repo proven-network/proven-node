@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 async-nats = { workspace = true }
 async-trait = { workspace = true }
+bytes = { workspace = true }
 derive_more = { workspace = true }
 futures = { workspace = true }
 proven-stream = { workspace = true }

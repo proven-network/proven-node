@@ -5,12 +5,12 @@ edition = "2021"
 
 [dependencies]
 bytes = { workspace = true }
+ciborium = { workspace = true }
 derive_more = { workspace = true }
 libsql = { workspace = true }
 proven-store = { workspace = true }
 proven-stream = { workspace = true }
 serde = { workspace = true }
-serde_cbor = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
