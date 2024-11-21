@@ -5,12 +5,12 @@ edition = "2021"
 
 [dependencies]
 bech32 = { workspace = true }
-derive_more = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 proven-radix-gateway-sdk = { workspace = true }
 radix-common = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]

@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-derive_more = { workspace = true }
 httpclient = { workspace = true }
 nix = { workspace = true }
 radix-common = { workspace = true }
 regex = { workspace = true }
 strip-ansi-escapes = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }

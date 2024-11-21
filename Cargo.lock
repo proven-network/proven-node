@@ -6677,10 +6677,10 @@ dependencies = [
 name = "proven-radix-aggregator"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "nix 0.27.1",
  "regex",
  "serde_json",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "tracing",
@@ -6690,10 +6690,10 @@ dependencies = [
 name = "proven-radix-gateway"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "nix 0.27.1",
  "regex",
  "serde_json",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "tracing",
@@ -6704,13 +6704,13 @@ name = "proven-radix-gateway-sdk"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "derive_more",
  "futures",
  "http 1.1.0",
  "httpclient",
  "lazy_static",
  "serde",
  "serde_json",
+ "thiserror 2.0.3",
  "tokio",
 ]
 
@@ -6718,12 +6718,12 @@ dependencies = [
 name = "proven-radix-node"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "httpclient",
  "nix 0.27.1",
  "radix-common",
  "regex",
  "strip-ansi-escapes",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "tracing",
@@ -6734,12 +6734,12 @@ name = "proven-radix-rola"
 version = "0.1.0"
 dependencies = [
  "bech32 0.11.0",
- "derive_more",
  "futures",
  "hex",
  "proven-radix-gateway-sdk",
  "radix-common",
  "serde",
+ "thiserror 2.0.3",
  "tokio",
  "tracing",
 ]

@@ -256,7 +256,7 @@ impl RadixNode {
 
         loop {
             if server_task.is_finished() {
-                return Err(Error::Crashed);
+                return Err(Error::ExitBeforeReady);
             }
 
             info!("checking if radix-node is ready...");
