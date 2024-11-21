@@ -24,7 +24,6 @@ ContentInfo ::= SEQUENCE {
   contentType ContentType,
   content [0] EXPLICIT ANY DEFINED BY contentType }
 */
-
 #[derive(BerSequence, Debug)]
 pub struct ContentInfo<'a> {
     pub content_type: Oid<'a>,
@@ -94,7 +93,6 @@ EnvelopedData ::= SEQUENCE {
 
 RecipientInfos ::= SET SIZE (1..MAX) OF RecipientInfo
 */
-
 #[derive(BerSequence, Debug)]
 pub struct EnvelopedData<'a> {
     pub version: Integer<'a>,
@@ -139,7 +137,6 @@ OriginatorInfo ::= SEQUENCE {
   certs [0] IMPLICIT CertificateSet OPTIONAL,
   crls [1] IMPLICIT RevocationInfoChoices OPTIONAL }
 */
-
 #[derive(BerSequence, Debug)]
 pub struct OriginatorInfo<'a> {
     #[optional]
@@ -167,7 +164,6 @@ KeyTransRecipientInfo ::= SEQUENCE {
   keyEncryptionAlgorithm KeyEncryptionAlgorithmIdentifier,
   encryptedKey EncryptedKey }
 */
-
 #[derive(BerSequence, Debug)]
 pub struct KeyTransRecipientInfo<'a> {
     pub version: Integer<'a>,
@@ -219,7 +215,6 @@ AlgorithmIdentifier{ALGORITHM-TYPE, ALGORITHM-TYPE:AlgorithmSet} ::=
 
 EncryptedKey ::= OCTET STRING
 */
-
 #[derive(BerSequence, Debug)]
 pub struct AlgorithmIdentifier<'a> {
     pub algorithm: Oid<'a>,
@@ -235,7 +230,6 @@ RSAES-OAEP-params  ::=  SEQUENCE  {
   pSourceFunc [2] AlgorithmIdentifier DEFAULT
                     pSpecifiedEmptyIdentifier  }
 */
-
 #[derive(Debug)]
 pub struct RsaesOaepParameters<'a> {
     hash_alg: Option<AlgorithmIdentifier<'a>>,
@@ -323,7 +317,6 @@ EncryptedContentInfo ::= SEQUENCE {
   contentEncryptionAlgorithm ContentEncryptionAlgorithmIdentifier,
   encryptedContent [0] IMPLICIT EncryptedContent OPTIONAL }
 */
-
 #[derive(BerSequence, Debug)]
 pub struct EncryptedContentInfo<'a> {
     pub content_type: Oid<'a>,
@@ -404,12 +397,12 @@ impl EncryptedContentInfo<'_> {
         }
     }
 }
+
 /*
 Attribute ::= SEQUENCE {
   attrType OBJECT IDENTIFIER,
   attrValues SET OF AttributeValue }
 */
-
 #[derive(BerSequence, Debug)]
 pub struct Attribute<'a> {
     pub attr_type: Oid<'a>,

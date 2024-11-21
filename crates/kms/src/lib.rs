@@ -8,6 +8,7 @@ pub use error::{Error, Result};
 use aws_config::Region;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::{KeyEncryptionMechanism, RecipientInfo};
+use aws_sdk_kms::Client;
 use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor};
 use proven_attestation_nsm::NsmAttestor;
@@ -16,7 +17,7 @@ use rsa::pkcs8::EncodePublicKey;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 
 pub struct Kms {
-    client: aws_sdk_kms::Client,
+    client: Client,
     key_id: String,
     nsm_attestor: NsmAttestor,
 }
@@ -29,7 +30,7 @@ impl Kms {
             .await;
 
         Self {
-            client: aws_sdk_kms::Client::new(&config),
+            client: Client::new(&config),
             key_id,
             nsm_attestor: NsmAttestor::new(),
         }

@@ -1,39 +1,24 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[from]
-    Anyhow(anyhow::Error),
+    #[error(transparent)]
+    Anyhow(#[from] anyhow::Error),
 
-    #[from]
-    Io(std::io::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 
-    #[from]
-    Kms(aws_sdk_kms::Error),
+    #[error(transparent)]
+    Kms(#[from] aws_sdk_kms::Error),
 
-    #[from]
-    Nsm(proven_attestation_nsm::Error),
+    #[error(transparent)]
+    Nsm(#[from] proven_attestation_nsm::Error),
 
-    #[from]
-    Rsa(rsa::errors::Error),
+    #[error(transparent)]
+    Rsa(#[from] rsa::errors::Error),
 
-    #[from]
-    Spki(rsa::pkcs8::spki::Error),
+    #[error(transparent)]
+    Spki(#[from] rsa::pkcs8::spki::Error),
 }
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::Anyhow(e) => write!(f, "{}", e),
-            Error::Io(e) => write!(f, "{}", e),
-            Error::Kms(e) => write!(f, "{}", e),
-            Error::Nsm(e) => write!(f, "{}", e),
-            Error::Rsa(e) => write!(f, "{}", e),
-            Error::Spki(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
