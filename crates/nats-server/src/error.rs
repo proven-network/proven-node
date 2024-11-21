@@ -1,32 +1,24 @@
-use async_nats::ConnectError as ClientConnectError;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("nats server already started")]
     AlreadyStarted,
-    ClientFailedToConnect(ClientConnectError),
-    ConfigWrite(std::io::Error),
-    OutputParse,
+
+    #[error("failed to connect to nats server: {0}")]
+    ClientFailedToConnect(#[from] async_nats::ConnectError),
+
+    #[error("failed to write nats config: {0}")]
+    ConfigWrite(#[from] std::io::Error),
+
+    #[error("nats server exited with non-zero status: {0}")]
     NonZeroExitCode(std::process::ExitStatus),
+
+    #[error("failed to parse nats server output")]
+    OutputParse,
+
+    #[error("failed to spawn nats server: {0}")]
     Spawn(std::io::Error),
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::AlreadyStarted => write!(f, "nats server already started"),
-            Error::ConfigWrite(e) => write!(f, "failed to write nats config: {}", e),
-            Error::ClientFailedToConnect(e) => {
-                write!(f, "failed to connect to nats server: {}", e)
-            }
-            Error::NonZeroExitCode(status) => {
-                write!(f, "nats server exited with non-zero status: {}", status)
-            }
-            Error::OutputParse => write!(f, "failed to parse nats server output"),
-            Error::Spawn(e) => write!(f, "failed to spawn nats server: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
