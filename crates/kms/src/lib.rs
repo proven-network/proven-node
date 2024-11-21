@@ -56,7 +56,7 @@ impl Kms {
             .nsm_attestor
             .attest(AttestationParams {
                 nonce: None,
-                public_key: Some(public_key.to_public_key_der()?.to_vec()),
+                public_key: Some(Bytes::from(public_key.to_public_key_der()?.to_vec())),
                 user_data: None,
             })
             .await?;

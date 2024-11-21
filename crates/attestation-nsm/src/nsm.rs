@@ -38,7 +38,7 @@ impl Nsm {
 
     fn process_request(&self, req: Request) -> Result<Response> {
         match nsm_process_request(self.fd, req) {
-            Response::Error(err) => Err(Error::RequestError(err)),
+            Response::Error(err) => Err(err.into()),
             resp => Ok(resp),
         }
     }

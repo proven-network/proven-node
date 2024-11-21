@@ -6,6 +6,7 @@ pub use error::{Error, Result};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor};
 use tokio::sync::Mutex;
 
@@ -26,12 +27,12 @@ impl NsmAttestor {
 impl Attestor for NsmAttestor {
     type AE = Error;
 
-    async fn attest(&self, params: AttestationParams) -> Result<Vec<u8>> {
-        self.nsm.lock().await.attestation(params)
+    async fn attest(&self, params: AttestationParams) -> Result<Bytes> {
+        Ok(Bytes::from(self.nsm.lock().await.attestation(params)?))
     }
 
-    async fn secure_random(&self) -> Result<Vec<u8>> {
-        self.nsm.lock().await.get_random()
+    async fn secure_random(&self) -> Result<Bytes> {
+        Ok(Bytes::from(self.nsm.lock().await.get_random()?))
     }
 }
 

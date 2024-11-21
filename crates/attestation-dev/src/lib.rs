@@ -1,5 +1,6 @@
 mod error;
 
+use bytes::Bytes;
 use coset::CborSerializable;
 use error::{Error, Result};
 
@@ -21,22 +22,23 @@ impl DevAttestor {
 
 #[derive(Clone, Debug, Default, Serialize)]
 struct Attestation {
-    pcrs: BTreeMap<u8, Vec<u8>>,
-    nonce: Vec<u8>,
-    user_data: Vec<u8>,
-    public_key: Vec<u8>,
+    pcrs: BTreeMap<u8, Bytes>,
+    nonce: Bytes,
+    user_data: Bytes,
+    public_key: Bytes,
 }
 
 #[async_trait]
 impl Attestor for DevAttestor {
     type AE = Error;
 
-    async fn attest(&self, params: AttestationParams) -> Result<Vec<u8>> {
+    async fn attest(&self, params: AttestationParams) -> Result<Bytes> {
         // use zerod pcrs in dev mode
-        let mut pcrs = BTreeMap::new();
-        for i in 0..32 {
-            pcrs.insert(i, vec![0; 32]);
+        let mut pcrs: BTreeMap<u8, Bytes> = BTreeMap::new();
+        for i in 0..4 {
+            pcrs.insert(i, Bytes::from(vec![0; 32]));
         }
+        pcrs.insert(8, Bytes::from(vec![0; 32]));
 
         let attestation = Attestation {
             pcrs,
@@ -53,15 +55,25 @@ impl Attestor for DevAttestor {
             .create_signature(b"", |_| vec![0; 64])
             .build();
 
-        let attestation_document = sign1.to_vec()?;
+        let attestation_document = Bytes::from(sign1.to_vec()?);
 
         Ok(attestation_document)
     }
 
-    async fn secure_random(&self) -> Result<Vec<u8>> {
+    async fn secure_random(&self) -> Result<Bytes> {
         let mut rng = rand::rngs::OsRng;
         let mut random = vec![0; 32];
         rng.fill_bytes(&mut random);
-        Ok(random)
+        Ok(Bytes::from(random))
+    }
+}
+
+impl TryInto<Bytes> for Attestation {
+    type Error = Error;
+
+    fn try_into(self) -> Result<Bytes> {
+        let mut payload = Vec::new();
+        ciborium::ser::into_writer(&self, &mut payload).map_err(|_| Error::Cbor)?;
+        Ok(Bytes::from(payload))
     }
 }

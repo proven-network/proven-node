@@ -88,7 +88,7 @@ pub async fn create_session_router<T: SessionManagement + 'static>(session_manag
                     match session_manager
                         .create_session_with_attestation(
                             verifying_key,
-                            data.nonce.to_vec(),
+                            data.nonce.clone(),
                             signed_challenges,
                             origin,
                             data.dapp_definition_address.clone(),
@@ -97,8 +97,7 @@ pub async fn create_session_router<T: SessionManagement + 'static>(session_manag
                         .await
                     {
                         Ok(attestation_document) => {
-                            let bytes = bytes::Bytes::from(attestation_document);
-                            let body = http_body_util::Full::new(bytes);
+                            let body = http_body_util::Full::new(attestation_document);
                             Response::builder().body(body).unwrap()
                         }
                         Err(e) => {

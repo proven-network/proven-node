@@ -470,7 +470,7 @@ dependencies = [
 [[package]]
 name = "aws-nitro-enclaves-nsm-api"
 version = "0.4.0"
-source = "git+https://github.com/flightofthefox/aws-nitro-enclaves-nsm-api?branch=main#d40b05c7a6e95ff0322a49aa867e8590fe22243b"
+source = "git+https://github.com/flightofthefox/aws-nitro-enclaves-nsm-api?branch=main#c382e73a99c9f539fdd6818ad1dc1d97bb36ca7e"
 dependencies = [
  "ciborium",
  "libc",
@@ -6355,6 +6355,7 @@ name = "proven-attestation"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytes",
 ]
 
 [[package]]
@@ -6362,12 +6363,13 @@ name = "proven-attestation-dev"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytes",
  "ciborium",
  "coset",
- "derive_more",
  "proven-attestation",
  "rand 0.8.5",
  "serde",
+ "thiserror 2.0.3",
 ]
 
 [[package]]
@@ -6376,8 +6378,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "aws-nitro-enclaves-nsm-api",
+ "bytes",
  "proven-attestation",
  "serde_bytes",
+ "thiserror 2.0.3",
  "tokio",
 ]
 

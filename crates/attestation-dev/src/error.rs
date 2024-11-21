@@ -1,22 +1,12 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("CBOR error")]
     Cbor,
 
-    #[from]
-    Cose(coset::CoseError),
+    #[error(transparent)]
+    Cose(#[from] coset::CoseError),
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::Cbor => write!(f, "CBOR error"),
-            Error::Cose(e) => write!(f, "COSE error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

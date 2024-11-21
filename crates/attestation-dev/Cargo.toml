@@ -5,9 +5,10 @@ edition = "2021"
 
 [dependencies]
 async-trait = { workspace = true }
+bytes = { workspace = true }
 ciborium = { workspace = true }
 coset = { workspace = true }
-derive_more = { workspace = true }
 proven-attestation = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }

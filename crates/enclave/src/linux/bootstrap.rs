@@ -554,10 +554,10 @@ impl Bootstrap {
 
     async fn seed_entropy(&self) -> Result<()> {
         let secured_random_bytes = self.nsm.secure_random().await?;
-        let mut rng = std::fs::OpenOptions::new()
+        let mut dev_random = std::fs::OpenOptions::new()
             .write(true)
             .open("/dev/random")?;
-        std::io::Write::write_all(&mut rng, &secured_random_bytes)?;
+        std::io::Write::write_all(&mut dev_random, secured_random_bytes.as_ref())?;
 
         info!("entropy seeded");
 

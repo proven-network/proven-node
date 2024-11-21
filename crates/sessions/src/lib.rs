@@ -35,12 +35,12 @@ pub trait SessionManagement: Clone + Send + Sync {
     async fn create_session_with_attestation(
         &self,
         verifying_key: VerifyingKey,
-        nonce: Vec<u8>,
+        nonce: Bytes,
         signed_challenges: Vec<SignedChallenge>,
         origin: String,
         dapp_definition_address: String,
         application_name: Option<String>,
-    ) -> Result<Vec<u8>>;
+    ) -> Result<Bytes>;
 
     async fn get_session(&self, session_id: String) -> Result<Option<Session>>;
 }
@@ -99,12 +99,12 @@ where
     async fn create_session_with_attestation(
         &self,
         verifying_key: VerifyingKey,
-        nonce: Vec<u8>,
+        nonce: Bytes,
         signed_challenges: Vec<SignedChallenge>,
         origin: String,
         dapp_definition_address: String,
         application_name: Option<String>,
-    ) -> Result<Vec<u8>> {
+    ) -> Result<Bytes> {
         let rola = Rola::new(
             self.network_definition.clone(),
             self.gateway_origin.clone(),
@@ -183,8 +183,8 @@ where
             .attestor
             .attest(AttestationParams {
                 nonce: Some(nonce),
-                user_data: Some(session_id_bytes.to_vec()),
-                public_key: Some(server_public_key.to_bytes().to_vec()),
+                user_data: Some(Bytes::from(session_id_bytes.to_vec())),
+                public_key: Some(Bytes::from(server_public_key.to_bytes().to_vec())),
             })
             .await
         {

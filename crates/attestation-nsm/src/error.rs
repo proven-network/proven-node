@@ -1,20 +1,50 @@
 use aws_nitro_enclaves_nsm_api::api::ErrorCode;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("Invalid argument")]
+    InvalidArgument,
+
+    #[error("PCR index out of bounds")]
+    InvalidIndex,
+
+    #[error("Response does not match request")]
+    InvalidResponse,
+
+    #[error("PCR is read-only")]
+    ReadOnlyIndex,
+
+    #[error("Missing capabilities")]
+    InvalidOperation,
+
+    #[error("Output buffer too small")]
+    BufferTooSmall,
+
+    #[error("Input too large")]
+    InputTooLarge,
+
+    #[error("Internal NSM error")]
+    InternalError,
+
+    #[error("Unexpected response type from NSM")]
     UnexpectedResponse,
-    RequestError(ErrorCode),
 }
 
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::UnexpectedResponse => write!(f, "unexpected response from nsm"),
-            Error::RequestError(e) => write!(f, "nsm request error: {:?}", e),
+impl From<ErrorCode> for Error {
+    fn from(code: ErrorCode) -> Self {
+        match code {
+            ErrorCode::Success => unreachable!("Success is not an error"),
+            ErrorCode::InvalidArgument => Error::InvalidArgument,
+            ErrorCode::InvalidIndex => Error::InvalidIndex,
+            ErrorCode::InvalidResponse => Error::InvalidResponse,
+            ErrorCode::ReadOnlyIndex => Error::ReadOnlyIndex,
+            ErrorCode::InvalidOperation => Error::InvalidOperation,
+            ErrorCode::BufferTooSmall => Error::BufferTooSmall,
+            ErrorCode::InputTooLarge => Error::InputTooLarge,
+            ErrorCode::InternalError => Error::InternalError,
         }
     }
 }
-
-impl std::error::Error for Error {}
