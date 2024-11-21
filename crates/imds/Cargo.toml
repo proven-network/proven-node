@@ -5,11 +5,11 @@ edition = "2021"
 
 [dependencies]
 base64 = { workspace = true }
-derive_more = { workspace = true }
 http = { workspace = true }
 httpclient = { workspace = true }
 pem = { workspace = true }
 ring = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 x509-parser = { workspace = true }

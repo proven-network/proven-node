@@ -1,38 +1,24 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
-    Custom(String),
+    #[error(transparent)]
+    Base64(#[from] base64::DecodeError),
 
-    #[from]
-    Base64(base64::DecodeError),
+    #[error(transparent)]
+    Http(#[from] httpclient::Error<http::response::Response<httpclient::InMemoryBody>>),
 
-    #[from]
-    Http(httpclient::Error<http::response::Response<httpclient::InMemoryBody>>),
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
 
-    #[from]
-    Json(serde_json::Error),
+    #[error(transparent)]
+    Pem(#[from] ::pem::PemError),
 
-    #[from]
-    Pem(::pem::PemError),
+    #[error("Signature verification failed: {0}")]
+    SignatureVerification(String),
 
-    #[from]
-    X509(x509_parser::nom::Err<x509_parser::error::X509Error>),
+    #[error(transparent)]
+    X509(#[from] x509_parser::nom::Err<x509_parser::error::X509Error>),
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::Custom(e) => write!(f, "{}", e),
-            Error::Base64(e) => write!(f, "{}", e),
-            Error::Http(e) => write!(f, "{}", e),
-            Error::Json(e) => write!(f, "{}", e),
-            Error::Pem(e) => write!(f, "{}", e),
-            Error::X509(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

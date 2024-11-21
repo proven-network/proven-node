@@ -91,10 +91,7 @@ impl Imds {
 
                 Ok(document)
             }
-            Err(e) => Err(Error::Custom(format!(
-                "Signature verification failed: {}",
-                e
-            ))),
+            Err(e) => Err(Error::SignatureVerification(e.to_string())),
         }
     }
 }
