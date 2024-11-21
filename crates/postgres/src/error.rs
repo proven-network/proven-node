@@ -1,28 +1,24 @@
+use thiserror::Error;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("already started")]
     AlreadyStarted,
-    ConfigWrite(std::io::Error),
-    OutputParse,
+
+    #[error("failed to write config: {0}")]
+    ConfigWrite(#[from] std::io::Error),
+
+    #[error("exited with non-zero: {0}")]
     NonZeroExitCode(std::process::ExitStatus),
+
+    #[error("failed to parse output")]
+    OutputParse,
+
+    #[error("failed to spawn: {0}")]
     Spawn(std::io::Error),
+
+    #[error("vacuum failed")]
     VacuumFailed,
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::AlreadyStarted => write!(f, "already started"),
-            Error::ConfigWrite(e) => write!(f, "failed to write config: {}", e),
-            Error::NonZeroExitCode(status) => {
-                write!(f, "exited with non-zero: {}", status)
-            }
-            Error::OutputParse => write!(f, "failed to parse output"),
-            Error::Spawn(e) => write!(f, "failed to spawn: {}", e),
-            Error::VacuumFailed => write!(f, "vacuum failed"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

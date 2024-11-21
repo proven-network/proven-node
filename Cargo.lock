@@ -6665,9 +6665,9 @@ dependencies = [
 name = "proven-postgres"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "nix 0.27.1",
  "regex",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "tracing",
