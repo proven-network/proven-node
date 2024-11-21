@@ -88,7 +88,7 @@ impl NatsStore {
         self.jetstream_context
             .create_key_value(config)
             .await
-            .map_err(|e| Error::Create(e.kind()))
+            .map_err(|e| Error::CreateKeyValue(e.kind()))
     }
 }
 
@@ -111,7 +111,7 @@ impl Store for NatsStore {
             .await?
             .get(key)
             .await
-            .map_err(|e| Error::Get(e.kind()))
+            .map_err(|e| Error::Entry(e.kind()))
     }
 
     // TODO: Better error handling
@@ -121,7 +121,7 @@ impl Store for NatsStore {
             .await?
             .keys()
             .await
-            .map_err(|e| Error::Keys(e.kind()))?
+            .map_err(|e| Error::Watch(e.kind()))?
             .try_collect::<Vec<String>>()
             .await
             .unwrap())

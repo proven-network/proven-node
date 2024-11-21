@@ -7,4 +7,5 @@ edition = "2021"
 async-trait = { workspace = true }
 bytes = { workspace = true }
 proven-store = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }

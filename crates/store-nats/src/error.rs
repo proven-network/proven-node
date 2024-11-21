@@ -1,27 +1,19 @@
-use derive_more::From;
+use thiserror::Error;
 
-#[derive(Clone, Debug, From)]
+#[derive(Clone, Debug, Error)]
 pub enum Error {
-    #[from]
-    Create(async_nats::jetstream::context::CreateKeyValueErrorKind),
+    #[error("failed to create key-value store: {0}")]
+    CreateKeyValue(async_nats::jetstream::context::CreateKeyValueErrorKind),
 
-    #[from]
+    #[error("failed to delete from key-value store: {0}")]
     Delete(async_nats::jetstream::kv::DeleteErrorKind),
 
-    #[from]
-    Get(async_nats::jetstream::kv::EntryErrorKind),
+    #[error("failed to get from key-value store: {0}")]
+    Entry(async_nats::jetstream::kv::EntryErrorKind),
 
-    #[from]
-    Keys(async_nats::jetstream::kv::WatchErrorKind),
-
-    #[from]
+    #[error("failed to put to key-value store: {0}")]
     Put(async_nats::jetstream::kv::PutErrorKind),
-}
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Store error")
-    }
+    #[error("failed to list keys from key-value store: {0}")]
+    Watch(async_nats::jetstream::kv::WatchErrorKind),
 }
-
-impl std::error::Error for Error {}
