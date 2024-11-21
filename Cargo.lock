@@ -6577,7 +6577,7 @@ version = "0.1.0"
 dependencies = [
  "aws-config",
  "aws-sdk-ec2",
- "derive_more",
+ "thiserror 2.0.3",
 ]
 
 [[package]]

@@ -1,28 +1,18 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[from]
-    AddrParse(std::net::AddrParseError),
+    #[error("{0}")]
+    AddrParse(#[from] std::net::AddrParseError),
 
-    #[from]
-    EC2(aws_sdk_ec2::Error),
+    #[error("{0}")]
+    EC2(#[from] aws_sdk_ec2::Error),
 
+    #[error("instance not found")]
     InstanceNotFound,
+
+    #[error("missing instance details")]
     MissingDetails,
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::AddrParse(e) => write!(f, "{}", e),
-            Error::EC2(e) => write!(f, "{}", e),
-            Error::InstanceNotFound => write!(f, "instance not found"),
-            Error::MissingDetails => write!(f, "missing instance details"),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
