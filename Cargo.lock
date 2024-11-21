@@ -6782,6 +6782,7 @@ dependencies = [
  "radix-common",
  "rand 0.8.5",
  "serde",
+ "thiserror 2.0.3",
  "tracing",
 ]
 
