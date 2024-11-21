@@ -10,15 +10,29 @@ use proven_runtime::{ExecutionRequest, ExecutionResult, Pool, PoolRuntimeOptions
 use proven_sessions::Session;
 use proven_store::{Store2, Store3};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum RpcHandlerError {
+    #[error("Method not found")]
     MethodNotFound,
+
+    #[error("Invalid payload")]
     PayloadInvalid,
+
+    #[error("Invalid session")]
     SessionInvalid,
+
+    #[error("Invalid COSE_Sign1")]
     Sign1Invalid,
+
+    #[error("Invalid signature")]
     SignatureInvalid,
+
+    #[error("Invalid signing key")]
     SigningKeyInvalid,
+
+    #[error("Invalid verifying key")]
     VerifyingKeyInvalid,
 }
 

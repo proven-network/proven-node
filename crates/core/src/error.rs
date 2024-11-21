@@ -1,45 +1,27 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error(transparent)]
+    AddrParse(#[from] std::net::AddrParseError),
+
+    #[error("Server already started")]
     AlreadyStarted,
 
-    #[from]
-    Custom(String),
+    #[error(transparent)]
+    Async(#[from] tokio::task::JoinError),
 
-    #[from]
-    AddrParse(std::net::AddrParseError),
+    #[error(transparent)]
+    Axum(#[from] axum::Error),
 
-    #[from]
-    Async(tokio::task::JoinError),
-
-    #[from]
-    Axum(axum::Error),
-
-    #[from]
-    Io(std::io::Error),
-
+    #[error("HTTP server stopped")]
     HttpServerStopped,
 
-    #[from]
-    Rpc(crate::rpc::RpcHandlerError), // shouldn't actually be here; handle in transport
-}
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::AlreadyStarted => write!(f, "Server already started"),
-            Error::Custom(e) => write!(f, "{}", e),
-            Error::AddrParse(e) => write!(f, "{}", e),
-            Error::Async(e) => write!(f, "{}", e),
-            Error::Axum(e) => write!(f, "{}", e),
-            Error::Io(e) => write!(f, "{}", e),
-            Error::HttpServerStopped => write!(f, "HTTP server stopped"),
-            Error::Rpc(e) => write!(f, "{:?}", e),
-        }
-    }
+    #[error(transparent)]
+    Rpc(#[from] crate::rpc::RpcHandlerError),
 }
-
-impl std::error::Error for Error {}
