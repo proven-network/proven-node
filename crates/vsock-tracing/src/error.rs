@@ -1,27 +1,15 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[from]
-    Async(tokio::task::JoinError),
+    #[error(transparent)]
+    Async(#[from] tokio::task::JoinError),
 
-    #[from]
-    Io(std::io::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 
-    #[from]
-    SetTracing(tracing::dispatcher::SetGlobalDefaultError),
+    #[error(transparent)]
+    SetTracing(#[from] tracing::dispatcher::SetGlobalDefaultError),
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::Async(e) => write!(f, "{}", e),
-            Error::Io(e) => write!(f, "{}", e),
-            Error::SetTracing(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

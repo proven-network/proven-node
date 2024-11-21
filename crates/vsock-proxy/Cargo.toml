@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 cidr = { workspace = true }
-derive_more = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }

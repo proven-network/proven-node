@@ -1,43 +1,29 @@
 use std::path::PathBuf;
 
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("eif does not exist: {0:?}")]
     EifDoesNotExist(PathBuf),
 
-    #[from]
-    Http(proven_http_insecure::Error),
+    #[error(transparent)]
+    Http(#[from] proven_http_insecure::Error),
 
-    #[from]
-    Io(std::io::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 
+    #[error("must be root")]
     NotRoot,
 
-    #[from]
-    TracingService(super::vsock_tracing::TracingServiceError),
+    #[error(transparent)]
+    TracingService(#[from] super::vsock_tracing::TracingServiceError),
 
-    #[from]
-    VsockProxy(proven_vsock_proxy::Error),
+    #[error(transparent)]
+    VsockProxy(#[from] proven_vsock_proxy::Error),
 
-    #[from]
-    VsockRpc(proven_vsock_rpc::Error),
+    #[error(transparent)]
+    VsockRpc(#[from] proven_vsock_rpc::Error),
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::EifDoesNotExist(path) => write!(f, "eif does not exist: {:?}", path),
-            Error::Http(e) => write!(f, "{}", e),
-            Error::Io(e) => write!(f, "{}", e),
-            Error::NotRoot => write!(f, "must be root"),
-            Error::TracingService(e) => write!(f, "{}", e),
-            Error::VsockProxy(e) => write!(f, "{}", e),
-            Error::VsockRpc(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

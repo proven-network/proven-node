@@ -7,7 +7,6 @@ edition = "2021"
 async-trait = { workspace = true }
 bytes = { workspace = true }
 ciborium = { workspace = true }
-derive_more = { workspace = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
 proven-attestation = { workspace = true }

@@ -6439,7 +6439,6 @@ dependencies = [
  "async-nats",
  "bytes",
  "cidr",
- "derive_more",
  "fdlimit",
  "futures",
  "proven-attestation",
@@ -6469,6 +6468,7 @@ dependencies = [
  "rand 0.8.5",
  "rlimit",
  "rtnetlink",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "tokio-vsock",
@@ -6496,12 +6496,12 @@ dependencies = [
  "axum",
  "cidr",
  "clap",
- "derive_more",
  "nix 0.27.1",
  "proven-http",
  "proven-http-insecure",
  "proven-vsock-proxy",
  "proven-vsock-rpc",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "tokio-vsock",
@@ -6773,7 +6773,6 @@ dependencies = [
  "async-trait",
  "bytes",
  "ciborium",
- "derive_more",
  "ed25519-dalek 2.1.1",
  "hex",
  "proven-attestation",
@@ -6906,7 +6905,7 @@ name = "proven-vsock-proxy"
 version = "0.1.0"
 dependencies = [
  "cidr",
- "derive_more",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-tun",
  "tokio-util",
@@ -6922,6 +6921,7 @@ dependencies = [
  "cidr",
  "derive_more",
  "serde",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-vsock",
  "tracing",
@@ -6931,7 +6931,7 @@ dependencies = [
 name = "proven-vsock-tracing"
 version = "0.1.0"
 dependencies = [
- "derive_more",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-vsock",
  "tracing",

@@ -10,7 +10,6 @@ tokio = { workspace = true }
 async-nats = { workspace = true }
 bytes = { workspace = true }
 cidr = { workspace = true }
-derive_more = { workspace = true }
 fdlimit = { workspace = true }
 futures = { workspace = true }
 proven-attestation = { workspace = true }
@@ -40,6 +39,7 @@ radix-common = { workspace = true }
 rand = { workspace = true }
 rlimit = { workspace = true }
 rtnetlink = { workspace = true }
+thiserror = { workspace = true }
 tokio-util = { workspace = true }
 tokio-vsock = { workspace = true }
 tracing = { workspace = true }

@@ -10,12 +10,12 @@ tokio = { workspace = true }
 axum = { workspace = true }
 cidr = { workspace = true }
 clap = { workspace = true }
-derive_more = { workspace = true }
 nix = { workspace = true }
 proven-http = { workspace = true }
 proven-http-insecure = { workspace = true }
 proven-vsock-proxy = { workspace = true }
 proven-vsock-rpc = { workspace = true }
+thiserror = { workspace = true }
 tokio-util = { workspace = true }
 tokio-vsock = { workspace = true }
 tracing = { workspace = true }

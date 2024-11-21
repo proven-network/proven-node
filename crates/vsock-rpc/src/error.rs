@@ -1,30 +1,18 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("bad response type")]
     BadResponseType,
 
-    #[from]
-    CborSerialize(ciborium::ser::Error<std::io::Error>),
+    #[error(transparent)]
+    CborDeserialize(#[from] ciborium::de::Error<std::io::Error>),
 
-    #[from]
-    CborDeserialize(ciborium::de::Error<std::io::Error>),
+    #[error(transparent)]
+    CborSerialize(#[from] ciborium::ser::Error<std::io::Error>),
 
-    #[from]
-    Io(std::io::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::BadResponseType => write!(f, "bad response type"),
-            Error::CborSerialize(e) => write!(f, "{}", e),
-            Error::CborDeserialize(e) => write!(f, "{}", e),
-            Error::Io(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

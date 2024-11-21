@@ -19,10 +19,13 @@ pub enum Request {
 #[derive(Clone, Debug, Deserialize, Eq, From, PartialEq, Serialize)]
 pub enum Response {
     Unhandled,
+
     #[from]
     AddPeer(AddPeerResponse),
+
     #[from]
     Initialize(InitializeResponse),
+
     #[from]
     Shutdown(ShutdownResponse),
 }
