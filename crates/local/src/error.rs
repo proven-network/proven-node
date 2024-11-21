@@ -1,19 +1,9 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
-    #[from]
-    Core(proven_core::Error),
+    #[error(transparent)]
+    Core(#[from] proven_core::Error),
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::Core(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

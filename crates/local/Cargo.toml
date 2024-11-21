@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 clap = { workspace = true }
-derive_more = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-dev = { workspace = true }
 proven-http-insecure = { workspace = true }
@@ -15,6 +14,7 @@ proven-store-fs = { workspace = true }
 proven-store-memory = { workspace = true }
 proven-core = { workspace = true }
 radix-common = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

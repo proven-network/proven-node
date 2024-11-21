@@ -6605,7 +6605,6 @@ name = "proven-local"
 version = "0.1.0"
 dependencies = [
  "clap",
- "derive_more",
  "proven-attestation",
  "proven-attestation-dev",
  "proven-core",
@@ -6615,6 +6614,7 @@ dependencies = [
  "proven-store-fs",
  "proven-store-memory",
  "radix-common",
+ "thiserror 2.0.3",
  "tokio",
  "tracing",
  "tracing-subscriber",
