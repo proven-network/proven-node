@@ -9,6 +9,7 @@ use error::Error;
 use multi_resolver::MultiResolver;
 
 use std::future::IntoFuture;
+use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -25,15 +26,16 @@ use tokio_util::task::TaskTracker;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
-pub struct LetsEncryptHttpServer {
+pub struct LetsEncryptHttpServer<S: Store> {
     acceptor: AxumAcceptor,
     listen_addr: SocketAddr,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
+    _marker: PhantomData<S>,
 }
 
-impl LetsEncryptHttpServer {
-    pub fn new<S: Store + 'static>(
+impl<S: Store> LetsEncryptHttpServer<S> {
+    pub fn new(
         listen_addr: SocketAddr,
         domains: Vec<String>,
         email: Vec<String>,
@@ -82,13 +84,14 @@ impl LetsEncryptHttpServer {
             listen_addr,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
+            _marker: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl HttpServer for LetsEncryptHttpServer {
-    type HE = Error;
+impl<S: Store> HttpServer for LetsEncryptHttpServer<S> {
+    type HE = Error<S::SE>;
 
     async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE> {
         let acceptor = self.acceptor.clone();

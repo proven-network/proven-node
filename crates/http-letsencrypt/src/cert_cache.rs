@@ -16,19 +16,19 @@ impl<S: Store> CertCache<S> {
         Self { store }
     }
 
-    async fn read_if_exist(&self, key: impl AsRef<str>) -> Result<Option<Vec<u8>>, Error> {
+    async fn read_if_exist(&self, key: impl AsRef<str>) -> Result<Option<Vec<u8>>, Error<S::SE>> {
         self.store
             .get(key.as_ref())
             .await
             .map(|opt| opt.map(|bytes| bytes.to_vec()))
-            .map_err(|_| Error::CertRetrieve)
+            .map_err(Error::CertStore)
     }
 
-    async fn write(&self, key: impl AsRef<str>, contents: Vec<u8>) -> Result<(), Error> {
+    async fn write(&self, key: impl AsRef<str>, contents: Vec<u8>) -> Result<(), Error<S::SE>> {
         self.store
             .put(key.as_ref(), Bytes::from(contents))
             .await
-            .map_err(|_| Error::CertStore)
+            .map_err(Error::CertStore)
     }
 
     fn cached_account_key(contact: &[String], directory_url: impl AsRef<str>) -> String {
@@ -56,7 +56,7 @@ impl<S: Store> CertCache<S> {
 
 #[async_trait]
 impl<S: Store> tokio_rustls_acme::CertCache for CertCache<S> {
-    type EC = Error;
+    type EC = Error<S::SE>;
 
     async fn load_cert(
         &self,
@@ -81,7 +81,7 @@ impl<S: Store> tokio_rustls_acme::CertCache for CertCache<S> {
 
 #[async_trait]
 impl<S: Store> tokio_rustls_acme::AccountCache for CertCache<S> {
-    type EA = Error;
+    type EA = Error<S::SE>;
 
     async fn load_account(
         &self,

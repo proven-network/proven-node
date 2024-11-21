@@ -14,6 +14,7 @@ proven-http = { workspace = true }
 proven-store = { workspace = true }
 ring = { workspace = true }
 rustls = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-rustls = { workspace = true }
 tokio-rustls-acme = { workspace = true }

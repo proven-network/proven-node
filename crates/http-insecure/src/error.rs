@@ -1,16 +1,10 @@
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("The server has already been started")]
     AlreadyStarted,
-    Bind(std::io::Error),
-}
 
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::AlreadyStarted => write!(f, "The server has already been started"),
-            Error::Bind(e) => write!(f, "Failed to bind to address: {}", e),
-        }
-    }
+    #[error("Failed to bind to address: {0}")]
+    Bind(#[from] std::io::Error),
 }
-
-impl std::error::Error for Error {}
