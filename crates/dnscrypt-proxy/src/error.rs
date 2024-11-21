@@ -1,35 +1,27 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("dnscrypt-proxy already started")]
     AlreadyStarted,
-    ConfigWrite(std::io::Error),
+
+    #[error("failed to write nats config: {0}")]
+    ConfigWrite(#[from] std::io::Error),
+
+    #[error("failed to parse dnscrypt-proxy output")]
     OutputParse,
+
+    #[error("dnscrypt-proxy exited with non-zero: {0}")]
     NonZeroExitCode(std::process::ExitStatus),
+
+    #[error("failed to find local DoH resolver endpoint in Route53")]
     ResolverEndpointNotFound,
-    #[from]
-    Route53(aws_sdk_route53resolver::Error),
+
+    #[error("{0}")]
+    Route53(#[from] aws_sdk_route53resolver::Error),
+
+    #[error("failed to spawn dnscrypt-proxy: {0}")]
     Spawn(std::io::Error),
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::AlreadyStarted => write!(f, "dnscrypt-proxy already started"),
-            Error::ConfigWrite(e) => write!(f, "failed to write nats config: {}", e),
-            Error::NonZeroExitCode(status) => {
-                write!(f, "dnscrypt-proxy exited with non-zero: {}", status)
-            }
-            Error::ResolverEndpointNotFound => {
-                write!(f, "failed to find local DoH resolver endpoint in Route53")
-            }
-            Error::Route53(e) => write!(f, "{}", e),
-            Error::OutputParse => write!(f, "failed to parse dnscrypt-proxy output"),
-            Error::Spawn(e) => write!(f, "failed to spawn dnscrypt-proxy: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

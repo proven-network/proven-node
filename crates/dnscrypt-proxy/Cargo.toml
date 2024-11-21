@@ -6,10 +6,10 @@ edition = "2021"
 [dependencies]
 aws-config = { workspace = true }
 aws-sdk-route53resolver = { workspace = true }
-derive_more = { workspace = true }
 dns-stamp-parser = { workspace = true }
 nix = { workspace = true }
 regex = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }

@@ -6423,10 +6423,10 @@ version = "0.1.0"
 dependencies = [
  "aws-config",
  "aws-sdk-route53resolver",
- "derive_more",
  "dns-stamp-parser",
  "nix 0.27.1",
  "regex",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "tracing",
