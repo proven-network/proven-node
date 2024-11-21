@@ -6640,11 +6640,11 @@ dependencies = [
 name = "proven-nats-monitor"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "http 1.1.0",
  "httpclient",
  "serde",
  "serde_json",
+ "thiserror 2.0.3",
  "tracing",
 ]
 
