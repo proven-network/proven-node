@@ -1,42 +1,16 @@
 mod database;
 mod error;
+mod request;
+mod response;
 
 pub use database::Database;
 pub use error::{Error, Result};
+pub use request::{Request, SqlParam};
+pub use response::{Response, Rows};
 
 use bytes::Bytes;
 use proven_store::{Store, Store1};
 use proven_stream::{Stream, Stream1};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum SqlParam {
-    Null,
-    Integer(i64),
-    Real(f64),
-    Text(String),
-    Blob(Vec<u8>),
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum Request {
-    Execute(String, Vec<SqlParam>),
-    Query(String, Vec<SqlParam>),
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Rows {
-    column_count: u16,
-    column_names: Vec<String>,
-    column_types: Vec<String>,
-    rows: Vec<Vec<String>>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum Response {
-    Execute(u64),
-    Query(Rows),
-}
 
 pub struct Connection<S: Stream<Error>> {
     stream: S,
@@ -45,18 +19,15 @@ pub struct Connection<S: Stream<Error>> {
 impl<S: Stream<Error>> Connection<S> {
     pub async fn execute(&self, sql: String, params: Vec<SqlParam>) -> Result<u64> {
         let request = Request::Execute(sql, params);
-        let mut bytes = Vec::new();
-        ciborium::ser::into_writer(&request, &mut bytes).map_err(|_| Error::Cbor)?;
-        let bytes = Bytes::from(bytes);
+        let bytes: Bytes = request.try_into()?;
 
         let raw_response = self
             .stream
             .request("execute".to_string(), bytes)
             .await
             .unwrap();
+        let response: Response = raw_response.try_into()?;
 
-        let response: Response =
-            ciborium::de::from_reader(raw_response.as_ref()).map_err(|_| Error::Cbor)?;
         match response {
             Response::Execute(affected_rows) => Ok(affected_rows),
             _ => unreachable!(),
@@ -65,18 +36,15 @@ impl<S: Stream<Error>> Connection<S> {
 
     pub async fn query(&self, sql: String, params: Vec<SqlParam>) -> Result<Rows> {
         let request = Request::Query(sql, params);
-        let mut bytes = Vec::new();
-        ciborium::ser::into_writer(&request, &mut bytes).map_err(|_| Error::Cbor)?;
-        let bytes = Bytes::from(bytes);
+        let bytes: Bytes = request.try_into()?;
 
         let raw_response = self
             .stream
             .request("query".to_string(), bytes)
             .await
             .unwrap();
+        let response: Response = raw_response.try_into()?;
 
-        let response: Response =
-            ciborium::de::from_reader(raw_response.as_ref()).map_err(|_| Error::Cbor)?;
         match response {
             Response::Query(rows) => Ok(rows),
             _ => unreachable!(),
@@ -144,22 +112,13 @@ impl<LS: Store1, S: Stream1<Error>> SqlManager<LS, S> {
                     .handle(db_name, move |bytes: Bytes| {
                         let database = database.clone();
                         Box::pin(async move {
-                            let request: Request = ciborium::de::from_reader(bytes.as_ref())
-                                .map_err(|_| Error::Cbor)?;
+                            let request: Request = bytes.try_into()?;
                             println!("Request: {:?}", request);
 
-                            match request {
+                            let response = match request {
                                 Request::Execute(sql, params) => {
                                     let affected_rows = database.execute(&sql, params).await?;
-
-                                    let mut response_bytes = Vec::new();
-                                    ciborium::ser::into_writer(
-                                        &Response::Execute(affected_rows),
-                                        &mut response_bytes,
-                                    )
-                                    .map_err(|_| Error::Cbor)?;
-                                    let response_bytes = Bytes::from(response_bytes);
-                                    Ok(response_bytes)
+                                    Response::Execute(affected_rows)
                                 }
                                 Request::Query(sql, params) => {
                                     let mut libsql_rows = database.query(&sql, params).await?;
@@ -200,16 +159,11 @@ impl<LS: Store1, S: Stream1<Error>> SqlManager<LS, S> {
                                         rows: rows_vec,
                                     };
 
-                                    let mut response_bytes = Vec::new();
-                                    ciborium::ser::into_writer(
-                                        &Response::Query(final_rows),
-                                        &mut response_bytes,
-                                    )
-                                    .map_err(|_| Error::Cbor)?;
-                                    let response_bytes = Bytes::from(response_bytes);
-                                    Ok(response_bytes)
+                                    Response::Query(final_rows)
                                 }
-                            }
+                            };
+
+                            response.try_into()
                         })
                     })
                     .await

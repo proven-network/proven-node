@@ -1,17 +1,11 @@
-use std::vec;
+mod application;
+
+pub use application::Application;
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_store::Store;
 use radix_common::network::NetworkDefinition;
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Application {
-    pub application_id: String,
-    pub owner_identity_address: String,
-    pub dapp_definition_addresses: Vec<String>,
-}
 
 #[async_trait]
 pub trait ApplicationManagement: Clone + Send + Sync {
@@ -67,14 +61,13 @@ where
             dapp_definition_addresses: vec![],
         };
 
-        let mut application_cbor = Vec::new();
-        ciborium::ser::into_writer(&application, &mut application_cbor)
+        let bytes: Bytes = application
+            .clone()
+            .try_into()
             .map_err(|_| Error::ApplicationStoreError)?;
+
         self.applications_store
-            .put(
-                application.application_id.clone(),
-                Bytes::from(application_cbor),
-            )
+            .put(application.application_id.clone(), bytes)
             .await
             .map_err(|_| Error::ApplicationStoreError)?;
 
@@ -87,15 +80,10 @@ where
             .get(self.application_store_key(application_id))
             .await
         {
-            Ok(application_opt) => match application_opt {
-                Some(application_cbor) => {
-                    let application: Application =
-                        ciborium::de::from_reader(application_cbor.as_ref())
-                            .map_err(|_| Error::ApplicationStoreError)?;
-                    Ok(Some(application))
-                }
-                None => Ok(None),
-            },
+            Ok(Some(bytes)) => Application::try_from(bytes)
+                .map(Some)
+                .map_err(|_| Error::ApplicationStoreError),
+            Ok(None) => Ok(None),
             Err(_) => Err(Error::ApplicationStoreError),
         }
     }

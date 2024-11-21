@@ -1,6 +1,8 @@
 mod error;
+mod session;
 
 use error::{Error, Result};
+pub use session::*;
 
 use std::collections::HashSet;
 
@@ -12,19 +14,7 @@ use proven_radix_rola::{Rola, SignedChallenge, Type as SignedChallengeType};
 use proven_store::Store;
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
-use serde::{Deserialize, Serialize};
 use tracing::{error, info};
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Session {
-    pub session_id: String,
-    pub signing_key: Vec<u8>,
-    pub verifying_key: Vec<u8>,
-    pub dapp_definition_address: String,
-    pub expected_origin: String,
-    pub identity_address: String,
-    pub account_addresses: Vec<String>,
-}
 
 #[async_trait]
 pub trait SessionManagement: Clone + Send + Sync {
@@ -179,17 +169,14 @@ where
 
         info!("session: {:?}", session);
 
-        let mut session_cbor = Vec::new();
-        ciborium::ser::into_writer(&session, &mut session_cbor).map_err(|_| Error::Cbor)?;
-
-        info!("cbored");
         self.sessions_store
-            .put(session.session_id.clone(), Bytes::from(session_cbor))
+            .put(session.session_id.clone(), session.clone().try_into()?)
             .await
             .map_err(|e| {
                 error!("error: {:?}", e);
                 Error::SessionStore
             })?;
+
         info!("stored");
 
         match self
@@ -208,14 +195,8 @@ where
 
     async fn get_session(&self, session_id: String) -> Result<Option<Session>> {
         match self.sessions_store.get(session_id.clone()).await {
-            Ok(session_opt) => match session_opt {
-                Some(session_cbor) => {
-                    let session: Session = ciborium::de::from_reader(session_cbor.as_ref())
-                        .map_err(|_| Error::Cbor)?;
-                    Ok(Some(session))
-                }
-                None => Ok(None),
-            },
+            Ok(Some(bytes)) => Ok(Some(bytes.try_into()?)),
+            Ok(None) => Ok(None),
             Err(_) => Err(Error::SessionStore),
         }
     }
