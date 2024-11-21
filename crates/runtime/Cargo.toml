@@ -8,7 +8,6 @@ build = "build.rs"
 bytes = { workspace = true }
 deno_core = { workspace = true }
 deno_permissions = { workspace = true }
-derive_more = { workspace = true }
 proven-locks = { workspace = true }
 proven-sql = { workspace = true }
 proven-store = { workspace = true }
@@ -17,6 +16,7 @@ rustyscript = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]

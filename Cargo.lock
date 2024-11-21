@@ -6751,7 +6751,6 @@ dependencies = [
  "bytes",
  "deno_core 0.321.0",
  "deno_permissions 0.37.0",
- "derive_more",
  "futures",
  "proven-locks",
  "proven-locks-memory",
@@ -6763,6 +6762,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.8",
+ "thiserror 2.0.3",
  "tokio",
 ]
 

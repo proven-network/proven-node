@@ -1,22 +1,12 @@
-use derive_more::From;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("hash not known to pool")]
     HashUnknown,
 
-    #[from]
-    RustyScript(rustyscript::Error),
+    #[error(transparent)]
+    RustyScript(#[from] rustyscript::Error),
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::HashUnknown => write!(f, "Hash not known"),
-            Error::RustyScript(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
