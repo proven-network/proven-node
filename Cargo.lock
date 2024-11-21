@@ -6893,11 +6893,11 @@ dependencies = [
  "async-nats",
  "async-trait",
  "bytes",
- "derive_more",
  "futures",
  "proven-stream",
  "serde",
  "serde_json",
+ "thiserror 2.0.3",
  "tokio",
 ]
 
