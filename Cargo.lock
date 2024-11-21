@@ -6481,9 +6481,9 @@ dependencies = [
 name = "proven-external-fs"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "rand 0.8.5",
  "regex",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "tracing",
