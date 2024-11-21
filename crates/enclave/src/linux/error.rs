@@ -62,6 +62,8 @@ pub enum Error {
     #[from]
     Netlink(rtnetlink::Error),
 
+    NoLoopback,
+
     #[from]
     Nsm(proven_attestation_nsm::Error),
 
@@ -106,6 +108,7 @@ impl core::fmt::Display for Error {
             Error::NatsServer(e) => write!(f, "{}", e),
             Error::NatsStore(e) => write!(f, "{}", e),
             Error::Netlink(e) => write!(f, "{}", e),
+            Error::NoLoopback => write!(f, "No loopback interface found"),
             Error::Nsm(e) => write!(f, "{}", e),
             Error::Postgres(e) => write!(f, "{}", e),
             Error::RouteSetup => write!(f, "Failed to set up route"),

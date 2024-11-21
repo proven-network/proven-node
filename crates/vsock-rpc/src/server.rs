@@ -37,7 +37,7 @@ impl RpcServer {
         let mut buffer = vec![0u8; length as usize];
         stream.read_exact(&mut buffer).await?;
 
-        let command: Request = serde_cbor::from_slice(&buffer)?;
+        let command: Request = ciborium::de::from_reader(&buffer[..])?;
 
         Ok(match command {
             Request::Initialize(args) => RpcCall::Initialize(
@@ -57,7 +57,8 @@ impl RpcServer {
 
 async fn send_response<Res: Into<Response>>(mut stream: VsockStream, response: Res) -> Result<()> {
     let response_enum: Response = response.into();
-    let encoded = serde_cbor::to_vec(&response_enum)?;
+    let mut encoded = Vec::new();
+    ciborium::ser::into_writer(&response_enum, &mut encoded)?;
     let length_prefix = (encoded.len() as u32).to_be_bytes();
 
     stream.write_all(&length_prefix).await?;

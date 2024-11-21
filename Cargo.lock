@@ -6437,6 +6437,7 @@ dependencies = [
  "cidr",
  "derive_more",
  "fdlimit",
+ "futures",
  "proven-attestation",
  "proven-attestation-nsm",
  "proven-core",

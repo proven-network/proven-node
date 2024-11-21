@@ -1,8 +1,10 @@
 use super::error::{Error, Result};
 
-use cidr::Ipv4Cidr;
-use rtnetlink::LinkHandle;
 use std::net::Ipv4Addr;
+
+use cidr::Ipv4Cidr;
+use futures::{stream::TryStreamExt, TryFutureExt};
+use rtnetlink::LinkUnspec;
 use tokio::process::Command;
 use tracing::{error, info};
 
@@ -11,12 +13,19 @@ pub async fn bring_up_loopback() -> Result<()> {
 
     let conn_task = tokio::spawn(conn);
 
-    let result = LinkHandle::new(handle).set(1).up().execute().await;
+    let mut links = handle.link().get().match_name("lo".to_string()).execute();
+    if let Some(link) = links.try_next().map_err(|_| Error::NoLoopback).await? {
+        handle
+            .link()
+            .set(LinkUnspec::new_with_index(link.header.index).up().build())
+            .execute()
+            .await?
+    }
 
     conn_task.abort();
     _ = conn_task.await;
 
-    Ok(result?)
+    Ok(())
 }
 
 pub async fn setup_default_gateway(

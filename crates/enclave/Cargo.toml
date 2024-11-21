@@ -12,6 +12,7 @@ bytes = { workspace = true }
 cidr = { workspace = true }
 derive_more = { workspace = true }
 fdlimit = { workspace = true }
+futures = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-nsm = { workspace = true }
 proven-core = { workspace = true }

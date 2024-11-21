@@ -44,7 +44,9 @@ impl RpcClient {
         debug!("sending command: {:?}", command);
 
         let mut stream = VsockStream::connect(self.vsock_addr).await?;
-        let encoded = serde_cbor::to_vec(&command)?;
+        let mut encoded = Vec::new();
+        ciborium::ser::into_writer(&command, &mut encoded)?;
+
         let length_prefix = (encoded.len() as u32).to_be_bytes();
         stream.write_all(&length_prefix).await?;
         stream.write_all(&encoded).await?;
@@ -55,8 +57,7 @@ impl RpcClient {
 
         stream.shutdown(Shutdown::Both)?;
 
-        let response: Response =
-            serde_cbor::from_slice(&buffer).map_err(|_| Error::BadResponseType)?;
+        let response: Response = ciborium::de::from_reader(&buffer[..])?;
 
         Ok(response)
     }
