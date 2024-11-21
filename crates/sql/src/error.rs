@@ -1,16 +1,21 @@
-use derive_more::From;
 use std::sync::Arc;
+use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone, Debug, From)]
+#[derive(Clone, Debug, Error)]
 pub enum Error {
-    CborSerialize(Arc<ciborium::ser::Error<std::io::Error>>),
+    #[error(transparent)]
     CborDeserialize(Arc<ciborium::de::Error<std::io::Error>>),
+
+    #[error(transparent)]
+    CborSerialize(Arc<ciborium::ser::Error<std::io::Error>>),
+
+    #[error(transparent)]
     Libsql(Arc<libsql::Error>),
 
-    #[from]
-    Utf8(std::string::FromUtf8Error),
+    #[error(transparent)]
+    Utf8(#[from] std::string::FromUtf8Error),
 }
 
 impl From<libsql::Error> for Error {
@@ -30,16 +35,3 @@ impl From<ciborium::ser::Error<std::io::Error>> for Error {
         Error::CborSerialize(Arc::new(error))
     }
 }
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-        match self {
-            Error::CborSerialize(e) => write!(f, "CBOR serialization error: {}", e),
-            Error::CborDeserialize(e) => write!(f, "CBOR deserialization error: {}", e),
-            Error::Libsql(e) => write!(f, "Libsql error: {}", e),
-            Error::Utf8(e) => write!(f, "Utf8 error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}

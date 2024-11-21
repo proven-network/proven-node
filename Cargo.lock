@@ -6793,7 +6793,6 @@ dependencies = [
  "async-nats",
  "bytes",
  "ciborium",
- "derive_more",
  "libsql",
  "proven-store",
  "proven-store-memory",
@@ -6801,6 +6800,7 @@ dependencies = [
  "proven-stream-nats",
  "serde",
  "tempfile",
+ "thiserror 2.0.3",
  "tokio",
 ]
 

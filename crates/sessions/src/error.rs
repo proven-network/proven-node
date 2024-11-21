@@ -10,10 +10,10 @@ pub enum Error {
     Attestation,
 
     #[error(transparent)]
-    CborSerialize(Arc<ciborium::ser::Error<std::io::Error>>),
+    CborDeserialize(Arc<ciborium::de::Error<std::io::Error>>),
 
     #[error(transparent)]
-    CborDeserialize(Arc<ciborium::de::Error<std::io::Error>>),
+    CborSerialize(Arc<ciborium::ser::Error<std::io::Error>>),
 
     #[error("challenge store error")]
     ChallengeStore,
