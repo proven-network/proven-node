@@ -33,7 +33,10 @@ pub async fn create_rpc_router<
         "/ws",
         get(
             |ws: WebSocketUpgrade, query: Query<QueryParams>| async move {
-                match session_manager.get_session(query.session.clone()).await {
+                match session_manager
+                    .get_session("TODO_APPLICATION_ID".to_string(), query.session.clone())
+                    .await
+                {
                     Ok(Some(session)) => match RpcHandler::new(session.clone(), runtime_pool) {
                         Ok(rpc_handler) => {
                             ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))

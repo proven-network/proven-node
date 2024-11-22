@@ -3,7 +3,7 @@ use crate::Error;
 use std::marker::PhantomData;
 
 use bytes::Bytes;
-use proven_store::Store;
+use proven_store::Store1;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -17,7 +17,7 @@ pub struct Session {
     pub account_addresses: Vec<String>,
 }
 
-impl<CS: Store, SS: Store> From<MarkedSession<CS, SS>> for Session {
+impl<CS: Store1, SS: Store1> From<MarkedSession<CS, SS>> for Session {
     fn from(marked: MarkedSession<CS, SS>) -> Self {
         Self {
             session_id: marked.session_id,
@@ -32,7 +32,7 @@ impl<CS: Store, SS: Store> From<MarkedSession<CS, SS>> for Session {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct MarkedSession<CS: Store, SS: Store> {
+pub(crate) struct MarkedSession<CS: Store1, SS: Store1> {
     pub session_id: String,
     pub signing_key: Vec<u8>,
     pub verifying_key: Vec<u8>,
@@ -46,7 +46,7 @@ pub(crate) struct MarkedSession<CS: Store, SS: Store> {
     pub _marker2: PhantomData<SS>,
 }
 
-impl<CS: Store, SS: Store> MarkedSession<CS, SS> {
+impl<CS: Store1, SS: Store1> MarkedSession<CS, SS> {
     pub fn new(
         session_id: String,
         signing_key: Vec<u8>,
@@ -70,7 +70,7 @@ impl<CS: Store, SS: Store> MarkedSession<CS, SS> {
     }
 }
 
-impl<CS: Store, SS: Store> TryFrom<Bytes> for MarkedSession<CS, SS> {
+impl<CS: Store1, SS: Store1> TryFrom<Bytes> for MarkedSession<CS, SS> {
     type Error = Error<CS::Error, SS::Error>;
 
     fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
@@ -78,7 +78,7 @@ impl<CS: Store, SS: Store> TryFrom<Bytes> for MarkedSession<CS, SS> {
     }
 }
 
-impl<CS: Store, SS: Store> TryInto<Bytes> for MarkedSession<CS, SS> {
+impl<CS: Store1, SS: Store1> TryInto<Bytes> for MarkedSession<CS, SS> {
     type Error = Error<CS::Error, SS::Error>;
 
     fn try_into(self) -> Result<Bytes, Self::Error> {

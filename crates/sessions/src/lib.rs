@@ -11,15 +11,25 @@ use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use proven_attestation::{AttestationParams, Attestor};
 use proven_radix_rola::{Rola, SignedChallenge, Type as SignedChallengeType};
-use proven_store::Store;
+use proven_store::{Store, Store1};
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
+
+pub struct CreateSessionParams {
+    pub application_id: String,
+    pub application_name: Option<String>,
+    pub dapp_definition_address: String,
+    pub nonce: Bytes,
+    pub origin: String,
+    pub signed_challenges: Vec<SignedChallenge>,
+    pub verifying_key: VerifyingKey,
+}
 
 #[async_trait]
 pub trait SessionManagement: Clone + Send + Sync {
     type Attestor: Attestor;
-    type ChallengeStore: Store;
-    type SessionStore: Store;
+    type ChallengeStore: Store1;
+    type SessionStore: Store1;
 
     fn new(
         attestor: Self::Attestor,
@@ -31,30 +41,31 @@ pub trait SessionManagement: Clone + Send + Sync {
 
     async fn create_challenge(
         &self,
-    ) -> Result<String, <Self::ChallengeStore as Store>::Error, <Self::SessionStore as Store>::Error>;
+        application_id: String,
+    ) -> Result<
+        String,
+        <Self::ChallengeStore as Store1>::Error,
+        <Self::SessionStore as Store1>::Error,
+    >;
 
-    async fn create_session_with_attestation(
+    async fn create_session(
         &self,
-        verifying_key: VerifyingKey,
-        nonce: Bytes,
-        signed_challenges: Vec<SignedChallenge>,
-        origin: String,
-        dapp_definition_address: String,
-        application_name: Option<String>,
-    ) -> Result<Bytes, <Self::ChallengeStore as Store>::Error, <Self::SessionStore as Store>::Error>;
+        params: CreateSessionParams,
+    ) -> Result<Bytes, <Self::ChallengeStore as Store1>::Error, <Self::SessionStore as Store1>::Error>;
 
     async fn get_session(
         &self,
+        application_id: String,
         session_id: String,
     ) -> Result<
         Option<Session>,
-        <Self::ChallengeStore as Store>::Error,
-        <Self::SessionStore as Store>::Error,
+        <Self::ChallengeStore as Store1>::Error,
+        <Self::SessionStore as Store1>::Error,
     >;
 }
 
 #[derive(Clone)]
-pub struct SessionManager<A: Attestor, CS: Store, SS: Store> {
+pub struct SessionManager<A: Attestor, CS: Store1, SS: Store1> {
     attestor: A,
     challenge_store: CS,
     gateway_origin: String,
@@ -66,8 +77,8 @@ pub struct SessionManager<A: Attestor, CS: Store, SS: Store> {
 impl<A, CS, SS> SessionManagement for SessionManager<A, CS, SS>
 where
     A: Attestor,
-    CS: Store,
-    SS: Store,
+    CS: Store1,
+    SS: Store1,
 {
     type Attestor = A;
     type ChallengeStore = CS;
@@ -89,7 +100,10 @@ where
         }
     }
 
-    async fn create_challenge(&self) -> Result<String, CS::Error, SS::Error> {
+    async fn create_challenge(
+        &self,
+        application_id: String,
+    ) -> Result<String, CS::Error, SS::Error> {
         let mut challenge = String::new();
 
         for _ in 0..32 {
@@ -97,6 +111,7 @@ where
         }
 
         self.challenge_store
+            .scope(application_id)
             .put(challenge.clone(), Bytes::from_static(&[1u8]))
             .await
             .map_err(Error::ChallengeStore)?;
@@ -104,14 +119,17 @@ where
         Ok(challenge)
     }
 
-    async fn create_session_with_attestation(
+    async fn create_session(
         &self,
-        verifying_key: VerifyingKey,
-        nonce: Bytes,
-        signed_challenges: Vec<SignedChallenge>,
-        origin: String,
-        dapp_definition_address: String,
-        application_name: Option<String>,
+        CreateSessionParams {
+            application_id,
+            application_name,
+            dapp_definition_address,
+            nonce,
+            origin,
+            signed_challenges,
+            verifying_key,
+        }: CreateSessionParams,
     ) -> Result<Bytes, CS::Error, SS::Error> {
         let rola = Rola::new(
             self.network_definition.clone(),
@@ -127,9 +145,11 @@ where
         }
 
         for challenge in challenges {
-            match self.challenge_store.get(challenge.clone()).await {
+            let scoped_challenge_store = self.challenge_store.scope(application_id.clone());
+
+            match scoped_challenge_store.get(challenge.clone()).await {
                 Ok(_) => {
-                    self.challenge_store
+                    scoped_challenge_store
                         .del(challenge.clone())
                         .await
                         .map_err(Error::ChallengeStore)?;
@@ -179,6 +199,7 @@ where
         );
 
         self.sessions_store
+            .scope(application_id)
             .put(session.session_id.clone(), session.clone().try_into()?)
             .await
             .map_err(Error::SessionStore)?;
@@ -199,9 +220,15 @@ where
 
     async fn get_session(
         &self,
+        application_id: String,
         session_id: String,
     ) -> Result<Option<Session>, CS::Error, SS::Error> {
-        match self.sessions_store.get(session_id.clone()).await {
+        match self
+            .sessions_store
+            .scope(application_id)
+            .get(session_id.clone())
+            .await
+        {
             Ok(Some(bytes)) => {
                 let marked: MarkedSession<CS, SS> = bytes.try_into()?;
                 Ok(Some(marked.into()))

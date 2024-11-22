@@ -10,7 +10,7 @@ use bytes::Bytes;
 use ed25519_dalek::VerifyingKey;
 use headers::Origin;
 use proven_radix_rola::SignedChallenge;
-use proven_sessions::SessionManagement;
+use proven_sessions::{CreateSessionParams, SessionManagement};
 use tracing::info;
 
 #[derive(TryFromMultipart)]
@@ -28,7 +28,10 @@ pub async fn create_session_router<T: SessionManagement + 'static>(session_manag
         .route(
             "/create-challenge",
             get(|| async move {
-                match session_manager_clone.create_challenge().await {
+                match session_manager_clone
+                    .create_challenge("TODO_APPLICATION_ID".to_string())
+                    .await
+                {
                     Ok(challenge) => Response::builder()
                         .status(StatusCode::OK)
                         .body(Body::from(challenge))
@@ -86,14 +89,15 @@ pub async fn create_session_router<T: SessionManagement + 'static>(session_manag
                         serde_json::from_str(data.signed_challenge.as_str()).unwrap();
 
                     match session_manager
-                        .create_session_with_attestation(
-                            verifying_key,
-                            data.nonce.clone(),
-                            signed_challenges,
+                        .create_session(CreateSessionParams {
+                            application_id: "TODO_APPLICATION_ID".to_string(),
+                            application_name: data.application_name.clone(),
+                            dapp_definition_address: data.dapp_definition_address.clone(),
+                            nonce: data.nonce.clone(),
                             origin,
-                            data.dapp_definition_address.clone(),
-                            data.application_name.clone(),
-                        )
+                            signed_challenges,
+                            verifying_key,
+                        })
                         .await
                     {
                         Ok(attestation_document) => {

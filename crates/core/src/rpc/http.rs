@@ -30,7 +30,10 @@ pub async fn create_rpc_router<
     Router::new().route(
         "/rpc",
         post(|query: Query<QueryParams>, body: Bytes| async move {
-            match session_manager.get_session(query.session.clone()).await {
+            match session_manager
+                .get_session("TODO_APPLICATION_ID".to_string(), query.session.clone())
+                .await
+            {
                 Ok(Some(session)) => match RpcHandler::new(session, runtime_pool) {
                     Ok(mut rpc_handler) => match rpc_handler.handle_rpc(body.to_vec()).await {
                         Ok(response) => {
