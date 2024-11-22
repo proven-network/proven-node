@@ -10,3 +10,4 @@ ciborium = { workspace = true }
 proven-store = { workspace = true }
 radix-common = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
