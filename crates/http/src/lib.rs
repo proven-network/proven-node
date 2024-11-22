@@ -7,7 +7,8 @@ use tokio::task::JoinHandle;
 
 #[async_trait]
 pub trait HttpServer: Send + Sync {
-    type HE: Debug + Error + Send + Sync;
-    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE>;
+    type Error: Debug + Error + Send + Sync;
+
+    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::Error>;
     async fn shutdown(&self);
 }

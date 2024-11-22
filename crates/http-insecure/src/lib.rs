@@ -33,9 +33,9 @@ impl InsecureHttpServer {
 
 #[async_trait]
 impl HttpServer for InsecureHttpServer {
-    type HE = Error;
+    type Error = Error;
 
-    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE> {
+    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::Error> {
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();
 

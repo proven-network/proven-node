@@ -91,9 +91,9 @@ impl<S: Store> LetsEncryptHttpServer<S> {
 
 #[async_trait]
 impl<S: Store> HttpServer for LetsEncryptHttpServer<S> {
-    type HE = Error<S::Error>;
+    type Error = Error<S::Error>;
 
-    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::HE> {
+    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::Error> {
         let acceptor = self.acceptor.clone();
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();
