@@ -14,23 +14,24 @@ use proven_radix_rola::{Rola, SignedChallenge, Type as SignedChallengeType};
 use proven_store::Store;
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
-use tracing::{error, info};
 
 #[async_trait]
 pub trait SessionManagement: Clone + Send + Sync {
-    type A: Attestor;
-    type CS: Store;
-    type SS: Store;
+    type Attestor: Attestor;
+    type ChallengeStore: Store;
+    type SessionStore: Store;
 
     fn new(
-        attestor: Self::A,
-        challenge_store: Self::CS,
+        attestor: Self::Attestor,
+        challenge_store: Self::ChallengeStore,
         gateway_origin: String,
-        sessions_store: Self::SS,
+        sessions_store: Self::SessionStore,
         network_definition: NetworkDefinition,
     ) -> Self;
 
-    async fn create_challenge(&self) -> Result<String>;
+    async fn create_challenge(
+        &self,
+    ) -> Result<String, <Self::ChallengeStore as Store>::Error, <Self::SessionStore as Store>::Error>;
 
     async fn create_session_with_attestation(
         &self,
@@ -40,9 +41,16 @@ pub trait SessionManagement: Clone + Send + Sync {
         origin: String,
         dapp_definition_address: String,
         application_name: Option<String>,
-    ) -> Result<Bytes>;
+    ) -> Result<Bytes, <Self::ChallengeStore as Store>::Error, <Self::SessionStore as Store>::Error>;
 
-    async fn get_session(&self, session_id: String) -> Result<Option<Session>>;
+    async fn get_session(
+        &self,
+        session_id: String,
+    ) -> Result<
+        Option<Session>,
+        <Self::ChallengeStore as Store>::Error,
+        <Self::SessionStore as Store>::Error,
+    >;
 }
 
 #[derive(Clone)]
@@ -57,19 +65,19 @@ pub struct SessionManager<A: Attestor, CS: Store, SS: Store> {
 #[async_trait]
 impl<A, CS, SS> SessionManagement for SessionManager<A, CS, SS>
 where
-    A: Attestor + Send + Sync,
-    CS: Store + Send + Sync,
-    SS: Store + Send + Sync,
+    A: Attestor,
+    CS: Store,
+    SS: Store,
 {
-    type A = A;
-    type CS = CS;
-    type SS = SS;
+    type Attestor = A;
+    type ChallengeStore = CS;
+    type SessionStore = SS;
 
     fn new(
-        attestor: Self::A,
-        challenge_store: Self::CS,
+        attestor: Self::Attestor,
+        challenge_store: Self::ChallengeStore,
         gateway_origin: String,
-        sessions_store: Self::SS,
+        sessions_store: Self::SessionStore,
         network_definition: NetworkDefinition,
     ) -> Self {
         SessionManager {
@@ -81,7 +89,7 @@ where
         }
     }
 
-    async fn create_challenge(&self) -> Result<String> {
+    async fn create_challenge(&self) -> Result<String, CS::Error, SS::Error> {
         let mut challenge = String::new();
 
         for _ in 0..32 {
@@ -91,7 +99,7 @@ where
         self.challenge_store
             .put(challenge.clone(), Bytes::from_static(&[1u8]))
             .await
-            .map_err(|_| Error::ChallengeStore)?;
+            .map_err(Error::ChallengeStore)?;
 
         Ok(challenge)
     }
@@ -104,7 +112,7 @@ where
         origin: String,
         dapp_definition_address: String,
         application_name: Option<String>,
-    ) -> Result<Bytes> {
+    ) -> Result<Bytes, CS::Error, SS::Error> {
         let rola = Rola::new(
             self.network_definition.clone(),
             self.gateway_origin.clone(),
@@ -121,10 +129,13 @@ where
         for challenge in challenges {
             match self.challenge_store.get(challenge.clone()).await {
                 Ok(_) => {
-                    self.challenge_store.del(challenge.clone()).await.unwrap();
+                    self.challenge_store
+                        .del(challenge.clone())
+                        .await
+                        .map_err(Error::ChallengeStore)?;
                 }
-                Err(_) => {
-                    return Err(Error::SignedChallengeInvalid);
+                Err(e) => {
+                    return Err(Error::ChallengeStore(e));
                 }
             }
         }
@@ -157,27 +168,20 @@ where
         let mut session_id_bytes = [0u8; 32];
         thread_rng().fill(&mut session_id_bytes);
 
-        let session = Session {
-            session_id: hex::encode(session_id_bytes),
-            signing_key: server_signing_key.as_bytes().to_vec(),
-            verifying_key: verifying_key.as_bytes().to_vec(),
-            dapp_definition_address: dapp_definition_address.clone(),
-            expected_origin: origin,
-            identity_address: identity_addresses[0].clone(),
+        let session: MarkedSession<CS, SS> = MarkedSession::new(
+            hex::encode(session_id_bytes),
+            server_signing_key.as_bytes().to_vec(),
+            verifying_key.as_bytes().to_vec(),
+            dapp_definition_address.clone(),
+            origin,
+            identity_addresses[0].clone(),
             account_addresses,
-        };
-
-        info!("session: {:?}", session);
+        );
 
         self.sessions_store
             .put(session.session_id.clone(), session.clone().try_into()?)
             .await
-            .map_err(|e| {
-                error!("error: {:?}", e);
-                Error::SessionStore
-            })?;
-
-        info!("stored");
+            .map_err(Error::SessionStore)?;
 
         match self
             .attestor
@@ -193,11 +197,17 @@ where
         }
     }
 
-    async fn get_session(&self, session_id: String) -> Result<Option<Session>> {
+    async fn get_session(
+        &self,
+        session_id: String,
+    ) -> Result<Option<Session>, CS::Error, SS::Error> {
         match self.sessions_store.get(session_id.clone()).await {
-            Ok(Some(bytes)) => Ok(Some(bytes.try_into()?)),
+            Ok(Some(bytes)) => {
+                let marked: MarkedSession<CS, SS> = bytes.try_into()?;
+                Ok(Some(marked.into()))
+            }
             Ok(None) => Ok(None),
-            Err(_) => Err(Error::SessionStore),
+            Err(e) => Err(Error::SessionStore(e)),
         }
     }
 }

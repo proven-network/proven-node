@@ -44,20 +44,20 @@ impl MemoryStore {
 
 #[async_trait]
 impl Store for MemoryStore {
-    type SE = Error;
+    type Error = Error;
 
-    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE> {
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let mut map = self.map.lock().await;
         map.remove(&self.get_key(key));
         Ok(())
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error> {
         let map = self.map.lock().await;
         Ok(map.get(&self.get_key(key)).cloned())
     }
 
-    async fn keys(&self) -> Result<Vec<String>, Self::SE> {
+    async fn keys(&self) -> Result<Vec<String>, Self::Error> {
         let map = self.map.lock().await;
         Ok(map
             .keys()
@@ -72,7 +72,7 @@ impl Store for MemoryStore {
             .collect())
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::SE> {
+    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error> {
         let mut map = self.map.lock().await;
         map.insert(self.get_key(key), bytes);
         Ok(())
@@ -81,7 +81,7 @@ impl Store for MemoryStore {
 
 #[async_trait]
 impl Store1 for MemoryStore {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -95,7 +95,7 @@ impl Store1 for MemoryStore {
 
 #[async_trait]
 impl Store2 for MemoryStore {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -109,7 +109,7 @@ impl Store2 for MemoryStore {
 
 #[async_trait]
 impl Store3 for MemoryStore {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {

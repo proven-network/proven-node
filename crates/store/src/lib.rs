@@ -4,6 +4,10 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use bytes::Bytes;
 
+/// Marker trait for store errors
+pub trait StoreError: Debug + Error + Send + Sync {}
+
+#[async_trait]
 /// A trait representing a key-value store with asynchronous operations.
 ///
 /// # Associated Types
@@ -14,14 +18,13 @@ use bytes::Bytes;
 /// - `async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE>`: Retrieves the value associated with a key.
 /// - `async fn keys(&self) -> Result<Vec<String>, Self::SE>`: Retrieves all keys in the store.
 /// - `async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE>`: Stores a key-value pair.
-#[async_trait]
 pub trait Store: Clone + Send + Sync + 'static {
-    type SE: Debug + Error + Send + Sync;
+    type Error: StoreError;
 
-    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE>;
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE>;
-    async fn keys(&self) -> Result<Vec<String>, Self::SE>;
-    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::SE>;
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error>;
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error>;
+    async fn keys(&self) -> Result<Vec<String>, Self::Error>;
+    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error>;
 }
 
 #[async_trait]
@@ -34,8 +37,8 @@ pub trait Store: Clone + Send + Sync + 'static {
 /// # Required Methods
 /// - `fn scope(&self, scope: String) -> Self::Scoped`: Add a scope and make the store usable.
 pub trait Store1: Clone + Send + Sync + 'static {
-    type SE: Debug + Error + Send + Sync;
-    type Scoped: Store<SE = Self::SE>;
+    type Error: StoreError;
+    type Scoped: Store<Error = Self::Error>;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
 }
@@ -50,8 +53,8 @@ pub trait Store1: Clone + Send + Sync + 'static {
 /// # Required Methods
 /// - `fn scope(&self, scope: String) -> Self::Scoped`: Add a scope and make the store usable.
 pub trait Store2: Clone + Send + Sync + 'static {
-    type SE: Debug + Error + Send + Sync;
-    type Scoped: Store1<SE = Self::SE>;
+    type Error: StoreError;
+    type Scoped: Store1<Error = Self::Error>;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
 }
@@ -66,8 +69,8 @@ pub trait Store2: Clone + Send + Sync + 'static {
 /// - `fn scope(&self, scope: String) -> Self::Scoped`: Add one of three scopee.
 #[async_trait]
 pub trait Store3: Clone + Send + Sync + 'static {
-    type SE: Debug + Error + Send + Sync;
-    type Scoped: Store2<SE = Self::SE>;
+    type Error: StoreError;
+    type Scoped: Store2<Error = Self::Error>;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
 }

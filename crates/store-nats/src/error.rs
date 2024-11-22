@@ -1,3 +1,4 @@
+use proven_store::StoreError;
 use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]
@@ -17,3 +18,5 @@ pub enum Error {
     #[error("failed to list keys from key-value store: {0}")]
     Watch(async_nats::jetstream::kv::WatchErrorKind),
 }
+
+impl StoreError for Error {}

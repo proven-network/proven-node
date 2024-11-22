@@ -89,9 +89,9 @@ impl AsmStore {
 
 #[async_trait]
 impl Store for AsmStore {
-    type SE = Error;
+    type Error = Error;
 
-    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE> {
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
 
         secret_map.remove(&key.into());
@@ -99,18 +99,18 @@ impl Store for AsmStore {
         self.update_secret_map(secret_map).await
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error> {
         let secret_map = self.get_secret_map().await?;
 
         Ok(secret_map.get(&key.into()).cloned())
     }
 
-    async fn keys(&self) -> Result<Vec<String>, Self::SE> {
+    async fn keys(&self) -> Result<Vec<String>, Self::Error> {
         let secret_map = self.get_secret_map().await?;
         Ok(secret_map.keys().cloned().collect())
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, value: Bytes) -> Result<(), Self::SE> {
+    async fn put<K: Into<String> + Send>(&self, key: K, value: Bytes) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
 
         secret_map.insert(key.into(), value);
@@ -121,7 +121,7 @@ impl Store for AsmStore {
 
 #[async_trait]
 impl Store1 for AsmStore {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -140,7 +140,7 @@ impl Store1 for AsmStore {
 
 #[async_trait]
 impl Store2 for AsmStore {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -159,7 +159,7 @@ impl Store2 for AsmStore {
 
 #[async_trait]
 impl Store3 for AsmStore {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {

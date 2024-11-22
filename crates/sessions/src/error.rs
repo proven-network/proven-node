@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use proven_store::StoreError;
 use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T, CSE, SSE> = std::result::Result<T, Error<CSE, SSE>>;
 
 #[derive(Clone, Debug, Error)]
-pub enum Error {
+pub enum Error<CSE, SSE> {
     #[error("attestation error")]
     Attestation,
 
@@ -15,23 +16,27 @@ pub enum Error {
     #[error(transparent)]
     CborSerialize(Arc<ciborium::ser::Error<std::io::Error>>),
 
-    #[error("challenge store error")]
-    ChallengeStore,
+    #[error(transparent)]
+    ChallengeStore(CSE),
 
-    #[error("session store error")]
-    SessionStore,
+    #[error(transparent)]
+    SessionStore(SSE),
 
     #[error("signed challenge is invalid")]
     SignedChallengeInvalid,
 }
 
-impl From<ciborium::de::Error<std::io::Error>> for Error {
+impl<CSE: StoreError, SSE: StoreError> From<ciborium::de::Error<std::io::Error>>
+    for Error<CSE, SSE>
+{
     fn from(error: ciborium::de::Error<std::io::Error>) -> Self {
         Error::CborDeserialize(Arc::new(error))
     }
 }
 
-impl From<ciborium::ser::Error<std::io::Error>> for Error {
+impl<CSE: StoreError, SSE: StoreError> From<ciborium::ser::Error<std::io::Error>>
+    for Error<CSE, SSE>
+{
     fn from(error: ciborium::ser::Error<std::io::Error>) -> Self {
         Error::CborSerialize(Arc::new(error))
     }

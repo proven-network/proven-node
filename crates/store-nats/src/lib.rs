@@ -94,9 +94,9 @@ impl NatsStore {
 
 #[async_trait]
 impl Store for NatsStore {
-    type SE = Error;
+    type Error = Error;
 
-    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE> {
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         self.get_kv_store()
             .await?
             .delete(key.into())
@@ -106,7 +106,7 @@ impl Store for NatsStore {
         Ok(())
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error> {
         self.get_kv_store()
             .await?
             .get(key)
@@ -115,7 +115,7 @@ impl Store for NatsStore {
     }
 
     // TODO: Better error handling
-    async fn keys(&self) -> Result<Vec<String>, Self::SE> {
+    async fn keys(&self) -> Result<Vec<String>, Self::Error> {
         Ok(self
             .get_kv_store()
             .await?
@@ -127,7 +127,7 @@ impl Store for NatsStore {
             .unwrap())
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::SE> {
+    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error> {
         self.get_kv_store()
             .await?
             .put(key.into(), bytes)
@@ -140,7 +140,7 @@ impl Store for NatsStore {
 
 #[async_trait]
 impl Store1 for NatsStore {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -150,7 +150,7 @@ impl Store1 for NatsStore {
 
 #[async_trait]
 impl Store2 for NatsStore {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -160,7 +160,7 @@ impl Store2 for NatsStore {
 
 #[async_trait]
 impl Store3 for NatsStore {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {

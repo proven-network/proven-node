@@ -53,9 +53,9 @@ impl S3Store {
 
 #[async_trait]
 impl Store for S3Store {
-    type SE = Error;
+    type Error = Error;
 
-    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::SE> {
+    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let key = self.get_key(key);
 
         let resp = self
@@ -72,7 +72,7 @@ impl Store for S3Store {
         }
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::SE> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -105,7 +105,7 @@ impl Store for S3Store {
         }
     }
 
-    async fn keys(&self) -> Result<Vec<String>, Self::SE> {
+    async fn keys(&self) -> Result<Vec<String>, Self::Error> {
         if let Some(prefix) = &self.prefix {
             let resp = self
                 .client
@@ -151,7 +151,7 @@ impl Store for S3Store {
         }
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::SE> {
+    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -176,7 +176,7 @@ impl Store for S3Store {
 
 #[async_trait]
 impl Store1 for S3Store {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -195,7 +195,7 @@ impl Store1 for S3Store {
 
 #[async_trait]
 impl Store2 for S3Store {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -214,7 +214,7 @@ impl Store2 for S3Store {
 
 #[async_trait]
 impl Store3 for S3Store {
-    type SE = Error;
+    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
