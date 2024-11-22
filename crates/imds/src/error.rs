@@ -13,6 +13,9 @@ pub enum Error {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
+    #[error("No pem data for region: {0}")]
+    NoPemForRegion(String),
+
     #[error(transparent)]
     Pem(#[from] ::pem::PemError),
 

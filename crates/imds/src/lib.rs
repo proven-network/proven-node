@@ -1,6 +1,8 @@
 mod error;
+mod pem;
 
 pub use error::{Error, Result};
+use pem::REGION_PEMS;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
@@ -76,8 +78,14 @@ impl Imds {
         // Decode the verification document (which is the signature) from base64
         let decoded_signature = STANDARD.decode(verification_document.clone())?;
 
+        // Deserialize identity
+        let document: IdentityDocument = serde_json::from_str(&identity_document)?;
+
         // Parse the public key
-        let pem = ::pem::parse(US_EAST_2_PEM)?;
+        let raw_pem = REGION_PEMS
+            .get(document.region.as_str())
+            .ok_or(Error::NoPemForRegion(document.region.clone()))?;
+        let pem = ::pem::parse(raw_pem)?;
         let (_rem, x509) = X509Certificate::from_der(pem.contents())?;
 
         let public_key = UnparsedPublicKey::new(
@@ -86,32 +94,8 @@ impl Imds {
         );
 
         match public_key.verify(&identity_bytes, &decoded_signature) {
-            Ok(_) => {
-                let document: IdentityDocument = serde_json::from_str(&identity_document)?;
-
-                Ok(document)
-            }
+            Ok(_) => Ok(document),
             Err(e) => Err(Error::SignatureVerification(e.to_string())),
         }
     }
 }
-
-static US_EAST_2_PEM: &str = r#"-----BEGIN CERTIFICATE-----
-MIIDITCCAoqgAwIBAgIUVJTc+hOU+8Gk3JlqsX438Dk5c58wDQYJKoZIhvcNAQEL
-BQAwXDELMAkGA1UEBhMCVVMxGTAXBgNVBAgTEFdhc2hpbmd0b24gU3RhdGUxEDAO
-BgNVBAcTB1NlYXR0bGUxIDAeBgNVBAoTF0FtYXpvbiBXZWIgU2VydmljZXMgTExD
-MB4XDTI0MDQyOTE3MTE0OVoXDTI5MDQyODE3MTE0OVowXDELMAkGA1UEBhMCVVMx
-GTAXBgNVBAgTEFdhc2hpbmd0b24gU3RhdGUxEDAOBgNVBAcTB1NlYXR0bGUxIDAe
-BgNVBAoTF0FtYXpvbiBXZWIgU2VydmljZXMgTExDMIGfMA0GCSqGSIb3DQEBAQUA
-A4GNADCBiQKBgQCHvRjf/0kStpJ248khtIaN8qkDN3tkw4VjvA9nvPl2anJO+eIB
-UqPfQG09kZlwpWpmyO8bGB2RWqWxCwuB/dcnIob6w420k9WY5C0IIGtDRNauN3ku
-vGXkw3HEnF0EjYr0pcyWUvByWY4KswZV42X7Y7XSS13hOIcL6NLA+H94/QIDAQAB
-o4HfMIHcMAsGA1UdDwQEAwIHgDAdBgNVHQ4EFgQUJdbMCBXKtvCcWdwUUizvtUF2
-UTgwgZkGA1UdIwSBkTCBjoAUJdbMCBXKtvCcWdwUUizvtUF2UTihYKReMFwxCzAJ
-BgNVBAYTAlVTMRkwFwYDVQQIExBXYXNoaW5ndG9uIFN0YXRlMRAwDgYDVQQHEwdT
-ZWF0dGxlMSAwHgYDVQQKExdBbWF6b24gV2ViIFNlcnZpY2VzIExMQ4IUVJTc+hOU
-+8Gk3JlqsX438Dk5c58wEgYDVR0TAQH/BAgwBgEB/wIBADANBgkqhkiG9w0BAQsF
-AAOBgQAywJQaVNWJqW0R0T0xVOSoN1GLk9x9kKEuN67RN9CLin4dA97qa7Mr5W4P
-FZ6vnh5CjOhQBRXV9xJUeYSdqVItNAUFK/fEzDdjf1nUfPlQ3OJ49u6CV01NoJ9m
-usvY9kWcV46dqn2bk2MyfTTgvmeqP8fiMRPxxnVRkSzlldP5Fg==
------END CERTIFICATE-----"#;
