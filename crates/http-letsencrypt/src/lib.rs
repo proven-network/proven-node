@@ -9,7 +9,6 @@ use error::Error;
 use multi_resolver::MultiResolver;
 
 use std::future::IntoFuture;
-use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -28,38 +27,29 @@ use tracing::info;
 
 pub struct LetsEncryptHttpServer<S: Store> {
     acceptor: AxumAcceptor,
+    cert_store: S,
+    emails: Vec<String>,
     listen_addr: SocketAddr,
+    resolver: Arc<MultiResolver>,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
-    _marker: PhantomData<S>,
 }
 
 impl<S: Store> LetsEncryptHttpServer<S> {
     pub fn new(
         listen_addr: SocketAddr,
         domains: Vec<String>,
-        email: Vec<String>,
+        emails: Vec<String>,
         cert_store: S,
     ) -> Self {
         let mut node_endpoints_state = AcmeConfig::new(domains.clone())
-            .contact(email.iter().map(|e| format!("mailto:{}", e)))
+            .contact(emails.iter().map(|e| format!("mailto:{}", e)))
             .cache(CertCache::new(cert_store.clone()))
             .directory_lets_encrypt(true)
             .state();
 
-        // Create a second AcmeState to simulate also issuing certificates for individual client endpoints on different certs
-        let example_client_domains = vec!["example.is.proven.network".to_string()];
-        let mut example_client_state = AcmeConfig::new(example_client_domains.clone())
-            .contact(email.iter().map(|e| format!("mailto:{}", e)))
-            .cache(CertCache::new(cert_store))
-            .directory_lets_encrypt(true)
-            .state();
-
-        let mut resolver = MultiResolver::new(node_endpoints_state.resolver());
-        resolver.add_resolver(example_client_domains, example_client_state.resolver());
-        let resolver = Arc::new(resolver);
-
-        let acceptor = AxumAcceptor::new(resolver);
+        let resolver = Arc::new(MultiResolver::new(node_endpoints_state.resolver()));
+        let acceptor = AxumAcceptor::new(Arc::clone(&resolver));
 
         tokio::spawn(async move {
             loop {
@@ -70,22 +60,37 @@ impl<S: Store> LetsEncryptHttpServer<S> {
             }
         });
 
+        Self {
+            acceptor,
+            cert_store,
+            emails,
+            listen_addr,
+            resolver,
+            shutdown_token: CancellationToken::new(),
+            task_tracker: TaskTracker::new(),
+        }
+    }
+
+    pub fn add_domain(&self, domain: String) {
+        let new_domains = vec![domain];
+        let mut new_state = AcmeConfig::new(new_domains.clone())
+            .contact(self.emails.iter().map(|e| format!("mailto:{}", e)))
+            .cache(CertCache::new(self.cert_store.clone()))
+            .directory_lets_encrypt(true)
+            .state();
+
+        self.resolver
+            .add_resolver(new_domains, new_state.resolver());
+
+        // TODO: We need to integrate DNS resolution to validate domain set up correctly before trying Let's Encrypt
         tokio::spawn(async move {
             loop {
-                match example_client_state.next().await.unwrap() {
+                match new_state.next().await.unwrap() {
                     Ok(ok) => info!("event: {:?}", ok),
                     Err(err) => info!("error: {:?}", err),
                 }
             }
         });
-
-        Self {
-            acceptor,
-            listen_addr,
-            shutdown_token: CancellationToken::new(),
-            task_tracker: TaskTracker::new(),
-            _marker: PhantomData,
-        }
     }
 }
 
