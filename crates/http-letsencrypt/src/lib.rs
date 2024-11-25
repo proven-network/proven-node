@@ -15,19 +15,24 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::http::Method;
 use axum::Router;
+use hickory_proto::rr::{RData, RecordType};
+use hickory_resolver::config::{ResolverConfig, ResolverOpts};
+use hickory_resolver::AsyncResolver;
 use proven_http::HttpServer;
 use proven_store::Store;
 use tokio::task::JoinHandle;
+use tokio::time::{sleep, Duration};
 use tokio_rustls_acme::AcmeConfig;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower_http::cors::{Any, CorsLayer};
-use tracing::info;
+use tracing::{error, info};
 
 pub struct LetsEncryptHttpServer<S: Store> {
     acceptor: AxumAcceptor,
     cert_store: S,
+    cname_domain: String,
     emails: Vec<String>,
     listen_addr: SocketAddr,
     resolver: Arc<MultiResolver>,
@@ -38,6 +43,7 @@ pub struct LetsEncryptHttpServer<S: Store> {
 impl<S: Store> LetsEncryptHttpServer<S> {
     pub fn new(
         listen_addr: SocketAddr,
+        cname_domain: String,
         domains: Vec<String>,
         emails: Vec<String>,
         cert_store: S,
@@ -63,6 +69,7 @@ impl<S: Store> LetsEncryptHttpServer<S> {
         Self {
             acceptor,
             cert_store,
+            cname_domain,
             emails,
             listen_addr,
             resolver,
@@ -72,18 +79,34 @@ impl<S: Store> LetsEncryptHttpServer<S> {
     }
 
     pub fn add_domain(&self, domain: String) {
-        let new_domains = vec![domain];
-        let mut new_state = AcmeConfig::new(new_domains.clone())
+        let mut new_state = AcmeConfig::new(vec![domain.clone()])
             .contact(self.emails.iter().map(|e| format!("mailto:{}", e)))
             .cache(CertCache::new(self.cert_store.clone()))
             .directory_lets_encrypt(true)
             .state();
 
         self.resolver
-            .add_resolver(new_domains, new_state.resolver());
+            .add_resolver(vec![domain.clone()], new_state.resolver());
 
-        // TODO: We need to integrate DNS resolution to validate domain set up correctly before trying Let's Encrypt
+        let expected_target = self.cname_domain.clone();
         tokio::spawn(async move {
+            // Wait for DNS verification to pass before proceeding with the ACME challenge
+            for attempt in 0..5 {
+                if Self::verify_domain_dns(&domain, &expected_target).await {
+                    break;
+                }
+
+                if attempt == 4 {
+                    error!(
+                        "DNS verification failed after 5 attempts for domain: {}",
+                        domain
+                    );
+                    return;
+                }
+
+                sleep(Duration::from_secs(2_u64.pow(attempt))).await;
+            }
+
             loop {
                 match new_state.next().await.unwrap() {
                     Ok(ok) => info!("event: {:?}", ok),
@@ -91,6 +114,20 @@ impl<S: Store> LetsEncryptHttpServer<S> {
                 }
             }
         });
+    }
+
+    async fn verify_domain_dns(domain: &str, expected_cname: &str) -> bool {
+        let dns_resolver = AsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+
+        if let Ok(response) = dns_resolver.lookup(domain, RecordType::CNAME).await {
+            if let Some(RData::CNAME(cname)) = response.iter().next() {
+                if cname.to_ascii().trim_end_matches('.') == expected_cname {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 }
 

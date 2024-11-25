@@ -6553,6 +6553,8 @@ dependencies = [
  "axum-server",
  "base64 0.22.1",
  "bytes",
+ "hickory-proto",
+ "hickory-resolver",
  "multi_key_map",
  "proven-http",
  "proven-store",
