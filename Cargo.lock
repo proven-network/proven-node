@@ -6768,7 +6768,6 @@ dependencies = [
  "futures",
  "proven-locks",
  "proven-locks-memory",
- "proven-sql",
  "proven-store",
  "proven-store-memory",
  "regex",
@@ -6799,7 +6798,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-sql"
+name = "proven-sql-nats"
 version = "0.1.0"
 dependencies = [
  "async-nats",
