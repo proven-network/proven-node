@@ -6,12 +6,16 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use bytes::Bytes;
 
+/// Marker trait for SQLStore errors
+pub trait StreamError: Clone + Debug + Error + Send + Sync + 'static {}
+pub trait StreamHandlerError: Clone + Debug + Error + Send + Sync + 'static {}
+
 #[async_trait]
 pub trait Stream<HandlerError>: Clone + Send + Sync + 'static
 where
-    HandlerError: Debug + Error + Send + Sync,
+    HandlerError: StreamHandlerError,
 {
-    type Error: Debug + Error + Send + Sync;
+    type Error: StreamError;
 
     async fn request(&self, subject: String, data: Bytes) -> Result<Bytes, Self::Error>;
 
@@ -27,9 +31,9 @@ where
 #[async_trait]
 pub trait Stream1<HandlerError>: Clone + Send + Sync + 'static
 where
-    HandlerError: Debug + Error + Send + Sync,
+    HandlerError: StreamHandlerError,
 {
-    type Error: Debug + Error + Send + Sync;
+    type Error: StreamError;
     type Scoped: Stream<HandlerError, Error = Self::Error>;
 
     fn scope(&self, scope: String) -> Self::Scoped;
@@ -38,9 +42,9 @@ where
 #[async_trait]
 pub trait Stream2<HandlerError>: Clone + Send + Sync + 'static
 where
-    HandlerError: Debug + Error + Send + Sync,
+    HandlerError: StreamHandlerError,
 {
-    type Error: Debug + Error + Send + Sync;
+    type Error: StreamError;
     type Scoped: Stream1<HandlerError, Error = Self::Error>;
 
     fn scope(&self, scope: String) -> Self::Scoped;
@@ -49,9 +53,9 @@ where
 #[async_trait]
 pub trait Stream3<HandlerError>: Clone + Send + Sync + 'static
 where
-    HandlerError: Debug + Error + Send + Sync,
+    HandlerError: StreamHandlerError,
 {
-    type Error: Debug + Error + Send + Sync;
+    type Error: StreamError;
     type Scoped: Stream2<HandlerError, Error = Self::Error>;
 
     fn scope(&self, scope: String) -> Self::Scoped;

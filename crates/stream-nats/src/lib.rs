@@ -2,8 +2,6 @@ mod error;
 
 pub use error::Error;
 
-use std::error::Error as StdError;
-use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -15,7 +13,7 @@ use async_nats::Client;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
-use proven_stream::{Stream, Stream1, Stream2, Stream3};
+use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandlerError};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -38,7 +36,7 @@ pub struct NatsStreamOptions {
 }
 
 #[derive(Clone)]
-pub struct NatsStream<HE: Clone + Debug + StdError + Send + Sync> {
+pub struct NatsStream<HE: StreamHandlerError> {
     client: Client,
     jetstream_context: JetStreamContext,
     local_name: String,
@@ -50,7 +48,7 @@ pub struct NatsStream<HE: Clone + Debug + StdError + Send + Sync> {
 
 impl<HE> NatsStream<HE>
 where
-    HE: Clone + Debug + StdError + Send + Sync,
+    HE: StreamHandlerError,
 {
     pub fn new(
         NatsStreamOptions {
@@ -143,7 +141,7 @@ where
 #[async_trait]
 impl<HE> Stream<HE> for NatsStream<HE>
 where
-    HE: Clone + Debug + StdError + Send + Sync + 'static,
+    HE: StreamHandlerError,
 {
     type Error = Error<HE>;
 
@@ -193,7 +191,7 @@ where
                 }
                 Err(e) => {
                     if e.kind() == async_nats::jetstream::stream::DirectGetErrorKind::NotFound {
-                        println!("Waiting for reply message");
+                        // println!("Waiting for reply message");
                         tokio::task::yield_now().await;
                     } else {
                         println!("Error: {:?}", e);
@@ -268,7 +266,7 @@ where
 #[async_trait]
 impl<HE> Stream1<HE> for NatsStream<HE>
 where
-    HE: Clone + Debug + StdError + Send + Sync + 'static,
+    HE: StreamHandlerError,
 {
     type Error = Error<HE>;
     type Scoped = NatsStream<HE>;
@@ -281,7 +279,7 @@ where
 #[async_trait]
 impl<HE> Stream2<HE> for NatsStream<HE>
 where
-    HE: Clone + Debug + StdError + Send + Sync + 'static,
+    HE: StreamHandlerError,
 {
     type Error = Error<HE>;
     type Scoped = NatsStream<HE>;
@@ -294,7 +292,7 @@ where
 #[async_trait]
 impl<HE> Stream3<HE> for NatsStream<HE>
 where
-    HE: Clone + Debug + StdError + Send + Sync + 'static,
+    HE: StreamHandlerError,
 {
     type Error = Error<HE>;
     type Scoped = NatsStream<HE>;
@@ -318,6 +316,7 @@ mod tests {
     }
 
     impl std::error::Error for TestHandlerError {}
+    impl StreamHandlerError for TestHandlerError {}
 
     #[tokio::test]
     async fn test_stream_name_scoping() {

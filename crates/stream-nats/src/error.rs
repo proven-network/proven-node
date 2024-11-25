@@ -1,11 +1,11 @@
-use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use proven_stream::{StreamError, StreamHandlerError};
 use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]
-pub enum Error<HE: Clone + Debug + StdError + Send + Sync> {
+pub enum Error<HE: StreamHandlerError> {
     #[error("Consumer acknowledgment failed")]
     ConsumerAck,
 
@@ -43,8 +43,10 @@ pub enum Error<HE: Clone + Debug + StdError + Send + Sync> {
     StreamCreate(async_nats::jetstream::context::CreateStreamErrorKind),
 }
 
-impl<HE: Clone + Debug + StdError + Send + Sync> From<serde_json::Error> for Error<HE> {
+impl<HE: StreamHandlerError> From<serde_json::Error> for Error<HE> {
     fn from(error: serde_json::Error) -> Self {
         Error::SerdeJson(Arc::new(error))
     }
 }
+
+impl<HE: StreamHandlerError> StreamError for Error<HE> {}

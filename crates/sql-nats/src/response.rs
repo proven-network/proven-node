@@ -1,15 +1,6 @@
-use crate::Error;
-
 use bytes::Bytes;
+use proven_sql::Rows;
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Rows {
-    pub column_count: u16,
-    pub column_names: Vec<String>,
-    pub column_types: Vec<String>,
-    pub rows: Vec<Vec<String>>,
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Response {
@@ -18,15 +9,15 @@ pub enum Response {
 }
 
 impl TryFrom<Bytes> for Response {
-    type Error = Error;
+    type Error = ciborium::de::Error<std::io::Error>;
 
     fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
-        ciborium::de::from_reader(bytes.as_ref()).map_err(|e| e.into())
+        ciborium::de::from_reader(bytes.as_ref())
     }
 }
 
 impl TryInto<Bytes> for Response {
-    type Error = Error;
+    type Error = ciborium::ser::Error<std::io::Error>;
 
     fn try_into(self) -> Result<Bytes, Self::Error> {
         let mut bytes = Vec::new();
