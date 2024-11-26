@@ -13,9 +13,8 @@ pub use response::Response;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_libsql::libsql;
 use proven_libsql::Database;
-use proven_sql::{Rows, SqlParam, SqlStore, SqlStore1, SqlStore2, SqlStore3};
+use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
 use proven_stream::{Stream, Stream1, Stream2, Stream3};
 
@@ -48,72 +47,11 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> NatsSqlStore<LS, ST> {
                 let needed_to_run = database.migrate(&sql).await?;
                 Ok(Response::Migrate(needed_to_run))
             }
-            Request::Query(sql, params) => Ok(Response::Query(
-                Self::handle_query(database, sql, params).await?,
-            )),
+            Request::Query(sql, params) => {
+                let rows = database.query(&sql, params).await?;
+                Ok(Response::Query(rows))
+            }
         }
-    }
-
-    async fn handle_query(
-        database: Database,
-        sql: String,
-        params: Vec<SqlParam>,
-    ) -> HandlerResult<Rows> {
-        let mut libsql_rows = database.query(&sql, params).await?;
-        let column_count = libsql_rows.column_count();
-
-        let column_names = Self::get_column_names(&libsql_rows, column_count);
-        let column_types = Self::get_column_types(&libsql_rows, column_count);
-        let rows_vec = Self::get_row_values(&mut libsql_rows, column_count).await?;
-
-        Ok(Rows {
-            column_count: column_count as u16,
-            column_names,
-            column_types,
-            rows: rows_vec,
-        })
-    }
-
-    fn get_column_names(rows: &libsql::Rows, column_count: i32) -> Vec<String> {
-        (0..column_count)
-            .map(|i| rows.column_name(i).unwrap().to_string())
-            .collect()
-    }
-
-    fn get_column_types(rows: &libsql::Rows, column_count: i32) -> Vec<String> {
-        (0..column_count)
-            .map(|i| match rows.column_type(i).unwrap() {
-                libsql::ValueType::Text => "TEXT".to_string(),
-                libsql::ValueType::Integer => "INTEGER".to_string(),
-                libsql::ValueType::Real => "REAL".to_string(),
-                libsql::ValueType::Blob => "BLOB".to_string(),
-                libsql::ValueType::Null => "NULL".to_string(),
-            })
-            .collect()
-    }
-
-    async fn get_row_values(
-        rows: &mut libsql::Rows,
-        column_count: i32,
-    ) -> HandlerResult<Vec<Vec<SqlParam>>> {
-        let mut rows_vec = Vec::new();
-        while let Some(row) = rows
-            .next()
-            .await
-            .map_err(|e| HandlerError::Libsql(proven_libsql::Error::Libsql(e.into())))?
-        {
-            let row_vec = (0..column_count)
-                .map(|i| match row.get_value(i).unwrap() {
-                    libsql::Value::Null => SqlParam::Null,
-                    libsql::Value::Integer(i) => SqlParam::Integer(i),
-                    libsql::Value::Real(r) => SqlParam::Real(r),
-                    libsql::Value::Text(s) => SqlParam::Text(s),
-                    libsql::Value::Blob(b) => SqlParam::Blob(Bytes::from(b)),
-                })
-                .collect();
-            rows_vec.push(row_vec);
-        }
-        Ok(rows_vec)
     }
 }
 
@@ -263,7 +201,7 @@ impl<LS: Store3, ST: Stream3<HandlerError>> SqlStore3 for NatsSqlStore3<LS, ST> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proven_sql::Connection as SqlConnection;
+    use proven_sql::{Connection as SqlConnection, SqlParam};
     use proven_store_memory::MemoryStore;
     use proven_stream_nats::ScopeMethod;
     use proven_stream_nats::{NatsStream, NatsStreamOptions};

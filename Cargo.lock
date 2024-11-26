@@ -6617,6 +6617,7 @@ dependencies = [
 name = "proven-libsql"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "libsql",
  "proven-sql",
  "thiserror 2.0.3",

@@ -1,14 +1,15 @@
+mod conversion;
 mod error;
-pub mod libsql;
 mod sql_type;
 
+use conversion::convert_libsql_rows;
 pub use error::{Error, Result};
 use sql_type::SqlType;
 
 use std::sync::Arc;
 
-use ::libsql::{Builder, Connection, Rows};
-use proven_sql::SqlParam;
+use libsql::{Builder, Connection, Value};
+use proven_sql::{Rows, SqlParam};
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
@@ -126,25 +127,28 @@ impl Database {
             SqlType::Query => {
                 let libsql_params = Self::convert_params(params);
 
-                self.conn
+                let libsql_rows = self
+                    .conn
                     .lock()
                     .await
                     .query(query, libsql_params)
                     .await
-                    .map_err(|e| Error::Libsql(e.into()))
+                    .map_err(|e| Error::Libsql(e.into()))?;
+
+                convert_libsql_rows(libsql_rows).await
             }
         }
     }
 
-    fn convert_params(params: Vec<SqlParam>) -> Vec<libsql::Value> {
+    fn convert_params(params: Vec<SqlParam>) -> Vec<Value> {
         params
             .into_iter()
             .map(|p| match p {
-                SqlParam::Null => libsql::Value::Null,
-                SqlParam::Integer(i) => libsql::Value::Integer(i),
-                SqlParam::Real(r) => libsql::Value::Real(r),
-                SqlParam::Text(s) => libsql::Value::Text(s),
-                SqlParam::Blob(b) => libsql::Value::Blob(b.to_vec()),
+                SqlParam::Null => Value::Null,
+                SqlParam::Integer(i) => Value::Integer(i),
+                SqlParam::Real(r) => Value::Real(r),
+                SqlParam::Text(s) => Value::Text(s),
+                SqlParam::Blob(b) => Value::Blob(b.to_vec()),
             })
             .collect()
     }
@@ -170,11 +174,13 @@ mod tests {
     async fn test_basics() {
         let mut db = Database::connect().await;
 
-        let _ = db
+        let response = db
             .migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
-            .await;
+            .await
+            .unwrap();
+        assert!(response);
 
-        let _ = db
+        let affected = db
             .execute(
                 "INSERT INTO users (id, email) VALUES (?1, ?2)",
                 vec![
@@ -182,15 +188,31 @@ mod tests {
                     SqlParam::Text("alice@example.com".to_string()),
                 ],
             )
-            .await;
+            .await
+            .unwrap();
+        assert_eq!(affected, 1);
 
-        let result = db.query("SELECT id, email FROM users", vec![]).await;
-        assert!(result.is_ok());
+        let rows = db
+            .query("SELECT id, email FROM users", vec![])
+            .await
+            .unwrap();
 
-        let mut rows = result.unwrap();
-        let row = rows.next().await.unwrap();
-        let email: String = row.unwrap().get(1).unwrap();
-        assert_eq!(email, "alice@example.com");
+        assert_eq!(rows.column_count, 2);
+        assert_eq!(
+            rows.column_names,
+            vec!["id".to_string(), "email".to_string()]
+        );
+        assert_eq!(
+            rows.column_types,
+            vec!["INTEGER".to_string(), "TEXT".to_string()]
+        );
+        assert_eq!(
+            rows.rows,
+            vec![vec![
+                SqlParam::Integer(1),
+                SqlParam::Text("alice@example.com".to_string())
+            ]]
+        );
     }
 
     #[tokio::test]
