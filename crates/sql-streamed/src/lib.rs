@@ -19,20 +19,20 @@ use proven_store::{Store, Store1, Store2, Store3};
 use proven_stream::{Stream, Stream1, Stream2, Stream3};
 
 #[derive(Clone)]
-pub struct NatsSqlStoreOptions<LS: Store, ST: Stream<HandlerError>> {
+pub struct StreamedSqlStoreOptions<LS: Store, ST: Stream<HandlerError>> {
     pub leader_store: LS,
     pub local_name: String,
     pub stream: ST,
 }
 
 #[derive(Clone)]
-pub struct NatsSqlStore<LS: Store, ST: Stream<HandlerError>> {
+pub struct StreamedSqlStore<LS: Store, ST: Stream<HandlerError>> {
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
-impl<LS: Store, ST: Stream<HandlerError> + 'static> NatsSqlStore<LS, ST> {
+impl<LS: Store, ST: Stream<HandlerError> + 'static> StreamedSqlStore<LS, ST> {
     async fn handle_request(mut database: Database, request: Request) -> HandlerResult<Response> {
         match request {
             Request::Execute(sql, params) => {
@@ -55,13 +55,13 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> NatsSqlStore<LS, ST> {
     }
 }
 
-impl<LS: Store, ST: Stream<HandlerError>> NatsSqlStore<LS, ST> {
+impl<LS: Store, ST: Stream<HandlerError>> StreamedSqlStore<LS, ST> {
     pub fn new(
-        NatsSqlStoreOptions {
+        StreamedSqlStoreOptions {
             leader_store,
             local_name,
             stream,
-        }: NatsSqlStoreOptions<LS, ST>,
+        }: StreamedSqlStoreOptions<LS, ST>,
     ) -> Self {
         Self {
             leader_store,
@@ -72,7 +72,7 @@ impl<LS: Store, ST: Stream<HandlerError>> NatsSqlStore<LS, ST> {
 }
 
 #[async_trait]
-impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for NatsSqlStore<LS, ST> {
+impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for StreamedSqlStore<LS, ST> {
     type Error = Error<ST::Error, LS::Error>;
     type Connection = Connection<ST, LS>;
 
@@ -115,7 +115,8 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for NatsSqlStore<LS
                             println!("Request: {:?}", request);
 
                             let response =
-                                NatsSqlStore::<LS, ST>::handle_request(database, request).await?;
+                                StreamedSqlStore::<LS, ST>::handle_request(database, request)
+                                    .await?;
 
                             response
                                 .try_into()
@@ -135,19 +136,19 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for NatsSqlStore<LS
 }
 
 #[derive(Clone)]
-pub struct NatsSqlStore1<LS: Store1, ST: Stream1<HandlerError>> {
+pub struct StreamedSqlStore1<LS: Store1, ST: Stream1<HandlerError>> {
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
 #[async_trait]
-impl<LS: Store1, ST: Stream1<HandlerError>> SqlStore1 for NatsSqlStore1<LS, ST> {
+impl<LS: Store1, ST: Stream1<HandlerError>> SqlStore1 for StreamedSqlStore1<LS, ST> {
     type Error = Error<ST::Error, LS::Error>;
-    type Scoped = NatsSqlStore<LS::Scoped, ST::Scoped>;
+    type Scoped = StreamedSqlStore<LS::Scoped, ST::Scoped>;
 
     fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        NatsSqlStore {
+        StreamedSqlStore {
             leader_store: self.leader_store.scope(scope.clone().into()),
             local_name: self.local_name.clone(),
             stream: self.stream.scope(scope.into()),
@@ -156,19 +157,19 @@ impl<LS: Store1, ST: Stream1<HandlerError>> SqlStore1 for NatsSqlStore1<LS, ST> 
 }
 
 #[derive(Clone)]
-pub struct NatsSqlStore2<LS: Store2, ST: Stream2<HandlerError>> {
+pub struct StreamedSqlStore2<LS: Store2, ST: Stream2<HandlerError>> {
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
 #[async_trait]
-impl<LS: Store2, ST: Stream2<HandlerError>> SqlStore2 for NatsSqlStore2<LS, ST> {
+impl<LS: Store2, ST: Stream2<HandlerError>> SqlStore2 for StreamedSqlStore2<LS, ST> {
     type Error = Error<ST::Error, LS::Error>;
-    type Scoped = NatsSqlStore1<LS::Scoped, ST::Scoped>;
+    type Scoped = StreamedSqlStore1<LS::Scoped, ST::Scoped>;
 
     fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        NatsSqlStore1 {
+        StreamedSqlStore1 {
             leader_store: self.leader_store.scope(scope.clone().into()),
             local_name: self.local_name.clone(),
             stream: self.stream.scope(scope.into()),
@@ -177,19 +178,19 @@ impl<LS: Store2, ST: Stream2<HandlerError>> SqlStore2 for NatsSqlStore2<LS, ST> 
 }
 
 #[derive(Clone)]
-pub struct NatsSqlStore3<LS: Store3, ST: Stream3<HandlerError>> {
+pub struct StreamedSqlStore3<LS: Store3, ST: Stream3<HandlerError>> {
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
 #[async_trait]
-impl<LS: Store3, ST: Stream3<HandlerError>> SqlStore3 for NatsSqlStore3<LS, ST> {
+impl<LS: Store3, ST: Stream3<HandlerError>> SqlStore3 for StreamedSqlStore3<LS, ST> {
     type Error = Error<ST::Error, LS::Error>;
-    type Scoped = NatsSqlStore2<LS::Scoped, ST::Scoped>;
+    type Scoped = StreamedSqlStore2<LS::Scoped, ST::Scoped>;
 
     fn scope<Scope: Clone + Into<String> + Send>(&self, scope: Scope) -> Self::Scoped {
-        NatsSqlStore2 {
+        StreamedSqlStore2 {
             leader_store: self.leader_store.scope(scope.clone().into()),
             local_name: self.local_name.clone(),
             stream: self.stream.scope(scope.into()),
@@ -211,7 +212,7 @@ mod tests {
             let leader_store = MemoryStore::new();
             let stream = MemoryStream::new();
 
-            let sql_store = NatsSqlStore::new(NatsSqlStoreOptions {
+            let sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
                 leader_store,
                 local_name: "my-machine".to_string(),
                 stream,

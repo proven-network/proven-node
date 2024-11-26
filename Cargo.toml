@@ -38,7 +38,7 @@ members = [
     "crates/runtime",
     "crates/sessions",
     "crates/sql",
-    "crates/sql-nats",
+    "crates/sql-streamed",
     "crates/store",
     "crates/store-asm",
     "crates/store-fs",
@@ -108,7 +108,7 @@ default-members = [
     "crates/runtime",
     "crates/sessions",
     "crates/sql",
-    "crates/sql-nats",
+    "crates/sql-streamed",
     "crates/store",
     "crates/store-asm",
     "crates/store-fs",
@@ -301,7 +301,7 @@ proven-radix-rola = { path = "crates/radix-rola" }
 proven-runtime = { path = "crates/runtime" }
 proven-sessions = { path = "crates/sessions" }
 proven-sql = { path = "crates/sql" }
-proven-sql-nats = { path = "crates/sql-nats" }
+proven-sql-streamed = { path = "crates/sql-streamed" }
 proven-store = { path = "crates/store" }
 proven-store-asm = { path = "crates/store-asm" }
 proven-store-fs = { path = "crates/store-fs" }
