@@ -32,7 +32,7 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
     let challenge_store = MemoryStore::new();
-    let sessions_store = FsStore::new("/tmp/proven/sessions".into());
+    let sessions_store = FsStore::new("/tmp/proven/sessions");
     let network_definition = NetworkDefinition::stokenet();
     let dev_attestor = DevAttestor::new();
 
@@ -51,9 +51,9 @@ async fn main() -> Result<()> {
     let http_sock_addr = SocketAddr::from((Ipv4Addr::LOCALHOST, args.port));
     let http_server = InsecureHttpServer::new(http_sock_addr);
 
-    let application_store = FsStore::new("/tmp/proven/application".into());
-    let personal_store = FsStore::new("/tmp/proven/personal".into());
-    let nft_store = FsStore::new("/tmp/proven/nft".into());
+    let application_store = FsStore::new("/tmp/proven/application");
+    let personal_store = FsStore::new("/tmp/proven/personal");
+    let nft_store = FsStore::new("/tmp/proven/nft");
     let core_handle = core
         .start(
             http_server,

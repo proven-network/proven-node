@@ -19,8 +19,8 @@ pub struct FsStore {
 /// It uses the file system to store key-value pairs, where keys are strings and values are byte vectors.
 /// The store supports optional scoping of keys using a directory.
 impl FsStore {
-    pub fn new(dir: PathBuf) -> Self {
-        FsStore { dir }
+    pub fn new(dir: impl Into<PathBuf>) -> Self {
+        FsStore { dir: dir.into() }
     }
 
     fn get_file_path(&self, key: &str) -> PathBuf {
