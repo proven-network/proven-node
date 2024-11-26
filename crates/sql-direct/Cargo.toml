@@ -1,0 +1,12 @@
+
+[package]
+name = "proven-sql-direct"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+proven-libsql = { workspace = true }
+proven-sql = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }

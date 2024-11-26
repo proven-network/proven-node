@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_sql::{Connection as SqlConnection, Rows, SqlParam};
+use proven_sql::{Rows, SqlConnection, SqlParam};
 use proven_store::Store;
 use proven_stream::Stream;
 

@@ -12,7 +12,7 @@ use std::fmt::Debug;
 pub trait SqlStoreError: Debug + Error + Send + Sync {}
 
 #[async_trait]
-pub trait Connection: Clone + Send + Sync + 'static {
+pub trait SqlConnection: Clone + Send + Sync + 'static {
     type Error: SqlStoreError;
 
     /// Execute a SQL statement that modifies data
@@ -43,7 +43,7 @@ pub trait Connection: Clone + Send + Sync + 'static {
 #[async_trait]
 pub trait SqlStore: Clone + Send + Sync + 'static {
     type Error: SqlStoreError;
-    type Connection: Connection<Error = Self::Error>;
+    type Connection: SqlConnection<Error = Self::Error>;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error>;
 }

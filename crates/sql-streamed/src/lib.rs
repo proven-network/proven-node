@@ -101,7 +101,7 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for StreamedSqlStor
                 .map_err(Error::LeaderStore)?;
         }
 
-        let database = Database::connect().await;
+        let database = Database::connect(":memory:").await;
 
         tokio::spawn({
             let stream = self.stream.clone();
@@ -201,7 +201,7 @@ impl<LS: Store3, ST: Stream3<HandlerError>> SqlStore3 for StreamedSqlStore3<LS, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proven_sql::{Connection as SqlConnection, SqlParam};
+    use proven_sql::{SqlConnection, SqlParam};
     use proven_store_memory::MemoryStore;
     use proven_stream_memory::MemoryStream;
     use tokio::time::{timeout, Duration};

@@ -19,8 +19,8 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn connect() -> Self {
-        let conn = Builder::new_local(":memory:")
+    pub async fn connect(path: impl AsRef<std::path::Path>) -> Self {
+        let conn = Builder::new_local(path)
             .build()
             .await
             .unwrap()
@@ -160,7 +160,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute() {
-        let db = Database::connect().await;
+        let db = Database::connect(":memory:").await;
         let result = db
             .execute(
                 "INSERT INTO users (email) VALUES ('test@example.com')",
@@ -172,7 +172,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_basics() {
-        let mut db = Database::connect().await;
+        let mut db = Database::connect(":memory:").await;
 
         let response = db
             .migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
@@ -217,7 +217,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table_can_only_change_via_migration() {
-        let mut db = Database::connect().await;
+        let mut db = Database::connect(":memory:").await;
 
         let result = db
             .execute(

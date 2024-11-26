@@ -5,7 +5,7 @@ pub use application::Application;
 pub use error::{Error, Result};
 
 use async_trait::async_trait;
-use proven_sql::{Connection, SqlParam, SqlStore};
+use proven_sql::{SqlConnection, SqlParam, SqlStore};
 use uuid::Uuid;
 
 pub struct CreateApplicationOptions {

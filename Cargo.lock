@@ -6817,6 +6817,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-sql-direct"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "proven-libsql",
+ "proven-sql",
+ "thiserror 2.0.3",
+ "tokio",
+]
+
+[[package]]
 name = "proven-sql-streamed"
 version = "0.1.0"
 dependencies = [
