@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum Response {
     Execute(u64),
     ExecuteBatch(u64),
+    Migrate(bool),
     Query(Rows),
 }
 

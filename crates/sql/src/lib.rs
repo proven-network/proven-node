@@ -29,6 +29,9 @@ pub trait Connection: Clone + Send + Sync + 'static {
         params: Vec<Vec<SqlParam>>,
     ) -> Result<u64, Self::Error>;
 
+    /// Execute a SQL statement that modifies schema and returns bool indicating if needed to be run
+    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error>;
+
     /// Execute a SQL query that returns data
     async fn query<Q: Into<String> + Send>(
         &self,

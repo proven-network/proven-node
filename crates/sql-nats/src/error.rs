@@ -54,13 +54,7 @@ pub enum HandlerError {
     CborSerialize(Arc<ciborium::ser::Error<std::io::Error>>),
 
     #[error(transparent)]
-    Libsql(Arc<libsql::Error>),
-}
-
-impl From<libsql::Error> for HandlerError {
-    fn from(error: libsql::Error) -> Self {
-        HandlerError::Libsql(Arc::new(error))
-    }
+    Libsql(#[from] proven_libsql::Error),
 }
 
 impl From<ciborium::de::Error<std::io::Error>> for HandlerError {

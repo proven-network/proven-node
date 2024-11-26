@@ -1,0 +1,10 @@
+[package]
+name = "proven-libsql"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libsql = { workspace = true }
+proven-sql = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }

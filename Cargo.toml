@@ -23,6 +23,7 @@ members = [
     "crates/instance-details",
     "crates/imds",
     "crates/kms",
+    "crates/libsql",
     "crates/local",
     "crates/locks",
     "crates/locks-memory",
@@ -91,6 +92,7 @@ default-members = [
     "crates/instance-details",
     "crates/imds",
     "crates/kms",
+    "crates/libsql",
     "crates/local",
     "crates/locks",
     "crates/locks-memory",
@@ -282,6 +284,7 @@ proven-http-letsencrypt = { path = "crates/http-letsencrypt" }
 proven-imds = { path = "crates/imds" }
 proven-instance-details = { path = "crates/instance-details" }
 proven-kms = { path = "crates/kms" }
+proven-libsql = { path = "crates/libsql" }
 proven-local = { path = "crates/local" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }

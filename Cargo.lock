@@ -6614,6 +6614,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-libsql"
+version = "0.1.0"
+dependencies = [
+ "libsql",
+ "proven-sql",
+ "thiserror 2.0.3",
+ "tokio",
+]
+
+[[package]]
 name = "proven-local"
 version = "0.1.0"
 dependencies = [
@@ -6813,7 +6823,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "ciborium",
- "libsql",
+ "proven-libsql",
  "proven-sql",
  "proven-store",
  "proven-store-memory",

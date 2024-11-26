@@ -60,6 +60,23 @@ impl<S: Stream<HandlerError> + 'static, LS: Store> SqlConnection for Connection<
         }
     }
 
+    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Result<bool, S::Error, LS::Error> {
+        let request = Request::Migrate(query.into());
+        let bytes: Bytes = request.try_into()?;
+
+        let raw_response = self
+            .stream
+            .request("migrate".to_string(), bytes)
+            .await
+            .map_err(Error::Stream)?;
+        let response: Response = raw_response.try_into()?;
+
+        match response {
+            Response::Migrate(needs_migration) => Ok(needs_migration),
+            _ => unreachable!(),
+        }
+    }
+
     async fn query<Q: Into<String> + Send>(
         &self,
         query: Q,

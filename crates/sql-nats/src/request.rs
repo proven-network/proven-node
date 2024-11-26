@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub enum Request {
     Execute(String, Vec<SqlParam>),
     ExecuteBatch(String, Vec<Vec<SqlParam>>),
+    Migrate(String),
     Query(String, Vec<SqlParam>),
 }
 

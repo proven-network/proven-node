@@ -1,5 +1,4 @@
 mod connection;
-mod database;
 mod error;
 mod request;
 mod response;
@@ -8,13 +7,14 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 pub use connection::Connection;
-pub use database::Database;
 pub use error::{Error, HandlerError, HandlerResult, Result};
 pub use request::Request;
 pub use response::Response;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use proven_libsql::libsql;
+use proven_libsql::Database;
 use proven_sql::{Rows, SqlParam, SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
 use proven_stream::{Stream, Stream1, Stream2, Stream3};
@@ -34,7 +34,7 @@ pub struct NatsSqlStore<LS: Store, ST: Stream<HandlerError>> {
 }
 
 impl<LS: Store, ST: Stream<HandlerError> + 'static> NatsSqlStore<LS, ST> {
-    async fn handle_request(database: Database, request: Request) -> HandlerResult<Response> {
+    async fn handle_request(mut database: Database, request: Request) -> HandlerResult<Response> {
         match request {
             Request::Execute(sql, params) => {
                 let affected_rows = database.execute(&sql, params).await?;
@@ -43,6 +43,10 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> NatsSqlStore<LS, ST> {
             Request::ExecuteBatch(sql, params) => {
                 let affected_rows = database.execute_batch(&sql, params).await?;
                 Ok(Response::ExecuteBatch(affected_rows))
+            }
+            Request::Migrate(sql) => {
+                let needed_to_run = database.migrate(&sql).await?;
+                Ok(Response::Migrate(needed_to_run))
             }
             Request::Query(sql, params) => Ok(Response::Query(
                 Self::handle_query(database, sql, params).await?,
@@ -93,7 +97,11 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> NatsSqlStore<LS, ST> {
         column_count: i32,
     ) -> HandlerResult<Vec<Vec<SqlParam>>> {
         let mut rows_vec = Vec::new();
-        while let Some(row) = rows.next().await? {
+        while let Some(row) = rows
+            .next()
+            .await
+            .map_err(|e| HandlerError::Libsql(proven_libsql::Error::Libsql(e.into())))?
+        {
             let row_vec = (0..column_count)
                 .map(|i| match row.get_value(i).unwrap() {
                     libsql::Value::Null => SqlParam::Null,
@@ -272,7 +280,7 @@ mod tests {
                 client: client.clone(),
                 local_name: "my-machine".to_string(),
                 scope_method: ScopeMethod::StreamPostfix,
-                stream_name: "neww_sql".to_string(),
+                stream_name: "newww_sql".to_string(),
             });
 
             let sql_store = NatsSqlStore::new(NatsSqlStoreOptions {
@@ -284,14 +292,11 @@ mod tests {
             let connection = sql_store.connect("new_test".to_string()).await.unwrap();
 
             let response = connection
-                .execute(
-                    "CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)".to_string(),
-                    vec![],
-                )
+                .migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)".to_string())
                 .await
                 .unwrap();
 
-            assert_eq!(response, 0);
+            assert!(response);
 
             let response = connection
                 .execute(
