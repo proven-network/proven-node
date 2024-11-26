@@ -8,6 +8,7 @@ use axum::extract::Query;
 use axum::routing::get;
 use axum::Router;
 use futures::{sink::SinkExt, stream::StreamExt};
+use proven_applications::ApplicationManagement;
 use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
 use proven_store::{Store2, Store3};
@@ -21,12 +22,14 @@ struct QueryParams {
 }
 
 pub async fn create_rpc_router<
-    T: SessionManagement + 'static,
+    AM: ApplicationManagement,
+    SM: SessionManagement,
     AS: Store2,
     PS: Store3,
     NS: Store3,
 >(
-    session_manager: T,
+    application_manager: AM,
+    session_manager: SM,
     runtime_pool: Arc<Pool<AS, PS, NS>>,
 ) -> Router {
     Router::new().route(
@@ -37,17 +40,19 @@ pub async fn create_rpc_router<
                     .get_session("TODO_APPLICATION_ID".to_string(), query.session.clone())
                     .await
                 {
-                    Ok(Some(session)) => match RpcHandler::new(session.clone(), runtime_pool) {
-                        Ok(rpc_handler) => {
-                            ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
+                    Ok(Some(session)) => {
+                        match RpcHandler::new(application_manager, session.clone(), runtime_pool) {
+                            Ok(rpc_handler) => {
+                                ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
+                            }
+                            Err(e) => {
+                                error!("Error creating RpcHandler: {:?}", e);
+                                ws.on_upgrade(move |socket| {
+                                    handle_socket_error(socket, Cow::from("Unrecoverable error."))
+                                })
+                            }
                         }
-                        Err(e) => {
-                            error!("Error creating RpcHandler: {:?}", e);
-                            ws.on_upgrade(move |socket| {
-                                handle_socket_error(socket, Cow::from("Unrecoverable error."))
-                            })
-                        }
-                    },
+                    }
                     _ => ws.on_upgrade(move |socket| {
                         handle_socket_error(socket, Cow::from("Session not valid."))
                     }),
@@ -67,9 +72,9 @@ async fn handle_socket_error(mut socket: WebSocket, reason: Cow<'static, str>) {
         .ok();
 }
 
-async fn handle_socket<AS: Store2, PS: Store3, NS: Store3>(
+async fn handle_socket<AM: ApplicationManagement, AS: Store2, PS: Store3, NS: Store3>(
     socket: WebSocket,
-    mut rpc_handler: RpcHandler<AS, PS, NS>,
+    mut rpc_handler: RpcHandler<AM, AS, PS, NS>,
 ) {
     let (mut sender, mut receiver) = socket.split();
 

@@ -11,7 +11,7 @@ pub struct AttestationParams {
 }
 
 #[async_trait]
-pub trait Attestor: Clone + Send + Sync {
+pub trait Attestor: Clone + Send + Sync + 'static {
     type AE: Debug + Error + Send + Sync;
     async fn attest(&self, params: AttestationParams) -> Result<Bytes, Self::AE>;
     async fn secure_random(&self) -> Result<Bytes, Self::AE>;

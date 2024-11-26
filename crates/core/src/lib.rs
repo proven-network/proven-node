@@ -10,6 +10,7 @@ use std::sync::Arc;
 use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
+use proven_applications::ApplicationManagement;
 use proven_http::HttpServer;
 use proven_runtime::{Pool, PoolOptions};
 use proven_sessions::SessionManagement;
@@ -19,20 +20,28 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 
-pub struct NewCoreArguments<SM: SessionManagement + 'static> {
+pub struct CoreOptions<SM: SessionManagement, AM: ApplicationManagement> {
+    pub application_manager: AM,
     pub session_manager: SM,
 }
 
-pub struct Core<SM: SessionManagement + 'static> {
+pub struct Core<SM: SessionManagement, AM: ApplicationManagement> {
+    application_manager: AM,
     session_manager: SM,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl<SM: SessionManagement + 'static> Core<SM> {
-    pub fn new(args: NewCoreArguments<SM>) -> Self {
+impl<SM: SessionManagement, AM: ApplicationManagement> Core<SM, AM> {
+    pub fn new(
+        CoreOptions {
+            application_manager,
+            session_manager,
+        }: CoreOptions<SM, AM>,
+    ) -> Self {
         Self {
-            session_manager: args.session_manager,
+            application_manager,
+            session_manager,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -60,9 +69,18 @@ impl<SM: SessionManagement + 'static> Core<SM> {
         .await;
 
         let session_router = create_session_router(self.session_manager.clone()).await;
-        let http_rpc_router =
-            rpc::http::create_rpc_router(self.session_manager.clone(), Arc::clone(&pool)).await;
-        let websocket_router = rpc::ws::create_rpc_router(self.session_manager.clone(), pool).await;
+        let http_rpc_router = rpc::http::create_rpc_router(
+            self.application_manager.clone(),
+            self.session_manager.clone(),
+            Arc::clone(&pool),
+        )
+        .await;
+        let websocket_router = rpc::ws::create_rpc_router(
+            self.application_manager.clone(),
+            self.session_manager.clone(),
+            pool,
+        )
+        .await;
 
         let https_app = Router::new()
             .route(

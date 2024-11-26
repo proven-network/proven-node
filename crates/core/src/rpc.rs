@@ -6,6 +6,7 @@ use std::sync::Arc;
 use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
+use proven_applications::{Application, ApplicationManagement, CreateApplicationOptions};
 use proven_runtime::{ExecutionRequest, ExecutionResult, Pool, PoolRuntimeOptions};
 use proven_sessions::Session;
 use proven_store::{Store2, Store3};
@@ -36,8 +37,9 @@ pub enum RpcHandlerError {
     VerifyingKeyInvalid,
 }
 
-pub struct RpcHandler<AS: Store2, PS: Store3, NS: Store3> {
+pub struct RpcHandler<AM: ApplicationManagement, AS: Store2, PS: Store3, NS: Store3> {
     aad: Vec<u8>,
+    application_manager: AM,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
     dapp_definition_address: String,
@@ -53,18 +55,21 @@ type ModuleHash = String;
 #[repr(u8)]
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 pub enum Request {
-    WhoAmI = 0x0,
-    Execute(Module, HandlerName, Args) = 0x1,
-    ExecuteHash(ModuleHash, Args) = 0x2,
-    Watch(String) = 0x3,
+    CreateApplication,
+    Execute(Module, HandlerName, Args),
+    ExecuteHash(ModuleHash, Args),
+    Watch(String),
+    WhoAmI,
 }
 
 #[derive(Debug, Serialize)]
 pub enum Response {
-    Ok,
+    CreateApplicationFailure(String),
+    CreateApplicationSuccess(Application),
     ExecuteHashUnknown,
     ExecuteSuccess(ExecutionResult),
     ExecuteFailure(String),
+    Ok,
     WhoAmI(WhoAmIResponse),
 }
 
@@ -74,8 +79,9 @@ pub struct WhoAmIResponse {
     pub account_addresses: Vec<String>,
 }
 
-impl<AS: Store2, PS: Store3, NS: Store3> RpcHandler<AS, PS, NS> {
+impl<AM: ApplicationManagement, AS: Store2, PS: Store3, NS: Store3> RpcHandler<AM, AS, PS, NS> {
     pub fn new(
+        application_manager: AM,
         session: Session,
         runtime_pool: Arc<Pool<AS, PS, NS>>,
     ) -> Result<Self, RpcHandlerError> {
@@ -97,6 +103,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> RpcHandler<AS, PS, NS> {
 
         Ok(Self {
             aad,
+            application_manager,
             signing_key,
             verifying_key,
             dapp_definition_address: session.dapp_definition_address,
@@ -133,24 +140,17 @@ impl<AS: Store2, PS: Store3, NS: Store3> RpcHandler<AS, PS, NS> {
             .map_err(|_| RpcHandlerError::PayloadInvalid)?;
 
         let response = match method {
-            Request::WhoAmI => Ok(Response::WhoAmI(WhoAmIResponse {
-                identity_address: self.identity_address.clone(),
-                account_addresses: self.account_addresses.clone(),
-            })),
-            Request::ExecuteHash(options_hash, args) => {
-                let pool = Arc::clone(&self.runtime_pool);
-
-                let request = ExecutionRequest {
-                    accounts: Some(self.account_addresses.clone()),
-                    args,
-                    dapp_definition_address: self.dapp_definition_address.clone(),
-                    identity: Some(self.identity_address.clone()),
-                };
-
-                match pool.execute_prehashed(options_hash, request).await {
-                    Ok(result) => Ok(Response::ExecuteSuccess(result)),
-                    Err(proven_runtime::Error::HashUnknown) => Ok(Response::ExecuteHashUnknown),
-                    Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
+            Request::CreateApplication => {
+                match self
+                    .application_manager
+                    .create_application(CreateApplicationOptions {
+                        owner_identity_address: self.identity_address.clone(),
+                        dapp_definition_addresses: vec![],
+                    })
+                    .await
+                {
+                    Ok(application) => Ok(Response::CreateApplicationSuccess(application)),
+                    Err(e) => Ok(Response::CreateApplicationFailure(e.to_string())),
                 }
             }
             Request::Execute(module, handler_name, args) => {
@@ -177,7 +177,27 @@ impl<AS: Store2, PS: Store3, NS: Store3> RpcHandler<AS, PS, NS> {
                     Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
                 }
             }
+            Request::ExecuteHash(options_hash, args) => {
+                let pool = Arc::clone(&self.runtime_pool);
+
+                let request = ExecutionRequest {
+                    accounts: Some(self.account_addresses.clone()),
+                    args,
+                    dapp_definition_address: self.dapp_definition_address.clone(),
+                    identity: Some(self.identity_address.clone()),
+                };
+
+                match pool.execute_prehashed(options_hash, request).await {
+                    Ok(result) => Ok(Response::ExecuteSuccess(result)),
+                    Err(proven_runtime::Error::HashUnknown) => Ok(Response::ExecuteHashUnknown),
+                    Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
+                }
+            }
             Request::Watch(_) => Ok(Response::Ok),
+            Request::WhoAmI => Ok(Response::WhoAmI(WhoAmIResponse {
+                identity_address: self.identity_address.clone(),
+                account_addresses: self.account_addresses.clone(),
+            })),
         }?;
 
         let mut payload = Vec::new();

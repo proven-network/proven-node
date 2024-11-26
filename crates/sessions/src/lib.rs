@@ -26,7 +26,7 @@ pub struct CreateSessionParams {
 }
 
 #[async_trait]
-pub trait SessionManagement: Clone + Send + Sync {
+pub trait SessionManagement: Clone + Send + Sync + 'static {
     type Attestor: Attestor;
     type ChallengeStore: Store1;
     type SessionStore: Store1;

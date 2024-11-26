@@ -7,6 +7,7 @@ use axum::response::Response;
 use axum::routing::post;
 use axum::Router;
 use bytes::Bytes;
+use proven_applications::ApplicationManagement;
 use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
 use proven_store::{Store2, Store3};
@@ -19,12 +20,14 @@ struct QueryParams {
 }
 
 pub async fn create_rpc_router<
-    T: SessionManagement + 'static,
+    AM: ApplicationManagement,
+    SM: SessionManagement,
     AS: Store2,
     PS: Store3,
     NS: Store3,
 >(
-    session_manager: T,
+    application_manager: AM,
+    session_manager: SM,
     runtime_pool: Arc<Pool<AS, PS, NS>>,
 ) -> Router {
     Router::new().route(
@@ -34,13 +37,22 @@ pub async fn create_rpc_router<
                 .get_session("TODO_APPLICATION_ID".to_string(), query.session.clone())
                 .await
             {
-                Ok(Some(session)) => match RpcHandler::new(session, runtime_pool) {
-                    Ok(mut rpc_handler) => match rpc_handler.handle_rpc(body.to_vec()).await {
-                        Ok(response) => {
-                            let bytes = bytes::Bytes::from(response);
-                            let body = http_body_util::Full::new(bytes);
-                            Response::builder().body(body).unwrap()
-                        }
+                Ok(Some(session)) => {
+                    match RpcHandler::new(application_manager, session, runtime_pool) {
+                        Ok(mut rpc_handler) => match rpc_handler.handle_rpc(body.to_vec()).await {
+                            Ok(response) => {
+                                let bytes = bytes::Bytes::from(response);
+                                let body = http_body_util::Full::new(bytes);
+                                Response::builder().body(body).unwrap()
+                            }
+                            Err(e) => {
+                                error!("Error: {:?}", e);
+                                Response::builder()
+                                    .status(400)
+                                    .body(format!("Error: {:?}", e).into())
+                                    .unwrap()
+                            }
+                        },
                         Err(e) => {
                             error!("Error: {:?}", e);
                             Response::builder()
@@ -48,15 +60,8 @@ pub async fn create_rpc_router<
                                 .body(format!("Error: {:?}", e).into())
                                 .unwrap()
                         }
-                    },
-                    Err(e) => {
-                        error!("Error: {:?}", e);
-                        Response::builder()
-                            .status(400)
-                            .body(format!("Error: {:?}", e).into())
-                            .unwrap()
                     }
-                },
+                }
                 _ => Response::builder()
                     .status(400)
                     .body("Session not found".into())

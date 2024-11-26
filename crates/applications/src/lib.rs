@@ -14,7 +14,7 @@ pub struct CreateApplicationOptions {
 }
 
 #[async_trait]
-pub trait ApplicationManagement: Clone + Send + Sync {
+pub trait ApplicationManagement: Clone + Send + Sync + 'static {
     type SqlStore: SqlStore;
 
     fn new(applications_store: Self::SqlStore) -> Self;

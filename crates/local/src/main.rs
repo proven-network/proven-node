@@ -4,10 +4,12 @@ use error::Result;
 use std::net::{Ipv4Addr, SocketAddr};
 
 use clap::Parser;
+use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
-use proven_core::{Core, NewCoreArguments};
+use proven_core::{Core, CoreOptions};
 use proven_http_insecure::InsecureHttpServer;
 use proven_sessions::{SessionManagement, SessionManager};
+use proven_sql_direct::DirectSqlStore;
 use proven_store_fs::FsStore;
 use proven_store_memory::MemoryStore;
 use radix_common::network::NetworkDefinition;
@@ -46,7 +48,13 @@ async fn main() -> Result<()> {
         network_definition,
     );
 
-    let core = Core::new(NewCoreArguments { session_manager });
+    let application_sql_store = DirectSqlStore::new("/tmp/proven/app_data");
+    let application_manager = ApplicationManager::new(application_sql_store);
+
+    let core = Core::new(CoreOptions {
+        application_manager,
+        session_manager,
+    });
 
     let http_sock_addr = SocketAddr::from((Ipv4Addr::LOCALHOST, args.port));
     let http_server = InsecureHttpServer::new(http_sock_addr);
