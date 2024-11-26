@@ -6823,6 +6823,7 @@ dependencies = [
  "async-trait",
  "proven-libsql",
  "proven-sql",
+ "tempfile",
  "thiserror 2.0.3",
  "tokio",
 ]

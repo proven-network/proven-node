@@ -10,3 +10,6 @@ proven-libsql = { workspace = true }
 proven-sql = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -1,22 +1,22 @@
+mod connection;
 mod error;
 
+use connection::Connection;
+
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use error::Error;
-use proven_libsql::Database;
-use proven_sql::{Rows, SqlConnection, SqlParam, SqlStore, SqlStore1, SqlStore2, SqlStore3};
-use tokio::sync::Mutex;
+use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 
 #[derive(Clone)]
 pub struct DirectSqlStore {
-    path: PathBuf,
+    dir: PathBuf,
 }
 
 impl DirectSqlStore {
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
+    pub fn new(dir: impl Into<PathBuf>) -> Self {
+        Self { dir: dir.into() }
     }
 }
 
@@ -26,136 +26,59 @@ impl SqlStore for DirectSqlStore {
     type Connection = Connection;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
-        let database = Arc::new(Mutex::new(Database::connect(self.path.clone()).await));
-
-        Ok(Connection { database })
+        Ok(Connection::new(self.dir.clone()).await)
     }
-}
-
-#[derive(Clone)]
-pub struct DirectSqlStore1 {
-    path: PathBuf,
 }
 
 #[async_trait]
-impl SqlStore1 for DirectSqlStore1 {
+impl SqlStore1 for DirectSqlStore {
     type Error = Error;
-    type Scoped = DirectSqlStore;
+    type Scoped = Self;
 
-    fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let mut new_path = self.path.clone();
-        new_path.set_file_name(format!(
-            "{}_{}",
-            self.path.file_name().unwrap().to_string_lossy(),
-            scope.into()
-        ));
-        DirectSqlStore { path: new_path }
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+        let mut dir = self.dir.clone();
+        dir.push(scope.into());
+        Self::new(dir)
     }
-}
-
-#[derive(Clone)]
-pub struct DirectSqlStore2 {
-    path: PathBuf,
 }
 
 #[async_trait]
-impl SqlStore2 for DirectSqlStore2 {
+impl SqlStore2 for DirectSqlStore {
     type Error = Error;
-    type Scoped = DirectSqlStore1;
+    type Scoped = Self;
 
-    fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let mut new_path = self.path.clone();
-        new_path.set_file_name(format!(
-            "{}_{}",
-            self.path.file_name().unwrap().to_string_lossy(),
-            scope.into()
-        ));
-        DirectSqlStore1 { path: new_path }
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+        let mut dir = self.dir.clone();
+        dir.push(scope.into());
+        Self::new(dir)
     }
-}
-
-#[derive(Clone)]
-pub struct DirectSqlStore3 {
-    path: PathBuf,
 }
 
 #[async_trait]
-impl SqlStore3 for DirectSqlStore3 {
+impl SqlStore3 for DirectSqlStore {
     type Error = Error;
-    type Scoped = DirectSqlStore2;
+    type Scoped = Self;
 
-    fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let mut new_path = self.path.clone();
-        new_path.set_file_name(format!(
-            "{}_{}",
-            self.path.file_name().unwrap().to_string_lossy(),
-            scope.into()
-        ));
-        DirectSqlStore2 { path: new_path }
-    }
-}
-
-#[derive(Clone)]
-pub struct Connection {
-    database: Arc<Mutex<Database>>,
-}
-
-#[async_trait]
-impl SqlConnection for Connection {
-    type Error = Error;
-
-    async fn execute<Q: Into<String> + Send>(
-        &self,
-        query: Q,
-        params: Vec<SqlParam>,
-    ) -> Result<u64, Self::Error> {
-        Ok(self
-            .database
-            .lock()
-            .await
-            .execute(&query.into(), params)
-            .await?)
-    }
-
-    async fn execute_batch<Q: Into<String> + Send>(
-        &self,
-        query: Q,
-        params: Vec<Vec<SqlParam>>,
-    ) -> Result<u64, Self::Error> {
-        Ok(self
-            .database
-            .lock()
-            .await
-            .execute_batch(&query.into(), params)
-            .await?)
-    }
-
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error> {
-        Ok(self.database.lock().await.migrate(&query.into()).await?)
-    }
-
-    async fn query<Q: Into<String> + Send>(
-        &self,
-        query: Q,
-        params: Vec<SqlParam>,
-    ) -> Result<Rows, Self::Error> {
-        Ok(self
-            .database
-            .lock()
-            .await
-            .query(&query.into(), params)
-            .await?)
+    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+        let mut dir = self.dir.clone();
+        dir.push(scope.into());
+        Self::new(dir)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proven_sql::SqlConnection;
+
+    use proven_sql::{SqlConnection, SqlParam};
+    use tempfile::tempdir;
 
     #[tokio::test]
     async fn test_sql_store() {
-        let store = DirectSqlStore::new("test.db");
+        let mut dir = tempdir().unwrap().into_path();
+        dir.push("test.db");
+
+        let store = DirectSqlStore::new(dir);
         let connection = store.connect().await.unwrap();
 
         let response = connection
