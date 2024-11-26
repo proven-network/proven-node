@@ -6355,11 +6355,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "ciborium",
- "proven-store",
- "radix-common",
+ "proven-sql",
  "serde",
  "thiserror 2.0.3",
+ "uuid",
 ]
 
 [[package]]

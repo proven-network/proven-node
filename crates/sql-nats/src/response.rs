@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Response {
     Execute(u64),
+    ExecuteBatch(u64),
     Query(Rows),
 }
 

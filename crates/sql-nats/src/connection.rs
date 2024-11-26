@@ -39,6 +39,27 @@ impl<S: Stream<HandlerError> + 'static, LS: Store> SqlConnection for Connection<
         }
     }
 
+    async fn execute_batch<Q: Into<String> + Send>(
+        &self,
+        query: Q,
+        params: Vec<Vec<SqlParam>>,
+    ) -> Result<u64, S::Error, LS::Error> {
+        let request = Request::ExecuteBatch(query.into(), params);
+        let bytes: Bytes = request.try_into()?;
+
+        let raw_response = self
+            .stream
+            .request("execute_batch".to_string(), bytes)
+            .await
+            .map_err(Error::Stream)?;
+        let response: Response = raw_response.try_into()?;
+
+        match response {
+            Response::ExecuteBatch(affected_rows) => Ok(affected_rows),
+            _ => unreachable!(),
+        }
+    }
+
     async fn query<Q: Into<String> + Send>(
         &self,
         query: Q,

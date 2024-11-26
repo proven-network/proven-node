@@ -40,6 +40,10 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> NatsSqlStore<LS, ST> {
                 let affected_rows = database.execute(&sql, params).await?;
                 Ok(Response::Execute(affected_rows))
             }
+            Request::ExecuteBatch(sql, params) => {
+                let affected_rows = database.execute_batch(&sql, params).await?;
+                Ok(Response::ExecuteBatch(affected_rows))
+            }
             Request::Query(sql, params) => Ok(Response::Query(
                 Self::handle_query(database, sql, params).await?,
             )),

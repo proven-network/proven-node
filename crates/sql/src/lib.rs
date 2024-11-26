@@ -22,6 +22,13 @@ pub trait Connection: Clone + Send + Sync + 'static {
         params: Vec<SqlParam>,
     ) -> Result<u64, Self::Error>;
 
+    /// Execute a batch of SQL statements that modify data
+    async fn execute_batch<Q: Into<String> + Send>(
+        &self,
+        query: Q,
+        params: Vec<Vec<SqlParam>>,
+    ) -> Result<u64, Self::Error>;
+
     /// Execute a SQL query that returns data
     async fn query<Q: Into<String> + Send>(
         &self,

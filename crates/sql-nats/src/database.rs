@@ -28,6 +28,26 @@ impl Database {
         self.conn.lock().await.execute(query, libsql_params).await
     }
 
+    pub async fn execute_batch(
+        &self,
+        query: &str,
+        params: Vec<Vec<SqlParam>>,
+    ) -> Result<u64, libsql::Error> {
+        let libsql_params = params
+            .into_iter()
+            .map(Self::convert_params)
+            .collect::<Vec<_>>();
+
+        let locked = self.conn.lock().await;
+        let mut total: u64 = 0;
+
+        for params in libsql_params {
+            total += locked.execute(query, params).await?;
+        }
+
+        Ok(total)
+    }
+
     pub async fn query(&self, query: &str, params: Vec<SqlParam>) -> Result<Rows, libsql::Error> {
         let libsql_params = Self::convert_params(params);
         self.conn.lock().await.query(query, libsql_params).await
