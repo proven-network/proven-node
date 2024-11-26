@@ -6,31 +6,32 @@ use conversion::convert_libsql_rows;
 pub use error::{Error, Result};
 use sql_type::SqlType;
 
-use std::sync::Arc;
-
 use libsql::{Builder, Connection, Value};
 use proven_sql::{Rows, SqlParam};
-use tokio::sync::Mutex;
+
+static RESERVED_TABLE_PREFIX: &str = "__proven_";
+static CREATE_MIGRATIONS_TABLE_SQL: &str = include_str!("../sql/create_migrations_table.sql");
+static INSERT_MIGRATION_SQL: &str = include_str!("../sql/insert_migration.sql");
 
 #[derive(Clone)]
 pub struct Database {
-    conn: Arc<Mutex<Connection>>,
-    mutations_run: Vec<String>,
+    connection: Connection,
 }
 
 impl Database {
-    pub async fn connect(path: impl AsRef<std::path::Path>) -> Self {
-        let conn = Builder::new_local(path)
+    pub async fn connect(path: impl AsRef<std::path::Path>) -> Result<Self> {
+        let connection = Builder::new_local(path)
             .build()
             .await
             .unwrap()
             .connect()
             .unwrap();
 
-        Self {
-            conn: Arc::new(Mutex::new(conn)),
-            mutations_run: Vec::new(),
-        }
+        connection
+            .execute(CREATE_MIGRATIONS_TABLE_SQL, Self::convert_params(vec![]))
+            .await?;
+
+        Ok(Self { connection })
     }
 
     fn classify_sql(sql: &str) -> SqlType {
@@ -46,6 +47,10 @@ impl Database {
     }
 
     pub async fn execute(&self, query: &str, params: Vec<SqlParam>) -> Result<u64> {
+        if query.contains(RESERVED_TABLE_PREFIX) {
+            return Err(Error::UsedReservedTablePrefix);
+        }
+
         match Self::classify_sql(query) {
             SqlType::Migration => Err(Error::IncorrectSqlType(
                 SqlType::Mutation,
@@ -53,9 +58,7 @@ impl Database {
             )),
             SqlType::Mutation => {
                 let libsql_params = Self::convert_params(params);
-                self.conn
-                    .lock()
-                    .await
+                self.connection
                     .execute(query, libsql_params)
                     .await
                     .map_err(|e| Error::Libsql(e.into()))
@@ -65,6 +68,10 @@ impl Database {
     }
 
     pub async fn execute_batch(&self, query: &str, params: Vec<Vec<SqlParam>>) -> Result<u64> {
+        if query.contains(RESERVED_TABLE_PREFIX) {
+            return Err(Error::UsedReservedTablePrefix);
+        }
+
         match Self::classify_sql(query) {
             SqlType::Migration => Err(Error::IncorrectSqlType(
                 SqlType::Mutation,
@@ -76,14 +83,10 @@ impl Database {
                     .map(Self::convert_params)
                     .collect::<Vec<_>>();
 
-                let locked = self.conn.lock().await;
                 let mut total: u64 = 0;
 
                 for params in libsql_params {
-                    total += locked
-                        .execute(query, params)
-                        .await
-                        .map_err(|e| Error::Libsql(e.into()))?;
+                    total += self.connection.execute(query, params).await?;
                 }
 
                 Ok(total)
@@ -93,22 +96,46 @@ impl Database {
     }
 
     pub async fn migrate(&mut self, query: &str) -> Result<bool> {
+        if query.contains(RESERVED_TABLE_PREFIX) {
+            return Err(Error::UsedReservedTablePrefix);
+        }
+
         match Self::classify_sql(query) {
             SqlType::Migration => {
-                if self.mutations_run.contains(&query.to_string()) {
-                    return Ok(false);
+                // first check if the migration has already been run
+                let mut rows = self
+                    .connection
+                    .query(
+                        "SELECT COUNT(*) FROM __proven_migrations WHERE query = ?1",
+                        Self::convert_params(vec![SqlParam::Text(query.to_string())]),
+                    )
+                    .await?;
+
+                if let Some(row) = rows.next().await? {
+                    if let Value::Integer(int) = row.get(0)? {
+                        if int > 0 {
+                            return Ok(false);
+                        }
+                    }
                 }
 
-                let libsql_params = Self::convert_params(vec![]);
+                let transation = self.connection.transaction().await?;
 
-                self.conn
-                    .lock()
-                    .await
-                    .execute(query, libsql_params)
-                    .await
-                    .map_err(|e| Error::Libsql(e.into()))?;
+                transation
+                    .execute(query, Self::convert_params(vec![]))
+                    .await?;
 
-                self.mutations_run.push(query.to_string());
+                let migration_params = vec![
+                    SqlParam::Integer(0),
+                    SqlParam::Text("TODO: hash".to_string()),
+                    SqlParam::Text(query.to_string()),
+                ];
+
+                transation
+                    .execute(INSERT_MIGRATION_SQL, Self::convert_params(migration_params))
+                    .await?;
+
+                transation.commit().await?;
 
                 Ok(true)
             }
@@ -121,6 +148,10 @@ impl Database {
     }
 
     pub async fn query(&self, query: &str, params: Vec<SqlParam>) -> Result<Rows> {
+        if query.contains(RESERVED_TABLE_PREFIX) {
+            return Err(Error::UsedReservedTablePrefix);
+        }
+
         match Self::classify_sql(query) {
             SqlType::Migration => Err(Error::IncorrectSqlType(SqlType::Query, SqlType::Migration)),
             SqlType::Mutation => Err(Error::IncorrectSqlType(SqlType::Query, SqlType::Mutation)),
@@ -128,9 +159,7 @@ impl Database {
                 let libsql_params = Self::convert_params(params);
 
                 let libsql_rows = self
-                    .conn
-                    .lock()
-                    .await
+                    .connection
                     .query(query, libsql_params)
                     .await
                     .map_err(|e| Error::Libsql(e.into()))?;
@@ -160,7 +189,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute() {
-        let db = Database::connect(":memory:").await;
+        let db = Database::connect(":memory:").await.unwrap();
         let result = db
             .execute(
                 "INSERT INTO users (email) VALUES ('test@example.com')",
@@ -172,13 +201,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_basics() {
-        let mut db = Database::connect(":memory:").await;
+        let mut db = Database::connect(":memory:").await.unwrap();
 
         let response = db
             .migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
-            .await
-            .unwrap();
-        assert!(response);
+            .await;
+        assert!(response.is_ok());
 
         let affected = db
             .execute(
@@ -217,7 +245,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table_can_only_change_via_migration() {
-        let mut db = Database::connect(":memory:").await;
+        let mut db = Database::connect(":memory:").await.unwrap();
 
         let result = db
             .execute(

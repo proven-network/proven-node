@@ -13,6 +13,9 @@ pub enum Error {
 
     #[error(transparent)]
     Libsql(Arc<libsql::Error>),
+
+    #[error("Cannot use reserved table prefix")]
+    UsedReservedTablePrefix,
 }
 
 impl From<libsql::Error> for Error {

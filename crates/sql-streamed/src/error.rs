@@ -22,6 +22,9 @@ pub enum Error<SE, LSE> {
     LeaderStore(LSE),
 
     #[error(transparent)]
+    Libsql(#[from] proven_libsql::Error),
+
+    #[error(transparent)]
     Stream(SE),
 }
 

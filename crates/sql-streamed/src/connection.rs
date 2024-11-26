@@ -10,8 +10,17 @@ use proven_stream::Stream;
 
 #[derive(Clone)]
 pub struct Connection<S: Stream<HandlerError>, LS: Store> {
-    pub(crate) stream: S,
-    pub(crate) _marker: PhantomData<LS>,
+    stream: S,
+    _marker: PhantomData<LS>,
+}
+
+impl<S: Stream<HandlerError>, LS: Store> Connection<S, LS> {
+    pub fn new(stream: S) -> Self {
+        Self {
+            stream,
+            _marker: PhantomData,
+        }
+    }
 }
 
 #[async_trait]
@@ -60,7 +69,7 @@ impl<S: Stream<HandlerError> + 'static, LS: Store> SqlConnection for Connection<
         let response: Response = raw_response.try_into()?;
 
         match response {
-            Response::Migrate(needs_migration) => Ok(needs_migration),
+            Response::Migrate(needed_migration) => Ok(needed_migration),
             _ => unreachable!(),
         }
     }

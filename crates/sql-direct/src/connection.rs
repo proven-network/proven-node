@@ -13,10 +13,10 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub async fn new(path: PathBuf) -> Self {
-        let database = Arc::new(Mutex::new(Database::connect(path).await));
+    pub async fn new(path: PathBuf) -> Result<Self, Error> {
+        let database = Arc::new(Mutex::new(Database::connect(path).await?));
 
-        Self { database }
+        Ok(Self { database })
     }
 }
 

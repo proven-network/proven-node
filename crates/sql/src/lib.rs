@@ -45,13 +45,19 @@ pub trait SqlStore: Clone + Send + Sync + 'static {
     type Error: SqlStoreError;
     type Connection: SqlConnection<Error = Self::Error>;
 
+    /// Connect to the SQL store
     async fn connect(&self) -> Result<Self::Connection, Self::Error>;
+
+    /// Execute a SQL statement that modifies schema and returns bool indicating if needed to be run
+    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
 }
 
 #[async_trait]
 pub trait SqlStore1: Clone + Send + Sync + 'static {
     type Error: SqlStoreError;
     type Scoped: SqlStore<Error = Self::Error>;
+
+    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
 
     fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
 }
@@ -62,6 +68,8 @@ pub trait SqlStore2: Clone + Send + Sync + 'static {
     type Error: SqlStoreError;
     type Scoped: SqlStore1<Error = Self::Error>;
 
+    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
+
     fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
 }
 
@@ -70,6 +78,8 @@ pub trait SqlStore2: Clone + Send + Sync + 'static {
 pub trait SqlStore3: Clone + Send + Sync + 'static {
     type Error: SqlStoreError;
     type Scoped: SqlStore2<Error = Self::Error>;
+
+    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
 
     fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
 }
