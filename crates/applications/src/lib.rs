@@ -53,7 +53,7 @@ where
             dapp_definition_addresses,
         }: CreateApplicationOptions,
     ) -> Result<Application, <Self::SqlStore as SqlStore>::Error> {
-        let connection = self.applications_store.connect("applications").await?;
+        let connection = self.applications_store.connect().await?;
         let application_id = Uuid::new_v4().to_string();
 
         connection
@@ -92,7 +92,7 @@ where
         &self,
         application_id: String,
     ) -> Result<Option<Application>, <Self::SqlStore as SqlStore>::Error> {
-        let connection = self.applications_store.connect("applications").await?;
+        let connection = self.applications_store.connect().await?;
 
         let rows = connection
             .query(

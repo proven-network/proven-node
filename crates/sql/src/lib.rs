@@ -45,10 +45,7 @@ pub trait SqlStore: Clone + Send + Sync + 'static {
     type Error: SqlStoreError;
     type Connection: Connection<Error = Self::Error>;
 
-    async fn connect<N: Clone + Into<String> + Send + 'static>(
-        &self,
-        db_name: N,
-    ) -> Result<Self::Connection, Self::Error>;
+    async fn connect(&self) -> Result<Self::Connection, Self::Error>;
 }
 
 #[async_trait]

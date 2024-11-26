@@ -6820,7 +6820,6 @@ dependencies = [
 name = "proven-sql-nats"
 version = "0.1.0"
 dependencies = [
- "async-nats",
  "async-trait",
  "bytes",
  "ciborium",
@@ -6829,9 +6828,8 @@ dependencies = [
  "proven-store",
  "proven-store-memory",
  "proven-stream",
- "proven-stream-nats",
+ "proven-stream-memory",
  "serde",
- "tempfile",
  "thiserror 2.0.3",
  "tokio",
 ]
@@ -6916,6 +6914,18 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+]
+
+[[package]]
+name = "proven-stream-memory"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "futures",
+ "proven-stream",
+ "thiserror 2.0.3",
+ "tokio",
 ]
 
 [[package]]

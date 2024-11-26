@@ -11,13 +11,10 @@ proven-libsql = { workspace = true }
 proven-sql = { workspace = true }
 proven-store = { workspace = true }
 proven-stream = { workspace = true }
-proven-stream-nats = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-async-nats = { workspace = true }
 proven-store-memory = { workspace = true }
-proven-stream-nats = { workspace = true }
-tempfile = { workspace = true }
+proven-stream-memory = { workspace = true }

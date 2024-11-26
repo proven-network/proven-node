@@ -26,11 +26,7 @@ impl<S: Stream<HandlerError> + 'static, LS: Store> SqlConnection for Connection<
         let request = Request::Execute(query.into(), params);
         let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self
-            .stream
-            .request("execute".to_string(), bytes)
-            .await
-            .map_err(Error::Stream)?;
+        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
         let response: Response = raw_response.try_into()?;
 
         match response {
@@ -47,11 +43,7 @@ impl<S: Stream<HandlerError> + 'static, LS: Store> SqlConnection for Connection<
         let request = Request::ExecuteBatch(query.into(), params);
         let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self
-            .stream
-            .request("execute_batch".to_string(), bytes)
-            .await
-            .map_err(Error::Stream)?;
+        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
         let response: Response = raw_response.try_into()?;
 
         match response {
@@ -64,11 +56,7 @@ impl<S: Stream<HandlerError> + 'static, LS: Store> SqlConnection for Connection<
         let request = Request::Migrate(query.into());
         let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self
-            .stream
-            .request("migrate".to_string(), bytes)
-            .await
-            .map_err(Error::Stream)?;
+        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
         let response: Response = raw_response.try_into()?;
 
         match response {
@@ -85,11 +73,7 @@ impl<S: Stream<HandlerError> + 'static, LS: Store> SqlConnection for Connection<
         let request = Request::Query(query.into(), params);
         let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self
-            .stream
-            .request("query".to_string(), bytes)
-            .await
-            .map_err(Error::Stream)?;
+        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
         let response: Response = raw_response.try_into()?;
 
         match response {

@@ -31,7 +31,6 @@ pub enum ScopeMethod {
 pub struct NatsStreamOptions {
     pub client: Client,
     pub local_name: String,
-    pub scope_method: ScopeMethod,
     pub stream_name: String,
 }
 
@@ -40,9 +39,7 @@ pub struct NatsStream<HE: StreamHandlerError> {
     client: Client,
     jetstream_context: JetStreamContext,
     local_name: String,
-    scope_method: ScopeMethod,
     stream_name: String,
-    subject_prefix: Option<String>,
     _handler_error: std::marker::PhantomData<HE>,
 }
 
@@ -54,7 +51,6 @@ where
         NatsStreamOptions {
             client,
             local_name,
-            scope_method,
             stream_name,
         }: NatsStreamOptions,
     ) -> Self {
@@ -64,36 +60,18 @@ where
             client,
             jetstream_context,
             local_name,
-            scope_method,
             stream_name,
-            subject_prefix: None,
             _handler_error: std::marker::PhantomData,
         }
     }
 
     fn with_scope(&self, scope: String) -> Self {
-        match self.scope_method {
-            ScopeMethod::StreamPostfix => Self {
-                client: self.client.clone(),
-                jetstream_context: self.jetstream_context.clone(),
-                local_name: self.local_name.clone(),
-                scope_method: self.scope_method.clone(),
-                stream_name: format!("{}_{}", self.stream_name, scope),
-                subject_prefix: None,
-                _handler_error: std::marker::PhantomData,
-            },
-            ScopeMethod::SubjectPrefix => Self {
-                client: self.client.clone(),
-                jetstream_context: self.jetstream_context.clone(),
-                local_name: self.local_name.clone(),
-                scope_method: self.scope_method.clone(),
-                stream_name: self.stream_name.clone(),
-                subject_prefix: match &self.subject_prefix {
-                    Some(prefix) => Some(format!("{}.{}", prefix, scope)),
-                    None => Some(scope),
-                },
-                _handler_error: std::marker::PhantomData,
-            },
+        Self {
+            client: self.client.clone(),
+            jetstream_context: self.jetstream_context.clone(),
+            local_name: self.local_name.clone(),
+            stream_name: format!("{}_{}", self.stream_name, scope),
+            _handler_error: std::marker::PhantomData,
         }
     }
 
@@ -129,13 +107,6 @@ where
             .await
             .map_err(|e| Error::StreamCreate(e.kind()))
     }
-
-    fn get_subject_binding(&self, subject: String) -> String {
-        match &self.subject_prefix {
-            Some(prefix) => format!("{}.{}", prefix, subject),
-            None => subject,
-        }
-    }
 }
 
 #[async_trait]
@@ -145,15 +116,64 @@ where
 {
     type Error = Error<HE>;
 
-    async fn request(&self, subject: String, data: Bytes) -> Result<Bytes, Self::Error> {
+    async fn handle(
+        &self,
+        handler: impl Fn(Bytes) -> Pin<Box<dyn Future<Output = Result<Bytes, HE>> + Send>> + Send + Sync,
+    ) -> Result<(), Self::Error> {
+        println!("Subscribing to {}", self.get_request_stream_name());
+
+        // Setup stream and consumer
+        let mut messages = self
+            .get_request_stream()
+            .await?
+            .create_consumer(ConsumerConfig {
+                durable_name: Some(self.get_durable_consumer_name()),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| Error::ConsumerCreate(e.kind()))?
+            .messages()
+            .await
+            .map_err(|e| Error::ConsumerStream(e.kind()))?;
+
+        // Process messages
+        while let Some(message) = messages.next().await {
+            let message = message.map_err(|e| Error::ConsumerMessages(e.kind()))?;
+
+            // Grab message seq number
+            let seq = message.info().map_err(|_| Error::NoInfo)?.stream_sequence;
+
+            let response = handler(message.payload.clone())
+                .await
+                .map_err(|e| Error::Handler(e))?;
+
+            // Ensure reply stream exists
+            self.get_reply_stream().await?;
+
+            // Headers that ensure seq matches between request and response
+            let mut headers = async_nats::HeaderMap::new();
+            headers.insert("Nats-Expected-Last-Sequence", (seq - 1).to_string());
+
+            self.client
+                .publish_with_headers(self.get_reply_stream_name(), headers, response)
+                .await
+                .map_err(|e| Error::ReplyPublish(e.kind()))?;
+
+            message.double_ack().await.map_err(|_| Error::ConsumerAck)?;
+        }
+
+        Ok(())
+    }
+
+    fn name(&self) -> String {
+        self.stream_name.clone()
+    }
+
+    async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error> {
         // Ensure request stream exists
         self.get_request_stream().await?;
 
-        println!(
-            "publishing on subject: {} {}",
-            self.get_request_stream_name(),
-            self.get_subject_binding(subject.clone())
-        );
+        println!("publishing on subject: {}", self.get_request_stream_name());
 
         let response = loop {
             match self
@@ -200,66 +220,6 @@ where
                 }
             }
         }
-    }
-
-    async fn handle(
-        &self,
-        subject: String,
-        handler: impl Fn(Bytes) -> Pin<Box<dyn Future<Output = Result<Bytes, HE>> + Send>> + Send + Sync,
-    ) -> Result<(), Self::Error> {
-        println!(
-            "Subscribing to {} {}",
-            self.stream_name,
-            self.get_subject_binding(subject.clone())
-        );
-
-        // Setup stream and consumer
-        let mut messages = self
-            .get_request_stream()
-            .await?
-            .create_consumer(ConsumerConfig {
-                durable_name: Some(self.get_durable_consumer_name()),
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| Error::ConsumerCreate(e.kind()))?
-            .messages()
-            .await
-            .map_err(|e| Error::ConsumerStream(e.kind()))?;
-
-        println!(
-            "Subscribed to {} {}",
-            self.get_request_stream_name(),
-            self.get_subject_binding(subject.clone())
-        );
-
-        // Process messages
-        while let Some(message) = messages.next().await {
-            let message = message.map_err(|e| Error::ConsumerMessages(e.kind()))?;
-
-            // Grab message seq number
-            let seq = message.info().map_err(|_| Error::NoInfo)?.stream_sequence;
-
-            let response = handler(message.payload.clone())
-                .await
-                .map_err(|e| Error::Handler(e))?;
-
-            // Ensure reply stream exists
-            self.get_reply_stream().await?;
-
-            // Headers that ensure seq matches between request and response
-            let mut headers = async_nats::HeaderMap::new();
-            headers.insert("Nats-Expected-Last-Sequence", (seq - 1).to_string());
-
-            self.client
-                .publish_with_headers(self.get_reply_stream_name(), headers, response)
-                .await
-                .map_err(|e| Error::ReplyPublish(e.kind()))?;
-
-            message.double_ack().await.map_err(|_| Error::ConsumerAck)?;
-        }
-
-        Ok(())
     }
 }
 
@@ -325,7 +285,6 @@ mod tests {
         let subscriber = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
             client,
             local_name: "local".to_string(),
-            scope_method: ScopeMethod::StreamPostfix,
             stream_name: "SQL".to_string(),
         });
 
@@ -334,38 +293,5 @@ mod tests {
 
         let subscriber = subscriber.with_scope("db1".to_string());
         assert_eq!(subscriber.stream_name, "SQL_app1_db1");
-
-        // Test subject not prefixed
-        assert_eq!(
-            subscriber.get_subject_binding("create".to_string()),
-            "create"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_subject_scoping() {
-        let client = async_nats::connect("nats://localhost:4222").await.unwrap();
-
-        let subscriber = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
-            client,
-            local_name: "local".to_string(),
-            scope_method: ScopeMethod::SubjectPrefix,
-            stream_name: "EVENT".to_string(),
-        });
-
-        let subscriber = subscriber.with_scope("app1".to_string());
-        assert_eq!(
-            subscriber.get_subject_binding("action".to_string()),
-            "app1.action"
-        );
-
-        let subscriber = subscriber.with_scope("user1".to_string());
-        assert_eq!(
-            subscriber.get_subject_binding("action".to_string()),
-            "app1.user1.action"
-        );
-
-        // Test table name still base
-        assert_eq!(subscriber.stream_name, "EVENT");
     }
 }

@@ -76,13 +76,12 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for NatsSqlStore<LS
     type Error = Error<ST::Error, LS::Error>;
     type Connection = Connection<ST, LS>;
 
-    async fn connect<N: Clone + Into<String> + Send + 'static>(
-        &self,
-        db_name: N,
-    ) -> Result<Connection<ST, LS>, ST::Error, LS::Error> {
+    async fn connect(&self) -> Result<Connection<ST, LS>, ST::Error, LS::Error> {
+        let stream_name = self.stream.name();
+
         let current_leader = self
             .leader_store
-            .get(db_name.clone())
+            .get(stream_name.clone())
             .await
             .map_err(Error::LeaderStore)?;
 
@@ -95,7 +94,7 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for NatsSqlStore<LS
         {
             self.leader_store
                 .put(
-                    db_name.clone(),
+                    stream_name,
                     Bytes::from(self.local_name.clone().into_bytes()),
                 )
                 .await
@@ -109,7 +108,7 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for NatsSqlStore<LS
 
             async move {
                 stream
-                    .handle(db_name.into(), move |bytes: Bytes| {
+                    .handle(move |bytes: Bytes| {
                         let database = database.clone();
                         Box::pin(async move {
                             let request: Request = bytes.try_into()?;
@@ -203,23 +202,14 @@ mod tests {
     use super::*;
     use proven_sql::{Connection as SqlConnection, SqlParam};
     use proven_store_memory::MemoryStore;
-    use proven_stream_nats::ScopeMethod;
-    use proven_stream_nats::{NatsStream, NatsStreamOptions};
+    use proven_stream_memory::MemoryStream;
     use tokio::time::{timeout, Duration};
 
     #[tokio::test]
     async fn test_sql_store() {
         let result = timeout(Duration::from_secs(5), async {
-            let client = async_nats::connect("nats://localhost:4222").await.unwrap();
-
             let leader_store = MemoryStore::new();
-
-            let stream = NatsStream::new(NatsStreamOptions {
-                client: client.clone(),
-                local_name: "my-machine".to_string(),
-                scope_method: ScopeMethod::StreamPostfix,
-                stream_name: "newww_sql".to_string(),
-            });
+            let stream = MemoryStream::new();
 
             let sql_store = NatsSqlStore::new(NatsSqlStoreOptions {
                 leader_store,
@@ -227,7 +217,7 @@ mod tests {
                 stream,
             });
 
-            let connection = sql_store.connect("new_test".to_string()).await.unwrap();
+            let connection = sql_store.connect().await.unwrap();
 
             let response = connection
                 .migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)".to_string())

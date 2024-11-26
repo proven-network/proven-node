@@ -17,15 +17,17 @@ where
 {
     type Error: StreamError;
 
-    async fn request(&self, subject: String, data: Bytes) -> Result<Bytes, Self::Error>;
-
     async fn handle(
         &self,
-        subject: String,
         handler: impl Fn(Bytes) -> Pin<Box<dyn Future<Output = Result<Bytes, HandlerError>> + Send>>
             + Send
-            + Sync,
+            + Sync
+            + 'static,
     ) -> Result<(), Self::Error>;
+
+    fn name(&self) -> String;
+
+    async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error>;
 }
 
 #[async_trait]

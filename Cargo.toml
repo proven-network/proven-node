@@ -46,6 +46,7 @@ members = [
     "crates/store-nats",
     "crates/store-s3",
     "crates/stream",
+    "crates/stream-memory",
     "crates/stream-nats",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
@@ -115,6 +116,7 @@ default-members = [
     "crates/store-nats",
     "crates/store-s3",
     "crates/stream",
+    "crates/stream-memory",
     "crates/stream-nats",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
@@ -307,6 +309,7 @@ proven-store-memory = { path = "crates/store-memory" }
 proven-store-nats = { path = "crates/store-nats" }
 proven-store-s3 = { path = "crates/store-s3" }
 proven-stream = { path = "crates/stream" }
+proven-stream-memory = { path = "crates/stream-memory" }
 proven-stream-nats = { path = "crates/stream-nats" }
 proven-vsock-proxy = { path = "crates/vsock-proxy" }
 proven-vsock-rpc = { path = "crates/vsock-rpc" }
