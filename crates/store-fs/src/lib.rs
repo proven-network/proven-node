@@ -73,41 +73,25 @@ impl Store for FsStore {
     }
 }
 
-#[async_trait]
-impl Store1 for FsStore {
-    type Error = Error;
-    type Scoped = Self;
+macro_rules! impl_scoped_store {
+    ($name:ident, $parent:ident) => {
+        #[async_trait]
+        impl $name for FsStore {
+            type Error = Error;
+            type Scoped = Self;
 
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let mut dir = self.dir.clone();
-        dir.push(scope.into());
-        Self::new(dir)
-    }
+            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                let mut dir = self.dir.clone();
+                dir.push(scope.into());
+                Self::new(dir)
+            }
+        }
+    };
 }
 
-#[async_trait]
-impl Store2 for FsStore {
-    type Error = Error;
-    type Scoped = Self;
-
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let mut dir = self.dir.clone();
-        dir.push(scope.into());
-        Self::new(dir)
-    }
-}
-
-#[async_trait]
-impl Store3 for FsStore {
-    type Error = Error;
-    type Scoped = Self;
-
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let mut dir = self.dir.clone();
-        dir.push(scope.into());
-        Self::new(dir)
-    }
-}
+impl_scoped_store!(Store1, Store);
+impl_scoped_store!(Store2, Store1);
+impl_scoped_store!(Store3, Store2);
 
 #[cfg(test)]
 mod tests {

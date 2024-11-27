@@ -119,59 +119,29 @@ impl Store for AsmStore {
     }
 }
 
-#[async_trait]
-impl Store1 for AsmStore {
-    type Error = Error;
-    type Scoped = Self;
+macro_rules! impl_scoped_store {
+    ($name:ident, $parent:ident) => {
+        #[async_trait]
+        impl $name for AsmStore {
+            type Error = Error;
+            type Scoped = Self;
 
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
-            None => scope.into(),
-        };
+            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                let new_scope = match &self.prefix {
+                    Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+                    None => scope.into(),
+                };
 
-        Self::new_with_client_and_prefix(
-            self.client.clone(),
-            self.secret_name.clone(),
-            Some(new_scope),
-        )
-    }
+                Self::new_with_client_and_prefix(
+                    self.client.clone(),
+                    self.secret_name.clone(),
+                    Some(new_scope),
+                )
+            }
+        }
+    };
 }
 
-#[async_trait]
-impl Store2 for AsmStore {
-    type Error = Error;
-    type Scoped = Self;
-
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
-            None => scope.into(),
-        };
-
-        Self::new_with_client_and_prefix(
-            self.client.clone(),
-            self.secret_name.clone(),
-            Some(new_scope),
-        )
-    }
-}
-
-#[async_trait]
-impl Store3 for AsmStore {
-    type Error = Error;
-    type Scoped = Self;
-
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
-            None => scope.into(),
-        };
-
-        Self::new_with_client_and_prefix(
-            self.client.clone(),
-            self.secret_name.clone(),
-            Some(new_scope),
-        )
-    }
-}
+impl_scoped_store!(Store1, Store);
+impl_scoped_store!(Store2, Store1);
+impl_scoped_store!(Store3, Store2);
