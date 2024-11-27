@@ -40,46 +40,52 @@ pub trait SqlConnection: Clone + Send + Sync + 'static {
     ) -> Result<Rows, Self::Error>;
 }
 
+/// A trait representing a SQL store with asynchronous operations.
+///
+/// # Associated Types
+/// - `Error`: The error type that implements `Debug`, `Error`, `Send`, and `Sync`.
+/// - `Connection`: The connection type that implements the `SqlConnection` trait.
+///
+/// # Required Methods
+/// - `async fn connect(&self) -> Result<Self::Connection, Self::Error>`: Connects to the SQL store.
+/// - `async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self`: Executes a SQL statement that modifies schema and returns bool indicating if needed to be run.
 #[async_trait]
 pub trait SqlStore: Clone + Send + Sync + 'static {
     type Error: SqlStoreError;
     type Connection: SqlConnection<Error = Self::Error>;
 
-    /// Connect to the SQL store
     async fn connect(&self) -> Result<Self::Connection, Self::Error>;
 
-    /// Execute a SQL statement that modifies schema and returns bool indicating if needed to be run
     async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
 }
 
-#[async_trait]
-pub trait SqlStore1: Clone + Send + Sync + 'static {
-    type Error: SqlStoreError;
-    type Scoped: SqlStore<Error = Self::Error>;
+macro_rules! define_scoped_sql_store {
+    ($name:ident, $parent:ident, $doc:expr) => {
+        #[async_trait]
+        #[doc = $doc]
+        pub trait $name: Clone + Send + Sync + 'static {
+            type Error: SqlStoreError;
+            type Scoped: $parent<Error = Self::Error>;
 
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
+            async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
 
-    fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
+            fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
+        }
+    };
 }
 
-#[async_trait]
-/// Double-scoped SQL interface (e.g. for tenant isolation)
-pub trait SqlStore2: Clone + Send + Sync + 'static {
-    type Error: SqlStoreError;
-    type Scoped: SqlStore1<Error = Self::Error>;
-
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
-
-    fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
-}
-
-#[async_trait]
-/// Triple-scoped SQL interface
-pub trait SqlStore3: Clone + Send + Sync + 'static {
-    type Error: SqlStoreError;
-    type Scoped: SqlStore2<Error = Self::Error>;
-
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
-
-    fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
-}
+define_scoped_sql_store!(
+    SqlStore1,
+    SqlStore,
+    "A trait representing a single-scoped SQL store with asynchronous operations."
+);
+define_scoped_sql_store!(
+    SqlStore2,
+    SqlStore1,
+    "A trait representing a double-scoped SQL store with asynchronous operations."
+);
+define_scoped_sql_store!(
+    SqlStore3,
+    SqlStore2,
+    "A trait representing a triple-scoped SQL store with asynchronous operations."
+);

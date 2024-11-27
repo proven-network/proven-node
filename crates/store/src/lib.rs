@@ -7,7 +7,6 @@ use bytes::Bytes;
 /// Marker trait for store errors
 pub trait StoreError: Debug + Error + Send + Sync {}
 
-#[async_trait]
 /// A trait representing a key-value store with asynchronous operations.
 ///
 /// # Associated Types
@@ -18,6 +17,7 @@ pub trait StoreError: Debug + Error + Send + Sync {}
 /// - `async fn get(&self, key: String) -> Result<Option<Bytes>, Self::SE>`: Retrieves the value associated with a key.
 /// - `async fn keys(&self) -> Result<Vec<String>, Self::SE>`: Retrieves all keys in the store.
 /// - `async fn put(&self, key: String, bytes: Bytes) -> Result<(), Self::SE>`: Stores a key-value pair.
+#[async_trait]
 pub trait Store: Clone + Send + Sync + 'static {
     type Error: StoreError;
 
@@ -27,50 +27,31 @@ pub trait Store: Clone + Send + Sync + 'static {
     async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error>;
 }
 
-#[async_trait]
-/// A trait representing a scoped key-value store with asynchronous operations.
-///
-/// # Associated Types
-/// - `SE`: The error type that implements `Debug`, `Error`, `Send`, and `Sync`.
-/// - `Scoped`: The scoped store type that implements the `Store` trait.
-///
-/// # Required Methods
-/// - `fn scope(&self, scope: String) -> Self::Scoped`: Add a scope and make the store usable.
-pub trait Store1: Clone + Send + Sync + 'static {
-    type Error: StoreError;
-    type Scoped: Store<Error = Self::Error>;
+macro_rules! define_scoped_store {
+    ($name:ident, $parent:ident, $doc:expr) => {
+        #[async_trait]
+        #[doc = $doc]
+        pub trait $name: Clone + Send + Sync + 'static {
+            type Error: StoreError;
+            type Scoped: $parent<Error = Self::Error>;
 
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
+            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
+        }
+    };
 }
 
-#[async_trait]
-/// A trait representing a dobule-scoped key-value store with asynchronous operations.
-///
-/// # Associated Types
-/// - `SE`: The error type that implements `Debug`, `Error`, `Send`, and `Sync`.
-/// - `Scoped`: The scoped store type that implements the `Store1` trait.
-///
-/// # Required Methods
-/// - `fn scope(&self, scope: String) -> Self::Scoped`: Add a scope and make the store usable.
-pub trait Store2: Clone + Send + Sync + 'static {
-    type Error: StoreError;
-    type Scoped: Store1<Error = Self::Error>;
-
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
-}
-
-/// A trait representing a tripe-scoped key-value store with asynchronous operations.
-///
-/// # Associated Types
-/// - `SE`: The error type that implements `Debug`, `Error`, `Send`, and `Sync`.
-/// - `Scoped`: The double-scoped store type that implements the `Store2` trait.
-///
-/// # Required Methods
-/// - `fn scope(&self, scope: String) -> Self::Scoped`: Add one of three scopee.
-#[async_trait]
-pub trait Store3: Clone + Send + Sync + 'static {
-    type Error: StoreError;
-    type Scoped: Store2<Error = Self::Error>;
-
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped;
-}
+define_scoped_store!(
+    Store1,
+    Store,
+    "A trait representing a single-scoped key-value store with asynchronous operations."
+);
+define_scoped_store!(
+    Store2,
+    Store1,
+    "A trait representing a double-scoped key-value store with asynchronous operations."
+);
+define_scoped_store!(
+    Store3,
+    Store2,
+    "A trait representing a triple-scoped key-value store with asynchronous operations."
+);
