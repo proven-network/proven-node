@@ -4,31 +4,71 @@ This repo contains code for Proven Network nodes. Proven is a novel TEE-based pl
 
 ⭐ End-to-end zero-trust networking and full execution verifiability through trusted-execution environments.
 
-⭐ A distributed highly-available control plane which scales horizontally to a global super-cluster.
+⭐ A distributed highly-available system which can scale horizontally to a geo-distributed edge network.
 
-⭐ Fully embeded Radix DLT nodes to ensure complete verifiability of network read operations.
+⭐ Embeded Radix DLT nodes to ensure verifiability of all network read operations.
 
 ⭐ A custom and highly-performant (sub-millisecond) runtime for application code based on V8 isolates.
 
-⭐ The ability to trigger FaaS code via front-end SDK RPC, HTTP APIs, or events from Radix DLT or other Proven apps.
+⭐ The ability to trigger FaaS code via front-end SDK RPC, HTTPS APIs, cron schedules, or events from Radix DLT and other Proven apps.
 
-⭐ Tight integrations with Radix DLT SDKs, tooling, and network primitives (such as identity and accounts).
+⭐ Close integrations with Radix DLT SDKs, tooling, and network primitives (such as identity and accounts).
 
-⭐ A novel deployment model for application code which gives full visibility and auditability to dApps.
+⭐ A novel deployment model for application code which gives end-users full visibility and auditability of dApps.
 
-⭐ Batteries-included access to encrypted storage (both KV and SQL) scopable to any of: app, user (persona), or NFT.
+⭐ Batteries-included access to encrypted storage (KV, SQL, and file) scopable to any of: app, user (persona), or NFT.
+
+⭐ Best-in-class DevEx for TEE development, tight integration with typical front-end tooling/LSPs, and simple Radix-native settlement for fees.
+
+## Security Model
+The Proven Network operates under a security model which can roughly be classified into three tiers:
+
+**The Hardware Layer**
+
+The code for any version of a Proven node can be built by any third-party through a reproducible process resulting in concrete build measurements. These measurements: Platform Configuration Registers (or PCRs) ensure bit-for-bit that the packaged application (including kernel, tempfs, etc.) is the same as is deployed to any live node.<br><br>
+Nodes can confirm these PCR measurements to any stakeholder (whether that is an end-user, application developer, or another Proven node) via a process of remote attestation. This involves sending a request (including a requestor-defined nonce) which the TEE hardware will reply to with a hardware-signed attestation report - containing both the nonce and the PCR measurements. These reports can then be verified using the well-known public keys of the hardware vendor.
+
+**The Node Layer**
+
+Given the node software is fully auditable via the above process - we can now [carefully] build back networked capabilities. Critically, this means, all functionality must start from a baseline of zero-trust in external systems (or even the parties running the infrastructure). All inputs and outputs of the TEE must be encrypted, or otherwise cryptographically verified by trust models rooted in the shipped images. Practically, this means things like:
+<br>
+- Nodes can provide an API, but only if TLS termination is contained within the enclave, and with certificates fully provisioned and stored within the enclave only.
+- Nodes can resolve DNS, but only over a tamper-resistent protocols like DoH, and with explicit acknowledgement of the DNS resolver's role in the overall threat model.
+- Nodes can connect to external APIs and systems, but only if the connection is over encrypted channels (like HTTPS or WSS), and using a root of trust which is shipped explicitly as part of the node software.
+- Nodes can mount external file-systems, but only if all data is encrypted before it leaves the enclave, and decrypted only within the enclave - using keys which are only available inside the enclave.
+- Nodes can trust the state of Radix DLT, but only if each enclave runs a complete stack of node software itself, and doesn't rely on any third-party nodes or gateways.
+- Nodes can trust each other, but only if they pass each other's remote attestation checks, ensuring true peer-ship and a uniform threat model.
+
+**The Application Layer**
+
+Finally, we can use this hardware-secured platform, with capabilities enabled by zero-trust networking - to provide a scalable serverless platform for deploying trust-minimised backends. These applications are deployed to the Proven Network as self-describing ESM modules which are fully scrutable to end-users. The upgradability of Proven applications also somewhat mirrors the hardware layer - where new versions are new modules, with new hashes. These new versions may be deployed by developers - but only in accordance with well-described upgrade policies (and with audit logs) transparent to any user.
 
 ## Subdirectories
-- [build](build): Build process for bundling all enclave components of the node into an EIF (enclave image format) - including related items such as the Radix Babylon Node. Uses [kaniko](https://github.com/GoogleContainerTools/kaniko) to ensure reproducibility of build.
+- [build](build): Build process for bundling all enclave components of the node into an EIF (enclave image format) - including related dependencies described below. The process uses [kaniko](https://github.com/GoogleContainerTools/kaniko) to ensure reproducibility of builds.
 - [crates](crates): All of the proven node components. Described below in more detail.
 - [kernel](kernel): Build process for enclave's Linux micro-kernel; used as part of creating the final EIF.
+- [vendor](vendor): Vendored forks of select other crates. Mostly for the purpose of resolving thorny cargo dependency issues.
+
+## TEE Base Environment
+Presently uses a Debian Bookworm base distro running on a Linux 6.12 micro-kernel. The kernel config generally mirrors the default AWS Nitro Image, packaged with their CLI tooling, except for using a more up-to-date kernel version, and enabling of FUSE and NFSv3 sub-systems.
+
+## Bundled TEE Dependencies
+Updates to these components will generally require a rebuild and upgrade of Proven nodes.
+- [babylon-gateway](https:://github.com/radixdlt/babylon-gateway): Radix Babylon Gateway for accessing read data from the Radix DLT.
+- [babylon-node](https://github.com/radixdlt/babylon-node): Radix Babylon Core Node for driving above gateway.
+- [dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy): DNSCrypt Proxy to ensure host cannot tamper with DNS.
+- [dotnet](https://dotnet.microsoft.com/): .NET runtime for running gateway.
+- [gocryptfs](https://github.com/rfjakob/gocryptfs): Used for encrypting NFS-mounted external filesystems. Threat model described [here](https://nuetzlich.net/gocryptfs/threat_model/).
+- [nats-server](https://github.com/nats-io/nats-server): NATS server for inter-node communication and control plane.
+- [openjdk](https://openjdk.java.net/): Java runtime for Java component of Radix DLT core node.
+- [postgres](https://www.postgresql.org/): Postgres server for storing gateway data.
 
 ## Crates
-- [applications](crates/applications): Manages databse of all currently deployed applications.
+- [applications](crates/applications): Manages database of all currently deployed applications.
 - [attestation](crates/attestation): Abstract interface for managing remote attestation and interacting with hardware-based security modules.
 - [attestation-dev](crates/attestation-dev): Noop implementation of attestation for local development.
 - [attestation-nsm](crates/attestation-nsm): Implementation of attestation using the Nitro Security Module.
-- [core](crates/core): Core logic for the Proven node handling all RPC and user interactions.
+- [core](crates/core): Core logic for the Proven node and the entrypoint for all user interactions.
 - [dnscrypt-proxy](crates/dnscrypt-proxy): Configures and runs a DNSCrypt proxy to ensure all DNS runs over tamper-proof HTTPS.
 - [enclave](crates/enclave): Main entrypoint for enclave images. Bootstraps all other components before handing off to core.
 - [external-fs](crates/external-fs): Mounts external filesystems into the enclave via NFS, intermediated by a layer of FUSE-based AES-GCM disk-encryption based on enclave-internal cryptographic keys.
@@ -45,7 +85,7 @@ This repo contains code for Proven Network nodes. Proven is a novel TEE-based pl
 - [locks-memory](crates/locks-memory): In-memory (single node) implementation of locks for local development.
 - locks-nats: TODO: Implementation of distributed locks using NATS with HA replication.
 - [nats-monitor](crates/nats-monitor): Helper crate for querying NATS HTTP monitoring endpoints.
-- [nats-server](crates/nats-server): Configures and runs a NATS server for inter-enclave communication.
+- [nats-server](crates/nats-server): Configures and runs a NATS server for inter-node communication.
 - [postgres](crates/postgres): Configures and runs a Postgres server to provide storage for Radix Gateway.
 - [radix-aggregator](crates/radix-aggregator): Configures and runs Radix Gateway's data aggregator. Also manages migration process as part of boot.
 - [radix-gateway](crates/radix-gateway): Configures and runs a local Radix Gateway.
