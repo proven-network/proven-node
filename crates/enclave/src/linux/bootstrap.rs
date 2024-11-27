@@ -1,4 +1,4 @@
-use super::enclave::{Enclave, EnclaveServices};
+use super::enclave::{Enclave, EnclaveCore, EnclaveServices};
 use super::error::{Error, Result};
 use super::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 
@@ -11,9 +11,10 @@ use std::time::Duration;
 use async_nats::Client as NatsClient;
 use bytes::Bytes;
 use fdlimit::{raise_fd_limit, Outcome as FdOutcome};
+use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
-use proven_core::{Core, NewCoreArguments};
+use proven_core::{Core, CoreOptions};
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
@@ -27,10 +28,12 @@ use proven_radix_aggregator::RadixAggregator;
 use proven_radix_gateway::RadixGateway;
 use proven_radix_node::RadixNode;
 use proven_sessions::{SessionManagement, SessionManager};
+use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStoreOptions};
 use proven_store::Store;
 use proven_store_asm::AsmStore;
 use proven_store_nats::{NatsStore, NatsStoreOptions};
 use proven_store_s3::S3Store;
+use proven_stream_nats::{NatsStream, NatsStreamOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
 use proven_vsock_tracing::configure_logging_to_vsock;
@@ -100,7 +103,7 @@ pub struct Bootstrap {
     nats_server: Option<NatsServer>,
     nats_server_handle: Option<JoinHandle<proven_nats_server::Result<()>>>,
 
-    core: Option<Core<SessionManager<NsmAttestor, NatsStore, NatsStore>>>,
+    core: Option<EnclaveCore>,
     core_handle: Option<JoinHandle<proven_core::Result<()>>>,
 
     // state
@@ -845,6 +848,7 @@ impl Bootstrap {
         let http_sock_addr = SocketAddr::from((self.args.enclave_ip, self.args.https_port));
         let http_server = LetsEncryptHttpServer::new(
             http_sock_addr,
+            self.args.fqdn.clone(),
             domains,
             self.args.email.clone(),
             cert_store,
@@ -874,7 +878,32 @@ impl Bootstrap {
         })
         .await?;
 
-        let core = Core::new(NewCoreArguments { session_manager });
+        let application_stream = NatsStream::new(NatsStreamOptions {
+            client: nats_client.clone(),
+            local_name: instance_details.instance_id.clone(),
+            stream_name: "APPLICATION_SQL".to_string(),
+        });
+
+        let leader_store = NatsStore::new(NatsStoreOptions {
+            bucket: "SQL_LEADER".to_string(),
+            client: nats_client.clone(),
+            max_age: Duration::ZERO,
+            persist: true,
+        })
+        .await?;
+
+        let application_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
+            leader_store,
+            local_name: instance_details.instance_id.clone(),
+            stream: application_stream,
+        });
+
+        let application_manager = ApplicationManager::new(application_sql_store);
+
+        let core = Core::new(CoreOptions {
+            application_manager,
+            session_manager,
+        });
         let core_handle = core
             .start(
                 http_server,

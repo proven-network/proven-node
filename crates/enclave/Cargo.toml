@@ -12,6 +12,7 @@ bytes = { workspace = true }
 cidr = { workspace = true }
 fdlimit = { workspace = true }
 futures = { workspace = true }
+proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-nsm = { workspace = true }
 proven-core = { workspace = true }
@@ -28,10 +29,14 @@ proven-radix-aggregator = { workspace = true }
 proven-radix-gateway = { workspace = true }
 proven-radix-node = { workspace = true }
 proven-sessions = { workspace = true }
+proven-sql = { workspace = true }
+proven-sql-streamed = { workspace = true }
 proven-store = { workspace = true }
 proven-store-asm = { workspace = true }
 proven-store-nats = { workspace = true }
 proven-store-s3 = { workspace = true }
+proven-stream = { workspace = true }
+proven-stream-nats = { workspace = true }
 proven-vsock-proxy = { workspace = true }
 proven-vsock-rpc = { workspace = true }
 proven-vsock-tracing = { workspace = true }
