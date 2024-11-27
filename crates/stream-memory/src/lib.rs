@@ -123,44 +123,26 @@ where
     }
 }
 
-#[async_trait]
-impl<HE> Stream1<HE> for MemoryStream<HE>
-where
-    HE: StreamHandlerError,
-{
-    type Error = Error<HE>;
-    type Scoped = MemoryStream<HE>;
+macro_rules! impl_scoped_stream {
+    ($name:ident, $parent:ident) => {
+        #[async_trait]
+        impl<HE> $name<HE> for MemoryStream<HE>
+        where
+            HE: StreamHandlerError,
+        {
+            type Error = Error<HE>;
+            type Scoped = MemoryStream<HE>;
 
-    fn scope(&self, scope: String) -> Self::Scoped {
-        self.with_scope(scope)
-    }
+            fn scope(&self, scope: String) -> Self::Scoped {
+                self.with_scope(scope)
+            }
+        }
+    };
 }
 
-#[async_trait]
-impl<HE> Stream2<HE> for MemoryStream<HE>
-where
-    HE: StreamHandlerError,
-{
-    type Error = Error<HE>;
-    type Scoped = MemoryStream<HE>;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        self.with_scope(scope)
-    }
-}
-
-#[async_trait]
-impl<HE> Stream3<HE> for MemoryStream<HE>
-where
-    HE: StreamHandlerError,
-{
-    type Error = Error<HE>;
-    type Scoped = MemoryStream<HE>;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        self.with_scope(scope)
-    }
-}
+impl_scoped_stream!(Stream1, Stream);
+impl_scoped_stream!(Stream2, Stream1);
+impl_scoped_stream!(Stream3, Stream2);
 
 #[cfg(test)]
 mod tests {
