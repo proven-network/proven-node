@@ -168,7 +168,9 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
                 kv_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
                 kv_nft_ext::init_ops_and_esm::<NS::Scoped>(),
                 kv_ext::init_ops_and_esm(),
+                // Split into seperate extensions to avoid issue with macro supporting only 1 generic
                 sql_ext::init_ops_and_esm(),
+                sql_application_ext::init_ops::<ASS::Scoped>(),
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),

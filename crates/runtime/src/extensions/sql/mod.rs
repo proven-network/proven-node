@@ -1,5 +1,7 @@
 mod application;
 
+pub use application::sql_application_ext;
+
 use deno_core::extension;
 
 extension!(

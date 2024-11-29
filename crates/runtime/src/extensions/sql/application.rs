@@ -1,26 +1,25 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use bytes::{Bytes, BytesMut};
 use deno_core::{extension, op2, OpDecl, OpState};
-use proven_store::{Store, Store1};
+use proven_sql::{Rows, SqlConnection, SqlParam, SqlStore, SqlStore1};
 
 #[op2(async)]
 #[buffer]
-pub async fn op_execute_schema_change_sql<AS: Store1>(
+pub async fn op_migrate_sql<ASS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
-    #[string] key: String,
-) -> Option<BytesMut> {
-    let application_store = {
+    #[string] query: String,
+) {
+    let application_sql_store = {
         loop {
-            let application_store = {
+            let application_sql_store = {
                 let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<AS>()
+                borrowed_state.try_take::<ASS>()
             };
 
-            match application_store {
+            match application_sql_store {
                 Some(store) => break store,
                 None => {
                     tokio::task::yield_now().await;
@@ -29,36 +28,67 @@ pub async fn op_execute_schema_change_sql<AS: Store1>(
         }
     };
 
-    let result = match application_store
-        .scope(format!("{}:bytes", db_name))
-        .get(key)
-        .await
-    {
-        Ok(Some(bytes)) => Some(BytesMut::from(bytes)),
-        _ => None,
+    application_sql_store.scope(db_name).migrate(query).await;
+
+    state.borrow_mut().put(application_sql_store);
+}
+
+#[op2(async)]
+#[bigint]
+pub async fn op_execute_sql<ASS: SqlStore1>(
+    state: Rc<RefCell<OpState>>,
+    #[string] db_name: String,
+    #[string] query: String,
+    #[serde] params: Vec<SqlParam>,
+) -> u64 {
+    let application_sql_store = {
+        loop {
+            let application_sql_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<ASS>()
+            };
+
+            match application_sql_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
     };
 
-    state.borrow_mut().put(application_store);
+    let result = application_sql_store
+        .scope(db_name)
+        .connect()
+        .await
+        .unwrap() // TODO: handle properly
+        .execute(query, params)
+        .await
+        .unwrap();
+
+    state.borrow_mut().put(application_sql_store);
 
     result
 }
 
 #[op2(async)]
-pub async fn op_execute_mutation_sql<AS: Store1>(
+#[serde]
+pub async fn op_query_sql<ASS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
-    #[string] key: String,
-    #[buffer(copy)] value: Bytes,
-) -> bool {
-    let application_store = {
+    #[string] query: String,
+    #[serde] params: Vec<SqlParam>,
+) -> Rows {
+    let application_sql_store = {
         loop {
-            let application_store = {
+            let application_sql_store = {
                 let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<AS>()
+                borrowed_state.try_take::<ASS>()
             };
 
-            match application_store {
+            match application_sql_store {
                 Some(store) => break store,
                 None => {
                     tokio::task::yield_now().await;
@@ -67,65 +97,30 @@ pub async fn op_execute_mutation_sql<AS: Store1>(
         }
     };
 
-    let result = application_store
-        .scope(format!("{}:bytes", db_name))
-        .put(key, value)
+    let result = application_sql_store
+        .scope(db_name)
+        .connect()
         .await
-        .is_ok();
-
-    state.borrow_mut().put(application_store);
-
-    result
-}
-
-#[op2(async)]
-#[string]
-pub async fn op_run_query_sql<AS: Store1>(
-    state: Rc<RefCell<OpState>>,
-    #[string] db_name: String,
-    #[string] key: String,
-) -> Option<String> {
-    let application_store = {
-        loop {
-            let application_store = {
-                let mut borrowed_state = state.borrow_mut();
-
-                borrowed_state.try_take::<AS>()
-            };
-
-            match application_store {
-                Some(store) => break store,
-                None => {
-                    tokio::task::yield_now().await;
-                }
-            }
-        }
-    };
-
-    let result = match application_store
-        .scope(format!("{}:string", db_name))
-        .get(key)
+        .unwrap() // TODO: handle properly
+        .query(query, params)
         .await
-    {
-        Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
-        _ => None,
-    };
+        .unwrap();
 
-    state.borrow_mut().put(application_store);
+    state.borrow_mut().put(application_sql_store);
 
     result
 }
 
 extension!(
     sql_application_ext,
-    parameters = [ AS: Store1 ],
-    ops_fn = get_ops<AS>,
+    parameters = [ ASS: SqlStore1 ],
+    ops_fn = get_ops<ASS>,
 );
 
-fn get_ops<AS: Store1>() -> Vec<OpDecl> {
-    let execute_mutation_sql = op_execute_mutation_sql::<AS>();
-    let execute_schema_change_sql = op_execute_schema_change_sql::<AS>();
-    let run_query_sql = op_run_query_sql::<AS>();
+fn get_ops<ASS: SqlStore1>() -> Vec<OpDecl> {
+    let execute_mutation_sql = op_execute_sql::<ASS>();
+    let execute_schema_change_sql = op_migrate_sql::<ASS>();
+    let run_query_sql = op_query_sql::<ASS>();
 
     vec![
         execute_mutation_sql,
