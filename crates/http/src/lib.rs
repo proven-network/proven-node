@@ -6,7 +6,7 @@ use axum::Router;
 use tokio::task::JoinHandle;
 
 #[async_trait]
-pub trait HttpServer: Send + Sync {
+pub trait HttpServer: Send + Sync + 'static {
     type Error: Debug + Error + Send + Sync;
 
     async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::Error>;

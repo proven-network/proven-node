@@ -6,7 +6,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use clap::Parser;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
-use proven_core::{Core, CoreOptions};
+use proven_core::{Core, CoreOptions, CoreStartOptions};
 use proven_http_insecure::InsecureHttpServer;
 use proven_sessions::{SessionManagement, SessionManager};
 use proven_sql_direct::DirectSqlStore;
@@ -48,8 +48,8 @@ async fn main() -> Result<()> {
         network_definition,
     );
 
-    let application_sql_store = DirectSqlStore::new("/tmp/proven/app_data");
-    let application_manager = ApplicationManager::new(application_sql_store);
+    let application_manager_sql_store = DirectSqlStore::new("/tmp/proven/app_data");
+    let application_manager = ApplicationManager::new(application_manager_sql_store);
 
     let core = Core::new(CoreOptions {
         application_manager,
@@ -59,17 +59,25 @@ async fn main() -> Result<()> {
     let http_sock_addr = SocketAddr::from((Ipv4Addr::LOCALHOST, args.port));
     let http_server = InsecureHttpServer::new(http_sock_addr);
 
-    let application_store = FsStore::new("/tmp/proven/application");
-    let personal_store = FsStore::new("/tmp/proven/personal");
-    let nft_store = FsStore::new("/tmp/proven/nft");
+    let application_store = FsStore::new("/tmp/proven/kv/application");
+    let personal_store = FsStore::new("/tmp/proven/kv/personal");
+    let nft_store = FsStore::new("/tmp/proven/kv/nft");
+
+    let application_sql_store = DirectSqlStore::new("/tmp/proven/sql/application");
+    let personal_sql_store = DirectSqlStore::new("/tmp/proven/sql/personal");
+    let nft_sql_store = DirectSqlStore::new("/tmp/proven/sql/nft");
+
     let core_handle = core
-        .start(
-            http_server,
+        .start(CoreStartOptions {
+            application_sql_store,
             application_store,
-            personal_store,
-            nft_store,
             gateway_origin,
-        )
+            http_server,
+            personal_sql_store,
+            personal_store,
+            nft_sql_store,
+            nft_store,
+        })
         .await?;
 
     tokio::select! {

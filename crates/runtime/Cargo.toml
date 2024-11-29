@@ -9,6 +9,7 @@ bytes = { workspace = true }
 deno_core = { workspace = true }
 deno_permissions = { workspace = true }
 proven-locks = { workspace = true }
+proven-sql = { workspace = true }
 proven-store = { workspace = true }
 regex = { workspace = true }
 rustyscript = { workspace = true }
@@ -21,7 +22,9 @@ tokio = { workspace = true }
 [dev-dependencies]
 futures = { workspace = true }
 proven-locks-memory = { workspace = true }
+proven-sql-direct = { workspace = true }
 proven-store-memory = { workspace = true }
+tempfile = { workspace = true }
 
 [build-dependencies]
 regex = { workspace = true }

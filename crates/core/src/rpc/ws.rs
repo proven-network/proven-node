@@ -11,6 +11,7 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use proven_applications::ApplicationManagement;
 use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
+use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use serde::Deserialize;
 use std::borrow::Cow;
@@ -27,10 +28,13 @@ pub async fn create_rpc_router<
     AS: Store2,
     PS: Store3,
     NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
 >(
     application_manager: AM,
     session_manager: SM,
-    runtime_pool: Arc<Pool<AS, PS, NS>>,
+    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
 ) -> Router {
     Router::new().route(
         "/ws",
@@ -72,9 +76,17 @@ async fn handle_socket_error(mut socket: WebSocket, reason: Cow<'static, str>) {
         .ok();
 }
 
-async fn handle_socket<AM: ApplicationManagement, AS: Store2, PS: Store3, NS: Store3>(
+async fn handle_socket<
+    AM: ApplicationManagement,
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
+>(
     socket: WebSocket,
-    mut rpc_handler: RpcHandler<AM, AS, PS, NS>,
+    mut rpc_handler: RpcHandler<AM, AS, PS, NS, ASS, PSS, NSS>,
 ) {
     let (mut sender, mut receiver) = socket.split();
 

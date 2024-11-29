@@ -10,6 +10,7 @@ use bytes::Bytes;
 use proven_applications::ApplicationManagement;
 use proven_runtime::Pool;
 use proven_sessions::SessionManagement;
+use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use serde::Deserialize;
 use tracing::error;
@@ -25,10 +26,13 @@ pub async fn create_rpc_router<
     AS: Store2,
     PS: Store3,
     NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
 >(
     application_manager: AM,
     session_manager: SM,
-    runtime_pool: Arc<Pool<AS, PS, NS>>,
+    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
 ) -> Router {
     Router::new().route(
         "/rpc",

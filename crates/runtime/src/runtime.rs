@@ -9,6 +9,7 @@ use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult};
 use std::sync::Arc;
 use std::time::Duration;
 
+use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use regex::Regex;
 use rustyscript::js_value::Value;
@@ -16,20 +17,40 @@ use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
 use tokio::time::Instant;
 
 #[derive(Clone)]
-pub struct RuntimeOptions<AS: Store2, PS: Store3, NS: Store3> {
+pub struct RuntimeOptions<
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
+> {
+    pub application_sql_store: ASS,
     pub application_store: AS,
     pub gateway_origin: String,
     pub handler_name: Option<String>,
     pub module: String,
+    pub nft_sql_store: NSS,
     pub nft_store: NS,
+    pub personal_sql_store: PSS,
     pub personal_store: PS,
 }
 
-pub struct Runtime<AS: Store2, PS: Store3, NS: Store3> {
+pub struct Runtime<
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
+> {
+    application_sql_store: ASS,
     application_store: AS,
     handler_name: Option<String>,
     module_handle: ModuleHandle,
+    nft_sql_store: NSS,
     nft_store: NS,
+    personal_sql_store: PSS,
     personal_store: PS,
     runtime: rustyscript::Runtime,
 }
@@ -38,8 +59,11 @@ pub struct Runtime<AS: Store2, PS: Store3, NS: Store3> {
 ///
 /// # Type Parameters
 /// - `AS`: Application Store type implementing `Store2`.
-/// - `PS`: Personal Store type implementing `Store3`.
 /// - `NS`: NFT Store type implementing `Store3`.
+/// - `PS`: Personal Store type implementing `Store3`.
+/// - `ASS`: Application SQL Store type implementing `SqlStore2`.
+/// - `NSS`: NFT SQL Store type implementing `SqlStore3`.
+/// - `PSS`: Personal SQL Store type implementing `SqlStore3`.
 ///
 /// # Example
 /// ```rust
@@ -64,29 +88,35 @@ pub struct Runtime<AS: Store2, PS: Store3, NS: Store3> {
 ///     identity: None,
 /// });
 /// ```
-impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
+impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: SqlStore3>
+    Runtime<AS, PS, NS, ASS, PSS, NSS>
+{
     /// Creates a new runtime with the given runtime options and stores.
     ///
     /// # Parameters
     /// - `options`: The runtime options to use.
-    /// - `application_store`: The application store to use.
-    /// - `personal_store`: The personal store to use.
-    /// - `nft_store`: The NFT store to use.
     ///
     /// # Returns
     /// The created runtime.
-    pub fn new(options: RuntimeOptions<AS, PS, NS>) -> Result<Self, Error> {
-        let handler_options = OptionsParser::new()?
-            .parse(options.module.as_str())?
-            .handler_options;
+    pub fn new(
+        RuntimeOptions {
+            application_sql_store,
+            application_store,
+            gateway_origin,
+            handler_name,
+            module,
+            nft_sql_store,
+            nft_store,
+            personal_sql_store,
+            personal_store,
+        }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS>,
+    ) -> Result<Self, Error> {
+        let module_options = OptionsParser::new()?.parse(module.as_str())?;
+        let handler_options = module_options
+            .handler_options
+            .get(handler_name.as_ref().unwrap_or(&"__default__".to_string()));
 
         let timeout_millis = handler_options
-            .get(
-                options
-                    .handler_name
-                    .as_ref()
-                    .unwrap_or(&"__default__".to_string()),
-            )
             .map(|handler_options| match handler_options {
                 HandlerOptions::Http(http_handler_options) => {
                     http_handler_options.timeout_millis.unwrap_or(1000)
@@ -98,12 +128,6 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             .unwrap_or(1000);
 
         let max_heap_mbs = handler_options
-            .get(
-                options
-                    .handler_name
-                    .as_ref()
-                    .unwrap_or(&"__default__".to_string()),
-            )
             .map(|handler_options| match handler_options {
                 HandlerOptions::Http(http_handler_options) => {
                     http_handler_options.max_heap_mbs.unwrap_or(32)
@@ -115,12 +139,6 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             .unwrap_or(32);
 
         let allowed_web_origins = handler_options
-            .get(
-                options
-                    .handler_name
-                    .as_ref()
-                    .unwrap_or(&"__default__".to_string()),
-            )
             .map(|handler_options| match handler_options {
                 HandlerOptions::Http(http_handler_options) => {
                     http_handler_options.allowed_web_origins.clone()
@@ -132,7 +150,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
             .unwrap_or_default();
 
         let allowlist_web_permissions = OriginAllowlistWebPermissions::new();
-        allowlist_web_permissions.allow_origin(&options.gateway_origin); // Always allow Radix gateway origin
+        allowlist_web_permissions.allow_origin(&gateway_origin); // Always allow Radix gateway origin
         allowed_web_origins.iter().for_each(|origin| {
             allowlist_web_permissions.allow_origin(origin);
         });
@@ -175,25 +193,28 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
 
         // Set the gateway origin and id for the gateway API SDK extension
         runtime.put(GatewayDetailsState {
-            gateway_origin: options.gateway_origin.clone(),
+            gateway_origin: gateway_origin.clone(),
             network_id: 2, // TODO: Add to options
         })?;
 
         // In case there are any top-level console.* calls in the module
         runtime.put(ConsoleState::default())?;
 
-        let async_module = Self::ensure_exported_functions_are_async(options.module.as_str());
+        let async_module = Self::ensure_exported_functions_are_async(module.as_str());
         let async_module = replace_vendor_imports(async_module);
 
         let module = Module::new("module.ts", async_module.as_str());
         let module_handle = runtime.load_module(&module)?;
 
         Ok(Self {
-            application_store: options.application_store,
-            handler_name: options.handler_name,
+            application_sql_store,
+            application_store,
+            handler_name,
             module_handle,
-            nft_store: options.nft_store,
-            personal_store: options.personal_store,
+            nft_sql_store,
+            nft_store,
+            personal_sql_store,
+            personal_store,
             runtime,
         })
     }
@@ -219,7 +240,7 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
         // Reset the console state before each execution
         self.runtime.put(ConsoleState::default())?;
 
-        // Set the store for the storage extension
+        // Set the stores for the storage extension
         let personal_store = match identity.as_ref() {
             Some(current_identity) => Some(
                 self.personal_store
@@ -237,8 +258,32 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
                 .scope(dapp_definition_address.clone()),
         )?;
 
+        self.runtime.put(
+            self.nft_store
+                .clone()
+                .scope(dapp_definition_address.clone()),
+        )?;
+
+        // Set the sql stores for the storage extension
+        let personal_sql_store = match identity.as_ref() {
+            Some(current_identity) => Some(
+                self.personal_sql_store
+                    .clone()
+                    .scope(dapp_definition_address.clone())
+                    .scope(current_identity.clone()),
+            ),
+            None => None,
+        };
+        self.runtime.put(personal_sql_store)?;
+
+        self.runtime.put(
+            self.application_sql_store
+                .clone()
+                .scope(dapp_definition_address.clone()),
+        )?;
+
         self.runtime
-            .put(self.nft_store.clone().scope(dapp_definition_address))?;
+            .put(self.nft_sql_store.clone().scope(dapp_definition_address))?;
 
         // Set the context for the session extension
         self.runtime.put(SessionsState { identity, accounts })?;
@@ -313,8 +358,10 @@ impl<AS: Store2, PS: Store3, NS: Store3> Runtime<AS, PS, NS> {
 mod tests {
     use super::*;
 
+    use proven_sql_direct::DirectSqlStore;
     use proven_store_memory::MemoryStore;
     use serde_json::json;
+    use tempfile::tempdir;
 
     // spawn in std::thread to avoid rustyscript panic
     fn run_in_thread<F: FnOnce() + Send + 'static>(f: F) {
@@ -324,13 +371,30 @@ mod tests {
     fn create_runtime_options(
         script: &str,
         handler_name: Option<String>,
-    ) -> RuntimeOptions<MemoryStore, MemoryStore, MemoryStore> {
+    ) -> RuntimeOptions<
+        MemoryStore,
+        MemoryStore,
+        MemoryStore,
+        DirectSqlStore,
+        DirectSqlStore,
+        DirectSqlStore,
+    > {
+        let mut temp_application_sql = tempdir().unwrap().into_path();
+        temp_application_sql.push("application.db");
+        let mut temp_nft_sql = tempdir().unwrap().into_path();
+        temp_nft_sql.push("nft.db");
+        let mut temp_personal_sql = tempdir().unwrap().into_path();
+        temp_personal_sql.push("personal.db");
+
         RuntimeOptions {
+            application_sql_store: DirectSqlStore::new(temp_application_sql),
             application_store: MemoryStore::new(),
             gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name,
             module: script.to_string(),
+            nft_sql_store: DirectSqlStore::new(temp_nft_sql),
             nft_store: MemoryStore::new(),
+            personal_sql_store: DirectSqlStore::new(temp_personal_sql),
             personal_store: MemoryStore::new(),
         }
     }

@@ -14,6 +14,7 @@ use proven_applications::ApplicationManagement;
 use proven_http::HttpServer;
 use proven_runtime::{Pool, PoolOptions};
 use proven_sessions::SessionManagement;
+use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -23,6 +24,25 @@ use tracing::{error, info};
 pub struct CoreOptions<SM: SessionManagement, AM: ApplicationManagement> {
     pub application_manager: AM,
     pub session_manager: SM,
+}
+
+pub struct CoreStartOptions<
+    HS: HttpServer,
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
+> {
+    pub http_server: HS,
+    pub application_sql_store: ASS,
+    pub application_store: AS,
+    pub personal_sql_store: PSS,
+    pub personal_store: PS,
+    pub nft_sql_store: NSS,
+    pub nft_store: NS,
+    pub gateway_origin: String,
 }
 
 pub struct Core<SM: SessionManagement, AM: ApplicationManagement> {
@@ -47,23 +67,39 @@ impl<SM: SessionManagement, AM: ApplicationManagement> Core<SM, AM> {
         }
     }
 
-    pub async fn start<HS: HttpServer + 'static, AS: Store2, PS: Store3, NS: Store3>(
+    pub async fn start<
+        HS: HttpServer,
+        AS: Store2,
+        PS: Store3,
+        NS: Store3,
+        ASS: SqlStore2,
+        PSS: SqlStore3,
+        NSS: SqlStore3,
+    >(
         &self,
-        http_server: HS,
-        application_store: AS,
-        personal_store: PS,
-        nft_store: NS,
-        gateway_origin: String,
+        CoreStartOptions {
+            application_sql_store,
+            application_store,
+            gateway_origin,
+            http_server,
+            personal_sql_store,
+            personal_store,
+            nft_sql_store,
+            nft_store,
+        }: CoreStartOptions<HS, AS, PS, NS, ASS, PSS, NSS>,
     ) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
 
         let pool = Pool::new(PoolOptions {
+            application_sql_store,
             application_store,
             gateway_origin,
             max_workers: 100,
+            nft_sql_store,
             nft_store,
+            personal_sql_store,
             personal_store,
         })
         .await;

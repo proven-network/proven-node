@@ -3,16 +3,26 @@ use crate::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 use std::marker::PhantomData;
 use std::thread;
 
-use proven_store::Store2;
-use proven_store::Store3;
+use proven_sql::{SqlStore2, SqlStore3};
+use proven_store::{Store2, Store3};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-pub struct Worker<AS: Store2, PS: Store3, NS: Store3> {
+pub struct Worker<
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
+> {
     sender: mpsc::Sender<WorkerRequest>,
     _marker: PhantomData<AS>,
     _marker2: PhantomData<PS>,
     _marker3: PhantomData<NS>,
+    _marker4: PhantomData<ASS>,
+    _marker5: PhantomData<PSS>,
+    _marker6: PhantomData<NSS>,
 }
 
 type WorkerRequest = (
@@ -58,7 +68,9 @@ type WorkerRequest = (
 ///         .await;
 /// }
 /// ```
-impl<AS: Store2, PS: Store3, NS: Store3> Worker<AS, PS, NS> {
+impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: SqlStore3>
+    Worker<AS, PS, NS, ASS, PSS, NSS>
+{
     /// Creates a new worker with the given runtime options and stores.
     ///
     /// # Parameters
@@ -69,7 +81,9 @@ impl<AS: Store2, PS: Store3, NS: Store3> Worker<AS, PS, NS> {
     ///
     /// # Returns
     /// The created worker.
-    pub async fn new(runtime_options: RuntimeOptions<AS, PS, NS>) -> Result<Self, Error> {
+    pub async fn new(
+        runtime_options: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS>,
+    ) -> Result<Self, Error> {
         let (sender, mut receiver) = mpsc::channel::<WorkerRequest>(1);
 
         let (error_sender, error_reciever) = oneshot::channel();
@@ -97,6 +111,9 @@ impl<AS: Store2, PS: Store3, NS: Store3> Worker<AS, PS, NS> {
             _marker: PhantomData,
             _marker2: PhantomData,
             _marker3: PhantomData,
+            _marker4: PhantomData,
+            _marker5: PhantomData,
+            _marker6: PhantomData,
         })
     }
 
@@ -128,19 +145,38 @@ impl<AS: Store2, PS: Store3, NS: Store3> Worker<AS, PS, NS> {
 mod tests {
     use super::*;
 
+    use proven_sql_direct::DirectSqlStore;
     use proven_store_memory::MemoryStore;
     use serde_json::json;
+    use tempfile::tempdir;
 
     fn create_runtime_options(
         script: &str,
         handler_name: Option<String>,
-    ) -> RuntimeOptions<MemoryStore, MemoryStore, MemoryStore> {
+    ) -> RuntimeOptions<
+        MemoryStore,
+        MemoryStore,
+        MemoryStore,
+        DirectSqlStore,
+        DirectSqlStore,
+        DirectSqlStore,
+    > {
+        let mut temp_application_sql = tempdir().unwrap().into_path();
+        temp_application_sql.push("application.db");
+        let mut temp_nft_sql = tempdir().unwrap().into_path();
+        temp_nft_sql.push("nft.db");
+        let mut temp_personal_sql = tempdir().unwrap().into_path();
+        temp_personal_sql.push("personal.db");
+
         RuntimeOptions {
+            application_sql_store: DirectSqlStore::new(temp_application_sql),
             application_store: MemoryStore::new(),
             gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name,
             module: script.to_string(),
+            nft_sql_store: DirectSqlStore::new(temp_nft_sql),
             nft_store: MemoryStore::new(),
+            personal_sql_store: DirectSqlStore::new(temp_personal_sql),
             personal_store: MemoryStore::new(),
         }
     }

@@ -14,7 +14,7 @@ use fdlimit::{raise_fd_limit, Outcome as FdOutcome};
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
-use proven_core::{Core, CoreOptions};
+use proven_core::{Core, CoreOptions, CoreStartOptions};
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
@@ -854,38 +854,28 @@ impl Bootstrap {
             cert_store,
         );
 
-        let application_store = NatsStore::new(NatsStoreOptions {
-            bucket: "application".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::ZERO,
-            persist: true,
-        })
-        .await?;
-
-        let personal_store = NatsStore::new(NatsStoreOptions {
-            bucket: "personal".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::ZERO,
-            persist: true,
-        })
-        .await?;
-
-        let nft_store = NatsStore::new(NatsStoreOptions {
-            bucket: "nft".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::ZERO,
-            persist: true,
-        })
-        .await?;
-
-        let application_stream = NatsStream::new(NatsStreamOptions {
-            client: nats_client.clone(),
-            local_name: instance_details.instance_id.clone(),
-            stream_name: "APPLICATION_SQL".to_string(),
-        });
-
         let leader_store = NatsStore::new(NatsStoreOptions {
             bucket: "SQL_LEADER".to_string(),
+            client: nats_client.clone(),
+            max_age: Duration::ZERO,
+            persist: true,
+        })
+        .await?;
+
+        let application_manager_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
+            leader_store,
+            local_name: instance_details.instance_id.clone(),
+            stream: NatsStream::new(NatsStreamOptions {
+                client: nats_client.clone(),
+                local_name: instance_details.instance_id.clone(),
+                stream_name: "APPLICATION_MANAGER_SQL".to_string(),
+            }),
+        });
+
+        let application_manager = ApplicationManager::new(application_manager_sql_store);
+
+        let application_store = NatsStore::new(NatsStoreOptions {
+            bucket: "APPLICATION_KV".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
             persist: true,
@@ -895,23 +885,64 @@ impl Bootstrap {
         let application_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
             leader_store,
             local_name: instance_details.instance_id.clone(),
-            stream: application_stream,
+            stream: NatsStream::new(NatsStreamOptions {
+                client: nats_client.clone(),
+                local_name: instance_details.instance_id.clone(),
+                stream_name: "APPLICATION_SQL".to_string(),
+            }),
         });
 
-        let application_manager = ApplicationManager::new(application_sql_store);
+        let personal_store = NatsStore::new(NatsStoreOptions {
+            bucket: "PERSONAL_KV".to_string(),
+            client: nats_client.clone(),
+            max_age: Duration::ZERO,
+            persist: true,
+        })
+        .await?;
+
+        let personal_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
+            leader_store,
+            local_name: instance_details.instance_id.clone(),
+            stream: NatsStream::new(NatsStreamOptions {
+                client: nats_client.clone(),
+                local_name: instance_details.instance_id.clone(),
+                stream_name: "PERSONAL_SQL".to_string(),
+            }),
+        });
+
+        let nft_store = NatsStore::new(NatsStoreOptions {
+            bucket: "NFT_KV".to_string(),
+            client: nats_client.clone(),
+            max_age: Duration::ZERO,
+            persist: true,
+        })
+        .await?;
+
+        let nft_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
+            leader_store,
+            local_name: instance_details.instance_id.clone(),
+            stream: NatsStream::new(NatsStreamOptions {
+                client: nats_client.clone(),
+                local_name: instance_details.instance_id.clone(),
+                stream_name: "NFT_SQL".to_string(),
+            }),
+        });
 
         let core = Core::new(CoreOptions {
             application_manager,
             session_manager,
         });
         let core_handle = core
-            .start(
-                http_server,
+            .start(CoreStartOptions {
+                application_sql_store,
                 application_store,
+                gateway_origin: "http://127.0.0.1:8081".to_string(),
+                http_server,
+                personal_sql_store,
                 personal_store,
+                nft_sql_store,
                 nft_store,
-                "http://127.0.0.1:8081".to_string(), // Local gateway
-            )
+            })
             .await?;
 
         self.core = Some(core);

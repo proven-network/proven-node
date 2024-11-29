@@ -9,6 +9,7 @@ use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_applications::{Application, ApplicationManagement, CreateApplicationOptions};
 use proven_runtime::{ExecutionRequest, ExecutionResult, Pool, PoolRuntimeOptions};
 use proven_sessions::Session;
+use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -37,7 +38,15 @@ pub enum RpcHandlerError {
     VerifyingKeyInvalid,
 }
 
-pub struct RpcHandler<AM: ApplicationManagement, AS: Store2, PS: Store3, NS: Store3> {
+pub struct RpcHandler<
+    AM: ApplicationManagement,
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
+> {
     aad: Vec<u8>,
     application_manager: AM,
     signing_key: SigningKey,
@@ -45,7 +54,7 @@ pub struct RpcHandler<AM: ApplicationManagement, AS: Store2, PS: Store3, NS: Sto
     dapp_definition_address: String,
     identity_address: String,
     account_addresses: Vec<String>,
-    runtime_pool: Arc<Pool<AS, PS, NS>>,
+    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
 }
 
 type Args = Vec<serde_json::Value>;
@@ -79,11 +88,20 @@ pub struct WhoAmIResponse {
     pub account_addresses: Vec<String>,
 }
 
-impl<AM: ApplicationManagement, AS: Store2, PS: Store3, NS: Store3> RpcHandler<AM, AS, PS, NS> {
+impl<
+        AM: ApplicationManagement,
+        AS: Store2,
+        PS: Store3,
+        NS: Store3,
+        ASS: SqlStore2,
+        PSS: SqlStore3,
+        NSS: SqlStore3,
+    > RpcHandler<AM, AS, PS, NS, ASS, PSS, NSS>
+{
     pub fn new(
         application_manager: AM,
         session: Session,
-        runtime_pool: Arc<Pool<AS, PS, NS>>,
+        runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
     ) -> Result<Self, RpcHandlerError> {
         let signing_key_bytes: [u8; 32] = session
             .signing_key

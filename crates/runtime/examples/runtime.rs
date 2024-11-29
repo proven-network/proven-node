@@ -1,8 +1,9 @@
 use proven_runtime::{Error, ExecutionRequest, Runtime, RuntimeOptions};
 
+use proven_sql_direct::DirectSqlStore;
 use proven_store_memory::MemoryStore;
-
 use serde_json::json;
+use tempfile::tempdir;
 
 fn main() -> Result<(), Error> {
     let user_module = r#"
@@ -41,12 +42,22 @@ fn main() -> Result<(), Error> {
         }, { timeout: 3 });
     "#;
 
+    let mut temp_application_sql = tempdir().unwrap().into_path();
+    temp_application_sql.push("application.db");
+    let mut temp_nft_sql = tempdir().unwrap().into_path();
+    temp_nft_sql.push("nft.db");
+    let mut temp_personal_sql = tempdir().unwrap().into_path();
+    temp_personal_sql.push("personal.db");
+
     let mut runtime = Runtime::new(RuntimeOptions {
+        application_sql_store: DirectSqlStore::new(temp_application_sql),
         application_store: MemoryStore::new(),
         gateway_origin: "https://stokenet.radixdlt.com".to_string(),
         handler_name: Some("handler".to_string()),
         module: user_module.to_string(),
+        nft_sql_store: DirectSqlStore::new(temp_nft_sql),
         nft_store: MemoryStore::new(),
+        personal_sql_store: DirectSqlStore::new(temp_personal_sql),
         personal_store: MemoryStore::new(),
     })?;
 

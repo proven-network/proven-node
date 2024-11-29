@@ -3,9 +3,11 @@ use proven_runtime::{ExecutionRequest, RuntimeOptions, Worker};
 use std::sync::Arc;
 
 use futures::future::join_all;
+use proven_sql_direct::DirectSqlStore;
 use proven_store_memory::MemoryStore;
 use rustyscript::Error;
 use serde_json::json;
+use tempfile::tempdir;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
@@ -27,13 +29,23 @@ async fn main() -> Result<(), Error> {
     "#
     .to_string();
 
+    let mut temp_application_sql = tempdir().unwrap().into_path();
+    temp_application_sql.push("application.db");
+    let mut temp_nft_sql = tempdir().unwrap().into_path();
+    temp_nft_sql.push("nft.db");
+    let mut temp_personal_sql = tempdir().unwrap().into_path();
+    temp_personal_sql.push("personal.db");
+
     let worker = Arc::new(Mutex::new(
         Worker::new(RuntimeOptions {
+            application_sql_store: DirectSqlStore::new(temp_application_sql),
             application_store: MemoryStore::new(),
             gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name: Some("handler".to_string()),
             module,
+            nft_sql_store: DirectSqlStore::new(temp_nft_sql),
             nft_store: MemoryStore::new(),
+            personal_sql_store: DirectSqlStore::new(temp_personal_sql),
             personal_store: MemoryStore::new(),
         })
         .await

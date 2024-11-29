@@ -5,13 +5,14 @@ use std::fmt::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
+use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
 
-type WorkerMap<AS, PS, NS> = HashMap<String, Vec<Worker<AS, PS, NS>>>;
-type SharedWorkerMap<AS, PS, NS> = Arc<Mutex<WorkerMap<AS, PS, NS>>>;
+type WorkerMap<AS, PS, NS, ASS, PSS, NSS> = HashMap<String, Vec<Worker<AS, PS, NS, ASS, PSS, NSS>>>;
+type SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS> = Arc<Mutex<WorkerMap<AS, PS, NS, ASS, PSS, NSS>>>;
 type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 
 type SendChannel = oneshot::Sender<Result<ExecutionResult, Error>>;
@@ -68,29 +69,36 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 ///     assert!(result.is_ok());
 /// }
 /// ```
-pub struct Pool<AS: Store2, PS: Store3, NS: Store3> {
+pub struct Pool<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: SqlStore3>
+{
+    application_sql_store: ASS,
     application_store: AS,
     gateway_origin: String,
     known_hashes: Arc<Mutex<HashMap<String, PoolRuntimeOptions>>>,
     last_killed: Arc<Mutex<Option<Instant>>>,
     last_used: LastUsedMap,
     max_workers: u32,
+    nft_sql_store: NSS,
     nft_store: NS,
     overflow_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     overflow_queue: Arc<Mutex<VecDeque<QueueItem>>>,
+    personal_sql_store: PSS,
     personal_store: PS,
     queue_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     queue_sender: QueueSender,
     total_workers: AtomicU32,
     try_kill_interval: Duration,
-    workers: SharedWorkerMap<AS, PS, NS>,
+    workers: SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS>,
 }
 
-pub struct PoolOptions<AS, PS, NS> {
+pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS> {
+    pub application_sql_store: ASS,
     pub application_store: AS,
     pub gateway_origin: String,
     pub max_workers: u32,
+    pub nft_sql_store: NSS,
     pub nft_store: NS,
+    pub personal_sql_store: PSS,
     pub personal_store: PS,
 }
 
@@ -100,23 +108,39 @@ pub struct PoolRuntimeOptions {
     pub module: String,
 }
 
-impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
-    pub async fn new(options: PoolOptions<AS, PS, NS>) -> Arc<Self> {
-        rustyscript::init_platform(options.max_workers, true);
+impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: SqlStore3>
+    Pool<AS, PS, NS, ASS, PSS, NSS>
+{
+    pub async fn new(
+        PoolOptions {
+            application_sql_store,
+            application_store,
+            gateway_origin,
+            max_workers,
+            nft_sql_store,
+            nft_store,
+            personal_sql_store,
+            personal_store,
+        }: PoolOptions<AS, PS, NS, ASS, PSS, NSS>,
+    ) -> Arc<Self> {
+        rustyscript::init_platform(max_workers, true);
 
-        let (queue_sender, queue_receiver) = mpsc::channel(options.max_workers as usize * 10);
+        let (queue_sender, queue_receiver) = mpsc::channel(max_workers as usize * 10);
 
         let pool = Arc::new(Self {
-            application_store: options.application_store,
-            gateway_origin: options.gateway_origin,
+            application_sql_store,
+            application_store,
+            gateway_origin,
             known_hashes: Arc::new(Mutex::new(HashMap::new())),
             last_killed: Arc::new(Mutex::new(Some(Instant::now()))),
             last_used: Arc::new(Mutex::new(HashMap::new())),
-            max_workers: options.max_workers,
-            nft_store: options.nft_store,
+            max_workers,
+            nft_sql_store,
+            nft_store,
             overflow_processor: Arc::new(Mutex::new(None)),
             overflow_queue: Arc::new(Mutex::new(VecDeque::new())),
-            personal_store: options.personal_store,
+            personal_sql_store,
+            personal_store,
             queue_processor: Arc::new(Mutex::new(None)),
             queue_sender,
             total_workers: AtomicU32::new(0),
@@ -173,12 +197,15 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
                 {
                     pool.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    match Worker::<AS, PS, NS>::new(RuntimeOptions {
+                    match Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
+                        application_sql_store: pool.application_sql_store.clone(),
                         application_store: pool.application_store.clone(),
                         gateway_origin: pool.gateway_origin.clone(),
                         handler_name: runtime_options.handler_name.clone(),
                         module: runtime_options.module.clone(),
+                        nft_sql_store: pool.nft_sql_store.clone(),
                         nft_store: pool.nft_store.clone(),
+                        personal_sql_store: pool.personal_sql_store.clone(),
                         personal_store: pool.personal_store.clone(),
                     })
                     .await
@@ -291,12 +318,15 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
         {
             self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-            let mut worker = Worker::<AS, PS, NS>::new(RuntimeOptions {
+            let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
+                application_sql_store: self.application_sql_store.clone(),
                 application_store: self.application_store.clone(),
                 gateway_origin: self.gateway_origin.clone(),
                 handler_name: runtime_options.handler_name.clone(),
                 module: runtime_options.module.clone(),
+                nft_sql_store: self.nft_sql_store.clone(),
                 nft_store: self.nft_store.clone(),
+                personal_sql_store: self.personal_sql_store.clone(),
                 personal_store: self.personal_store.clone(),
             })
             .await?;
@@ -376,12 +406,15 @@ impl<AS: Store2, PS: Store3, NS: Store3> Pool<AS, PS, NS> {
                 {
                     self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    let mut worker = Worker::<AS, PS, NS>::new(RuntimeOptions {
+                    let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
+                        application_sql_store: self.application_sql_store.clone(),
                         application_store: self.application_store.clone(),
                         gateway_origin: self.gateway_origin.clone(),
                         handler_name: runtime_options.handler_name.clone(),
                         module: runtime_options.module.clone(),
+                        nft_sql_store: self.nft_sql_store.clone(),
                         nft_store: self.nft_store.clone(),
+                        personal_sql_store: self.personal_sql_store.clone(),
                         personal_store: self.personal_store.clone(),
                     })
                     .await?;
@@ -525,20 +558,41 @@ pub fn hash_options(options: &PoolRuntimeOptions) -> String {
 mod tests {
     use super::*;
 
+    use proven_sql_direct::DirectSqlStore;
     use proven_store_memory::MemoryStore;
-
     use serde_json::json;
+    use tempfile::tempdir;
 
-    #[tokio::test]
-    async fn test_pool_creation() {
-        let pool = Pool::new(PoolOptions {
+    fn create_pool_options() -> PoolOptions<
+        MemoryStore,
+        MemoryStore,
+        MemoryStore,
+        DirectSqlStore,
+        DirectSqlStore,
+        DirectSqlStore,
+    > {
+        let mut temp_application_sql = tempdir().unwrap().into_path();
+        temp_application_sql.push("application.db");
+        let mut temp_nft_sql = tempdir().unwrap().into_path();
+        temp_nft_sql.push("nft.db");
+        let mut temp_personal_sql = tempdir().unwrap().into_path();
+        temp_personal_sql.push("personal.db");
+
+        PoolOptions {
+            application_sql_store: DirectSqlStore::new(temp_application_sql),
             application_store: MemoryStore::new(),
             gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             max_workers: 10,
+            nft_sql_store: DirectSqlStore::new(temp_nft_sql),
             nft_store: MemoryStore::new(),
+            personal_sql_store: DirectSqlStore::new(temp_personal_sql),
             personal_store: MemoryStore::new(),
-        })
-        .await;
+        }
+    }
+
+    #[tokio::test]
+    async fn test_pool_creation() {
+        let pool = Pool::new(create_pool_options()).await;
 
         assert_eq!(pool.max_workers, 10);
         assert_eq!(pool.total_workers.load(Ordering::SeqCst), 0);
@@ -546,14 +600,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute() {
-        let pool = Pool::new(PoolOptions {
-            application_store: MemoryStore::new(),
-            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
-            max_workers: 10,
-            nft_store: MemoryStore::new(),
-            personal_store: MemoryStore::new(),
-        })
-        .await;
+        let pool = Pool::new(create_pool_options()).await;
 
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
@@ -573,14 +620,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_prehashed() {
-        let pool = Pool::new(PoolOptions {
-            application_store: MemoryStore::new(),
-            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
-            max_workers: 10,
-            nft_store: MemoryStore::new(),
-            personal_store: MemoryStore::new(),
-        })
-        .await;
+        let pool = Pool::new(create_pool_options()).await;
 
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
@@ -606,14 +646,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_queue_request() {
-        let pool = Pool::new(PoolOptions {
-            application_store: MemoryStore::new(),
-            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
-            max_workers: 10,
-            nft_store: MemoryStore::new(),
-            personal_store: MemoryStore::new(),
-        })
-        .await;
+        let pool = Pool::new(create_pool_options()).await;
 
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
@@ -635,14 +668,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_kill_idle_worker() {
-        let pool = Pool::new(PoolOptions {
-            application_store: MemoryStore::new(),
-            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
-            max_workers: 10,
-            nft_store: MemoryStore::new(),
-            personal_store: MemoryStore::new(),
-        })
-        .await;
+        let pool = Pool::new(create_pool_options()).await;
 
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
