@@ -6758,6 +6758,7 @@ dependencies = [
  "bytes",
  "deno_core",
  "deno_permissions",
+ "deno_telemetry",
  "futures",
  "proven-locks",
  "proven-locks-memory",

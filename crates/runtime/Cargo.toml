@@ -8,6 +8,7 @@ build = "build.rs"
 bytes = { workspace = true }
 deno_core = { workspace = true }
 deno_permissions = { workspace = true }
+deno_telemetry = { workspace = true }
 proven-locks = { workspace = true }
 proven-sql = { workspace = true }
 proven-store = { workspace = true }
