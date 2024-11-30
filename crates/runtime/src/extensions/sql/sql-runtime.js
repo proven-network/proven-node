@@ -59,20 +59,24 @@ class ApplicationSqlStore {
 
   async query (sql) {
     if (sql instanceof Sql) {
-      // TODO: No need to create param list unless sql.values is non-empty
-      const paramListId = createApplicationParamList();
+      let rowData
+      if (sql.values.length === 0) {
+        rowData = await queryApplicationSql(this.sqlStoreName, sql.statement)
+      } else {
+        const paramListId = createApplicationParamList();
 
-      for (const value of sql.values) {
-        if (typeof value === 'number') {
-          addApplicationIntegerParam(paramListId, value);
-        } else if (typeof value === 'string') {
-          addApplicationTextParam(paramListId, value);
-        } else {
-          throw new TypeError('Expected all values to be numbers or strings')
+        for (const value of sql.values) {
+          if (typeof value === 'number') {
+            addApplicationIntegerParam(paramListId, value);
+          } else if (typeof value === 'string') {
+            addApplicationTextParam(paramListId, value);
+          } else {
+            throw new TypeError('Expected all values to be numbers or strings')
+          }
         }
-      }
 
-      const rowData = await queryApplicationSql(this.sqlStoreName, sql.statement, paramListId)
+        rowData = await queryApplicationSql(this.sqlStoreName, sql.statement, paramListId)
+      }
 
       const { column_count, column_names, column_types, rows } = rowData
 

@@ -83,7 +83,7 @@ async fn op_execute_application_sql<ASS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] query: String,
-    #[bigint] param_list_id: u64,
+    #[bigint] param_list_id_opt: Option<u64>,
 ) -> u64 {
     let connection_manager = {
         loop {
@@ -106,28 +106,32 @@ async fn op_execute_application_sql<ASS: SqlStore1>(
     let connection = connection_manager.connect(db_name).await.unwrap();
     state.borrow_mut().put(connection_manager);
 
-    let mut params_lists = {
-        loop {
-            let params_lists = {
-                let mut borrowed_state = state.borrow_mut();
+    if let Some(param_list_id) = param_list_id_opt {
+        let mut params_lists = {
+            loop {
+                let params_lists = {
+                    let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<ApplicationSqlParamListManager>()
-            };
+                    borrowed_state.try_take::<ApplicationSqlParamListManager>()
+                };
 
-            match params_lists {
-                Some(params_lists) => break params_lists,
-                None => {
-                    tokio::task::yield_now().await;
+                match params_lists {
+                    Some(params_lists) => break params_lists,
+                    None => {
+                        tokio::task::yield_now().await;
+                    }
                 }
             }
-        }
-    };
+        };
 
-    let params = params_lists.finialize_param_list(param_list_id);
+        let params = params_lists.finialize_param_list(param_list_id);
 
-    state.borrow_mut().put(params_lists);
+        state.borrow_mut().put(params_lists);
 
-    connection.execute(query, params).await.unwrap()
+        connection.execute(query, params).await.unwrap()
+    } else {
+        connection.execute(query, vec![]).await.unwrap()
+    }
 }
 
 #[op2(async)]
@@ -136,7 +140,7 @@ async fn op_query_application_sql<ASS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] query: String,
-    #[bigint] param_list_id: u64,
+    #[bigint] param_list_id_opt: Option<u64>,
 ) -> Rows {
     let connection_manager = {
         loop {
@@ -159,28 +163,32 @@ async fn op_query_application_sql<ASS: SqlStore1>(
     let connection = connection_manager.connect(db_name).await.unwrap();
     state.borrow_mut().put(connection_manager);
 
-    let mut params_lists = {
-        loop {
-            let params_lists = {
-                let mut borrowed_state = state.borrow_mut();
+    if let Some(param_list_id) = param_list_id_opt {
+        let mut params_lists = {
+            loop {
+                let params_lists = {
+                    let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<ApplicationSqlParamListManager>()
-            };
+                    borrowed_state.try_take::<ApplicationSqlParamListManager>()
+                };
 
-            match params_lists {
-                Some(params_lists) => break params_lists,
-                None => {
-                    tokio::task::yield_now().await;
+                match params_lists {
+                    Some(params_lists) => break params_lists,
+                    None => {
+                        tokio::task::yield_now().await;
+                    }
                 }
             }
-        }
-    };
+        };
 
-    let params = params_lists.finialize_param_list(param_list_id);
+        let params = params_lists.finialize_param_list(param_list_id);
 
-    state.borrow_mut().put(params_lists);
+        state.borrow_mut().put(params_lists);
 
-    connection.query(query, params).await.unwrap()
+        connection.query(query, params).await.unwrap()
+    } else {
+        connection.query(query, vec![]).await.unwrap()
+    }
 }
 
 fn get_ops<ASS: SqlStore1>() -> Vec<OpDecl> {
