@@ -160,7 +160,7 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
             max_heap_size: Some(max_heap_mbs as usize * 1024 * 1024),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
-                run_mock_ext::init_ops_and_esm(),
+                run_runtime_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
@@ -169,7 +169,7 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
                 kv_nft_ext::init_ops_and_esm::<NS::Scoped>(),
                 kv_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
-                sql_ext::init_ops_and_esm(),
+                sql_runtime_ext::init_ops_and_esm(),
                 sql_application_ext::init_ops::<ASS::Scoped>(),
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),
@@ -770,6 +770,48 @@ mod tests {
 
             let mut runtime = Runtime::new(options).unwrap();
             let request = create_execution_request();
+
+            let result = runtime.execute(request);
+            println!("{:?}", result);
+            assert!(result.is_ok());
+            let execution_result = result.unwrap();
+            assert_eq!(execution_result.output, 200);
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_with_sql() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { getCurrentIdentity } from "proven:sessions";
+                import { getApplicationDb, sql } from "proven:sql";
+
+                const DB = getApplicationDb("main");
+
+                export const createPostsTable = DB.migrate(sql`
+                    CREATE TABLE IF NOT EXISTS posts (
+                        id INTEGER PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        creator TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    );
+                `);
+
+                export const test = () => {
+                    return DB.query(
+                        sql`SELECT * FROM posts WHERE creator = ${getCurrentIdentity()}`,
+                    );
+                };
+            "#,
+                Some("test".to_string()),
+            );
+
+            let mut runtime = Runtime::new(options).unwrap();
+            let mut request = create_execution_request();
+            request.identity = Some("test_identity".to_string());
 
             let result = runtime.execute(request);
             println!("{:?}", result);

@@ -91,7 +91,7 @@ pub fn op_set_timeout_option(
 }
 
 extension!(
-    run_ext,
+    run_options_parser_ext,
     ops = [
         op_add_allowed_origin,
         op_set_memory_option,
@@ -99,13 +99,13 @@ extension!(
         op_set_timeout_option
     ],
     esm_entry_point = "proven:run",
-    esm = [ dir "src/extensions/run", "proven:run" = "run.js" ],
+    esm = [ dir "src/extensions/run", "proven:run" = "run-options-parser.js" ],
     docs = "Functions for defining how exports should be run"
 );
 
 extension!(
-    run_mock_ext,
+    run_runtime_ext,
     esm_entry_point = "proven:run",
-    esm = [ dir "src/extensions/run", "proven:run" = "run-mock.js" ],
+    esm = [ dir "src/extensions/run", "proven:run" = "run-runtime.js" ],
     docs = "Functions for defining how exports should be run"
 );

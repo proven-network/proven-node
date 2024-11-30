@@ -25,9 +25,17 @@ pub enum HandlerOptions {
 pub type ModuleHandlerOptions = HashMap<String, HandlerOptions>;
 
 #[derive(Clone, Debug, Default)]
+pub struct SqlMigrations {
+    pub application: HashMap<String, Vec<String>>,
+    pub nft: HashMap<String, Vec<String>>,
+    pub personal: HashMap<String, Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default)]
 #[allow(dead_code)] // TODO: Remove this once used
 pub struct ModuleOptions {
     pub handler_options: ModuleHandlerOptions,
     pub module_hash: String,
     pub module_source: String,
+    pub sql_migrations: SqlMigrations,
 }

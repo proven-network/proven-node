@@ -1,5 +1,5 @@
 use crate::extensions::*;
-use crate::options::{ModuleHandlerOptions, ModuleOptions};
+use crate::options::{ModuleHandlerOptions, ModuleOptions, SqlMigrations};
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
 use crate::vendor_replacements::replace_vendor_imports;
@@ -22,11 +22,12 @@ impl OptionsParser {
             timeout: Duration::from_millis(5000),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
-                run_ext::init_ops_and_esm(),
+                run_options_parser_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
                 kv_ext::init_ops_and_esm(),
-                sql_ext::init_ops_and_esm(),
+                sql_options_parser_ext::init_ops_and_esm(),
+                sql_migrations_ext::init_ops(),
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
@@ -64,14 +65,17 @@ impl OptionsParser {
 
         self.runtime.put(ConsoleState::default())?;
         self.runtime.put(ModuleHandlerOptions::default())?;
+        self.runtime.put(SqlMigrations::default())?;
 
         self.runtime.load_module(&module)?;
         let handler_options: ModuleHandlerOptions = self.runtime.take().unwrap();
+        let sql_migrations: SqlMigrations = self.runtime.take().unwrap();
 
         Ok(ModuleOptions {
             handler_options,
             module_hash,
             module_source,
+            sql_migrations,
         })
     }
 
@@ -150,6 +154,10 @@ mod tests {
         let mut parser = OptionsParser::new().unwrap();
         let module_source = r#"
             import { runOnHttp, runWithOptions } from 'proven:run';
+            import { getApplicationDb, sql } from 'proven:sql';
+
+            const DB = getApplicationDb('main');
+            DB.migrate(sql`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY);`);
 
             export const handler = runOnHttp((x,y) => {
                 console.log(x, y);
@@ -173,6 +181,12 @@ mod tests {
 
         assert!(options.handler_options.contains_key("handler"));
         assert!(options.handler_options.contains_key("__default__"));
+
+        assert!(options.sql_migrations.application.contains_key("main"));
+        assert_eq!(
+            options.sql_migrations.application.get("main").unwrap(),
+            &vec!["CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY);".to_string()]
+        );
 
         assert_eq!(
             options.handler_options.get("handler").unwrap(),
