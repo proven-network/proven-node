@@ -35,17 +35,17 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let challenge_store = MemoryStore::new();
     let sessions_store = FsStore::new("/tmp/proven/sessions");
-    let network_definition = NetworkDefinition::stokenet();
+    let radix_network_definition = NetworkDefinition::stokenet();
     let dev_attestor = DevAttestor::new();
 
-    let gateway_origin = "https://stokenet.radixdlt.com".to_string();
+    let radix_gateway_origin = "https://stokenet.radixdlt.com".to_string();
 
     let session_manager = SessionManager::new(
         dev_attestor,
         challenge_store,
-        gateway_origin.clone(),
         sessions_store,
-        network_definition,
+        radix_gateway_origin.clone(),
+        radix_network_definition.clone(),
     );
 
     let application_manager_sql_store = DirectSqlStore::new("/tmp/proven/app_data");
@@ -71,12 +71,13 @@ async fn main() -> Result<()> {
         .start(CoreStartOptions {
             application_sql_store,
             application_store,
-            gateway_origin,
             http_server,
             personal_sql_store,
             personal_store,
             nft_sql_store,
             nft_store,
+            radix_gateway_origin,
+            radix_network_definition,
         })
         .await?;
 

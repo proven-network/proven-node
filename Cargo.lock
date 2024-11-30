@@ -6766,6 +6766,7 @@ dependencies = [
  "proven-sql-direct",
  "proven-store",
  "proven-store-memory",
+ "radix-common",
  "regex",
  "rustyscript",
  "serde",

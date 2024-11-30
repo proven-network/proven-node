@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
+use radix_common::network::NetworkDefinition;
 use regex::Regex;
 use rustyscript::js_value::Value;
 use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
@@ -27,13 +28,14 @@ pub struct RuntimeOptions<
 > {
     pub application_sql_store: ASS,
     pub application_store: AS,
-    pub gateway_origin: String,
     pub handler_name: Option<String>,
     pub module: String,
     pub nft_sql_store: NSS,
     pub nft_store: NS,
     pub personal_sql_store: PSS,
     pub personal_store: PS,
+    pub radix_gateway_origin: String,
+    pub radix_network_definition: NetworkDefinition,
 }
 
 pub struct Runtime<
@@ -71,19 +73,21 @@ pub struct Runtime<
 /// use proven_runtime::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 /// use proven_sql_direct::DirectSqlStore;
 /// use proven_store_memory::MemoryStore;
+/// use radix_common::network::NetworkDefinition;
 /// use serde_json::json;
 /// use tempfile::tempdir;
 ///
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///     application_store: MemoryStore::new(),
-///     gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///     handler_name: Some("handler".to_string()),
 ///     module: "export const handler = (a, b) => a + b;".to_string(),
 ///     nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///     nft_store: MemoryStore::new(),
 ///     personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///     personal_store: MemoryStore::new(),
+///     radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+///     radix_network_definition: NetworkDefinition::stokenet(),
 /// })
 /// .expect("Failed to create runtime");
 ///
@@ -108,13 +112,14 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
         RuntimeOptions {
             application_sql_store,
             application_store,
-            gateway_origin,
             handler_name,
             module,
             nft_sql_store,
             nft_store,
             personal_sql_store,
             personal_store,
+            radix_gateway_origin: gateway_origin,
+            radix_network_definition,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS>,
     ) -> Result<Self, Error> {
         let module_options = OptionsParser::new()?.parse(module.as_str())?;
@@ -204,7 +209,7 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
         // Set the gateway origin and id for the gateway API SDK extension
         runtime.put(GatewayDetailsState {
             gateway_origin: gateway_origin.clone(),
-            network_id: 2, // TODO: Add to options
+            network_id: radix_network_definition.id,
         })?;
 
         // In case there are any top-level console.* calls in the module
@@ -398,13 +403,14 @@ mod tests {
         RuntimeOptions {
             application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore::new(),
-            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name,
             module: script.to_string(),
             nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore::new(),
             personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore::new(),
+            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+            radix_network_definition: NetworkDefinition::stokenet(),
         }
     }
 

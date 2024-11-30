@@ -34,9 +34,9 @@ pub trait SessionManagement: Clone + Send + Sync + 'static {
     fn new(
         attestor: Self::Attestor,
         challenge_store: Self::ChallengeStore,
-        gateway_origin: String,
         sessions_store: Self::SessionStore,
-        network_definition: NetworkDefinition,
+        radix_gateway_origin: String,
+        radix_network_definition: NetworkDefinition,
     ) -> Self;
 
     async fn create_challenge(
@@ -68,9 +68,9 @@ pub trait SessionManagement: Clone + Send + Sync + 'static {
 pub struct SessionManager<A: Attestor, CS: Store1, SS: Store1> {
     attestor: A,
     challenge_store: CS,
-    gateway_origin: String,
     sessions_store: SS,
-    network_definition: NetworkDefinition,
+    radix_gateway_origin: String,
+    radix_network_definition: NetworkDefinition,
 }
 
 #[async_trait]
@@ -87,16 +87,16 @@ where
     fn new(
         attestor: Self::Attestor,
         challenge_store: Self::ChallengeStore,
-        gateway_origin: String,
         sessions_store: Self::SessionStore,
-        network_definition: NetworkDefinition,
+        radix_gateway_origin: String,
+        radix_network_definition: NetworkDefinition,
     ) -> Self {
         SessionManager {
             attestor,
             challenge_store,
-            gateway_origin,
             sessions_store,
-            network_definition,
+            radix_gateway_origin,
+            radix_network_definition,
         }
     }
 
@@ -132,8 +132,8 @@ where
         }: CreateSessionParams,
     ) -> Result<Bytes, CS::Error, SS::Error> {
         let rola = Rola::new(
-            self.network_definition.clone(),
-            self.gateway_origin.clone(),
+            self.radix_network_definition.clone(),
+            self.radix_gateway_origin.clone(),
             dapp_definition_address.clone(),
             origin.clone(),
             application_name.clone().unwrap_or_default(),

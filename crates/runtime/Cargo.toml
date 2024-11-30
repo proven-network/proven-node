@@ -12,6 +12,7 @@ deno_telemetry = { workspace = true }
 proven-locks = { workspace = true }
 proven-sql = { workspace = true }
 proven-store = { workspace = true }
+radix-common = { workspace = true }
 regex = { workspace = true }
 rustyscript = { workspace = true }
 serde = { workspace = true }

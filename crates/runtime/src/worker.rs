@@ -44,6 +44,7 @@ type WorkerRequest = (
 /// };
 /// use proven_sql_direct::DirectSqlStore;
 /// use proven_store_memory::MemoryStore;
+/// use radix_common::network::NetworkDefinition;
 /// use serde_json::json;
 /// use tempfile::tempdir;
 ///
@@ -52,13 +53,14 @@ type WorkerRequest = (
 ///     let mut worker = Worker::new(RuntimeOptions {
 ///         application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         application_store: MemoryStore::new(),
-///         gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         handler_name: Some("handler".to_string()),
 ///         module: "export const handler = (a, b) => a + b;".to_string(),
 ///         nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         nft_store: MemoryStore::new(),
 ///         personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         personal_store: MemoryStore::new(),
+///         radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+///         radix_network_definition: NetworkDefinition::stokenet(),
 ///     })
 ///     .await
 ///     .expect("Failed to create worker");
@@ -152,6 +154,7 @@ mod tests {
 
     use proven_sql_direct::DirectSqlStore;
     use proven_store_memory::MemoryStore;
+    use radix_common::network::NetworkDefinition;
     use serde_json::json;
     use tempfile::tempdir;
 
@@ -176,13 +179,14 @@ mod tests {
         RuntimeOptions {
             application_sql_store: DirectSqlStore::new(temp_application_sql),
             application_store: MemoryStore::new(),
-            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name,
             module: script.to_string(),
             nft_sql_store: DirectSqlStore::new(temp_nft_sql),
             nft_store: MemoryStore::new(),
             personal_sql_store: DirectSqlStore::new(temp_personal_sql),
             personal_store: MemoryStore::new(),
+            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+            radix_network_definition: NetworkDefinition::stokenet(),
         }
     }
 

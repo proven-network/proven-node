@@ -16,6 +16,7 @@ use proven_runtime::{Pool, PoolOptions};
 use proven_sessions::SessionManagement;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
+use radix_common::network::NetworkDefinition;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -35,14 +36,15 @@ pub struct CoreStartOptions<
     PSS: SqlStore3,
     NSS: SqlStore3,
 > {
-    pub http_server: HS,
     pub application_sql_store: ASS,
     pub application_store: AS,
+    pub http_server: HS,
     pub personal_sql_store: PSS,
     pub personal_store: PS,
     pub nft_sql_store: NSS,
     pub nft_store: NS,
-    pub gateway_origin: String,
+    pub radix_gateway_origin: String,
+    pub radix_network_definition: NetworkDefinition,
 }
 
 pub struct Core<SM: SessionManagement, AM: ApplicationManagement> {
@@ -80,12 +82,13 @@ impl<SM: SessionManagement, AM: ApplicationManagement> Core<SM, AM> {
         CoreStartOptions {
             application_sql_store,
             application_store,
-            gateway_origin,
             http_server,
             personal_sql_store,
             personal_store,
             nft_sql_store,
             nft_store,
+            radix_gateway_origin,
+            radix_network_definition,
         }: CoreStartOptions<HS, AS, PS, NS, ASS, PSS, NSS>,
     ) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
@@ -95,12 +98,13 @@ impl<SM: SessionManagement, AM: ApplicationManagement> Core<SM, AM> {
         let pool = Pool::new(PoolOptions {
             application_sql_store,
             application_store,
-            gateway_origin,
             max_workers: 100,
             nft_sql_store,
             nft_store,
             personal_sql_store,
             personal_store,
+            radix_gateway_origin,
+            radix_network_definition,
         })
         .await;
 

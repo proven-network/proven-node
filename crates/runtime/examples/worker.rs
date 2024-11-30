@@ -5,6 +5,7 @@ use std::sync::Arc;
 use futures::future::join_all;
 use proven_sql_direct::DirectSqlStore;
 use proven_store_memory::MemoryStore;
+use radix_common::network::NetworkDefinition;
 use rustyscript::Error;
 use serde_json::json;
 use tempfile::tempdir;
@@ -33,13 +34,14 @@ async fn main() -> Result<(), Error> {
         Worker::new(RuntimeOptions {
             application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore::new(),
-            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name: Some("handler".to_string()),
             module,
             nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore::new(),
             personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore::new(),
+            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+            radix_network_definition: NetworkDefinition::stokenet(),
         })
         .await
         .unwrap(),

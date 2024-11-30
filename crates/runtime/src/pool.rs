@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
+use radix_common::network::NetworkDefinition;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
@@ -41,6 +42,7 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 /// };
 /// use proven_sql_direct::DirectSqlStore;
 /// use proven_store_memory::MemoryStore;
+/// use radix_common::network::NetworkDefinition;
 /// use serde_json::json;
 /// use tempfile::tempdir;
 ///
@@ -49,12 +51,13 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 ///     let pool = Pool::new(PoolOptions {
 ///         application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         application_store: MemoryStore::new(),
-///         gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         max_workers: 10,
 ///         nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         nft_store: MemoryStore::new(),
 ///         personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         personal_store: MemoryStore::new(),
+///         radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+///         radix_network_definition: NetworkDefinition::stokenet(),
 ///     })
 ///     .await;
 ///
@@ -78,7 +81,6 @@ pub struct Pool<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStor
 {
     application_sql_store: ASS,
     application_store: AS,
-    gateway_origin: String,
     known_hashes: Arc<Mutex<HashMap<String, PoolRuntimeOptions>>>,
     last_killed: Arc<Mutex<Option<Instant>>>,
     last_used: LastUsedMap,
@@ -89,6 +91,8 @@ pub struct Pool<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStor
     overflow_queue: Arc<Mutex<VecDeque<QueueItem>>>,
     personal_sql_store: PSS,
     personal_store: PS,
+    radix_gateway_origin: String,
+    radix_network_definition: NetworkDefinition,
     queue_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     queue_sender: QueueSender,
     total_workers: AtomicU32,
@@ -99,12 +103,13 @@ pub struct Pool<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStor
 pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS> {
     pub application_sql_store: ASS,
     pub application_store: AS,
-    pub gateway_origin: String,
     pub max_workers: u32,
     pub nft_sql_store: NSS,
     pub nft_store: NS,
     pub personal_sql_store: PSS,
     pub personal_store: PS,
+    pub radix_gateway_origin: String,
+    pub radix_network_definition: NetworkDefinition,
 }
 
 #[derive(Clone)]
@@ -120,12 +125,13 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
         PoolOptions {
             application_sql_store,
             application_store,
-            gateway_origin,
             max_workers,
             nft_sql_store,
             nft_store,
             personal_sql_store,
             personal_store,
+            radix_gateway_origin,
+            radix_network_definition,
         }: PoolOptions<AS, PS, NS, ASS, PSS, NSS>,
     ) -> Arc<Self> {
         rustyscript::init_platform(max_workers, true);
@@ -135,7 +141,6 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
         let pool = Arc::new(Self {
             application_sql_store,
             application_store,
-            gateway_origin,
             known_hashes: Arc::new(Mutex::new(HashMap::new())),
             last_killed: Arc::new(Mutex::new(Some(Instant::now()))),
             last_used: Arc::new(Mutex::new(HashMap::new())),
@@ -148,6 +153,8 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
             personal_store,
             queue_processor: Arc::new(Mutex::new(None)),
             queue_sender,
+            radix_gateway_origin,
+            radix_network_definition,
             total_workers: AtomicU32::new(0),
             try_kill_interval: Duration::from_millis(20),
             workers: Arc::new(Mutex::new(HashMap::new())),
@@ -205,13 +212,14 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
                     match Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
                         application_sql_store: pool.application_sql_store.clone(),
                         application_store: pool.application_store.clone(),
-                        gateway_origin: pool.gateway_origin.clone(),
                         handler_name: runtime_options.handler_name.clone(),
                         module: runtime_options.module.clone(),
                         nft_sql_store: pool.nft_sql_store.clone(),
                         nft_store: pool.nft_store.clone(),
                         personal_sql_store: pool.personal_sql_store.clone(),
                         personal_store: pool.personal_store.clone(),
+                        radix_gateway_origin: pool.radix_gateway_origin.clone(),
+                        radix_network_definition: pool.radix_network_definition.clone(),
                     })
                     .await
                     {
@@ -326,13 +334,14 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
             let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
                 application_sql_store: self.application_sql_store.clone(),
                 application_store: self.application_store.clone(),
-                gateway_origin: self.gateway_origin.clone(),
                 handler_name: runtime_options.handler_name.clone(),
                 module: runtime_options.module.clone(),
                 nft_sql_store: self.nft_sql_store.clone(),
                 nft_store: self.nft_store.clone(),
                 personal_sql_store: self.personal_sql_store.clone(),
                 personal_store: self.personal_store.clone(),
+                radix_gateway_origin: self.radix_gateway_origin.clone(),
+                radix_network_definition: self.radix_network_definition.clone(),
             })
             .await?;
             let result = worker.execute(request).await;
@@ -414,13 +423,14 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
                     let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
                         application_sql_store: self.application_sql_store.clone(),
                         application_store: self.application_store.clone(),
-                        gateway_origin: self.gateway_origin.clone(),
                         handler_name: runtime_options.handler_name.clone(),
                         module: runtime_options.module.clone(),
                         nft_sql_store: self.nft_sql_store.clone(),
                         nft_store: self.nft_store.clone(),
                         personal_sql_store: self.personal_sql_store.clone(),
                         personal_store: self.personal_store.clone(),
+                        radix_gateway_origin: self.radix_gateway_origin.clone(),
+                        radix_network_definition: self.radix_network_definition.clone(),
                     })
                     .await?;
                     let result = worker.execute(request).await;
@@ -586,12 +596,13 @@ mod tests {
         PoolOptions {
             application_sql_store: DirectSqlStore::new(temp_application_sql),
             application_store: MemoryStore::new(),
-            gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             max_workers: 10,
             nft_sql_store: DirectSqlStore::new(temp_nft_sql),
             nft_store: MemoryStore::new(),
             personal_sql_store: DirectSqlStore::new(temp_personal_sql),
             personal_store: MemoryStore::new(),
+            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+            radix_network_definition: NetworkDefinition::stokenet(),
         }
     }
 

@@ -2,6 +2,7 @@ use proven_runtime::{Error, ExecutionRequest, Runtime, RuntimeOptions};
 
 use proven_sql_direct::DirectSqlStore;
 use proven_store_memory::MemoryStore;
+use radix_common::network::NetworkDefinition;
 use serde_json::json;
 use tempfile::tempdir;
 
@@ -45,13 +46,14 @@ fn main() -> Result<(), Error> {
     let mut runtime = Runtime::new(RuntimeOptions {
         application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
         application_store: MemoryStore::new(),
-        gateway_origin: "https://stokenet.radixdlt.com".to_string(),
         handler_name: Some("handler".to_string()),
         module: user_module.to_string(),
         nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
         nft_store: MemoryStore::new(),
         personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
         personal_store: MemoryStore::new(),
+        radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+        radix_network_definition: NetworkDefinition::stokenet(),
     })?;
 
     let request = ExecutionRequest {
