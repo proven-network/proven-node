@@ -1,10 +1,13 @@
 mod application;
 mod connection_manager;
 mod migrations;
+mod nft;
+mod personal;
 
 pub use application::sql_application_ext;
-pub use connection_manager::ApplicationSqlConnectionManager;
+pub use connection_manager::*;
 pub use migrations::sql_migrations_ext;
+pub use personal::sql_personal_ext;
 
 use deno_core::extension;
 

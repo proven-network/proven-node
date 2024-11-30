@@ -29,6 +29,7 @@ pub async fn op_get_personal_bytes<PS: Store1>(
         }
     };
 
+    // TODO: should probably err instead of returning None
     let result = if let Some(store) = personal_store.as_ref() {
         store
             .scope(format!("{}:bytes", store_name))

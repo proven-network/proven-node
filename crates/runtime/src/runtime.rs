@@ -172,6 +172,7 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
                 sql_runtime_ext::init_ops_and_esm(),
                 sql_application_ext::init_ops::<ASS::Scoped>(),
+                sql_personal_ext::init_ops::<<<PSS as SqlStore3>::Scoped as SqlStore2>::Scoped>(),
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
@@ -244,8 +245,14 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
         // Reset the console state before each execution
         self.runtime.put(ConsoleState::default())?;
 
-        // Set the stores for the storage extension
-        let personal_store = match identity.as_ref() {
+        // Set the kv stores for the storage extension
+        self.runtime.put(
+            self.application_store
+                .clone()
+                .scope(dapp_definition_address.clone()),
+        )?;
+
+        self.runtime.put(match identity.as_ref() {
             Some(current_identity) => Some(
                 self.personal_store
                     .clone()
@@ -253,14 +260,7 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
                     .scope(current_identity.clone()),
             ),
             None => None,
-        };
-        self.runtime.put(personal_store)?;
-
-        self.runtime.put(
-            self.application_store
-                .clone()
-                .scope(dapp_definition_address.clone()),
-        )?;
+        })?;
 
         self.runtime.put(
             self.nft_store
@@ -268,27 +268,31 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
                 .scope(dapp_definition_address.clone()),
         )?;
 
-        // // Set the sql stores for the storage extension
-        // let personal_sql_store = match identity.as_ref() {
-        //     Some(current_identity) => Some(
-        //         self.personal_sql_store
-        //             .clone()
-        //             .scope(dapp_definition_address.clone())
-        //             .scope(current_identity.clone()),
-        //     ),
-        //     None => None,
-        // };
-        // self.runtime.put(personal_sql_store)?;
-
-        ApplicationSqlConnectionManager::new(
+        // Set the sql stores for the storage extension
+        self.runtime.put(ApplicationSqlConnectionManager::new(
             self.application_sql_store
                 .clone()
                 .scope(dapp_definition_address.clone()),
             self.sql_migrations.application.clone(),
-        );
+        ))?;
 
-        // self.runtime
-        //     .put(self.nft_sql_store.clone().scope(dapp_definition_address))?;
+        self.runtime.put(match identity.as_ref() {
+            Some(current_identity) => Some(PersonalSqlConnectionManager::new(
+                self.personal_sql_store
+                    .clone()
+                    .scope(dapp_definition_address.clone())
+                    .scope(current_identity.clone()),
+                self.sql_migrations.personal.clone(),
+            )),
+            None => None,
+        })?;
+
+        self.runtime.put(NftSqlConnectionManager::new(
+            self.nft_sql_store
+                .clone()
+                .scope(dapp_definition_address.clone()),
+            self.sql_migrations.nft.clone(),
+        ))?;
 
         // Set the context for the session extension
         self.runtime.put(SessionsState { identity, accounts })?;
