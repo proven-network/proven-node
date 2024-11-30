@@ -29,6 +29,11 @@ impl SqlStore for DirectSqlStore {
         &self,
         migrations: Vec<Q>,
     ) -> Result<Self::Connection, Self::Error> {
+        // Ensure the directory exists
+        tokio::fs::create_dir_all(self.dir.parent().unwrap())
+            .await
+            .unwrap();
+
         let connection = Connection::new(self.dir.clone()).await?;
 
         for migration in migrations {

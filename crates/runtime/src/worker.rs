@@ -42,17 +42,22 @@ type WorkerRequest = (
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions, Worker,
 /// };
+/// use proven_sql_direct::DirectSqlStore;
 /// use proven_store_memory::MemoryStore;
 /// use serde_json::json;
+/// use tempfile::tempdir;
 ///
 /// #[tokio::main]
 /// async fn main() {
 ///     let mut worker = Worker::new(RuntimeOptions {
+///         application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         application_store: MemoryStore::new(),
 ///         gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         handler_name: Some("handler".to_string()),
 ///         module: "export const handler = (a, b) => a + b;".to_string(),
+///         nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         nft_store: MemoryStore::new(),
+///         personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         personal_store: MemoryStore::new(),
 ///     })
 ///     .await

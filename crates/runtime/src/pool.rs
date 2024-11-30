@@ -39,16 +39,21 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, Pool, PoolOptions, PoolRuntimeOptions,
 /// };
+/// use proven_sql_direct::DirectSqlStore;
 /// use proven_store_memory::MemoryStore;
 /// use serde_json::json;
+/// use tempfile::tempdir;
 ///
 /// #[tokio::main]
 /// async fn main() {
 ///     let pool = Pool::new(PoolOptions {
+///         application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         application_store: MemoryStore::new(),
 ///         gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         max_workers: 10,
+///         nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         nft_store: MemoryStore::new(),
+///         personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///         personal_store: MemoryStore::new(),
 ///     })
 ///     .await;

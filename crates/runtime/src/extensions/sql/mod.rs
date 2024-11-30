@@ -4,7 +4,7 @@ mod migrations;
 mod nft;
 mod personal;
 
-pub use application::sql_application_ext;
+pub use application::{sql_application_ext, ApplicationSqlParamListManager};
 pub use connection_manager::*;
 pub use migrations::sql_migrations_ext;
 pub use personal::sql_personal_ext;

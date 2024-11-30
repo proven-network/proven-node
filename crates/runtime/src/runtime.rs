@@ -69,15 +69,20 @@ pub struct Runtime<
 /// # Example
 /// ```rust
 /// use proven_runtime::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
+/// use proven_sql_direct::DirectSqlStore;
 /// use proven_store_memory::MemoryStore;
 /// use serde_json::json;
+/// use tempfile::tempdir;
 ///
 /// let mut runtime = Runtime::new(RuntimeOptions {
+///     application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///     application_store: MemoryStore::new(),
 ///     gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///     handler_name: Some("handler".to_string()),
 ///     module: "export const handler = (a, b) => a + b;".to_string(),
+///     nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///     nft_store: MemoryStore::new(),
+///     personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
 ///     personal_store: MemoryStore::new(),
 /// })
 /// .expect("Failed to create runtime");
@@ -120,10 +125,10 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
         let timeout_millis = handler_options
             .map(|handler_options| match handler_options {
                 HandlerOptions::Http(http_handler_options) => {
-                    http_handler_options.timeout_millis.unwrap_or(1000)
+                    http_handler_options.timeout_millis.unwrap_or(5000)
                 }
                 HandlerOptions::Rpc(rpc_handler_options) => {
-                    rpc_handler_options.timeout_millis.unwrap_or(1000)
+                    rpc_handler_options.timeout_millis.unwrap_or(5000)
                 }
             })
             .unwrap_or(1000);
@@ -269,6 +274,7 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
         )?;
 
         // Set the sql stores for the storage extension
+        self.runtime.put(ApplicationSqlParamListManager::new())?;
         self.runtime.put(ApplicationSqlConnectionManager::new(
             self.application_sql_store
                 .clone()
@@ -388,22 +394,15 @@ mod tests {
         DirectSqlStore,
         DirectSqlStore,
     > {
-        let mut temp_application_sql = tempdir().unwrap().into_path();
-        temp_application_sql.push("application.db");
-        let mut temp_nft_sql = tempdir().unwrap().into_path();
-        temp_nft_sql.push("nft.db");
-        let mut temp_personal_sql = tempdir().unwrap().into_path();
-        temp_personal_sql.push("personal.db");
-
         RuntimeOptions {
-            application_sql_store: DirectSqlStore::new(temp_application_sql),
+            application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore::new(),
             gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             handler_name,
             module: script.to_string(),
-            nft_sql_store: DirectSqlStore::new(temp_nft_sql),
+            nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore::new(),
-            personal_sql_store: DirectSqlStore::new(temp_personal_sql),
+            personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore::new(),
         }
     }
@@ -791,26 +790,20 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { getCurrentIdentity } from "proven:sessions";
                 import { getApplicationDb, sql } from "proven:sql";
 
                 const DB = getApplicationDb("main");
 
-                export const createPostsTable = DB.migrate(sql`
-                    CREATE TABLE IF NOT EXISTS posts (
-                        id INTEGER PRIMARY KEY,
-                        title TEXT NOT NULL,
-                        content TEXT NOT NULL,
-                        creator TEXT NOT NULL,
-                        created_at INTEGER NOT NULL,
-                        updated_at INTEGER NOT NULL
-                    );
-                `);
+                DB.migrate(sql`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`);
 
-                export const test = () => {
-                    return DB.query(
-                        sql`SELECT * FROM posts WHERE creator = ${getCurrentIdentity()} AND id < ${10}`,
-                    );
+                export const test = async () => {
+                    const email = "alice@example.com";
+
+                    await DB.execute(sql`INSERT INTO users (email) VALUES (${email})`);
+
+                    const results = await DB.query(sql`SELECT * FROM users`);
+
+                    return results[0].email;
                 };
             "#,
                 Some("test".to_string()),
@@ -824,7 +817,7 @@ mod tests {
             println!("{:?}", result);
             assert!(result.is_ok());
             let execution_result = result.unwrap();
-            assert_eq!(execution_result.output, 200);
+            assert_eq!(execution_result.output, "alice@example.com");
         });
     }
 }
