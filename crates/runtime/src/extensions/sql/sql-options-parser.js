@@ -16,7 +16,9 @@ class ApplicationSqlStore {
 
   migrate (sql) {
     if (sql instanceof Sql) {
-      return migrateApplicationSqlStore(this.sqlStoreName, sql.sql)
+      migrateApplicationSqlStore(this.sqlStoreName, sql.sql)
+
+      return this
     } else {
       throw new TypeError('Expected `sql` to be a string or Sql object')
     }

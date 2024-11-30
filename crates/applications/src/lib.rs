@@ -8,6 +8,9 @@ use async_trait::async_trait;
 use proven_sql::{SqlConnection, SqlParam, SqlStore};
 use uuid::Uuid;
 
+static CREATE_APPLICATIONS_SQL: &str = include_str!("../sql/create_applications.sql");
+static CREATE_DAPP_DEFININITIONS_SQL: &str = include_str!("../sql/create_dapp_definition.sql");
+
 pub struct CreateApplicationOptions {
     pub owner_identity_address: String,
     pub dapp_definition_addresses: Vec<String>,
@@ -17,7 +20,9 @@ pub struct CreateApplicationOptions {
 pub trait ApplicationManagement: Clone + Send + Sync + 'static {
     type SqlStore: SqlStore;
 
-    fn new(applications_store: Self::SqlStore) -> Self;
+    async fn new(
+        applications_store: Self::SqlStore,
+    ) -> Result<Self, <Self::SqlStore as SqlStore>::Error>;
 
     async fn create_application(
         &self,
@@ -32,7 +37,7 @@ pub trait ApplicationManagement: Clone + Send + Sync + 'static {
 
 #[derive(Clone)]
 pub struct ApplicationManager<AS: SqlStore> {
-    applications_store: AS,
+    connection: AS::Connection,
 }
 
 #[async_trait]
@@ -42,8 +47,14 @@ where
 {
     type SqlStore = AS;
 
-    fn new(applications_store: Self::SqlStore) -> Self {
-        ApplicationManager { applications_store }
+    async fn new(
+        applications_store: Self::SqlStore,
+    ) -> Result<Self, <Self::SqlStore as SqlStore>::Error> {
+        let connection = applications_store
+            .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
+            .await?;
+
+        Ok(ApplicationManager { connection })
     }
 
     async fn create_application(
@@ -53,10 +64,9 @@ where
             dapp_definition_addresses,
         }: CreateApplicationOptions,
     ) -> Result<Application, <Self::SqlStore as SqlStore>::Error> {
-        let connection = self.applications_store.connect().await?;
         let application_id = Uuid::new_v4().to_string();
 
-        connection
+        self.connection
             .execute(
                 "INSERT INTO applications (id, owner_identity) VALUES (?1, ?2)",
                 vec![
@@ -66,7 +76,7 @@ where
             )
             .await?;
 
-        connection
+        self.connection
             .execute_batch(
                 "INSERT INTO dapps (application_id, dapp_definition_address) VALUES (?1, ?2)",
                 dapp_definition_addresses
@@ -92,9 +102,8 @@ where
         &self,
         application_id: String,
     ) -> Result<Option<Application>, <Self::SqlStore as SqlStore>::Error> {
-        let connection = self.applications_store.connect().await?;
-
-        let rows = connection
+        let rows = self
+            .connection
             .query(
                 r#"
                     SELECT * FROM applications

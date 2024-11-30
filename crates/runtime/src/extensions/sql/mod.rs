@@ -1,7 +1,9 @@
 mod application;
+mod connection_manager;
 mod migrations;
 
 pub use application::sql_application_ext;
+pub use connection_manager::ApplicationSqlConnectionManager;
 pub use migrations::sql_migrations_ext;
 
 use deno_core::extension;

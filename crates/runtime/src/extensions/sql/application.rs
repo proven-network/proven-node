@@ -1,8 +1,10 @@
+use super::ApplicationSqlConnectionManager;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_core::{extension, op2, OpDecl, OpState};
-use proven_sql::{Rows, SqlConnection, SqlParam, SqlStore, SqlStore1};
+use proven_sql::{Rows, SqlConnection, SqlParam, SqlStore1};
 
 #[op2(async)]
 #[bigint]
@@ -12,15 +14,15 @@ pub async fn op_execute_application_sql<ASS: SqlStore1>(
     #[string] query: String,
     #[serde] params: Vec<SqlParam>,
 ) -> u64 {
-    let application_sql_store = {
+    let connection_manager = {
         loop {
-            let application_sql_store = {
+            let connection_manager = {
                 let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<ASS>()
+                borrowed_state.try_take::<ApplicationSqlConnectionManager<ASS>>()
             };
 
-            match application_sql_store {
+            match connection_manager {
                 Some(store) => break store,
                 None => {
                     tokio::task::yield_now().await;
@@ -29,18 +31,11 @@ pub async fn op_execute_application_sql<ASS: SqlStore1>(
         }
     };
 
-    let result = application_sql_store
-        .scope(db_name)
-        .connect()
-        .await
-        .unwrap() // TODO: handle properly
-        .execute(query, params)
-        .await
-        .unwrap();
+    // TODO: handle errors properly
+    let connection = connection_manager.connect(db_name).await.unwrap();
+    state.borrow_mut().put(connection_manager);
 
-    state.borrow_mut().put(application_sql_store);
-
-    result
+    connection.execute(query, params).await.unwrap()
 }
 
 #[op2(async)]
@@ -51,15 +46,15 @@ pub async fn op_query_application_sql<ASS: SqlStore1>(
     #[string] query: String,
     #[serde] params: Vec<SqlParam>,
 ) -> Rows {
-    let application_sql_store = {
+    let connection_manager = {
         loop {
-            let application_sql_store = {
+            let connection_manager = {
                 let mut borrowed_state = state.borrow_mut();
 
-                borrowed_state.try_take::<ASS>()
+                borrowed_state.try_take::<ApplicationSqlConnectionManager<ASS>>()
             };
 
-            match application_sql_store {
+            match connection_manager {
                 Some(store) => break store,
                 None => {
                     tokio::task::yield_now().await;
@@ -68,18 +63,11 @@ pub async fn op_query_application_sql<ASS: SqlStore1>(
         }
     };
 
-    let result = application_sql_store
-        .scope(db_name)
-        .connect()
-        .await
-        .unwrap() // TODO: handle properly
-        .query(query, params)
-        .await
-        .unwrap();
+    // TODO: handle errors properly
+    let connection = connection_manager.connect(db_name).await.unwrap();
+    state.borrow_mut().put(connection_manager);
 
-    state.borrow_mut().put(application_sql_store);
-
-    result
+    connection.query(query, params).await.unwrap()
 }
 
 fn get_ops<ASS: SqlStore1>() -> Vec<OpDecl> {

@@ -49,7 +49,7 @@ async fn main() -> Result<()> {
     );
 
     let application_manager_sql_store = DirectSqlStore::new("/tmp/proven/app_data");
-    let application_manager = ApplicationManager::new(application_manager_sql_store);
+    let application_manager = ApplicationManager::new(application_manager_sql_store).await?;
 
     let core = Core::new(CoreOptions {
         application_manager,

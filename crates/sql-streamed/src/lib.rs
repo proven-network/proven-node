@@ -16,7 +16,6 @@ use proven_libsql::Database;
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
 use proven_stream::{Stream, Stream1, Stream2, Stream3};
-use tokio::sync::Mutex;
 
 #[derive(Clone)]
 pub struct StreamedSqlStoreOptions<LS: Store, ST: Stream<HandlerError>> {
@@ -29,7 +28,6 @@ pub struct StreamedSqlStoreOptions<LS: Store, ST: Stream<HandlerError>> {
 pub struct StreamedSqlStore<LS: Store, ST: Stream<HandlerError>> {
     leader_store: LS,
     local_name: String,
-    migrations: Arc<Mutex<Vec<String>>>,
     stream: ST,
 }
 
@@ -44,7 +42,6 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> StreamedSqlStore<LS, ST> {
         Self {
             leader_store,
             local_name,
-            migrations: Default::default(),
             stream,
         }
     }
@@ -76,7 +73,10 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for StreamedSqlStor
     type Error = Error<ST::Error, LS::Error>;
     type Connection = Connection<ST, LS>;
 
-    async fn connect(&self) -> Result<Connection<ST, LS>, ST::Error, LS::Error> {
+    async fn connect<Q: Into<String> + Send>(
+        &self,
+        migrations: Vec<Q>,
+    ) -> Result<Connection<ST, LS>, ST::Error, LS::Error> {
         let stream_name = self.stream.name();
 
         let current_leader = self
@@ -129,20 +129,13 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for StreamedSqlStor
         });
 
         // send all migrations to the stream sequentially
-        let migrations = self.migrations.lock().await.clone();
         for migration in migrations {
-            let request = Request::Migrate(migration);
+            let request = Request::Migrate(migration.into());
             let bytes: Bytes = request.try_into().unwrap();
             self.stream.request(bytes).await.unwrap();
         }
 
         Ok(Connection::new(self.stream.clone()))
-    }
-
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self {
-        self.migrations.lock().await.push(query.into());
-
-        self.clone()
     }
 }
 
@@ -150,7 +143,6 @@ impl<LS: Store, ST: Stream<HandlerError> + 'static> SqlStore for StreamedSqlStor
 pub struct StreamedSqlStore1<LS: Store1, ST: Stream1<HandlerError>> {
     leader_store: LS,
     local_name: String,
-    migrations: Arc<Mutex<Vec<String>>>,
     stream: ST,
 }
 
@@ -159,17 +151,10 @@ impl<LS: Store1, ST: Stream1<HandlerError>> SqlStore1 for StreamedSqlStore1<LS, 
     type Error = Error<ST::Error, LS::Error>;
     type Scoped = StreamedSqlStore<LS::Scoped, ST::Scoped>;
 
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self {
-        self.migrations.lock().await.push(query.into());
-
-        self.clone()
-    }
-
     fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         StreamedSqlStore {
             leader_store: self.leader_store.scope(scope.clone().into()),
             local_name: self.local_name.clone(),
-            migrations: self.migrations.clone(),
             stream: self.stream.scope(scope.into()),
         }
     }
@@ -179,7 +164,6 @@ impl<LS: Store1, ST: Stream1<HandlerError>> SqlStore1 for StreamedSqlStore1<LS, 
 pub struct StreamedSqlStore2<LS: Store2, ST: Stream2<HandlerError>> {
     leader_store: LS,
     local_name: String,
-    migrations: Arc<Mutex<Vec<String>>>,
     stream: ST,
 }
 
@@ -188,17 +172,10 @@ impl<LS: Store2, ST: Stream2<HandlerError>> SqlStore2 for StreamedSqlStore2<LS, 
     type Error = Error<ST::Error, LS::Error>;
     type Scoped = StreamedSqlStore1<LS::Scoped, ST::Scoped>;
 
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self {
-        self.migrations.lock().await.push(query.into());
-
-        self.clone()
-    }
-
     fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
         StreamedSqlStore1 {
             leader_store: self.leader_store.scope(scope.clone().into()),
             local_name: self.local_name.clone(),
-            migrations: self.migrations.clone(),
             stream: self.stream.scope(scope.into()),
         }
     }
@@ -208,7 +185,6 @@ impl<LS: Store2, ST: Stream2<HandlerError>> SqlStore2 for StreamedSqlStore2<LS, 
 pub struct StreamedSqlStore3<LS: Store3, ST: Stream3<HandlerError>> {
     leader_store: LS,
     local_name: String,
-    migrations: Arc<Mutex<Vec<String>>>,
     stream: ST,
 }
 
@@ -217,17 +193,10 @@ impl<LS: Store3, ST: Stream3<HandlerError>> SqlStore3 for StreamedSqlStore3<LS, 
     type Error = Error<ST::Error, LS::Error>;
     type Scoped = StreamedSqlStore2<LS::Scoped, ST::Scoped>;
 
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self {
-        self.migrations.lock().await.push(query.into());
-
-        self.clone()
-    }
-
     fn scope<Scope: Clone + Into<String> + Send>(&self, scope: Scope) -> Self::Scoped {
         StreamedSqlStore2 {
             leader_store: self.leader_store.scope(scope.clone().into()),
             local_name: self.local_name.clone(),
-            migrations: self.migrations.clone(),
             stream: self.stream.scope(scope.into()),
         }
     }
@@ -251,11 +220,14 @@ mod tests {
                 leader_store,
                 local_name: "my-machine".to_string(),
                 stream,
-            })
-            .migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
-            .await;
+            });
 
-            let connection = sql_store.connect().await.unwrap();
+            let connection = sql_store
+                .connect(vec![
+                    "CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)",
+                ])
+                .await
+                .unwrap();
 
             let response = connection
                 .execute(

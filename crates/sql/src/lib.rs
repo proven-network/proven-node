@@ -47,16 +47,16 @@ pub trait SqlConnection: Clone + Send + Sync + 'static {
 /// - `Connection`: The connection type that implements the `SqlConnection` trait.
 ///
 /// # Required Methods
-/// - `async fn connect(&self) -> Result<Self::Connection, Self::Error>`: Connects to the SQL store.
-/// - `async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self`: Executes a SQL statement that modifies schema and returns bool indicating if needed to be run.
+/// - `async fn connecte<Q: Into<String> + Send>(&self, migrations: Vec<Q>) -> Result<Self::Connection, Self::Error>`: Connects to the SQL store - running any provided migrations.
 #[async_trait]
 pub trait SqlStore: Clone + Send + Sync + 'static {
     type Error: SqlStoreError;
     type Connection: SqlConnection<Error = Self::Error>;
 
-    async fn connect(&self) -> Result<Self::Connection, Self::Error>;
-
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
+    async fn connect<Q: Into<String> + Send>(
+        &self,
+        migrations: Vec<Q>,
+    ) -> Result<Self::Connection, Self::Error>;
 }
 
 macro_rules! define_scoped_sql_store {
@@ -66,8 +66,6 @@ macro_rules! define_scoped_sql_store {
         pub trait $name: Clone + Send + Sync + 'static {
             type Error: SqlStoreError;
             type Scoped: $parent<Error = Self::Error>;
-
-            async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Self;
 
             fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
         }

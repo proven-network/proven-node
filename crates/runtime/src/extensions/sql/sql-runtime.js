@@ -1,5 +1,10 @@
 import { Sql } from "proven:sql-template-tag"
 
+function executeApplicationSql (store_name, sql) {
+  const { op_execute_application_sql } = globalThis.Deno.core.ops;
+  return op_execute_application_sql(store_name, sql)
+}
+
 class ApplicationSqlStore {
   constructor (sqlStoreName) {
     this.sqlStoreName = sqlStoreName
@@ -7,19 +12,20 @@ class ApplicationSqlStore {
 
   execute (sql) {
     if (sql instanceof Sql) {
-      throw new Error('unimplemented')
+      throw new Error(JSON.stringify(sql.values))
     } else {
       throw new TypeError('Expected `sql` to be a string or Sql object')
     }
   }
 
   migrate (sql) {
-    throw new Error('`migrate` must be run at the top level of your module')
+    // No-op at runtime (migrations are collated at options-parse time)
+    return this
   }
 
   query (sql) {
     if (sql instanceof Sql) {
-      throw new Error('unimplemented')
+      throw new Error(JSON.stringify(sql.values))
     } else {
       throw new TypeError('Expected `sql` to be a string or Sql object')
     }

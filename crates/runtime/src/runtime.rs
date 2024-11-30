@@ -1,5 +1,5 @@
 use crate::extensions::*;
-use crate::options::HandlerOptions;
+use crate::options::{HandlerOptions, SqlMigrations};
 use crate::options_parser::OptionsParser;
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
@@ -53,6 +53,7 @@ pub struct Runtime<
     personal_sql_store: PSS,
     personal_store: PS,
     runtime: rustyscript::Runtime,
+    sql_migrations: SqlMigrations,
 }
 
 /// Executes ESM modules in a single-threaded environment. Cannot use in tokio without spawning in dedicated thread.
@@ -218,6 +219,7 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
             personal_sql_store,
             personal_store,
             runtime,
+            sql_migrations: module_options.sql_migrations,
         })
     }
 
@@ -266,26 +268,27 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
                 .scope(dapp_definition_address.clone()),
         )?;
 
-        // Set the sql stores for the storage extension
-        let personal_sql_store = match identity.as_ref() {
-            Some(current_identity) => Some(
-                self.personal_sql_store
-                    .clone()
-                    .scope(dapp_definition_address.clone())
-                    .scope(current_identity.clone()),
-            ),
-            None => None,
-        };
-        self.runtime.put(personal_sql_store)?;
+        // // Set the sql stores for the storage extension
+        // let personal_sql_store = match identity.as_ref() {
+        //     Some(current_identity) => Some(
+        //         self.personal_sql_store
+        //             .clone()
+        //             .scope(dapp_definition_address.clone())
+        //             .scope(current_identity.clone()),
+        //     ),
+        //     None => None,
+        // };
+        // self.runtime.put(personal_sql_store)?;
 
-        self.runtime.put(
+        ApplicationSqlConnectionManager::new(
             self.application_sql_store
                 .clone()
                 .scope(dapp_definition_address.clone()),
-        )?;
+            self.sql_migrations.application.clone(),
+        );
 
-        self.runtime
-            .put(self.nft_sql_store.clone().scope(dapp_definition_address))?;
+        // self.runtime
+        //     .put(self.nft_sql_store.clone().scope(dapp_definition_address))?;
 
         // Set the context for the session extension
         self.runtime.put(SessionsState { identity, accounts })?;
@@ -802,7 +805,7 @@ mod tests {
 
                 export const test = () => {
                     return DB.query(
-                        sql`SELECT * FROM posts WHERE creator = ${getCurrentIdentity()}`,
+                        sql`SELECT * FROM posts WHERE creator = ${getCurrentIdentity()} AND id < ${10}`,
                     );
                 };
             "#,
