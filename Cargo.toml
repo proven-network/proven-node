@@ -1,8 +1,8 @@
 [workspace.package]
 rust-version = "1.80"
-authors = ["the Proven authors"]
+authors = ["Proven Labs Pte Ltd"]
 edition = "2021"
-license = "BSL-1.1"
+license = "FSL-1.1-MIT"
 repository = "https://github.com/proven-network/proven-node"
 
 [workspace]
