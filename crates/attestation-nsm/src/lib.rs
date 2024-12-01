@@ -1,3 +1,9 @@
+//! Implementation of attestation using the Nitro Security Module.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 mod nsm;
 
@@ -10,12 +16,15 @@ use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor};
 use tokio::sync::Mutex;
 
+/// Attestor implementation using the Nitro Security Module.
 #[derive(Debug)]
 pub struct NsmAttestor {
     nsm: Arc<Mutex<nsm::Nsm>>,
 }
 
 impl NsmAttestor {
+    /// Create a new `NsmAttestor`.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             nsm: Arc::new(Mutex::new(nsm::Nsm::new())),
@@ -25,7 +34,7 @@ impl NsmAttestor {
 
 #[async_trait]
 impl Attestor for NsmAttestor {
-    type AE = Error;
+    type Error = Error;
 
     async fn attest(&self, params: AttestationParams) -> Result<Bytes> {
         Ok(Bytes::from(self.nsm.lock().await.attestation(params)?))

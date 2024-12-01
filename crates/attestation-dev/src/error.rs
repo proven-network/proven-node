@@ -1,3 +1,4 @@
+use proven_attestation::AttestorError;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -10,3 +11,5 @@ pub enum Error {
     #[error(transparent)]
     Cose(#[from] coset::CoseError),
 }
+
+impl AttestorError for Error {}

@@ -1,3 +1,9 @@
+//! Noop implementation of attestation for local development.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 use bytes::Bytes;
@@ -11,14 +17,9 @@ use proven_attestation::{AttestationParams, Attestor};
 use rand::RngCore;
 use serde::Serialize;
 
+/// Noop attestation provider for local development.
 #[derive(Clone, Debug, Default)]
-pub struct DevAttestor {}
-
-impl DevAttestor {
-    pub fn new() -> Self {
-        Self {}
-    }
-}
+pub struct DevAttestor;
 
 #[derive(Clone, Debug, Default, Serialize)]
 struct Attestation {
@@ -30,7 +31,7 @@ struct Attestation {
 
 #[async_trait]
 impl Attestor for DevAttestor {
-    type AE = Error;
+    type Error = Error;
 
     async fn attest(&self, params: AttestationParams) -> Result<Bytes> {
         // use zerod pcrs in dev mode

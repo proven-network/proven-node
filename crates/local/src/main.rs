@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
     let challenge_store = MemoryStore::new();
     let sessions_store = FsStore::new("/tmp/proven/sessions");
     let radix_network_definition = NetworkDefinition::stokenet();
-    let dev_attestor = DevAttestor::new();
+    let dev_attestor = DevAttestor;
 
     let radix_gateway_origin = "https://stokenet.radixdlt.com".to_string();
 
