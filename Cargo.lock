@@ -6829,6 +6829,7 @@ dependencies = [
  "proven-store-memory",
  "proven-stream",
  "proven-stream-memory",
+ "proven-stream-nats",
  "serde",
  "thiserror 2.0.3",
  "tokio",
@@ -6913,7 +6914,6 @@ name = "proven-stream"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bytes",
 ]
 
 [[package]]

@@ -1,12 +1,12 @@
 mod error;
 
+use bytes::Bytes;
 pub use error::Error;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandler};
 use tokio::sync::{mpsc, Mutex};
 
@@ -23,7 +23,7 @@ type ChannelMap = Arc<Mutex<HashMap<String, ChannelPair>>>;
 #[derive(Clone, Default)]
 pub struct MemoryStream<H>
 where
-    H: StreamHandler,
+    H: StreamHandler<Self>,
 {
     channels: ChannelMap,
     prefix: String,
@@ -32,7 +32,7 @@ where
 
 impl<H> MemoryStream<H>
 where
-    H: StreamHandler,
+    H: StreamHandler<Self>,
 {
     pub fn new() -> Self {
         Self {
@@ -77,9 +77,11 @@ where
 #[async_trait]
 impl<H> Stream<H> for MemoryStream<H>
 where
-    H: StreamHandler,
+    H: StreamHandler<Self>,
 {
     type Error = Error<H::HandlerError>;
+    type Request = Bytes;
+    type Response = Bytes;
 
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
         handler.on_caught_up().await?;
@@ -91,7 +93,7 @@ where
             let mut rx = rx_clone.lock().await;
 
             while let Some((data, response_tx)) = rx.recv().await {
-                match handler.handle(data).await {
+                match handler.handle_request(data).await {
                     Ok(response) => {
                         let _ = response_tx.send(response).await;
                     }
@@ -135,9 +137,11 @@ macro_rules! impl_scoped_stream {
         #[async_trait]
         impl<H> $name<H> for MemoryStream<H>
         where
-            H: StreamHandler,
+            H: StreamHandler<Self>,
         {
             type Error = Error<H::HandlerError>;
+            type Request = Bytes;
+            type Response = Bytes;
             type Scoped = MemoryStream<H>;
 
             fn scope(&self, scope: String) -> Self::Scoped {
@@ -173,10 +177,10 @@ mod tests {
     struct TestHandler;
 
     #[async_trait]
-    impl StreamHandler for TestHandler {
+    impl StreamHandler<MemoryStream<TestHandler>> for TestHandler {
         type HandlerError = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
+        async fn handle_request(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
             Ok(data)
         }
     }

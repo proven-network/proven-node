@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 pub use connection::Connection;
 pub use error::{Error, HandlerError, HandlerResult, Result};
+use proven_stream_memory::MemoryStream;
+use proven_stream_nats::NatsStream;
 pub use request::Request;
 pub use response::Response;
 
@@ -27,10 +29,53 @@ pub struct SqlStreamHandler {
 }
 
 #[async_trait]
-impl StreamHandler for SqlStreamHandler {
+impl StreamHandler<MemoryStream<Self>> for SqlStreamHandler {
     type HandlerError = HandlerError;
 
-    async fn handle(&self, bytes: Bytes) -> HandlerResult<Bytes> {
+    async fn handle_request(&self, bytes: Bytes) -> HandlerResult<Bytes> {
+        let request: Request = bytes.try_into()?;
+        println!("Request: {:?}", request);
+
+        let response = match request {
+            Request::Execute(sql, params) => {
+                let affected_rows = self.database.execute(&sql, params).await?;
+                Response::Execute(affected_rows)
+            }
+            Request::ExecuteBatch(sql, params) => {
+                let affected_rows = self.database.execute_batch(&sql, params).await?;
+                Response::ExecuteBatch(affected_rows)
+            }
+            Request::Migrate(sql) => {
+                let needed_to_run = self.database.migrate(&sql).await?;
+                if needed_to_run {
+                    self.applied_migrations.lock().await.push(sql);
+                }
+                Response::Migrate(needed_to_run)
+            }
+            Request::Query(sql, params) => {
+                let rows = self.database.query(&sql, params).await?;
+                Response::Query(rows)
+            }
+        };
+
+        response
+            .try_into()
+            .map_err(|e| HandlerError::CborSerialize(Arc::new(e)))
+    }
+
+    async fn on_caught_up(&self) -> HandlerResult<()> {
+        if let Some(tx) = self.caught_up_tx.lock().await.take() {
+            let _ = tx.send(());
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl StreamHandler<NatsStream<Self>> for SqlStreamHandler {
+    type HandlerError = HandlerError;
+
+    async fn handle_request(&self, bytes: Bytes) -> HandlerResult<Bytes> {
         let request: Request = bytes.try_into()?;
         println!("Request: {:?}", request);
 
@@ -70,20 +115,29 @@ impl StreamHandler for SqlStreamHandler {
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStoreOptions<LS: Store, ST: Stream<SqlStreamHandler>> {
+pub struct StreamedSqlStoreOptions<LS: Store, ST: Stream<SqlStreamHandler>>
+where
+    SqlStreamHandler: StreamHandler<ST>,
+{
     pub leader_store: LS,
     pub local_name: String,
     pub stream: ST,
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStore<LS: Store, ST: Stream<SqlStreamHandler>> {
+pub struct StreamedSqlStore<LS: Store, ST: Stream<SqlStreamHandler>>
+where
+    SqlStreamHandler: StreamHandler<ST>,
+{
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
-impl<LS: Store, ST: Stream<SqlStreamHandler>> StreamedSqlStore<LS, ST> {
+impl<LS: Store, ST: Stream<SqlStreamHandler>> StreamedSqlStore<LS, ST>
+where
+    SqlStreamHandler: StreamHandler<ST>,
+{
     pub fn new(
         StreamedSqlStoreOptions {
             leader_store,
@@ -100,7 +154,12 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> StreamedSqlStore<LS, ST> {
 }
 
 #[async_trait]
-impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, ST> {
+impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, ST>
+where
+    SqlStreamHandler: StreamHandler<ST>,
+    ST::Request: From<Bytes> + Into<Bytes>,
+    ST::Response: From<Bytes> + Into<Bytes>,
+{
     type Error = Error<ST::Error, LS::Error>;
     type Connection = Connection<ST, LS>;
 
@@ -161,7 +220,10 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, 
             if !applied_migrations.contains(&migration_sql) {
                 let request = Request::Migrate(migration_sql);
                 let bytes: Bytes = request.try_into().unwrap();
-                self.stream.request(bytes).await.map_err(Error::Stream)?;
+                self.stream
+                    .request(bytes.into())
+                    .await
+                    .map_err(Error::Stream)?;
             }
         }
 
@@ -170,14 +232,24 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, 
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStore1<LS: Store1, ST: Stream1<SqlStreamHandler>> {
+pub struct StreamedSqlStore1<LS: Store1, ST: Stream1<SqlStreamHandler>>
+where
+    SqlStreamHandler: StreamHandler<ST::Scoped>,
+{
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
 #[async_trait]
-impl<LS: Store1, ST: Stream1<SqlStreamHandler>> SqlStore1 for StreamedSqlStore1<LS, ST> {
+impl<LS: Store1, ST: Stream1<SqlStreamHandler>> SqlStore1 for StreamedSqlStore1<LS, ST>
+where
+    SqlStreamHandler: StreamHandler<ST::Scoped>,
+    ST::Request: From<Bytes> + Into<Bytes>,
+    ST::Response: From<Bytes> + Into<Bytes>,
+    <ST::Scoped as Stream<SqlStreamHandler>>::Request: From<Bytes> + Into<Bytes>,
+    <ST::Scoped as Stream<SqlStreamHandler>>::Response: From<Bytes> + Into<Bytes>,
+{
     type Error = Error<ST::Error, LS::Error>;
     type Scoped = StreamedSqlStore<LS::Scoped, ST::Scoped>;
 
@@ -191,14 +263,24 @@ impl<LS: Store1, ST: Stream1<SqlStreamHandler>> SqlStore1 for StreamedSqlStore1<
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStore2<LS: Store2, ST: Stream2<SqlStreamHandler>> {
+pub struct StreamedSqlStore2<LS: Store2, ST: Stream2<SqlStreamHandler>>
+where
+    SqlStreamHandler: StreamHandler<<ST::Scoped as Stream1<SqlStreamHandler>>::Scoped>,
+{
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
 #[async_trait]
-impl<LS: Store2, ST: Stream2<SqlStreamHandler>> SqlStore2 for StreamedSqlStore2<LS, ST> {
+impl<LS: Store2, ST: Stream2<SqlStreamHandler>> SqlStore2 for StreamedSqlStore2<LS, ST>
+where
+    SqlStreamHandler: StreamHandler<<ST::Scoped as Stream1<SqlStreamHandler>>::Scoped>,
+    ST::Request: From<Bytes> + Into<Bytes>,
+    ST::Response: From<Bytes> + Into<Bytes>,
+    <ST::Scoped as Stream1<SqlStreamHandler>>::Request: From<Bytes> + Into<Bytes>,
+    <ST::Scoped as Stream1<SqlStreamHandler>>::Response: From<Bytes> + Into<Bytes>,
+{
     type Error = Error<ST::Error, LS::Error>;
     type Scoped = StreamedSqlStore1<LS::Scoped, ST::Scoped>;
 
@@ -212,14 +294,28 @@ impl<LS: Store2, ST: Stream2<SqlStreamHandler>> SqlStore2 for StreamedSqlStore2<
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStore3<LS: Store3, ST: Stream3<SqlStreamHandler>> {
+pub struct StreamedSqlStore3<LS: Store3, ST: Stream3<SqlStreamHandler>>
+where
+    SqlStreamHandler: StreamHandler<
+        <<ST::Scoped as Stream2<SqlStreamHandler>>::Scoped as Stream1<SqlStreamHandler>>::Scoped,
+    >,
+{
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
 #[async_trait]
-impl<LS: Store3, ST: Stream3<SqlStreamHandler>> SqlStore3 for StreamedSqlStore3<LS, ST> {
+impl<LS: Store3, ST: Stream3<SqlStreamHandler>> SqlStore3 for StreamedSqlStore3<LS, ST>
+where
+    SqlStreamHandler: StreamHandler<
+        <<ST::Scoped as Stream2<SqlStreamHandler>>::Scoped as Stream1<SqlStreamHandler>>::Scoped,
+    >,
+    ST::Request: From<Bytes> + Into<Bytes>,
+    ST::Response: From<Bytes> + Into<Bytes>,
+    <ST::Scoped as Stream2<SqlStreamHandler>>::Request: From<Bytes> + Into<Bytes>,
+    <ST::Scoped as Stream2<SqlStreamHandler>>::Response: From<Bytes> + Into<Bytes>,
+{
     type Error = Error<ST::Error, LS::Error>;
     type Scoped = StreamedSqlStore2<LS::Scoped, ST::Scoped>;
 
