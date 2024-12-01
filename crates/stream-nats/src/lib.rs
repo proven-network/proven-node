@@ -19,12 +19,6 @@ struct StreamPublishReply {
     seq: u64,
 }
 
-#[derive(Clone)]
-pub enum ScopeMethod {
-    StreamPostfix,
-    SubjectPrefix,
-}
-
 pub struct NatsStreamOptions {
     pub client: Client,
     pub stream_name: String,
