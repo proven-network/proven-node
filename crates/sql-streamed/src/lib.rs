@@ -81,26 +81,26 @@ impl StreamHandler for SqlStreamHandler {
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStoreOptions<LS: Store, ST: Stream<SqlStreamHandler>> {
+pub struct StreamedSqlStoreOptions<S: Stream<SqlStreamHandler>, LS: Store> {
     pub leader_store: LS,
     pub local_name: String,
-    pub stream: ST,
+    pub stream: S,
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStore<LS: Store, ST: Stream<SqlStreamHandler>> {
+pub struct StreamedSqlStore<S: Stream<SqlStreamHandler>, LS: Store> {
     leader_store: LS,
     local_name: String,
-    stream: ST,
+    stream: S,
 }
 
-impl<LS: Store, ST: Stream<SqlStreamHandler>> StreamedSqlStore<LS, ST> {
+impl<S: Stream<SqlStreamHandler>, LS: Store> StreamedSqlStore<S, LS> {
     pub fn new(
         StreamedSqlStoreOptions {
             leader_store,
             local_name,
             stream,
-        }: StreamedSqlStoreOptions<LS, ST>,
+        }: StreamedSqlStoreOptions<S, LS>,
     ) -> Self {
         Self {
             leader_store,
@@ -111,14 +111,14 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> StreamedSqlStore<LS, ST> {
 }
 
 #[async_trait]
-impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, ST> {
-    type Error = Error<ST::Error, LS::Error>;
-    type Connection = Connection<ST, LS>;
+impl<S: Stream<SqlStreamHandler>, LS: Store> SqlStore for StreamedSqlStore<S, LS> {
+    type Error = Error<S::Error, LS::Error>;
+    type Connection = Connection<S, LS>;
 
     async fn connect<Q: Into<String> + Send>(
         &self,
         migrations: Vec<Q>,
-    ) -> Result<Connection<ST, LS>, ST::Error, LS::Error> {
+    ) -> Result<Connection<S, LS>, S::Error, LS::Error> {
         let stream_name = self.stream.name();
 
         let current_leader = self
@@ -180,68 +180,56 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, 
     }
 }
 
-#[derive(Clone)]
-pub struct StreamedSqlStore1<LS: Store1, ST: Stream1<SqlStreamHandler>> {
-    leader_store: LS,
-    local_name: String,
-    stream: ST,
-}
-
-#[async_trait]
-impl<LS: Store1, ST: Stream1<SqlStreamHandler>> SqlStore1 for StreamedSqlStore1<LS, ST> {
-    type Error = Error<ST::Error, LS::Error>;
-    type Scoped = StreamedSqlStore<LS::Scoped, ST::Scoped>;
-
-    fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        StreamedSqlStore {
-            leader_store: self.leader_store.scope(scope.clone().into()),
-            local_name: self.local_name.clone(),
-            stream: self.stream.scope(scope.into()),
+macro_rules! impl_scoped_sql_store {
+    ($name:ident, $parent:ident, $parent_trait:ident, $stream:ident, $store:ident, $doc:expr) => {
+        #[doc = $doc]
+        #[derive(Clone)]
+        pub struct $name<S: $stream<SqlStreamHandler>, LS: $store> {
+            leader_store: LS,
+            local_name: String,
+            stream: S,
         }
-    }
-}
 
-#[derive(Clone)]
-pub struct StreamedSqlStore2<LS: Store2, ST: Stream2<SqlStreamHandler>> {
-    leader_store: LS,
-    local_name: String,
-    stream: ST,
-}
+        #[async_trait]
+        impl<S: $stream<SqlStreamHandler>, LS: $store> $parent_trait for $name<S, LS> {
+            type Error = Error<S::Error, LS::Error>;
+            type Scoped = $parent<S::Scoped, LS::Scoped>;
 
-#[async_trait]
-impl<LS: Store2, ST: Stream2<SqlStreamHandler>> SqlStore2 for StreamedSqlStore2<LS, ST> {
-    type Error = Error<ST::Error, LS::Error>;
-    type Scoped = StreamedSqlStore1<LS::Scoped, ST::Scoped>;
-
-    fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        StreamedSqlStore1 {
-            leader_store: self.leader_store.scope(scope.clone().into()),
-            local_name: self.local_name.clone(),
-            stream: self.stream.scope(scope.into()),
+            fn scope<Scope: Clone + Into<String> + Send>(&self, scope: Scope) -> Self::Scoped {
+                $parent {
+                    leader_store: self.leader_store.scope(scope.clone().into()),
+                    local_name: self.local_name.clone(),
+                    stream: self.stream.scope(scope.into()),
+                }
+            }
         }
-    }
+    };
 }
 
-#[derive(Clone)]
-pub struct StreamedSqlStore3<LS: Store3, ST: Stream3<SqlStreamHandler>> {
-    leader_store: LS,
-    local_name: String,
-    stream: ST,
-}
-
-#[async_trait]
-impl<LS: Store3, ST: Stream3<SqlStreamHandler>> SqlStore3 for StreamedSqlStore3<LS, ST> {
-    type Error = Error<ST::Error, LS::Error>;
-    type Scoped = StreamedSqlStore2<LS::Scoped, ST::Scoped>;
-
-    fn scope<Scope: Clone + Into<String> + Send>(&self, scope: Scope) -> Self::Scoped {
-        StreamedSqlStore2 {
-            leader_store: self.leader_store.scope(scope.clone().into()),
-            local_name: self.local_name.clone(),
-            stream: self.stream.scope(scope.into()),
-        }
-    }
-}
+impl_scoped_sql_store!(
+    StreamedSqlStore1,
+    StreamedSqlStore,
+    SqlStore1,
+    Stream1,
+    Store1,
+    "A trait representing a single-scoped SQL store with asynchronous operations."
+);
+impl_scoped_sql_store!(
+    StreamedSqlStore2,
+    StreamedSqlStore1,
+    SqlStore2,
+    Stream2,
+    Store2,
+    "A trait representing a double-scoped SQL store with asynchronous operations."
+);
+impl_scoped_sql_store!(
+    StreamedSqlStore3,
+    StreamedSqlStore2,
+    SqlStore3,
+    Stream3,
+    Store3,
+    "A trait representing a triple-scoped SQL store with asynchronous operations."
+);
 
 #[cfg(test)]
 mod tests {
