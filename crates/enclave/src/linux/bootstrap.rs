@@ -867,7 +867,6 @@ impl Bootstrap {
             local_name: instance_details.instance_id.clone(),
             stream: NatsStream::new(NatsStreamOptions {
                 client: nats_client.clone(),
-                local_name: instance_details.instance_id.clone(),
                 stream_name: "APPLICATION_MANAGER_SQL".to_string(),
             }),
         });
@@ -887,7 +886,6 @@ impl Bootstrap {
             local_name: instance_details.instance_id.clone(),
             stream: NatsStream::new(NatsStreamOptions {
                 client: nats_client.clone(),
-                local_name: instance_details.instance_id.clone(),
                 stream_name: "APPLICATION_SQL".to_string(),
             }),
         });
@@ -905,7 +903,6 @@ impl Bootstrap {
             local_name: instance_details.instance_id.clone(),
             stream: NatsStream::new(NatsStreamOptions {
                 client: nats_client.clone(),
-                local_name: instance_details.instance_id.clone(),
                 stream_name: "PERSONAL_SQL".to_string(),
             }),
         });
@@ -923,7 +920,6 @@ impl Bootstrap {
             local_name: instance_details.instance_id.clone(),
             stream: NatsStream::new(NatsStreamOptions {
                 client: nats_client.clone(),
-                local_name: instance_details.instance_id.clone(),
                 stream_name: "NFT_SQL".to_string(),
             }),
         });

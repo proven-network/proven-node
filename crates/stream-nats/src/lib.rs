@@ -30,7 +30,6 @@ pub enum ScopeMethod {
 
 pub struct NatsStreamOptions {
     pub client: Client,
-    pub local_name: String,
     pub stream_name: String,
 }
 
@@ -38,7 +37,6 @@ pub struct NatsStreamOptions {
 pub struct NatsStream<HE: StreamHandlerError> {
     client: Client,
     jetstream_context: JetStreamContext,
-    local_name: String,
     stream_name: String,
     _handler_error: std::marker::PhantomData<HE>,
 }
@@ -50,7 +48,6 @@ where
     pub fn new(
         NatsStreamOptions {
             client,
-            local_name,
             stream_name,
         }: NatsStreamOptions,
     ) -> Self {
@@ -59,7 +56,6 @@ where
         Self {
             client,
             jetstream_context,
-            local_name,
             stream_name,
             _handler_error: std::marker::PhantomData,
         }
@@ -69,14 +65,9 @@ where
         Self {
             client: self.client.clone(),
             jetstream_context: self.jetstream_context.clone(),
-            local_name: self.local_name.clone(),
             stream_name: format!("{}_{}", self.stream_name, scope),
             _handler_error: std::marker::PhantomData,
         }
-    }
-
-    fn get_durable_consumer_name(&self) -> String {
-        format!("{}_{}_consumer", self.local_name, self.stream_name).to_ascii_uppercase()
     }
 
     fn get_reply_stream_name(&self) -> String {
@@ -127,7 +118,7 @@ where
             .get_request_stream()
             .await?
             .create_consumer(ConsumerConfig {
-                durable_name: Some(self.get_durable_consumer_name()),
+                durable_name: None,
                 ..Default::default()
             })
             .await
@@ -279,7 +270,6 @@ mod tests {
 
         let subscriber = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
             client,
-            local_name: "local".to_string(),
             stream_name: "SQL".to_string(),
         });
 
@@ -297,13 +287,11 @@ mod tests {
 
         let publisher = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
             client,
-            local_name: "local".to_string(),
             stream_name: "TEST_PUB".to_string(),
         });
 
         let subscriber = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
             client: client2,
-            local_name: "local".to_string(),
             stream_name: "TEST_PUB".to_string(),
         });
 
@@ -351,13 +339,11 @@ mod tests {
 
         let requester = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
             client,
-            local_name: "local".to_string(),
             stream_name: "TEST_REQ".to_string(),
         });
 
         let responder = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
             client: client2,
-            local_name: "local".to_string(),
             stream_name: "TEST_REQ".to_string(),
         });
 
