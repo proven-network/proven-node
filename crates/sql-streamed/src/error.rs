@@ -9,6 +9,9 @@ pub type Result<T, SE, LSE> = std::result::Result<T, Error<SE, LSE>>;
 
 #[derive(Clone, Debug, Error)]
 pub enum Error<SE, LSE> {
+    #[error("Caught up channel closed")]
+    CaughtUpChannelClosed,
+
     #[error(transparent)]
     CborDeserialize(Arc<ciborium::de::Error<std::io::Error>>),
 

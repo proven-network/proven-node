@@ -17,9 +17,11 @@ use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
 use proven_stream::StreamHandler;
 use proven_stream::{Stream, Stream1, Stream2, Stream3};
+use tokio::sync::{oneshot, Mutex};
 
 #[derive(Clone)]
 pub struct SqlStreamHandler {
+    caught_up_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     database: Database,
 }
 
@@ -53,6 +55,13 @@ impl StreamHandler for SqlStreamHandler {
         response
             .try_into()
             .map_err(|e| HandlerError::CborSerialize(Arc::new(e)))
+    }
+
+    async fn on_caught_up(&self) -> HandlerResult<()> {
+        if let Some(tx) = self.caught_up_tx.lock().await.take() {
+            let _ = tx.send(());
+        }
+        Ok(())
     }
 }
 
@@ -120,7 +129,10 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, 
         }
 
         let database = Database::connect(":memory:").await?;
+        let (caught_up_tx, caught_up_rx) = oneshot::channel();
+
         let handler = SqlStreamHandler {
+            caught_up_tx: Arc::new(Mutex::new(Some(caught_up_tx))),
             database: database.clone(),
         };
 
@@ -132,11 +144,16 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, 
             }
         });
 
-        // send all migrations to the stream sequentially
+        // Wait for the stream to catch up before applying migrations
+        caught_up_rx
+            .await
+            .map_err(|_| Error::CaughtUpChannelClosed)?;
+
+        // TODO: only run migrations that haven't been applied yet
         for migration in migrations {
             let request = Request::Migrate(migration.into());
             let bytes: Bytes = request.try_into().unwrap();
-            self.stream.request(bytes).await.unwrap();
+            self.stream.request(bytes).await.map_err(Error::Stream)?;
         }
 
         Ok(Connection::new(self.stream.clone()))

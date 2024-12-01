@@ -4,7 +4,7 @@ use thiserror::Error;
 #[derive(Clone, Debug, Error)]
 pub enum Error<HE: StreamHandlerError> {
     #[error("Handler error: {0}")]
-    Handler(HE),
+    Handler(#[from] HE),
 
     #[error("Channel send error")]
     Send,

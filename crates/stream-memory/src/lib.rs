@@ -82,6 +82,8 @@ where
     type Error = Error<H::HandlerError>;
 
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
+        handler.on_caught_up().await?;
+
         let pair = self.get_or_create_channel().await;
 
         let rx_clone = pair.rx.clone();
