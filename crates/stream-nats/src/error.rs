@@ -12,6 +12,9 @@ pub enum Error<HE: StreamHandlerError> {
     #[error("Failed to create consumer: {0}")]
     ConsumerCreate(async_nats::jetstream::stream::ConsumerErrorKind),
 
+    #[error("Failed to get consumer info: {0}")]
+    ConsumerInfo(async_nats::jetstream::context::RequestErrorKind),
+
     #[error("Failed to get consumer messages: {0}")]
     ConsumerMessages(async_nats::jetstream::consumer::pull::MessagesErrorKind),
 
@@ -44,6 +47,9 @@ pub enum Error<HE: StreamHandlerError> {
 
     #[error("Failed to create stream: {0}")]
     StreamCreate(async_nats::jetstream::context::CreateStreamErrorKind),
+
+    #[error("Failed to get stream info: {0}")]
+    StreamInfo(async_nats::jetstream::context::RequestErrorKind),
 }
 
 impl<HE: StreamHandlerError> From<serde_json::Error> for Error<HE> {

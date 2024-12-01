@@ -112,19 +112,21 @@ where
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
         println!("Subscribing to {}", self.get_request_stream_name());
 
-        // Setup stream and consumer
-        let mut messages = self
-            .get_request_stream()
-            .await?
+        let mut stream = self.get_request_stream().await?;
+        let mut consumer = stream
             .create_consumer(ConsumerConfig {
                 durable_name: None,
                 ..Default::default()
             })
             .await
-            .map_err(|e| Error::ConsumerCreate(e.kind()))?
+            .map_err(|e| Error::ConsumerCreate(e.kind()))?;
+
+        let mut messages = consumer
             .messages()
             .await
             .map_err(|e| Error::ConsumerStream(e.kind()))?;
+
+        let mut caught_up = false;
 
         // Process messages
         while let Some(message) = messages.next().await {
@@ -148,6 +150,25 @@ where
                 .map_err(|e| Error::ReplyPublish(e.kind()))?;
 
             message.double_ack().await.map_err(|_| Error::ConsumerAck)?;
+
+            if !caught_up {
+                let stream_info = stream
+                    .info()
+                    .await
+                    .map_err(|e| Error::StreamInfo(e.kind()))?;
+
+                let consumer_info = consumer
+                    .info()
+                    .await
+                    .map_err(|e| Error::ConsumerInfo(e.kind()))?;
+
+                if consumer_info.num_pending == 0
+                    && consumer_info.delivered.stream_sequence >= stream_info.state.last_sequence
+                {
+                    caught_up = true;
+                    handler.on_caught_up().await.map_err(Error::Handler)?;
+                }
+            }
         }
 
         Ok(())
@@ -296,6 +317,98 @@ mod tests {
             response.extend_from_slice(&data);
             Ok(Bytes::from(response))
         }
+    }
+
+    #[derive(Clone)]
+    struct CatchUpTestHandler {
+        caught_up: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        message_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl CatchUpTestHandler {
+        fn new() -> Self {
+            Self {
+                caught_up: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                message_count: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            }
+        }
+
+        fn is_caught_up(&self) -> bool {
+            self.caught_up.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        fn message_count(&self) -> usize {
+            self.message_count.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl StreamHandler for CatchUpTestHandler {
+        type HandlerError = TestHandlerError;
+
+        async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
+            self.message_count
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(data)
+        }
+
+        async fn on_caught_up(&self) -> Result<(), Self::HandlerError> {
+            self.caught_up
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    async fn cleanup_stream(client: &Client, stream_name: &str) {
+        let js = jetstream::new(client.clone());
+        // Ignore errors since the stream might not exist
+        let _ = js.delete_stream(stream_name).await;
+    }
+
+    #[tokio::test]
+    async fn test_caught_up() {
+        let client = async_nats::connect("nats://localhost:4222").await.unwrap();
+        let client2 = client.clone();
+
+        // Clean up the stream and its request/reply variants before starting
+        cleanup_stream(&client, "TEST_CATCHUP_REQUEST").await;
+        cleanup_stream(&client, "TEST_CATCHUP_REPLY").await;
+
+        let publisher = NatsStream::<CatchUpTestHandler>::new(NatsStreamOptions {
+            client,
+            stream_name: "TEST_CATCHUP".to_string(),
+        });
+
+        // Publish three messages before starting the handler
+        for i in 1..=3 {
+            publisher
+                .publish(Bytes::from(format!("test message {}", i)))
+                .await
+                .unwrap();
+        }
+
+        let subscriber = NatsStream::<CatchUpTestHandler>::new(NatsStreamOptions {
+            client: client2,
+            stream_name: "TEST_CATCHUP".to_string(),
+        });
+
+        let handler = CatchUpTestHandler::new();
+        let handler_clone = handler.clone();
+
+        // Start handler
+        let handle = tokio::spawn(async move {
+            subscriber.handle(handler).await.unwrap();
+        });
+
+        // Wait for processing to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Verify that all messages were processed before on_caught_up was called
+        assert!(handler_clone.is_caught_up());
+        assert_eq!(handler_clone.message_count(), 3);
+
+        // Clean up
+        handle.abort();
     }
 
     #[tokio::test]

@@ -22,6 +22,10 @@ pub trait StreamHandler: Clone + Send + Sync + 'static {
     type HandlerError: StreamHandlerError;
 
     async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError>;
+
+    async fn on_caught_up(&self) -> Result<(), Self::HandlerError> {
+        Ok(())
+    }
 }
 
 /// A trait representing a stream with asynchronous operations.
