@@ -6935,6 +6935,7 @@ dependencies = [
  "async-nats",
  "async-trait",
  "bytes",
+ "ciborium",
  "futures",
  "proven-stream",
  "serde",
