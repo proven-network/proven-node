@@ -3,6 +3,7 @@ mod error;
 mod request;
 mod response;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub use connection::Connection;
@@ -15,7 +16,7 @@ use bytes::Bytes;
 use proven_libsql::Database;
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
-use proven_stream::StreamHandler;
+use proven_stream::{HandlerResponse, StreamHandler};
 use proven_stream::{Stream, Stream1, Stream2, Stream3};
 use tokio::sync::{oneshot, Mutex};
 
@@ -30,9 +31,11 @@ pub struct SqlStreamHandler {
 impl StreamHandler for SqlStreamHandler {
     type HandlerError = HandlerError;
 
-    async fn handle(&self, bytes: Bytes) -> HandlerResult<Bytes> {
+    async fn handle(&self, bytes: Bytes) -> HandlerResult<HandlerResponse> {
         let request: Request = bytes.try_into()?;
         println!("Request: {:?}", request);
+
+        let mut headers = HashMap::with_capacity(1);
 
         let response = match request {
             Request::Execute(sql, params) => {
@@ -51,14 +54,22 @@ impl StreamHandler for SqlStreamHandler {
                 Response::Migrate(needed_to_run)
             }
             Request::Query(sql, params) => {
+                // Used in relevent stream implemenetations to remove queries from append-only logs
+                headers.insert(
+                    "Request-Message-Should-Persist".to_string(),
+                    "false".to_string(),
+                );
+
                 let rows = self.database.query(&sql, params).await?;
                 Response::Query(rows)
             }
         };
 
-        response
+        let data = response
             .try_into()
-            .map_err(|e| HandlerError::CborSerialize(Arc::new(e)))
+            .map_err(|e| HandlerError::CborSerialize(Arc::new(e)))?;
+
+        Ok(HandlerResponse { headers, data })
     }
 
     async fn on_caught_up(&self) -> HandlerResult<()> {

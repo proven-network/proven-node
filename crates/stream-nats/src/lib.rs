@@ -144,8 +144,13 @@ where
             let mut headers = async_nats::HeaderMap::new();
             headers.insert("Nats-Expected-Last-Sequence", (seq - 1).to_string());
 
+            // Copy headers from response to reply
+            for (key, value) in response.headers {
+                headers.insert(key, value);
+            }
+
             self.client
-                .publish_with_headers(self.get_reply_stream_name(), headers, response)
+                .publish_with_headers(self.get_reply_stream_name(), headers, response.data)
                 .await
                 .map_err(|e| Error::ReplyPublish(e.kind()))?;
 
@@ -229,6 +234,19 @@ where
                         .delete_message(response.seq)
                         .await
                         .map_err(|e| Error::ReplyDelete(e.kind()))?;
+
+                    // Check and handle message persistence
+                    if let Some(value) = message.headers.get("Request-Message-Should-Persist") {
+                        if value.as_str() == "false" {
+                            if let Ok(stream) = self.get_request_stream().await {
+                                stream
+                                    .delete_message(response.seq)
+                                    .await
+                                    .map_err(|e| Error::RequestDelete(e.kind()))?;
+                            }
+                        }
+                    }
+
                     return Ok(message.payload);
                 }
                 Err(e) => {
@@ -270,7 +288,7 @@ impl_scoped_stream!(Stream3, Stream2);
 mod tests {
     use super::*;
 
-    use proven_stream::StreamHandlerError;
+    use proven_stream::{HandlerResponse, StreamHandlerError};
 
     #[derive(Clone, Debug)]
     struct TestHandlerError;
@@ -299,9 +317,13 @@ mod tests {
     impl StreamHandler for PublishTestHandler {
         type HandlerError = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
             self.tx.send(data.clone()).await.unwrap();
-            Ok(data)
+
+            Ok(HandlerResponse {
+                data,
+                ..Default::default()
+            })
         }
     }
 
@@ -312,10 +334,14 @@ mod tests {
     impl StreamHandler for RequestTestHandler {
         type HandlerError = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
             let mut response = b"reply: ".to_vec();
             response.extend_from_slice(&data);
-            Ok(Bytes::from(response))
+
+            Ok(HandlerResponse {
+                data: Bytes::from(response),
+                ..Default::default()
+            })
         }
     }
 
@@ -346,10 +372,14 @@ mod tests {
     impl StreamHandler for CatchUpTestHandler {
         type HandlerError = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
             self.message_count
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(data)
+
+            Ok(HandlerResponse {
+                data,
+                ..Default::default()
+            })
         }
 
         async fn on_caught_up(&self) -> Result<(), Self::HandlerError> {
@@ -503,5 +533,68 @@ mod tests {
         // Make request and verify response
         let response = requester.request(message).await.unwrap();
         assert_eq!(response, Bytes::from("reply: test message"));
+    }
+
+    #[derive(Clone)]
+    struct NonPersistentRequestTestHandler;
+
+    #[async_trait]
+    impl StreamHandler for NonPersistentRequestTestHandler {
+        type HandlerError = TestHandlerError;
+
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
+            let mut headers = std::collections::HashMap::new();
+            headers.insert(
+                "Request-Message-Should-Persist".to_string(),
+                "false".to_string(),
+            );
+
+            Ok(HandlerResponse { data, headers })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_request_message_deletion() {
+        let client = async_nats::connect("nats://localhost:4222").await.unwrap();
+        let client2 = client.clone();
+
+        // Clean up the stream and its request/reply variants before starting
+        cleanup_stream(&client, "TEST_REQ_DELETE_REQUEST").await;
+        cleanup_stream(&client, "TEST_REQ_DELETE_REPLY").await;
+
+        let requester = NatsStream::<NonPersistentRequestTestHandler>::new(NatsStreamOptions {
+            client,
+            stream_name: "TEST_REQ_DELETE".to_string(),
+        });
+
+        let responder = NatsStream::<NonPersistentRequestTestHandler>::new(NatsStreamOptions {
+            client: client2,
+            stream_name: "TEST_REQ_DELETE".to_string(),
+        });
+
+        // Start handler
+        tokio::spawn({
+            let responder = responder.clone();
+            async move {
+                responder
+                    .handle(NonPersistentRequestTestHandler)
+                    .await
+                    .unwrap();
+            }
+        });
+
+        // Give handler time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Make a request
+        let message = Bytes::from("test message");
+        let _ = requester.request(message).await.unwrap();
+
+        // Verify the message was deleted from request stream
+        let js = jetstream::new(requester.client.clone());
+        let mut stream = js.get_stream("TEST_REQ_DELETE_REQUEST").await.unwrap();
+        let info = stream.info().await.unwrap();
+
+        assert_eq!(info.state.messages, 0, "Request message was not deleted");
     }
 }

@@ -42,6 +42,9 @@ pub enum Error<HE: StreamHandlerError> {
     #[error("Request failed: {0}")]
     Request(async_nats::client::RequestErrorKind),
 
+    #[error("Failed to delete request message: {0}")]
+    RequestDelete(async_nats::jetstream::stream::DeleteMessageErrorKind),
+
     #[error("JSON serialization error: {0}")]
     SerdeJson(Arc<serde_json::Error>),
 

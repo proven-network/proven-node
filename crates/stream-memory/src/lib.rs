@@ -93,7 +93,7 @@ where
             while let Some((data, response_tx)) = rx.recv().await {
                 match handler.handle(data).await {
                     Ok(response) => {
-                        let _ = response_tx.send(response).await;
+                        let _ = response_tx.send(response.data).await;
                     }
                     Err(_) => break,
                 }
@@ -155,7 +155,7 @@ impl_scoped_stream!(Stream3, Stream2);
 mod tests {
     use super::*;
 
-    use proven_stream::StreamHandlerError;
+    use proven_stream::{HandlerResponse, StreamHandlerError};
 
     #[derive(Clone, Debug)]
     struct TestHandlerError;
@@ -176,8 +176,11 @@ mod tests {
     impl StreamHandler for TestHandler {
         type HandlerError = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
-            Ok(data)
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
+            Ok(HandlerResponse {
+                data,
+                ..Default::default()
+            })
         }
     }
 

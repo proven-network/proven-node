@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
 
@@ -10,6 +11,12 @@ pub trait StreamError: Clone + Debug + Error + Send + Sync + 'static {}
 /// Marker trait for stream handler errors
 pub trait StreamHandlerError: Clone + Debug + Error + Send + Sync + 'static {}
 
+#[derive(Debug, Default)]
+pub struct HandlerResponse {
+    pub headers: HashMap<String, String>,
+    pub data: Bytes,
+}
+
 /// A trait for handling stream data with asynchronous operations.
 ///
 /// # Type Parameters
@@ -21,7 +28,7 @@ pub trait StreamHandlerError: Clone + Debug + Error + Send + Sync + 'static {}
 pub trait StreamHandler: Clone + Send + Sync + 'static {
     type HandlerError: StreamHandlerError;
 
-    async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError>;
+    async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError>;
 
     async fn on_caught_up(&self) -> Result<(), Self::HandlerError> {
         Ok(())
