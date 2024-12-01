@@ -2,9 +2,6 @@ mod error;
 
 pub use error::Error;
 
-use std::future::Future;
-use std::pin::Pin;
-
 use async_nats::jetstream;
 use async_nats::jetstream::consumer::pull::Config as ConsumerConfig;
 use async_nats::jetstream::stream::Config as StreamConfig;
@@ -13,7 +10,7 @@ use async_nats::Client;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
-use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandlerError};
+use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandler, StreamHandlerError};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -34,15 +31,21 @@ pub struct NatsStreamOptions {
 }
 
 #[derive(Clone)]
-pub struct NatsStream<HE: StreamHandlerError> {
+pub struct NatsStream<H, HE>
+where
+    H: StreamHandler<HE>,
+    HE: StreamHandlerError,
+{
     client: Client,
     jetstream_context: JetStreamContext,
     stream_name: String,
+    _handler: std::marker::PhantomData<H>,
     _handler_error: std::marker::PhantomData<HE>,
 }
 
-impl<HE> NatsStream<HE>
+impl<H, HE> NatsStream<H, HE>
 where
+    H: StreamHandler<HE>,
     HE: StreamHandlerError,
 {
     pub fn new(
@@ -57,6 +60,7 @@ where
             client,
             jetstream_context,
             stream_name,
+            _handler: std::marker::PhantomData,
             _handler_error: std::marker::PhantomData,
         }
     }
@@ -66,6 +70,7 @@ where
             client: self.client.clone(),
             jetstream_context: self.jetstream_context.clone(),
             stream_name: format!("{}_{}", self.stream_name, scope),
+            _handler: std::marker::PhantomData,
             _handler_error: std::marker::PhantomData,
         }
     }
@@ -101,16 +106,14 @@ where
 }
 
 #[async_trait]
-impl<HE> Stream<HE> for NatsStream<HE>
+impl<H, HE> Stream<H, HE> for NatsStream<H, HE>
 where
+    H: StreamHandler<HE>,
     HE: StreamHandlerError,
 {
     type Error = Error<HE>;
 
-    async fn handle(
-        &self,
-        handler: impl Fn(Bytes) -> Pin<Box<dyn Future<Output = Result<Bytes, HE>> + Send>> + Send + Sync,
-    ) -> Result<(), Self::Error> {
+    async fn handle(&self, handler: H) -> Result<(), Self::Error> {
         println!("Subscribing to {}", self.get_request_stream_name());
 
         // Setup stream and consumer
@@ -130,18 +133,16 @@ where
         // Process messages
         while let Some(message) = messages.next().await {
             let message = message.map_err(|e| Error::ConsumerMessages(e.kind()))?;
-
-            // Grab message seq number
             let seq = message.info().map_err(|_| Error::NoInfo)?.stream_sequence;
 
-            let response = handler(message.payload.clone())
+            let response = handler
+                .handle(message.payload.clone())
                 .await
                 .map_err(|e| Error::Handler(e))?;
 
             // Ensure reply stream exists
             self.get_reply_stream().await?;
 
-            // Headers that ensure seq matches between request and response
             let mut headers = async_nats::HeaderMap::new();
             headers.insert("Nats-Expected-Last-Sequence", (seq - 1).to_string());
 
@@ -230,12 +231,13 @@ where
 macro_rules! impl_scoped_stream {
     ($name:ident, $parent:ident) => {
         #[async_trait]
-        impl<HE> $name<HE> for NatsStream<HE>
+        impl<H, HE> $name<H, HE> for NatsStream<H, HE>
         where
+            H: StreamHandler<HE>,
             HE: StreamHandlerError,
         {
             type Error = Error<HE>;
-            type Scoped = NatsStream<HE>;
+            type Scoped = NatsStream<H, HE>;
 
             fn scope(&self, scope: String) -> Self::Scoped {
                 self.with_scope(scope)
@@ -264,14 +266,46 @@ mod tests {
     impl std::error::Error for TestHandlerError {}
     impl StreamHandlerError for TestHandlerError {}
 
+    #[derive(Clone)]
+    struct PublishTestHandler {
+        tx: tokio::sync::mpsc::Sender<Bytes>,
+    }
+
+    impl PublishTestHandler {
+        fn new(tx: tokio::sync::mpsc::Sender<Bytes>) -> Self {
+            Self { tx }
+        }
+    }
+
+    #[async_trait]
+    impl StreamHandler<TestHandlerError> for PublishTestHandler {
+        async fn handle(&self, data: Bytes) -> Result<Bytes, TestHandlerError> {
+            self.tx.send(data.clone()).await.unwrap();
+            Ok(data)
+        }
+    }
+
+    #[derive(Clone)]
+    struct RequestTestHandler;
+
+    #[async_trait]
+    impl StreamHandler<TestHandlerError> for RequestTestHandler {
+        async fn handle(&self, data: Bytes) -> Result<Bytes, TestHandlerError> {
+            let mut response = b"reply: ".to_vec();
+            response.extend_from_slice(&data);
+            Ok(Bytes::from(response))
+        }
+    }
+
     #[tokio::test]
     async fn test_stream_name_scoping() {
         let client = async_nats::connect("nats://localhost:4222").await.unwrap();
 
-        let subscriber = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
-            client,
-            stream_name: "SQL".to_string(),
-        });
+        let subscriber =
+            NatsStream::<PublishTestHandler, TestHandlerError>::new(NatsStreamOptions {
+                client,
+                stream_name: "SQL".to_string(),
+            });
 
         let subscriber = subscriber.with_scope("app1".to_string());
         assert_eq!(subscriber.stream_name, "SQL_app1");
@@ -285,15 +319,17 @@ mod tests {
         let client = async_nats::connect("nats://localhost:4222").await.unwrap();
         let client2 = client.clone();
 
-        let publisher = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
-            client,
-            stream_name: "TEST_PUB".to_string(),
-        });
+        let publisher =
+            NatsStream::<PublishTestHandler, TestHandlerError>::new(NatsStreamOptions {
+                client,
+                stream_name: "TEST_PUB".to_string(),
+            });
 
-        let subscriber = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
-            client: client2,
-            stream_name: "TEST_PUB".to_string(),
-        });
+        let subscriber =
+            NatsStream::<PublishTestHandler, TestHandlerError>::new(NatsStreamOptions {
+                client: client2,
+                stream_name: "TEST_PUB".to_string(),
+            });
 
         // Channel to communicate between publisher and subscriber
         let (tx, mut rx) = tokio::sync::mpsc::channel(1);
@@ -304,15 +340,7 @@ mod tests {
 
             async move {
                 subscriber
-                    .handle(move |message| {
-                        Box::pin({
-                            let value = tx.clone();
-                            async move {
-                                value.send(message.clone()).await.unwrap();
-                                Ok(message)
-                            }
-                        })
-                    })
+                    .handle(PublishTestHandler::new(tx))
                     .await
                     .unwrap();
             }
@@ -328,7 +356,7 @@ mod tests {
         publisher.publish(message.clone()).await.unwrap();
 
         // Wait for message to be received
-        let received = rx.recv().await.unwrap();
+        let received: Bytes = rx.recv().await.unwrap();
         assert_eq!(received, message);
     }
 
@@ -337,30 +365,23 @@ mod tests {
         let client = async_nats::connect("nats://localhost:4222").await.unwrap();
         let client2 = client.clone();
 
-        let requester = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
-            client,
-            stream_name: "TEST_REQ".to_string(),
-        });
+        let requester =
+            NatsStream::<RequestTestHandler, TestHandlerError>::new(NatsStreamOptions {
+                client,
+                stream_name: "TEST_REQ".to_string(),
+            });
 
-        let responder = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
-            client: client2,
-            stream_name: "TEST_REQ".to_string(),
-        });
+        let responder =
+            NatsStream::<RequestTestHandler, TestHandlerError>::new(NatsStreamOptions {
+                client: client2,
+                stream_name: "TEST_REQ".to_string(),
+            });
 
         // Start handler that echoes request with "reply: " prefix
         tokio::spawn({
             let responder = responder.clone();
             async move {
-                responder
-                    .handle(|message| {
-                        Box::pin(async move {
-                            let mut response = b"reply: ".to_vec();
-                            response.extend_from_slice(&message);
-                            Ok(Bytes::from(response))
-                        })
-                    })
-                    .await
-                    .unwrap();
+                responder.handle(RequestTestHandler).await.unwrap();
             }
         });
 

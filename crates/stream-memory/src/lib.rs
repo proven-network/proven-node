@@ -3,13 +3,11 @@ mod error;
 pub use error::Error;
 
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandlerError};
+use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandler, StreamHandlerError};
 use tokio::sync::{mpsc, Mutex};
 
 type ReceiverType = mpsc::Receiver<(Bytes, mpsc::Sender<Bytes>)>;
@@ -23,20 +21,27 @@ struct ChannelPair {
 type ChannelMap = Arc<Mutex<HashMap<String, ChannelPair>>>;
 
 #[derive(Clone, Default)]
-pub struct MemoryStream<HE: StreamHandlerError> {
+pub struct MemoryStream<H, HE>
+where
+    H: StreamHandler<HE>,
+    HE: StreamHandlerError,
+{
     channels: ChannelMap,
     prefix: String,
+    _handler: std::marker::PhantomData<H>,
     _handler_error: std::marker::PhantomData<HE>,
 }
 
-impl<HE> MemoryStream<HE>
+impl<H, HE> MemoryStream<H, HE>
 where
+    H: StreamHandler<HE>,
     HE: StreamHandlerError,
 {
     pub fn new() -> Self {
         Self {
             channels: Arc::new(Mutex::new(HashMap::new())),
             prefix: String::new(),
+            _handler: std::marker::PhantomData,
             _handler_error: std::marker::PhantomData,
         }
     }
@@ -68,25 +73,21 @@ where
         Self {
             channels: self.channels.clone(),
             prefix: new_prefix,
+            _handler: std::marker::PhantomData,
             _handler_error: std::marker::PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<HE> Stream<HE> for MemoryStream<HE>
+impl<H, HE> Stream<H, HE> for MemoryStream<H, HE>
 where
+    H: StreamHandler<HE>,
     HE: StreamHandlerError,
 {
     type Error = Error<HE>;
 
-    async fn handle(
-        &self,
-        handler: impl Fn(Bytes) -> Pin<Box<dyn Future<Output = Result<Bytes, HE>> + Send>>
-            + Send
-            + Sync
-            + 'static,
-    ) -> Result<(), Self::Error> {
+    async fn handle(&self, handler: H) -> Result<(), Self::Error> {
         let pair = self.get_or_create_channel().await;
 
         let rx_clone = pair.rx.clone();
@@ -94,7 +95,7 @@ where
             let mut rx = rx_clone.lock().await;
 
             while let Some((data, response_tx)) = rx.recv().await {
-                match handler(data).await {
+                match handler.handle(data).await {
                     Ok(response) => {
                         let _ = response_tx.send(response).await;
                     }
@@ -136,12 +137,13 @@ where
 macro_rules! impl_scoped_stream {
     ($name:ident, $parent:ident) => {
         #[async_trait]
-        impl<HE> $name<HE> for MemoryStream<HE>
+        impl<H, HE> $name<H, HE> for MemoryStream<H, HE>
         where
+            H: StreamHandler<HE>,
             HE: StreamHandlerError,
         {
             type Error = Error<HE>;
-            type Scoped = MemoryStream<HE>;
+            type Scoped = MemoryStream<H, HE>;
 
             fn scope(&self, scope: String) -> Self::Scoped {
                 self.with_scope(scope)
@@ -170,9 +172,19 @@ mod tests {
     impl std::error::Error for TestHandlerError {}
     impl StreamHandlerError for TestHandlerError {}
 
+    #[derive(Clone)]
+    struct TestHandler;
+
+    #[async_trait]
+    impl StreamHandler<TestHandlerError> for TestHandler {
+        async fn handle(&self, data: Bytes) -> Result<Bytes, TestHandlerError> {
+            Ok(data)
+        }
+    }
+
     #[tokio::test]
     async fn test_scoping() {
-        let stream = MemoryStream::<TestHandlerError>::new();
+        let stream = MemoryStream::<TestHandler, TestHandlerError>::new();
         let scoped = stream.with_scope("test".to_string());
 
         assert_eq!(stream.name(), "");

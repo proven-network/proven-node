@@ -95,7 +95,7 @@ impl Database {
         }
     }
 
-    pub async fn migrate(&mut self, query: &str) -> Result<bool> {
+    pub async fn migrate(&self, query: &str) -> Result<bool> {
         if query.contains(RESERVED_TABLE_PREFIX) {
             return Err(Error::UsedReservedTablePrefix);
         }
@@ -201,7 +201,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_basics() {
-        let mut db = Database::connect(":memory:").await.unwrap();
+        let db = Database::connect(":memory:").await.unwrap();
 
         let response = db
             .migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
@@ -245,7 +245,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table_can_only_change_via_migration() {
-        let mut db = Database::connect(":memory:").await.unwrap();
+        let db = Database::connect(":memory:").await.unwrap();
 
         let result = db
             .execute(

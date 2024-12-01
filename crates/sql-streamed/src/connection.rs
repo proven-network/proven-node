@@ -1,4 +1,4 @@
-use crate::{Error, HandlerError, Request, Response, Result};
+use crate::{Error, HandlerError, Request, Response, Result, SqlStreamHandler};
 
 use std::marker::PhantomData;
 
@@ -9,12 +9,12 @@ use proven_store::Store;
 use proven_stream::Stream;
 
 #[derive(Clone)]
-pub struct Connection<S: Stream<HandlerError>, LS: Store> {
+pub struct Connection<S: Stream<SqlStreamHandler, HandlerError>, LS: Store> {
     stream: S,
     _marker: PhantomData<LS>,
 }
 
-impl<S: Stream<HandlerError>, LS: Store> Connection<S, LS> {
+impl<S: Stream<SqlStreamHandler, HandlerError>, LS: Store> Connection<S, LS> {
     pub fn new(stream: S) -> Self {
         Self {
             stream,
@@ -24,7 +24,9 @@ impl<S: Stream<HandlerError>, LS: Store> Connection<S, LS> {
 }
 
 #[async_trait]
-impl<S: Stream<HandlerError> + 'static, LS: Store> SqlConnection for Connection<S, LS> {
+impl<S: Stream<SqlStreamHandler, HandlerError> + 'static, LS: Store> SqlConnection
+    for Connection<S, LS>
+{
     type Error = Error<S::Error, LS::Error>;
 
     async fn execute<Q: Into<String> + Send>(
