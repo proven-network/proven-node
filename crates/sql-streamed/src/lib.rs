@@ -23,6 +23,7 @@ use tokio::sync::{oneshot, Mutex};
 pub struct SqlStreamHandler {
     caught_up_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     database: Database,
+    migrations: Arc<Mutex<Vec<String>>>,
 }
 
 #[async_trait]
@@ -44,6 +45,9 @@ impl StreamHandler for SqlStreamHandler {
             }
             Request::Migrate(sql) => {
                 let needed_to_run = self.database.migrate(&sql).await?;
+                if needed_to_run {
+                    self.migrations.lock().await.push(sql);
+                }
                 Response::Migrate(needed_to_run)
             }
             Request::Query(sql, params) => {
@@ -134,7 +138,10 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, 
         let handler = SqlStreamHandler {
             caught_up_tx: Arc::new(Mutex::new(Some(caught_up_tx))),
             database: database.clone(),
+            migrations: Arc::new(Mutex::new(Vec::new())),
         };
+
+        let handler_migrations = handler.migrations.clone();
 
         // TODO: properly handle errors in the spawned task
         tokio::spawn({
@@ -149,11 +156,14 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, 
             .await
             .map_err(|_| Error::CaughtUpChannelClosed)?;
 
-        // TODO: only run migrations that haven't been applied yet
+        let applied_migrations = handler_migrations.lock().await.clone();
         for migration in migrations {
-            let request = Request::Migrate(migration.into());
-            let bytes: Bytes = request.try_into().unwrap();
-            self.stream.request(bytes).await.map_err(Error::Stream)?;
+            let migration_sql = migration.into();
+            if !applied_migrations.contains(&migration_sql) {
+                let request = Request::Migrate(migration_sql);
+                let bytes: Bytes = request.try_into().unwrap();
+                self.stream.request(bytes).await.map_err(Error::Stream)?;
+            }
         }
 
         Ok(Connection::new(self.stream.clone()))
