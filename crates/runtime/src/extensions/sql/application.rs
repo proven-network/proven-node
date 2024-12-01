@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use bytes::Bytes;
 use deno_core::{extension, op2, OpDecl, OpState};
 use proven_sql::{Rows, SqlConnection, SqlParam, SqlStore1};
 
@@ -34,8 +35,8 @@ impl ApplicationSqlParamListManager {
         self.application_param_lists.remove(&param_list_id).unwrap()
     }
 
-    pub fn push_text_param(&mut self, param_list_id: u64, value: String) {
-        let param = SqlParam::Text(value);
+    pub fn push_blob_param(&mut self, param_list_id: u64, value: Bytes) {
+        let param = SqlParam::Blob(value);
         self.application_param_lists
             .get_mut(&param_list_id)
             .unwrap()
@@ -44,6 +45,30 @@ impl ApplicationSqlParamListManager {
 
     pub fn push_integer_param(&mut self, param_list_id: u64, value: i64) {
         let param = SqlParam::Integer(value);
+        self.application_param_lists
+            .get_mut(&param_list_id)
+            .unwrap()
+            .push(param);
+    }
+
+    pub fn push_null_param(&mut self, param_list_id: u64) {
+        let param = SqlParam::Null;
+        self.application_param_lists
+            .get_mut(&param_list_id)
+            .unwrap()
+            .push(param);
+    }
+
+    pub fn push_real_param(&mut self, param_list_id: u64, value: f64) {
+        let param = SqlParam::Real(value);
+        self.application_param_lists
+            .get_mut(&param_list_id)
+            .unwrap()
+            .push(param);
+    }
+
+    pub fn push_text_param(&mut self, param_list_id: u64, value: String) {
+        let param = SqlParam::Text(value);
         self.application_param_lists
             .get_mut(&param_list_id)
             .unwrap()
@@ -60,12 +85,38 @@ fn op_create_application_params_list(
 }
 
 #[op2(fast)]
+fn op_add_application_blob_param(
+    #[state] param_lists: &mut ApplicationSqlParamListManager,
+    #[bigint] param_list_id: u64,
+    #[buffer(copy)] value: Bytes,
+) {
+    param_lists.push_blob_param(param_list_id, value);
+}
+
+#[op2(fast)]
 fn op_add_application_integer_param(
     #[state] param_lists: &mut ApplicationSqlParamListManager,
     #[bigint] param_list_id: u64,
     #[bigint] value: i64,
 ) {
     param_lists.push_integer_param(param_list_id, value);
+}
+
+#[op2(fast)]
+fn op_add_application_null_param(
+    #[state] param_lists: &mut ApplicationSqlParamListManager,
+    #[bigint] param_list_id: u64,
+) {
+    param_lists.push_null_param(param_list_id);
+}
+
+#[op2(fast)]
+fn op_add_application_real_param(
+    #[state] param_lists: &mut ApplicationSqlParamListManager,
+    #[bigint] param_list_id: u64,
+    value: f64,
+) {
+    param_lists.push_real_param(param_list_id, value);
 }
 
 #[op2(fast)]
@@ -193,7 +244,10 @@ async fn op_query_application_sql<ASS: SqlStore1>(
 
 fn get_ops<ASS: SqlStore1>() -> Vec<OpDecl> {
     vec![
+        op_add_application_blob_param(),
         op_add_application_integer_param(),
+        op_add_application_null_param(),
+        op_add_application_real_param(),
         op_add_application_text_param(),
         op_create_application_params_list(),
         op_execute_application_sql::<ASS>(),

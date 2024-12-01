@@ -5,9 +5,24 @@ function createApplicationParamList () {
   return op_create_application_params_list()
 }
 
+function addApplicationBlobParam (paramListId, value) {
+  const { op_add_application_blob_param } = globalThis.Deno.core.ops;
+  return op_add_application_blob_param(paramListId, value)
+}
+
 function addApplicationIntegerParam (paramListId, value) {
   const { op_add_application_integer_param } = globalThis.Deno.core.ops;
   return op_add_application_integer_param(paramListId, value)
+}
+
+function addApplicationNullParam (paramListId, value) {
+  const { op_add_application_null_param } = globalThis.Deno.core.ops;
+  return op_add_application_null_param(paramListId)
+}
+
+function addApplicationRealParam (paramListId, value) {
+  const { op_add_application_real_param } = globalThis.Deno.core.ops;
+  return op_add_application_real_param(paramListId, value)
 }
 
 function addApplicationTextParam (paramListId, value) {
@@ -25,6 +40,30 @@ function queryApplicationSql (sqlStoreName, sqlStatement, paramListId) {
   return op_query_application_sql(sqlStoreName, sqlStatement, paramListId)
 }
 
+function prepareApplicationParamList (values) {
+  const paramListId = createApplicationParamList();
+
+  for (const value of values) {
+    if (typeof value === 'number') {
+      if (Number.isInteger(value)) {
+        addApplicationIntegerParam(paramListId, value);
+      } else {
+        addApplicationRealParam(paramListId, value);
+      }
+    } else if (typeof value === 'string') {
+      addApplicationTextParam(paramListId, value);
+    } else if (value === null) {
+      addApplicationNullParam(paramListId);
+    } else if (typeof value === 'object' && value instanceof Uint8Array) {
+      addApplicationBlobParam(paramListId, value);
+    } else {
+      throw new TypeError('Expected all values to be null, numbers, strings, or blobs')
+    }
+  }
+
+  return paramListId
+}
+
 class ApplicationSqlStore {
   constructor (sqlStoreName) {
     this.sqlStoreName = sqlStoreName
@@ -32,19 +71,14 @@ class ApplicationSqlStore {
 
   async execute (sql) {
     if (sql instanceof Sql) {
-      const paramListId = createApplicationParamList();
+      let affectedRows
+      if (sql.values.length === 0) {
+        affectedRows = await executeApplicationSql(this.sqlStoreName, sql.statement)
+      } else {
+        const paramListId = prepareApplicationParamList(sql.values);
 
-      for (const value of sql.values) {
-        if (typeof value === 'number') {
-          addApplicationIntegerParam(paramListId, value);
-        } else if (typeof value === 'string') {
-          addApplicationTextParam(paramListId, value);
-        } else {
-          throw new TypeError('Expected all values to be numbers or strings')
-        }
+        affectedRows = await executeApplicationSql(this.sqlStoreName, sql.statement, paramListId)
       }
-
-      const affectedRows = await executeApplicationSql(this.sqlStoreName, sql.statement, paramListId)
 
       return affectedRows
     } else {
@@ -63,17 +97,7 @@ class ApplicationSqlStore {
       if (sql.values.length === 0) {
         rowData = await queryApplicationSql(this.sqlStoreName, sql.statement)
       } else {
-        const paramListId = createApplicationParamList();
-
-        for (const value of sql.values) {
-          if (typeof value === 'number') {
-            addApplicationIntegerParam(paramListId, value);
-          } else if (typeof value === 'string') {
-            addApplicationTextParam(paramListId, value);
-          } else {
-            throw new TypeError('Expected all values to be numbers or strings')
-          }
-        }
+        const paramListId = prepareApplicationParamList(sql.values);
 
         rowData = await queryApplicationSql(this.sqlStoreName, sql.statement, paramListId)
       }
