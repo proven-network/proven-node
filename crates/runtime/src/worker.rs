@@ -8,14 +8,15 @@ use proven_store::{Store2, Store3};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-pub struct Worker<
+pub struct Worker<AS, PS, NS, ASS, PSS, NSS>
+where
     AS: Store2,
     PS: Store3,
     NS: Store3,
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-> {
+{
     sender: mpsc::Sender<WorkerRequest>,
     _marker: PhantomData<AS>,
     _marker2: PhantomData<PS>,
@@ -75,8 +76,14 @@ type WorkerRequest = (
 ///         .await;
 /// }
 /// ```
-impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: SqlStore3>
-    Worker<AS, PS, NS, ASS, PSS, NSS>
+impl<AS, PS, NS, ASS, PSS, NSS> Worker<AS, PS, NS, ASS, PSS, NSS>
+where
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
 {
     /// Creates a new worker with the given runtime options and stores.
     ///

@@ -18,14 +18,15 @@ use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
 use tokio::time::Instant;
 
 #[derive(Clone)]
-pub struct RuntimeOptions<
+pub struct RuntimeOptions<AS, PS, NS, ASS, PSS, NSS>
+where
     AS: Store2,
     PS: Store3,
     NS: Store3,
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-> {
+{
     pub application_sql_store: ASS,
     pub application_store: AS,
     pub handler_name: Option<String>,
@@ -38,14 +39,15 @@ pub struct RuntimeOptions<
     pub radix_network_definition: NetworkDefinition,
 }
 
-pub struct Runtime<
+pub struct Runtime<AS, PS, NS, ASS, PSS, NSS>
+where
     AS: Store2,
     PS: Store3,
     NS: Store3,
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-> {
+{
     application_sql_store: ASS,
     application_store: AS,
     handler_name: Option<String>,
@@ -98,8 +100,14 @@ pub struct Runtime<
 ///     identity: None,
 /// });
 /// ```
-impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: SqlStore3>
-    Runtime<AS, PS, NS, ASS, PSS, NSS>
+impl<AS, PS, NS, ASS, PSS, NSS> Runtime<AS, PS, NS, ASS, PSS, NSS>
+where
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
 {
     /// Creates a new runtime with the given runtime options and stores.
     ///

@@ -77,7 +77,14 @@ type QueueReceiver = mpsc::Receiver<QueueItem>;
 ///     assert!(result.is_ok());
 /// }
 /// ```
-pub struct Pool<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: SqlStore3>
+pub struct Pool<AS, PS, NS, ASS, PSS, NSS>
+where
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
 {
     application_sql_store: ASS,
     application_store: AS,
@@ -100,7 +107,15 @@ pub struct Pool<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStor
     workers: SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS>,
 }
 
-pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS> {
+pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS>
+where
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
+{
     pub application_sql_store: ASS,
     pub application_store: AS,
     pub max_workers: u32,
@@ -118,8 +133,14 @@ pub struct PoolRuntimeOptions {
     pub module: String,
 }
 
-impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: SqlStore3>
-    Pool<AS, PS, NS, ASS, PSS, NSS>
+impl<AS, PS, NS, ASS, PSS, NSS> Pool<AS, PS, NS, ASS, PSS, NSS>
+where
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
 {
     pub async fn new(
         PoolOptions {
