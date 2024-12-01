@@ -6,21 +6,15 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_sql::{Rows, SqlConnection, SqlParam};
 use proven_store::Store;
-use proven_stream::{Stream, StreamHandler};
+use proven_stream::Stream;
 
 #[derive(Clone)]
-pub struct Connection<S: Stream<SqlStreamHandler>, LS: Store>
-where
-    SqlStreamHandler: StreamHandler<S>,
-{
+pub struct Connection<S: Stream<SqlStreamHandler>, LS: Store> {
     stream: S,
     _marker: PhantomData<LS>,
 }
 
-impl<S: Stream<SqlStreamHandler>, LS: Store> Connection<S, LS>
-where
-    SqlStreamHandler: StreamHandler<S>,
-{
+impl<S: Stream<SqlStreamHandler>, LS: Store> Connection<S, LS> {
     pub fn new(stream: S) -> Self {
         Self {
             stream,
@@ -30,12 +24,7 @@ where
 }
 
 #[async_trait]
-impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connection<S, LS>
-where
-    SqlStreamHandler: StreamHandler<S>,
-    S::Request: From<Bytes> + Into<Bytes>,
-    S::Response: From<Bytes> + Into<Bytes>,
-{
+impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connection<S, LS> {
     type Error = Error<S::Error, LS::Error>;
 
     async fn execute<Q: Into<String> + Send>(
@@ -46,13 +35,8 @@ where
         let request = Request::Execute(query.into(), params);
         let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self
-            .stream
-            .request(bytes.into())
-            .await
-            .map_err(Error::Stream)?;
-        let bytes_response: Bytes = raw_response.into();
-        let response: Response = bytes_response.try_into()?;
+        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
+        let response: Response = raw_response.try_into()?;
 
         match response {
             Response::Execute(affected_rows) => Ok(affected_rows),
@@ -68,13 +52,8 @@ where
         let request = Request::ExecuteBatch(query.into(), params);
         let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self
-            .stream
-            .request(bytes.into())
-            .await
-            .map_err(Error::Stream)?;
-        let bytes_response: Bytes = raw_response.into();
-        let response: Response = bytes_response.try_into()?;
+        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
+        let response: Response = raw_response.try_into()?;
 
         match response {
             Response::ExecuteBatch(affected_rows) => Ok(affected_rows),
@@ -86,13 +65,8 @@ where
         let request = Request::Migrate(query.into());
         let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self
-            .stream
-            .request(bytes.into())
-            .await
-            .map_err(Error::Stream)?;
-        let bytes_response: Bytes = raw_response.into();
-        let response: Response = bytes_response.try_into()?;
+        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
+        let response: Response = raw_response.try_into()?;
 
         match response {
             Response::Migrate(needed_migration) => Ok(needed_migration),
@@ -108,13 +82,8 @@ where
         let request = Request::Query(query.into(), params);
         let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self
-            .stream
-            .request(bytes.into())
-            .await
-            .map_err(Error::Stream)?;
-        let bytes_response: Bytes = raw_response.into();
-        let response: Response = bytes_response.try_into()?;
+        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
+        let response: Response = raw_response.try_into()?;
 
         match response {
             Response::Query(rows) => Ok(rows),

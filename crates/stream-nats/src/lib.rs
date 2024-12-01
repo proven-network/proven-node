@@ -33,7 +33,7 @@ pub struct NatsStreamOptions {
 #[derive(Clone)]
 pub struct NatsStream<H>
 where
-    H: StreamHandler<Self>,
+    H: StreamHandler,
 {
     client: Client,
     jetstream_context: JetStreamContext,
@@ -43,7 +43,7 @@ where
 
 impl<H> NatsStream<H>
 where
-    H: StreamHandler<Self>,
+    H: StreamHandler,
 {
     pub fn new(
         NatsStreamOptions {
@@ -105,11 +105,9 @@ where
 #[async_trait]
 impl<H> Stream<H> for NatsStream<H>
 where
-    H: StreamHandler<Self>,
+    H: StreamHandler,
 {
     type Error = Error<H::HandlerError>;
-    type Request = Bytes;
-    type Response = Bytes;
 
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
         println!("Subscribing to {}", self.get_request_stream_name());
@@ -136,7 +134,7 @@ where
             let seq = message.info().map_err(|_| Error::NoInfo)?.stream_sequence;
 
             let response = handler
-                .handle_request(message.payload.clone())
+                .handle(message.payload.clone())
                 .await
                 .map_err(Error::Handler)?;
 
@@ -180,7 +178,7 @@ where
         self.stream_name.clone()
     }
 
-    async fn publish(&self, data: Self::Request) -> Result<(), Self::Error> {
+    async fn publish(&self, data: Bytes) -> Result<(), Self::Error> {
         self.get_request_stream().await?;
 
         println!("publishing on subject: {}", self.get_request_stream_name());
@@ -193,7 +191,7 @@ where
         Ok(())
     }
 
-    async fn request(&self, data: Self::Request) -> Result<Self::Response, Self::Error> {
+    async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error> {
         // Ensure request stream exists
         self.get_request_stream().await?;
 
@@ -252,12 +250,10 @@ macro_rules! impl_scoped_stream {
         #[async_trait]
         impl<H> $name<H> for NatsStream<H>
         where
-            H: StreamHandler<Self>,
+            H: StreamHandler,
         {
             type Error = Error<H::HandlerError>;
             type Scoped = NatsStream<H>;
-            type Request = Bytes;
-            type Response = Bytes;
 
             fn scope(&self, scope: String) -> Self::Scoped {
                 self.with_scope(scope)
@@ -300,10 +296,10 @@ mod tests {
     }
 
     #[async_trait]
-    impl StreamHandler<NatsStream<Self>> for PublishTestHandler {
+    impl StreamHandler for PublishTestHandler {
         type HandlerError = TestHandlerError;
 
-        async fn handle_request(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
             self.tx.send(data.clone()).await.unwrap();
             Ok(data)
         }
@@ -313,10 +309,10 @@ mod tests {
     struct RequestTestHandler;
 
     #[async_trait]
-    impl StreamHandler<NatsStream<Self>> for RequestTestHandler {
+    impl StreamHandler for RequestTestHandler {
         type HandlerError = TestHandlerError;
 
-        async fn handle_request(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
             let mut response = b"reply: ".to_vec();
             response.extend_from_slice(&data);
             Ok(Bytes::from(response))
@@ -347,10 +343,10 @@ mod tests {
     }
 
     #[async_trait]
-    impl StreamHandler<NatsStream<Self>> for CatchUpTestHandler {
+    impl StreamHandler for CatchUpTestHandler {
         type HandlerError = TestHandlerError;
 
-        async fn handle_request(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError> {
             self.message_count
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(data)
