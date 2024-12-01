@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
 use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandler};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct StreamPublishReply {
@@ -23,30 +23,6 @@ struct StreamPublishReply {
 pub enum ScopeMethod {
     StreamPostfix,
     SubjectPrefix,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum HandlerResponse {
-    DropRequest(Bytes),
-    KeepRequest(Bytes),
-}
-
-impl TryFrom<Bytes> for HandlerResponse {
-    type Error = ciborium::de::Error<std::io::Error>;
-
-    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
-        ciborium::de::from_reader(bytes.as_ref())
-    }
-}
-
-impl TryInto<Bytes> for HandlerResponse {
-    type Error = ciborium::ser::Error<std::io::Error>;
-
-    fn try_into(self) -> Result<Bytes, Self::Error> {
-        let mut bytes = Vec::new();
-        ciborium::ser::into_writer(&self, &mut bytes)?;
-        Ok(Bytes::from(bytes))
-    }
 }
 
 pub struct NatsStreamOptions {
@@ -133,7 +109,7 @@ where
 {
     type Error = Error<H::HandlerError>;
     type Request = Bytes;
-    type Response = HandlerResponse;
+    type Response = Bytes;
 
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
         println!("Subscribing to {}", self.get_request_stream_name());
@@ -171,7 +147,7 @@ where
             headers.insert("Nats-Expected-Last-Sequence", (seq - 1).to_string());
 
             self.client
-                .publish_with_headers(self.get_reply_stream_name(), headers, response.try_into()?)
+                .publish_with_headers(self.get_reply_stream_name(), headers, response)
                 .await
                 .map_err(|e| Error::ReplyPublish(e.kind()))?;
 

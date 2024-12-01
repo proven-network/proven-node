@@ -6,12 +6,6 @@ use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]
 pub enum Error<HE: StreamHandlerError> {
-    #[error(transparent)]
-    CborDeserialize(Arc<ciborium::de::Error<std::io::Error>>),
-
-    #[error(transparent)]
-    CborSerialize(Arc<ciborium::ser::Error<std::io::Error>>),
-
     #[error("Consumer acknowledgment failed")]
     ConsumerAck,
 
@@ -56,18 +50,6 @@ pub enum Error<HE: StreamHandlerError> {
 
     #[error("Failed to get stream info: {0}")]
     StreamInfo(async_nats::jetstream::context::RequestErrorKind),
-}
-
-impl<HE: StreamHandlerError> From<ciborium::de::Error<std::io::Error>> for Error<HE> {
-    fn from(error: ciborium::de::Error<std::io::Error>) -> Self {
-        Error::CborDeserialize(Arc::new(error))
-    }
-}
-
-impl<HE: StreamHandlerError> From<ciborium::ser::Error<std::io::Error>> for Error<HE> {
-    fn from(error: ciborium::ser::Error<std::io::Error>) -> Self {
-        Error::CborSerialize(Arc::new(error))
-    }
 }
 
 impl<HE: StreamHandlerError> From<serde_json::Error> for Error<HE> {

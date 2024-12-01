@@ -7,7 +7,6 @@ edition = "2021"
 async-nats = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
-ciborium = { workspace = true }
 futures = { workspace = true }
 proven-stream = { workspace = true }
 serde = { workspace = true }
