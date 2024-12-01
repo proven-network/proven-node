@@ -288,6 +288,7 @@ impl<AS: Store2, PS: Store3, NS: Store3, ASS: SqlStore2, PSS: SqlStore3, NSS: Sq
             self.sql_migrations.application.clone(),
         ))?;
 
+        self.runtime.put(PersonalSqlParamListManager::new())?;
         self.runtime.put(match identity.as_ref() {
             Some(current_identity) => Some(PersonalSqlConnectionManager::new(
                 self.personal_sql_store
