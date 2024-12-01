@@ -4,10 +4,19 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use bytes::Bytes;
 
-/// Marker trait for SQLStore errors
+/// Marker trait for stream errors
 pub trait StreamError: Clone + Debug + Error + Send + Sync + 'static {}
+
+/// Marker trait for stream handler errors
 pub trait StreamHandlerError: Clone + Debug + Error + Send + Sync + 'static {}
 
+/// A trait for handling stream data with asynchronous operations.
+///
+/// # Type Parameters
+/// - `HandlerError`: The error type that implements `StreamHandlerError`
+///
+/// # Required Methods
+/// - `handle`: Process the received data and return a response
 #[async_trait]
 pub trait StreamHandler: Clone + Send + Sync + 'static {
     type HandlerError: StreamHandlerError;
@@ -18,10 +27,11 @@ pub trait StreamHandler: Clone + Send + Sync + 'static {
 /// A trait representing a stream with asynchronous operations.
 ///
 /// # Associated Types
-/// - `HandlerError`: The error type for the handler that implements `Debug`, `Error`, `Send`, and `Sync`.
+/// - `Error`: The error type for the handler that implements `Debug`, `Error`, `Send`, and `Sync`.
 ///
 /// # Required Methods
 /// - `async fn handle(&self, handler: Handler) -> Result<(), Self::Error>`: Handles the stream with the given handler.
+/// - `name`: Returns the name of the stream.
 /// - `async fn publish(&self, data: Bytes) -> Result<(), Self::Error>`: Publishes the given data with no expectation of a response.
 /// - `async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error>`: Sends a request with the given data and returns the response.
 #[async_trait]
