@@ -936,12 +936,13 @@ impl Bootstrap {
             .start(CoreStartOptions {
                 application_sql_store,
                 application_store,
-                gateway_origin: "http://127.0.0.1:8081".to_string(),
                 http_server,
                 personal_sql_store,
                 personal_store,
                 nft_sql_store,
                 nft_store,
+                radix_gateway_origin: "http://127.0.0.1:8081".to_string(),
+                radix_network_definition: self.network_definition.clone(),
             })
             .await?;
 
