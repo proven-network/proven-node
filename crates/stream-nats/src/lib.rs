@@ -169,11 +169,24 @@ where
         self.stream_name.clone()
     }
 
+    async fn publish(&self, data: Bytes) -> Result<(), Self::Error> {
+        self.get_request_stream().await?;
+
+        println!("publishing on subject: {}", self.get_request_stream_name());
+
+        self.client
+            .publish(self.get_request_stream_name(), data.clone())
+            .await
+            .map_err(|e| Error::Publish(e.kind()))?;
+
+        Ok(())
+    }
+
     async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error> {
         // Ensure request stream exists
         self.get_request_stream().await?;
 
-        println!("publishing on subject: {}", self.get_request_stream_name());
+        println!("requesting on subject: {}", self.get_request_stream_name());
 
         let response = loop {
             match self
@@ -275,5 +288,59 @@ mod tests {
 
         let subscriber = subscriber.with_scope("db1".to_string());
         assert_eq!(subscriber.stream_name, "SQL_app1_db1");
+    }
+
+    #[tokio::test]
+    async fn test_publish() {
+        let client = async_nats::connect("nats://localhost:4222").await.unwrap();
+        let client2 = client.clone();
+
+        let publisher = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
+            client,
+            local_name: "local".to_string(),
+            stream_name: "TEST_PUB".to_string(),
+        });
+
+        let subscriber = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
+            client: client2,
+            local_name: "local".to_string(),
+            stream_name: "TEST_PUB".to_string(),
+        });
+
+        // Channel to communicate between publisher and subscriber
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+
+        // Start handler
+        tokio::spawn({
+            let subscriber = subscriber.clone();
+
+            async move {
+                subscriber
+                    .handle(move |message| {
+                        Box::pin({
+                            let value = tx.clone();
+                            async move {
+                                value.send(message.clone()).await.unwrap();
+                                Ok(message)
+                            }
+                        })
+                    })
+                    .await
+                    .unwrap();
+            }
+        });
+
+        // Give handler time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Test message
+        let message = Bytes::from("test message");
+
+        // Publish message
+        publisher.publish(message.clone()).await.unwrap();
+
+        // Wait for message to be received
+        let received = rx.recv().await.unwrap();
+        assert_eq!(received, message);
     }
 }

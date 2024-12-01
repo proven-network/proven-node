@@ -24,6 +24,9 @@ pub enum Error<HE: StreamHandlerError> {
     #[error("No message info available")]
     NoInfo,
 
+    #[error("Failed to publish: {0}")]
+    Publish(async_nats::client::PublishErrorKind),
+
     #[error("Failed to delete reply message: {0}")]
     ReplyDelete(async_nats::jetstream::stream::DeleteMessageErrorKind),
 

@@ -110,6 +110,16 @@ where
         self.prefix.clone()
     }
 
+    async fn publish(&self, data: Bytes) -> Result<(), Self::Error> {
+        let (response_tx, _) = mpsc::channel(1);
+        let pair = self.get_or_create_channel().await;
+
+        pair.tx
+            .send((data, response_tx))
+            .await
+            .map_err(|_| Error::Send)
+    }
+
     async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error> {
         let (response_tx, mut response_rx) = mpsc::channel(1);
         let pair = self.get_or_create_channel().await;

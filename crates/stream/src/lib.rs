@@ -18,6 +18,7 @@ pub trait StreamHandlerError: Clone + Debug + Error + Send + Sync + 'static {}
 /// # Required Methods
 /// - `async fn handle(&self, handler: impl Fn(Bytes) -> Pin<Box<dyn Future<Output = Result<Bytes, HandlerError>> + Send>> + Send + Sync + 'static) -> Result<(), Self::Error>`: Handles a stream of bytes.
 /// - `fn name(&self) -> String`: Returns the name of the stream.
+/// - `async fn publish(&self, data: Bytes) -> Result<(), Self::Error>`: Publishes the given data with no expectation of a response.
 /// - `async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error>`: Sends a request with the given data and returns the response.
 #[async_trait]
 pub trait Stream<HandlerError>: Clone + Send + Sync + 'static
@@ -35,6 +36,8 @@ where
     ) -> Result<(), Self::Error>;
 
     fn name(&self) -> String;
+
+    async fn publish(&self, data: Bytes) -> Result<(), Self::Error>;
 
     async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error>;
 }
