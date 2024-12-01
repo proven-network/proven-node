@@ -24,7 +24,9 @@ pub struct SqlStreamHandler {
 }
 
 #[async_trait]
-impl StreamHandler<HandlerError> for SqlStreamHandler {
+impl StreamHandler for SqlStreamHandler {
+    type HandlerError = HandlerError;
+
     async fn handle(&self, bytes: Bytes) -> HandlerResult<Bytes> {
         let request: Request = bytes.try_into()?;
         println!("Request: {:?}", request);
@@ -55,20 +57,20 @@ impl StreamHandler<HandlerError> for SqlStreamHandler {
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStoreOptions<LS: Store, ST: Stream<SqlStreamHandler, HandlerError>> {
+pub struct StreamedSqlStoreOptions<LS: Store, ST: Stream<SqlStreamHandler>> {
     pub leader_store: LS,
     pub local_name: String,
     pub stream: ST,
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStore<LS: Store, ST: Stream<SqlStreamHandler, HandlerError>> {
+pub struct StreamedSqlStore<LS: Store, ST: Stream<SqlStreamHandler>> {
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
-impl<LS: Store, ST: Stream<SqlStreamHandler, HandlerError>> StreamedSqlStore<LS, ST> {
+impl<LS: Store, ST: Stream<SqlStreamHandler>> StreamedSqlStore<LS, ST> {
     pub fn new(
         StreamedSqlStoreOptions {
             leader_store,
@@ -85,7 +87,7 @@ impl<LS: Store, ST: Stream<SqlStreamHandler, HandlerError>> StreamedSqlStore<LS,
 }
 
 #[async_trait]
-impl<LS: Store, ST: Stream<SqlStreamHandler, HandlerError>> SqlStore for StreamedSqlStore<LS, ST> {
+impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, ST> {
     type Error = Error<ST::Error, LS::Error>;
     type Connection = Connection<ST, LS>;
 
@@ -142,16 +144,14 @@ impl<LS: Store, ST: Stream<SqlStreamHandler, HandlerError>> SqlStore for Streame
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStore1<LS: Store1, ST: Stream1<SqlStreamHandler, HandlerError>> {
+pub struct StreamedSqlStore1<LS: Store1, ST: Stream1<SqlStreamHandler>> {
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
 #[async_trait]
-impl<LS: Store1, ST: Stream1<SqlStreamHandler, HandlerError>> SqlStore1
-    for StreamedSqlStore1<LS, ST>
-{
+impl<LS: Store1, ST: Stream1<SqlStreamHandler>> SqlStore1 for StreamedSqlStore1<LS, ST> {
     type Error = Error<ST::Error, LS::Error>;
     type Scoped = StreamedSqlStore<LS::Scoped, ST::Scoped>;
 
@@ -165,16 +165,14 @@ impl<LS: Store1, ST: Stream1<SqlStreamHandler, HandlerError>> SqlStore1
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStore2<LS: Store2, ST: Stream2<SqlStreamHandler, HandlerError>> {
+pub struct StreamedSqlStore2<LS: Store2, ST: Stream2<SqlStreamHandler>> {
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
 #[async_trait]
-impl<LS: Store2, ST: Stream2<SqlStreamHandler, HandlerError>> SqlStore2
-    for StreamedSqlStore2<LS, ST>
-{
+impl<LS: Store2, ST: Stream2<SqlStreamHandler>> SqlStore2 for StreamedSqlStore2<LS, ST> {
     type Error = Error<ST::Error, LS::Error>;
     type Scoped = StreamedSqlStore1<LS::Scoped, ST::Scoped>;
 
@@ -188,16 +186,14 @@ impl<LS: Store2, ST: Stream2<SqlStreamHandler, HandlerError>> SqlStore2
 }
 
 #[derive(Clone)]
-pub struct StreamedSqlStore3<LS: Store3, ST: Stream3<SqlStreamHandler, HandlerError>> {
+pub struct StreamedSqlStore3<LS: Store3, ST: Stream3<SqlStreamHandler>> {
     leader_store: LS,
     local_name: String,
     stream: ST,
 }
 
 #[async_trait]
-impl<LS: Store3, ST: Stream3<SqlStreamHandler, HandlerError>> SqlStore3
-    for StreamedSqlStore3<LS, ST>
-{
+impl<LS: Store3, ST: Stream3<SqlStreamHandler>> SqlStore3 for StreamedSqlStore3<LS, ST> {
     type Error = Error<ST::Error, LS::Error>;
     type Scoped = StreamedSqlStore2<LS::Scoped, ST::Scoped>;
 

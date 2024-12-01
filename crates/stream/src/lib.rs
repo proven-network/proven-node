@@ -9,11 +9,10 @@ pub trait StreamError: Clone + Debug + Error + Send + Sync + 'static {}
 pub trait StreamHandlerError: Clone + Debug + Error + Send + Sync + 'static {}
 
 #[async_trait]
-pub trait StreamHandler<Error>: Clone + Send + Sync + 'static
-where
-    Error: StreamHandlerError,
-{
-    async fn handle(&self, data: Bytes) -> Result<Bytes, Error>;
+pub trait StreamHandler: Clone + Send + Sync + 'static {
+    type HandlerError: StreamHandlerError;
+
+    async fn handle(&self, data: Bytes) -> Result<Bytes, Self::HandlerError>;
 }
 
 /// A trait representing a stream with asynchronous operations.
@@ -26,10 +25,9 @@ where
 /// - `async fn publish(&self, data: Bytes) -> Result<(), Self::Error>`: Publishes the given data with no expectation of a response.
 /// - `async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error>`: Sends a request with the given data and returns the response.
 #[async_trait]
-pub trait Stream<Handler, HandlerError>: Clone + Send + Sync + 'static
+pub trait Stream<Handler>: Clone + Send + Sync + 'static
 where
-    Handler: StreamHandler<HandlerError>,
-    HandlerError: StreamHandlerError,
+    Handler: StreamHandler,
 {
     type Error: StreamError;
 
@@ -46,13 +44,12 @@ macro_rules! define_scoped_stream {
     ($name:ident, $parent:ident, $doc:expr) => {
         #[async_trait]
         #[doc = $doc]
-        pub trait $name<Handler, HandlerError>: Clone + Send + Sync + 'static
+        pub trait $name<Handler>: Clone + Send + Sync + 'static
         where
-            Handler: StreamHandler<HandlerError>,
-            HandlerError: StreamHandlerError,
+            Handler: StreamHandler,
         {
             type Error: StreamError;
-            type Scoped: $parent<Handler, HandlerError, Error = Self::Error>;
+            type Scoped: $parent<Handler, Error = Self::Error>;
 
             fn scope(&self, scope: String) -> Self::Scoped;
         }
