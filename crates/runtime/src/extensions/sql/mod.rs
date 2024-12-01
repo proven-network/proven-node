@@ -1,13 +1,12 @@
 mod application;
-mod connection_manager;
 mod migrations;
 mod nft;
 mod personal;
 
-pub use application::{sql_application_ext, ApplicationSqlParamListManager};
-pub use connection_manager::*;
+pub use application::*;
 pub use migrations::sql_migrations_ext;
-pub use personal::{sql_personal_ext, PersonalSqlParamListManager};
+pub use nft::*;
+pub use personal::*;
 
 use deno_core::extension;
 
@@ -16,7 +15,9 @@ extension!(
     esm_entry_point = "proven:sql",
     esm = [
         dir "src/extensions/sql",
-        "proven:sql" = "sql-options-parser.js",
+        "proven:sql" = "sql.js",
+        "proven:sql-application" = "application/options-parser.js",
+        "proven:sql-personal" = "personal/options-parser.js",
         "proven:sql-template-tag" = "template-tag.js",
     ],
     docs = "Functions for accessing sqlite"
@@ -27,7 +28,9 @@ extension!(
     esm_entry_point = "proven:sql",
     esm = [
         dir "src/extensions/sql",
-        "proven:sql" = "sql-runtime.js",
+        "proven:sql" = "sql.js",
+        "proven:sql-application" = "application/runtime.js",
+        "proven:sql-personal" = "personal/runtime.js",
         "proven:sql-template-tag" = "template-tag.js",
     ],
     docs = "Functions for accessing sqlite"

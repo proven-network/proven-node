@@ -1,4 +1,6 @@
-use super::NftSqlConnectionManager;
+mod connection_manager;
+
+pub use connection_manager::NftSqlConnectionManager;
 
 use std::cell::RefCell;
 use std::rc::Rc;
