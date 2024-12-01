@@ -21,9 +21,9 @@ use tokio::sync::{oneshot, Mutex};
 
 #[derive(Clone)]
 pub struct SqlStreamHandler {
+    applied_migrations: Arc<Mutex<Vec<String>>>,
     caught_up_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     database: Database,
-    migrations: Arc<Mutex<Vec<String>>>,
 }
 
 #[async_trait]
@@ -46,7 +46,7 @@ impl StreamHandler for SqlStreamHandler {
             Request::Migrate(sql) => {
                 let needed_to_run = self.database.migrate(&sql).await?;
                 if needed_to_run {
-                    self.migrations.lock().await.push(sql);
+                    self.applied_migrations.lock().await.push(sql);
                 }
                 Response::Migrate(needed_to_run)
             }
@@ -132,16 +132,15 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, 
                 .map_err(Error::LeaderStore)?;
         }
 
-        let database = Database::connect(":memory:").await?;
         let (caught_up_tx, caught_up_rx) = oneshot::channel();
 
         let handler = SqlStreamHandler {
+            applied_migrations: Arc::new(Mutex::new(Vec::new())),
             caught_up_tx: Arc::new(Mutex::new(Some(caught_up_tx))),
-            database: database.clone(),
-            migrations: Arc::new(Mutex::new(Vec::new())),
+            database: Database::connect(":memory:").await?,
         };
 
-        let handler_migrations = handler.migrations.clone();
+        let handled_migrations = handler.applied_migrations.clone();
 
         // TODO: properly handle errors in the spawned task
         tokio::spawn({
@@ -156,7 +155,7 @@ impl<LS: Store, ST: Stream<SqlStreamHandler>> SqlStore for StreamedSqlStore<LS, 
             .await
             .map_err(|_| Error::CaughtUpChannelClosed)?;
 
-        let applied_migrations = handler_migrations.lock().await.clone();
+        let applied_migrations = handled_migrations.lock().await.clone();
         for migration in migrations {
             let migration_sql = migration.into();
             if !applied_migrations.contains(&migration_sql) {
