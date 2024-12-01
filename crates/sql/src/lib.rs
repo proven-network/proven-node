@@ -1,3 +1,9 @@
+//! Abstract interface for managing SQL storage.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod rows;
 mod sql_param;
 
@@ -8,11 +14,16 @@ use async_trait::async_trait;
 use std::error::Error;
 use std::fmt::Debug;
 
-/// Marker trait for SQLStore errors
+/// Marker trait for `SQLStore` errors
 pub trait SqlStoreError: Debug + Error + Send + Sync {}
 
+/// A trait representing an active connection to a SQL DB.
 #[async_trait]
-pub trait SqlConnection: Clone + Send + Sync + 'static {
+pub trait SqlConnection
+where
+    Self: Clone + Send + Sync + 'static,
+{
+    /// The error type for the connection
     type Error: SqlStoreError;
 
     /// Execute a SQL statement that modifies data
@@ -41,18 +52,17 @@ pub trait SqlConnection: Clone + Send + Sync + 'static {
 }
 
 /// A trait representing a SQL store with asynchronous operations.
-///
-/// # Associated Types
-/// - `Error`: The error type that implements `Debug`, `Error`, `Send`, and `Sync`.
-/// - `Connection`: The connection type that implements the `SqlConnection` trait.
-///
-/// # Required Methods
-/// - `async fn connecte<Q: Into<String> + Send>(&self, migrations: Vec<Q>) -> Result<Self::Connection, Self::Error>`: Connects to the SQL store - running any provided migrations.
 #[async_trait]
-pub trait SqlStore: Clone + Send + Sync + 'static {
+pub trait SqlStore
+where
+    Self: Clone + Send + Sync + 'static,
+{
+    /// The error type for the store
     type Error: SqlStoreError;
+    /// The connection type for the store
     type Connection: SqlConnection<Error = Self::Error>;
 
+    /// Connect to the SQL store - running any provided migrations
     async fn connect<Q: Into<String> + Send>(
         &self,
         migrations: Vec<Q>,
@@ -64,9 +74,13 @@ macro_rules! define_scoped_sql_store {
         #[async_trait]
         #[doc = $doc]
         pub trait $name: Clone + Send + Sync + 'static {
+            /// The error type for the store
             type Error: SqlStoreError;
+
+            /// The scoped version of the store
             type Scoped: $parent<Error = Self::Error>;
 
+            /// Create a scoped version of the store
             fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
         }
     };
