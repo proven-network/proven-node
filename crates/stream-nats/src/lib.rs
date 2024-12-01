@@ -343,4 +343,49 @@ mod tests {
         let received = rx.recv().await.unwrap();
         assert_eq!(received, message);
     }
+
+    #[tokio::test]
+    async fn test_request() {
+        let client = async_nats::connect("nats://localhost:4222").await.unwrap();
+        let client2 = client.clone();
+
+        let requester = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
+            client,
+            local_name: "local".to_string(),
+            stream_name: "TEST_REQ".to_string(),
+        });
+
+        let responder = NatsStream::<TestHandlerError>::new(NatsStreamOptions {
+            client: client2,
+            local_name: "local".to_string(),
+            stream_name: "TEST_REQ".to_string(),
+        });
+
+        // Start handler that echoes request with "reply: " prefix
+        tokio::spawn({
+            let responder = responder.clone();
+            async move {
+                responder
+                    .handle(|message| {
+                        Box::pin(async move {
+                            let mut response = b"reply: ".to_vec();
+                            response.extend_from_slice(&message);
+                            Ok(Bytes::from(response))
+                        })
+                    })
+                    .await
+                    .unwrap();
+            }
+        });
+
+        // Give handler time to start
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Test message
+        let message = Bytes::from("test message");
+
+        // Make request and verify response
+        let response = requester.request(message).await.unwrap();
+        assert_eq!(response, Bytes::from("reply: test message"));
+    }
 }
