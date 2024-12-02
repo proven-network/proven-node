@@ -1,6 +1,6 @@
 #![allow(clippy::result_large_err)]
 
-use proven_radix_rola::{Curve, Proof, Result, Rola, SignedChallenge, Type};
+use proven_radix_rola::{Curve, Proof, Result, Rola, RolaOptions, SignedChallenge, Type};
 
 use radix_common::crypto::{Ed25519PublicKey, Secp256k1PublicKey};
 use radix_common::network::NetworkDefinition;
@@ -15,13 +15,14 @@ async fn main() -> Result<()> {
 }
 
 async fn verify_ed25519_identity() -> Result<()> {
-    let rola = Rola::new(
-        NetworkDefinition::stokenet(),
-        "https://stokenet.radixdlt.com".to_string(),
-        "account_tdx_2_12xdm5g7xdhh73zkh7xkty0dsxw4rw0jl0sq4lr3erpc3xdn54zx0le".to_string(),
-        "https://stokenet-dashboard.radixdlt.com".to_string(),
-        "test".to_string(),
-    );
+    let rola = Rola::new(RolaOptions {
+        application_name: "test".to_string(),
+        dapp_definition_address:
+            "account_tdx_2_12xdm5g7xdhh73zkh7xkty0dsxw4rw0jl0sq4lr3erpc3xdn54zx0le".to_string(),
+        expected_origin: "https://stokenet-dashboard.radixdlt.com".to_string(),
+        gateway_url: "https://stokenet.radixdlt.com".to_string(),
+        network_definition: NetworkDefinition::stokenet(),
+    });
 
     let public_key_bytes =
         hex::decode("a6b8a053f51c1f945317bef5f5344321783b243821e919448c5963b9a8a20552").unwrap();
@@ -42,13 +43,14 @@ async fn verify_ed25519_identity() -> Result<()> {
 }
 
 async fn verify_ed25519_account() -> Result<()> {
-    let rola = Rola::new(
-        NetworkDefinition::mainnet(),
-        "https://mainnet.radixdlt.com".to_string(),
-        "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn".to_string(),
-        "https://dev-sandbox.rdx-works-main.extratools.works".to_string(),
-        "test".to_string(),
-    );
+    let rola = Rola::new(RolaOptions {
+        application_name: "test".to_string(),
+        dapp_definition_address:
+            "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn".to_string(),
+        expected_origin: "https://dev-sandbox.rdx-works-main.extratools.works".to_string(),
+        gateway_url: "https://mainnet.radixdlt.com".to_string(),
+        network_definition: NetworkDefinition::mainnet(),
+    });
 
     let public_key_bytes =
         hex::decode("0fe0e99bbb51b26af94195d4d61aebbff9b087397a616711c6e7d1600f7c1ebf").unwrap();
@@ -69,13 +71,14 @@ async fn verify_ed25519_account() -> Result<()> {
 }
 
 async fn verify_secp256k1_account() -> Result<()> {
-    let rola = Rola::new(
-        NetworkDefinition::mainnet(),
-        "https://mainnet.radixdlt.com".to_string(),
-        "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn".to_string(),
-        "https://dev-sandbox.rdx-works-main.extratools.works".to_string(),
-        "test".to_string(),
-    );
+    let rola = Rola::new(RolaOptions {
+        application_name: "test".to_string(),
+        dapp_definition_address:
+            "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn".to_string(),
+        expected_origin: "https://dev-sandbox.rdx-works-main.extratools.works".to_string(),
+        gateway_url: "https://mainnet.radixdlt.com".to_string(),
+        network_definition: NetworkDefinition::mainnet(),
+    });
 
     let public_key_bytes =
         hex::decode("028704afaadc0020d50d634c8c5ef6ae9e918db1da59ab11a21a26e24a919b4bff").unwrap();

@@ -2,11 +2,11 @@ use radix_common::crypto::{hash, Hash};
 
 pub fn create_signature_message_hash(
     challenge: String,
-    dapp_definition_address: String,
-    origin: String,
+    dapp_definition_address: &str,
+    origin: &str,
 ) -> Option<Hash> {
     let prefix = b"R";
-    let length_of_dapp_def_address = dapp_definition_address.len() as u8;
+    let length_of_dapp_def_address: u8 = dapp_definition_address.len().try_into().ok()?;
     let dapp_def_address_buffer = dapp_definition_address.as_bytes();
     let origin_buffer = origin.as_bytes();
     let challenge = hex::decode(challenge).ok()?;

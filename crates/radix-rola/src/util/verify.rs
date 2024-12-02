@@ -21,17 +21,19 @@ pub fn verify_proof_factory(
             (Curve::Curve25519, PublicKey::Ed25519(public_key)) => {
                 let signature = Ed25519Signature::from_str(signature.as_str())?;
 
-                match verify_ed25519(signature_message, &public_key, &signature) {
-                    true => Ok(()),
-                    false => Err(FailedVerification),
+                if verify_ed25519(signature_message, &public_key, &signature) {
+                    Ok(())
+                } else {
+                    Err(FailedVerification)
                 }
             }
             (Curve::Secp256k1, PublicKey::Secp256k1(public_key)) => {
                 let signature = Secp256k1Signature::from_str(signature.as_str())?;
 
-                match verify_secp256k1(signature_message, &public_key, &signature) {
-                    true => Ok(()),
-                    false => Err(FailedVerification),
+                if verify_secp256k1(signature_message, &public_key, &signature) {
+                    Ok(())
+                } else {
+                    Err(FailedVerification)
                 }
             }
             _ => Err(CurveDoesNotMatchKey),

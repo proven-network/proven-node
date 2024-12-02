@@ -14,16 +14,12 @@ pub struct GatewayService {
 
 impl GatewayService {
     pub fn new(
-        gateway_url: String,
+        gateway_url: &str,
         dapp_definition: String,
         application_name: String,
     ) -> Result<Self> {
         Ok(Self {
-            client: Client::new(
-                gateway_url.as_str(),
-                Some(application_name),
-                Some(dapp_definition),
-            )?,
+            client: Client::new(gateway_url, Some(application_name), Some(dapp_definition))?,
         })
     }
 
@@ -53,7 +49,7 @@ impl GatewayService {
                     .iter()
                     .find(|item| item.key == "owner_keys")
                     .ok_or_else(|| AddressHasNoOwnerKeys)
-                    .map(|item| item.value.raw_hex.clone().to_string())
+                    .map(|item| item.value.raw_hex.clone())
             })
     }
 }

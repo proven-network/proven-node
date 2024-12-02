@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use proven_attestation::{AttestationParams, Attestor};
-use proven_radix_rola::{Rola, SignedChallenge, Type as SignedChallengeType};
+use proven_radix_rola::{Rola, RolaOptions, SignedChallenge, Type as SignedChallengeType};
 use proven_store::{Store, Store1};
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
@@ -131,13 +131,13 @@ where
             verifying_key,
         }: CreateSessionParams,
     ) -> Result<Bytes, CS::Error, SS::Error> {
-        let rola = Rola::new(
-            self.radix_network_definition.clone(),
-            self.radix_gateway_origin.clone(),
-            dapp_definition_address.clone(),
-            origin.clone(),
-            application_name.clone().unwrap_or_default(),
-        );
+        let rola = Rola::new(RolaOptions {
+            application_name: application_name.clone().unwrap_or_default(),
+            dapp_definition_address: dapp_definition_address.clone(),
+            expected_origin: origin.clone(),
+            gateway_url: self.radix_gateway_origin.clone(),
+            network_definition: self.radix_network_definition.clone(),
+        });
 
         let mut challenges = HashSet::new();
         for signed_challenge in signed_challenges.clone() {
