@@ -1,3 +1,10 @@
+//! Implementation of key-value storage using AWS S3. Values encrypted using
+//! AES-256 via SSE-C.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 pub use error::Error;
@@ -10,6 +17,7 @@ use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
 use tokio::io::AsyncReadExt;
 
+/// KV store using AWS S3.
 #[derive(Clone, Debug)]
 pub struct S3Store {
     bucket: String,
@@ -18,12 +26,27 @@ pub struct S3Store {
     prefix: Option<String>,
 }
 
-/// S3Store is an Amazon S3 implementation of the `Store`, `Store2`, and `Store3` traits.
-/// It uses Amazon S3 to store key-value pairs, where keys are strings and values are byte vectors.
-/// The store supports optional scoping of keys using a prefix.
-/// The store uses AES-256 encryption with a secret key to encrypt values before storing them.
+/// Options for configuring an `S3Store`.
+pub struct S3StoreOptions {
+    /// The S3 bucket to use for the key-value store (must be created in advance currently).
+    pub bucket: String,
+
+    /// The AWS region to use.
+    pub region: String,
+
+    /// The secret key to use for AES-256 encryption.
+    pub secret_key: [u8; 32],
+}
+
 impl S3Store {
-    pub async fn new(bucket: String, region: String, secret_key: [u8; 32]) -> Self {
+    /// Creates a new `S3Store` with the specified options.
+    pub async fn new(
+        S3StoreOptions {
+            bucket,
+            region,
+            secret_key,
+        }: S3StoreOptions,
+    ) -> Self {
         let config = aws_config::from_env()
             .region(Region::new(region))
             .load()
@@ -97,8 +120,19 @@ impl Store for S3Store {
             }
             Ok(resp) => {
                 let mut body = resp.body.into_async_read();
-                let mut buf = Vec::<u8>::with_capacity(resp.content_length.unwrap_or(0) as usize);
-                body.read_to_end(&mut buf).await?;
+                let content_length = resp.content_length.unwrap_or(0);
+                let mut buf = if content_length > 0 {
+                    Vec::<u8>::with_capacity(
+                        content_length
+                            .try_into()
+                            .map_err(|_| Error::BadContentLength(content_length))?,
+                    )
+                } else {
+                    Vec::new()
+                };
+                body.read_to_end(&mut buf)
+                    .await
+                    .map_err(|e| Error::IoError("read body error", e))?;
 
                 Ok(Some(Bytes::from(buf)))
             }
