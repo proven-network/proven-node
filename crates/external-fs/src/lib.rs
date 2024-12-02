@@ -1,3 +1,8 @@
+//! Mounts external filesystems into the enclave via NFS, intermediated by a layer of FUSE-based AES-GCM disk-encryption based on enclave-internal cryptographic keys.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+
 mod error;
 
 pub use error::{Error, Result};
@@ -17,23 +22,48 @@ static CONF_FILENAME: &str = "gocryptfs.conf";
 static MNT_DIR: &str = "/mnt";
 static PASSFILE_DIR: &str = "/var/lib/proven/gocryptfs";
 
+/// Manages an external filesystem mounted via NFS and encrypted with gocryptfs.
 pub struct ExternalFs {
-    nfs_mount_point: String,
     mount_dir: String,
     nfs_mount_dir: String,
+    nfs_mount_point: String,
     passfile_path: String,
     skip_fsck: bool,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
+/// Options for creating a new `ExternalFs`.
+pub struct ExternalFsOptions {
+    /// The encryption key for gocryptfs.
+    pub encryption_key: String,
+
+    /// The NFS mount point.
+    pub nfs_mount_point: String,
+
+    /// The directory to mount the external filesystem.
+    pub mount_dir: String,
+
+    /// Whether to skip the gocryptfs integrity check.
+    pub skip_fsck: bool,
+}
+
 impl ExternalFs {
+    /// Creates a new instance of `ExternalFs`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to create required directories
+    /// - Failed to write encryption key to passfile
     pub fn new(
-        encryption_key: String,
-        nfs_mount_point: String,
-        mount_dir: String,
-        skip_fsck: bool,
-    ) -> Self {
+        ExternalFsOptions {
+            encryption_key,
+            nfs_mount_point,
+            mount_dir,
+            skip_fsck,
+        }: ExternalFsOptions,
+    ) -> Result<Self> {
         // random name for nfs_dir
         let sub_dir: String = thread_rng()
             .sample_iter(&Alphanumeric)
@@ -42,28 +72,43 @@ impl ExternalFs {
             .collect();
 
         // Paths specific to this instance
-        let nfs_mount_dir = format!("{}/{}", MNT_DIR, sub_dir);
-        let passfile_path = format!("{}/{}.passfile", PASSFILE_DIR, sub_dir);
+        let nfs_mount_dir = format!("{MNT_DIR}/{sub_dir}");
+        let passfile_path = format!("{PASSFILE_DIR}/{sub_dir}.passfile");
 
         // create directories
-        std::fs::create_dir_all(&mount_dir).unwrap();
-        std::fs::create_dir_all(&nfs_mount_dir).unwrap();
-        std::fs::create_dir_all(PASSFILE_DIR).unwrap();
+        std::fs::create_dir_all(&mount_dir)
+            .map_err(|e| Error::IoError("failed to create mount directory", e))?;
+        std::fs::create_dir_all(&nfs_mount_dir)
+            .map_err(|e| Error::IoError("failed to create NFS mount directory", e))?;
+        std::fs::create_dir_all(PASSFILE_DIR)
+            .map_err(|e| Error::IoError("failed to create passfile directory", e))?;
 
         // create passfile with encryption key (needed for gocryptfs)
-        std::fs::write(&passfile_path, encryption_key).unwrap();
+        std::fs::write(&passfile_path, encryption_key)
+            .map_err(|e| Error::IoError("failed to write passfile", e))?;
 
-        Self {
-            nfs_mount_point,
+        Ok(Self {
             mount_dir,
             nfs_mount_dir,
+            nfs_mount_point,
             passfile_path,
             skip_fsck,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
-        }
+        })
     }
 
+    /// Starts the external filesystem.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the filesystem is already started,
+    /// if there is an error mounting NFS, ensuring permissions, initializing gocryptfs,
+    /// or if the gocryptfs process exits with a non-zero status.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if it fails to wait for the gocryptfs process to exit.
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
@@ -149,7 +194,7 @@ impl ExternalFs {
 
                     Ok(())
                 }
-                _ = shutdown_token.cancelled() => {
+                () = shutdown_token.cancelled() => {
                     // Run umount command
                     let output = Command::new("umount")
                         .arg(mount_dir.as_str())
