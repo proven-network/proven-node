@@ -1,3 +1,9 @@
+//! In-memory (single node) implementation of streams for local development.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 pub use error::Error;
@@ -12,7 +18,7 @@ use tokio::sync::{mpsc, Mutex};
 
 type ReceiverType = mpsc::Receiver<(Bytes, mpsc::Sender<Bytes>)>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ChannelPair {
     tx: mpsc::Sender<(Bytes, mpsc::Sender<Bytes>)>,
     rx: Arc<Mutex<ReceiverType>>,
@@ -20,7 +26,8 @@ struct ChannelPair {
 
 type ChannelMap = Arc<Mutex<HashMap<String, ChannelPair>>>;
 
-#[derive(Clone, Default)]
+/// In-memory stream implementation.
+#[derive(Clone, Debug, Default)]
 pub struct MemoryStream<H>
 where
     H: StreamHandler,
@@ -30,21 +37,12 @@ where
     _handler: std::marker::PhantomData<H>,
 }
 
-impl<H> Debug for MemoryStream<H>
-where
-    H: StreamHandler,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MemoryStream")
-            .field("prefix", &self.prefix)
-            .finish()
-    }
-}
-
 impl<H> MemoryStream<H>
 where
     H: StreamHandler,
 {
+    /// Creates a new `MemoryStream`.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             channels: Arc::new(Mutex::new(HashMap::new())),
@@ -57,17 +55,19 @@ where
         println!("get_or_create_channel: {}", self.prefix);
 
         let mut channels = self.channels.lock().await;
+
         if let Some(pair) = channels.get(&self.prefix) {
-            pair.clone()
-        } else {
-            let (tx, rx) = mpsc::channel(32);
-            let pair = ChannelPair {
-                tx,
-                rx: Arc::new(Mutex::new(rx)),
-            };
-            channels.insert(self.prefix.clone(), pair.clone());
-            pair
+            return pair.clone();
         }
+
+        let (tx, rx) = mpsc::channel(32);
+        let pair = ChannelPair {
+            tx,
+            rx: Arc::new(Mutex::new(rx)),
+        };
+        channels.insert(self.prefix.clone(), pair.clone());
+
+        pair
     }
 
     fn with_scope(&self, scope: String) -> Self {
@@ -90,14 +90,14 @@ impl<H> Stream<H> for MemoryStream<H>
 where
     H: StreamHandler,
 {
-    type Error = Error<H::HandlerError>;
+    type Error = Error<H::Error>;
 
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
         handler.on_caught_up().await?;
 
         let pair = self.get_or_create_channel().await;
 
-        let rx_clone = pair.rx.clone();
+        let rx_clone = pair.rx;
         tokio::spawn(async move {
             let mut rx = rx_clone.lock().await;
 
@@ -148,7 +148,7 @@ macro_rules! impl_scoped_stream {
         where
             H: StreamHandler,
         {
-            type Error = Error<H::HandlerError>;
+            type Error = Error<H::Error>;
             type Scoped = MemoryStream<H>;
 
             fn scope(&self, scope: String) -> Self::Scoped {
@@ -185,9 +185,9 @@ mod tests {
 
     #[async_trait]
     impl StreamHandler for TestHandler {
-        type HandlerError = TestHandlerError;
+        type Error = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
             Ok(HandlerResponse {
                 data,
                 ..Default::default()

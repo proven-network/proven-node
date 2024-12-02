@@ -1,3 +1,9 @@
+//! Implementation of streams using NATS with HA replication.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 pub use error::Error;
@@ -5,6 +11,7 @@ pub use error::Error;
 use async_nats::jetstream;
 use async_nats::jetstream::consumer::pull::Config as ConsumerConfig;
 use async_nats::jetstream::stream::Config as StreamConfig;
+use async_nats::jetstream::stream::Stream as JetsteamSteam;
 use async_nats::jetstream::Context as JetStreamContext;
 use async_nats::Client;
 use async_trait::async_trait;
@@ -19,11 +26,16 @@ struct StreamPublishReply {
     seq: u64,
 }
 
+/// Options for configuring a `NatsStream`.
 pub struct NatsStreamOptions {
+    /// The NATS client to use.
     pub client: Client,
+
+    /// The name of the stream (may be refined through scopes).
     pub stream_name: String,
 }
 
+/// Implementation of streams using NATS with HA replication.
 #[derive(Clone, Debug)]
 pub struct NatsStream<H>
 where
@@ -39,6 +51,8 @@ impl<H> NatsStream<H>
 where
     H: StreamHandler,
 {
+    /// Creates a new `NatsStream` with the specified options.
+    #[must_use]
     pub fn new(
         NatsStreamOptions {
             client,
@@ -55,11 +69,11 @@ where
         }
     }
 
-    fn with_scope(&self, scope: String) -> Self {
+    fn with_scope(&self, scope: &str) -> Self {
         Self {
             client: self.client.clone(),
             jetstream_context: self.jetstream_context.clone(),
-            stream_name: format!("{}_{}", self.stream_name, scope),
+            stream_name: format!("{}_{}", self.stream_name, scope).to_ascii_uppercase(),
             _handler: std::marker::PhantomData,
         }
     }
@@ -68,7 +82,7 @@ where
         format!("{}_reply", self.stream_name).to_ascii_uppercase()
     }
 
-    async fn get_reply_stream(&self) -> Result<jetstream::stream::Stream, Error<H::HandlerError>> {
+    async fn get_reply_stream(&self) -> Result<JetsteamSteam, Error<H>> {
         self.jetstream_context
             .create_stream(StreamConfig {
                 name: self.get_reply_stream_name(),
@@ -83,9 +97,7 @@ where
         format!("{}_request", self.stream_name).to_ascii_uppercase()
     }
 
-    async fn get_request_stream(
-        &self,
-    ) -> Result<jetstream::stream::Stream, Error<H::HandlerError>> {
+    async fn get_request_stream(&self) -> Result<JetsteamSteam, Error<H>> {
         self.jetstream_context
             .create_stream(StreamConfig {
                 name: self.get_request_stream_name(),
@@ -101,7 +113,7 @@ impl<H> Stream<H> for NatsStream<H>
 where
     H: StreamHandler,
 {
-    type Error = Error<H::HandlerError>;
+    type Error = Error<H>;
 
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
         println!("Subscribing to {}", self.get_request_stream_name());
@@ -245,10 +257,8 @@ where
                 }
                 Err(e) => {
                     if e.kind() == async_nats::jetstream::stream::DirectGetErrorKind::NotFound {
-                        // println!("Waiting for reply message");
                         tokio::task::yield_now().await;
                     } else {
-                        println!("Error: {:?}", e);
                         return Err(Error::ReplyDirectGet(e.kind()));
                     }
                 }
@@ -264,11 +274,11 @@ macro_rules! impl_scoped_stream {
         where
             H: StreamHandler,
         {
-            type Error = Error<H::HandlerError>;
+            type Error = Error<H>;
             type Scoped = NatsStream<H>;
 
             fn scope(&self, scope: String) -> Self::Scoped {
-                self.with_scope(scope)
+                self.with_scope(&scope)
             }
         }
     };
@@ -302,16 +312,16 @@ mod tests {
     }
 
     impl PublishTestHandler {
-        fn new(tx: tokio::sync::mpsc::Sender<Bytes>) -> Self {
+        const fn new(tx: tokio::sync::mpsc::Sender<Bytes>) -> Self {
             Self { tx }
         }
     }
 
     #[async_trait]
     impl StreamHandler for PublishTestHandler {
-        type HandlerError = TestHandlerError;
+        type Error = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
             self.tx.send(data.clone()).await.unwrap();
 
             Ok(HandlerResponse {
@@ -326,9 +336,9 @@ mod tests {
 
     #[async_trait]
     impl StreamHandler for RequestTestHandler {
-        type HandlerError = TestHandlerError;
+        type Error = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
             let mut response = b"reply: ".to_vec();
             response.extend_from_slice(&data);
 
@@ -364,9 +374,9 @@ mod tests {
 
     #[async_trait]
     impl StreamHandler for CatchUpTestHandler {
-        type HandlerError = TestHandlerError;
+        type Error = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
             self.message_count
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
@@ -376,7 +386,7 @@ mod tests {
             })
         }
 
-        async fn on_caught_up(&self) -> Result<(), Self::HandlerError> {
+        async fn on_caught_up(&self) -> Result<(), Self::Error> {
             self.caught_up
                 .store(true, std::sync::atomic::Ordering::SeqCst);
             Ok(())
@@ -406,7 +416,7 @@ mod tests {
         // Publish three messages before starting the handler
         for i in 1..=3 {
             publisher
-                .publish(Bytes::from(format!("test message {}", i)))
+                .publish(Bytes::from(format!("test message {i}")))
                 .await
                 .unwrap();
         }
@@ -444,11 +454,12 @@ mod tests {
             stream_name: "SQL".to_string(),
         });
 
-        let subscriber = subscriber.with_scope("app1".to_string());
-        assert_eq!(subscriber.stream_name, "SQL_app1");
+        // Should force uppercase
+        let subscriber = subscriber.with_scope("app1");
+        assert_eq!(subscriber.stream_name, "SQL_APP1");
 
-        let subscriber = subscriber.with_scope("db1".to_string());
-        assert_eq!(subscriber.stream_name, "SQL_app1_db1");
+        let subscriber = subscriber.with_scope("DB1");
+        assert_eq!(subscriber.stream_name, "SQL_APP1_DB1");
     }
 
     #[tokio::test]
@@ -534,9 +545,9 @@ mod tests {
 
     #[async_trait]
     impl StreamHandler for NonPersistentRequestTestHandler {
-        type HandlerError = TestHandlerError;
+        type Error = TestHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
             let mut headers = std::collections::HashMap::new();
             headers.insert(
                 "Request-Message-Should-Persist".to_string(),

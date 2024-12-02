@@ -34,13 +34,13 @@ where
     Self: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the handler.
-    type HandlerError: StreamHandlerError;
+    type Error: StreamHandlerError;
 
     /// Handles the given data and returns a response.
-    async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::HandlerError>;
+    async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error>;
 
     /// Hook for when the stream is caught up.
-    async fn on_caught_up(&self) -> Result<(), Self::HandlerError> {
+    async fn on_caught_up(&self) -> Result<(), Self::Error> {
         Ok(())
     }
 }

@@ -46,7 +46,7 @@ impl SqlStreamHandler {
 
 #[async_trait]
 impl StreamHandler for SqlStreamHandler {
-    type HandlerError = Error;
+    type Error = Error;
 
     async fn handle(&self, bytes: Bytes) -> Result<HandlerResponse> {
         let request: Request = bytes.try_into()?;
