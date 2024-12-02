@@ -105,6 +105,7 @@ impl RadixAggregator {
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
 
             let re = Regex::new(r"(\w+): (.*)")?;
+
             // Spawn a task to read and process the stdout output of the radix-aggregator process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stdout);

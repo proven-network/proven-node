@@ -1,3 +1,10 @@
+//! Configures and runs a local Radix Gateway.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::redundant_pub_crate)]
+
 mod error;
 
 pub use error::{Error, Result};
@@ -21,6 +28,7 @@ static GATEWAY_API_CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.Production.j
 static GATEWAY_API_DIR: &str = "/bin/GatewayApi";
 static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi";
 
+/// Configures and runs a local Radix Gateway.
 pub struct RadixGateway {
     postgres_database: String,
     postgres_username: String,
@@ -29,21 +37,45 @@ pub struct RadixGateway {
     task_tracker: TaskTracker,
 }
 
+/// Options for configuring a `RadixGateway`.
+pub struct RadixGatewayOptions {
+    /// The name of the Postgres database.
+    pub postgres_database: String,
+
+    /// The password for the Postgres database.
+    pub postgres_password: String,
+
+    /// The username for the Postgres database.
+    pub postgres_username: String,
+}
+
 impl RadixGateway {
+    /// Creates a new `RadixGateway` instance.
+    #[must_use]
     pub fn new(
-        postgres_database: String,
-        postgres_username: String,
-        postgres_password: String,
+        RadixGatewayOptions {
+            postgres_database,
+            postgres_password,
+            postgres_username,
+        }: RadixGatewayOptions,
     ) -> Self {
         Self {
             postgres_database,
-            postgres_username,
             postgres_password,
+            postgres_username,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
     }
 
+    /// Starts the Radix Gateway server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error::AlreadyStarted` if the server is already running.
+    /// Returns an `Error::IoError` if there is an I/O error while spawning the process.
+    /// Returns an `Error::OutputParse` if there is an error parsing the process output.
+    /// Returns an `Error::NonZeroExitCode` if the process exits with a non-zero status.
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
@@ -61,22 +93,23 @@ impl RadixGateway {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(Error::Spawn)?;
+                .map_err(|e| Error::IoError("failed to spawn GatewayApi process", e))?;
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+
+            let re = Regex::new(r"(\w+): (.*)")?;
 
             // Spawn a task to read and process the stdout output of the radix-gateway process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
 
-                let re = Regex::new(r"(\w+): (.*)").unwrap();
 
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(caps) = re.captures(&line) {
-                        let label = caps.get(1).unwrap().as_str();
-                        let message = caps.get(2).unwrap().as_str();
+                        let label = caps.get(1).map_or("unkw", |m| m.as_str());
+                        let message = caps.get(2).map_or(line.as_str(), |m| m.as_str());
                         match label {
                             "trce" => trace!("{}", message),
                             "dbug" => debug!("{}", message),
@@ -92,17 +125,18 @@ impl RadixGateway {
                 }
             });
 
+            let re = Regex::new(r"(\w+): (.*)")?;
+
             // Spawn a task to read and process the stdout output of the radix-gateway process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
 
-                let re = Regex::new(r"(\w+): (.*)").unwrap();
 
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(caps) = re.captures(&line) {
-                        let label = caps.get(1).unwrap().as_str();
-                        let message = caps.get(2).unwrap().as_str();
+                        let label = caps.get(1).map_or("unkw", |m| m.as_str());
+                        let message = caps.get(2).map_or(line.as_str(), |m| m.as_str());
                         match label {
                             "trce" => trace!("{}", message),
                             "dbug" => debug!("{}", message),
@@ -121,7 +155,7 @@ impl RadixGateway {
             // Wait for the radix-gateway process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
-                    let status = cmd.wait().await.unwrap();
+                    let status = cmd.wait().await.map_err(|e| Error::IoError("failed to wait for exit", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -129,9 +163,10 @@ impl RadixGateway {
 
                     Ok(())
                 }
-                _ = shutdown_token.cancelled() => {
-                    let pid = Pid::from_raw(cmd.id().unwrap() as i32);
-                    signal::kill(pid, Signal::SIGTERM).unwrap();
+                () = shutdown_token.cancelled() => {
+                    let raw_pid: i32 = cmd.id().ok_or(Error::OutputParse)?.try_into().map_err(|_| Error::BadPid)?;
+                    let pid = Pid::from_raw(raw_pid);
+                    signal::kill(pid, Signal::SIGTERM)?;
 
                     let _ = cmd.wait().await;
 
@@ -225,12 +260,12 @@ impl RadixGateway {
             .write(true)
             .open(GATEWAY_API_CONFIG_PATH)
             .await
-            .unwrap();
+            .map_err(|e| Error::IoError("failed to open gateway config", e))?;
 
         config_file
             .write_all(serde_json::to_string_pretty(&config).unwrap().as_bytes())
             .await
-            .map_err(Error::ConfigWrite)?;
+            .map_err(|e| Error::IoError("failed to write gateway config", e))?;
 
         Ok(())
     }

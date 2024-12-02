@@ -1,3 +1,10 @@
+//! Configures and runs a local Radix Babylon Node.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::redundant_pub_crate)]
+
 mod error;
 
 pub use error::{Error, Result};
@@ -52,25 +59,52 @@ static JAVA_OPTS: &[&str] = &[
     "-DLog4jContextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector",
 ];
 
+/// Runs a Radix Babylon Node.
 pub struct RadixNode {
-    network_definition: NetworkDefinition,
     host_ip: String,
-    store_dir: String,
+    network_definition: NetworkDefinition,
     shutdown_token: CancellationToken,
+    store_dir: String,
     task_tracker: TaskTracker,
 }
 
+/// Options for configuring a `RadixNode`.
+pub struct RadixNodeOptions {
+    /// The host IP address.
+    pub host_ip: String,
+
+    /// The network definition.
+    pub network_definition: NetworkDefinition,
+
+    /// The directory to store data in.
+    pub store_dir: String,
+}
+
 impl RadixNode {
-    pub fn new(network_definition: NetworkDefinition, host_ip: String, store_dir: String) -> Self {
-        Self {
-            network_definition,
+    /// Creates a new instance of `RadixNode`.
+    #[must_use]
+    pub fn new(
+        RadixNodeOptions {
             host_ip,
+            network_definition,
             store_dir,
+        }: RadixNodeOptions,
+    ) -> Self {
+        Self {
+            host_ip,
+            network_definition,
             shutdown_token: CancellationToken::new(),
+            store_dir,
             task_tracker: TaskTracker::new(),
         }
     }
 
+    /// Starts the Radix Babylon Node.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the node is already started, if there is an I/O error,
+    /// or if the node process exits with a non-zero status code.
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
@@ -96,29 +130,25 @@ impl RadixNode {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(Error::Spawn)?;
+                .map_err(|e| Error::IoError("failed to spawn radix-node process", e))?;
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+
+            // Java log regexp
+            let jre = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)")?;
+
+            let rre = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) .+: (.*)")?;
 
             // Spawn a task to read and process the stdout output of the radix-node process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stdout);
                 let mut lines = reader.lines();
 
-                // Java log regexp
-                let jre =
-                    Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)")
-                        .unwrap();
-
-                let rre =
-                    Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) .+: (.*)")
-                        .unwrap();
-
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(caps) = jre.captures(&line) {
-                        let label = caps.get(1).unwrap().as_str();
-                        let message = caps.get(2).unwrap().as_str();
+                        let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
+                        let message = caps.get(2).map_or(line.as_str(), |m| m.as_str());
                         match label {
                             "OFF" => info!("{}", message),
                             "FATAL" => error!("{}", message),
@@ -130,8 +160,8 @@ impl RadixNode {
                             _ => error!("{}", line),
                         }
                     } else if let Some(caps) = rre.captures(&strip_str(&line)) {
-                        let label = caps.get(1).unwrap().as_str();
-                        let message = caps.get(2).unwrap().as_str();
+                        let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
+                        let message = caps.get(2).map_or(line.as_str(), |m| m.as_str());
                         match label {
                             "DEBUG" => debug!("{}", message),
                             "ERROR" => error!("{}", message),
@@ -159,7 +189,7 @@ impl RadixNode {
             // Wait for the radix-node process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
-                    let status = cmd.wait().await.unwrap();
+                    let status = cmd.wait().await.map_err(|e| Error::IoError("failed to wait for exit", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -167,9 +197,10 @@ impl RadixNode {
 
                     Ok(())
                 }
-                _ = shutdown_token.cancelled() => {
-                    let pid = Pid::from_raw(cmd.id().unwrap() as i32);
-                    signal::kill(pid, Signal::SIGTERM).unwrap();
+                () = shutdown_token.cancelled() => {
+                    let raw_pid: i32 = cmd.id().ok_or(Error::OutputParse)?.try_into().map_err(|_| Error::BadPid)?;
+                    let pid = Pid::from_raw(raw_pid);
+                    signal::kill(pid, Signal::SIGTERM)?;
 
                     let _ = cmd.wait().await;
 
@@ -203,7 +234,7 @@ impl RadixNode {
             .arg(KEYSTORE_PASS)
             .output()
             .await
-            .map_err(Error::Spawn)?;
+            .map_err(|e| Error::IoError("failed to generate node key", e))?;
 
         if !output.status.success() {
             return Err(Error::NonZeroExitCode(output.status));
@@ -214,7 +245,8 @@ impl RadixNode {
 
     fn update_node_config(&self) -> Result<()> {
         // Ensure store dir created
-        std::fs::create_dir_all(&self.store_dir).unwrap();
+        std::fs::create_dir_all(&self.store_dir)
+            .map_err(|e| Error::IoError("failed to create store dir", e))?;
 
         let seed_nodes = match self.network_definition.id {
             1 => MAINNET_SEED_NODES,
@@ -224,13 +256,13 @@ impl RadixNode {
         .join(",");
 
         let config = format!(
-            r#"
+            r"
             network.host_ip={}
             network.id={}
             network.p2p.seed_nodes={}
             node.key.path={}
             db.location={}
-        "#,
+        ",
             self.host_ip, self.network_definition.id, seed_nodes, KEYSTORE_PATH, self.store_dir
         );
 
@@ -239,10 +271,10 @@ impl RadixNode {
             .truncate(true)
             .write(true)
             .open(CONFIG_PATH)
-            .unwrap();
+            .map_err(|e| Error::IoError("failed to open config file", e))?;
 
         std::io::Write::write_all(&mut config_file, config.as_bytes())
-            .map_err(Error::ConfigWrite)?;
+            .map_err(|e| Error::IoError("failed to write config file", e))?;
 
         Ok(())
     }
