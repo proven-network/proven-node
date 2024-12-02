@@ -22,13 +22,13 @@ pub enum Error {
     #[error(transparent)]
     DnsStampEncode(#[from] dns_stamp_parser::EncodeError),
 
-    /// Failed to parse dnscrypt-proxy output.
-    #[error("failed to parse dnscrypt-proxy output")]
-    OutputParse,
-
     /// Process exited with non-zero.
     #[error("dnscrypt-proxy exited with non-zero: {0}")]
     NonZeroExitCode(std::process::ExitStatus),
+
+    /// Failed to parse dnscrypt-proxy output.
+    #[error("failed to parse dnscrypt-proxy output")]
+    OutputParse,
 
     /// Failed to parse regex pattern.
     #[error(transparent)]
