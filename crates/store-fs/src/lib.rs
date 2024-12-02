@@ -1,3 +1,10 @@
+//! Implementation of key-value storage using files on disk, for local
+//! development.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 use error::Error;
@@ -10,17 +17,16 @@ use proven_store::{Store, Store1, Store2, Store3};
 use tokio::fs;
 use tokio::io::{self, AsyncWriteExt};
 
+/// KV store using files on disk.
 #[derive(Clone, Debug)]
 pub struct FsStore {
     dir: PathBuf,
 }
 
-/// FsStore is a file system implementation of the `Store`, `Store2`, and `Store3` traits.
-/// It uses the file system to store key-value pairs, where keys are strings and values are byte vectors.
-/// The store supports optional scoping of keys using a directory.
 impl FsStore {
+    /// Creates a new `FsStore` with the specified directory.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        FsStore { dir: dir.into() }
+        Self { dir: dir.into() }
     }
 
     fn get_file_path(&self, key: &str) -> PathBuf {
@@ -34,7 +40,9 @@ impl Store for FsStore {
 
     async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let path = self.get_file_path(&key.into());
-        fs::remove_file(path).await?;
+        fs::remove_file(path)
+            .await
+            .map_err(|e| Error::IoError("error deleting file", e))?;
         Ok(())
     }
 
@@ -43,15 +51,21 @@ impl Store for FsStore {
         match fs::read(path).await {
             Ok(data) => Ok(Some(Bytes::from(data))),
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(Error::Io(e)),
+            Err(e) => Err(Error::IoError("error reading file", e)),
         }
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
-        let mut entries = fs::read_dir(&self.dir).await?;
+        let mut entries = fs::read_dir(&self.dir)
+            .await
+            .map_err(|e| Error::IoError("error reading directory", e))?;
         let mut keys = Vec::new();
 
-        while let Some(entry) = entries.next_entry().await? {
+        while let Some(entry) = entries
+            .next_entry()
+            .await
+            .map_err(|e| Error::IoError("error reading directory entry", e))?
+        {
             if let Some(key) = entry.file_name().to_str() {
                 keys.push(key.to_string());
             }
@@ -64,11 +78,17 @@ impl Store for FsStore {
         let path = self.get_file_path(&key.into());
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent).await?;
+                fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| Error::IoError("error creating directory", e))?;
             }
         }
-        let mut file = fs::File::create(path).await?;
-        file.write_all(&bytes).await?;
+        let mut file = fs::File::create(path)
+            .await
+            .map_err(|e| Error::IoError("error creating file", e))?;
+        file.write_all(&bytes)
+            .await
+            .map_err(|e| Error::IoError("error writing file", e))?;
         Ok(())
     }
 }
