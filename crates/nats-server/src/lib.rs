@@ -94,10 +94,6 @@ impl NatsServer {
     ///
     /// A `JoinHandle` that can be used to await the completion of the server task.
     ///
-    /// # Panics
-    ///
-    /// This function will panic if the regular expression for parsing the server output is invalid.
-    ///
     /// # Errors
     ///
     /// This function will return an error if the server is already started, if there is an issue
@@ -109,7 +105,7 @@ impl NatsServer {
 
         tokio::fs::create_dir_all(format!("{}/jetstream", self.store_dir.as_str()))
             .await
-            .map_err(Error::ConfigWrite)?;
+            .map_err(|e| Error::IoError("failed to create jetstream directory", e))?;
         self.update_nats_config().await?;
 
         let shutdown_token = self.shutdown_token.clone();
@@ -133,7 +129,7 @@ impl NatsServer {
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(Error::Spawn)?;
+                .map_err(|e| Error::IoError("failed to spawn nats-server", e))?;
 
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
@@ -148,8 +144,8 @@ impl NatsServer {
 
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(caps) = re.captures(&line) {
-                        let label = caps.get(1).unwrap().as_str();
-                        let message = caps.get(2).unwrap().as_str();
+                        let label = caps.get(1).map_or("[UKW]", |m| m.as_str());
+                        let message = caps.get(2).map_or(line.as_str(), |m| m.as_str());
                         match label {
                             "[INF]" => info!("{}", message),
                             "[DBG]" => debug!("{}", message),
@@ -168,7 +164,7 @@ impl NatsServer {
             // Wait for the nats-server process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 status = cmd.wait() => {
-                    let status = status.map_err(Error::Spawn)?;
+                    let status = status.map_err(|e| Error::IoError("failed to get exit status", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -264,11 +260,13 @@ impl NatsServer {
             self.server_name, self.listen_addr, self.store_dir
         );
 
-        tokio::fs::create_dir_all("/etc/nats").await.unwrap();
+        tokio::fs::create_dir_all("/etc/nats")
+            .await
+            .map_err(|e| Error::IoError("failed to create /etc/nats", e))?;
 
         tokio::fs::write("/etc/nats/nats-server.conf", config)
             .await
-            .map_err(Error::ConfigWrite)?;
+            .map_err(|e| Error::IoError("failed to write nats-server.conf", e))?;
 
         // Run "nats-server --signal reload" to reload the configuration if it is running (task_tracker closed)
         if self.task_tracker.is_closed() {
@@ -277,7 +275,7 @@ impl NatsServer {
                 .arg("reload")
                 .output()
                 .await
-                .map_err(Error::Spawn)?;
+                .map_err(|e| Error::IoError("failed to reload nats-server", e))?;
 
             if !output.status.success() {
                 return Err(Error::NonZeroExitCode(output.status));

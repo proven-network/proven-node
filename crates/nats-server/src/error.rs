@@ -18,9 +18,9 @@ pub enum Error {
     #[error("failed to connect to nats server: {0}")]
     ClientFailedToConnect(#[from] async_nats::ConnectError),
 
-    /// Failed to write config file.
-    #[error("failed to write nats config: {0}")]
-    ConfigWrite(#[from] std::io::Error),
+    /// IO operation failed.
+    #[error("{0}: {1}")]
+    IoError(&'static str, #[source] std::io::Error),
 
     /// Process exited with non-zero.
     #[error("nats server exited with non-zero status: {0}")]
@@ -33,8 +33,4 @@ pub enum Error {
     /// Failed to parse regex pattern.
     #[error(transparent)]
     RegexParse(#[from] regex::Error),
-
-    /// Failed to spawn nats server.
-    #[error("failed to spawn nats server: {0}")]
-    Spawn(std::io::Error),
 }

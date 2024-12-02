@@ -14,9 +14,9 @@ pub enum Error {
     #[error("bad PID")]
     BadPid,
 
-    /// Failed to write config file.
-    #[error("failed to write config: {0}")]
-    ConfigWrite(#[from] std::io::Error),
+    /// IO operation failed.
+    #[error("{0}: {1}")]
+    IoError(&'static str, #[source] std::io::Error),
 
     /// Process exited with non-zero.
     #[error("exited with non-zero: {0}")]
@@ -26,9 +26,9 @@ pub enum Error {
     #[error("failed to parse output")]
     OutputParse,
 
-    /// Failed to spawn process.
-    #[error("failed to spawn: {0}")]
-    Spawn(std::io::Error),
+    /// Failed to parse regex pattern.
+    #[error(transparent)]
+    RegexParse(#[from] regex::Error),
 
     /// Failed to vacuum.
     #[error("vacuum failed")]

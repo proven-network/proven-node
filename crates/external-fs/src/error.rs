@@ -21,8 +21,4 @@ pub enum Error {
     /// Failed to parse external fs output.
     #[error("failed to parse external fs output")]
     OutputParse,
-
-    /// Failed to spawn external fs.
-    #[error("failed to spawn: {0}")]
-    Spawn(#[from] std::io::Error),
 }

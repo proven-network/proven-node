@@ -271,7 +271,12 @@ stamp = '{}'
 
         let doh_ip = route53_client
             .list_resolver_endpoint_ip_addresses()
-            .resolver_endpoint_id(resolver_endpoint.id.clone().unwrap())
+            .resolver_endpoint_id(
+                resolver_endpoint
+                    .id
+                    .clone()
+                    .ok_or(Error::ResolverEndpointNotFound)?,
+            )
             .send()
             .await
             .map_err(|e| Error::Route53(e.into()))?

@@ -158,7 +158,7 @@ impl ExternalFs {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(Error::Spawn)?;
+                .map_err(|e| Error::IoError("failed to spawn gocryptfs", e))?;
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
@@ -264,7 +264,7 @@ impl ExternalFs {
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-            Err(e) => Err(Error::Spawn(e)),
+            Err(e) => Err(Error::IoError("failed to spawn gocryptfs", e)),
         }
     }
 
@@ -286,7 +286,7 @@ impl ExternalFs {
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-            Err(e) => Err(Error::Spawn(e)),
+            Err(e) => Err(Error::IoError("failed to spawn gocryptfs fsck", e)),
         }
     }
 }
@@ -310,7 +310,7 @@ async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()>
     match cmd {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-        Err(e) => Err(Error::Spawn(e)),
+        Err(e) => Err(Error::IoError("failed to spawn mount", e)),
     }
 }
 
@@ -327,7 +327,7 @@ async fn umount_nfs(nfs_mount_dir: String) -> Result<()> {
     match cmd {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-        Err(e) => Err(Error::Spawn(e)),
+        Err(e) => Err(Error::IoError("failed to spawn umount", e)),
     }
 }
 
@@ -342,6 +342,6 @@ async fn ensure_permissions(path: &str, permissions: &str) -> Result<()> {
     match output {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-        Err(e) => Err(Error::Spawn(e)),
+        Err(e) => Err(Error::IoError("failed to spawn chmod", e)),
     }
 }
