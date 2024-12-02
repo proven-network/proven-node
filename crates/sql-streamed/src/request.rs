@@ -2,11 +2,19 @@ use bytes::Bytes;
 use proven_sql::SqlParam;
 use serde::{Deserialize, Serialize};
 
+/// A request to a SQL store.
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Request {
+    /// Executes a SQL mutation.
     Execute(String, Vec<SqlParam>),
+
+    /// Executes a batch of SQL mutations.
     ExecuteBatch(String, Vec<Vec<SqlParam>>),
+
+    /// Executes a schema migration.
     Migrate(String),
+
+    /// Executes a SQL query.
     Query(String, Vec<SqlParam>),
 }
 

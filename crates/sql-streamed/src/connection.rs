@@ -1,4 +1,5 @@
-use crate::{Error, Request, Response, Result, SqlStreamHandler};
+use crate::stream_handler::SqlStreamHandler;
+use crate::{Error, Request, Response};
 
 use std::marker::PhantomData;
 
@@ -8,6 +9,7 @@ use proven_sql::{Rows, SqlConnection, SqlParam};
 use proven_store::Store;
 use proven_stream::Stream;
 
+/// A connection to a streamed SQL store.
 #[derive(Clone, Debug)]
 pub struct Connection<S: Stream<SqlStreamHandler>, LS: Store> {
     stream: S,
@@ -15,7 +17,8 @@ pub struct Connection<S: Stream<SqlStreamHandler>, LS: Store> {
 }
 
 impl<S: Stream<SqlStreamHandler>, LS: Store> Connection<S, LS> {
-    pub fn new(stream: S) -> Self {
+    /// Creates a new `Connection` with the specified stream.
+    pub const fn new(stream: S) -> Self {
         Self {
             stream,
             _marker: PhantomData,
@@ -25,13 +28,13 @@ impl<S: Stream<SqlStreamHandler>, LS: Store> Connection<S, LS> {
 
 #[async_trait]
 impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connection<S, LS> {
-    type Error = Error<S::Error, LS::Error>;
+    type Error = Error<S, LS>;
 
     async fn execute<Q: Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<SqlParam>,
-    ) -> Result<u64, S::Error, LS::Error> {
+    ) -> Result<u64, Self::Error> {
         let request = Request::Execute(query.into(), params);
         let bytes: Bytes = request.try_into()?;
 
@@ -48,7 +51,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
         &self,
         query: Q,
         params: Vec<Vec<SqlParam>>,
-    ) -> Result<u64, S::Error, LS::Error> {
+    ) -> Result<u64, Self::Error> {
         let request = Request::ExecuteBatch(query.into(), params);
         let bytes: Bytes = request.try_into()?;
 
@@ -61,7 +64,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
         }
     }
 
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Result<bool, S::Error, LS::Error> {
+    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error> {
         let request = Request::Migrate(query.into());
         let bytes: Bytes = request.try_into()?;
 
@@ -78,7 +81,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
         &self,
         query: Q,
         params: Vec<SqlParam>,
-    ) -> Result<Rows, S::Error, LS::Error> {
+    ) -> Result<Rows, Self::Error> {
         let request = Request::Query(query.into(), params);
         let bytes: Bytes = request.try_into()?;
 

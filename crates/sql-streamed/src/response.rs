@@ -2,11 +2,20 @@ use bytes::Bytes;
 use proven_sql::Rows;
 use serde::{Deserialize, Serialize};
 
+/// A response from a SQL store.
+/// TODO: Handle error responses.
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Response {
+    /// The number of rows affected by a mutation.
     Execute(u64),
+
+    /// The number of rows affected by a batch of mutations.
     ExecuteBatch(u64),
+
+    /// Whether a schema migration was needed.
     Migrate(bool),
+
+    /// The rows returned by a query.
     Query(Rows),
 }
 

@@ -1,3 +1,9 @@
+//! Implementation of SQL storage using files on disk, for local development.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod connection;
 mod error;
 
@@ -9,12 +15,14 @@ use async_trait::async_trait;
 pub use error::Error;
 use proven_sql::{SqlConnection, SqlStore, SqlStore1, SqlStore2, SqlStore3};
 
+/// A SQL store that uses files on disk for local development.
 #[derive(Clone, Debug)]
 pub struct DirectSqlStore {
     dir: PathBuf,
 }
 
 impl DirectSqlStore {
+    /// Creates a new `DirectSqlStore` with the specified directory.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         Self { dir: dir.into() }
     }
