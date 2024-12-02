@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SqlType {
     Migration,
     Mutation,
@@ -10,9 +10,9 @@ pub enum SqlType {
 impl Display for SqlType {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            SqlType::Migration => write!(f, "Migration"),
-            SqlType::Mutation => write!(f, "Mutation"),
-            SqlType::Query => write!(f, "Query"),
+            Self::Migration => write!(f, "Migration"),
+            Self::Mutation => write!(f, "Mutation"),
+            Self::Query => write!(f, "Query"),
         }
     }
 }

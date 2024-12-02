@@ -5,13 +5,16 @@ use proven_sql::{Rows, SqlParam};
 use crate::Error;
 
 pub async fn convert_libsql_rows(mut libsql_rows: LibsqlRows) -> Result<Rows, Error> {
-    let column_count = libsql_rows.column_count();
-    let column_names = get_column_names(&libsql_rows, column_count);
-    let column_types = get_column_types(&libsql_rows, column_count);
-    let rows = get_row_values(&mut libsql_rows, column_count).await?;
+    let column_count: u16 = libsql_rows
+        .column_count()
+        .try_into()
+        .map_err(|_| Error::InvalidColumnCount)?;
+    let column_names = get_column_names(&libsql_rows, column_count.into());
+    let column_types = get_column_types(&libsql_rows, column_count.into());
+    let rows = get_row_values(&mut libsql_rows, column_count.into()).await?;
 
     Ok(Rows {
-        column_count: column_count as u16,
+        column_count,
         column_names,
         column_types,
         rows,
@@ -42,7 +45,7 @@ async fn get_row_values(
 ) -> Result<Vec<Vec<SqlParam>>, Error> {
     let mut rows_vec = Vec::new();
     while let Some(row) = rows.next().await? {
-        let row_vec = (0..column_count)
+        let row_values = (0..column_count)
             .map(|i| match row.get_value(i).unwrap() {
                 Value::Null => SqlParam::Null,
                 Value::Integer(i) => SqlParam::Integer(i),
@@ -51,7 +54,7 @@ async fn get_row_values(
                 Value::Blob(b) => SqlParam::Blob(Bytes::from(b)),
             })
             .collect();
-        rows_vec.push(row_vec);
+        rows_vec.push(row_values);
     }
     Ok(rows_vec)
 }

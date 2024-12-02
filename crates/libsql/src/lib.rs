@@ -1,3 +1,10 @@
+//! Wrapper around [libsql](https://github.com/tursodatabase/libsql) which
+//! provides additional functionality like migration
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod conversion;
 mod error;
 mod sql_type;
@@ -13,19 +20,20 @@ static RESERVED_TABLE_PREFIX: &str = "__proven_";
 static CREATE_MIGRATIONS_TABLE_SQL: &str = include_str!("../sql/create_migrations_table.sql");
 static INSERT_MIGRATION_SQL: &str = include_str!("../sql/insert_migration.sql");
 
+/// A libsql database wrapper.
 #[derive(Clone)]
 pub struct Database {
     connection: Connection,
 }
 
 impl Database {
-    pub async fn connect(path: impl AsRef<std::path::Path>) -> Result<Self> {
-        let connection = Builder::new_local(path)
-            .build()
-            .await
-            .unwrap()
-            .connect()
-            .unwrap();
+    /// Connects to the database at the given path.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the connection to the database fails.
+    pub async fn connect(path: impl AsRef<std::path::Path> + Send) -> Result<Self> {
+        let connection = Builder::new_local(path).build().await?.connect()?;
 
         connection
             .execute(CREATE_MIGRATIONS_TABLE_SQL, Self::convert_params(vec![]))
@@ -34,18 +42,12 @@ impl Database {
         Ok(Self { connection })
     }
 
-    fn classify_sql(sql: &str) -> SqlType {
-        let sql = sql.trim_start().to_uppercase();
-
-        if sql.starts_with("SELECT") {
-            SqlType::Query
-        } else if sql.starts_with("CREATE") || sql.starts_with("ALTER") || sql.starts_with("DROP") {
-            SqlType::Migration
-        } else {
-            SqlType::Mutation
-        }
-    }
-
+    /// Executes a mutation SQL query with the given parameters.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the query contains a reserved table prefix,
+    /// if the SQL type is incorrect, or if there is an issue executing the query.
     pub async fn execute(&self, query: &str, params: Vec<SqlParam>) -> Result<u64> {
         if query.contains(RESERVED_TABLE_PREFIX) {
             return Err(Error::UsedReservedTablePrefix);
@@ -67,6 +69,12 @@ impl Database {
         }
     }
 
+    /// Executes a batch of mutation SQL queries with the given parameters.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the query contains a reserved table prefix,
+    /// if the SQL type is incorrect, or if there is an issue executing the query.
     pub async fn execute_batch(&self, query: &str, params: Vec<Vec<SqlParam>>) -> Result<u64> {
         if query.contains(RESERVED_TABLE_PREFIX) {
             return Err(Error::UsedReservedTablePrefix);
@@ -95,6 +103,12 @@ impl Database {
         }
     }
 
+    /// Executes a migration SQL query.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the query contains a reserved table prefix,
+    /// if the SQL type is incorrect, or if there is an issue executing the query.
     pub async fn migrate(&self, query: &str) -> Result<bool> {
         if query.contains(RESERVED_TABLE_PREFIX) {
             return Err(Error::UsedReservedTablePrefix);
@@ -147,6 +161,12 @@ impl Database {
         }
     }
 
+    /// Executes a query SQL statement with the given parameters.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the query contains a reserved table prefix,
+    /// if the SQL type is incorrect, or if there is an issue executing the query.
     pub async fn query(&self, query: &str, params: Vec<SqlParam>) -> Result<Rows> {
         if query.contains(RESERVED_TABLE_PREFIX) {
             return Err(Error::UsedReservedTablePrefix);
@@ -180,6 +200,18 @@ impl Database {
                 SqlParam::Blob(b) => Value::Blob(b.to_vec()),
             })
             .collect()
+    }
+
+    fn classify_sql(sql: &str) -> SqlType {
+        let sql = sql.trim_start().to_uppercase();
+
+        if sql.starts_with("SELECT") {
+            SqlType::Query
+        } else if sql.starts_with("CREATE") || sql.starts_with("ALTER") || sql.starts_with("DROP") {
+            SqlType::Migration
+        } else {
+            SqlType::Mutation
+        }
     }
 }
 
