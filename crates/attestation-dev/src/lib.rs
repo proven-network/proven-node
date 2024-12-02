@@ -8,7 +8,7 @@ mod error;
 
 use bytes::Bytes;
 use coset::CborSerializable;
-use error::{Error, Result};
+pub use error::{Error, Result};
 
 use std::collections::BTreeMap;
 
