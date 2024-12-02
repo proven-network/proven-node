@@ -1,3 +1,10 @@
+//! Configures and runs a NATS server for inter-node communication.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::redundant_pub_crate)]
+
 mod error;
 
 pub use error::{Error, Result};
@@ -18,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
+/// Runs a NATS server for inter-node communication.
 pub struct NatsServer {
     clients: Arc<Mutex<Vec<Client>>>,
     debug: bool,
@@ -28,18 +36,31 @@ pub struct NatsServer {
     task_tracker: TaskTracker,
 }
 
+/// Options for configuring a `NatsServer`.
+pub struct NatsServerOptions {
+    /// Whether to enable debug logging.
+    pub debug: bool,
+
+    /// The address to listen on.
+    pub listen_addr: SocketAddrV4,
+
+    /// The name of the server.
+    pub server_name: String,
+
+    /// The directory to store data in.
+    pub store_dir: String,
+}
+
 impl NatsServer {
     /// Creates a new instance of `NatsServer`.
-    ///
-    /// # Arguments
-    ///
-    /// * `server_name` - The name of the server.
-    /// * `listen_addr` - The address to listen on.
+    #[must_use]
     pub fn new(
-        server_name: String,
-        listen_addr: SocketAddrV4,
-        store_dir: String,
-        debug: bool,
+        NatsServerOptions {
+            debug,
+            listen_addr,
+            server_name,
+            store_dir,
+        }: NatsServerOptions,
     ) -> Self {
         Self {
             clients: Arc::new(Mutex::new(Vec::new())),
@@ -52,8 +73,17 @@ impl NatsServer {
         }
     }
 
-    pub async fn add_peer(&self, peer_ip: SocketAddrV4) -> Result<()> {
-        println!("Adding peer: {}", peer_ip);
+    /// Adds a peer to the NATS server.
+    ///
+    /// # Arguments
+    ///
+    /// * `peer_ip` - The IP address of the peer to add.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the peer cannot be added.
+    pub fn add_peer(&self, peer_ip: SocketAddrV4) -> Result<()> {
+        println!("Adding peer: {peer_ip}");
 
         Ok(())
     }
@@ -63,6 +93,15 @@ impl NatsServer {
     /// # Returns
     ///
     /// A `JoinHandle` that can be used to await the completion of the server task.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the regular expression for parsing the server output is invalid.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the server is already started, if there is an issue
+    /// with spawning the server process, or if it fails to create the necessary directories.
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
@@ -70,7 +109,7 @@ impl NatsServer {
 
         tokio::fs::create_dir_all(format!("{}/jetstream", self.store_dir.as_str()))
             .await
-            .unwrap();
+            .map_err(Error::ConfigWrite)?;
         self.update_nats_config().await?;
 
         let shutdown_token = self.shutdown_token.clone();
@@ -98,15 +137,14 @@ impl NatsServer {
 
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
+            let re = Regex::new(
+                r"\[\d+\] \d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6} (\[[A-Z]+\]) (.*)",
+            )?;
+
             // Spawn a task to read and process the stderr output of the nats-server process
             task_tracker.spawn(async move {
                 let reader = BufReader::new(stderr);
                 let mut lines = reader.lines();
-
-                let re = Regex::new(
-                    r"\[\d+\] \d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6} (\[[A-Z]+\]) (.*)",
-                )
-                .unwrap();
 
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Some(caps) = re.captures(&line) {
@@ -129,8 +167,8 @@ impl NatsServer {
 
             // Wait for the nats-server process to exit or for the shutdown token to be cancelled
             tokio::select! {
-                _ = cmd.wait() => {
-                    let status = cmd.wait().await.unwrap();
+                status = cmd.wait() => {
+                    let status = status.map_err(Error::Spawn)?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -138,8 +176,9 @@ impl NatsServer {
 
                     Ok(())
                 }
-                _ = shutdown_token.cancelled() => {
-                    let pid = Pid::from_raw(cmd.id().unwrap() as i32);
+                () = shutdown_token.cancelled() => {
+                    let raw_pid: i32 = cmd.id().ok_or(Error::OutputParse)?.try_into().map_err(|_| Error::BadPid)?;
+                    let pid = Pid::from_raw(raw_pid);
 
                     if let Err(e) = signal::kill(pid, Signal::SIGUSR2) {
                         error!("Failed to send SIGUSR2 signal: {}", e);
@@ -166,8 +205,8 @@ impl NatsServer {
         info!("nats server shutting down...");
 
         info!("flushing existing clients...");
-        let clients = self.clients.lock().await;
-        for client in clients.iter() {
+        let clients = self.clients.lock().await.clone();
+        for client in &clients {
             if let Err(err) = client.flush().await {
                 error!("failed to flush client: {}", err);
             }
@@ -184,6 +223,10 @@ impl NatsServer {
     /// # Returns
     ///
     /// A `Result` containing the built `Client` if successful, or an `Error` if the client failed to connect.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the client fails to connect to the NATS server.
     pub async fn build_client(&self) -> Result<Client> {
         let connect_options = async_nats::ConnectOptions::new()
             .name(format!("client-{}", self.server_name))
@@ -196,8 +239,7 @@ impl NatsServer {
         .await
         .map_err(Error::ClientFailedToConnect)?;
 
-        let mut clients = self.clients.lock().await;
-        clients.push(client.clone());
+        self.clients.lock().await.push(client.clone());
 
         Ok(client)
     }
