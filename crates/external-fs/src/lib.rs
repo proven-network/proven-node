@@ -102,13 +102,14 @@ impl ExternalFs {
     ///
     /// # Errors
     ///
-    /// This function will return an error if the filesystem is already started,
-    /// if there is an error mounting NFS, ensuring permissions, initializing gocryptfs,
-    /// or if the gocryptfs process exits with a non-zero status.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if it fails to wait for the gocryptfs process to exit.
+    /// This function will return an error if:
+    /// - The filesystem is already started
+    /// - Failed to mount NFS
+    /// - Failed to set permissions
+    /// - Failed to initialize gocryptfs
+    /// - Failed to perform integrity check
+    /// - The gocryptfs process exits with a non-zero status
+    /// - Failed to wait for process completion
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
@@ -185,8 +186,8 @@ impl ExternalFs {
 
             // Wait for the gocryptfs process to exit or for the shutdown token to be cancelled
             tokio::select! {
-                _ = cmd.wait() => {
-                    let status = cmd.wait().await.unwrap();
+                result = cmd.wait() => {
+                    let status = result.map_err(|e| Error::IoError("failed to wait for gocryptfs", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -210,7 +211,9 @@ impl ExternalFs {
                         Err(e) => warn!("gocryptfs failed: {:?}", e),
                     }
 
-                    cmd.wait().await.unwrap();
+                    cmd.wait()
+                        .await
+                        .map_err(|e| Error::IoError("failed to wait for gocryptfs shutdown", e))?;
 
                     umount_nfs(nfs_mount_dir).await?;
 
