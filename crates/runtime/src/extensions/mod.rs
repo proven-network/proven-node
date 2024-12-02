@@ -1,5 +1,3 @@
-#![allow(long_running_const_eval)]
-
 use deno_core::extension;
 
 mod console;

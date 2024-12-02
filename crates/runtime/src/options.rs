@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct HttpHandlerOptions {
     pub allowed_web_origins: HashSet<String>,
     pub max_heap_mbs: Option<u16>,
@@ -8,14 +8,14 @@ pub struct HttpHandlerOptions {
     pub timeout_millis: Option<u32>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RpcHandlerOptions {
     pub allowed_web_origins: HashSet<String>,
     pub max_heap_mbs: Option<u16>,
     pub timeout_millis: Option<u32>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HandlerOptions {
     Http(HttpHandlerOptions),
     Rpc(RpcHandlerOptions),

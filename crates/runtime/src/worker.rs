@@ -8,29 +8,6 @@ use proven_store::{Store2, Store3};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-pub struct Worker<AS, PS, NS, ASS, PSS, NSS>
-where
-    AS: Store2,
-    PS: Store3,
-    NS: Store3,
-    ASS: SqlStore2,
-    PSS: SqlStore3,
-    NSS: SqlStore3,
-{
-    sender: mpsc::Sender<WorkerRequest>,
-    _marker: PhantomData<AS>,
-    _marker2: PhantomData<PS>,
-    _marker3: PhantomData<NS>,
-    _marker4: PhantomData<ASS>,
-    _marker5: PhantomData<PSS>,
-    _marker6: PhantomData<NSS>,
-}
-
-type WorkerRequest = (
-    ExecutionRequest,
-    oneshot::Sender<Result<ExecutionResult, Error>>,
-);
-
 /// A worker that handles execution requests using a runtime. Can be run async in tokio.
 ///
 /// # Type Parameters
@@ -76,6 +53,29 @@ type WorkerRequest = (
 ///         .await;
 /// }
 /// ```
+pub struct Worker<AS, PS, NS, ASS, PSS, NSS>
+where
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
+{
+    sender: mpsc::Sender<WorkerRequest>,
+    _marker: PhantomData<AS>,
+    _marker2: PhantomData<PS>,
+    _marker3: PhantomData<NS>,
+    _marker4: PhantomData<ASS>,
+    _marker5: PhantomData<PSS>,
+    _marker6: PhantomData<NSS>,
+}
+
+type WorkerRequest = (
+    ExecutionRequest,
+    oneshot::Sender<Result<ExecutionResult, Error>>,
+);
+
 impl<AS, PS, NS, ASS, PSS, NSS> Worker<AS, PS, NS, ASS, PSS, NSS>
 where
     AS: Store2,
@@ -85,16 +85,13 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
 {
-    /// Creates a new worker with the given runtime options and stores.
+    /// Creates a new `Worker` with the given runtime options.
     ///
-    /// # Parameters
-    /// - `runtime_options`: The runtime options to use.
-    /// - `application_store`: The application store to use.
-    /// - `personal_store`: The personal store to use.
-    /// - `nft_store`: The NFT store to use.
+    /// # Errors
+    /// This function will return an error if the runtime initialization fails.
     ///
-    /// # Returns
-    /// The created worker.
+    /// # Panics
+    /// This function will panic if it fails to send or receive messages through the channels.
     pub async fn new(
         runtime_options: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS>,
     ) -> Result<Self, Error> {
@@ -137,7 +134,13 @@ where
     /// - `request`: The execution request to execute.
     ///
     /// # Returns
-    /// An a result containing the execution result.
+    /// A result containing the execution result.
+    ///
+    /// # Errors
+    /// This function will return an error if it fails to send or receive messages through the channels.
+    ///
+    /// # Panics
+    /// This function will panic if it fails to unwrap the response.
     pub async fn execute(&mut self, request: ExecutionRequest) -> Result<ExecutionResult, Error> {
         let (sender, reciever) = oneshot::channel();
         let worker_request = (request, sender);

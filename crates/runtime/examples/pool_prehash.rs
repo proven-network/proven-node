@@ -48,7 +48,7 @@ async fn main() -> Result<(), Error> {
         handler_name: Some("handler".to_string()),
         module: module.to_string(),
     };
-    let options_hash = hash_options(&runtime_options);
+    let options_hash = hash_options(&runtime_options)?;
 
     // Warm up pool with a full execution
     Arc::clone(&pool)

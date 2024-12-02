@@ -1,3 +1,6 @@
+#![allow(clippy::inline_always)]
+#![allow(clippy::significant_drop_tightening)]
+
 use crate::options::SqlMigrations;
 
 use deno_core::{extension, op2};

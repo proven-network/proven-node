@@ -1,3 +1,6 @@
+#![allow(clippy::inline_always)]
+#![allow(clippy::significant_drop_tightening)]
+
 use deno_core::{extension, op2, v8};
 
 #[derive(Default)]
@@ -7,8 +10,8 @@ pub struct ConsoleState {
 
 #[derive(Debug)]
 pub struct LogMessage {
-    pub level: String,
     pub args: v8::Global<v8::Value>,
+    pub level: String,
 }
 
 #[op2]

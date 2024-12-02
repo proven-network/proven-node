@@ -1,4 +1,8 @@
-use crate::extensions::*;
+use crate::extensions::{
+    console_ext, kv_ext, openai_ext, radixdlt_babylon_gateway_api_ext,
+    radixdlt_radix_engine_toolkit_ext, run_options_parser_ext, sessions_ext, sql_migrations_ext,
+    sql_options_parser_ext, uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
+};
 use crate::options::{ModuleHandlerOptions, ModuleOptions, SqlMigrations};
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
@@ -57,11 +61,9 @@ impl OptionsParser {
 
         let module_hash = Self::hash_source(module_source.clone());
 
-        println!("{}", Self::preprocess_source(module_source.clone()));
-
         let module = Module::new(
-            format!("{}.ts", module_hash),
-            Self::preprocess_source(module_source.clone()).as_str(),
+            format!("{module_hash}.ts"),
+            Self::preprocess_source(&module_source).as_str(),
         );
 
         self.runtime.put(ConsoleState::default())?;
@@ -80,30 +82,28 @@ impl OptionsParser {
         })
     }
 
-    fn preprocess_source(module_source: String) -> String {
+    fn preprocess_source(module_source: &str) -> String {
         let module_source = replace_vendor_imports(module_source);
-        let module_source = Self::strip_comments(module_source);
-        let module_source = Self::name_default_export(module_source);
-        Self::rewrite_run_functions(module_source)
+        let module_source = Self::strip_comments(&module_source);
+        let module_source = Self::name_default_export(&module_source);
+        Self::rewrite_run_functions(&module_source)
     }
 
-    fn strip_comments(module_source: String) -> String {
+    fn strip_comments(module_source: &str) -> String {
         let comment_re = Regex::new(r"(?m)^\s*//.*|/\*[\s\S]*?\*/").unwrap();
-        comment_re
-            .replace_all(module_source.as_str(), "")
-            .to_string()
+        comment_re.replace_all(module_source, "").to_string()
     }
 
-    fn name_default_export(module_source: String) -> String {
+    fn name_default_export(module_source: &str) -> String {
         module_source.replace("export default ", "export const __default__ = ")
     }
 
-    fn rewrite_run_functions(module_source: String) -> String {
+    fn rewrite_run_functions(module_source: &str) -> String {
         // Define the regex to match `export const/let` declarations with the specified functions
         let re = Regex::new(r"(?m)^(\s*)export\s+(const|let)\s+(\w+)\s*=\s*(runOnHttp|runOnProvenEvent|runOnRadixEvent|runOnSchedule|runWithOptions)\(").unwrap();
 
         // Replace the matched string with the modified version
-        let result = re.replace_all(module_source.as_str(), |caps: &regex::Captures| {
+        let result = re.replace_all(module_source, |caps: &regex::Captures| {
             format!(
                 "{}export {} {} = {}('{}', ",
                 &caps[1], &caps[2], &caps[3], &caps[4], &caps[3]
@@ -120,7 +120,7 @@ impl OptionsParser {
         let result = hasher.finalize();
 
         // Convert the hash result to a hexadecimal string
-        let hash_string = format!("{:x}", result);
+        let hash_string = format!("{result:x}");
 
         hash_string
     }
@@ -132,19 +132,17 @@ mod tests {
 
     #[test]
     fn test_new_options_parser() {
-        let parser = OptionsParser::new();
-        assert!(parser.is_ok());
+        assert!(OptionsParser::new().is_ok());
     }
 
     #[test]
     fn test_parse_module() {
-        let mut parser = OptionsParser::new().unwrap();
         let module_source = r#"
             export default function() {
                 console.log("Hello, world!");
             }
         "#;
-        let result = parser.parse(module_source);
+        let result = OptionsParser::new().unwrap().parse(module_source);
         assert!(result.is_ok());
         let options = result.unwrap();
         assert_eq!(options.module_source, module_source);
@@ -152,8 +150,7 @@ mod tests {
 
     #[test]
     fn test_parse_module_handler_options() {
-        let mut parser = OptionsParser::new().unwrap();
-        let module_source = r#"
+        let module_source = r"
             import { runOnHttp, runWithOptions } from 'proven:run';
             import { getApplicationDb, sql } from 'proven:sql';
 
@@ -172,8 +169,8 @@ mod tests {
             }, {
                 timeout: 2000
             });
-        "#;
-        let result = parser.parse(module_source);
+        ";
+        let result = OptionsParser::new().unwrap().parse(module_source);
         assert!(result.is_ok());
 
         let options = result.unwrap();
@@ -209,16 +206,16 @@ mod tests {
 
     #[test]
     fn test_strip_comments() {
-        let source = r#"
+        let source = r"
             // This is a comment
             const x = 42;/* This is another comment */
             /* This is another comment */console.log(x);
-        "#;
-        let expected = r#"
+        ";
+        let expected = r"
             const x = 42;
             console.log(x);
-        "#;
-        assert_eq!(OptionsParser::strip_comments(source.to_string()), expected);
+        ";
+        assert_eq!(OptionsParser::strip_comments(source), expected);
     }
 
     #[test]
@@ -233,32 +230,26 @@ mod tests {
                 console.log("Hello, world!");
             }
         "#;
-        assert_eq!(
-            OptionsParser::name_default_export(source.to_string()),
-            expected
-        );
+        assert_eq!(OptionsParser::name_default_export(source), expected);
     }
 
     #[test]
     fn test_rewrite_run_functions() {
-        let source = r#"
+        let source = r"
             export const handler = runWithOptions((x,y) => {
                 console.log(x, y);
             }, {
                 timeout: 5000
             });
-        "#;
-        let expected = r#"
+        ";
+        let expected = r"
             export const handler = runWithOptions('handler', (x,y) => {
                 console.log(x, y);
             }, {
                 timeout: 5000
             });
-        "#;
-        assert_eq!(
-            OptionsParser::rewrite_run_functions(source.to_string()),
-            expected
-        );
+        ";
+        assert_eq!(OptionsParser::rewrite_run_functions(source), expected);
     }
 
     #[test]

@@ -1,3 +1,7 @@
+#![allow(clippy::inline_always)]
+#![allow(clippy::significant_drop_tightening)]
+#![allow(clippy::future_not_send)]
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -32,7 +36,7 @@ pub async fn op_get_nft_bytes<NS: Store2>(
 
     let result = if let Some(store) = nft_store.as_ref() {
         store
-            .scope(format!("{}:bytes", store_name))
+            .scope(format!("{store_name}:bytes"))
             .scope(nft_id)
             .get(key)
             .await
@@ -74,7 +78,7 @@ pub async fn op_set_nft_bytes<NS: Store2>(
 
     let result = if let Some(store) = nft_store.as_ref() {
         store
-            .scope(format!("{}:bytes", store_name))
+            .scope(format!("{store_name}:bytes"))
             .scope(nft_id)
             .put(key, value)
             .await
@@ -115,7 +119,7 @@ pub async fn op_get_nft_string<NS: Store2>(
 
     let result = if let Some(store) = nft_store.as_ref() {
         match store
-            .scope(format!("{}:string", store_name))
+            .scope(format!("{store_name}:string"))
             .scope(nft_id)
             .get(key)
             .await
@@ -159,7 +163,7 @@ pub async fn op_set_nft_string<NS: Store2>(
 
     let result = if let Some(store) = nft_store.as_ref() {
         store
-            .scope(format!("{}:string", store_name))
+            .scope(format!("{store_name}:string"))
             .scope(nft_id)
             .put(key, Bytes::from(value))
             .await

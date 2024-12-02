@@ -1,3 +1,6 @@
+#![allow(clippy::inline_always)]
+#![allow(clippy::significant_drop_tightening)]
+
 use deno_core::{extension, op2};
 
 #[derive(Debug, Default)]
@@ -7,13 +10,13 @@ pub struct GatewayDetailsState {
 }
 
 #[op2(fast)]
-pub fn op_get_gateway_network_id(#[state] state: &mut GatewayDetailsState) -> u8 {
+pub const fn op_get_gateway_network_id(#[state] state: &GatewayDetailsState) -> u8 {
     state.network_id
 }
 
 #[op2]
 #[string]
-pub fn op_get_gateway_origin(#[state] state: &mut GatewayDetailsState) -> String {
+pub fn op_get_gateway_origin(#[state] state: &GatewayDetailsState) -> String {
     state.gateway_origin.clone()
 }
 

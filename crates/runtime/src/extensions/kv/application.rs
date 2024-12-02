@@ -1,3 +1,7 @@
+#![allow(clippy::inline_always)]
+#![allow(clippy::significant_drop_tightening)]
+#![allow(clippy::future_not_send)]
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -30,7 +34,7 @@ pub async fn op_get_application_bytes<AS: Store1>(
     };
 
     let result = match application_store
-        .scope(format!("{}:bytes", store_name))
+        .scope(format!("{store_name}:bytes"))
         .get(key)
         .await
     {
@@ -68,7 +72,7 @@ pub async fn op_set_application_bytes<AS: Store1>(
     };
 
     let result = application_store
-        .scope(format!("{}:bytes", store_name))
+        .scope(format!("{store_name}:bytes"))
         .put(key, value)
         .await
         .is_ok();
@@ -103,7 +107,7 @@ pub async fn op_get_application_string<AS: Store1>(
     };
 
     let result = match application_store
-        .scope(format!("{}:string", store_name))
+        .scope(format!("{store_name}:string"))
         .get(key)
         .await
     {
@@ -141,7 +145,7 @@ pub async fn op_set_application_string<AS: Store1>(
     };
 
     let result = application_store
-        .scope(format!("{}:string", store_name))
+        .scope(format!("{store_name}:string"))
         .put(key, Bytes::from(value))
         .await
         .is_ok();

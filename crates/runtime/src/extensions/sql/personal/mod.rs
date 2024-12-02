@@ -1,3 +1,7 @@
+#![allow(clippy::inline_always)]
+#![allow(clippy::significant_drop_tightening)]
+#![allow(clippy::future_not_send)]
+
 mod connection_manager;
 mod param_list_manager;
 

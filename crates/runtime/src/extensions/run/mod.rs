@@ -1,21 +1,22 @@
-use crate::options::{HandlerOptions, ModuleHandlerOptions};
+#![allow(clippy::inline_always)]
+#![allow(clippy::significant_drop_tightening)]
+
+use crate::options::{HandlerOptions, HttpHandlerOptions, ModuleHandlerOptions, RpcHandlerOptions};
 
 use deno_core::{extension, op2};
 
 #[op2(fast)]
 pub fn op_add_allowed_origin(
     #[state] state: &mut ModuleHandlerOptions,
-    #[string] handler_type: String,
+    #[string] handler_type: &str,
     #[string] handler_name: String,
-    #[string] origin: String,
+    #[string] origin: &str,
 ) {
-    let options = state
-        .entry(handler_name)
-        .or_insert(match handler_type.as_str() {
-            "http" => HandlerOptions::Http(Default::default()),
-            "rpc" => HandlerOptions::Rpc(Default::default()),
-            _ => unreachable!(),
-        });
+    let options = state.entry(handler_name).or_insert(match handler_type {
+        "http" => HandlerOptions::Http(HttpHandlerOptions::default()),
+        "rpc" => HandlerOptions::Rpc(RpcHandlerOptions::default()),
+        _ => unreachable!(),
+    });
 
     match options {
         HandlerOptions::Http(options) => options
@@ -30,19 +31,17 @@ pub fn op_add_allowed_origin(
 #[op2(fast)]
 pub fn op_set_memory_option(
     #[state] state: &mut ModuleHandlerOptions,
-    #[string] handler_type: String,
+    #[string] handler_type: &str,
     #[string] handler_name: String,
     value: u16,
 ) {
     let value = std::cmp::max(value, 32); // 32 MB is the minimum heap size
 
-    let options = state
-        .entry(handler_name)
-        .or_insert(match handler_type.as_str() {
-            "http" => HandlerOptions::Http(Default::default()),
-            "rpc" => HandlerOptions::Rpc(Default::default()),
-            _ => unreachable!(),
-        });
+    let options = state.entry(handler_name).or_insert(match handler_type {
+        "http" => HandlerOptions::Http(HttpHandlerOptions::default()),
+        "rpc" => HandlerOptions::Rpc(RpcHandlerOptions::default()),
+        _ => unreachable!(),
+    });
 
     match options {
         HandlerOptions::Http(options) => options.max_heap_mbs.replace(value),
@@ -53,7 +52,7 @@ pub fn op_set_memory_option(
 #[op2(fast)]
 pub fn op_set_path_option(
     #[state] state: &mut ModuleHandlerOptions,
-    #[string] handler_type: String,
+    #[string] handler_type: &str,
     #[string] handler_name: String,
     #[string] value: String,
 ) {
@@ -61,28 +60,26 @@ pub fn op_set_path_option(
 
     let options = state
         .entry(handler_name)
-        .or_insert(HandlerOptions::Http(Default::default()));
+        .or_insert(HandlerOptions::Http(HttpHandlerOptions::default()));
 
     match options {
         HandlerOptions::Http(options) => options.path.replace(value),
-        _ => unreachable!(),
+        HandlerOptions::Rpc(_) => unreachable!(),
     };
 }
 
 #[op2(fast)]
 pub fn op_set_timeout_option(
     #[state] state: &mut ModuleHandlerOptions,
-    #[string] handler_type: String,
+    #[string] handler_type: &str,
     #[string] handler_name: String,
     value: u32,
 ) {
-    let options = state
-        .entry(handler_name)
-        .or_insert(match handler_type.as_str() {
-            "http" => HandlerOptions::Http(Default::default()),
-            "rpc" => HandlerOptions::Rpc(Default::default()),
-            _ => unreachable!(),
-        });
+    let options = state.entry(handler_name).or_insert(match handler_type {
+        "http" => HandlerOptions::Http(HttpHandlerOptions::default()),
+        "rpc" => HandlerOptions::Rpc(RpcHandlerOptions::default()),
+        _ => unreachable!(),
+    });
 
     match options {
         HandlerOptions::Http(options) => options.timeout_millis.replace(value),

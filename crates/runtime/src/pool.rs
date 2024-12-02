@@ -1,4 +1,4 @@
-use crate::{Error, ExecutionRequest, ExecutionResult, RuntimeOptions, Worker};
+use crate::{Error, ExecutionRequest, ExecutionResult, Result, RuntimeOptions, Worker};
 
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Write;
@@ -16,11 +16,59 @@ type WorkerMap<AS, PS, NS, ASS, PSS, NSS> = HashMap<String, Vec<Worker<AS, PS, N
 type SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS> = Arc<Mutex<WorkerMap<AS, PS, NS, ASS, PSS, NSS>>>;
 type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 
-type SendChannel = oneshot::Sender<Result<ExecutionResult, Error>>;
+type SendChannel = oneshot::Sender<Result<ExecutionResult>>;
 
 type QueueItem = (PoolRuntimeOptions, ExecutionRequest, SendChannel);
 type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
+
+/// Options for a new `Pool`.
+pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS>
+where
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
+{
+    /// Application-scoped SQL store.
+    pub application_sql_store: ASS,
+
+    /// Application-scoped KV store.
+    pub application_store: AS,
+
+    /// Max pool workers.
+    pub max_workers: u32,
+
+    /// NFT-scoped SQL store.
+    pub nft_sql_store: NSS,
+
+    /// NFT-scoped KV store.
+    pub nft_store: NS,
+
+    /// Persona-scoped SQL store.
+    pub personal_sql_store: PSS,
+
+    /// Persona-scoped KV store.
+    pub personal_store: PS,
+
+    /// Origin for Radix Network gateway.
+    pub radix_gateway_origin: String,
+
+    /// Network definition for Radix Network.
+    pub radix_network_definition: NetworkDefinition,
+}
+
+/// Runtime options to instantiate a runtime in the pool.
+#[derive(Clone)]
+pub struct PoolRuntimeOptions {
+    /// Name of the handler function.
+    pub handler_name: Option<String>,
+
+    /// Source code of the module.
+    pub module: String,
+}
 
 /// A pool of workers that can execute tasks concurrently.
 ///
@@ -107,32 +155,6 @@ where
     workers: SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS>,
 }
 
-pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS>
-where
-    AS: Store2,
-    PS: Store3,
-    NS: Store3,
-    ASS: SqlStore2,
-    PSS: SqlStore3,
-    NSS: SqlStore3,
-{
-    pub application_sql_store: ASS,
-    pub application_store: AS,
-    pub max_workers: u32,
-    pub nft_sql_store: NSS,
-    pub nft_store: NS,
-    pub personal_sql_store: PSS,
-    pub personal_store: PS,
-    pub radix_gateway_origin: String,
-    pub radix_network_definition: NetworkDefinition,
-}
-
-#[derive(Clone)]
-pub struct PoolRuntimeOptions {
-    pub handler_name: Option<String>,
-    pub module: String,
-}
-
 impl<AS, PS, NS, ASS, PSS, NSS> Pool<AS, PS, NS, ASS, PSS, NSS>
 where
     AS: Store2,
@@ -142,6 +164,7 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
 {
+    /// Creates a new `Pool`.
     pub async fn new(
         PoolOptions {
             application_sql_store,
@@ -194,7 +217,7 @@ where
         let handle = tokio::spawn(async move {
             'outer: while let Some((runtime_options, request, sender)) = queue_receiver.recv().await
             {
-                let options_hash = hash_options(&runtime_options);
+                let options_hash = hash_options(&runtime_options).unwrap();
                 let mut worker_map = pool.workers.lock().await;
 
                 if let Some(workers) = worker_map.get_mut(&options_hash) {
@@ -218,12 +241,9 @@ where
 
                         sender.send(result).unwrap();
                         continue 'outer;
-                    } else {
-                        drop(worker_map);
                     }
-                } else {
-                    drop(worker_map);
                 }
+                drop(worker_map);
 
                 if pool.total_workers.load(Ordering::SeqCst) < pool.max_workers
                     || pool.kill_idle_worker().await
@@ -247,9 +267,10 @@ where
                         Ok(mut worker) => {
                             let result = worker.execute(request).await;
 
-                            if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) =
-                                result
-                            {
+                            if matches!(
+                                result,
+                                Err(Error::RustyScript(rustyscript::Error::HeapExhausted))
+                            ) {
                                 // Remove the worker from the pool if the heap is exhausted (can't recover)
                                 pool.total_workers.fetch_sub(1, Ordering::SeqCst);
                             } else {
@@ -301,21 +322,37 @@ where
                 sleep(duration).await;
                 let mut overflow_queue = self.overflow_queue.lock().await;
                 while let Some((runtime_options, request, tx)) = overflow_queue.pop_front() {
-                    drop(overflow_queue);
                     self.queue_request(runtime_options, request, tx, true).await;
-                    overflow_queue = self.overflow_queue.lock().await;
                 }
             }
         });
         pool.overflow_processor.lock().await.replace(handle);
     }
 
+    /// Executes a request using the specified runtime options.
+    ///
+    /// # Arguments
+    ///
+    /// * `runtime_options` - The options to configure the runtime.
+    /// * `request` - The execution request to be processed.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the execution result or an error.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the execution fails.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the receiver is dropped before the result is received.
     pub async fn execute(
         self: Arc<Self>,
         runtime_options: PoolRuntimeOptions,
         request: ExecutionRequest,
-    ) -> Result<ExecutionResult, Error> {
-        let options_hash = hash_options(&runtime_options);
+    ) -> Result<ExecutionResult> {
+        let options_hash = hash_options(&runtime_options)?;
         let (sender, reciever) = oneshot::channel();
 
         let mut worker_map = self.workers.lock().await;
@@ -340,12 +377,9 @@ where
                     .insert(options_hash.to_string(), Instant::now());
 
                 return result;
-            } else {
-                drop(worker_map);
             }
-        } else {
-            drop(worker_map);
         }
+        drop(worker_map);
 
         if self.total_workers.load(Ordering::SeqCst) < self.max_workers
             || self.maybe_kill_idle_worker().await
@@ -367,7 +401,10 @@ where
             .await?;
             let result = worker.execute(request).await;
 
-            if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
+            if matches!(
+                result,
+                Err(Error::RustyScript(rustyscript::Error::HeapExhausted))
+            ) {
                 // Remove the worker from the pool if the heap is exhausted (can't recover)
                 self.total_workers.fetch_sub(1, Ordering::SeqCst);
             } else {
@@ -397,90 +434,108 @@ where
         }
     }
 
+    /// Executes a request using precomputed hash options.
+    ///
+    /// # Arguments
+    ///
+    /// * `options_hash` - The precomputed hash of the runtime options.
+    /// * `request` - The execution request to be processed.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the execution result or an error.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the execution fails or if the hash is unknown.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the receiver is dropped before the result is received.
     pub async fn execute_prehashed(
         self: Arc<Self>,
         options_hash: String,
         request: ExecutionRequest,
-    ) -> Result<ExecutionResult, Error> {
-        match self.known_hashes.lock().await.get(&options_hash) {
-            Some(runtime_options) => {
-                let runtime_options = runtime_options.clone();
-                let (sender, reciever) = oneshot::channel();
+    ) -> Result<ExecutionResult> {
+        let known_hashes = self.known_hashes.lock().await;
+        if let Some(runtime_options) = known_hashes.get(&options_hash) {
+            let runtime_options = runtime_options.clone();
+            let (sender, reciever) = oneshot::channel();
 
-                let mut worker_map = self.workers.lock().await;
+            let mut worker_map = self.workers.lock().await;
 
-                if let Some(workers) = worker_map.get_mut(&options_hash) {
-                    if let Some(mut worker) = workers.pop() {
-                        drop(worker_map); // Unlock the worker map
+            if let Some(workers) = worker_map.get_mut(&options_hash) {
+                if let Some(mut worker) = workers.pop() {
+                    drop(worker_map); // Unlock the worker map
 
-                        let result = worker.execute(request).await;
-
-                        let mut worker_map = self.workers.lock().await;
-                        worker_map
-                            .entry(options_hash.clone())
-                            .or_default()
-                            .push(worker);
-
-                        drop(worker_map);
-
-                        self.last_used
-                            .lock()
-                            .await
-                            .insert(options_hash.to_string(), Instant::now());
-
-                        return result;
-                    } else {
-                        drop(worker_map);
-                    }
-                } else {
-                    drop(worker_map);
-                }
-
-                if self.total_workers.load(Ordering::SeqCst) < self.max_workers
-                    || self.maybe_kill_idle_worker().await
-                {
-                    self.total_workers.fetch_add(1, Ordering::SeqCst);
-
-                    let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
-                        application_sql_store: self.application_sql_store.clone(),
-                        application_store: self.application_store.clone(),
-                        handler_name: runtime_options.handler_name.clone(),
-                        module: runtime_options.module.clone(),
-                        nft_sql_store: self.nft_sql_store.clone(),
-                        nft_store: self.nft_store.clone(),
-                        personal_sql_store: self.personal_sql_store.clone(),
-                        personal_store: self.personal_store.clone(),
-                        radix_gateway_origin: self.radix_gateway_origin.clone(),
-                        radix_network_definition: self.radix_network_definition.clone(),
-                    })
-                    .await?;
                     let result = worker.execute(request).await;
 
-                    if let Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) = result {
-                        // Remove the worker from the pool if the heap is exhausted (can't recover)
-                        self.total_workers.fetch_sub(1, Ordering::SeqCst);
-                    } else {
-                        self.workers
-                            .lock()
-                            .await
-                            .entry(options_hash.to_string())
-                            .or_default()
-                            .push(worker);
-                    }
+                    let mut worker_map = self.workers.lock().await;
+                    worker_map
+                        .entry(options_hash.clone())
+                        .or_default()
+                        .push(worker);
+
+                    drop(worker_map);
 
                     self.last_used
                         .lock()
                         .await
                         .insert(options_hash.to_string(), Instant::now());
 
-                    result
-                } else {
-                    self.queue_request(runtime_options, request, sender, false)
-                        .await;
-                    reciever.await.unwrap()
+                    return result;
                 }
             }
-            None => Err(Error::HashUnknown),
+            drop(worker_map);
+
+            if self.total_workers.load(Ordering::SeqCst) < self.max_workers
+                || self.maybe_kill_idle_worker().await
+            {
+                self.total_workers.fetch_add(1, Ordering::SeqCst);
+
+                let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
+                    application_sql_store: self.application_sql_store.clone(),
+                    application_store: self.application_store.clone(),
+                    handler_name: runtime_options.handler_name.clone(),
+                    module: runtime_options.module.clone(),
+                    nft_sql_store: self.nft_sql_store.clone(),
+                    nft_store: self.nft_store.clone(),
+                    personal_sql_store: self.personal_sql_store.clone(),
+                    personal_store: self.personal_store.clone(),
+                    radix_gateway_origin: self.radix_gateway_origin.clone(),
+                    radix_network_definition: self.radix_network_definition.clone(),
+                })
+                .await?;
+                let result = worker.execute(request).await;
+
+                if matches!(
+                    result,
+                    Err(Error::RustyScript(rustyscript::Error::HeapExhausted))
+                ) {
+                    // Remove the worker from the pool if the heap is exhausted (can't recover)
+                    self.total_workers.fetch_sub(1, Ordering::SeqCst);
+                } else {
+                    self.workers
+                        .lock()
+                        .await
+                        .entry(options_hash.to_string())
+                        .or_default()
+                        .push(worker);
+                }
+
+                self.last_used
+                    .lock()
+                    .await
+                    .insert(options_hash.to_string(), Instant::now());
+
+                result
+            } else {
+                self.queue_request(runtime_options, request, sender, false)
+                    .await;
+                reciever.await.unwrap()
+            }
+        } else {
+            Err(Error::HashUnknown)
         }
     }
 
@@ -495,7 +550,7 @@ where
             Ok(permit) => {
                 permit.send((runtime_options, request, tx));
             }
-            Err(mpsc::error::TrySendError::Full(_)) => {
+            Err(mpsc::error::TrySendError::Full(())) => {
                 if queue_front {
                     self.overflow_queue
                         .lock()
@@ -509,7 +564,7 @@ where
                 }
             }
             Err(e) => {
-                eprintln!("Failed to reserve slot in queue: {:?}", e);
+                eprintln!("Failed to reserve slot in queue: {e:?}");
             }
         }
     }
@@ -521,10 +576,9 @@ where
             if last_killed.elapsed() < self.try_kill_interval {
                 drop(last_killed_guard);
                 return false;
-            } else {
-                *last_killed_guard = Some(Instant::now());
-                drop(last_killed_guard);
             }
+            *last_killed_guard = Some(Instant::now());
+            drop(last_killed_guard);
         }
 
         self.kill_idle_worker().await
@@ -554,10 +608,9 @@ where
                     self.total_workers.fetch_sub(1, Ordering::SeqCst);
 
                     return true;
-                } else {
-                    workers.remove(&module);
-                    drop(workers);
                 }
+                workers.remove(&module);
+                drop(workers);
             }
         }
 
@@ -565,7 +618,20 @@ where
     }
 }
 
-pub fn hash_options(options: &PoolRuntimeOptions) -> String {
+/// Computes a hash for the given runtime options.
+///
+/// # Arguments
+///
+/// * `options` - The runtime options to hash.
+///
+/// # Returns
+///
+/// A `Result` containing the hash string or an error.
+///
+/// # Errors
+///
+/// This function will return an error if the options cannot be hashed.
+pub fn hash_options(options: &PoolRuntimeOptions) -> Result<String> {
     let mut hasher = Sha256::new();
 
     // Concatenate module and handler_name - newline separated
@@ -576,18 +642,17 @@ pub fn hash_options(options: &PoolRuntimeOptions) -> String {
         options
             .handler_name
             .clone()
-            .unwrap_or("<DEFAULT>".to_string())
-    )
-    .unwrap();
+            .unwrap_or_else(|| "<DEFAULT>".to_string())
+    )?;
 
     // Hash the concatenated string
     hasher.update(data);
     let result = hasher.finalize();
 
     // Convert the hash result to a hexadecimal string
-    let hash_string = format!("{:x}", result);
+    let hash_string = format!("{result:x}");
 
-    hash_string
+    Ok(hash_string)
 }
 
 #[cfg(test)]
@@ -664,7 +729,7 @@ mod tests {
             module: "export const test = (a, b) => a + b;".to_string(),
         };
 
-        let options_hash = hash_options(&runtime_options);
+        let options_hash = hash_options(&runtime_options).unwrap();
         pool.known_hashes
             .lock()
             .await

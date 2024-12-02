@@ -1,3 +1,6 @@
+#![allow(clippy::inline_always)]
+#![allow(clippy::significant_drop_tightening)]
+
 use deno_core::{extension, op2};
 
 static NULL_IDENTITY: &str = "<NONE>";
@@ -10,17 +13,16 @@ pub struct SessionsState {
 
 #[op2]
 #[string]
-pub fn op_get_current_identity(#[state] state: &mut SessionsState) -> String {
+pub fn op_get_current_identity(#[state] state: &SessionsState) -> String {
     state
         .identity
         .clone()
-        .unwrap_or(NULL_IDENTITY.to_string())
-        .clone()
+        .unwrap_or_else(|| NULL_IDENTITY.to_string())
 }
 
 #[op2]
 #[string]
-pub fn op_get_current_accounts(#[state] state: &mut SessionsState) -> String {
+pub fn op_get_current_accounts(#[state] state: &SessionsState) -> String {
     state.accounts.clone().unwrap_or_default().join(",")
 }
 

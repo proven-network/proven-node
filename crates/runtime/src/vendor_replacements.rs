@@ -25,14 +25,14 @@ static VENDOR_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
     map
 });
 
-pub fn replace_vendor_imports(module_source: String) -> String {
+pub fn replace_vendor_imports(module_source: &str) -> String {
     let import_regex = Regex::new(
         r#"((import|export)(?:[\s\n]+(?:type\s+)?[^"']+from\s+)?[\s\n]*["'])([^"']+)(["'])"#,
     )
     .unwrap();
 
     import_regex
-        .replace_all(&module_source, |caps: &regex::Captures| {
+        .replace_all(module_source, |caps: &regex::Captures| {
             let pre_path = &caps[1];
             let path = &caps[3];
             let post_path = &caps[4];
@@ -40,10 +40,12 @@ pub fn replace_vendor_imports(module_source: String) -> String {
             let new_path = VENDOR_REPLACEMENTS
                 .iter()
                 .find(|(vendor, _)| path.starts_with(*vendor))
-                .map(|(vendor, replacement)| path.replace(vendor, replacement))
-                .unwrap_or(path.to_string());
+                .map_or_else(
+                    || path.to_string(),
+                    |(vendor, replacement)| path.replace(vendor, replacement),
+                );
 
-            format!("{}{}{}", pre_path, new_path, post_path)
+            format!("{pre_path}{new_path}{post_path}")
         })
         .into_owned()
 }
@@ -61,7 +63,7 @@ mod tests {
             export { something } from "uuid/v4";
         "#;
 
-        let output = replace_vendor_imports(input.to_string());
+        let output = replace_vendor_imports(input);
 
         assert!(output.contains(r#"from "proven:uuid""#));
         assert!(output.contains(r#"from "proven:radixdlt_babylon_gateway_api""#));
@@ -73,7 +75,7 @@ mod tests {
     fn test_handle_package_name_appearing_in_renames() {
         let input = r#"import { v4 as uuidv4 } from "uuid";"#;
 
-        let output = replace_vendor_imports(input.to_string());
+        let output = replace_vendor_imports(input);
 
         assert_eq!(output, r#"import { v4 as uuidv4 } from "proven:uuid";"#);
     }
