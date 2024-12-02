@@ -9,6 +9,8 @@ mod conversion;
 mod error;
 mod sql_type;
 
+use std::fmt::Debug;
+
 use conversion::convert_libsql_rows;
 pub use error::{Error, Result};
 use sql_type::SqlType;
@@ -24,6 +26,12 @@ static INSERT_MIGRATION_SQL: &str = include_str!("../sql/insert_migration.sql");
 #[derive(Clone)]
 pub struct Database {
     connection: Connection,
+}
+
+impl Debug for Database {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Database").finish()
+    }
 }
 
 impl Database {

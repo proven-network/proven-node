@@ -21,7 +21,7 @@ pub trait SqlStoreError: Debug + Error + Send + Sync {}
 #[async_trait]
 pub trait SqlConnection
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the connection
     type Error: SqlStoreError;
@@ -55,7 +55,7 @@ where
 #[async_trait]
 pub trait SqlStore
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the store
     type Error: SqlStoreError;
@@ -73,7 +73,7 @@ macro_rules! define_scoped_sql_store {
     ($name:ident, $parent:ident, $doc:expr) => {
         #[async_trait]
         #[doc = $doc]
-        pub trait $name: Clone + Send + Sync + 'static {
+        pub trait $name: Clone + Debug + Send + Sync + 'static {
             /// The error type for the store
             type Error: SqlStoreError;
 

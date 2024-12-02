@@ -24,7 +24,7 @@ pub struct NatsStreamOptions {
     pub stream_name: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NatsStream<H>
 where
     H: StreamHandler,
@@ -296,7 +296,7 @@ mod tests {
     impl std::error::Error for TestHandlerError {}
     impl StreamHandlerError for TestHandlerError {}
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct PublishTestHandler {
         tx: tokio::sync::mpsc::Sender<Bytes>,
     }
@@ -321,7 +321,7 @@ mod tests {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct RequestTestHandler;
 
     #[async_trait]
@@ -339,7 +339,7 @@ mod tests {
         }
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct CatchUpTestHandler {
         caught_up: std::sync::Arc<std::sync::atomic::AtomicBool>,
         message_count: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -529,7 +529,7 @@ mod tests {
         assert_eq!(response, Bytes::from("reply: test message"));
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct NonPersistentRequestTestHandler;
 
     #[async_trait]

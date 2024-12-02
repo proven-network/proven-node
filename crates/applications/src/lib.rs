@@ -36,21 +36,19 @@ where
     type SqlStore: SqlStore;
 
     /// Create a new application manager.
-    async fn new(
-        applications_store: Self::SqlStore,
-    ) -> Result<Self, <Self::SqlStore as SqlStore>::Error>;
+    async fn new(applications_store: Self::SqlStore) -> Result<Self, Self::SqlStore>;
 
     /// Create a new application.
     async fn create_application(
         &self,
         options: CreateApplicationOptions,
-    ) -> Result<Application, <Self::SqlStore as SqlStore>::Error>;
+    ) -> Result<Application, Self::SqlStore>;
 
     /// Get an application by its ID.
     async fn get_application(
         &self,
         application_id: String,
-    ) -> Result<Option<Application>, <Self::SqlStore as SqlStore>::Error>;
+    ) -> Result<Option<Application>, Self::SqlStore>;
 }
 
 /// Manages database of all currently deployed applications.
@@ -60,18 +58,17 @@ pub struct ApplicationManager<AS: SqlStore> {
 }
 
 #[async_trait]
-impl<AS> ApplicationManagement for ApplicationManager<AS>
+impl<S> ApplicationManagement for ApplicationManager<S>
 where
-    AS: SqlStore,
+    S: SqlStore,
 {
-    type SqlStore = AS;
+    type SqlStore = S;
 
-    async fn new(
-        applications_store: Self::SqlStore,
-    ) -> Result<Self, <Self::SqlStore as SqlStore>::Error> {
+    async fn new(applications_store: Self::SqlStore) -> Result<Self, S> {
         let connection = applications_store
             .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
-            .await?;
+            .await
+            .map_err(Error::SqlStore)?;
 
         Ok(Self { connection })
     }
@@ -82,7 +79,7 @@ where
             owner_identity_address,
             dapp_definition_addresses,
         }: CreateApplicationOptions,
-    ) -> Result<Application, <Self::SqlStore as SqlStore>::Error> {
+    ) -> Result<Application, S> {
         let application_id = Uuid::new_v4().to_string();
 
         self.connection
@@ -93,7 +90,8 @@ where
                     SqlParam::Text(owner_identity_address.clone()),
                 ],
             )
-            .await?;
+            .await
+            .map_err(Error::SqlStore)?;
 
         self.connection
             .execute_batch(
@@ -108,7 +106,8 @@ where
                     })
                     .collect(),
             )
-            .await?;
+            .await
+            .map_err(Error::SqlStore)?;
 
         Ok(Application {
             id: application_id,
@@ -117,10 +116,7 @@ where
         })
     }
 
-    async fn get_application(
-        &self,
-        application_id: String,
-    ) -> Result<Option<Application>, <Self::SqlStore as SqlStore>::Error> {
+    async fn get_application(&self, application_id: String) -> Result<Option<Application>, S> {
         let rows = self
             .connection
             .query(
@@ -132,7 +128,8 @@ where
                 .trim(),
                 vec![SqlParam::Text(application_id.clone())],
             )
-            .await?;
+            .await
+            .map_err(Error::SqlStore)?;
 
         if rows.is_empty() {
             return Ok(None);

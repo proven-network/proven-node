@@ -9,7 +9,7 @@ use async_trait::async_trait;
 pub use error::Error;
 use proven_sql::{SqlConnection, SqlStore, SqlStore1, SqlStore2, SqlStore3};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DirectSqlStore {
     dir: PathBuf,
 }

@@ -2,8 +2,8 @@ mod error;
 
 pub use error::Error;
 
-use std::collections::HashMap;
 use std::sync::Arc;
+use std::{collections::HashMap, fmt::Debug};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -28,6 +28,17 @@ where
     channels: ChannelMap,
     prefix: String,
     _handler: std::marker::PhantomData<H>,
+}
+
+impl<H> Debug for MemoryStream<H>
+where
+    H: StreamHandler,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryStream")
+            .field("prefix", &self.prefix)
+            .finish()
+    }
 }
 
 impl<H> MemoryStream<H>
@@ -169,7 +180,7 @@ mod tests {
     impl std::error::Error for TestHandlerError {}
     impl StreamHandlerError for TestHandlerError {}
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct TestHandler;
 
     #[async_trait]

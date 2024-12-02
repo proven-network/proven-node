@@ -7,7 +7,7 @@ use proven_libsql::Database;
 use proven_sql::{Rows, SqlConnection, SqlParam};
 use tokio::sync::Mutex;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Connection {
     database: Arc<Mutex<Database>>,
 }

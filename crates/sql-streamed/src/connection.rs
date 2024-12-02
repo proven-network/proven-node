@@ -8,7 +8,7 @@ use proven_sql::{Rows, SqlConnection, SqlParam};
 use proven_store::Store;
 use proven_stream::Stream;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Connection<S: Stream<SqlStreamHandler>, LS: Store> {
     stream: S,
     _marker: PhantomData<LS>,

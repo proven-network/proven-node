@@ -31,7 +31,7 @@ pub struct HandlerResponse {
 #[async_trait]
 pub trait StreamHandler
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the handler.
     type HandlerError: StreamHandlerError;
@@ -49,7 +49,7 @@ where
 #[async_trait]
 pub trait Stream<Handler>
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
     Handler: StreamHandler,
 {
     /// The error type for the stream.
@@ -74,7 +74,7 @@ macro_rules! define_scoped_stream {
         #[doc = $doc]
         pub trait $name<Handler>
         where
-            Self: Clone + Send + Sync + 'static,
+            Self: Clone + Debug + Send + Sync + 'static,
             Handler: StreamHandler,
         {
             /// The error type for the stream.

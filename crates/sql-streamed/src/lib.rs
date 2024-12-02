@@ -20,7 +20,7 @@ use proven_stream::{HandlerResponse, StreamHandler};
 use proven_stream::{Stream, Stream1, Stream2, Stream3};
 use tokio::sync::{oneshot, Mutex};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SqlStreamHandler {
     applied_migrations: Arc<Mutex<Vec<String>>>,
     caught_up_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
@@ -87,7 +87,7 @@ pub struct StreamedSqlStoreOptions<S: Stream<SqlStreamHandler>, LS: Store> {
     pub stream: S,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct StreamedSqlStore<S: Stream<SqlStreamHandler>, LS: Store> {
     leader_store: LS,
     local_name: String,
@@ -183,7 +183,7 @@ impl<S: Stream<SqlStreamHandler>, LS: Store> SqlStore for StreamedSqlStore<S, LS
 macro_rules! impl_scoped_sql_store {
     ($name:ident, $parent:ident, $parent_trait:ident, $stream:ident, $store:ident, $doc:expr) => {
         #[doc = $doc]
-        #[derive(Clone)]
+        #[derive(Clone, Debug)]
         pub struct $name<S: $stream<SqlStreamHandler>, LS: $store> {
             leader_store: LS,
             local_name: String,
