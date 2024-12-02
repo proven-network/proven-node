@@ -1,6 +1,13 @@
+//! In-memory (single node) implementation of key-value storage for local
+//! development.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
-use error::Error;
+pub use error::Error;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,25 +17,25 @@ use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
 use tokio::sync::Mutex;
 
+/// In-memory key-value store.
 #[derive(Clone, Debug, Default)]
 pub struct MemoryStore {
     map: Arc<Mutex<HashMap<String, Bytes>>>,
     prefix: Option<String>,
 }
 
-/// MemoryStore is an in-memory implementation of the `Store`, `Store2`, and `Store3` traits.
-/// It uses a `HashMap` protected by a `Mutex` to store key-value pairs, where keys are strings
-/// and values are byte vectors. The store supports optional scoping of keys using a prefix.
 impl MemoryStore {
+    /// Creates a new `MemoryStore`.
+    #[must_use]
     pub fn new() -> Self {
-        MemoryStore {
+        Self {
             map: Arc::new(Mutex::new(HashMap::new())),
             prefix: None,
         }
     }
 
     fn with_scope(prefix: String) -> Self {
-        MemoryStore {
+        Self {
             map: Arc::new(Mutex::new(HashMap::new())),
             prefix: Some(prefix),
         }
@@ -47,8 +54,7 @@ impl Store for MemoryStore {
     type Error = Error;
 
     async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
-        let mut map = self.map.lock().await;
-        map.remove(&self.get_key(key));
+        self.map.lock().await.remove(&self.get_key(key));
         Ok(())
     }
 
@@ -62,19 +68,16 @@ impl Store for MemoryStore {
         Ok(map
             .keys()
             .filter(|&key| {
-                if let Some(prefix) = &self.prefix {
-                    key.starts_with(prefix)
-                } else {
-                    true
-                }
+                self.prefix
+                    .as_ref()
+                    .map_or(true, |prefix| key.starts_with(prefix))
             })
             .cloned()
             .collect())
     }
 
     async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error> {
-        let mut map = self.map.lock().await;
-        map.insert(self.get_key(key), bytes);
+        self.map.lock().await.insert(self.get_key(key), bytes);
         Ok(())
     }
 }
