@@ -22,7 +22,12 @@ struct QueryParams {
     session: String,
 }
 
-pub async fn create_rpc_router<
+pub fn create_rpc_router<AM, SM, AS, PS, NS, ASS, PSS, NSS>(
+    application_manager: AM,
+    session_manager: SM,
+    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
+) -> Router
+where
     AM: ApplicationManagement,
     SM: SessionManagement,
     AS: Store2,
@@ -31,11 +36,7 @@ pub async fn create_rpc_router<
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
->(
-    application_manager: AM,
-    session_manager: SM,
-    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
-) -> Router {
+{
     Router::new().route(
         "/ws",
         get(
@@ -94,7 +95,7 @@ async fn handle_socket<
     let mut send_task = tokio::spawn(async move {
         while let Some(message) = rx.recv().await {
             match sender.send(Message::Binary(message)).await {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(e) => {
                     error!("Error sending message: {:?}", e);
                     break;
@@ -116,14 +117,12 @@ async fn handle_socket<
                     }
                 },
                 // Plaintext is always unexpected
-                Message::Text(_) => break,
+                Message::Text(_) | Message::Close(None) => break,
                 Message::Close(Some(cf)) => {
                     info!("Close with code {} and reason `{}`", cf.code, cf.reason);
                     break;
                 }
-                Message::Close(None) => break,
-                Message::Ping(_) => {}
-                Message::Pong(_) => {}
+                Message::Ping(_) | Message::Pong(_) => {}
             }
         }
     });

@@ -44,7 +44,7 @@ pub async fn create_session_router<T: SessionManagement + 'static>(session_manag
                         }),
                     Err(err) => (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Body::from(format!("Failed to create challenge: {:?}", err)),
+                        Body::from(format!("Failed to create challenge: {err:?}")),
                     )
                         .into_response(),
                 }
@@ -75,14 +75,11 @@ pub async fn create_session_router<T: SessionManagement + 'static>(session_manag
                         }
                     };
 
-                    let verifying_key = match VerifyingKey::from_bytes(&verifying_key_bytes) {
-                        Ok(vk) => vk,
-                        Err(_) => {
-                            return Response::builder()
-                                .status(400)
-                                .body("Failed to parse public key".into())
-                                .unwrap();
-                        }
+                    let Ok(verifying_key) = VerifyingKey::from_bytes(&verifying_key_bytes) else {
+                        return Response::builder()
+                            .status(400)
+                            .body("Failed to parse public key".into())
+                            .unwrap();
                     };
 
                     let signed_challenges: Vec<SignedChallenge> =

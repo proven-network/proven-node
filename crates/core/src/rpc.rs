@@ -14,31 +14,36 @@ use proven_store::{Store2, Store3};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Errors that can occur during RPC.
 #[derive(Debug, Error)]
 pub enum RpcHandlerError {
-    #[error("Method not found")]
-    MethodNotFound,
-
+    /// Invalid payload.
     #[error("Invalid payload")]
-    PayloadInvalid,
+    Payload,
 
+    /// Invalid session.
     #[error("Invalid session")]
-    SessionInvalid,
+    Session,
 
+    /// Invalid COSE Sign1.
     #[error("Invalid COSE_Sign1")]
-    Sign1Invalid,
+    Sign1,
 
+    /// Invalid signature.
     #[error("Invalid signature")]
-    SignatureInvalid,
+    Signature,
 
+    /// Invalid signing key.
     #[error("Invalid signing key")]
-    SigningKeyInvalid,
+    SigningKey,
 
+    /// Invalid verifying key.
     #[error("Invalid verifying key")]
-    VerifyingKeyInvalid,
+    VerifyingKey,
 }
 
-pub struct RpcHandler<
+pub struct RpcHandler<AM, AS, PS, NS, ASS, PSS, NSS>
+where
     AM: ApplicationManagement,
     AS: Store2,
     PS: Store3,
@@ -46,7 +51,7 @@ pub struct RpcHandler<
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-> {
+{
     aad: Vec<u8>,
     application_manager: AM,
     signing_key: SigningKey,
@@ -62,7 +67,7 @@ type HandlerName = String;
 type Module = String;
 type ModuleHash = String;
 #[repr(u8)]
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Request {
     CreateApplication,
     Execute(Module, HandlerName, Args),
@@ -88,15 +93,15 @@ pub struct WhoAmIResponse {
     pub account_addresses: Vec<String>,
 }
 
-impl<
-        AM: ApplicationManagement,
-        AS: Store2,
-        PS: Store3,
-        NS: Store3,
-        ASS: SqlStore2,
-        PSS: SqlStore3,
-        NSS: SqlStore3,
-    > RpcHandler<AM, AS, PS, NS, ASS, PSS, NSS>
+impl<AM, AS, PS, NS, ASS, PSS, NSS> RpcHandler<AM, AS, PS, NS, ASS, PSS, NSS>
+where
+    AM: ApplicationManagement,
+    AS: Store2,
+    PS: Store3,
+    NS: Store3,
+    ASS: SqlStore2,
+    PSS: SqlStore3,
+    NSS: SqlStore3,
 {
     pub fn new(
         application_manager: AM,
@@ -106,18 +111,18 @@ impl<
         let signing_key_bytes: [u8; 32] = session
             .signing_key
             .try_into()
-            .map_err(|_| RpcHandlerError::SigningKeyInvalid)?;
+            .map_err(|_| RpcHandlerError::SigningKey)?;
         let signing_key = SigningKey::from_bytes(&signing_key_bytes);
 
         let verifying_key_bytes: [u8; 32] = session
             .verifying_key
             .try_into()
-            .map_err(|_| RpcHandlerError::VerifyingKeyInvalid)?;
+            .map_err(|_| RpcHandlerError::VerifyingKey)?;
 
         let verifying_key = VerifyingKey::from_bytes(&verifying_key_bytes)
-            .map_err(|_| RpcHandlerError::VerifyingKeyInvalid)?;
+            .map_err(|_| RpcHandlerError::VerifyingKey)?;
 
-        let aad = hex::decode(session.session_id).map_err(|_| RpcHandlerError::SessionInvalid)?;
+        let aad = hex::decode(session.session_id).map_err(|_| RpcHandlerError::Session)?;
 
         Ok(Self {
             aad,
@@ -132,13 +137,9 @@ impl<
     }
 
     pub async fn handle_rpc(&mut self, bytes: Vec<u8>) -> Result<Vec<u8>, RpcHandlerError> {
-        let sign1 =
-            coset::CoseSign1::from_slice(&bytes).map_err(|_| RpcHandlerError::Sign1Invalid)?;
+        let sign1 = coset::CoseSign1::from_slice(&bytes).map_err(|_| RpcHandlerError::Sign1)?;
 
-        let payload = sign1
-            .payload
-            .as_ref()
-            .ok_or(RpcHandlerError::Sign1Invalid)?;
+        let payload = sign1.payload.as_ref().ok_or(RpcHandlerError::Sign1)?;
         let seq = sign1
             .unprotected
             .rest
@@ -152,10 +153,10 @@ impl<
                 Signature::from_slice(signature_bytes)
                     .map(|signature| self.verifying_key.verify(pt, &signature))?
             })
-            .map_err(|_| RpcHandlerError::SignatureInvalid)?;
+            .map_err(|_| RpcHandlerError::Signature)?;
 
-        let method: Request = ciborium::de::from_reader(payload.as_slice())
-            .map_err(|_| RpcHandlerError::PayloadInvalid)?;
+        let method: Request =
+            ciborium::de::from_reader(payload.as_slice()).map_err(|_| RpcHandlerError::Payload)?;
 
         let response = match method {
             Request::CreateApplication => {
@@ -192,7 +193,7 @@ impl<
                     .await
                 {
                     Ok(result) => Ok(Response::ExecuteSuccess(result)),
-                    Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
+                    Err(e) => Ok(Response::ExecuteFailure(format!("{e:?}"))),
                 }
             }
             Request::ExecuteHash(options_hash, args) => {
@@ -208,7 +209,7 @@ impl<
                 match pool.execute_prehashed(options_hash, request).await {
                     Ok(result) => Ok(Response::ExecuteSuccess(result)),
                     Err(proven_runtime::Error::HashUnknown) => Ok(Response::ExecuteHashUnknown),
-                    Err(e) => Ok(Response::ExecuteFailure(format!("{:?}", e))),
+                    Err(e) => Ok(Response::ExecuteFailure(format!("{e:?}"))),
                 }
             }
             Request::Watch(_) => Ok(Response::Ok),
@@ -220,17 +221,14 @@ impl<
 
         let mut payload = Vec::new();
         ciborium::ser::into_writer(&response, &mut payload)
-            .map_err(|_| RpcHandlerError::PayloadInvalid)?;
+            .map_err(|_| RpcHandlerError::Payload)?;
 
-        let sign1_builder = match seq {
-            None => coset::CoseSign1Builder::new(),
-            Some(seq) => {
-                let seq_header = coset::HeaderBuilder::new()
-                    .text_value("seq".to_string(), seq)
-                    .build();
-                coset::CoseSign1Builder::new().unprotected(seq_header)
-            }
-        };
+        let sign1_builder = seq.map_or_else(coset::CoseSign1Builder::new, |seq| {
+            let seq_header = coset::HeaderBuilder::new()
+                .text_value("seq".to_string(), seq)
+                .build();
+            coset::CoseSign1Builder::new().unprotected(seq_header)
+        });
 
         let protected_header: coset::Header = coset::HeaderBuilder::new()
             .algorithm(coset::iana::Algorithm::EdDSA)
@@ -242,8 +240,6 @@ impl<
             .create_signature(&self.aad, |pt| self.signing_key.sign(pt).to_vec())
             .build();
 
-        resp_sign1
-            .to_vec()
-            .map_err(|_| RpcHandlerError::Sign1Invalid)
+        resp_sign1.to_vec().map_err(|_| RpcHandlerError::Sign1)
     }
 }

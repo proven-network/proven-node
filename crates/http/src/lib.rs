@@ -5,9 +5,12 @@ use async_trait::async_trait;
 use axum::Router;
 use tokio::task::JoinHandle;
 
+/// Marker trait for `HttpServer` errors
+pub trait HttpServerError: Debug + Error + Send + Sync {}
+
 #[async_trait]
 pub trait HttpServer: Send + Sync + 'static {
-    type Error: Debug + Error + Send + Sync;
+    type Error: HttpServerError;
 
     async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::Error>;
     async fn shutdown(&self);

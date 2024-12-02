@@ -1,3 +1,4 @@
+use proven_http_insecure::Error as HttpError;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -8,5 +9,5 @@ pub enum Error {
     Applications(#[from] proven_applications::Error<proven_sql_direct::Error>),
 
     #[error(transparent)]
-    Core(#[from] proven_core::Error),
+    Core(#[from] proven_core::Error<HttpError>),
 }

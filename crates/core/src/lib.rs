@@ -1,5 +1,10 @@
+//! Core logic for the Proven node and the entrypoint for all user interactions.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+
 mod error;
-pub mod rpc;
+mod rpc;
 mod sessions;
 
 pub use error::{Error, Result};
@@ -22,12 +27,18 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 
+/// Options for creating a new core.
 pub struct CoreOptions<SM: SessionManagement, AM: ApplicationManagement> {
+    /// The application manager.
     pub application_manager: AM,
+
+    /// The session manager.
     pub session_manager: SM,
 }
 
-pub struct CoreStartOptions<
+/// Options for starting the core.
+pub struct CoreStartOptions<HS, AS, PS, NS, ASS, PSS, NSS>
+where
     HS: HttpServer,
     AS: Store2,
     PS: Store3,
@@ -35,26 +46,53 @@ pub struct CoreStartOptions<
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-> {
+{
+    /// Application-scoped SQL store for runtime.
     pub application_sql_store: ASS,
+
+    /// Application-scope KV store for runtime.
     pub application_store: AS,
+
+    /// HTTP server for mounting RPC endpoints.
     pub http_server: HS,
+
+    /// Persona-scoped SQL store for runtime.
     pub personal_sql_store: PSS,
+
+    /// Persona-scoped KV store for runtime.
     pub personal_store: PS,
+
+    /// NFT-scoped SQL store for runtime.
     pub nft_sql_store: NSS,
+
+    /// NFT-scoped KV store for runtime.
     pub nft_store: NS,
+
+    /// Origin to use for Radix Gateway requests.
     pub radix_gateway_origin: String,
+
+    /// Current Radix network.
     pub radix_network_definition: NetworkDefinition,
 }
 
-pub struct Core<SM: SessionManagement, AM: ApplicationManagement> {
+/// Core logic for handling user interactions.
+pub struct Core<SM, AM>
+where
+    SM: SessionManagement,
+    AM: ApplicationManagement,
+{
     application_manager: AM,
     session_manager: SM,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl<SM: SessionManagement, AM: ApplicationManagement> Core<SM, AM> {
+impl<SM, AM> Core<SM, AM>
+where
+    SM: SessionManagement,
+    AM: ApplicationManagement,
+{
+    /// Create new core.
     pub fn new(
         CoreOptions {
             application_manager,
@@ -69,15 +107,8 @@ impl<SM: SessionManagement, AM: ApplicationManagement> Core<SM, AM> {
         }
     }
 
-    pub async fn start<
-        HS: HttpServer,
-        AS: Store2,
-        PS: Store3,
-        NS: Store3,
-        ASS: SqlStore2,
-        PSS: SqlStore3,
-        NSS: SqlStore3,
-    >(
+    /// Start the core.
+    pub async fn start<HS, AS, PS, NS, ASS, PSS, NSS>(
         &self,
         CoreStartOptions {
             application_sql_store,
@@ -90,7 +121,16 @@ impl<SM: SessionManagement, AM: ApplicationManagement> Core<SM, AM> {
             radix_gateway_origin,
             radix_network_definition,
         }: CoreStartOptions<HS, AS, PS, NS, ASS, PSS, NSS>,
-    ) -> Result<JoinHandle<Result<()>>> {
+    ) -> Result<JoinHandle<Result<(), HS::Error>>, HS::Error>
+    where
+        HS: HttpServer,
+        AS: Store2,
+        PS: Store3,
+        NS: Store3,
+        ASS: SqlStore2,
+        PSS: SqlStore3,
+        NSS: SqlStore3,
+    {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
@@ -113,36 +153,30 @@ impl<SM: SessionManagement, AM: ApplicationManagement> Core<SM, AM> {
             self.application_manager.clone(),
             self.session_manager.clone(),
             Arc::clone(&pool),
-        )
-        .await;
+        );
         let websocket_router = rpc::ws::create_rpc_router(
             self.application_manager.clone(),
             self.session_manager.clone(),
             pool,
-        )
-        .await;
+        );
+
+        let redirect_response = Response::builder()
+            .status(301)
+            .header("Location", "https://proven.network")
+            .body(String::new())
+            .map_err(Error::Http)?;
 
         let https_app = Router::new()
-            .route(
-                "/",
-                get(|| async {
-                    Response::builder()
-                        .status(301)
-                        .header("Location", "https://proven.network")
-                        .body("".to_string())
-                        .unwrap()
-                }),
-            )
+            .route("/", get(|| async { redirect_response }))
             .nest("/", session_router)
             .nest("/", http_rpc_router)
             .nest("/", websocket_router);
 
         let shutdown_token = self.shutdown_token.clone();
+        let https_handle = http_server.start(https_app).await?;
         let handle = self.task_tracker.spawn(async move {
-            let https_handle = http_server.start(https_app).await.unwrap();
-
             tokio::select! {
-                _ = shutdown_token.cancelled() => {
+                () = shutdown_token.cancelled() => {
                     info!("shutdown command received");
                     http_server.shutdown().await;
 
@@ -161,6 +195,7 @@ impl<SM: SessionManagement, AM: ApplicationManagement> Core<SM, AM> {
         Ok(handle)
     }
 
+    /// Shutdown the core.
     pub async fn shutdown(&self) {
         info!("core shutting down...");
 

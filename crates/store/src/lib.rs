@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 
 /// Marker trait for store errors
-pub trait StoreError: Debug + Error + Send + Sync {}
+pub trait StoreError: Debug + Error + Send + Sync + 'static {}
 
 /// A trait representing a key-value store with asynchronous operations.
 #[async_trait]

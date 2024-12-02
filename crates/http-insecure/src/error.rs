@@ -1,3 +1,4 @@
+use proven_http::HttpServerError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -8,3 +9,5 @@ pub enum Error {
     #[error("Failed to bind to address: {0}")]
     Bind(#[from] std::io::Error),
 }
+
+impl HttpServerError for Error {}

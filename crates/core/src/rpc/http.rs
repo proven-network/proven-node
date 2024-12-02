@@ -20,7 +20,12 @@ struct QueryParams {
     session: String,
 }
 
-pub async fn create_rpc_router<
+pub fn create_rpc_router<AM, SM, AS, PS, NS, ASS, PSS, NSS>(
+    application_manager: AM,
+    session_manager: SM,
+    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
+) -> Router
+where
     AM: ApplicationManagement,
     SM: SessionManagement,
     AS: Store2,
@@ -29,11 +34,7 @@ pub async fn create_rpc_router<
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
->(
-    application_manager: AM,
-    session_manager: SM,
-    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
-) -> Router {
+{
     Router::new().route(
         "/rpc",
         post(|query: Query<QueryParams>, body: Bytes| async move {
@@ -53,7 +54,7 @@ pub async fn create_rpc_router<
                                 error!("Error: {:?}", e);
                                 Response::builder()
                                     .status(400)
-                                    .body(format!("Error: {:?}", e).into())
+                                    .body(format!("Error: {e:?}").into())
                                     .unwrap()
                             }
                         },
@@ -61,7 +62,7 @@ pub async fn create_rpc_router<
                             error!("Error: {:?}", e);
                             Response::builder()
                                 .status(400)
-                                .body(format!("Error: {:?}", e).into())
+                                .body(format!("Error: {e:?}").into())
                                 .unwrap()
                         }
                     }
