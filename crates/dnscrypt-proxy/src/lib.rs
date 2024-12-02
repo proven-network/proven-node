@@ -1,4 +1,5 @@
-//! Configures and runs a DNS Crypt proxy to ensure all DNS runs over tamper-proof HTTPS.
+//! Configures and runs a DNS Crypt proxy to ensure all DNS runs over
+//! tamper-proof HTTPS.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]

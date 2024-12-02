@@ -38,22 +38,22 @@ impl<S: Store> CertCache<S> {
         let mut ctx = Context::new(&SHA256);
         for el in contact {
             ctx.update(el.as_ref());
-            ctx.update(&[0])
+            ctx.update(&[0]);
         }
         ctx.update(directory_url.as_ref().as_bytes());
         let hash = URL_SAFE_NO_PAD.encode(ctx.finish());
-        format!("cached_account_{}", hash)
+        format!("cached_account_{hash}")
     }
 
     fn cached_cert_key(domains: &[String], directory_url: impl AsRef<str>) -> String {
         let mut ctx = Context::new(&SHA256);
         for domain in domains {
             ctx.update(domain.as_ref());
-            ctx.update(&[0])
+            ctx.update(&[0]);
         }
         ctx.update(directory_url.as_ref().as_bytes());
         let hash = URL_SAFE_NO_PAD.encode(ctx.finish());
-        format!("cached_cert_{}", hash)
+        format!("cached_cert_{hash}")
     }
 }
 

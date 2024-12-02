@@ -1,3 +1,8 @@
+//! Implementation of simple non-secure HTTP for local development.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+
 mod error;
 
 pub use error::Error;
@@ -15,6 +20,7 @@ use tokio_util::task::TaskTracker;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
+/// Simple non-secure HTTP server.
 pub struct InsecureHttpServer {
     listen_addr: SocketAddr,
     shutdown_token: CancellationToken,
@@ -22,6 +28,8 @@ pub struct InsecureHttpServer {
 }
 
 impl InsecureHttpServer {
+    /// Creates a new instance of `InsecureHttpServer`.
+    #[must_use]
     pub fn new(listen_addr: SocketAddr) -> Self {
         Self {
             listen_addr,
@@ -58,7 +66,7 @@ impl HttpServer for InsecureHttpServer {
               e = axum::serve(listener, router.into_make_service()).into_future() => {
                 info!("http server exited {:?}", e);
               }
-              _ = shutdown_token.cancelled() => {}
+              () = shutdown_token.cancelled() => {}
             };
         });
 

@@ -1,4 +1,5 @@
-//! Core logic for the Proven node and the entrypoint for all user interactions.
+//! Core logic for the Proven node and the entrypoint for all user
+//! interactions.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]

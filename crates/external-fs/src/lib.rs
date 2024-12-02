@@ -1,4 +1,6 @@
-//! Mounts external filesystems into the enclave via NFS, intermediated by a layer of FUSE-based AES-GCM disk-encryption based on enclave-internal cryptographic keys.
+//! Mounts external filesystems into the enclave via NFS, intermediated by a
+//! layer of FUSE-based AES-GCM disk-encryption based on enclave-internal
+//! cryptographic keys.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]

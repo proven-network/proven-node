@@ -1,3 +1,9 @@
+//! Implementation of secure HTTPS server using Let's Encrypt and enclave-only
+//! storage of certificates provisioned using draft-ietf-acme-tls-alpn-01.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+
 mod acceptor;
 mod cert_cache;
 mod error;
@@ -5,7 +11,7 @@ mod multi_resolver;
 
 use acceptor::AxumAcceptor;
 use cert_cache::CertCache;
-use error::Error;
+pub use error::Error;
 use multi_resolver::MultiResolver;
 
 use std::future::IntoFuture;
@@ -29,6 +35,7 @@ use tokio_util::task::TaskTracker;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 
+/// Secure HTTPS server using Let's Encrypt certificates.
 pub struct LetsEncryptHttpServer<S: Store> {
     acceptor: AxumAcceptor,
     cert_store: S,
@@ -40,16 +47,47 @@ pub struct LetsEncryptHttpServer<S: Store> {
     task_tracker: TaskTracker,
 }
 
-impl<S: Store> LetsEncryptHttpServer<S> {
+/// Options for creating a new `LetsEncryptHttpServer`.
+pub struct LetsEncryptHttpServerOptions<S>
+where
+    S: Store,
+{
+    /// The store for certificates.
+    pub cert_store: S,
+
+    /// The CNAME domain used to point to the network.
+    pub cname_domain: String,
+
+    /// The list of domains to serve.
+    pub domains: Vec<String>,
+
+    /// The list of email addresses to use for Let's Encrypt.
+    pub emails: Vec<String>,
+
+    /// The address to listen on.
+    pub listen_addr: SocketAddr,
+}
+
+impl<S> LetsEncryptHttpServer<S>
+where
+    S: Store,
+{
+    /// Creates a new `LetsEncryptHttpServer`.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the `node_endpoints_state.next().await` call returns an error.
     pub fn new(
-        listen_addr: SocketAddr,
-        cname_domain: String,
-        domains: Vec<String>,
-        emails: Vec<String>,
-        cert_store: S,
+        LetsEncryptHttpServerOptions {
+            cert_store,
+            cname_domain,
+            domains,
+            emails,
+            listen_addr,
+        }: LetsEncryptHttpServerOptions<S>,
     ) -> Self {
         let mut node_endpoints_state = AcmeConfig::new(domains.clone())
-            .contact(emails.iter().map(|e| format!("mailto:{}", e)))
+            .contact(emails.iter().map(|e| format!("mailto:{e}")))
             .cache(CertCache::new(cert_store.clone()))
             .directory_lets_encrypt(true)
             .state();
@@ -78,9 +116,14 @@ impl<S: Store> LetsEncryptHttpServer<S> {
         }
     }
 
+    /// Adds a new domain to the Let's Encrypt server.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the `new_state.next().await.unwrap()` call returns an error.
     pub fn add_domain(&self, domain: String) {
         let mut new_state = AcmeConfig::new(vec![domain.clone()])
-            .contact(self.emails.iter().map(|e| format!("mailto:{}", e)))
+            .contact(self.emails.iter().map(|e| format!("mailto:{e}")))
             .cache(CertCache::new(self.cert_store.clone()))
             .directory_lets_encrypt(true)
             .state();
@@ -155,7 +198,7 @@ impl<S: Store> HttpServer for LetsEncryptHttpServer<S> {
                 e = axum_server::bind(listen_addr).acceptor(acceptor).serve(router.into_make_service()).into_future() => {
                     info!("https server exited {:?}", e);
                 }
-                _ = shutdown_token.cancelled() => {}
+                () = shutdown_token.cancelled() => {}
             };
         });
 
