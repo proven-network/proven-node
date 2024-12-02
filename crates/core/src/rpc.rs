@@ -1,16 +1,14 @@
 pub mod http;
 pub mod ws;
 
-use std::sync::Arc;
-
 use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_applications::{Application, ApplicationManagement, CreateApplicationOptions};
-use proven_runtime::{ExecutionRequest, ExecutionResult, Pool, PoolRuntimeOptions};
+use proven_runtime::{
+    ExecutionRequest, ExecutionResult, PoolRuntimeOptions, RuntimePoolManagement,
+};
 use proven_sessions::Session;
-use proven_sql::{SqlStore2, SqlStore3};
-use proven_store::{Store2, Store3};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -42,24 +40,19 @@ pub enum RpcHandlerError {
     VerifyingKey,
 }
 
-pub struct RpcHandler<AM, AS, PS, NS, ASS, PSS, NSS>
+pub struct RpcHandler<AM, RM>
 where
     AM: ApplicationManagement,
-    AS: Store2,
-    PS: Store3,
-    NS: Store3,
-    ASS: SqlStore2,
-    PSS: SqlStore3,
-    NSS: SqlStore3,
+    RM: RuntimePoolManagement,
 {
     aad: Vec<u8>,
+    account_addresses: Vec<String>,
     application_manager: AM,
-    signing_key: SigningKey,
-    verifying_key: VerifyingKey,
     dapp_definition_address: String,
     identity_address: String,
-    account_addresses: Vec<String>,
-    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
+    runtime_pool_manager: RM,
+    signing_key: SigningKey,
+    verifying_key: VerifyingKey,
 }
 
 type Args = Vec<serde_json::Value>;
@@ -93,20 +86,15 @@ pub struct WhoAmIResponse {
     pub account_addresses: Vec<String>,
 }
 
-impl<AM, AS, PS, NS, ASS, PSS, NSS> RpcHandler<AM, AS, PS, NS, ASS, PSS, NSS>
+impl<AM, RM> RpcHandler<AM, RM>
 where
     AM: ApplicationManagement,
-    AS: Store2,
-    PS: Store3,
-    NS: Store3,
-    ASS: SqlStore2,
-    PSS: SqlStore3,
-    NSS: SqlStore3,
+    RM: RuntimePoolManagement,
 {
     pub fn new(
         application_manager: AM,
+        runtime_pool_manager: RM,
         session: Session,
-        runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
     ) -> Result<Self, RpcHandlerError> {
         let signing_key_bytes: [u8; 32] = session
             .signing_key
@@ -126,13 +114,13 @@ where
 
         Ok(Self {
             aad,
+            account_addresses: session.account_addresses,
             application_manager,
-            signing_key,
-            verifying_key,
             dapp_definition_address: session.dapp_definition_address,
             identity_address: session.identity_address,
-            account_addresses: session.account_addresses,
-            runtime_pool,
+            runtime_pool_manager,
+            signing_key,
+            verifying_key,
         })
     }
 
@@ -173,8 +161,6 @@ where
                 }
             }
             Request::Execute(module, handler_name, args) => {
-                let pool = Arc::clone(&self.runtime_pool);
-
                 let request = ExecutionRequest {
                     args,
                     accounts: Some(self.account_addresses.clone()),
@@ -182,7 +168,8 @@ where
                     identity: Some(self.identity_address.clone()),
                 };
 
-                match pool
+                match self
+                    .runtime_pool_manager
                     .execute(
                         PoolRuntimeOptions {
                             handler_name: Some(handler_name.clone()),
@@ -197,8 +184,6 @@ where
                 }
             }
             Request::ExecuteHash(options_hash, args) => {
-                let pool = Arc::clone(&self.runtime_pool);
-
                 let request = ExecutionRequest {
                     accounts: Some(self.account_addresses.clone()),
                     args,
@@ -206,7 +191,11 @@ where
                     identity: Some(self.identity_address.clone()),
                 };
 
-                match pool.execute_prehashed(options_hash, request).await {
+                match self
+                    .runtime_pool_manager
+                    .execute_prehashed(options_hash, request)
+                    .await
+                {
                     Ok(result) => Ok(Response::ExecuteSuccess(result)),
                     Err(proven_runtime::Error::HashUnknown) => Ok(Response::ExecuteHashUnknown),
                     Err(e) => Ok(Response::ExecuteFailure(format!("{e:?}"))),

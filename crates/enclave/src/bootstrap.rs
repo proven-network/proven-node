@@ -14,25 +14,26 @@ use fdlimit::{raise_fd_limit, Outcome as FdOutcome};
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
-use proven_core::{Core, CoreOptions, CoreStartOptions};
-use proven_dnscrypt_proxy::DnscryptProxy;
-use proven_external_fs::ExternalFs;
-use proven_http_letsencrypt::LetsEncryptHttpServer;
+use proven_core::{Core, CoreOptions};
+use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
+use proven_external_fs::{ExternalFs, ExternalFsOptions};
+use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::Kms;
 // use proven_nats_monitor::NatsMonitor;
-use proven_nats_server::NatsServer;
-use proven_postgres::Postgres;
-use proven_radix_aggregator::RadixAggregator;
-use proven_radix_gateway::RadixGateway;
-use proven_radix_node::RadixNode;
-use proven_sessions::{SessionManagement, SessionManager};
+use proven_nats_server::{NatsServer, NatsServerOptions};
+use proven_postgres::{Postgres, PostgresOptions};
+use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
+use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
+use proven_radix_node::{RadixNode, RadixNodeOptions};
+use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
+use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStoreOptions};
 use proven_store::Store;
-use proven_store_asm::AsmStore;
+use proven_store_asm::{AsmStore, AsmStoreOptions};
 use proven_store_nats::{NatsStore, NatsStoreOptions};
-use proven_store_s3::S3Store;
+use proven_store_s3::{S3Store, S3StoreOptions};
 use proven_stream_nats::{NatsStream, NatsStreamOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
@@ -104,7 +105,9 @@ pub struct Bootstrap {
     nats_server_handle: Option<JoinHandle<proven_nats_server::Result<()>>>,
 
     core: Option<EnclaveCore>,
-    core_handle: Option<JoinHandle<proven_core::Result<()>>>,
+    core_handle: Option<
+        JoinHandle<proven_core::Result<(), proven_http_letsencrypt::Error<proven_store_s3::Error>>>,
+    >,
 
     // state
     started: bool,
@@ -621,12 +624,12 @@ impl Bootstrap {
             panic!("instance details not fetched before dnscrypt-proxy");
         });
 
-        let dnscrypt_proxy = DnscryptProxy::new(
-            id.region.clone(),
-            instance_details.vpc_id.clone(),
-            instance_details.availability_zone.clone(),
-            instance_details.subnet_id.clone(),
-        );
+        let dnscrypt_proxy = DnscryptProxy::new(DnscryptProxyOptions {
+            availability_zone: instance_details.availability_zone.clone(),
+            region: id.region.clone(),
+            subnet_id: instance_details.subnet_id.clone(),
+            vpc_id: instance_details.vpc_id.clone(),
+        });
         let dnscrypt_proxy_handle = dnscrypt_proxy.start().await?;
 
         self.dnscrypt_proxy = Some(dnscrypt_proxy);
@@ -641,12 +644,12 @@ impl Bootstrap {
     }
 
     async fn start_radix_node_fs(&mut self) -> Result<()> {
-        let radix_node_fs = ExternalFs::new(
-            "your-password".to_string(),
-            format!("{}/babylon/", self.args.nfs_mount_point),
-            RADIX_NODE_STORE_DIR.to_string(),
-            self.args.skip_fsck,
-        );
+        let radix_node_fs = ExternalFs::new(ExternalFsOptions {
+            encryption_key: "your-password".to_string(),
+            nfs_mount_point: format!("{}/babylon/", self.args.nfs_mount_point),
+            mount_dir: RADIX_NODE_STORE_DIR.to_string(),
+            skip_fsck: self.args.skip_fsck,
+        })?;
 
         let radix_node_fs_handle = radix_node_fs.start().await?;
 
@@ -664,11 +667,11 @@ impl Bootstrap {
         });
 
         let host_ip = instance_details.public_ip.unwrap().to_string();
-        let radix_node = RadixNode::new(
-            self.network_definition.clone(),
+        let radix_node = RadixNode::new(RadixNodeOptions {
             host_ip,
-            RADIX_NODE_STORE_DIR.to_string(),
-        );
+            network_definition: self.network_definition.clone(),
+            store_dir: RADIX_NODE_STORE_DIR.to_string(),
+        });
 
         let radix_node_handle = radix_node.start().await?;
 
@@ -681,12 +684,12 @@ impl Bootstrap {
     }
 
     async fn start_postgres_fs(&mut self) -> Result<()> {
-        let postgres_fs = ExternalFs::new(
-            "your-password".to_string(),
-            format!("{}/postgres/", self.args.nfs_mount_point),
-            POSTGRES_STORE_DIR.to_string(),
-            self.args.skip_fsck,
-        );
+        let postgres_fs = ExternalFs::new(ExternalFsOptions {
+            encryption_key: "your-password".to_string(),
+            nfs_mount_point: format!("{}/postgres/", self.args.nfs_mount_point),
+            mount_dir: POSTGRES_STORE_DIR.to_string(),
+            skip_fsck: self.args.skip_fsck,
+        })?;
 
         let postgres_fs_handle = postgres_fs.start().await?;
 
@@ -699,12 +702,12 @@ impl Bootstrap {
     }
 
     async fn start_postgres(&mut self) -> Result<()> {
-        let postgres = Postgres::new(
-            POSTGRES_STORE_DIR.to_string(),
-            POSTGRES_USERNAME.to_string(),
-            POSTGRES_PASSWORD.to_string(),
-            self.args.skip_vacuum,
-        );
+        let postgres = Postgres::new(PostgresOptions {
+            password: POSTGRES_PASSWORD.to_string(),
+            username: POSTGRES_USERNAME.to_string(),
+            skip_vacuum: self.args.skip_vacuum,
+            store_dir: POSTGRES_STORE_DIR.to_string(),
+        });
 
         let postgres_handle = postgres.start().await?;
 
@@ -717,11 +720,11 @@ impl Bootstrap {
     }
 
     async fn start_radix_aggregator(&mut self) -> Result<()> {
-        let radix_aggregator = RadixAggregator::new(
-            POSTGRES_DATABASE.to_string(),
-            POSTGRES_USERNAME.to_string(),
-            POSTGRES_PASSWORD.to_string(),
-        );
+        let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
+            postgres_database: POSTGRES_DATABASE.to_string(),
+            postgres_password: POSTGRES_USERNAME.to_string(),
+            postgres_username: POSTGRES_PASSWORD.to_string(),
+        });
 
         let radix_aggregator_handle = radix_aggregator.start().await?;
 
@@ -734,11 +737,11 @@ impl Bootstrap {
     }
 
     async fn start_radix_gateway(&mut self) -> Result<()> {
-        let radix_gateway = RadixGateway::new(
-            POSTGRES_DATABASE.to_string(),
-            POSTGRES_USERNAME.to_string(),
-            POSTGRES_PASSWORD.to_string(),
-        );
+        let radix_gateway = RadixGateway::new(RadixGatewayOptions {
+            postgres_database: POSTGRES_DATABASE.to_string(),
+            postgres_password: POSTGRES_USERNAME.to_string(),
+            postgres_username: POSTGRES_PASSWORD.to_string(),
+        });
 
         let radix_gateway_handle = radix_gateway.start().await?;
 
@@ -751,12 +754,12 @@ impl Bootstrap {
     }
 
     async fn start_nats_fs(&mut self) -> Result<()> {
-        let nats_server_fs = ExternalFs::new(
-            "your-password".to_string(),
-            format!("{}/nats/", self.args.nfs_mount_point),
-            "/var/lib/nats".to_string(),
-            self.args.skip_fsck,
-        );
+        let nats_server_fs = ExternalFs::new(ExternalFsOptions {
+            encryption_key: "your-password".to_string(),
+            nfs_mount_point: format!("{}/nats/", self.args.nfs_mount_point),
+            mount_dir: "/var/lib/nats".to_string(),
+            skip_fsck: self.args.skip_fsck,
+        })?;
 
         let nats_server_fs_handle = nats_server_fs.start().await?;
 
@@ -773,12 +776,12 @@ impl Bootstrap {
             panic!("instance details not fetched before nats-server");
         });
 
-        let nats_server = NatsServer::new(
-            instance_details.instance_id.clone(),
-            SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
-            "/var/lib/nats/nats".to_string(),
-            self.args.stokenet,
-        );
+        let nats_server = NatsServer::new(NatsServerOptions {
+            debug: self.args.stokenet,
+            listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
+            server_name: instance_details.instance_id.clone(),
+            store_dir: "/var/lib/nats/nats".to_string(),
+        });
 
         let nats_server_handle = nats_server.start().await?;
         let nats_client = nats_server.build_client().await?;
@@ -810,35 +813,33 @@ impl Bootstrap {
             client: nats_client.clone(),
             max_age: Duration::from_secs(5 * 60),
             persist: false,
-        })
-        .await?;
+        });
 
         let sessions_store = NatsStore::new(NatsStoreOptions {
             bucket: "sessions".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
             persist: true,
-        })
-        .await?;
+        });
 
-        let session_manager = SessionManager::new(
-            self.nsm.clone(),
+        let session_manager = SessionManager::new(SessionManagerOptions {
+            attestor: self.nsm.clone(),
             challenge_store,
-            GATEWAY_URL.to_string(),
             sessions_store,
-            self.network_definition.clone(),
-        );
+            radix_gateway_origin: GATEWAY_URL.to_string(),
+            radix_network_definition: self.network_definition.clone(),
+        });
 
-        let cert_store = S3Store::new(
-            self.args.certificates_bucket.clone(),
-            id.region.clone(),
-            get_or_init_encrypted_key(
+        let cert_store = S3Store::new(S3StoreOptions {
+            bucket: self.args.certificates_bucket.clone(),
+            region: id.region.clone(),
+            secret_key: get_or_init_encrypted_key(
                 id.region.clone(),
                 self.args.kms_key_id.clone(),
                 "CERTIFICATES_KEY".to_string(),
             )
             .await?,
-        )
+        })
         .await;
 
         let cluster_fqdn = format!("{}.{}", id.region.clone(), self.args.fqdn.clone());
@@ -846,24 +847,23 @@ impl Bootstrap {
         let domains = vec![node_fqdn, cluster_fqdn, self.args.fqdn.clone()];
 
         let http_sock_addr = SocketAddr::from((self.args.enclave_ip, self.args.https_port));
-        let http_server = LetsEncryptHttpServer::new(
-            http_sock_addr,
-            self.args.fqdn.clone(),
-            domains,
-            self.args.email.clone(),
+        let http_server = LetsEncryptHttpServer::new(LetsEncryptHttpServerOptions {
             cert_store,
-        );
+            cname_domain: self.args.fqdn.clone(),
+            domains,
+            emails: self.args.email.clone(),
+            listen_addr: http_sock_addr,
+        });
 
         let leader_store = NatsStore::new(NatsStoreOptions {
             bucket: "SQL_LEADER".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
             persist: true,
-        })
-        .await?;
+        });
 
         let application_manager_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
-            leader_store,
+            leader_store: leader_store.clone(),
             local_name: instance_details.instance_id.clone(),
             stream: NatsStream::new(NatsStreamOptions {
                 client: nats_client.clone(),
@@ -871,18 +871,17 @@ impl Bootstrap {
             }),
         });
 
-        let application_manager = ApplicationManager::new(application_manager_sql_store);
+        let application_manager = ApplicationManager::new(application_manager_sql_store).await?;
 
         let application_store = NatsStore::new(NatsStoreOptions {
             bucket: "APPLICATION_KV".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
             persist: true,
-        })
-        .await?;
+        });
 
         let application_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
-            leader_store,
+            leader_store: leader_store.clone(),
             local_name: instance_details.instance_id.clone(),
             stream: NatsStream::new(NatsStreamOptions {
                 client: nats_client.clone(),
@@ -895,11 +894,10 @@ impl Bootstrap {
             client: nats_client.clone(),
             max_age: Duration::ZERO,
             persist: true,
-        })
-        .await?;
+        });
 
         let personal_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
-            leader_store,
+            leader_store: leader_store.clone(),
             local_name: instance_details.instance_id.clone(),
             stream: NatsStream::new(NatsStreamOptions {
                 client: nats_client.clone(),
@@ -912,8 +910,7 @@ impl Bootstrap {
             client: nats_client.clone(),
             max_age: Duration::ZERO,
             persist: true,
-        })
-        .await?;
+        });
 
         let nft_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
             leader_store,
@@ -924,23 +921,25 @@ impl Bootstrap {
             }),
         });
 
+        let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
+            application_sql_store,
+            application_store,
+            max_workers: 100,
+            nft_sql_store,
+            nft_store,
+            personal_sql_store,
+            personal_store,
+            radix_gateway_origin: GATEWAY_URL.to_string(),
+            radix_network_definition: self.network_definition.clone(),
+        })
+        .await;
+
         let core = Core::new(CoreOptions {
             application_manager,
+            runtime_pool_manager,
             session_manager,
         });
-        let core_handle = core
-            .start(CoreStartOptions {
-                application_sql_store,
-                application_store,
-                http_server,
-                personal_sql_store,
-                personal_store,
-                nft_sql_store,
-                nft_store,
-                radix_gateway_origin: "http://127.0.0.1:8081".to_string(),
-                radix_network_definition: self.network_definition.clone(),
-            })
-            .await?;
+        let core_handle = core.start(http_server).await?;
 
         self.core = Some(core);
         self.core_handle = Some(core_handle);
@@ -957,7 +956,11 @@ async fn get_or_init_encrypted_key(
     key_name: String,
 ) -> Result<[u8; 32]> {
     let secret_id = format!("proven-{}", region.clone());
-    let store = AsmStore::new(region.clone(), secret_id).await;
+    let store = AsmStore::new(AsmStoreOptions {
+        region: region.clone(),
+        secret_name: secret_id,
+    })
+    .await;
     let kms = Kms::new(key_id, region.clone()).await;
 
     let key_opt = store.get(key_name.clone()).await?;

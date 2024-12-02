@@ -10,17 +10,18 @@ mod request;
 mod response;
 mod stream_handler;
 
-use connection::Connection;
+pub use connection::Connection;
 pub use error::Error;
 use request::Request;
 use response::Response;
-use stream_handler::{SqlStreamHandler, SqlStreamHandlerOptions};
+pub use stream_handler::SqlStreamHandler;
+use stream_handler::SqlStreamHandlerOptions;
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_libsql::Database;
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
-use proven_store::{Store, Store1, Store2, Store3};
+use proven_store::Store;
 use proven_stream::{Stream, Stream1, Stream2, Stream3};
 use tokio::sync::oneshot;
 
@@ -76,7 +77,7 @@ where
     S: Stream<SqlStreamHandler>,
     LS: Store,
 {
-    type Error = Error<S, LS>;
+    type Error = Error<S::Error, LS::Error>;
     type Connection = Connection<S, LS>;
 
     async fn connect<Q: Into<String> + Send>(
@@ -142,84 +143,64 @@ where
     }
 }
 
-/// Single-scoped SQL store that uses a stream as an append-only log.
-#[derive(Clone, Debug)]
-pub struct StreamedSqlStore1<S: Stream1<SqlStreamHandler>, LS: Store1> {
-    leader_store: LS,
-    local_name: String,
-    stream: S,
-}
-
 #[async_trait]
-impl<S, LS> SqlStore1 for StreamedSqlStore1<S, LS>
+impl<S, LS> SqlStore1 for StreamedSqlStore<S, LS>
 where
-    S: Stream1<SqlStreamHandler>,
-    LS: Store1,
+    S: Stream<SqlStreamHandler> + Stream1<SqlStreamHandler>,
+    LS: Store,
 {
-    type Error = Error<S::Scoped, LS::Scoped>;
-    type Scoped = StreamedSqlStore<S::Scoped, LS::Scoped>;
+    type Error = Error<<S as Stream1<SqlStreamHandler>>::Error, LS::Error>;
+    type Scoped = StreamedSqlStore<S::Scoped, LS>;
 
-    fn scope<Scope: Clone + Into<String> + Send>(&self, scope: Scope) -> Self::Scoped {
+    fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
         StreamedSqlStore {
-            leader_store: self.leader_store.scope(scope.clone().into()),
+            leader_store: self.leader_store.clone(),
             local_name: self.local_name.clone(),
             stream: self.stream.scope(scope.into()),
         }
     }
 }
 
-/// Double-scoped SQL store that uses a stream as an append-only log.
-#[derive(Clone, Debug)]
-pub struct StreamedSqlStore2<S: Stream2<SqlStreamHandler>, LS: Store2> {
-    leader_store: LS,
-    local_name: String,
-    stream: S,
-}
-
 #[async_trait]
-impl<S, LS> SqlStore2 for StreamedSqlStore2<S, LS>
+impl<S, LS> SqlStore2 for StreamedSqlStore<S, LS>
 where
-    S: Stream2<SqlStreamHandler>,
-    LS: Store2,
+    S: Stream<SqlStreamHandler> + Stream1<SqlStreamHandler> + Stream2<SqlStreamHandler>,
+    LS: Store,
+    <S as Stream2<SqlStreamHandler>>::Scoped: Stream<SqlStreamHandler>,
 {
-    type Error =
-        Error<<S::Scoped as Stream1<SqlStreamHandler>>::Scoped, <LS::Scoped as Store1>::Scoped>;
-    type Scoped = StreamedSqlStore1<S::Scoped, LS::Scoped>;
+    type Error = Error<<S as Stream2<SqlStreamHandler>>::Error, LS::Error>;
+    type Scoped = StreamedSqlStore<<S as Stream2<SqlStreamHandler>>::Scoped, LS>;
 
-    fn scope<Scope: Clone + Into<String> + Send>(&self, scope: Scope) -> Self::Scoped {
-        StreamedSqlStore1 {
-            leader_store: self.leader_store.scope(scope.clone().into()),
+    fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+        StreamedSqlStore {
+            leader_store: self.leader_store.clone(),
             local_name: self.local_name.clone(),
-            stream: self.stream.scope(scope.into()),
+            stream: Stream2::scope(&self.stream, scope.into()),
         }
     }
 }
 
-/// Triple-scoped SQL store that uses a stream as an append-only log.
-#[derive(Clone, Debug)]
-pub struct StreamedSqlStore3<S: Stream3<SqlStreamHandler>, LS: Store3> {
-    leader_store: LS,
-    local_name: String,
-    stream: S,
-}
-
 #[async_trait]
-impl<S, LS> SqlStore3 for StreamedSqlStore3<S, LS>
+impl<S, LS> SqlStore3 for StreamedSqlStore<S, LS>
 where
-    S: Stream3<SqlStreamHandler>,
-    LS: Store3,
+    S: Stream<SqlStreamHandler>
+        + Stream1<SqlStreamHandler>
+        + Stream2<SqlStreamHandler>
+        + Stream3<SqlStreamHandler>,
+    LS: Store,
+    <S as Stream3<SqlStreamHandler>>::Scoped:
+        Stream<SqlStreamHandler> + Stream1<SqlStreamHandler> + Stream2<SqlStreamHandler>,
+    <<S as Stream3<SqlStreamHandler>>::Scoped as Stream2<SqlStreamHandler>>::Scoped:
+        Stream<SqlStreamHandler>,
 {
-    type Error = Error<
-        <<S::Scoped as Stream2<SqlStreamHandler>>::Scoped as Stream1<SqlStreamHandler>>::Scoped,
-        <<LS::Scoped as Store2>::Scoped as Store1>::Scoped,
-    >;
-    type Scoped = StreamedSqlStore2<S::Scoped, LS::Scoped>;
+    type Error = Error<<S as Stream3<SqlStreamHandler>>::Error, LS::Error>;
+    type Scoped = StreamedSqlStore<<S as Stream3<SqlStreamHandler>>::Scoped, LS>;
 
-    fn scope<Scope: Clone + Into<String> + Send>(&self, scope: Scope) -> Self::Scoped {
-        StreamedSqlStore2 {
-            leader_store: self.leader_store.scope(scope.clone().into()),
+    fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+        StreamedSqlStore {
+            leader_store: self.leader_store.clone(),
             local_name: self.local_name.clone(),
-            stream: self.stream.scope(scope.into()),
+            stream: Stream3::scope(&self.stream, scope.into()), // Fully qualified syntax for Stream3
         }
     }
 }

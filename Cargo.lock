@@ -6444,6 +6444,7 @@ dependencies = [
  "proven-radix-aggregator",
  "proven-radix-gateway",
  "proven-radix-node",
+ "proven-runtime",
  "proven-sessions",
  "proven-sql",
  "proven-sql-streamed",
@@ -6615,6 +6616,7 @@ dependencies = [
  "proven-attestation-dev",
  "proven-core",
  "proven-http-insecure",
+ "proven-runtime",
  "proven-sessions",
  "proven-sql-direct",
  "proven-store",
@@ -6756,6 +6758,7 @@ dependencies = [
 name = "proven-runtime"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "bytes",
  "deno_core",
  "deno_permissions",

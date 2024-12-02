@@ -10,8 +10,9 @@ use proven_external_fs::ExternalFs;
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
 use proven_nats_server::NatsServer;
+use proven_runtime::RuntimePoolManager;
 use proven_sessions::SessionManager;
-use proven_sql_streamed::{HandlerError as StreamedSqlHandlerError, StreamedSqlStore};
+use proven_sql_streamed::{SqlStreamHandler, StreamedSqlStore};
 use proven_store_nats::NatsStore;
 use proven_stream_nats::NatsStream;
 // use proven_nats_monitor::NatsMonitor;
@@ -28,10 +29,18 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 
-pub type EnclaveSessionManager = SessionManager<NsmAttestor, NatsStore, NatsStore>;
-pub type EnclaveApplicationManager =
-    ApplicationManager<StreamedSqlStore<NatsStore, NatsStream<StreamedSqlHandlerError>>>;
-pub type EnclaveCore = Core<EnclaveSessionManager, EnclaveApplicationManager>;
+pub type EnclaveCore = Core<
+    ApplicationManager<StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>>,
+    RuntimePoolManager<
+        NatsStore,
+        NatsStore,
+        NatsStore,
+        StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>,
+        StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>,
+        StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>,
+    >,
+    SessionManager<NsmAttestor, NatsStore, NatsStore>,
+>;
 
 pub struct EnclaveServices {
     pub proxy: Arc<Mutex<Proxy>>,
@@ -85,7 +94,6 @@ impl Enclave {
             .lock()
             .await
             .add_peer(SocketAddrV4::new(args.peer_ip, args.peer_port))
-            .await
         {
             Ok(_) => AddPeerResponse { success: true },
             Err(e) => {

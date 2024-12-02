@@ -11,6 +11,17 @@ pub enum Error {
     AddrParse(#[from] std::net::AddrParseError),
 
     #[error(transparent)]
+    ApplicationManager(
+        #[from]
+        proven_applications::Error<
+            proven_sql_streamed::Error<
+                proven_stream_nats::Error<proven_sql_streamed::SqlStreamHandler>,
+                proven_store_nats::Error,
+            >,
+        >,
+    ),
+
+    #[error(transparent)]
     AsmStore(#[from] proven_store_asm::Error),
 
     #[error(transparent)]
@@ -32,7 +43,7 @@ pub enum Error {
     Cidr(#[from] cidr::errors::NetworkParseError),
 
     #[error(transparent)]
-    Core(#[from] proven_core::Error),
+    Core(#[from] proven_core::Error<proven_http_letsencrypt::Error<proven_store_s3::Error>>),
 
     #[error(transparent)]
     DnscryptProxy(#[from] proven_dnscrypt_proxy::Error),
@@ -61,6 +72,7 @@ pub enum Error {
     #[error(transparent)]
     NatsStore(#[from] proven_store_nats::Error),
 
+    #[cfg(target_os = "linux")]
     #[error(transparent)]
     Netlink(#[from] rtnetlink::Error),
 

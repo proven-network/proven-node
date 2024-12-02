@@ -1,18 +1,16 @@
 use std::sync::Arc;
 
 use proven_sql::SqlStoreError;
-use proven_store::Store;
-use proven_stream::Stream;
+use proven_store::StoreError;
+use proven_stream::StreamError;
 use thiserror::Error;
-
-use crate::stream_handler::SqlStreamHandler;
 
 /// Errors that can occur in this crate.
 #[derive(Clone, Debug, Error)]
-pub enum Error<S, LS>
+pub enum Error<SE, LSE>
 where
-    S: Stream<SqlStreamHandler>,
-    LS: Store,
+    SE: StreamError,
+    LSE: StoreError,
 {
     /// The caught up channel was closed unexpectedly.
     #[error("Caught up channel closed")]
@@ -32,7 +30,7 @@ where
 
     /// An error occurred in the leader store.
     #[error(transparent)]
-    LeaderStore(LS::Error),
+    LeaderStore(LSE),
 
     /// An error occurred in libsql.
     #[error(transparent)]
@@ -40,32 +38,32 @@ where
 
     /// An error occurred in the stream.
     #[error(transparent)]
-    Stream(S::Error),
+    Stream(SE),
 }
 
-impl<S, LS> From<ciborium::de::Error<std::io::Error>> for Error<S, LS>
+impl<SE, LSE> From<ciborium::de::Error<std::io::Error>> for Error<SE, LSE>
 where
-    S: Stream<SqlStreamHandler>,
-    LS: Store,
+    SE: StreamError,
+    LSE: StoreError,
 {
     fn from(error: ciborium::de::Error<std::io::Error>) -> Self {
         Self::CborDeserialize(Arc::new(error))
     }
 }
 
-impl<S, LS> From<ciborium::ser::Error<std::io::Error>> for Error<S, LS>
+impl<SE, LSE> From<ciborium::ser::Error<std::io::Error>> for Error<SE, LSE>
 where
-    S: Stream<SqlStreamHandler>,
-    LS: Store,
+    SE: StreamError,
+    LSE: StoreError,
 {
     fn from(error: ciborium::ser::Error<std::io::Error>) -> Self {
         Self::CborSerialize(Arc::new(error))
     }
 }
 
-impl<S, LS> SqlStoreError for Error<S, LS>
+impl<SE, LSE> SqlStoreError for Error<SE, LSE>
 where
-    S: Stream<SqlStreamHandler>,
-    LS: Store,
+    SE: StreamError,
+    LSE: StoreError,
 {
 }

@@ -4,10 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+thiserror = { workspace = true }
 tokio = { workspace = true }
+tokio-vsock = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-thiserror = { workspace = true }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-tokio-vsock = { workspace = true }

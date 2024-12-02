@@ -31,24 +31,27 @@ pub struct CreateApplicationOptions {
 pub trait ApplicationManagement
 where
     Self: Clone + Send + Sync + 'static,
+    Self::SqlStore: SqlStore,
 {
-    /// The error type for the store.
+    /// The SQL store type.
     type SqlStore: SqlStore;
 
     /// Create a new application manager.
-    async fn new(applications_store: Self::SqlStore) -> Result<Self, Self::SqlStore>;
+    async fn new(
+        applications_store: Self::SqlStore,
+    ) -> Result<Self, <Self::SqlStore as SqlStore>::Error>;
 
     /// Create a new application.
     async fn create_application(
         &self,
         options: CreateApplicationOptions,
-    ) -> Result<Application, Self::SqlStore>;
+    ) -> Result<Application, <Self::SqlStore as SqlStore>::Error>;
 
     /// Get an application by its ID.
     async fn get_application(
         &self,
         application_id: String,
-    ) -> Result<Option<Application>, Self::SqlStore>;
+    ) -> Result<Option<Application>, <Self::SqlStore as SqlStore>::Error>;
 }
 
 /// Manages database of all currently deployed applications.
@@ -64,7 +67,7 @@ where
 {
     type SqlStore = S;
 
-    async fn new(applications_store: Self::SqlStore) -> Result<Self, S> {
+    async fn new(applications_store: Self::SqlStore) -> Result<Self, S::Error> {
         let connection = applications_store
             .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
             .await
@@ -79,7 +82,7 @@ where
             owner_identity_address,
             dapp_definition_addresses,
         }: CreateApplicationOptions,
-    ) -> Result<Application, S> {
+    ) -> Result<Application, S::Error> {
         let application_id = Uuid::new_v4().to_string();
 
         self.connection
@@ -116,7 +119,10 @@ where
         })
     }
 
-    async fn get_application(&self, application_id: String) -> Result<Option<Application>, S> {
+    async fn get_application(
+        &self,
+        application_id: String,
+    ) -> Result<Option<Application>, S::Error> {
         let rows = self
             .connection
             .query(

@@ -13,6 +13,7 @@ use proven_libsql::Database;
 use proven_stream::{HandlerResponse, StreamHandler};
 use tokio::sync::{oneshot, Mutex};
 
+/// A stream handler that executes SQL queries and migrations.
 #[derive(Clone, Debug)]
 pub struct SqlStreamHandler {
     applied_migrations: Arc<Mutex<Vec<String>>>,
@@ -20,6 +21,7 @@ pub struct SqlStreamHandler {
     database: Database,
 }
 
+/// Options for configuring a `SqlStreamHandler`.
 pub struct SqlStreamHandlerOptions {
     pub caught_up_tx: oneshot::Sender<()>,
     pub database: Database,
@@ -39,6 +41,7 @@ impl SqlStreamHandler {
         }
     }
 
+    /// Returns a list of applied migrations.
     pub async fn applied_migrations(&self) -> Vec<String> {
         self.applied_migrations.lock().await.clone()
     }

@@ -1,17 +1,13 @@
 use super::RpcHandler;
 
-use std::sync::Arc;
-
 use axum::extract::Query;
 use axum::response::Response;
 use axum::routing::post;
 use axum::Router;
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
-use proven_runtime::Pool;
+use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
-use proven_sql::{SqlStore2, SqlStore3};
-use proven_store::{Store2, Store3};
 use serde::Deserialize;
 use tracing::error;
 
@@ -20,20 +16,15 @@ struct QueryParams {
     session: String,
 }
 
-pub fn create_rpc_router<AM, SM, AS, PS, NS, ASS, PSS, NSS>(
+pub fn create_rpc_router<AM, RM, SM>(
     application_manager: AM,
+    runtime_pool_manager: RM,
     session_manager: SM,
-    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
 ) -> Router
 where
     AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
     SM: SessionManagement,
-    AS: Store2,
-    PS: Store3,
-    NS: Store3,
-    ASS: SqlStore2,
-    PSS: SqlStore3,
-    NSS: SqlStore3,
 {
     Router::new().route(
         "/rpc",
@@ -43,7 +34,7 @@ where
                 .await
             {
                 Ok(Some(session)) => {
-                    match RpcHandler::new(application_manager, session, runtime_pool) {
+                    match RpcHandler::new(application_manager, runtime_pool_manager, session) {
                         Ok(mut rpc_handler) => match rpc_handler.handle_rpc(body.to_vec()).await {
                             Ok(response) => {
                                 let bytes = bytes::Bytes::from(response);

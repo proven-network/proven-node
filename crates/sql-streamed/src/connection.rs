@@ -28,7 +28,7 @@ impl<S: Stream<SqlStreamHandler>, LS: Store> Connection<S, LS> {
 
 #[async_trait]
 impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connection<S, LS> {
-    type Error = Error<S, LS>;
+    type Error = Error<S::Error, LS::Error>;
 
     async fn execute<Q: Into<String> + Send>(
         &self,

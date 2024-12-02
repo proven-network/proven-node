@@ -1,7 +1,5 @@
 use super::RpcHandler;
 
-use std::sync::Arc;
-
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::Query;
@@ -9,10 +7,8 @@ use axum::routing::get;
 use axum::Router;
 use futures::{sink::SinkExt, stream::StreamExt};
 use proven_applications::ApplicationManagement;
-use proven_runtime::Pool;
+use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
-use proven_sql::{SqlStore2, SqlStore3};
-use proven_store::{Store2, Store3};
 use serde::Deserialize;
 use std::borrow::Cow;
 use tracing::{error, info};
@@ -22,20 +18,15 @@ struct QueryParams {
     session: String,
 }
 
-pub fn create_rpc_router<AM, SM, AS, PS, NS, ASS, PSS, NSS>(
+pub fn create_rpc_router<AM, RM, SM>(
     application_manager: AM,
+    runtime_pool_manager: RM,
     session_manager: SM,
-    runtime_pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
 ) -> Router
 where
     AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
     SM: SessionManagement,
-    AS: Store2,
-    PS: Store3,
-    NS: Store3,
-    ASS: SqlStore2,
-    PSS: SqlStore3,
-    NSS: SqlStore3,
 {
     Router::new().route(
         "/ws",
@@ -46,7 +37,11 @@ where
                     .await
                 {
                     Ok(Some(session)) => {
-                        match RpcHandler::new(application_manager, session.clone(), runtime_pool) {
+                        match RpcHandler::new(
+                            application_manager,
+                            runtime_pool_manager,
+                            session.clone(),
+                        ) {
                             Ok(rpc_handler) => {
                                 ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
                             }
@@ -77,17 +72,9 @@ async fn handle_socket_error(mut socket: WebSocket, reason: Cow<'static, str>) {
         .ok();
 }
 
-async fn handle_socket<
-    AM: ApplicationManagement,
-    AS: Store2,
-    PS: Store3,
-    NS: Store3,
-    ASS: SqlStore2,
-    PSS: SqlStore3,
-    NSS: SqlStore3,
->(
+async fn handle_socket<AM: ApplicationManagement, RM: RuntimePoolManagement>(
     socket: WebSocket,
-    mut rpc_handler: RpcHandler<AM, AS, PS, NS, ASS, PSS, NSS>,
+    mut rpc_handler: RpcHandler<AM, RM>,
 ) {
     let (mut sender, mut receiver) = socket.split();
 

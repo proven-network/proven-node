@@ -6,6 +6,7 @@
 
 mod error;
 mod extensions;
+mod manager;
 mod options;
 mod options_parser;
 mod permissions;
@@ -16,6 +17,7 @@ mod vendor_replacements;
 mod worker;
 
 pub use error::*;
+pub use manager::*;
 pub use pool::*;
 pub use runtime::*;
 pub use worker::*;

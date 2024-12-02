@@ -11,97 +11,66 @@ mod sessions;
 pub use error::{Error, Result};
 use sessions::create_session_router;
 
-use std::sync::Arc;
-
 use axum::response::Response;
 use axum::routing::get;
 use axum::Router;
 use proven_applications::ApplicationManagement;
 use proven_http::HttpServer;
-use proven_runtime::{Pool, PoolOptions};
+use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
-use proven_sql::{SqlStore2, SqlStore3};
-use proven_store::{Store2, Store3};
-use radix_common::network::NetworkDefinition;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 
 /// Options for creating a new core.
-pub struct CoreOptions<SM: SessionManagement, AM: ApplicationManagement> {
+pub struct CoreOptions<AM, RM, SM>
+where
+    AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
+    SM: SessionManagement,
+{
     /// The application manager.
     pub application_manager: AM,
+
+    /// The runtime pool manager.
+    pub runtime_pool_manager: RM,
 
     /// The session manager.
     pub session_manager: SM,
 }
 
-/// Options for starting the core.
-pub struct CoreStartOptions<HS, AS, PS, NS, ASS, PSS, NSS>
-where
-    HS: HttpServer,
-    AS: Store2,
-    PS: Store3,
-    NS: Store3,
-    ASS: SqlStore2,
-    PSS: SqlStore3,
-    NSS: SqlStore3,
-{
-    /// Application-scoped SQL store for runtime.
-    pub application_sql_store: ASS,
-
-    /// Application-scope KV store for runtime.
-    pub application_store: AS,
-
-    /// HTTP server for mounting RPC endpoints.
-    pub http_server: HS,
-
-    /// Persona-scoped SQL store for runtime.
-    pub personal_sql_store: PSS,
-
-    /// Persona-scoped KV store for runtime.
-    pub personal_store: PS,
-
-    /// NFT-scoped SQL store for runtime.
-    pub nft_sql_store: NSS,
-
-    /// NFT-scoped KV store for runtime.
-    pub nft_store: NS,
-
-    /// Origin to use for Radix Gateway requests.
-    pub radix_gateway_origin: String,
-
-    /// Current Radix network.
-    pub radix_network_definition: NetworkDefinition,
-}
-
 /// Core logic for handling user interactions.
-pub struct Core<SM, AM>
+pub struct Core<AM, RM, SM>
 where
-    SM: SessionManagement,
     AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
+    SM: SessionManagement,
 {
     application_manager: AM,
+    runtime_pool_manager: RM,
     session_manager: SM,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl<SM, AM> Core<SM, AM>
+impl<AM, RM, SM> Core<AM, RM, SM>
 where
-    SM: SessionManagement,
     AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
+    SM: SessionManagement,
 {
     /// Create new core.
     pub fn new(
         CoreOptions {
             application_manager,
+            runtime_pool_manager,
             session_manager,
-        }: CoreOptions<SM, AM>,
+        }: CoreOptions<AM, RM, SM>,
     ) -> Self {
         Self {
             application_manager,
+            runtime_pool_manager,
             session_manager,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
@@ -109,56 +78,27 @@ where
     }
 
     /// Start the core.
-    pub async fn start<HS, AS, PS, NS, ASS, PSS, NSS>(
+    pub async fn start<HS>(
         &self,
-        CoreStartOptions {
-            application_sql_store,
-            application_store,
-            http_server,
-            personal_sql_store,
-            personal_store,
-            nft_sql_store,
-            nft_store,
-            radix_gateway_origin,
-            radix_network_definition,
-        }: CoreStartOptions<HS, AS, PS, NS, ASS, PSS, NSS>,
+        http_server: HS,
     ) -> Result<JoinHandle<Result<(), HS::Error>>, HS::Error>
     where
         HS: HttpServer,
-        AS: Store2,
-        PS: Store3,
-        NS: Store3,
-        ASS: SqlStore2,
-        PSS: SqlStore3,
-        NSS: SqlStore3,
     {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
 
-        let pool = Pool::new(PoolOptions {
-            application_sql_store,
-            application_store,
-            max_workers: 100,
-            nft_sql_store,
-            nft_store,
-            personal_sql_store,
-            personal_store,
-            radix_gateway_origin,
-            radix_network_definition,
-        })
-        .await;
-
         let session_router = create_session_router(self.session_manager.clone()).await;
         let http_rpc_router = rpc::http::create_rpc_router(
             self.application_manager.clone(),
+            self.runtime_pool_manager.clone(),
             self.session_manager.clone(),
-            Arc::clone(&pool),
         );
         let websocket_router = rpc::ws::create_rpc_router(
             self.application_manager.clone(),
+            self.runtime_pool_manager.clone(),
             self.session_manager.clone(),
-            pool,
         );
 
         let redirect_response = Response::builder()

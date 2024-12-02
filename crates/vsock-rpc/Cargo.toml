@@ -10,7 +10,5 @@ derive_more = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tracing = { workspace = true }
-
-[target.'cfg(target_os = "linux")'.dependencies]
 tokio-vsock = { workspace = true }
+tracing = { workspace = true }

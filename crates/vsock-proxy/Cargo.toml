@@ -8,8 +8,8 @@ cidr = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
+tokio-vsock = { workspace = true }
 tracing = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 tokio-tun = { workspace = true }
-tokio-vsock = { workspace = true }
