@@ -1,3 +1,10 @@
+//! Configures and runs a Postgres server to provide storage for Radix Gateway.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::redundant_pub_crate)]
+
 mod error;
 
 pub use error::{Error, Result};
@@ -10,31 +17,71 @@ use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
+use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
 
+/// Runs a Postgres server to provide storage for Radix Gateway.
 pub struct Postgres {
-    store_dir: String,
-    username: String,
     password: String,
-    skip_vacuum: bool,
+    username: String,
     shutdown_token: CancellationToken,
+    skip_vacuum: bool,
+    store_dir: String,
     task_tracker: TaskTracker,
 }
 
+/// Options for configuring a `Postgres`.
+pub struct PostgresOptions {
+    /// The password for the Postgres user.
+    pub password: String,
+
+    /// The username for the Postgres user.
+    pub username: String,
+
+    /// Whether to skip vacuuming the database.
+    pub skip_vacuum: bool,
+
+    /// The directory to store data in.
+    pub store_dir: String,
+}
+
 impl Postgres {
-    pub fn new(store_dir: String, username: String, password: String, skip_vacuum: bool) -> Self {
-        Self {
-            store_dir,
-            username,
+    /// Creates a new instance of `Postgres`.
+    #[must_use]
+    pub fn new(
+        PostgresOptions {
             password,
+            username,
             skip_vacuum,
+            store_dir,
+        }: PostgresOptions,
+    ) -> Self {
+        Self {
+            password,
+            username,
             shutdown_token: CancellationToken::new(),
+            skip_vacuum,
+            store_dir,
             task_tracker: TaskTracker::new(),
         }
     }
 
+    /// Starts the Postgres server.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the server is already started, if the database
+    /// initialization fails, or if the vacuuming process fails.
+    ///
+    /// # Panics
+    ///
+    /// This function may panic if it fails to remove the `postmaster.pid` file.
+    ///
+    /// # Returns
+    ///
+    /// A `JoinHandle` to the spawned task that runs the Postgres server.
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
@@ -114,8 +161,9 @@ impl Postgres {
 
                     Ok(())
                 }
-                _ = shutdown_token.cancelled() => {
-                    let pid = Pid::from_raw(cmd.id().unwrap() as i32);
+                () = shutdown_token.cancelled() => {
+                    let raw_pid: i32 = cmd.id().ok_or(Error::OutputParse)?.try_into().map_err(|_| Error::BadPid)?;
+                    let pid = Pid::from_raw(raw_pid);
 
                     if let Err(e) = signal::kill(pid, Signal::SIGTERM) {
                         error!("Failed to send SIGTERM signal: {}", e);
@@ -208,9 +256,9 @@ impl Postgres {
             if cmd.status.success() {
                 info!("postgres is ready");
                 return Ok(());
-            } else {
-                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             }
+
+            sleep(Duration::from_secs(5)).await;
         }
     }
 
@@ -238,7 +286,7 @@ impl Postgres {
             let mut lines = reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                info!("{}", line)
+                info!("{}", line);
             }
         });
 
@@ -247,7 +295,7 @@ impl Postgres {
             let mut lines = reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                info!("{}", line)
+                info!("{}", line);
             }
         });
 
