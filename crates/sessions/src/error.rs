@@ -1,43 +1,60 @@
 use std::sync::Arc;
 
-use proven_store::StoreError;
+use proven_attestation::Attestor;
+use proven_store::Store1;
 use thiserror::Error;
 
-pub type Result<T, CSE, SSE> = std::result::Result<T, Error<CSE, SSE>>;
-
+/// Errors that can occur when managing sessions.
 #[derive(Clone, Debug, Error)]
-pub enum Error<CSE, SSE> {
-    #[error("attestation error")]
-    Attestation,
+pub enum Error<A, CS, SS>
+where
+    A: Attestor,
+    CS: Store1,
+    SS: Store1,
+{
+    /// Attestation error.
+    #[error(transparent)]
+    Attestation(A::Error),
 
+    /// CBOR deserialization error.
     #[error(transparent)]
     CborDeserialize(Arc<ciborium::de::Error<std::io::Error>>),
 
+    /// CBOR serialization error.
     #[error(transparent)]
     CborSerialize(Arc<ciborium::ser::Error<std::io::Error>>),
 
+    /// Challenge store error.
     #[error(transparent)]
-    ChallengeStore(CSE),
+    ChallengeStore(CS::Error),
 
+    /// Session store error.
     #[error(transparent)]
-    SessionStore(SSE),
+    SessionStore(SS::Error),
 
+    /// Signed challenge is invalid.
     #[error("signed challenge is invalid")]
     SignedChallengeInvalid,
 }
 
-impl<CSE: StoreError, SSE: StoreError> From<ciborium::de::Error<std::io::Error>>
-    for Error<CSE, SSE>
+impl<A, CS, SS> From<ciborium::de::Error<std::io::Error>> for Error<A, CS, SS>
+where
+    A: Attestor,
+    CS: Store1,
+    SS: Store1,
 {
     fn from(error: ciborium::de::Error<std::io::Error>) -> Self {
-        Error::CborDeserialize(Arc::new(error))
+        Self::CborDeserialize(Arc::new(error))
     }
 }
 
-impl<CSE: StoreError, SSE: StoreError> From<ciborium::ser::Error<std::io::Error>>
-    for Error<CSE, SSE>
+impl<A, CS, SS> From<ciborium::ser::Error<std::io::Error>> for Error<A, CS, SS>
+where
+    A: Attestor,
+    CS: Store1,
+    SS: Store1,
 {
     fn from(error: ciborium::ser::Error<std::io::Error>) -> Self {
-        Error::CborSerialize(Arc::new(error))
+        Self::CborSerialize(Arc::new(error))
     }
 }

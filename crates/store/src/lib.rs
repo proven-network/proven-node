@@ -17,7 +17,7 @@ pub trait StoreError: Debug + Error + Send + Sync + 'static {}
 #[async_trait]
 pub trait Store
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the store.
     type Error: StoreError;
@@ -47,7 +47,7 @@ macro_rules! define_scoped_store {
         #[doc = $doc]
         pub trait $name
         where
-            Self: Clone + Send + Sync + 'static,
+            Self: Clone + Debug + Send + Sync + 'static,
         {
             /// The error type for the store.
             type Error: StoreError;

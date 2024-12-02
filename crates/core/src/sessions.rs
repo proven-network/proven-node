@@ -10,7 +10,7 @@ use bytes::Bytes;
 use ed25519_dalek::VerifyingKey;
 use headers::Origin;
 use proven_radix_rola::SignedChallenge;
-use proven_sessions::{CreateSessionParams, SessionManagement};
+use proven_sessions::{CreateSessionOptions, SessionManagement};
 use tracing::info;
 
 #[derive(TryFromMultipart)]
@@ -22,7 +22,10 @@ struct SessionRequest {
     application_name: Option<String>,
 }
 
-pub async fn create_session_router<T: SessionManagement + 'static>(session_manager: T) -> Router {
+pub async fn create_session_router<SM>(session_manager: SM) -> Router
+where
+    SM: SessionManagement,
+{
     let session_manager_clone = session_manager.clone();
     let app = Router::new()
         .route(
@@ -86,7 +89,7 @@ pub async fn create_session_router<T: SessionManagement + 'static>(session_manag
                         serde_json::from_str(data.signed_challenge.as_str()).unwrap();
 
                     match session_manager
-                        .create_session(CreateSessionParams {
+                        .create_session(CreateSessionOptions {
                             application_id: "TODO_APPLICATION_ID".to_string(),
                             application_name: data.application_name.clone(),
                             dapp_definition_address: data.dapp_definition_address.clone(),

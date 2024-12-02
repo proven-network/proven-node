@@ -15,7 +15,7 @@ use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
 use proven_core::{Core, CoreOptions, CoreStartOptions};
 use proven_http_insecure::InsecureHttpServer;
-use proven_sessions::{SessionManagement, SessionManager};
+use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_direct::DirectSqlStore;
 use proven_store_fs::FsStore;
 use proven_store_memory::MemoryStore;
@@ -43,17 +43,17 @@ async fn main() -> Result<()> {
     let challenge_store = MemoryStore::new();
     let sessions_store = FsStore::new("/tmp/proven/sessions");
     let radix_network_definition = NetworkDefinition::stokenet();
-    let dev_attestor = DevAttestor;
+    let attestor = DevAttestor;
 
     let radix_gateway_origin = "https://stokenet.radixdlt.com".to_string();
 
-    let session_manager = SessionManager::new(
-        dev_attestor,
+    let session_manager = SessionManager::new(SessionManagerOptions {
+        attestor,
         challenge_store,
         sessions_store,
-        radix_gateway_origin.clone(),
-        radix_network_definition.clone(),
-    );
+        radix_gateway_origin: radix_gateway_origin.clone(),
+        radix_network_definition: radix_network_definition.clone(),
+    });
 
     let application_manager_sql_store = DirectSqlStore::new("/tmp/proven/app_data");
     let application_manager = ApplicationManager::new(application_manager_sql_store).await?;

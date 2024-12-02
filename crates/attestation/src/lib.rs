@@ -29,7 +29,7 @@ pub trait AttestorError: Debug + Error + Send + Sync {}
 #[async_trait]
 pub trait Attestor
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the attestation provider.
     type Error: AttestorError;

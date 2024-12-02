@@ -1,8 +1,15 @@
+//! Manages all user sessions (created via ROLA) and their associated data.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 mod session;
 
-use error::{Error, Result};
-pub use session::*;
+use error::Error;
+use session::MarkedSession;
+pub use session::Session;
 
 use std::collections::HashSet;
 
@@ -15,57 +22,101 @@ use proven_store::{Store, Store1};
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
 
-pub struct CreateSessionParams {
+/// Options for creating a new `SessionManager`
+pub struct SessionManagerOptions<A, CS, SS>
+where
+    A: Attestor,
+    CS: Store1,
+    SS: Store1,
+{
+    /// The attestor to use for remote attestation.
+    pub attestor: A,
+
+    /// The KV store to use for storing challenges.
+    pub challenge_store: CS,
+
+    /// The KV store to use for storing sessions.
+    pub sessions_store: SS,
+
+    /// The origin of the Radix gateway.
+    pub radix_gateway_origin: String,
+
+    /// Radix network definition.
+    pub radix_network_definition: NetworkDefinition,
+}
+
+/// Options for creating a new session.
+pub struct CreateSessionOptions {
+    /// The application ID.
     pub application_id: String,
+
+    /// The application name.
     pub application_name: Option<String>,
+
+    /// The dApp definition address.
     pub dapp_definition_address: String,
+
+    /// Challenge used in remote attestation.
     pub nonce: Bytes,
+
+    /// The origin of the request.
     pub origin: String,
+
+    /// Signed ROLA challenges.
     pub signed_challenges: Vec<SignedChallenge>,
+
+    /// The verifying key of the client.
     pub verifying_key: VerifyingKey,
 }
 
+/// Trait for managing user sessions.
 #[async_trait]
-pub trait SessionManagement: Clone + Send + Sync + 'static {
+pub trait SessionManagement
+where
+    Self: Clone + Send + Sync + 'static,
+{
+    /// Attestor type.
     type Attestor: Attestor;
+
+    /// Challenge store type.
     type ChallengeStore: Store1;
+
+    /// Session store type.
     type SessionStore: Store1;
 
+    /// Creates a new instance of the session manager.
     fn new(
-        attestor: Self::Attestor,
-        challenge_store: Self::ChallengeStore,
-        sessions_store: Self::SessionStore,
-        radix_gateway_origin: String,
-        radix_network_definition: NetworkDefinition,
+        options: SessionManagerOptions<Self::Attestor, Self::ChallengeStore, Self::SessionStore>,
     ) -> Self;
 
+    /// Creates a new challenge to use for session creation.
     async fn create_challenge(
         &self,
         application_id: String,
-    ) -> Result<
-        String,
-        <Self::ChallengeStore as Store1>::Error,
-        <Self::SessionStore as Store1>::Error,
-    >;
+    ) -> Result<String, Error<Self::Attestor, Self::ChallengeStore, Self::SessionStore>>;
 
+    /// Creates a new session.
     async fn create_session(
         &self,
-        params: CreateSessionParams,
-    ) -> Result<Bytes, <Self::ChallengeStore as Store1>::Error, <Self::SessionStore as Store1>::Error>;
+        params: CreateSessionOptions,
+    ) -> Result<Bytes, Error<Self::Attestor, Self::ChallengeStore, Self::SessionStore>>;
 
+    /// Gets a session by its ID.
     async fn get_session(
         &self,
         application_id: String,
         session_id: String,
-    ) -> Result<
-        Option<Session>,
-        <Self::ChallengeStore as Store1>::Error,
-        <Self::SessionStore as Store1>::Error,
-    >;
+    ) -> Result<Option<Session>, Error<Self::Attestor, Self::ChallengeStore, Self::SessionStore>>;
 }
 
+/// Manages all user sessions (created via ROLA) and their associated data.
 #[derive(Clone)]
-pub struct SessionManager<A: Attestor, CS: Store1, SS: Store1> {
+pub struct SessionManager<A, CS, SS>
+where
+    A: Attestor,
+    CS: Store1,
+    SS: Store1,
+{
     attestor: A,
     challenge_store: CS,
     sessions_store: SS,
@@ -85,13 +136,15 @@ where
     type SessionStore = SS;
 
     fn new(
-        attestor: Self::Attestor,
-        challenge_store: Self::ChallengeStore,
-        sessions_store: Self::SessionStore,
-        radix_gateway_origin: String,
-        radix_network_definition: NetworkDefinition,
+        SessionManagerOptions {
+            attestor,
+            challenge_store,
+            sessions_store,
+            radix_gateway_origin,
+            radix_network_definition,
+        }: SessionManagerOptions<A, CS, SS>,
     ) -> Self {
-        SessionManager {
+        Self {
             attestor,
             challenge_store,
             sessions_store,
@@ -100,10 +153,7 @@ where
         }
     }
 
-    async fn create_challenge(
-        &self,
-        application_id: String,
-    ) -> Result<String, CS::Error, SS::Error> {
+    async fn create_challenge(&self, application_id: String) -> Result<String, Error<A, CS, SS>> {
         let mut challenge = String::new();
 
         for _ in 0..32 {
@@ -121,7 +171,7 @@ where
 
     async fn create_session(
         &self,
-        CreateSessionParams {
+        CreateSessionOptions {
             application_id,
             application_name,
             dapp_definition_address,
@@ -129,8 +179,8 @@ where
             origin,
             signed_challenges,
             verifying_key,
-        }: CreateSessionParams,
-    ) -> Result<Bytes, CS::Error, SS::Error> {
+        }: CreateSessionOptions,
+    ) -> Result<Bytes, Error<A, CS, SS>> {
         let rola = Rola::new(RolaOptions {
             application_name: application_name.clone().unwrap_or_default(),
             dapp_definition_address: dapp_definition_address.clone(),
@@ -188,7 +238,7 @@ where
         let mut session_id_bytes = [0u8; 32];
         thread_rng().fill(&mut session_id_bytes);
 
-        let session: MarkedSession<CS, SS> = MarkedSession::new(
+        let session: MarkedSession<A, CS, SS> = MarkedSession::new(
             hex::encode(session_id_bytes),
             server_signing_key.as_bytes().to_vec(),
             verifying_key.as_bytes().to_vec(),
@@ -214,7 +264,7 @@ where
             .await
         {
             Ok(attestation) => Ok(attestation),
-            Err(_) => Err(Error::Attestation),
+            Err(e) => Err(Error::Attestation(e)),
         }
     }
 
@@ -222,7 +272,7 @@ where
         &self,
         application_id: String,
         session_id: String,
-    ) -> Result<Option<Session>, CS::Error, SS::Error> {
+    ) -> Result<Option<Session>, Error<A, CS, SS>> {
         match self
             .sessions_store
             .scope(application_id)
@@ -230,7 +280,7 @@ where
             .await
         {
             Ok(Some(bytes)) => {
-                let marked: MarkedSession<CS, SS> = bytes.try_into()?;
+                let marked: MarkedSession<A, CS, SS> = bytes.try_into()?;
                 Ok(Some(marked.into()))
             }
             Ok(None) => Ok(None),
