@@ -1,3 +1,11 @@
+//! Manages encryption/decryption of plain/cipher text using AWS KMS keys which
+//! are scoped to the EIF PCRs.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::result_large_err)]
+
 mod error;
 mod pkcs7;
 
@@ -16,6 +24,7 @@ use rand::rngs::OsRng;
 use rsa::pkcs8::EncodePublicKey;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 
+/// Manages encryption/decryption of plain/cipher text using AWS KMS keys.
 pub struct Kms {
     client: Client,
     key_id: String,
@@ -23,6 +32,7 @@ pub struct Kms {
 }
 
 impl Kms {
+    /// Creates a new instance of `Kms`.
     pub async fn new(key_id: String, region: String) -> Self {
         let config = aws_config::from_env()
             .region(Region::new(region))
@@ -36,22 +46,56 @@ impl Kms {
         }
     }
 
+    /// Encrypts the given plaintext using the AWS KMS key.
+    ///
+    /// # Arguments
+    ///
+    /// * `plaintext` - The plaintext data to be encrypted.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the encrypted ciphertext as `Bytes` on success.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The encryption operation fails
+    /// - The KMS service returns no ciphertext blob
     pub async fn encrypt(&self, plaintext: Bytes) -> Result<Bytes> {
-        let ciphertext = self
+        let response = self
             .client
             .encrypt()
             .plaintext(Blob::new(plaintext))
             .key_id(&self.key_id)
             .send()
             .await
-            .map_err(|e| Error::Kms(e.into()))
-            .map(|output| Bytes::from(output.ciphertext_blob.unwrap().into_inner()))?;
+            .map_err(|e| Error::Kms(e.into()))?;
 
-        Ok(ciphertext)
+        let blob = response.ciphertext_blob.ok_or(Error::MissingCiphertext)?;
+
+        Ok(Bytes::from(blob.into_inner()))
     }
 
+    /// Decrypts the given ciphertext using the AWS KMS key.
+    ///
+    /// # Arguments
+    ///
+    /// * `ciphertext` - The ciphertext data to be decrypted.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the decrypted plaintext as `Bytes` on success.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The decryption operation fails
+    /// - The KMS service returns no ciphertext for recipient
+    /// - Key pair generation fails
+    /// - NSM attestation fails
+    /// - Content info parsing or decryption fails
     pub async fn decrypt(&self, ciphertext: Bytes) -> Result<Bytes> {
-        let (private_key, public_key) = Self::generate_keypair().await?;
+        let (private_key, public_key) = Self::generate_keypair()?;
 
         let attestation_document = self
             .nsm_attestor
@@ -67,7 +111,7 @@ impl Kms {
             .attestation_document(Blob::new(attestation_document))
             .build();
 
-        let ciphertext = self
+        let response = self
             .client
             .decrypt()
             .ciphertext_blob(Blob::new(ciphertext))
@@ -75,8 +119,11 @@ impl Kms {
             .key_id(&self.key_id)
             .send()
             .await
-            .map_err(|e| Error::Kms(e.into()))
-            .map(|output| output.ciphertext_for_recipient.unwrap())?
+            .map_err(|e| Error::Kms(e.into()))?;
+
+        let ciphertext = response
+            .ciphertext_for_recipient
+            .ok_or(Error::MissingCiphertext)?
             .into_inner();
 
         let content_info = ContentInfo::parse_ber(ciphertext.as_slice())?;
@@ -85,7 +132,7 @@ impl Kms {
         Ok(plaintext)
     }
 
-    async fn generate_keypair() -> Result<(RsaPrivateKey, RsaPublicKey)> {
+    fn generate_keypair() -> Result<(RsaPrivateKey, RsaPublicKey)> {
         let mut rng = OsRng;
 
         let bits = 2048;

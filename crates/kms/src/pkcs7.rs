@@ -231,6 +231,7 @@ RSAES-OAEP-params  ::=  SEQUENCE  {
                     pSpecifiedEmptyIdentifier  }
 */
 #[derive(Debug)]
+#[allow(clippy::struct_field_names)]
 pub struct RsaesOaepParameters<'a> {
     hash_alg: Option<AlgorithmIdentifier<'a>>,
     mask_gen_alg: Option<AlgorithmIdentifier<'a>>,
