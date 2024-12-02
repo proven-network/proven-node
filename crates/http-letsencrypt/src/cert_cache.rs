@@ -12,13 +12,13 @@ pub struct CertCache<S: Store> {
 }
 
 impl<S: Store> CertCache<S> {
-    pub fn new(store: S) -> Self {
+    pub const fn new(store: S) -> Self {
         Self { store }
     }
 
     async fn read_if_exist(
         &self,
-        key: impl AsRef<str>,
+        key: impl AsRef<str> + Send,
     ) -> Result<Option<Vec<u8>>, Error<S::Error>> {
         self.store
             .get(key.as_ref())
@@ -27,7 +27,11 @@ impl<S: Store> CertCache<S> {
             .map_err(Error::CertStore)
     }
 
-    async fn write(&self, key: impl AsRef<str>, contents: Vec<u8>) -> Result<(), Error<S::Error>> {
+    async fn write(
+        &self,
+        key: impl AsRef<str> + Send,
+        contents: Vec<u8>,
+    ) -> Result<(), Error<S::Error>> {
         self.store
             .put(key.as_ref(), Bytes::from(contents))
             .await

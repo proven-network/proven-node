@@ -3,6 +3,8 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::redundant_pub_crate)]
 
 mod acceptor;
 mod cert_cache;
@@ -86,7 +88,7 @@ where
             listen_addr,
         }: LetsEncryptHttpServerOptions<S>,
     ) -> Self {
-        let mut node_endpoints_state = AcmeConfig::new(domains.clone())
+        let mut node_endpoints_state = AcmeConfig::new(domains)
             .contact(emails.iter().map(|e| format!("mailto:{e}")))
             .cache(CertCache::new(cert_store.clone()))
             .directory_lets_encrypt(true)

@@ -1,3 +1,10 @@
+//! Binary to bootstrap other components locally.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::redundant_pub_crate)]
+
 mod error;
 
 use error::Result;
@@ -84,7 +91,7 @@ async fn main() -> Result<()> {
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("Shutting down");
-            let _ = core.shutdown().await;
+            let () = core.shutdown().await;
         }
         _ = core_handle => {
             error!("Core exited");

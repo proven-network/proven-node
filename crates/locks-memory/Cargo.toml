@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 async-trait = { workspace = true }
 proven-locks = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }

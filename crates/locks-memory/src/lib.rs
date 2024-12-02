@@ -1,3 +1,9 @@
+//! In-memory (single node) implementation of locks for local development.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 use error::Error;
@@ -6,28 +12,28 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use proven_locks::{LockManager, LockManager1, LockManager2};
+use proven_locks::{LockManager, LockManager1, LockManager2, LockManager3};
 use tokio::sync::Mutex;
 
+/// In-memory lock manager.
 #[derive(Clone, Debug, Default)]
 pub struct MemoryLockManager {
     map: Arc<Mutex<HashSet<String>>>,
     prefix: Option<String>,
 }
 
-/// MemoryLockManager is an in-memory implementation of the `LockManager`, `LockManager1`, and `LockManager2` traits.
-/// It uses a `HashSet` protected by a `Mutex` to store keys as strings.
-/// The store supports optional scoping of keys using a prefix.
 impl MemoryLockManager {
+    /// Creates a new instance of `MemoryLockManager`.
+    #[must_use]
     pub fn new() -> Self {
-        MemoryLockManager {
+        Self {
             map: Arc::new(Mutex::new(HashSet::new())),
             prefix: None,
         }
     }
 
     fn with_scope(prefix: String) -> Self {
-        MemoryLockManager {
+        Self {
             map: Arc::new(Mutex::new(HashSet::new())),
             prefix: Some(prefix),
         }
@@ -35,60 +41,54 @@ impl MemoryLockManager {
 
     fn get_key(&self, key: String) -> String {
         match &self.prefix {
-            Some(prefix) => format!("{}:{}", prefix, key),
+            Some(prefix) => format!("{prefix}:{key}"),
             None => key,
         }
     }
 }
 
 #[async_trait]
-impl LockManager1 for MemoryLockManager {
-    type SE = Error;
-    type Scoped = Self;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
-            None => scope,
-        };
-        Self::with_scope(new_scope)
-    }
-}
-
-#[async_trait]
-impl LockManager2 for MemoryLockManager {
-    type SE = Error;
-    type Scoped = Self;
-
-    fn scope(&self, scope: String) -> Self::Scoped {
-        let new_scope = match &self.prefix {
-            Some(existing_scope) => format!("{}:{}", existing_scope, scope),
-            None => scope,
-        };
-        Self::with_scope(new_scope)
-    }
-}
-
-#[async_trait]
 impl LockManager for MemoryLockManager {
-    type SE = Error;
+    type Error = Error;
 
-    async fn acquire(&self, key: String) -> Result<(), Self::SE> {
-        let key = self.get_key(key);
-        let mut lock = self.map.lock().await;
-        lock.insert(key);
+    async fn acquire(&self, resource_id: String) -> Result<(), Self::Error> {
+        let key = self.get_key(resource_id);
+
+        self.map.lock().await.insert(key);
 
         Ok(())
     }
 
-    async fn release(&self, key: String) -> Result<(), Self::SE> {
-        let key = self.get_key(key);
-        let mut lock = self.map.lock().await;
-        lock.remove(&key);
+    async fn release(&self, resource_id: String) -> Result<(), Self::Error> {
+        let key = self.get_key(resource_id);
+
+        self.map.lock().await.remove(&key);
 
         Ok(())
     }
 }
+
+macro_rules! impl_scoped_lock_manager {
+    ($name:ident, $parent:ident) => {
+        #[async_trait]
+        impl $name for MemoryLockManager {
+            type Error = Error;
+            type Scoped = Self;
+
+            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                let new_scope = match &self.prefix {
+                    Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+                    None => scope.into(),
+                };
+                Self::with_scope(new_scope)
+            }
+        }
+    };
+}
+
+impl_scoped_lock_manager!(LockManager1, LockManager);
+impl_scoped_lock_manager!(LockManager2, LockManager1);
+impl_scoped_lock_manager!(LockManager3, LockManager2);
 
 #[cfg(test)]
 mod tests {
@@ -103,19 +103,13 @@ mod tests {
         assert!(manager.acquire(key.clone()).await.is_ok());
 
         // Ensure the lock is held
-        {
-            let lock = manager.map.lock().await;
-            assert!(lock.contains(&key));
-        }
+        assert!(manager.map.lock().await.contains(&key));
 
         // Release the lock
         assert!(manager.release(key.clone()).await.is_ok());
 
         // Ensure the lock is released
-        {
-            let lock = manager.map.lock().await;
-            assert!(!lock.contains(&key));
-        }
+        assert!(!manager.map.lock().await.contains(&key));
     }
 
     #[tokio::test]
@@ -129,19 +123,13 @@ mod tests {
         assert!(scoped_manager.acquire(key.clone()).await.is_ok());
 
         // Ensure the lock is held with scoped key
-        {
-            let lock = scoped_manager.map.lock().await;
-            assert!(lock.contains(&scoped_key));
-        }
+        assert!(scoped_manager.map.lock().await.contains(&scoped_key));
 
         // Release the lock with scoped manager
         assert!(scoped_manager.release(key.clone()).await.is_ok());
 
         // Ensure the lock is released with scoped key
-        {
-            let lock = scoped_manager.map.lock().await;
-            assert!(!lock.contains(&scoped_key));
-        }
+        assert!(!scoped_manager.map.lock().await.contains(&key));
     }
 
     #[tokio::test]
@@ -156,18 +144,12 @@ mod tests {
         assert!(scoped_manager.acquire(key.clone()).await.is_ok());
 
         // Ensure the lock is held with scoped key
-        {
-            let lock = scoped_manager.map.lock().await;
-            assert!(lock.contains(&nested_scoped_key));
-        }
+        assert!(scoped_manager.map.lock().await.contains(&nested_scoped_key));
 
         // Release the lock with scoped manager
         assert!(scoped_manager.release(key.clone()).await.is_ok());
 
         // Ensure the lock is released with scoped key
-        {
-            let lock = scoped_manager.map.lock().await;
-            assert!(!lock.contains(&nested_scoped_key));
-        }
+        assert!(!scoped_manager.map.lock().await.contains(&nested_scoped_key));
     }
 }
