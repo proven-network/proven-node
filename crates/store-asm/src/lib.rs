@@ -1,3 +1,10 @@
+//! Implementation of key-value storage using AWS Secrets Manager. Values
+//! typically double-encrypted using KMS with enclave-specific keys.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 pub use error::Error;
@@ -10,6 +17,7 @@ use aws_sdk_secretsmanager::Client;
 use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
 
+/// KV store using AWS Secrets Manager.
 #[derive(Clone, Debug)]
 pub struct AsmStore {
     client: aws_sdk_secretsmanager::Client,
@@ -17,11 +25,23 @@ pub struct AsmStore {
     secret_name: String,
 }
 
-/// AsmStore is an AWS Secrets Manager implementation of the `Store`, `Store2`, and `Store3` traits.
-/// It uses AWS Secrets Manager to store key-value pairs, where keys are strings and values are byte vectors.
-/// The store supports optional scoping of keys using prefixes in the secret name.
+/// Options for configuring an `AsmStore`.
+pub struct AsmStoreOptions {
+    /// The AWS region to use.
+    pub region: String,
+
+    /// The name of the secret to use.
+    pub secret_name: String,
+}
+
 impl AsmStore {
-    pub async fn new(region: String, secret_name: String) -> Self {
+    /// Creates a new `AsmStore` with the specified options.
+    pub async fn new(
+        AsmStoreOptions {
+            region,
+            secret_name,
+        }: AsmStoreOptions,
+    ) -> Self {
         let config = aws_config::from_env()
             .region(Region::new(region))
             .load()
@@ -34,7 +54,7 @@ impl AsmStore {
         }
     }
 
-    fn new_with_client_and_prefix(
+    const fn new_with_client_and_prefix(
         client: Client,
         secret_name: String,
         prefix: Option<String>,
@@ -47,10 +67,10 @@ impl AsmStore {
     }
 
     fn get_secret_name(&self) -> String {
-        match &self.prefix {
-            Some(prefix) => format!("{}-{}", prefix, self.secret_name),
-            None => self.secret_name.clone(),
-        }
+        self.prefix.as_ref().map_or_else(
+            || self.secret_name.clone(),
+            |prefix| format!("{}-{}", prefix, self.secret_name),
+        )
     }
 
     async fn get_secret_map(&self) -> Result<HashMap<String, Bytes>, Error> {
