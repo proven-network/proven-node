@@ -1,3 +1,10 @@
+//! Helper crate to interact with the EC2 APIs and securely retrieve info about
+//! runtime environment.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 use std::net::Ipv4Addr;
@@ -6,24 +13,42 @@ pub use error::{Error, Result};
 
 use aws_config::Region;
 
+/// Instance details.
 #[derive(Clone, Debug)]
 pub struct Instance {
-    pub instance_id: String,
+    /// The availability zone.
     pub availability_zone: String,
+
+    /// The instance ID.
+    pub instance_id: String,
+
+    /// The private IP address.
     pub private_ip: Ipv4Addr,
-    pub public_ip: Option<Ipv4Addr>,
-    pub vpc_id: String,
-    pub subnet_id: String,
-    pub security_group_ids: Vec<String>,
+
+    /// The IAM profile ARN.
     pub profile_arn: String,
+
+    /// The public IP address.
+    pub public_ip: Option<Ipv4Addr>,
+
+    /// The security group IDs.
+    pub security_group_ids: Vec<String>,
+
+    /// The subnet ID.
+    pub subnet_id: String,
+
+    /// The VPC ID.
+    pub vpc_id: String,
 }
 
+/// Fetches details about current EC2 instance.
 #[derive(Clone, Debug)]
 pub struct InstanceDetailsFetcher {
     client: aws_sdk_ec2::Client,
 }
 
 impl InstanceDetailsFetcher {
+    /// Create a new instance of `InstanceDetailsFetcher`.
     pub async fn new(region: String) -> Self {
         let config = aws_config::from_env()
             .region(Region::new(region))
@@ -35,6 +60,11 @@ impl InstanceDetailsFetcher {
         }
     }
 
+    /// Fetches details about a specific EC2 instance.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the instance details cannot be retrieved.
     pub async fn get_instance_details(&self, instance_id: String) -> Result<Instance> {
         let resp = self
             .client
