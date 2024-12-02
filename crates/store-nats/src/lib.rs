@@ -1,3 +1,9 @@
+//! Implementation of key-value storage using NATS with HA replication.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 pub use error::Error;
@@ -13,13 +19,22 @@ use bytes::Bytes;
 use futures::TryStreamExt;
 use proven_store::{Store, Store1, Store2, Store3};
 
+/// Options for configuring a `NatsStore`.
 pub struct NatsStoreOptions {
+    /// The NATS client to use.
     pub client: Client,
+
+    /// The bucket to use for the key-value store (may be refined through scopes)
     pub bucket: String,
+
+    /// The maximum age of entries in the store. Use `Duration::ZERO` for no expiry.
     pub max_age: Duration,
+
+    /// Whether to persist the store to disk.
     pub persist: bool,
 }
 
+/// KV store using NATS JS.
 #[derive(Clone, Debug)]
 pub struct NatsStore {
     bucket: String,
@@ -28,35 +43,20 @@ pub struct NatsStore {
     persist: bool,
 }
 
-/// NatsStore is a NATS JetStream implementation of the `Store`, `Store2`, and `Store3` traits.
-/// It uses NATS JetStream to store key-value pairs, where keys are strings and values are byte vectors.
-/// The store supports optional scoping of keys using bucket name prefixes.
 impl NatsStore {
-    pub async fn new(
+    /// Creates a new `NatsStore` with the specified options.
+    #[must_use]
+    pub fn new(
         NatsStoreOptions {
             client,
             bucket,
             max_age,
             persist,
         }: NatsStoreOptions,
-    ) -> Result<Self, Error> {
-        let jetstream_context = jetstream::new(client.clone());
-
-        Ok(NatsStore {
-            bucket,
-            jetstream_context,
-            max_age,
-            persist,
-        })
-    }
-
-    pub async fn new_with_jetstream_context(
-        jetstream_context: JetStreamContext,
-        bucket: String,
-        max_age: Duration,
-        persist: bool,
     ) -> Self {
-        NatsStore {
+        let jetstream_context = jetstream::new(client);
+
+        Self {
             bucket,
             jetstream_context,
             max_age,
