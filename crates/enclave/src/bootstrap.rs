@@ -71,7 +71,7 @@ pub struct Bootstrap {
 
     // added during initialization
     vsock_tracing_producer: Option<VsockTracingProducer>,
-    tracing_service_handle: Option<JoinHandle<()>>,
+    vsock_tracing_producer_handle: Option<JoinHandle<()>>,
 
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
@@ -132,7 +132,7 @@ impl Bootstrap {
             network_definition,
 
             vsock_tracing_producer: None,
-            tracing_service_handle: None,
+            vsock_tracing_producer_handle: None,
 
             imds_identity: None,
             instance_details: None,
@@ -474,7 +474,7 @@ impl Bootstrap {
         let tracing_service_handle = tracing_service.start()?;
 
         self.vsock_tracing_producer = Some(tracing_service);
-        self.tracing_service_handle = Some(tracing_service_handle);
+        self.vsock_tracing_producer_handle = Some(tracing_service_handle);
 
         info!("tracing configured");
 
