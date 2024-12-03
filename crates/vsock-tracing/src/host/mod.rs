@@ -5,18 +5,17 @@ pub use error::{Error, Result};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
-use tracing::{error, info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tokio_vsock::{VsockAddr, VsockStream};
+use tracing::{error, info};
 
 /// Serive for receiving logs from the enclave.
 #[derive(Debug, Default)]
-pub struct TracingService {
+pub struct VsockTracingConsumer {
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl TracingService {
+impl VsockTracingConsumer {
     /// Create a new `TracingService`.
     #[must_use]
     pub fn new() -> Self {
@@ -31,26 +30,14 @@ impl TracingService {
     /// # Errors
     ///
     /// This function will return an error if the tracing service is already started
-    /// or if there is an issue setting the global default subscriber or binding the vsock listener.
-    pub fn start(&self, log_port: u32) -> Result<JoinHandle<()>> {
-        if self.task_tracker.is_closed() {
-            return Err(Error::AlreadyStarted);
-        }
-
-        tracing::subscriber::set_global_default(
-            FmtSubscriber::builder()
-                .with_max_level(Level::TRACE)
-                .finish(),
-        )?;
-
+    /// or if there is an issue setting the global default subscriber or connecting to the vsock endpoint.
+    pub fn start(&self, addr: VsockAddr) -> Result<JoinHandle<()>> {
         let shutdown_token = self.shutdown_token.clone();
-        let mut vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, log_port))
-            .map_err(|e| Error::Io("failed to bind vsock listener", e))?;
 
         let handle = self.task_tracker.spawn(async move {
-            match vsock.accept().await {
-                Ok((mut stream, addr)) => {
-                    info!("accepted log connection from {}", addr);
+            match VsockStream::connect(addr).await {
+                Ok(mut stream) => {
+                    info!("connected to log source at {}", addr);
 
                     let mut stdout = tokio::io::stdout();
 
@@ -60,7 +47,7 @@ impl TracingService {
                     }
                 }
                 Err(err) => {
-                    error!("error accepting connection: {:?}", err);
+                    error!("error connecting: {:?}", err);
                 }
             }
         });

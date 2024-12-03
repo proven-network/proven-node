@@ -2,55 +2,116 @@ mod error;
 
 pub use error::{Error, Result};
 
-use tokio::sync::mpsc;
-use tokio::{io::AsyncWriteExt, sync::mpsc::error::TrySendError};
-use tokio_vsock::{VsockAddr, VsockStream};
+use tokio::task::JoinHandle;
+use tokio::{io::AsyncWriteExt, sync::broadcast};
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
+use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
+use tracing::{error, info};
 use tracing_subscriber::{filter, fmt, layer::SubscriberExt, reload};
 
-/// Sets up a tracing subscriber that sends logs to the host via vsock.
-///
-/// # Errors
-///
-/// This function will return an error if it fails to create the vsock writer or set the global default subscriber.
-pub async fn configure_logging_to_vsock(vsock_addr: VsockAddr) -> Result<()> {
-    let (level_filter, reload_handle) = reload::Layer::new(filter::LevelFilter::TRACE);
-
-    let writer_layer = tracing_subscriber::fmt::Layer::new().with_writer(
-        VsockWriter::new(vsock_addr)
-            .await
-            .map_err(|e| Error::Io("writer error", e))?,
-    );
-
-    let subscriber = tracing_subscriber::registry()
-        .with(level_filter)
-        .with(fmt::Layer::default())
-        .with(writer_layer);
-
-    tracing::subscriber::set_global_default(subscriber)?;
-
-    let _ = reload_handle.modify(|filter| *filter = filter::LevelFilter::INFO);
-
-    Ok(())
+/// Serive for receiving logs from the enclave.
+#[derive(Debug, Default)]
+pub struct VsockTracingProducer {
+    log_port: u32,
+    shutdown_token: CancellationToken,
+    task_tracker: TaskTracker,
 }
 
-struct VsockWriter {
-    sender: mpsc::Sender<Vec<u8>>,
-}
+impl VsockTracingProducer {
+    /// Create a new `TracingService`.
+    #[must_use]
+    pub fn new(log_port: u32) -> Self {
+        Self {
+            log_port,
+            shutdown_token: CancellationToken::new(),
+            task_tracker: TaskTracker::new(),
+        }
+    }
 
-impl VsockWriter {
-    async fn new(addr: VsockAddr) -> std::io::Result<Self> {
-        let (sender, mut receiver) = mpsc::channel::<Vec<u8>>(100);
+    /// Start the tracing service.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the tracing service is already started
+    /// or if there is an issue setting the global default subscriber or binding the vsock listener.
+    pub fn start(&self) -> Result<JoinHandle<()>> {
+        if self.task_tracker.is_closed() {
+            return Err(Error::AlreadyStarted);
+        }
 
-        let mut stream = VsockStream::connect(addr).await?;
+        let (sender, _) = broadcast::channel::<Vec<u8>>(100);
 
-        tokio::spawn(async move {
-            while let Some(msg) = receiver.recv().await {
-                // Ignore errors here, as we can't do anything about them.
-                let _ = stream.write_all(msg.as_slice()).await;
+        let (level_filter, reload_handle) = reload::Layer::new(filter::LevelFilter::TRACE);
+
+        let writer_layer =
+            tracing_subscriber::fmt::Layer::new().with_writer(VsockWriter::new(sender.clone()));
+
+        let subscriber = tracing_subscriber::registry()
+            .with(level_filter)
+            .with(fmt::Layer::default())
+            .with(writer_layer);
+
+        tracing::subscriber::set_global_default(subscriber)?;
+
+        let _ = reload_handle.modify(|filter| *filter = filter::LevelFilter::INFO);
+
+        let shutdown_token = self.shutdown_token.clone();
+        let mut listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, self.log_port))
+            .map_err(|e| Error::Io("failed to bind vsock listener", e))?;
+
+        let handle = self.task_tracker.spawn(async move {
+            loop {
+                if shutdown_token.is_cancelled() {
+                    break;
+                }
+
+                match listener.accept().await {
+                    Ok((mut stream, addr)) => {
+                        info!("new log consumer connected from {}", addr);
+                        let mut rx = sender.subscribe();
+
+                        let shutdown_token = shutdown_token.clone();
+                        tokio::spawn(async move {
+                            while let Ok(msg) = rx.recv().await {
+                                if shutdown_token.is_cancelled()
+                                    || stream.write_all(&msg).await.is_err()
+                                {
+                                    break;
+                                }
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        error!("failed to accept connection: {}", e);
+                    }
+                }
             }
         });
 
-        Ok(Self { sender })
+        self.task_tracker.close();
+
+        Ok(handle)
+    }
+
+    /// Shutdown the tracing service.
+    pub async fn shutdown(&self) {
+        info!("tracing service shutting down...");
+
+        self.shutdown_token.cancel();
+        self.task_tracker.wait().await;
+
+        info!("tracing service shutdown complete.");
+    }
+}
+
+struct VsockWriter {
+    sender: broadcast::Sender<Vec<u8>>,
+}
+
+impl VsockWriter {
+    pub const fn new(sender: broadcast::Sender<Vec<u8>>) -> Self {
+        Self { sender }
     }
 }
 
@@ -58,27 +119,23 @@ impl<'a> fmt::MakeWriter<'a> for VsockWriter {
     type Writer = SenderWriter;
 
     fn make_writer(&'a self) -> Self::Writer {
-        let sender: mpsc::Sender<Vec<u8>> = self.sender.clone();
+        let sender: broadcast::Sender<Vec<u8>> = self.sender.clone();
 
         SenderWriter { sender }
     }
 }
 
 struct SenderWriter {
-    sender: mpsc::Sender<Vec<u8>>,
+    sender: broadcast::Sender<Vec<u8>>,
 }
 
 impl std::io::Write for SenderWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match self.sender.try_send(buf.to_vec()) {
-            Ok(()) => Ok(buf.len()),
-            Err(TrySendError::Closed(_)) => Err(std::io::Error::new(
+        match self.sender.send(buf.to_vec()) {
+            Ok(_) => Ok(buf.len()),
+            Err(_) => Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
-                "mpsc channel closed",
-            )),
-            Err(TrySendError::Full(_)) => Err(std::io::Error::new(
-                std::io::ErrorKind::WouldBlock,
-                "mpsc channel full",
+                "no active subscribers",
             )),
         }
     }

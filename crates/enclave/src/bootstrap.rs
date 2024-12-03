@@ -37,7 +37,7 @@ use proven_store_s3::{S3Store, S3StoreOptions};
 use proven_stream_nats::{NatsStream, NatsStreamOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
-use proven_vsock_tracing::enclave::configure_logging_to_vsock;
+use proven_vsock_tracing::enclave::VsockTracingProducer;
 use radix_common::network::NetworkDefinition;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -70,6 +70,9 @@ pub struct Bootstrap {
     network_definition: NetworkDefinition,
 
     // added during initialization
+    vsock_tracing_producer: Option<VsockTracingProducer>,
+    tracing_service_handle: Option<JoinHandle<()>>,
+
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
 
@@ -127,6 +130,9 @@ impl Bootstrap {
             args,
             nsm,
             network_definition,
+
+            vsock_tracing_producer: None,
+            tracing_service_handle: None,
 
             imds_identity: None,
             instance_details: None,
@@ -461,9 +467,14 @@ impl Bootstrap {
         }
     }
 
-    async fn configure_tracing(&self) -> Result<()> {
+    async fn configure_tracing(&mut self) -> Result<()> {
         std::panic::set_hook(Box::new(panic_hook));
-        configure_logging_to_vsock(VsockAddr::new(VMADDR_CID_EC2_HOST, self.args.log_port)).await?;
+
+        let tracing_service = VsockTracingProducer::new(self.args.log_port);
+        let tracing_service_handle = tracing_service.start()?;
+
+        self.vsock_tracing_producer = Some(tracing_service);
+        self.tracing_service_handle = Some(tracing_service_handle);
 
         info!("tracing configured");
 

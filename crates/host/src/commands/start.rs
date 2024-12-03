@@ -17,10 +17,11 @@ use proven_http::HttpServer;
 use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{InitializeRequest, RpcClient};
-use proven_vsock_tracing::host::TracingService;
+use proven_vsock_tracing::host::VsockTracingConsumer;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
-use tracing::{error, info};
+use tracing::{error, info, Level};
+use tracing_subscriber::FmtSubscriber;
 
 static ALLOCATOR_CONFIG_TEMPLATE: &str = include_str!("../../templates/allocator.yaml");
 
@@ -37,8 +38,17 @@ pub async fn start(args: StartArgs) -> Result<()> {
         return Err(Error::EnclaveAlreadyRunning);
     }
 
-    let tracing_service = TracingService::new();
-    let tracing_handle = tracing_service.start(args.log_port)?;
+    // Host-local logging
+    tracing::subscriber::set_global_default(
+        FmtSubscriber::builder()
+            .with_max_level(Level::TRACE)
+            .finish(),
+    )?;
+
+    // Enclave (vsock-based) logging
+    let vsock_tracing_consumer = VsockTracingConsumer::new();
+    let vsock_tracing_consumer_handle =
+        vsock_tracing_consumer.start(VsockAddr::new(args.enclave_cid, args.log_port))?;
 
     info!("allocating enclave resources...");
     allocate_enclave_resources(args.enclave_cpus, args.enclave_memory)?;
@@ -87,8 +97,8 @@ pub async fn start(args: StartArgs) -> Result<()> {
             }
             else => {
                 info!("all critical tasks exited normally");
-                tracing_service.shutdown().await;
-                tracing_handle.await.unwrap();
+                vsock_tracing_consumer.shutdown().await;
+                vsock_tracing_consumer_handle.await.unwrap();
             }
         }
     });

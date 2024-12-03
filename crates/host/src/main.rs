@@ -55,7 +55,10 @@ enum Commands {
 
 #[derive(Clone, Debug, Parser)]
 struct ConnectArgs {
-    #[arg(long, default_value_t = 1026)]
+    #[arg(long, default_value_t = 4, env = "PROVEN_ENCLAVE_CID")]
+    enclave_cid: u32,
+
+    #[arg(long, default_value_t = 1026, env = "PROVEN_LOG_PORT")]
     log_port: u32,
 }
 
