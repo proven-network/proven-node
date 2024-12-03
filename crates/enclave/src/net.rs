@@ -44,7 +44,8 @@ pub mod linux {
     use tracing::{error, info};
 
     pub async fn bring_up_loopback() -> Result<()> {
-        let (conn, handle, _receiver) = rtnetlink::new_connection()?;
+        let (conn, handle, _receiver) = rtnetlink::new_connection()
+            .map_err(|e| Error::Io("failed to create netlink connection", e))?;
 
         let conn_task = tokio::spawn(conn);
 
@@ -77,7 +78,8 @@ pub mod linux {
             .arg("dev")
             .arg(tun_device)
             .output()
-            .await?;
+            .await
+            .map_err(|e| Error::Io("failed to add default gateway", e))?;
 
         if !cmd.status.success() {
             error!("failed to setup default gateway");
@@ -98,7 +100,8 @@ pub mod linux {
             .arg("dev")
             .arg(tun_device)
             .output()
-            .await?;
+            .await
+            .map_err(|e| Error::Io("failed to add route", e))?;
 
         if !cmd.status.success() {
             error!("failed to setup default gateway");
@@ -116,13 +119,17 @@ pub mod linux {
     pub fn write_dns_resolv(contents: String) -> Result<()> {
         info!("writing resolv.conf");
 
-        std::fs::create_dir_all("/run/resolvconf")?;
+        std::fs::create_dir_all("/run/resolvconf")
+            .map_err(|e| Error::Io("failed to create resolvconf dir", e))?;
+
         let mut resolv = std::fs::OpenOptions::new()
             .create(true)
             .truncate(true)
             .write(true)
-            .open("/run/resolvconf/resolv.conf")?;
+            .open("/run/resolvconf/resolv.conf")
+            .map_err(|e| Error::Io("failed to open resolv.conf", e))?;
 
-        Ok(std::io::Write::write_all(&mut resolv, contents.as_bytes())?)
+        std::io::Write::write_all(&mut resolv, contents.as_bytes())
+            .map_err(|e| Error::Io("failed to write resolv.conf", e))
     }
 }
