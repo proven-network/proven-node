@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::{Error, Result};
 
 use serde::Deserialize;
@@ -127,6 +129,38 @@ impl NitroCli {
         } else {
             Ok(false)
         }
+    }
+
+    /// Starts a new enclave with the specified configuration.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the `nitro-cli run-enclave` command fails to execute.
+    pub async fn run_enclave(
+        cpu_count: u8,
+        memory: u32,
+        enclave_cid: u32,
+        eif_path: PathBuf,
+    ) -> Result<()> {
+        let handle = Command::new("nitro-cli")
+            .arg("run-enclave")
+            .arg("--cpu-count")
+            .arg(cpu_count.to_string())
+            .arg("--memory")
+            .arg(memory.to_string())
+            .arg("--enclave-cid")
+            .arg(enclave_cid.to_string())
+            .arg("--eif-path")
+            .arg(eif_path)
+            .output()
+            .await
+            .map_err(|e| Error::Io("failed to start enclave", e))?;
+
+        if !handle.status.success() {
+            return Err(Error::NonZeroExit("nitro-cli run-enclave", handle.status));
+        }
+
+        Ok(())
     }
 
     fn parse_describe_enclaves_output(output: &str) -> Result<Vec<EnclaveInfo>> {

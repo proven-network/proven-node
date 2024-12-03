@@ -1,5 +1,6 @@
 use crate::error::{Error, Result};
 use crate::net::{configure_nat, configure_port_forwarding, configure_route};
+use crate::nitro::NitroCli;
 use crate::systemctl;
 use crate::InitializeArgs;
 
@@ -17,7 +18,6 @@ use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{InitializeRequest, RpcClient};
 use proven_vsock_tracing::host::TracingService;
-use tokio::process::Child;
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 use tracing::{error, info};
 
@@ -40,7 +40,13 @@ pub async fn initialize(args: InitializeArgs) -> Result<()> {
     info!("allocating enclave resources...");
     allocate_enclave_resources(args.enclave_cpus, args.enclave_memory)?;
 
-    let _enclave = start_enclave(&args)?;
+    NitroCli::run_enclave(
+        args.enclave_cpus,
+        args.enclave_memory,
+        args.enclave_cid,
+        args.eif_path.clone(),
+    )
+    .await?;
 
     let vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
 
@@ -101,7 +107,6 @@ pub async fn initialize(args: InitializeArgs) -> Result<()> {
         _ = tokio::signal::ctrl_c() => {
             info!("shutting down...");
             shutdown_enclave(&args).await?;
-            // enclave.wait().await?; // TODO: this doesn't do anything - should poll active enclaves to check instead
             http_server.shutdown().await;
             proxy.shutdown().await;
         }
@@ -117,23 +122,6 @@ pub async fn initialize(args: InitializeArgs) -> Result<()> {
     info!("host shutdown cleanly. goodbye.");
 
     Ok(())
-}
-
-fn start_enclave(args: &InitializeArgs) -> Result<Child> {
-    let handle = tokio::process::Command::new("nitro-cli")
-        .arg("run-enclave")
-        .arg("--cpu-count")
-        .arg(args.enclave_cpus.to_string())
-        .arg("--memory")
-        .arg(args.enclave_memory.to_string())
-        .arg("--enclave-cid")
-        .arg(args.enclave_cid.to_string())
-        .arg("--eif-path")
-        .arg(args.eif_path.clone())
-        .spawn()
-        .map_err(|e| Error::Io("failed to start enclave", e))?;
-
-    Ok(handle)
 }
 
 fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Result<()> {
