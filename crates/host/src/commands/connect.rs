@@ -3,7 +3,6 @@ use crate::nitro::NitroCli;
 use crate::ConnectArgs;
 
 use proven_vsock_tracing::host::VsockTracingConsumer;
-use tokio_vsock::VsockAddr;
 use tracing::info;
 
 pub async fn connect(args: ConnectArgs) -> Result<()> {
@@ -11,9 +10,8 @@ pub async fn connect(args: ConnectArgs) -> Result<()> {
         return Err(Error::NoRunningEnclave);
     }
 
-    let vsock_tracing_consumer = VsockTracingConsumer::new();
-    let vsock_tracing_consumer_handle =
-        vsock_tracing_consumer.start(VsockAddr::new(args.enclave_cid, args.log_port))?;
+    let vsock_tracing_consumer = VsockTracingConsumer::new(args.enclave_cid);
+    let vsock_tracing_consumer_handle = vsock_tracing_consumer.start()?;
 
     info!("Connected to enclave logs. Press Ctrl+C to exit.");
 

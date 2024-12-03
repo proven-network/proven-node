@@ -37,20 +37,14 @@ pub async fn start(args: StartArgs) -> Result<()> {
         return Err(Error::EnclaveAlreadyRunning);
     }
 
-    // Host-local logging
-    tracing::subscriber::set_global_default(
-        FmtSubscriber::builder()
-            .with_max_level(Level::TRACE)
-            .finish(),
-    )?;
-
-    // Enclave (vsock-based) logging
-    let vsock_tracing_consumer = VsockTracingConsumer::new();
-    let vsock_tracing_consumer_handle =
-        vsock_tracing_consumer.start(VsockAddr::new(args.enclave_cid, args.log_port))?;
-
     info!("allocating enclave resources...");
     allocate_enclave_resources(args.enclave_cpus, args.enclave_memory)?;
+
+    let vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
+
+    let proxy =
+        Arc::new(Proxy::new(args.host_ip, args.enclave_ip, args.cidr, &args.tun_device).await?);
+    let proxy_handle = proxy.clone().start_host(vsock);
 
     NitroCli::run_enclave(
         args.enclave_cpus,
@@ -60,16 +54,24 @@ pub async fn start(args: StartArgs) -> Result<()> {
     )
     .await?;
 
-    let vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
+    // sleep for a bit to allow everything to start
+    // TODO: replace with a more robust mechanism
+    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
-    let proxy =
-        Arc::new(Proxy::new(args.host_ip, args.enclave_ip, args.cidr, &args.tun_device).await?);
+    // Host-local logging
+    tracing::subscriber::set_global_default(
+        FmtSubscriber::builder()
+            .with_max_level(Level::TRACE)
+            .finish(),
+    )?;
+
+    // Enclave (vsock-based) logging
+    let vsock_tracing_consumer = VsockTracingConsumer::new(args.enclave_cid);
+    let vsock_tracing_consumer_handle = vsock_tracing_consumer.start()?;
 
     configure_nat(&args.outbound_device, args.cidr).await?;
     configure_route(&args.tun_device, args.cidr, args.enclave_ip).await?;
     configure_port_forwarding(args.host_ip, args.enclave_ip, &args.outbound_device).await?;
-
-    let proxy_handle = proxy.clone().start_host(vsock);
 
     let http_server = InsecureHttpServer::new(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 80)));
     let fqdn = args.fqdn.clone();
@@ -102,8 +104,6 @@ pub async fn start(args: StartArgs) -> Result<()> {
         }
     });
 
-    // sleep for a bit to allow everything to start
-    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
     initialize_enclave(&args).await?;
 
     info!("enclave initialized successfully");
@@ -164,7 +164,6 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
             host_ip: args.host_ip,
             https_port: args.https_port,
             kms_key_id: args.kms_key_id.clone(),
-            log_port: args.log_port,
             max_runtime_workers: args.max_runtime_workers,
             nats_port: args.nats_port,
             nfs_mount_point: args.nfs_mount_point.clone(),

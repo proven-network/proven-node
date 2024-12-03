@@ -22,6 +22,7 @@ use proven_radix_gateway::RadixGateway;
 use proven_radix_node::RadixNode;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{AddPeerRequest, AddPeerResponse};
+use proven_vsock_tracing::enclave::VsockTracingProducer;
 use radix_common::network::NetworkDefinition;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -43,6 +44,7 @@ pub type EnclaveCore = Core<
 >;
 
 pub struct EnclaveServices {
+    pub vsock_trace_producer: Arc<Mutex<VsockTracingProducer>>,
     pub proxy: Arc<Mutex<Proxy>>,
     pub dnscrypt_proxy: Arc<Mutex<DnscryptProxy>>,
     pub radix_node_fs: Arc<Mutex<ExternalFs>>,

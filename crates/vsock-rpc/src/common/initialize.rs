@@ -34,9 +34,6 @@ pub struct InitializeRequest {
     /// KMS key ID for encrypting/decrypting cipher-text.
     pub kms_key_id: String,
 
-    /// VSOCK port for log messages.
-    pub log_port: u32,
-
     /// Maximum number of concurrent runtime workers.
     pub max_runtime_workers: u32,
 

@@ -45,7 +45,6 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockStream};
 use tracing::{error, info, warn};
-use tracing_panic::panic_hook;
 
 static VMADDR_CID_EC2_HOST: u32 = 3;
 
@@ -64,15 +63,19 @@ static RADIX_NODE_STORE_DIR: &str = "/var/lib/babylon";
 // let connz = nats_monitor.get_connz().await?;
 // info!("nats connz: {:?}", connz);
 
+pub struct PreinitializeArgs {
+    pub vsock_tracing_producer: VsockTracingProducer,
+    pub vsock_tracing_producer_handle: JoinHandle<()>,
+}
+
 pub struct Bootstrap {
     args: InitializeRequest,
     nsm: NsmAttestor,
     network_definition: NetworkDefinition,
+    vsock_tracing_producer: VsockTracingProducer,
+    vsock_tracing_producer_handle: JoinHandle<()>,
 
     // added during initialization
-    vsock_tracing_producer: Option<VsockTracingProducer>,
-    vsock_tracing_producer_handle: Option<JoinHandle<()>>,
-
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
 
@@ -119,7 +122,13 @@ pub struct Bootstrap {
 }
 
 impl Bootstrap {
-    pub fn new(args: InitializeRequest) -> Self {
+    pub fn new(
+        args: InitializeRequest,
+        PreinitializeArgs {
+            vsock_tracing_producer,
+            vsock_tracing_producer_handle,
+        }: PreinitializeArgs,
+    ) -> Self {
         let nsm = NsmAttestor::new();
         let network_definition = match args.stokenet {
             true => NetworkDefinition::stokenet(),
@@ -131,8 +140,8 @@ impl Bootstrap {
             nsm,
             network_definition,
 
-            vsock_tracing_producer: None,
-            vsock_tracing_producer_handle: None,
+            vsock_tracing_producer,
+            vsock_tracing_producer_handle,
 
             imds_identity: None,
             instance_details: None,
@@ -183,12 +192,6 @@ impl Bootstrap {
         }
 
         self.started = true;
-
-        if let Err(e) = self.configure_tracing().await {
-            error!("failed to configure tracing: {:?}", e);
-            self.unwind_services().await;
-            return Err(e);
-        }
 
         if let Err(e) = self.raise_fdlimit().await {
             error!("failed to raise fdlimit: {:?}", e);
@@ -304,6 +307,7 @@ impl Bootstrap {
             return Err(e);
         }
 
+        let vsock_tracing_producer_handle = self.vsock_tracing_producer_handle;
         let proxy_handle = self.proxy_handle.take().unwrap();
         let dnscrypt_proxy_handle = self.dnscrypt_proxy_handle.take().unwrap();
         let radix_node_fs_handle = self.radix_node_fs_handle.take().unwrap();
@@ -316,6 +320,7 @@ impl Bootstrap {
         let nats_server_handle = self.nats_server_handle.take().unwrap();
         let core_handle = self.core_handle.take().unwrap();
 
+        let vsock_tracing_producer = Arc::new(Mutex::new(self.vsock_tracing_producer));
         let proxy = Arc::new(Mutex::new(self.proxy.take().unwrap()));
         let dnscrypt_proxy = Arc::new(Mutex::new(self.dnscrypt_proxy.take().unwrap()));
         let radix_node_fs = Arc::new(Mutex::new(self.radix_node_fs.take().unwrap()));
@@ -329,6 +334,7 @@ impl Bootstrap {
         let core = Arc::new(Mutex::new(self.core.take().unwrap()));
 
         let enclave_services = EnclaveServices {
+            vsock_trace_producer: vsock_tracing_producer.clone(),
             proxy: proxy.clone(),
             dnscrypt_proxy: dnscrypt_proxy.clone(),
             radix_node_fs: radix_node_fs.clone(),
@@ -347,6 +353,9 @@ impl Bootstrap {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
+                    Err(e) = vsock_tracing_producer_handle => {
+                        error!("vsock_tracing_producer exited: {:?}", e);
+                    }
                     Ok(Err(e)) = proxy_handle => {
                         error!("proxy exited: {:?}", e);
                     }
@@ -402,6 +411,7 @@ impl Bootstrap {
             postgres_fs.lock().await.shutdown().await;
             dnscrypt_proxy.lock().await.shutdown().await;
             proxy.lock().await.shutdown().await;
+            vsock_tracing_producer.lock().await.shutdown().await;
         });
 
         self.task_tracker.close();
@@ -465,20 +475,6 @@ impl Bootstrap {
         if let Some(proxy) = self.proxy {
             proxy.shutdown().await;
         }
-    }
-
-    async fn configure_tracing(&mut self) -> Result<()> {
-        std::panic::set_hook(Box::new(panic_hook));
-
-        let tracing_service = VsockTracingProducer::new(self.args.log_port);
-        let tracing_service_handle = tracing_service.start()?;
-
-        self.vsock_tracing_producer = Some(tracing_service);
-        self.vsock_tracing_producer_handle = Some(tracing_service_handle);
-
-        info!("tracing configured");
-
-        Ok(())
     }
 
     async fn raise_fdlimit(&self) -> Result<()> {

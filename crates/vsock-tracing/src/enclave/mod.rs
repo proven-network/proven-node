@@ -1,5 +1,6 @@
 mod error;
 
+use crate::VSOCK_LOG_PORT;
 pub use error::{Error, Result};
 
 use tokio::task::JoinHandle;
@@ -13,7 +14,6 @@ use tracing_subscriber::{filter, fmt, layer::SubscriberExt, reload};
 /// Serive for receiving logs from the enclave.
 #[derive(Debug, Default)]
 pub struct VsockTracingProducer {
-    log_port: u32,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
@@ -21,9 +21,8 @@ pub struct VsockTracingProducer {
 impl VsockTracingProducer {
     /// Create a new `TracingService`.
     #[must_use]
-    pub fn new(log_port: u32) -> Self {
+    pub fn new() -> Self {
         Self {
-            log_port,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -57,7 +56,7 @@ impl VsockTracingProducer {
         let _ = reload_handle.modify(|filter| *filter = filter::LevelFilter::INFO);
 
         let shutdown_token = self.shutdown_token.clone();
-        let mut listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, self.log_port))
+        let mut listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, VSOCK_LOG_PORT))
             .map_err(|e| Error::Io("failed to bind vsock listener", e))?;
 
         let handle = self.task_tracker.spawn(async move {

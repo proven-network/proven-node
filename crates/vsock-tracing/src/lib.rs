@@ -5,6 +5,9 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
+/// Predefined port for vsock tracing.
+pub static VSOCK_LOG_PORT: u32 = 1026;
+
 /// Enclave-specific functionality.
 pub mod enclave;
 
