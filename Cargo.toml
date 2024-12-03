@@ -253,7 +253,6 @@ memmem = "0.1.1"
 monch = "=0.5.0"
 multi_key_map = "0.3.0"
 napi_sym = { path = "vendor/deno/ext/napi/sym" }
-nitro-cli = { git = "https://github.com/aws/aws-nitro-enclaves-cli", branch = "main" }
 nix = { version = "0.27.1", features = ["signal", "user"] }
 node_resolver = { path = "vendor/deno/resolvers/node" }
 notify = "7.0.0"

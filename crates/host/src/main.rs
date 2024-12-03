@@ -7,7 +7,12 @@
 
 mod error;
 mod net;
-mod systemctl;
+
+/// Commands for interacting with `nitro-cli`.
+pub mod nitro;
+
+/// Commands for interacting with `systemctl`.
+pub mod systemctl;
 
 use error::{Error, Result};
 use net::{configure_nat, configure_port_forwarding, configure_route};

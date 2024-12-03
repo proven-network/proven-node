@@ -13,6 +13,8 @@ proven-http-insecure = { workspace = true }
 proven-vsock-proxy = { workspace = true }
 proven-vsock-rpc = { workspace = true }
 proven-vsock-tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 systemctl = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
@@ -20,6 +22,3 @@ tokio-util = { workspace = true }
 tokio-vsock = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-nitro-cli = { workspace = true }
