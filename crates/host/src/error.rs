@@ -13,6 +13,12 @@ pub enum Error {
     #[error("eif does not exist: {0:?}")]
     EifDoesNotExist(PathBuf),
 
+    #[error("enclave already running")]
+    EnclaveAlreadyRunning,
+
+    #[error("enclave did not shutdown")]
+    EnclaveDidNotShutdown,
+
     #[error(transparent)]
     Http(#[from] proven_http_insecure::Error),
 

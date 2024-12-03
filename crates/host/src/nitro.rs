@@ -163,6 +163,29 @@ impl NitroCli {
         Ok(())
     }
 
+    /// Terminates all running enclaves.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the `nitro-cli terminate-enclave` command fails to execute
+    /// or returns a non-zero exit status.
+    pub async fn terminate_all_enclaves() -> Result<()> {
+        let output = Command::new("nitro-cli")
+            .args(["terminate-enclave", "--all"])
+            .output()
+            .await
+            .map_err(|e| Error::Io("failed to stop existing enclaves", e))?;
+
+        if !output.status.success() {
+            return Err(Error::NonZeroExit(
+                "nitro-cli terminate-enclave --all",
+                output.status,
+            ));
+        }
+
+        Ok(())
+    }
+
     fn parse_describe_enclaves_output(output: &str) -> Result<Vec<EnclaveInfo>> {
         serde_json::from_str(output).map_err(Error::Json)
     }

@@ -30,6 +30,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Initialize(args) => commands::initialize(*args).await,
         Commands::Connect(args) => commands::connect(*args).await,
+        Commands::Shutdown(args) => commands::stop(*args).await,
     }
 }
 
@@ -46,6 +47,8 @@ enum Commands {
     Initialize(Box<InitializeArgs>),
     /// Connect to an existing enclave's logs
     Connect(Box<ConnectArgs>),
+    /// Shutdown a running enclave
+    Shutdown(Box<StopArgs>),
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -126,4 +129,13 @@ struct InitializeArgs {
 struct ConnectArgs {
     #[arg(long, default_value_t = 1026)]
     log_port: u32,
+}
+
+#[derive(Parser, Debug)]
+struct StopArgs {
+    #[arg(long, default_value_t = 4)]
+    enclave_cid: u32,
+
+    #[arg(long)]
+    force: bool,
 }

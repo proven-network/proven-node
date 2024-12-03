@@ -32,10 +32,12 @@ pub async fn initialize(args: InitializeArgs) -> Result<()> {
         return Err(Error::EifDoesNotExist(args.eif_path.clone()));
     }
 
+    if NitroCli::is_enclave_running().await? {
+        return Err(Error::EnclaveAlreadyRunning);
+    }
+
     let tracing_service = TracingService::new();
     let tracing_handle = tracing_service.start(args.log_port)?;
-
-    stop_existing_enclaves().await?;
 
     info!("allocating enclave resources...");
     allocate_enclave_resources(args.enclave_cpus, args.enclave_memory)?;
@@ -183,17 +185,6 @@ async fn shutdown_enclave(args: &InitializeArgs) -> Result<()> {
         .await;
 
     info!("shutdown response: {:?}", res);
-
-    Ok(())
-}
-
-async fn stop_existing_enclaves() -> Result<()> {
-    tokio::process::Command::new("nitro-cli")
-        .arg("terminate-enclave")
-        .arg("--all")
-        .output()
-        .await
-        .map_err(|e| Error::Io("failed to stop existing enclaves", e))?;
 
     Ok(())
 }
