@@ -1,13 +1,16 @@
 //! Binary to run on the host machine to manage enclave lifecycle.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::redundant_pub_crate)]
 
 mod error;
 mod net;
 mod systemctl;
-mod vsock_tracing;
 
 use error::{Error, Result};
 use net::{configure_nat, configure_port_forwarding, configure_route};
-use vsock_tracing::TracingService;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -24,6 +27,7 @@ use proven_http::HttpServer;
 use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{InitializeRequest, RpcClient};
+use proven_vsock_tracing::host::TracingService;
 use tokio::process::Child;
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 use tracing::{error, info};
@@ -45,6 +49,7 @@ enum Commands {
     Connect(Box<ConnectArgs>),
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct InitializeArgs {
@@ -122,7 +127,7 @@ struct ConnectArgs {
 }
 
 #[tokio::main(worker_threads = 12)]
-pub async fn main() -> Result<()> {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -137,7 +142,7 @@ async fn initialize(args: InitializeArgs) -> Result<()> {
     }
 
     if !Path::new(&args.eif_path).exists() {
-        return Err(Error::EifDoesNotExist(args.eif_path));
+        return Err(Error::EifDoesNotExist(args.eif_path.clone()));
     }
 
     let tracing_service = TracingService::new();
@@ -146,9 +151,9 @@ async fn initialize(args: InitializeArgs) -> Result<()> {
     stop_existing_enclaves().await?;
 
     info!("allocating enclave resources...");
-    allocate_enclave_resources(args.enclave_cpus, args.enclave_memory).await?;
+    allocate_enclave_resources(args.enclave_cpus, args.enclave_memory)?;
 
-    let _enclave = start_enclave(&args).await?;
+    let _enclave = start_enclave(&args)?;
 
     let vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
 
@@ -175,7 +180,7 @@ async fn initialize(args: InitializeArgs) -> Result<()> {
         any(move |uri: Uri| {
             let fqdn = fqdn.clone();
             async move {
-                let https_uri = format!("https://{}{}", fqdn, uri);
+                let https_uri = format!("https://{fqdn}{uri}");
                 Redirect::permanent(&https_uri)
             }
         }),
@@ -188,7 +193,7 @@ async fn initialize(args: InitializeArgs) -> Result<()> {
             Err(e) = http_server_handle => {
                 error!("http_server exited: {:?}", e);
             }
-            _ = proxy_handle => {
+            () = proxy_handle => {
                 error!("proxy exited");
             }
             else => {
@@ -221,7 +226,7 @@ async fn initialize(args: InitializeArgs) -> Result<()> {
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
     info!("deallocating enclave resources...");
-    allocate_enclave_resources(1, 0).await?;
+    allocate_enclave_resources(1, 0)?;
     info!("host shutdown cleanly. goodbye.");
 
     Ok(())
@@ -255,7 +260,7 @@ async fn stop_existing_enclaves() -> Result<()> {
     Ok(())
 }
 
-async fn start_enclave(args: &InitializeArgs) -> Result<Child> {
+fn start_enclave(args: &InitializeArgs) -> Result<Child> {
     let handle = tokio::process::Command::new("nitro-cli")
         .arg("run-enclave")
         .arg("--cpu-count")
@@ -272,11 +277,11 @@ async fn start_enclave(args: &InitializeArgs) -> Result<Child> {
     Ok(handle)
 }
 
-async fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Result<()> {
+fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Result<()> {
     let existing_allocator_config = std::fs::read_to_string("/etc/nitro_enclaves/allocator.yaml")
         .map_err(|e| Error::Io("failed to read allocator config", e))?;
-    if existing_allocator_config.contains(&format!("cpu_count: {}", enclave_cpus))
-        && existing_allocator_config.contains(&format!("memory_mib: {}", enclave_memory))
+    if existing_allocator_config.contains(&format!("cpu_count: {enclave_cpus}"))
+        && existing_allocator_config.contains(&format!("memory_mib: {enclave_memory}"))
     {
         return Ok(());
     }

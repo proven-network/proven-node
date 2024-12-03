@@ -6929,6 +6929,7 @@ dependencies = [
  "proven-http-insecure",
  "proven-vsock-proxy",
  "proven-vsock-rpc",
+ "proven-vsock-tracing",
  "systemctl",
  "thiserror 2.0.3",
  "tokio",
@@ -7416,6 +7417,7 @@ version = "0.1.0"
 dependencies = [
  "thiserror 2.0.3",
  "tokio",
+ "tokio-util",
  "tokio-vsock",
  "tracing",
  "tracing-subscriber",

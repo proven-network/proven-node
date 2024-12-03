@@ -94,7 +94,7 @@ pub async fn configure_port_forwarding(
             .arg("-j")
             .arg("DNAT")
             .arg("--to-destination")
-            .arg(format!("{}:{}", enclave_ip, port).as_str())
+            .arg(format!("{enclave_ip}:{port}").as_str())
             .output()
             .await
             .map_err(|e| Error::Io("failed to configure port forwarding", e))?;
@@ -141,7 +141,7 @@ pub async fn configure_port_forwarding(
             .arg("-j")
             .arg("DNAT")
             .arg("--to-destination")
-            .arg(format!("{}:{}", enclave_ip, port).as_str())
+            .arg(format!("{enclave_ip}:{port}").as_str())
             .output()
             .await
             .map_err(|e| Error::Io("failed to configure port forwarding", e))?;

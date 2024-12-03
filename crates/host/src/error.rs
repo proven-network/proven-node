@@ -20,11 +20,11 @@ pub enum Error {
     NotRoot,
 
     #[error(transparent)]
-    TracingService(#[from] super::vsock_tracing::TracingServiceError),
-
-    #[error(transparent)]
     VsockProxy(#[from] proven_vsock_proxy::Error),
 
     #[error(transparent)]
     VsockRpc(#[from] proven_vsock_rpc::Error),
+
+    #[error(transparent)]
+    VsockTracing(#[from] proven_vsock_tracing::host::Error),
 }

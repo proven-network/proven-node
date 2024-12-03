@@ -98,5 +98,5 @@ pub enum Error {
     VsockRpc(#[from] proven_vsock_rpc::Error),
 
     #[error(transparent)]
-    VsockTracing(#[from] proven_vsock_tracing::Error),
+    VsockTracing(#[from] proven_vsock_tracing::enclave::Error),
 }

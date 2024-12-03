@@ -37,7 +37,7 @@ use proven_store_s3::{S3Store, S3StoreOptions};
 use proven_stream_nats::{NatsStream, NatsStreamOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
-use proven_vsock_tracing::configure_logging_to_vsock;
+use proven_vsock_tracing::enclave::configure_logging_to_vsock;
 use radix_common::network::NetworkDefinition;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
