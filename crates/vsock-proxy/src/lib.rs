@@ -27,7 +27,7 @@ mod macosx {
             _ip_addr: Ipv4Addr,
             _dest_addr: Ipv4Addr,
             _cidr: Ipv4Cidr,
-            _tun_interface_name: String,
+            _tun_interface_name: &str,
         ) -> Result<Self> {
             Ok(Self {
                 shutdown_token: CancellationToken::new(),
@@ -70,11 +70,11 @@ pub mod linux {
             ip_addr: Ipv4Addr,
             dest_addr: Ipv4Addr,
             cidr: Ipv4Cidr,
-            tun_interface_name: String,
+            tun_interface_name: &str,
         ) -> Result<Self> {
             let tun = Arc::new(
                 TunBuilder::new()
-                    .name(&tun_interface_name)
+                    .name(tun_interface_name)
                     .mtu(FRAME_LEN as i32)
                     .address(ip_addr)
                     .destination(dest_addr)
@@ -88,7 +88,7 @@ pub mod linux {
                     "qdisc",
                     "replace",
                     "dev",
-                    &tun_interface_name,
+                    tun_interface_name,
                     "root",
                     "pfifo_fast",
                 ])

@@ -60,9 +60,6 @@ pub struct InitializeRequest {
 
     /// Whether to use stokenet - or mainnet.
     pub stokenet: bool,
-
-    /// Tun device name for layer-3 traffic.
-    pub tun_device: String,
 }
 
 /// The response to an add peer request.

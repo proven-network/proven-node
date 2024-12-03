@@ -537,16 +537,11 @@ impl Bootstrap {
             self.args.enclave_ip,
             self.args.host_ip,
             self.args.cidr,
-            self.args.tun_device.clone(),
+            "tun0",
         )
         .await?;
 
-        setup_default_gateway(
-            self.args.tun_device.as_str(),
-            self.args.host_ip,
-            self.args.cidr,
-        )
-        .await?;
+        setup_default_gateway("tun0", self.args.host_ip, self.args.cidr).await?;
 
         let proxy_handle = proxy.start(vsock_stream);
 

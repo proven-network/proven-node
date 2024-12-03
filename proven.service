@@ -1,0 +1,25 @@
+[Unit]
+Description=Proven Node
+After=local-fs.target
+After=network-online.target
+After=nss-lookup.target
+After=time-sync.target
+After=systemd-journald-dev-log.socket
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/proven.conf
+ExecStart=/usr/sbin/proven daemon
+LimitNOFILE=65536
+LimitNPROC=65536
+LimitMEMLOCK=infinity
+Restart=on-failure
+User=root
+Group=root
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=proven
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

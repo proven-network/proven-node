@@ -52,15 +52,8 @@ pub async fn start(args: StartArgs) -> Result<()> {
 
     let vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
 
-    let proxy = Arc::new(
-        Proxy::new(
-            args.host_ip,
-            args.enclave_ip,
-            args.cidr,
-            args.tun_device.clone(),
-        )
-        .await?,
-    );
+    let proxy =
+        Arc::new(Proxy::new(args.host_ip, args.enclave_ip, args.cidr, &args.tun_device).await?);
 
     configure_nat(&args.outbound_device, args.cidr).await?;
     configure_route(&args.tun_device, args.cidr, args.enclave_ip).await?;
@@ -170,7 +163,6 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
             skip_speedtest: args.skip_speedtest,
             skip_vacuum: args.skip_vacuum,
             stokenet: args.stokenet,
-            tun_device: args.tun_device.clone(),
         })
         .await;
 

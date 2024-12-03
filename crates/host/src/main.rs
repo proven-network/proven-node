@@ -29,6 +29,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Connect(args) => commands::connect(*args).await,
+        Commands::Daemon(args) => commands::daemon(*args).await,
         Commands::Start(args) => commands::start(*args).await,
         Commands::Stop(args) => commands::stop(*args).await,
     }
@@ -46,6 +47,9 @@ enum Commands {
     /// Connect to an existing enclave's logs
     Connect(Box<ConnectArgs>),
 
+    /// Run the host as a daemon
+    Daemon(Box<StartArgs>),
+
     /// Initialize and start a new enclave
     Start(Box<StartArgs>),
 
@@ -53,87 +57,91 @@ enum Commands {
     Stop(Box<StopArgs>),
 }
 
-#[derive(Parser, Debug)]
+#[derive(Clone, Debug, Parser)]
 struct ConnectArgs {
     #[arg(long, default_value_t = 1026)]
     log_port: u32,
 }
 
 #[allow(clippy::struct_excessive_bools)]
-#[derive(Parser, Debug)]
+#[derive(Clone, Debug, Parser)]
 #[command(version, about, long_about = None)]
 struct StartArgs {
-    #[arg(long, required = true)]
+    #[arg(long, required = true, env = "PROVEN_CERTIFICATES_BUCKET")]
     certificates_bucket: String,
 
-    #[arg(long, default_value_t = Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap())]
+    #[arg(long, default_value_t = Ipv4Cidr::new(Ipv4Addr::new(10, 0, 0, 0), 24).unwrap(), env = "PROVEN_CIDR")]
     cidr: Ipv4Cidr,
 
-    #[arg(index = 1, default_value = "/var/lib/proven/enclave.eif")]
+    #[arg(
+        index = 1,
+        default_value = "/var/lib/proven/enclave.eif",
+        env = "PROVEN_EIF_PATH"
+    )]
     eif_path: PathBuf,
 
-    #[clap(long)]
+    #[clap(long, env = "PROVEN_EMAIL")]
     email: Vec<String>,
 
-    #[arg(long, default_value_t = 4)]
+    #[arg(long, default_value_t = 4, env = "PROVEN_ENCLAVE_CID")]
     enclave_cid: u32,
 
-    #[arg(long, default_value_t = 10)]
+    #[arg(long, default_value_t = 10, env = "PROVEN_ENCLAVE_CPUS")]
     enclave_cpus: u8,
 
-    #[arg(long, default_value_t = Ipv4Addr::new(10, 0, 0, 2))]
+    #[arg(long, default_value_t = Ipv4Addr::new(10, 0, 0, 2), env = "PROVEN_ENCLAVE_IP")]
     enclave_ip: Ipv4Addr,
 
-    #[arg(long, default_value_t = 25000)]
+    #[arg(long, default_value_t = 25000, env = "PROVEN_ENCLAVE_MEMORY")]
     enclave_memory: u32,
 
-    #[clap(long, required = true)]
+    #[clap(long, required = true, env = "PROVEN_FQDN")]
     fqdn: String,
 
-    #[arg(long, default_value_t = Ipv4Addr::new(10, 0, 0, 1))]
+    #[arg(long, default_value_t = Ipv4Addr::new(10, 0, 0, 1), env = "PROVEN_HOST_IP")]
     host_ip: Ipv4Addr,
 
-    #[arg(long, default_value_t = 443)]
+    #[arg(long, default_value_t = 443, env = "PROVEN_HTTP_PORT")]
     https_port: u16,
 
-    #[clap(long, required = true)]
+    #[clap(long, required = true, env = "PROVEN_KMS_KEY_ID")]
     kms_key_id: String,
 
-    #[arg(long, default_value_t = 1026)]
+    #[arg(long, default_value_t = 1026, env = "PROVEN_LOG_PORT")]
     log_port: u32,
 
-    #[arg(long, default_value_t = 100)]
+    #[arg(long, default_value_t = 100, env = "PROVEN_MAX_RUNTIME_WORKERS")]
     max_runtime_workers: u32,
 
-    #[arg(long, default_value_t = 4222)]
+    #[arg(long, default_value_t = 4222, env = "PROVEN_NATS_PORT")]
     nats_port: u16,
 
-    #[clap(long, required = true)]
+    #[clap(long, required = true, env = "PROVEN_NFS_MOUNT_POINT")]
     nfs_mount_point: String,
 
-    #[arg(long, default_value_t = format!("ens5"))]
+    #[arg(long, default_value_t = format!("ens5"), env = "PROVEN_OUTBOUND_DEVICE")]
     outbound_device: String,
 
-    #[arg(long, default_value_t = 1025)]
+    #[arg(long, default_value_t = 1025, env = "PROVEN_PROXY_PORT")]
     proxy_port: u32,
 
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, env = "PROVEN_SKIP_FSCK")]
     skip_fsck: bool,
 
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, env = "PROVEN_SKIP_SPEEDTEST")]
     skip_speedtest: bool,
 
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, env = "PROVEN_SKIP_VACUUM")]
     skip_vacuum: bool,
 
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, env = "PROVEN_STOKENET")]
     stokenet: bool,
 
-    #[arg(long, default_value_t = format!("tun0"))]
+    #[arg(long, default_value_t = format!("tun0"), env = "PROVEN_TUN_DEVICE")]
     tun_device: String,
 }
 
-#[derive(Parser, Debug)]
+#[derive(Clone, Debug, Parser)]
 struct StopArgs {
     #[arg(long, default_value_t = 4)]
     enclave_cid: u32,

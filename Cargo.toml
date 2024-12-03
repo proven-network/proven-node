@@ -157,7 +157,7 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 chrono = { version = "0.4.26", features = ["serde"] }
 ciborium = "0.2"
 cidr = { version = "0.3.0", features = ["serde"] }
-clap = { version = "4.5.21", features = ["derive"] }
+clap = { version = "4.5.21", features = ["derive", "env"] }
 color-print = "0.3.5"
 console_static_text = "0.8.2"
 coset = { version = "0.3.8", features = ["std"] }
