@@ -9,7 +9,7 @@ Wants=network-online.target
 
 [Service]
 EnvironmentFile=/etc/proven.conf
-ExecStart=/usr/sbin/proven daemon
+ExecStart=/usr/sbin/proven start
 LimitNOFILE=65536
 LimitNPROC=65536
 LimitMEMLOCK=infinity

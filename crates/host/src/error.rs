@@ -33,6 +33,9 @@ pub enum Error {
     #[error("{0} unexpectedly exited with non-zero code: {1}")]
     NonZeroExit(&'static str, ExitStatus),
 
+    #[error("no running enclave")]
+    NoRunningEnclave,
+
     #[error("must be root")]
     NotRoot,
 

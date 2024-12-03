@@ -29,7 +29,6 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Connect(args) => commands::connect(*args).await,
-        Commands::Daemon(args) => commands::daemon(*args).await,
         Commands::Start(args) => commands::start(*args).await,
         Commands::Stop(args) => commands::stop(*args).await,
     }
@@ -46,9 +45,6 @@ struct Cli {
 enum Commands {
     /// Connect to an existing enclave's logs
     Connect(Box<ConnectArgs>),
-
-    /// Run the host as a daemon
-    Daemon(Box<StartArgs>),
 
     /// Initialize and start a new enclave
     Start(Box<StartArgs>),

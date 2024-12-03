@@ -18,6 +18,7 @@ use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{InitializeRequest, RpcClient};
 use proven_vsock_tracing::host::TracingService;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 use tracing::{error, info};
 
@@ -93,14 +94,23 @@ pub async fn start(args: StartArgs) -> Result<()> {
     });
 
     // sleep for a bit to allow everything to start
-    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
     initialize_enclave(&args).await?;
 
     info!("enclave initialized successfully");
 
+    let mut sigterm = signal(SignalKind::terminate())
+        .map_err(|e| Error::Io("failed to create SIGTERM signal", e))?;
+
     tokio::select! {
+        _ = sigterm.recv() => {
+            info!("received SIGTERM, initiating shutdown");
+            shutdown_enclave(&args).await?;
+            http_server.shutdown().await;
+            proxy.shutdown().await;
+        }
         _ = tokio::signal::ctrl_c() => {
-            info!("shutting down...");
+            info!("received SIGINT, initiating shutdown");
             shutdown_enclave(&args).await?;
             http_server.shutdown().await;
             proxy.shutdown().await;
