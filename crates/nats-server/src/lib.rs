@@ -25,6 +25,8 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
+static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
+
 /// Runs a NATS server for inter-node communication.
 pub struct NatsServer {
     clients: Arc<Mutex<Vec<Client>>>,
@@ -246,19 +248,10 @@ impl NatsServer {
     ///
     /// A `Result` indicating success or failure.
     async fn update_nats_config(&self) -> Result<()> {
-        let config = format!(
-            r#"
-            server_name: {}
-            listen: {}
-            jetstream: enabled
-            http: localhost:8222
-
-            jetstream {{
-                store_dir: "{}"
-            }}
-        "#,
-            self.server_name, self.listen_addr, self.store_dir
-        );
+        let config = CONFIG_TEMPLATE
+            .replace("{server_name}", &self.server_name)
+            .replace("{listen_addr}", &self.listen_addr.to_string())
+            .replace("{store_dir}", &self.store_dir);
 
         tokio::fs::create_dir_all("/etc/nats")
             .await
