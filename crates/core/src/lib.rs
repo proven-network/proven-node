@@ -114,8 +114,9 @@ where
             .nest("/", websocket_router);
 
         let shutdown_token = self.shutdown_token.clone();
-        let https_handle = http_server.start(https_app).await?;
         let handle = self.task_tracker.spawn(async move {
+            let https_handle = http_server.start(https_app).await?;
+
             tokio::select! {
                 () = shutdown_token.cancelled() => {
                     info!("shutdown command received");
