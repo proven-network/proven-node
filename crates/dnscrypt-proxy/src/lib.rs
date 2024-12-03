@@ -25,6 +25,8 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
 
+static CONFIG_TEMPLATE: &str = include_str!("../templates/dnscrypt-proxy.toml");
+
 /// Dnscrypt proxy runner.
 pub struct DnscryptProxy {
     region: String,
@@ -199,22 +201,7 @@ impl DnscryptProxy {
             bootstrap_ipi: Vec::new(),
         });
 
-        let config = format!(
-            r"
-# dnscrypt-proxy configuration file
-
-# Listen addresses
-listen_addresses = ['127.0.0.1:53', '[::1]:53']
-
-# Server names
-server_names = ['route53-resolver']
-
-# Static server definitions
-[static.'route53-resolver']
-stamp = '{}'
-        ",
-            dns_stamp.encode()?
-        );
+        let config = CONFIG_TEMPLATE.replace("{stamp}", &dns_stamp.encode()?);
 
         tokio::fs::create_dir_all("/etc/dnscrypt-proxy")
             .await

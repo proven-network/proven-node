@@ -1,0 +1,11 @@
+# dnscrypt-proxy configuration file
+
+# Listen addresses
+listen_addresses = ['127.0.0.1:53', '[::1]:53']
+
+# Server names
+server_names = ['route53-resolver']
+
+# Static server definitions
+[static.'route53-resolver']
+stamp = '{stamp}'
