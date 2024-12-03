@@ -1,3 +1,5 @@
+use std::process::ExitStatus;
+
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -40,6 +42,9 @@ pub enum Error {
     BadKey,
 
     #[error(transparent)]
+    BadUtf8(#[from] std::string::FromUtf8Error),
+
+    #[error(transparent)]
     Cidr(#[from] cidr::errors::NetworkParseError),
 
     #[error(transparent)]
@@ -57,8 +62,12 @@ pub enum Error {
     #[error(transparent)]
     InstanceDetails(#[from] proven_instance_details::Error),
 
+    /// IO operation failed.
+    #[error("{0}: {1}")]
+    Io(&'static str, #[source] std::io::Error),
+
     #[error(transparent)]
-    Io(#[from] std::io::Error),
+    Json(#[from] serde_json::Error),
 
     #[error(transparent)]
     Kms(#[from] proven_kms::Error),
@@ -78,6 +87,9 @@ pub enum Error {
 
     #[error("No loopback interface found")]
     NoLoopback,
+
+    #[error("{0} unexpectedly exited with non-zero code: {1}")]
+    NonZeroExit(&'static str, ExitStatus),
 
     #[error(transparent)]
     Nsm(#[from] proven_attestation_nsm::Error),

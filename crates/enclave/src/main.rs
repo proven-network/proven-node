@@ -3,10 +3,11 @@ mod bootstrap;
 mod enclave;
 mod error;
 mod net;
+mod speedtest;
 
 use bootstrap::Bootstrap;
 use enclave::Enclave;
-use error::Result;
+pub use error::{Error, Result};
 
 use std::sync::Arc;
 

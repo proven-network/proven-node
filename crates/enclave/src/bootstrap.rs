@@ -1,10 +1,10 @@
 use super::enclave::{Enclave, EnclaveCore, EnclaveServices};
 use super::error::{Error, Result};
 use super::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
+use super::speedtest::SpeedTest;
 
 use std::convert::TryInto;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -506,7 +506,8 @@ impl Bootstrap {
             .arg("tmpfs")
             .arg("/tmp")
             .output()
-            .await?;
+            .await
+            .map_err(|e| Error::Io("failed to remount tmp with exec", e))?;
 
         info!("tmp remounted with exec (babylon snappy java fix)");
 
@@ -557,8 +558,10 @@ impl Bootstrap {
         let secured_random_bytes = self.nsm.secure_random().await?;
         let mut dev_random = std::fs::OpenOptions::new()
             .write(true)
-            .open("/dev/random")?;
-        std::io::Write::write_all(&mut dev_random, secured_random_bytes.as_ref())?;
+            .open("/dev/random")
+            .map_err(|e| Error::Io("failed to open /dev/random", e))?;
+        std::io::Write::write_all(&mut dev_random, secured_random_bytes.as_ref())
+            .map_err(|e| Error::Io("failed to write to /dev/random", e))?;
 
         info!("entropy seeded");
 
@@ -595,14 +598,10 @@ impl Bootstrap {
         if !self.args.skip_speedtest {
             info!("running speedtest...");
 
-            let cmd = tokio::process::Command::new("librespeed-cli")
-                .arg("--json")
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .output()
-                .await?;
+            let speedtest = SpeedTest::new();
+            let results = speedtest.run().await?;
 
-            info!("speedtest results: {:?}", cmd);
+            info!("speedtest results: {:?}", results);
         } else {
             info!("skipping speedtest...");
         }

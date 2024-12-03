@@ -1,0 +1,27 @@
+[
+  {
+    "timestamp": "2024-12-03T16:30:53.635342996Z",
+    "server": {
+      "name": "Chicago, USA (Sharktech)",
+      "url": "https://chispeed.sharktech.net"
+    },
+    "client": {
+      "ip": "",
+      "hostname": "",
+      "city": "",
+      "region": "",
+      "country": "",
+      "loc": "",
+      "org": "",
+      "postal": "",
+      "timezone": ""
+    },
+    "bytes_sent": 534380544,
+    "bytes_received": 784465920,
+    "ping": 10,
+    "jitter": 0,
+    "upload": 274,
+    "download": 402.26,
+    "share": ""
+  }
+]
