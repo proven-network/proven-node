@@ -16,8 +16,6 @@ LimitMEMLOCK=infinity
 Restart=on-failure
 User=root
 Group=root
-StandardOutput=syslog
-StandardError=syslog
 SyslogIdentifier=proven
 TimeoutStopSec=60
 
