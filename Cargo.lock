@@ -6631,6 +6631,7 @@ dependencies = [
  "bytes",
  "libsql",
  "proven-sql",
+ "sha2",
  "thiserror 2.0.3",
  "tokio",
 ]

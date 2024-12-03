@@ -1,4 +1,4 @@
-CREATE TABLE __proven_migrations (
+CREATE TABLE IF NOT EXISTS __proven_migrations (
     id INTEGER PRIMARY KEY,
     query_hash TEXT NOT NULL UNIQUE,
     query TEXT NOT NULL,

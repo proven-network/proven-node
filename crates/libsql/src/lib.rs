@@ -17,6 +17,7 @@ use sql_type::SqlType;
 
 use libsql::{Builder, Connection, Value};
 use proven_sql::{Rows, SqlParam};
+use sha2::{Digest, Sha256};
 
 static RESERVED_TABLE_PREFIX: &str = "__proven_";
 static CREATE_MIGRATIONS_TABLE_SQL: &str = include_str!("../sql/create_migrations_table.sql");
@@ -124,12 +125,16 @@ impl Database {
 
         match Self::classify_sql(query) {
             SqlType::Migration => {
+                let mut hasher = Sha256::new();
+                hasher.update(query);
+                let hash = format!("{:x}", hasher.finalize());
+
                 // first check if the migration has already been run
                 let mut rows = self
                     .connection
                     .query(
-                        "SELECT COUNT(*) FROM __proven_migrations WHERE query = ?1",
-                        Self::convert_params(vec![SqlParam::Text(query.to_string())]),
+                        "SELECT COUNT(*) FROM __proven_migrations WHERE query_hash = ?1",
+                        Self::convert_params(vec![SqlParam::Text(hash.to_string())]),
                     )
                     .await?;
 
@@ -147,11 +152,8 @@ impl Database {
                     .execute(query, Self::convert_params(vec![]))
                     .await?;
 
-                let migration_params = vec![
-                    SqlParam::Integer(0),
-                    SqlParam::Text("TODO: hash".to_string()),
-                    SqlParam::Text(query.to_string()),
-                ];
+                let migration_params =
+                    vec![SqlParam::Text(hash), SqlParam::Text(query.to_string())];
 
                 transation
                     .execute(INSERT_MIGRATION_SQL, Self::convert_params(migration_params))

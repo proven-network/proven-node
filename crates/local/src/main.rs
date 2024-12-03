@@ -56,7 +56,7 @@ async fn main() -> Result<()> {
         radix_network_definition: radix_network_definition.clone(),
     });
 
-    let application_manager_sql_store = DirectSqlStore::new("/tmp/proven/app_data");
+    let application_manager_sql_store = DirectSqlStore::new("/tmp/proven/application_manager.db");
     let application_manager = ApplicationManager::new(application_manager_sql_store).await?;
 
     let application_store = FsStore::new("/tmp/proven/kv/application");
@@ -90,6 +90,8 @@ async fn main() -> Result<()> {
     let http_server = InsecureHttpServer::new(http_sock_addr);
 
     let core_handle = core.start(http_server)?;
+
+    info!("listening on http://{http_sock_addr}");
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
