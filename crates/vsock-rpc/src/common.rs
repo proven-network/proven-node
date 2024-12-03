@@ -10,6 +10,7 @@ use derive_more::From;
 use serde::{Deserialize, Serialize};
 
 /// A request to the server.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Request {
     /// Add a new peer to the server.

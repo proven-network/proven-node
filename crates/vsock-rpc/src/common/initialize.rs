@@ -37,6 +37,9 @@ pub struct InitializeRequest {
     /// VSOCK port for log messages.
     pub log_port: u32,
 
+    /// Maximum number of concurrent runtime workers.
+    pub max_runtime_workers: u32,
+
     /// NATS port for messaging between enclaves (should match host TCP forwarding).
     pub nats_port: u16,
 

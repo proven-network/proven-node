@@ -92,6 +92,9 @@ struct InitializeArgs {
     #[arg(long, default_value_t = 1026)]
     log_port: u32,
 
+    #[arg(long, default_value_t = 100)]
+    max_runtime_workers: u32,
+
     #[arg(long, default_value_t = 4222)]
     nats_port: u16,
 
@@ -313,6 +316,7 @@ async fn initialize_enclave(args: &InitializeArgs) -> Result<()> {
             https_port: args.https_port,
             kms_key_id: args.kms_key_id.clone(),
             log_port: args.log_port,
+            max_runtime_workers: args.max_runtime_workers,
             nats_port: args.nats_port,
             nfs_mount_point: args.nfs_mount_point.clone(),
             proxy_port: args.proxy_port,

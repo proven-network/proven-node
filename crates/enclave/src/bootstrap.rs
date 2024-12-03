@@ -924,7 +924,7 @@ impl Bootstrap {
         let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
             application_sql_store,
             application_store,
-            max_workers: 100,
+            max_workers: self.args.max_runtime_workers,
             nft_sql_store,
             nft_store,
             personal_sql_store,

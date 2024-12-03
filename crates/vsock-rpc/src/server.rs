@@ -18,6 +18,7 @@ type AddPeerAcknowledger = AcknowledgerFn<AddPeerResponse>;
 type ShutdownAcknowledger = AcknowledgerFn<ShutdownResponse>;
 
 /// RPC calls that can be made to the server.
+#[allow(clippy::large_enum_variant)]
 pub enum RpcCall {
     /// Initializes the enclave (after booting).
     Initialize(InitializeRequest, InitializeAcknowledger),
