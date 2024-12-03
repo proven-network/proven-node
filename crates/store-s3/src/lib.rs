@@ -132,7 +132,7 @@ impl Store for S3Store {
                 };
                 body.read_to_end(&mut buf)
                     .await
-                    .map_err(|e| Error::IoError("read body error", e))?;
+                    .map_err(|e| Error::Io("read body error", e))?;
 
                 Ok(Some(Bytes::from(buf)))
             }

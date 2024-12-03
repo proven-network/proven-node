@@ -20,7 +20,7 @@ pub enum Error {
 
     /// IO operation failed.
     #[error("{0}: {1}")]
-    IoError(&'static str, #[source] std::io::Error),
+    Io(&'static str, #[source] std::io::Error),
 
     /// Response too large for wire format.
     #[error("response too large: was {0} expected less than or equal to {1}")]

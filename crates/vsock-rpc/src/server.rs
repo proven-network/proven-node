@@ -49,21 +49,21 @@ impl RpcServer {
     /// accepting a connection, reading from the stream, or deserializing the request.
     pub async fn accept(&self) -> Result<RpcCall> {
         let mut listener = VsockListener::bind(self.vsock_addr)
-            .map_err(|e| Error::IoError("failed to bind vsock listener to address", e))?;
+            .map_err(|e| Error::Io("failed to bind vsock listener to address", e))?;
         let (mut stream, _) = listener
             .accept()
             .await
-            .map_err(|e| Error::IoError("failed to accept connection on vsock listener", e))?;
+            .map_err(|e| Error::Io("failed to accept connection on vsock listener", e))?;
 
         let length = stream
             .read_u32()
             .await
-            .map_err(|e| Error::IoError("failed to read length", e))?;
+            .map_err(|e| Error::Io("failed to read length", e))?;
         let mut buffer = vec![0u8; length as usize];
         stream
             .read_exact(&mut buffer)
             .await
-            .map_err(|e| Error::IoError("failed to read body from stream", e))?;
+            .map_err(|e| Error::Io("failed to read body from stream", e))?;
 
         let command: Request = ciborium::de::from_reader(&buffer[..])?;
 
@@ -101,11 +101,11 @@ async fn send_response<Res: Into<Response> + Send>(
     stream
         .write_all(&length_prefix)
         .await
-        .map_err(|e| Error::IoError("failed to write length", e))?;
+        .map_err(|e| Error::Io("failed to write length", e))?;
     stream
         .write_all(&encoded)
         .await
-        .map_err(|e| Error::IoError("failed to write body", e))?;
+        .map_err(|e| Error::Io("failed to write body", e))?;
 
     Ok(())
 }

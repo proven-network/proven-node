@@ -91,7 +91,7 @@ impl Postgres {
         let postmaster_pid = std::path::Path::new(&self.store_dir).join("postmaster.pid");
         if postmaster_pid.exists() {
             std::fs::remove_file(&postmaster_pid)
-                .map_err(|e| Error::IoError("failed to remove postmaster pid", e))?;
+                .map_err(|e| Error::Io("failed to remove postmaster pid", e))?;
         }
 
         let shutdown_token = self.shutdown_token.clone();
@@ -108,7 +108,7 @@ impl Postgres {
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| Error::IoError("failed to spawn postgres", e))?;
+                .map_err(|e| Error::Io("failed to spawn postgres", e))?;
 
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
@@ -150,7 +150,7 @@ impl Postgres {
             // Wait for the postgres process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
-                    let status = cmd.wait().await.map_err(|e| Error::IoError("failed to wait for exit", e))?;
+                    let status = cmd.wait().await.map_err(|e| Error::Io("failed to wait for exit", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -203,7 +203,7 @@ impl Postgres {
         let password_file = std::path::Path::new("/tmp/pgpass");
         tokio::fs::write(password_file, self.password.clone())
             .await
-            .map_err(|e| Error::IoError("failed to write password file", e))?;
+            .map_err(|e| Error::Io("failed to write password file", e))?;
 
         let cmd = Command::new("/usr/local/pgsql/bin/initdb")
             .arg("-D")
@@ -214,7 +214,7 @@ impl Postgres {
             .arg(password_file)
             .output()
             .await
-            .map_err(|e| Error::IoError("failed to spawn initdb", e))?;
+            .map_err(|e| Error::Io("failed to spawn initdb", e))?;
 
         info!("stdout: {}", String::from_utf8_lossy(&cmd.stdout));
         info!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
@@ -248,7 +248,7 @@ impl Postgres {
                 .arg("postgres")
                 .output()
                 .await
-                .map_err(|e| Error::IoError("failed to spawn pg_isready", e))?;
+                .map_err(|e| Error::Io("failed to spawn pg_isready", e))?;
 
             if cmd.status.success() {
                 info!("postgres is ready");
@@ -273,7 +273,7 @@ impl Postgres {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| Error::IoError("failed to spawn vacuumdb", e))?;
+            .map_err(|e| Error::Io("failed to spawn vacuumdb", e))?;
 
         let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
         let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
@@ -298,7 +298,7 @@ impl Postgres {
 
         tokio::select! {
             e = cmd.wait() => {
-                let exit_status = e.map_err(|e| Error::IoError("failed to get vacuum exit status", e))?;
+                let exit_status = e.map_err(|e| Error::Io("failed to get vacuum exit status", e))?;
                 if !exit_status.success() {
                     return Err(Error::NonZeroExitCode(exit_status));
                 }

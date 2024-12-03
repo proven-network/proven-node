@@ -105,7 +105,7 @@ impl NatsServer {
 
         tokio::fs::create_dir_all(format!("{}/jetstream", self.store_dir.as_str()))
             .await
-            .map_err(|e| Error::IoError("failed to create jetstream directory", e))?;
+            .map_err(|e| Error::Io("failed to create jetstream directory", e))?;
         self.update_nats_config().await?;
 
         let shutdown_token = self.shutdown_token.clone();
@@ -129,7 +129,7 @@ impl NatsServer {
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| Error::IoError("failed to spawn nats-server", e))?;
+                .map_err(|e| Error::Io("failed to spawn nats-server", e))?;
 
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
 
@@ -164,7 +164,7 @@ impl NatsServer {
             // Wait for the nats-server process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 status = cmd.wait() => {
-                    let status = status.map_err(|e| Error::IoError("failed to get exit status", e))?;
+                    let status = status.map_err(|e| Error::Io("failed to get exit status", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -262,11 +262,11 @@ impl NatsServer {
 
         tokio::fs::create_dir_all("/etc/nats")
             .await
-            .map_err(|e| Error::IoError("failed to create /etc/nats", e))?;
+            .map_err(|e| Error::Io("failed to create /etc/nats", e))?;
 
         tokio::fs::write("/etc/nats/nats-server.conf", config)
             .await
-            .map_err(|e| Error::IoError("failed to write nats-server.conf", e))?;
+            .map_err(|e| Error::Io("failed to write nats-server.conf", e))?;
 
         // Run "nats-server --signal reload" to reload the configuration if it is running (task_tracker closed)
         if self.task_tracker.is_closed() {
@@ -275,7 +275,7 @@ impl NatsServer {
                 .arg("reload")
                 .output()
                 .await
-                .map_err(|e| Error::IoError("failed to reload nats-server", e))?;
+                .map_err(|e| Error::Io("failed to reload nats-server", e))?;
 
             if !output.status.success() {
                 return Err(Error::NonZeroExitCode(output.status));

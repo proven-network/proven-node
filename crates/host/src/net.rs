@@ -1,4 +1,4 @@
-use super::error::Result;
+use crate::{Error, Result};
 
 use std::net::Ipv4Addr;
 
@@ -19,7 +19,8 @@ pub async fn configure_nat(outbound_device: &str, cidr: Ipv4Cidr) -> Result<()> 
         .arg("-j")
         .arg("MASQUERADE")
         .output()
-        .await?;
+        .await
+        .map_err(|e| Error::Io("failed to configure nat", e))?;
 
     Command::new("iptables")
         .arg("-A")
@@ -29,7 +30,8 @@ pub async fn configure_nat(outbound_device: &str, cidr: Ipv4Cidr) -> Result<()> 
         .arg("-j")
         .arg("ACCEPT")
         .output()
-        .await?;
+        .await
+        .map_err(|e| Error::Io("failed to configure nat", e))?;
 
     Command::new("iptables")
         .arg("-A")
@@ -39,7 +41,8 @@ pub async fn configure_nat(outbound_device: &str, cidr: Ipv4Cidr) -> Result<()> 
         .arg("-j")
         .arg("ACCEPT")
         .output()
-        .await?;
+        .await
+        .map_err(|e| Error::Io("failed to configure nat", e))?;
 
     info!("nat configured");
 
@@ -54,7 +57,8 @@ pub async fn configure_route(tun_device: &str, cidr: Ipv4Cidr, enclave_ip: Ipv4A
         .arg("dev")
         .arg(tun_device)
         .output()
-        .await?;
+        .await
+        .map_err(|e| Error::Io("failed to configure route", e))?;
 
     info!("route to enclave created");
 
@@ -92,7 +96,8 @@ pub async fn configure_port_forwarding(
             .arg("--to-destination")
             .arg(format!("{}:{}", enclave_ip, port).as_str())
             .output()
-            .await?;
+            .await
+            .map_err(|e| Error::Io("failed to configure port forwarding", e))?;
 
         Command::new("iptables")
             .arg("-t")
@@ -110,7 +115,8 @@ pub async fn configure_port_forwarding(
             .arg("--to-source")
             .arg(ip.to_string())
             .output()
-            .await?;
+            .await
+            .map_err(|e| Error::Io("failed to configure port forwarding", e))?;
     }
 
     // UDP ports
@@ -137,7 +143,8 @@ pub async fn configure_port_forwarding(
             .arg("--to-destination")
             .arg(format!("{}:{}", enclave_ip, port).as_str())
             .output()
-            .await?;
+            .await
+            .map_err(|e| Error::Io("failed to configure port forwarding", e))?;
 
         Command::new("iptables")
             .arg("-t")
@@ -155,7 +162,8 @@ pub async fn configure_port_forwarding(
             .arg("--to-source")
             .arg(ip.to_string())
             .output()
-            .await?;
+            .await
+            .map_err(|e| Error::Io("failed to configure port forwarding", e))?;
     }
 
     info!("port forwarding to enclave created");

@@ -8,7 +8,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     /// IO operation failed.
     #[error("{0}: {1}")]
-    IoError(&'static str, #[source] std::io::Error),
+    Io(&'static str, #[source] std::io::Error),
 
     /// Could not set global default subscriber.
     #[error("could not set global default subscriber: {0}")]

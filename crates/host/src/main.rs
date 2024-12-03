@@ -1,5 +1,8 @@
+//! Binary to run on the host machine to manage enclave lifecycle.
+
 mod error;
 mod net;
+mod systemctl;
 mod vsock_tracing;
 
 use error::{Error, Result};
@@ -24,6 +27,8 @@ use proven_vsock_rpc::{InitializeRequest, RpcClient};
 use tokio::process::Child;
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
 use tracing::{error, info};
+
+static ALLOCATOR_CONFIG_TEMPLATE: &str = include_str!("../templates/allocator.yaml");
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -143,7 +148,7 @@ async fn initialize(args: InitializeArgs) -> Result<()> {
     info!("allocating enclave resources...");
     allocate_enclave_resources(args.enclave_cpus, args.enclave_memory).await?;
 
-    let mut enclave = start_enclave(&args).await?;
+    let _enclave = start_enclave(&args).await?;
 
     let vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
 
@@ -204,7 +209,7 @@ async fn initialize(args: InitializeArgs) -> Result<()> {
         _ = tokio::signal::ctrl_c() => {
             info!("shutting down...");
             shutdown_enclave(&args).await?;
-            enclave.wait().await?; // TODO: this doesn't do anything - should poll active enclaves to check instead
+            // enclave.wait().await?; // TODO: this doesn't do anything - should poll active enclaves to check instead
             http_server.shutdown().await;
             proxy.shutdown().await;
         }
@@ -244,7 +249,8 @@ async fn stop_existing_enclaves() -> Result<()> {
         .arg("terminate-enclave")
         .arg("--all")
         .output()
-        .await?;
+        .await
+        .map_err(|e| Error::Io("failed to stop existing enclaves", e))?;
 
     Ok(())
 }
@@ -260,44 +266,29 @@ async fn start_enclave(args: &InitializeArgs) -> Result<Child> {
         .arg(args.enclave_cid.to_string())
         .arg("--eif-path")
         .arg(args.eif_path.clone())
-        .spawn()?;
+        .spawn()
+        .map_err(|e| Error::Io("failed to start enclave", e))?;
 
     Ok(handle)
 }
 
 async fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Result<()> {
-    let existing_allocator_config = std::fs::read_to_string("/etc/nitro_enclaves/allocator.yaml")?;
+    let existing_allocator_config = std::fs::read_to_string("/etc/nitro_enclaves/allocator.yaml")
+        .map_err(|e| Error::Io("failed to read allocator config", e))?;
     if existing_allocator_config.contains(&format!("cpu_count: {}", enclave_cpus))
         && existing_allocator_config.contains(&format!("memory_mib: {}", enclave_memory))
     {
         return Ok(());
     }
 
-    let allocator_config = format!(
-        r#"---
-# Enclave configuration file.
-#
-# How much memory to allocate for enclaves (in MiB).
-memory_mib: {}
-#
-# How many CPUs to reserve for enclaves.
-cpu_count: {}
-#
-# Alternatively, the exact CPUs to be reserved for the enclave can be explicitly
-# configured by using `cpu_pool` (like below), instead of `cpu_count`.
-# Note: cpu_count and cpu_pool conflict with each other. Only use exactly one of them.
-# Example of reserving CPUs 2, 3, and 6 through 9:
-# cpu_pool: 2,3,6-9"#,
-        enclave_memory, enclave_cpus
-    );
+    let allocator_config = ALLOCATOR_CONFIG_TEMPLATE
+        .replace("{memory_mib}", &enclave_memory.to_string())
+        .replace("{cpu_count}", &enclave_cpus.to_string());
 
-    std::fs::write("/etc/nitro_enclaves/allocator.yaml", allocator_config)?;
+    std::fs::write("/etc/nitro_enclaves/allocator.yaml", allocator_config)
+        .map_err(|e| Error::Io("failed to write allocator config", e))?;
 
-    tokio::process::Command::new("systemctl")
-        .arg("restart")
-        .arg("nitro-enclaves-allocator.service")
-        .output()
-        .await?;
+    systemctl::restart_allocator_service()?;
 
     Ok(())
 }

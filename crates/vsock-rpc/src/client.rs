@@ -69,7 +69,7 @@ impl RpcClient {
 
         let mut stream = VsockStream::connect(self.vsock_addr)
             .await
-            .map_err(|e| Error::IoError("failed to connect to vsock server", e))?;
+            .map_err(|e| Error::Io("failed to connect to vsock server", e))?;
         let mut encoded = Vec::new();
         ciborium::ser::into_writer(&command, &mut encoded)?;
 
@@ -82,25 +82,25 @@ impl RpcClient {
         stream
             .write_all(&length_prefix)
             .await
-            .map_err(|e| Error::IoError("failed to write length", e))?;
+            .map_err(|e| Error::Io("failed to write length", e))?;
         stream
             .write_all(&encoded)
             .await
-            .map_err(|e| Error::IoError("failed to write body", e))?;
+            .map_err(|e| Error::Io("failed to write body", e))?;
 
         let length = stream
             .read_u32()
             .await
-            .map_err(|e| Error::IoError("failed to read length", e))?;
+            .map_err(|e| Error::Io("failed to read length", e))?;
         let mut buffer = vec![0u8; length as usize];
         stream
             .read_exact(&mut buffer)
             .await
-            .map_err(|e| Error::IoError("failed to read body", e))?;
+            .map_err(|e| Error::Io("failed to read body", e))?;
 
         stream
             .shutdown(Shutdown::Both)
-            .map_err(|e| Error::IoError("failed to shutdown stream", e))?;
+            .map_err(|e| Error::Io("failed to shutdown stream", e))?;
 
         let response: Response = ciborium::de::from_reader(&buffer[..])?;
 

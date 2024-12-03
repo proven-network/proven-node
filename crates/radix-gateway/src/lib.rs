@@ -93,7 +93,7 @@ impl RadixGateway {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| Error::IoError("failed to spawn GatewayApi process", e))?;
+                .map_err(|e| Error::Io("failed to spawn GatewayApi process", e))?;
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
@@ -155,7 +155,7 @@ impl RadixGateway {
             // Wait for the radix-gateway process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
-                    let status = cmd.wait().await.map_err(|e| Error::IoError("failed to wait for exit", e))?;
+                    let status = cmd.wait().await.map_err(|e| Error::Io("failed to wait for exit", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -260,12 +260,12 @@ impl RadixGateway {
             .write(true)
             .open(GATEWAY_API_CONFIG_PATH)
             .await
-            .map_err(|e| Error::IoError("failed to open gateway config", e))?;
+            .map_err(|e| Error::Io("failed to open gateway config", e))?;
 
         config_file
             .write_all(serde_json::to_string_pretty(&config).unwrap().as_bytes())
             .await
-            .map_err(|e| Error::IoError("failed to write gateway config", e))?;
+            .map_err(|e| Error::Io("failed to write gateway config", e))?;
 
         Ok(())
     }

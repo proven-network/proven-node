@@ -130,7 +130,7 @@ impl RadixNode {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| Error::IoError("failed to spawn radix-node process", e))?;
+                .map_err(|e| Error::Io("failed to spawn radix-node process", e))?;
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
@@ -189,7 +189,7 @@ impl RadixNode {
             // Wait for the radix-node process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
-                    let status = cmd.wait().await.map_err(|e| Error::IoError("failed to wait for exit", e))?;
+                    let status = cmd.wait().await.map_err(|e| Error::Io("failed to wait for exit", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -234,7 +234,7 @@ impl RadixNode {
             .arg(KEYSTORE_PASS)
             .output()
             .await
-            .map_err(|e| Error::IoError("failed to generate node key", e))?;
+            .map_err(|e| Error::Io("failed to generate node key", e))?;
 
         if !output.status.success() {
             return Err(Error::NonZeroExitCode(output.status));
@@ -246,7 +246,7 @@ impl RadixNode {
     fn update_node_config(&self) -> Result<()> {
         // Ensure store dir created
         std::fs::create_dir_all(&self.store_dir)
-            .map_err(|e| Error::IoError("failed to create store dir", e))?;
+            .map_err(|e| Error::Io("failed to create store dir", e))?;
 
         let seed_nodes = match self.network_definition.id {
             1 => MAINNET_SEED_NODES,
@@ -271,10 +271,10 @@ impl RadixNode {
             .truncate(true)
             .write(true)
             .open(CONFIG_PATH)
-            .map_err(|e| Error::IoError("failed to open config file", e))?;
+            .map_err(|e| Error::Io("failed to open config file", e))?;
 
         std::io::Write::write_all(&mut config_file, config.as_bytes())
-            .map_err(|e| Error::IoError("failed to write config file", e))?;
+            .map_err(|e| Error::Io("failed to write config file", e))?;
 
         Ok(())
     }

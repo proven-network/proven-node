@@ -1,0 +1,8 @@
+---
+# Enclave configuration file.
+#
+# How much memory to allocate for enclaves (in MiB).
+memory_mib: {memory_mib}
+#
+# How many CPUs to reserve for enclaves.
+cpu_count: {cpu_count}

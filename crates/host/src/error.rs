@@ -12,8 +12,9 @@ pub enum Error {
     #[error(transparent)]
     Http(#[from] proven_http_insecure::Error),
 
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
+    /// IO operation failed.
+    #[error("{0}: {1}")]
+    Io(&'static str, #[source] std::io::Error),
 
     #[error("must be root")]
     NotRoot,

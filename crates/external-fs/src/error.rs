@@ -12,7 +12,7 @@ pub enum Error {
 
     /// IO operation failed.
     #[error("{0}: {1}")]
-    IoError(&'static str, #[source] std::io::Error),
+    Io(&'static str, #[source] std::io::Error),
 
     /// Process exited with non-zero.
     #[error("external fs exited with non-zero: {0}")]

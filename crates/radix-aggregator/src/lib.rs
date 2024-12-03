@@ -100,7 +100,7 @@ impl RadixAggregator {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .spawn()
-                .map_err(|e| Error::IoError("failed to spawn radix-aggregator", e))?;
+                .map_err(|e| Error::Io("failed to spawn radix-aggregator", e))?;
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
 
@@ -133,7 +133,7 @@ impl RadixAggregator {
             // Wait for the radix-aggregator process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 _ = cmd.wait() => {
-                    let status = cmd.wait().await.map_err(|e| Error::IoError("failed to wait for exit", e))?;
+                    let status = cmd.wait().await.map_err(|e| Error::Io("failed to wait for exit", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -207,19 +207,19 @@ impl RadixAggregator {
             .write(true)
             .open(MIGRATIONS_CONFIG_PATH)
             .await
-            .map_err(|e| Error::IoError("failed to open migrations config", e))?;
+            .map_err(|e| Error::Io("failed to open migrations config", e))?;
 
         config_file
             .write_all(serde_json::to_string_pretty(&config)?.as_bytes())
             .await
-            .map_err(|e| Error::IoError("failed to write migrations config", e))?;
+            .map_err(|e| Error::Io("failed to write migrations config", e))?;
 
         let mut cmd = Command::new(MIGRATIONS_PATH)
             .current_dir(MIGRATIONS_DIR)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| Error::IoError("failed to spawn migrations runner", e))?;
+            .map_err(|e| Error::Io("failed to spawn migrations runner", e))?;
 
         let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
         let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
@@ -244,7 +244,7 @@ impl RadixAggregator {
 
         tokio::select! {
             e = cmd.wait() => {
-                let exit_status = e.map_err(|e| Error::IoError("failed to get migrations exit status", e))?;
+                let exit_status = e.map_err(|e| Error::Io("failed to get migrations exit status", e))?;
                 if !exit_status.success() {
                     return Err(Error::NonZeroExitCode(exit_status));
                 }
@@ -311,12 +311,12 @@ impl RadixAggregator {
             .write(true)
             .open(AGGREGATOR_CONFIG_PATH)
             .await
-            .map_err(|e| Error::IoError("failed to open config file", e))?;
+            .map_err(|e| Error::Io("failed to open config file", e))?;
 
         config_file
             .write_all(serde_json::to_string_pretty(&config)?.as_bytes())
             .await
-            .map_err(|e| Error::IoError("failed to write config file", e))?;
+            .map_err(|e| Error::Io("failed to write config file", e))?;
 
         Ok(())
     }

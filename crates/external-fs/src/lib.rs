@@ -81,15 +81,15 @@ impl ExternalFs {
 
         // create directories
         std::fs::create_dir_all(&mount_dir)
-            .map_err(|e| Error::IoError("failed to create mount directory", e))?;
+            .map_err(|e| Error::Io("failed to create mount directory", e))?;
         std::fs::create_dir_all(&nfs_mount_dir)
-            .map_err(|e| Error::IoError("failed to create NFS mount directory", e))?;
+            .map_err(|e| Error::Io("failed to create NFS mount directory", e))?;
         std::fs::create_dir_all(PASSFILE_DIR)
-            .map_err(|e| Error::IoError("failed to create passfile directory", e))?;
+            .map_err(|e| Error::Io("failed to create passfile directory", e))?;
 
         // create passfile with encryption key (needed for gocryptfs)
         std::fs::write(&passfile_path, encryption_key)
-            .map_err(|e| Error::IoError("failed to write passfile", e))?;
+            .map_err(|e| Error::Io("failed to write passfile", e))?;
 
         Ok(Self {
             mount_dir,
@@ -158,7 +158,7 @@ impl ExternalFs {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| Error::IoError("failed to spawn gocryptfs", e))?;
+                .map_err(|e| Error::Io("failed to spawn gocryptfs", e))?;
 
             let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
             let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
@@ -191,7 +191,7 @@ impl ExternalFs {
             // Wait for the gocryptfs process to exit or for the shutdown token to be cancelled
             tokio::select! {
                 result = cmd.wait() => {
-                    let status = result.map_err(|e| Error::IoError("failed to wait for gocryptfs", e))?;
+                    let status = result.map_err(|e| Error::Io("failed to wait for gocryptfs", e))?;
 
                     if !status.success() {
                         return Err(Error::NonZeroExitCode(status));
@@ -217,7 +217,7 @@ impl ExternalFs {
 
                     cmd.wait()
                         .await
-                        .map_err(|e| Error::IoError("failed to wait for gocryptfs shutdown", e))?;
+                        .map_err(|e| Error::Io("failed to wait for gocryptfs shutdown", e))?;
 
                     umount_nfs(nfs_mount_dir).await?;
 
@@ -264,7 +264,7 @@ impl ExternalFs {
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-            Err(e) => Err(Error::IoError("failed to spawn gocryptfs", e)),
+            Err(e) => Err(Error::Io("failed to spawn gocryptfs", e)),
         }
     }
 
@@ -286,7 +286,7 @@ impl ExternalFs {
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
             Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-            Err(e) => Err(Error::IoError("failed to spawn gocryptfs fsck", e)),
+            Err(e) => Err(Error::Io("failed to spawn gocryptfs fsck", e)),
         }
     }
 }
@@ -310,7 +310,7 @@ async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()>
     match cmd {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-        Err(e) => Err(Error::IoError("failed to spawn mount", e)),
+        Err(e) => Err(Error::Io("failed to spawn mount", e)),
     }
 }
 
@@ -327,7 +327,7 @@ async fn umount_nfs(nfs_mount_dir: String) -> Result<()> {
     match cmd {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-        Err(e) => Err(Error::IoError("failed to spawn umount", e)),
+        Err(e) => Err(Error::Io("failed to spawn umount", e)),
     }
 }
 
@@ -342,6 +342,6 @@ async fn ensure_permissions(path: &str, permissions: &str) -> Result<()> {
     match output {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => Err(Error::NonZeroExitCode(output.status)),
-        Err(e) => Err(Error::IoError("failed to spawn chmod", e)),
+        Err(e) => Err(Error::Io("failed to spawn chmod", e)),
     }
 }

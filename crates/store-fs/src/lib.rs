@@ -42,7 +42,7 @@ impl Store for FsStore {
         let path = self.get_file_path(&key.into());
         fs::remove_file(path)
             .await
-            .map_err(|e| Error::IoError("error deleting file", e))?;
+            .map_err(|e| Error::Io("error deleting file", e))?;
         Ok(())
     }
 
@@ -51,20 +51,20 @@ impl Store for FsStore {
         match fs::read(path).await {
             Ok(data) => Ok(Some(Bytes::from(data))),
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(Error::IoError("error reading file", e)),
+            Err(e) => Err(Error::Io("error reading file", e)),
         }
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
         let mut entries = fs::read_dir(&self.dir)
             .await
-            .map_err(|e| Error::IoError("error reading directory", e))?;
+            .map_err(|e| Error::Io("error reading directory", e))?;
         let mut keys = Vec::new();
 
         while let Some(entry) = entries
             .next_entry()
             .await
-            .map_err(|e| Error::IoError("error reading directory entry", e))?
+            .map_err(|e| Error::Io("error reading directory entry", e))?
         {
             if let Some(key) = entry.file_name().to_str() {
                 keys.push(key.to_string());
@@ -80,15 +80,15 @@ impl Store for FsStore {
             if !parent.exists() {
                 fs::create_dir_all(parent)
                     .await
-                    .map_err(|e| Error::IoError("error creating directory", e))?;
+                    .map_err(|e| Error::Io("error creating directory", e))?;
             }
         }
         let mut file = fs::File::create(path)
             .await
-            .map_err(|e| Error::IoError("error creating file", e))?;
+            .map_err(|e| Error::Io("error creating file", e))?;
         file.write_all(&bytes)
             .await
-            .map_err(|e| Error::IoError("error writing file", e))?;
+            .map_err(|e| Error::Io("error writing file", e))?;
         Ok(())
     }
 }

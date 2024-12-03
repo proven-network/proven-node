@@ -25,7 +25,7 @@ pub async fn configure_logging_to_vsock(vsock_addr: VsockAddr) -> Result<()> {
     let writer_layer = tracing_subscriber::fmt::Layer::new().with_writer(
         VsockWriter::new(vsock_addr)
             .await
-            .map_err(|e| Error::IoError("writer error", e))?,
+            .map_err(|e| Error::Io("writer error", e))?,
     );
 
     let subscriber = tracing_subscriber::registry()
