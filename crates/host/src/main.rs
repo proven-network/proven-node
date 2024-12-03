@@ -28,9 +28,9 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Initialize(args) => commands::initialize(*args).await,
         Commands::Connect(args) => commands::connect(*args).await,
-        Commands::Shutdown(args) => commands::stop(*args).await,
+        Commands::Start(args) => commands::start(*args).await,
+        Commands::Stop(args) => commands::stop(*args).await,
     }
 }
 
@@ -43,18 +43,26 @@ struct Cli {
 
 #[derive(Parser, Debug)]
 enum Commands {
-    /// Initialize and start a new enclave
-    Initialize(Box<InitializeArgs>),
     /// Connect to an existing enclave's logs
     Connect(Box<ConnectArgs>),
+
+    /// Initialize and start a new enclave
+    Start(Box<StartArgs>),
+
     /// Shutdown a running enclave
-    Shutdown(Box<StopArgs>),
+    Stop(Box<StopArgs>),
+}
+
+#[derive(Parser, Debug)]
+struct ConnectArgs {
+    #[arg(long, default_value_t = 1026)]
+    log_port: u32,
 }
 
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-struct InitializeArgs {
+struct StartArgs {
     #[arg(long, required = true)]
     certificates_bucket: String,
 
@@ -123,12 +131,6 @@ struct InitializeArgs {
 
     #[arg(long, default_value_t = format!("tun0"))]
     tun_device: String,
-}
-
-#[derive(Parser, Debug)]
-struct ConnectArgs {
-    #[arg(long, default_value_t = 1026)]
-    log_port: u32,
 }
 
 #[derive(Parser, Debug)]

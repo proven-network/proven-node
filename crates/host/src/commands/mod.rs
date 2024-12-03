@@ -1,7 +1,7 @@
 mod connect;
-mod initialize;
+mod start;
 mod stop;
 
 pub use connect::connect;
-pub use initialize::initialize;
+pub use start::start;
 pub use stop::stop;

@@ -2,7 +2,7 @@ use crate::error::{Error, Result};
 use crate::net::{configure_nat, configure_port_forwarding, configure_route};
 use crate::nitro::NitroCli;
 use crate::systemctl;
-use crate::InitializeArgs;
+use crate::StartArgs;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
@@ -23,7 +23,7 @@ use tracing::{error, info};
 
 static ALLOCATOR_CONFIG_TEMPLATE: &str = include_str!("../../templates/allocator.yaml");
 
-pub async fn initialize(args: InitializeArgs) -> Result<()> {
+pub async fn start(args: StartArgs) -> Result<()> {
     if !Uid::effective().is_root() {
         return Err(Error::NotRoot);
     }
@@ -147,7 +147,7 @@ fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Result<(
     Ok(())
 }
 
-async fn initialize_enclave(args: &InitializeArgs) -> Result<()> {
+async fn initialize_enclave(args: &StartArgs) -> Result<()> {
     let host_dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
 
     let res = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
@@ -179,7 +179,7 @@ async fn initialize_enclave(args: &InitializeArgs) -> Result<()> {
     Ok(())
 }
 
-async fn shutdown_enclave(args: &InitializeArgs) -> Result<()> {
+async fn shutdown_enclave(args: &StartArgs) -> Result<()> {
     let res = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
         .shutdown()
         .await;
