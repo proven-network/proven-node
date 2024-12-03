@@ -717,8 +717,8 @@ impl Bootstrap {
     async fn start_radix_aggregator(&mut self) -> Result<()> {
         let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
             postgres_database: POSTGRES_DATABASE.to_string(),
-            postgres_password: POSTGRES_USERNAME.to_string(),
-            postgres_username: POSTGRES_PASSWORD.to_string(),
+            postgres_password: POSTGRES_PASSWORD.to_string(),
+            postgres_username: POSTGRES_USERNAME.to_string(),
         });
 
         let radix_aggregator_handle = radix_aggregator.start().await?;
@@ -734,8 +734,8 @@ impl Bootstrap {
     async fn start_radix_gateway(&mut self) -> Result<()> {
         let radix_gateway = RadixGateway::new(RadixGatewayOptions {
             postgres_database: POSTGRES_DATABASE.to_string(),
-            postgres_password: POSTGRES_USERNAME.to_string(),
-            postgres_username: POSTGRES_PASSWORD.to_string(),
+            postgres_password: POSTGRES_PASSWORD.to_string(),
+            postgres_username: POSTGRES_USERNAME.to_string(),
         });
 
         let radix_gateway_handle = radix_gateway.start().await?;
