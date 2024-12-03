@@ -4,9 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { workspace = true }
-
-[target.'cfg(target_os = "linux")'.dependencies]
 axum = { workspace = true }
 cidr = { workspace = true }
 clap = { workspace = true }
@@ -16,6 +13,7 @@ proven-http-insecure = { workspace = true }
 proven-vsock-proxy = { workspace = true }
 proven-vsock-rpc = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 tokio-util = { workspace = true }
 tokio-vsock = { workspace = true }
 tracing = { workspace = true }
