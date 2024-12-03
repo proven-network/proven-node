@@ -10,6 +10,7 @@ Wants=network-online.target
 [Service]
 EnvironmentFile=/etc/proven.conf
 ExecStart=/usr/sbin/proven start
+ExecStop=/bin/kill -s SIGINT -$MAINPID
 LimitNOFILE=65536
 LimitNPROC=65536
 LimitMEMLOCK=infinity
