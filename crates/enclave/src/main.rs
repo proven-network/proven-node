@@ -5,7 +5,7 @@ mod error;
 mod net;
 mod speedtest;
 
-use bootstrap::{Bootstrap, PreinitializeArgs};
+use bootstrap::Bootstrap;
 use enclave::Enclave;
 pub use error::{Error, Result};
 use proven_vsock_tracing::enclave::VsockTracingProducer;
@@ -18,38 +18,26 @@ use tokio_vsock::{VsockAddr, VMADDR_CID_ANY};
 use tracing::{error, info};
 use tracing_panic::panic_hook;
 
-// TODO: Don't hardcode thread
+// TODO: Don't hardcode threads
 #[tokio::main(worker_threads = 12)]
 pub async fn main() -> Result<()> {
     // Configure logging
     std::panic::set_hook(Box::new(panic_hook));
-    let vsock_tracing_producer = VsockTracingProducer::new();
-    let vsock_tracing_producer_handle = vsock_tracing_producer.start()?;
+    VsockTracingProducer::start()?;
 
     let rpc_server = RpcServer::new(VsockAddr::new(VMADDR_CID_ANY, 1024));
 
-    if let Err(e) = handle_initial_request(
-        &rpc_server,
-        PreinitializeArgs {
-            vsock_tracing_producer,
-            vsock_tracing_producer_handle,
-        },
-    )
-    .await
-    {
+    if let Err(e) = handle_initial_request(&rpc_server).await {
         error!("Failed to handle initial request: {:?}", e);
     }
 
     Ok(())
 }
 
-async fn handle_initial_request(
-    rpc_server: &RpcServer,
-    preinitialize_args: PreinitializeArgs,
-) -> Result<()> {
+async fn handle_initial_request(rpc_server: &RpcServer) -> Result<()> {
     match rpc_server.accept().await {
         Ok(RpcCall::Initialize(args, ack)) => {
-            let bootstrap = Bootstrap::new(args, preinitialize_args);
+            let bootstrap = Bootstrap::new(args);
 
             match bootstrap.initialize().await {
                 Ok(enclave) => {

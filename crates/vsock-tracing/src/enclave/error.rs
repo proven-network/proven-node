@@ -6,10 +6,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors that can occur in the enclave.
 #[derive(Debug, Error)]
 pub enum Error {
-    /// Already started.
-    #[error("already started")]
-    AlreadyStarted,
-
     /// IO operation failed.
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),
