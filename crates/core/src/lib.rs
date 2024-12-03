@@ -78,10 +78,11 @@ where
     }
 
     /// Start the core.
-    pub async fn start<HS>(
-        &self,
-        http_server: HS,
-    ) -> Result<JoinHandle<Result<(), HS::Error>>, HS::Error>
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the core has already been started or if the HTTP server fails to start.
+    pub fn start<HS>(&self, http_server: HS) -> Result<JoinHandle<Result<(), HS::Error>>, HS::Error>
     where
         HS: HttpServer,
     {
@@ -89,7 +90,7 @@ where
             return Err(Error::AlreadyStarted);
         }
 
-        let session_router = create_session_router(self.session_manager.clone()).await;
+        let session_router = create_session_router(self.session_manager.clone());
         let http_rpc_router = rpc::http::create_rpc_router(
             self.application_manager.clone(),
             self.runtime_pool_manager.clone(),

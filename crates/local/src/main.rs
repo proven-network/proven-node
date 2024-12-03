@@ -89,7 +89,7 @@ async fn main() -> Result<()> {
     let http_sock_addr = SocketAddr::from((Ipv4Addr::LOCALHOST, args.port));
     let http_server = InsecureHttpServer::new(http_sock_addr);
 
-    let core_handle = core.start(http_server).await?;
+    let core_handle = core.start(http_server)?;
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {

@@ -940,7 +940,7 @@ impl Bootstrap {
             runtime_pool_manager,
             session_manager,
         });
-        let core_handle = core.start(http_server).await?;
+        let core_handle = core.start(http_server)?;
 
         self.core = Some(core);
         self.core_handle = Some(core_handle);

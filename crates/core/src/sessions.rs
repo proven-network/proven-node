@@ -22,7 +22,7 @@ struct SessionRequest {
     application_name: Option<String>,
 }
 
-pub async fn create_session_router<SM>(session_manager: SM) -> Router
+pub fn create_session_router<SM>(session_manager: SM) -> Router
 where
     SM: SessionManagement,
 {
