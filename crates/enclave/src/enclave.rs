@@ -42,7 +42,7 @@ pub type EnclaveCore = Core<
     SessionManager<NsmAttestor, NatsStore, NatsStore>,
 >;
 
-pub struct EnclaveServices {
+pub struct Services {
     pub proxy: Arc<Mutex<Proxy>>,
     pub dnscrypt_proxy: Arc<Mutex<DnscryptProxy>>,
     pub radix_node_fs: Arc<Mutex<ExternalFs>>,
@@ -61,18 +61,18 @@ pub struct Enclave {
     network_definition: NetworkDefinition,
     imds_identity: IdentityDocument,
     instance_details: Instance,
-    enclave_services: EnclaveServices,
+    services: Services,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
 impl Enclave {
-    pub fn new(
+    pub const fn new(
         nsm: NsmAttestor,
         network_definition: NetworkDefinition,
         imds_identity: IdentityDocument,
         instance_details: Instance,
-        enclave_services: EnclaveServices,
+        services: Services,
         shutdown_token: CancellationToken,
         task_tracker: TaskTracker,
     ) -> Self {
@@ -81,21 +81,22 @@ impl Enclave {
             network_definition,
             imds_identity,
             instance_details,
-            enclave_services,
+            services,
             shutdown_token,
             task_tracker,
         }
     }
 
     pub async fn add_peer(&self, args: AddPeerRequest) -> AddPeerResponse {
-        match self
-            .enclave_services
+        let result = self
+            .services
             .nats_server
             .lock()
             .await
-            .add_peer(SocketAddrV4::new(args.peer_ip, args.peer_port))
-        {
-            Ok(_) => AddPeerResponse { success: true },
+            .add_peer(SocketAddrV4::new(args.peer_ip, args.peer_port));
+
+        match result {
+            Ok(()) => AddPeerResponse { success: true },
             Err(e) => {
                 error!("failed to add peer: {:?}", e);
 

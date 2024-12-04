@@ -22,9 +22,18 @@ use std::path::PathBuf;
 
 use cidr::Ipv4Cidr;
 use clap::{arg, command, Parser};
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main(worker_threads = 12)]
 async fn main() -> Result<()> {
+    // Host-local logging
+    tracing::subscriber::set_global_default(
+        FmtSubscriber::builder()
+            .with_max_level(Level::TRACE)
+            .finish(),
+    )?;
+
     let cli = Cli::parse();
 
     match cli.command {

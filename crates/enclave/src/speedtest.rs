@@ -86,18 +86,13 @@ pub struct SpeedTestResult {
 pub struct SpeedTest;
 
 impl SpeedTest {
-    /// Creates a new SpeedTest instance.
-    pub fn new() -> Self {
-        Self
-    }
-
     /// Runs a network speed test and returns the results.
     ///
     /// # Errors
     ///
     /// This function will return an error if the speedtest command fails to execute
     /// or if the output cannot be parsed.
-    pub async fn run(&self) -> Result<Vec<SpeedTestResult>> {
+    pub async fn run() -> Result<Vec<SpeedTestResult>> {
         let output = Command::new("librespeed-cli")
             .arg("--json")
             .stdout(Stdio::piped())
@@ -122,6 +117,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    #[allow(clippy::float_cmp)]
     #[test]
     fn test_parse_speedtest_results() {
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -136,8 +132,8 @@ mod tests {
         let result = &results[0];
 
         assert_eq!(result.timestamp, "2024-12-03T16:30:53.635342996Z");
-        assert_eq!(result.bytes_sent, 534380544);
-        assert_eq!(result.bytes_received, 784465920);
+        assert_eq!(result.bytes_sent, 534_380_544);
+        assert_eq!(result.bytes_received, 784_465_920);
         assert_eq!(result.ping, 10.0);
         assert_eq!(result.jitter, 0.0);
         assert_eq!(result.upload, 274.0);

@@ -20,8 +20,7 @@ use proven_vsock_rpc::{InitializeRequest, RpcClient};
 use proven_vsock_tracing::host::VsockTracingConsumer;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
-use tracing::{error, info, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{error, info};
 
 static ALLOCATOR_CONFIG_TEMPLATE: &str = include_str!("../../templates/allocator.yaml");
 
@@ -58,13 +57,6 @@ pub async fn start(args: StartArgs) -> Result<()> {
     // sleep for a bit to allow everything to start
     // TODO: replace with a more robust mechanism
     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-
-    // Host-local logging
-    tracing::subscriber::set_global_default(
-        FmtSubscriber::builder()
-            .with_max_level(Level::TRACE)
-            .finish(),
-    )?;
 
     // Enclave (vsock-based) logging
     let vsock_tracing_consumer = VsockTracingConsumer::new(args.enclave_cid);

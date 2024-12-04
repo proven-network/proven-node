@@ -1,4 +1,4 @@
-use super::enclave::{Enclave, EnclaveCore, EnclaveServices};
+use super::enclave::{Enclave, EnclaveCore, Services};
 use super::error::{Error, Result};
 use super::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 use super::speedtest::SpeedTest;
@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use async_nats::Client as NatsClient;
 use bytes::Bytes;
-use fdlimit::{raise_fd_limit, Outcome as FdOutcome};
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
@@ -43,7 +42,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockStream};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 static VMADDR_CID_EC2_HOST: u32 = 3;
 
@@ -62,6 +61,7 @@ static RADIX_NODE_STORE_DIR: &str = "/var/lib/babylon";
 // let connz = nats_monitor.get_connz().await?;
 // info!("nats connz: {:?}", connz);
 
+// TODO: This is in dire need of refactoring.
 pub struct Bootstrap {
     args: InitializeRequest,
     nsm: NsmAttestor,
@@ -116,9 +116,10 @@ pub struct Bootstrap {
 impl Bootstrap {
     pub fn new(args: InitializeRequest) -> Self {
         let nsm = NsmAttestor::new();
-        let network_definition = match args.stokenet {
-            true => NetworkDefinition::stokenet(),
-            false => NetworkDefinition::mainnet(),
+        let network_definition = if args.stokenet {
+            NetworkDefinition::stokenet()
+        } else {
+            NetworkDefinition::mainnet()
         };
 
         Self {
@@ -169,6 +170,8 @@ impl Bootstrap {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::large_stack_frames)]
     pub async fn initialize(mut self) -> Result<Enclave> {
         if self.started {
             return Err(Error::AlreadyStarted);
@@ -176,19 +179,13 @@ impl Bootstrap {
 
         self.started = true;
 
-        if let Err(e) = self.raise_fdlimit().await {
-            error!("failed to raise fdlimit: {:?}", e);
-            self.unwind_services().await;
-            return Err(e);
-        }
-
         if let Err(e) = self.remount_tmp_with_exec().await {
             error!("failed to remount tmp with exec: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
 
-        if let Err(e) = self.configure_temp_dns_resolv().await {
+        if let Err(e) = self.configure_temp_dns_resolv() {
             error!("failed to configure temp dns resolv: {:?}", e);
             self.unwind_services().await;
             return Err(e);
@@ -314,7 +311,7 @@ impl Bootstrap {
         let nats_server = Arc::new(Mutex::new(self.nats_server.take().unwrap()));
         let core = Arc::new(Mutex::new(self.core.take().unwrap()));
 
-        let enclave_services = EnclaveServices {
+        let enclave_services = Services {
             proxy: proxy.clone(),
             dnscrypt_proxy: dnscrypt_proxy.clone(),
             radix_node_fs: radix_node_fs.clone(),
@@ -373,7 +370,7 @@ impl Bootstrap {
             });
 
             tokio::select! {
-                _ = shutdown_token.cancelled() => info!("shutdown command received. shutting down..."),
+                () = shutdown_token.cancelled() => info!("shutdown command received. shutting down..."),
                 _ = critical_tasks => error!("critical task failed - exiting")
             }
 
@@ -453,35 +450,6 @@ impl Bootstrap {
         }
     }
 
-    async fn raise_fdlimit(&self) -> Result<()> {
-        info!("raising fdlimit...");
-
-        let limit = match raise_fd_limit() {
-            // New fd limit
-            Ok(FdOutcome::LimitRaised { from, to }) => {
-                info!("raised fd limit from {} to {}", from, to);
-                to
-            }
-            // Current soft limit
-            Err(e) => {
-                error!("failed to raise fd limit: {:?}", e);
-                rlimit::getrlimit(rlimit::Resource::NOFILE)
-                    .unwrap_or((256, 0))
-                    .0
-            }
-            Ok(FdOutcome::Unsupported) => {
-                warn!("fd limit raising is not supported on this platform");
-                rlimit::getrlimit(rlimit::Resource::NOFILE)
-                    .unwrap_or((256, 0))
-                    .0
-            }
-        };
-
-        info!("fd limit: {}", limit);
-
-        Ok(())
-    }
-
     async fn remount_tmp_with_exec(&self) -> Result<()> {
         tokio::process::Command::new("mount")
             .arg("-o")
@@ -497,7 +465,7 @@ impl Bootstrap {
         Ok(())
     }
 
-    async fn configure_temp_dns_resolv(&self) -> Result<()> {
+    fn configure_temp_dns_resolv(&self) -> Result<()> {
         write_dns_resolv(self.args.host_dns_resolv.clone())?;
 
         Ok(())
@@ -578,15 +546,14 @@ impl Bootstrap {
     }
 
     async fn perform_speedtest(&self) -> Result<()> {
-        if !self.args.skip_speedtest {
+        if self.args.skip_speedtest {
+            info!("skipping speedtest...");
+        } else {
             info!("running speedtest...");
 
-            let speedtest = SpeedTest::new();
-            let results = speedtest.run().await?;
+            let results = SpeedTest::run().await?;
 
             info!("speedtest results: {:?}", results);
-        } else {
-            info!("skipping speedtest...");
         }
 
         Ok(())
@@ -772,6 +739,7 @@ impl Bootstrap {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn start_core(&mut self) -> Result<()> {
         let id = self.imds_identity.as_ref().unwrap_or_else(|| {
             panic!("imds identity not fetched before core");
@@ -941,19 +909,17 @@ async fn get_or_init_encrypted_key(
     let kms = Kms::new(key_id, region.clone()).await;
 
     let key_opt = store.get(key_name.clone()).await?;
-    let key: [u8; 32] = match key_opt {
-        Some(encrypted_key) => kms
-            .decrypt(encrypted_key)
+    let key: [u8; 32] = if let Some(encrypted_key) = key_opt {
+        kms.decrypt(encrypted_key)
             .await?
             .to_vec()
             .try_into()
-            .map_err(|_| Error::BadKey)?,
-        None => {
-            let unencrypted_key = rand::random::<[u8; 32]>();
-            let encrypted_key = kms.encrypt(Bytes::from(unencrypted_key.to_vec())).await?;
-            store.put(key_name, encrypted_key).await?;
-            unencrypted_key
-        }
+            .map_err(|_| Error::BadKey)?
+    } else {
+        let unencrypted_key = rand::random::<[u8; 32]>();
+        let encrypted_key = kms.encrypt(Bytes::from(unencrypted_key.to_vec())).await?;
+        store.put(key_name, encrypted_key).await?;
+        unencrypted_key
     };
 
     Ok(key)

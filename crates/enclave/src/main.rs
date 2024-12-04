@@ -1,13 +1,23 @@
+//! Main entrypoint for enclave images. Bootstraps all other components before
+//! handing off to core.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![allow(clippy::redundant_pub_crate)]
 #![allow(clippy::result_large_err)]
+#![allow(clippy::large_futures)]
+
 mod bootstrap;
 mod enclave;
 mod error;
+mod fdlimit;
 mod net;
 mod speedtest;
 
 use bootstrap::Bootstrap;
 use enclave::Enclave;
-pub use error::{Error, Result};
+use error::{Error, Result};
 use proven_vsock_tracing::enclave::VsockTracingProducer;
 
 use std::sync::Arc;
@@ -20,10 +30,12 @@ use tracing_panic::panic_hook;
 
 // TODO: Don't hardcode threads
 #[tokio::main(worker_threads = 12)]
-pub async fn main() -> Result<()> {
+async fn main() -> Result<()> {
     // Configure logging
     std::panic::set_hook(Box::new(panic_hook));
     VsockTracingProducer::start()?;
+
+    fdlimit::raise_fdlimit();
 
     let rpc_server = RpcServer::new(VsockAddr::new(VMADDR_CID_ANY, 1024));
 
@@ -42,12 +54,15 @@ async fn handle_initial_request(rpc_server: &RpcServer) -> Result<()> {
             match bootstrap.initialize().await {
                 Ok(enclave) => {
                     info!("Enclave started successfully");
-                    ack(InitializeResponse { success: true }).await.unwrap();
+
+                    ack(InitializeResponse { success: true }).await?;
+
                     handle_requests_loop(rpc_server, enclave).await?;
                 }
+
                 Err(e) => {
                     error!("Failed to start enclave: {:?}", e);
-                    ack(InitializeResponse { success: false }).await.unwrap();
+                    ack(InitializeResponse { success: false }).await?;
                 }
             }
         }
@@ -69,15 +84,19 @@ async fn handle_requests_loop(rpc_server: &RpcServer, enclave: Enclave) -> Resul
             Ok(rpc) => match rpc {
                 RpcCall::Initialize(_, ack) => {
                     error!("Already initialized");
-                    ack(InitializeResponse { success: false }).await.unwrap();
+                    ack(InitializeResponse { success: false }).await?;
                 }
+
                 RpcCall::AddPeer(args, ack) => {
                     let response = enclave.lock().await.add_peer(args).await;
-                    ack(response).await.unwrap();
+                    ack(response).await?;
                 }
+
                 RpcCall::Shutdown(ack) => {
                     enclave.lock().await.shutdown().await;
-                    ack(ShutdownResponse { success: true }).await.unwrap();
+
+                    ack(ShutdownResponse { success: true }).await?;
+
                     info!("Enclave shutdown successfully");
                     break;
                 }
