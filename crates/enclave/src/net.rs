@@ -73,6 +73,7 @@ pub mod linux {
     }
 
     /// Sets up the default gateway for the enclave.
+    /// TODO: port to rtnetlink.
     pub async fn setup_default_gateway(
         tun_device: &str,
         host_ip: Ipv4Addr,
@@ -90,14 +91,6 @@ pub mod linux {
             .await
             .map_err(|e| Error::Io("failed to add default gateway", e))?;
 
-        if !cmd.status.success() {
-            error!("failed to setup default gateway");
-            error!("stdout: {}", String::from_utf8_lossy(&cmd.stdout));
-            error!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
-
-            return Err(Error::RouteSetup);
-        }
-
         Command::new("ip")
             .arg("route")
             .arg("add")
@@ -111,14 +104,6 @@ pub mod linux {
             .output()
             .await
             .map_err(|e| Error::Io("failed to add route", e))?;
-
-        if !cmd.status.success() {
-            error!("failed to setup default gateway");
-            error!("stdout: {}", String::from_utf8_lossy(&cmd.stdout));
-            error!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
-
-            return Err(Error::RouteSetup);
-        }
 
         info!("default gateway to host created");
 
