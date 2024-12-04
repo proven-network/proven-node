@@ -52,8 +52,6 @@ where
     }
 
     async fn get_or_create_channel(&self) -> ChannelPair {
-        println!("get_or_create_channel: {}", self.prefix);
-
         let mut channels = self.channels.lock().await;
 
         if let Some(pair) = channels.get(&self.prefix) {

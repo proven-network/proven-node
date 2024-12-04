@@ -53,7 +53,6 @@ impl StreamHandler for SqlStreamHandler {
 
     async fn handle(&self, bytes: Bytes) -> Result<HandlerResponse> {
         let request: Request = bytes.try_into()?;
-        println!("Request: {:?}", request);
 
         let mut headers = HashMap::with_capacity(1);
 

@@ -116,8 +116,6 @@ where
     type Error = Error<H>;
 
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
-        println!("Subscribing to {}", self.get_request_stream_name());
-
         let mut stream = self.get_request_stream().await?;
         let mut consumer = stream
             .create_consumer(ConsumerConfig {
@@ -202,8 +200,6 @@ where
     async fn publish(&self, data: Bytes) -> Result<(), Self::Error> {
         self.get_request_stream().await?;
 
-        println!("publishing on subject: {}", self.get_request_stream_name());
-
         self.client
             .publish(self.get_request_stream_name(), data.clone())
             .await
@@ -215,8 +211,6 @@ where
     async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error> {
         // Ensure request stream exists
         self.get_request_stream().await?;
-
-        println!("requesting on subject: {}", self.get_request_stream_name());
 
         let response = loop {
             match self
@@ -238,8 +232,6 @@ where
         // Parse the seq number from the response json (use serde_json)
         let response: StreamPublishReply = serde_json::from_slice(&response.payload)?;
         assert_eq!(response.stream, self.get_request_stream_name());
-
-        println!("Published message with seq: {}", response.seq);
 
         // Wait for corrosponding reply on reply stream
         let reply_stream = self.get_reply_stream().await?;
