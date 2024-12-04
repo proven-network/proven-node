@@ -134,6 +134,16 @@ where
 
         let mut caught_up = false;
 
+        let stream_info = stream
+            .info()
+            .await
+            .map_err(|e| Error::StreamInfo(e.kind()))?;
+
+        if stream_info.state.messages == 0 {
+            caught_up = true;
+            handler.on_caught_up().await.map_err(Error::Handler)?;
+        }
+
         // Process messages
         while let Some(message) = messages.next().await {
             let message = message.map_err(|e| Error::ConsumerMessages(e.kind()))?;
