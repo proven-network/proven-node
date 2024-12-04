@@ -68,8 +68,14 @@ impl StreamHandler for SqlStreamHandler {
             }
             Request::Migrate(sql) => {
                 let needed_to_run = self.database.migrate(&sql).await?;
+
                 if needed_to_run {
                     self.applied_migrations.lock().await.push(sql);
+                } else {
+                    headers.insert(
+                        "Request-Message-Should-Persist".to_string(),
+                        "false".to_string(),
+                    );
                 }
                 Response::Migrate(needed_to_run)
             }
