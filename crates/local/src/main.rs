@@ -37,8 +37,7 @@ async fn main() -> Result<()> {
         FmtSubscriber::builder()
             .with_max_level(Level::TRACE)
             .finish(),
-    )
-    .unwrap();
+    )?;
 
     let args = Args::parse();
     let challenge_store = MemoryStore::new();

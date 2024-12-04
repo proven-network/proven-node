@@ -10,4 +10,8 @@ pub enum Error {
 
     #[error(transparent)]
     Core(#[from] proven_core::Error<HttpError>),
+
+    /// Could not set global default subscriber.
+    #[error("could not set global default subscriber: {0}")]
+    SetTracing(#[from] tracing::dispatcher::SetGlobalDefaultError),
 }
