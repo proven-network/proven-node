@@ -82,14 +82,9 @@ impl Rola {
         let check_ledger_for_key_address_match = || async {
             gateway::GatewayService::new(
                 &self.gateway_url,
-                self.dapp_definition_address.clone(),
-                self.application_name.clone(),
+                &self.dapp_definition_address,
+                &self.application_name,
             )
-            .map_err(|e| {
-                error!("Error creating GatewayService: {:?}", e);
-                e
-            })
-            .ok()?
             .get_entity_owner_keys(signed_challenge.clone().address)
             .await
             .map_err(|e| {

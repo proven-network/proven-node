@@ -9,6 +9,7 @@ futures = { workspace = true }
 hex = { workspace = true }
 proven-radix-gateway-sdk = { workspace = true }
 radix-common = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

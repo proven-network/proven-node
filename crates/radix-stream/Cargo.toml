@@ -1,0 +1,21 @@
+[package]
+name = "proven-radix-stream"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytes = { workspace = true }
+ciborium = { workspace = true }
+proven-radix-gateway-sdk = { workspace = true }
+proven-stream = { workspace = true }
+radix-common = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+async-nats = { workspace = true }
+proven-stream-memory = { workspace = true }
+proven-stream-nats = { workspace = true }

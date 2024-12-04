@@ -21,7 +21,9 @@ pub enum Error {
 
     /// Bad gateway request.
     #[error(transparent)]
-    BadGatewayRequest(#[from] proven_radix_gateway_sdk::Error),
+    BadGatewayRequest(
+        #[from] proven_radix_gateway_sdk::Error<proven_radix_gateway_sdk::types::ErrorResponse>,
+    ),
 
     /// Bad Secp256k1 signature.
     #[error(transparent)]
