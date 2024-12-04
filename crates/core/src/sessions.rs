@@ -15,11 +15,11 @@ use tracing::info;
 
 #[derive(TryFromMultipart)]
 struct SessionRequest {
-    public_key: Bytes,
-    nonce: Bytes,
-    signed_challenge: String,
-    dapp_definition_address: String,
     application_name: Option<String>,
+    dapp_definition_address: String,
+    nonce: Bytes,
+    public_key: Bytes,
+    signed_challenge: String,
 }
 
 pub fn create_session_router<SM>(session_manager: SM) -> Router
@@ -30,11 +30,18 @@ where
     let app = Router::new()
         .route(
             "/create-challenge",
-            get(|| async move {
-                match session_manager_clone
-                    .create_challenge("TODO_APPLICATION_ID".to_string())
-                    .await
-                {
+            get(|origin_header: Option<TypedHeader<Origin>>| async move {
+                let origin = match origin_header {
+                    Some(value) => value.to_string(),
+                    None => {
+                        return Response::builder()
+                            .status(400)
+                            .body("Origin header not found".into())
+                            .unwrap();
+                    }
+                };
+
+                match session_manager_clone.create_challenge(origin).await {
                     Ok(challenge) => Response::builder()
                         .status(StatusCode::OK)
                         .body(Body::from(challenge))
@@ -45,9 +52,9 @@ where
                             )
                                 .into_response()
                         }),
-                    Err(err) => (
+                    Err(e) => (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Body::from(format!("Failed to create challenge: {err:?}")),
+                        Body::from(format!("Failed to create challenge: {e}")),
                     )
                         .into_response(),
                 }

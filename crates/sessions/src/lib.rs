@@ -92,7 +92,7 @@ where
     /// Creates a new challenge to use for session creation.
     async fn create_challenge(
         &self,
-        application_id: String,
+        origin: String,
     ) -> Result<String, Error<Self::Attestor, Self::ChallengeStore, Self::SessionStore>>;
 
     /// Creates a new session.
@@ -153,7 +153,7 @@ where
         }
     }
 
-    async fn create_challenge(&self, application_id: String) -> Result<String, Error<A, CS, SS>> {
+    async fn create_challenge(&self, origin: String) -> Result<String, Error<A, CS, SS>> {
         let mut challenge = String::new();
 
         for _ in 0..32 {
@@ -161,7 +161,7 @@ where
         }
 
         self.challenge_store
-            .scope(application_id)
+            .scope(origin)
             .put(challenge.clone(), Bytes::from_static(&[1u8]))
             .await
             .map_err(Error::ChallengeStore)?;
@@ -195,7 +195,7 @@ where
         }
 
         for challenge in challenges {
-            let scoped_challenge_store = self.challenge_store.scope(application_id.clone());
+            let scoped_challenge_store = self.challenge_store.scope(origin.clone());
 
             match scoped_challenge_store.get(challenge.clone()).await {
                 Ok(_) => {
