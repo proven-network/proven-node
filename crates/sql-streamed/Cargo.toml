@@ -16,5 +16,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+async-nats = { workspace = true }
 proven-store-memory = { workspace = true }
 proven-stream-memory = { workspace = true }
+proven-stream-nats = { workspace = true }

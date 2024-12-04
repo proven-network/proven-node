@@ -6854,6 +6854,7 @@ dependencies = [
 name = "proven-sql-streamed"
 version = "0.1.0"
 dependencies = [
+ "async-nats",
  "async-trait",
  "bytes",
  "ciborium",
@@ -6863,6 +6864,7 @@ dependencies = [
  "proven-store-memory",
  "proven-stream",
  "proven-stream-memory",
+ "proven-stream-nats",
  "serde",
  "thiserror 2.0.3",
  "tokio",

@@ -271,4 +271,28 @@ mod tests {
 
         assert!(result.is_ok(), "Test timed out");
     }
+
+    #[tokio::test]
+    async fn test_invalid_sql_migration() {
+        let result = timeout(Duration::from_secs(5), async {
+            let leader_store = MemoryStore::new();
+            let stream = MemoryStream::new();
+
+            let sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
+                leader_store,
+                local_name: "my-machine".to_string(),
+                stream,
+            });
+
+            let connection_result = sql_store.connect(vec!["INVALID SQL STATEMENT"]).await;
+
+            assert!(
+                connection_result.is_err(),
+                "Expected an error due to invalid SQL"
+            );
+        })
+        .await;
+
+        assert!(result.is_ok(), "Test timed out");
+    }
 }
