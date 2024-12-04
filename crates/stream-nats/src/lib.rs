@@ -559,10 +559,7 @@ mod tests {
 
         async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
             let mut headers = std::collections::HashMap::new();
-            headers.insert(
-                "Request-Message-Should-Persist".to_string(),
-                "false".to_string(),
-            );
+            headers.insert("Request-Should-Persist".to_string(), "false".to_string());
 
             Ok(HandlerResponse { data, headers })
         }

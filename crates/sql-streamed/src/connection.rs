@@ -43,6 +43,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
 
         match response {
             Response::Execute(affected_rows) => Ok(affected_rows),
+            Response::Failed(error) => Err(Error::Libsql(error)),
             _ => unreachable!(),
         }
     }
@@ -60,6 +61,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
 
         match response {
             Response::ExecuteBatch(affected_rows) => Ok(affected_rows),
+            Response::Failed(error) => Err(Error::Libsql(error)),
             _ => unreachable!(),
         }
     }
@@ -73,6 +75,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
 
         match response {
             Response::Migrate(needed_migration) => Ok(needed_migration),
+            Response::Failed(error) => Err(Error::Libsql(error)),
             _ => unreachable!(),
         }
     }
@@ -90,6 +93,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
 
         match response {
             Response::Query(rows) => Ok(rows),
+            Response::Failed(error) => Err(Error::Libsql(error)),
             _ => unreachable!(),
         }
     }

@@ -3,7 +3,6 @@ use proven_sql::Rows;
 use serde::{Deserialize, Serialize};
 
 /// A response from a SQL store.
-/// TODO: Handle error responses.
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Response {
     /// The number of rows affected by a mutation.
@@ -11,6 +10,9 @@ pub enum Response {
 
     /// The number of rows affected by a batch of mutations.
     ExecuteBatch(u64),
+
+    /// Error response.
+    Failed(proven_libsql::Error),
 
     /// Whether a schema migration was needed.
     Migrate(bool),

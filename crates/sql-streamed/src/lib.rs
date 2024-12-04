@@ -115,7 +115,6 @@ where
             database: Database::connect(":memory:").await?,
         });
 
-        // TODO: properly handle errors in the spawned task
         tokio::spawn({
             let handler = handler.clone();
             let stream = self.stream.clone();
@@ -134,8 +133,14 @@ where
             let migration_sql = migration.into();
             if !applied_migrations.contains(&migration_sql) {
                 let request = Request::Migrate(migration_sql);
-                let bytes: Bytes = request.try_into().unwrap();
-                self.stream.request(bytes).await.map_err(Error::Stream)?;
+                let bytes: Bytes = request.try_into()?;
+
+                let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
+                let response: Response = raw_response.try_into()?;
+
+                if let Response::Failed(error) = response {
+                    return Err(Error::Libsql(error));
+                }
             }
         }
 

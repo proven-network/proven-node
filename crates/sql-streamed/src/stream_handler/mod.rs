@@ -58,36 +58,48 @@ impl StreamHandler for SqlStreamHandler {
         let mut headers = HashMap::with_capacity(1);
 
         let response = match request {
-            Request::Execute(sql, params) => {
-                let affected_rows = self.database.execute(&sql, params).await?;
-                Response::Execute(affected_rows)
-            }
-            Request::ExecuteBatch(sql, params) => {
-                let affected_rows = self.database.execute_batch(&sql, params).await?;
-                Response::ExecuteBatch(affected_rows)
-            }
-            Request::Migrate(sql) => {
-                let needed_to_run = self.database.migrate(&sql).await?;
-
-                if needed_to_run {
-                    self.applied_migrations.lock().await.push(sql);
-                } else {
-                    headers.insert(
-                        "Request-Message-Should-Persist".to_string(),
-                        "false".to_string(),
-                    );
+            Request::Execute(sql, params) => match self.database.execute(&sql, params).await {
+                Ok(affected_rows) => Response::Execute(affected_rows),
+                Err(e) => {
+                    headers.insert("Request-Should-Persist".to_string(), "false".to_string());
+                    Response::Failed(e)
                 }
-                Response::Migrate(needed_to_run)
+            },
+            Request::ExecuteBatch(sql, params) => {
+                match self.database.execute_batch(&sql, params).await {
+                    Ok(affected_rows) => Response::ExecuteBatch(affected_rows),
+                    Err(e) => {
+                        headers.insert("Request-Should-Persist".to_string(), "false".to_string());
+                        Response::Failed(e)
+                    }
+                }
             }
+            Request::Migrate(sql) => match self.database.migrate(&sql).await {
+                Ok(needed_to_run) => {
+                    if needed_to_run {
+                        self.applied_migrations.lock().await.push(sql);
+                    } else {
+                        // Don't persist migrations that don't need to run.
+                        headers.insert(
+                            "Request-Message-Should-Persist".to_string(),
+                            "false".to_string(),
+                        );
+                    }
+                    Response::Migrate(needed_to_run)
+                }
+                Err(e) => {
+                    headers.insert("Request-Should-Persist".to_string(), "false".to_string());
+                    Response::Failed(e)
+                }
+            },
             Request::Query(sql, params) => {
-                // Used in relevent stream implemenetations to remove queries from append-only logs
-                headers.insert(
-                    "Request-Message-Should-Persist".to_string(),
-                    "false".to_string(),
-                );
+                // Never persist query responses.
+                headers.insert("Request-Should-Persist".to_string(), "false".to_string());
 
-                let rows = self.database.query(&sql, params).await?;
-                Response::Query(rows)
+                match self.database.query(&sql, params).await {
+                    Ok(rows) => Response::Query(rows),
+                    Err(e) => Response::Failed(e),
+                }
             }
         };
 

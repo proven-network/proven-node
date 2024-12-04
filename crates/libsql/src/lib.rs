@@ -72,7 +72,7 @@ impl Database {
                 self.connection
                     .execute(query, libsql_params)
                     .await
-                    .map_err(|e| Error::Libsql(e.into()))
+                    .map_err(Error::from)
             }
             SqlType::Query => Err(Error::IncorrectSqlType(SqlType::Mutation, SqlType::Query)),
         }
@@ -192,7 +192,7 @@ impl Database {
                     .connection
                     .query(query, libsql_params)
                     .await
-                    .map_err(|e| Error::Libsql(e.into()))?;
+                    .map_err(Error::from)?;
 
                 convert_libsql_rows(libsql_rows).await
             }
