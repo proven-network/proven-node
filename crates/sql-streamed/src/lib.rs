@@ -205,7 +205,7 @@ where
         StreamedSqlStore {
             leader_store: self.leader_store.clone(),
             local_name: self.local_name.clone(),
-            stream: Stream3::scope(&self.stream, scope.into()), // Fully qualified syntax for Stream3
+            stream: Stream3::scope(&self.stream, scope.into()),
         }
     }
 }
