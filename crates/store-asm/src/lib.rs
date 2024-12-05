@@ -143,7 +143,6 @@ macro_rules! impl_scoped_store {
     ($name:ident, $parent:ident) => {
         #[async_trait]
         impl $name for AsmStore {
-            type Error = Error;
             type Scoped = Self;
 
             fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {

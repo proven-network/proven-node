@@ -154,7 +154,6 @@ where
     S: Stream<SqlStreamHandler> + Stream1<SqlStreamHandler>,
     LS: Store,
 {
-    type Error = Error<<S as Stream1<SqlStreamHandler>>::Error, LS::Error>;
     type Scoped = StreamedSqlStore<S::Scoped, LS>;
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
@@ -173,7 +172,6 @@ where
     LS: Store,
     <S as Stream2<SqlStreamHandler>>::Scoped: Stream<SqlStreamHandler>,
 {
-    type Error = Error<<S as Stream2<SqlStreamHandler>>::Error, LS::Error>;
     type Scoped = StreamedSqlStore<<S as Stream2<SqlStreamHandler>>::Scoped, LS>;
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
@@ -198,7 +196,6 @@ where
     <<S as Stream3<SqlStreamHandler>>::Scoped as Stream2<SqlStreamHandler>>::Scoped:
         Stream<SqlStreamHandler>,
 {
-    type Error = Error<<S as Stream3<SqlStreamHandler>>::Error, LS::Error>;
     type Scoped = StreamedSqlStore<<S as Stream3<SqlStreamHandler>>::Scoped, LS>;
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {

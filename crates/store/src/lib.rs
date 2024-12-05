@@ -47,11 +47,8 @@ macro_rules! define_scoped_store {
         #[doc = $doc]
         pub trait $name
         where
-            Self: Clone + Debug + Send + Sync + 'static,
+            Self: Clone + Debug + Send + Store + Sync + 'static,
         {
-            /// The error type for the store.
-            type Error: StoreError;
-
             /// The scoped store type.
             type Scoped: $parent<Error = Self::Error>;
 

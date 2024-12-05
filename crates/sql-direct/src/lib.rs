@@ -54,7 +54,6 @@ impl SqlStore for DirectSqlStore {
 
 #[async_trait]
 impl SqlStore1 for DirectSqlStore {
-    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -66,7 +65,6 @@ impl SqlStore1 for DirectSqlStore {
 
 #[async_trait]
 impl SqlStore2 for DirectSqlStore {
-    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
@@ -78,7 +76,6 @@ impl SqlStore2 for DirectSqlStore {
 
 #[async_trait]
 impl SqlStore3 for DirectSqlStore {
-    type Error = Error;
     type Scoped = Self;
 
     fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {

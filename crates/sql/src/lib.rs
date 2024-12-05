@@ -73,10 +73,7 @@ macro_rules! define_scoped_sql_store {
     ($name:ident, $parent:ident, $doc:expr) => {
         #[async_trait]
         #[doc = $doc]
-        pub trait $name: Clone + Debug + Send + Sync + 'static {
-            /// The error type for the store
-            type Error: SqlStoreError;
-
+        pub trait $name: Clone + Debug + Send + SqlStore + Sync + 'static {
             /// The scoped version of the store
             type Scoped: $parent<Error = Self::Error>;
 

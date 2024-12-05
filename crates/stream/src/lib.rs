@@ -74,12 +74,9 @@ macro_rules! define_scoped_stream {
         #[doc = $doc]
         pub trait $name<Handler>
         where
-            Self: Clone + Debug + Send + Sync + 'static,
+            Self: Clone + Debug + Send + Stream<Handler> + Sync + 'static,
             Handler: StreamHandler,
         {
-            /// The error type for the stream.
-            type Error: StreamError;
-
             /// The scoped version of the stream.
             type Scoped: $parent<Handler, Error = Self::Error>;
 

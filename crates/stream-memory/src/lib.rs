@@ -146,7 +146,6 @@ macro_rules! impl_scoped_stream {
         where
             H: StreamHandler,
         {
-            type Error = Error<H::Error>;
             type Scoped = MemoryStream<H>;
 
             fn scope(&self, scope: String) -> Self::Scoped {
