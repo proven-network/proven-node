@@ -18,8 +18,8 @@ use proven_http_insecure::InsecureHttpServer;
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_direct::DirectSqlStore;
-use proven_store_fs::FsStore;
-use proven_store_memory::MemoryStore;
+use proven_store_fs::{FsStore1, FsStore2, FsStore3};
+use proven_store_memory::MemoryStore1;
 use radix_common::network::NetworkDefinition;
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -40,8 +40,8 @@ async fn main() -> Result<()> {
     )?;
 
     let args = Args::parse();
-    let challenge_store = MemoryStore::new();
-    let sessions_store = FsStore::new("/tmp/proven/sessions");
+    let challenge_store = MemoryStore1::new();
+    let sessions_store = FsStore1::new("/tmp/proven/sessions");
     let radix_network_definition = NetworkDefinition::stokenet();
     let attestor = DevAttestor;
 
@@ -58,9 +58,9 @@ async fn main() -> Result<()> {
     let application_manager_sql_store = DirectSqlStore::new("/tmp/proven/application_manager.db");
     let application_manager = ApplicationManager::new(application_manager_sql_store).await?;
 
-    let application_store = FsStore::new("/tmp/proven/kv/application");
-    let personal_store = FsStore::new("/tmp/proven/kv/personal");
-    let nft_store = FsStore::new("/tmp/proven/kv/nft");
+    let application_store = FsStore2::new("/tmp/proven/kv/application");
+    let personal_store = FsStore3::new("/tmp/proven/kv/personal");
+    let nft_store = FsStore3::new("/tmp/proven/kv/nft");
 
     let application_sql_store = DirectSqlStore::new("/tmp/proven/sql/application");
     let personal_sql_store = DirectSqlStore::new("/tmp/proven/sql/personal");

@@ -140,27 +140,72 @@ impl Store for AsmStore {
 }
 
 macro_rules! impl_scoped_store {
-    ($name:ident, $parent:ident) => {
-        #[async_trait]
-        impl $name for AsmStore {
-            type Scoped = Self;
+    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! AsmStore $index]]
+            [!set! #trait_name = [!ident! Store $index]]
 
-            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-                let new_scope = match &self.prefix {
-                    Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
-                    None => scope.into(),
-                };
+            #[doc = $doc]
+            #[derive(Clone, Debug)]
+            pub struct #name {
+                client: aws_sdk_secretsmanager::Client,
+                prefix: Option<String>,
+                secret_name: String,
+            }
 
-                Self::new_with_client_and_prefix(
-                    self.client.clone(),
-                    self.secret_name.clone(),
-                    Some(new_scope),
-                )
+            impl #name {
+                /// Creates a new `#name` with the specified options.
+                #[must_use]
+                pub const fn new_with_client_and_prefix(
+                    client: Client,
+                    secret_name: String,
+                    prefix: Option<String>,
+                ) -> Self {
+                    Self {
+                        client,
+                        prefix,
+                        secret_name,
+                    }
+                }
+            }
+
+            #[async_trait]
+            impl #trait_name for #name {
+                type Error = Error;
+                type Scoped = $parent;
+
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                    let new_scope = match &self.prefix {
+                        Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+                        None => scope.into(),
+                    };
+
+                    $parent::new_with_client_and_prefix(
+                        self.client.clone(),
+                        self.secret_name.clone(),
+                        Some(new_scope),
+                    )
+                }
             }
         }
     };
 }
 
-impl_scoped_store!(Store1, Store);
-impl_scoped_store!(Store2, Store1);
-impl_scoped_store!(Store3, Store2);
+impl_scoped_store!(
+    1,
+    AsmStore,
+    Store,
+    "A single-scoped KV store using AWS Secrets Manager."
+);
+impl_scoped_store!(
+    2,
+    AsmStore1,
+    Store1,
+    "A double-scoped KV store using AWS Secrets Manager."
+);
+impl_scoped_store!(
+    3,
+    AsmStore2,
+    Store2,
+    "A triple-scoped KV store using AWS Secrets Manager."
+);

@@ -660,14 +660,14 @@ mod tests {
     use super::*;
 
     use proven_sql_direct::DirectSqlStore;
-    use proven_store_memory::MemoryStore;
+    use proven_store_memory::{MemoryStore2, MemoryStore3};
     use serde_json::json;
     use tempfile::tempdir;
 
     fn create_pool_options() -> PoolOptions<
-        MemoryStore,
-        MemoryStore,
-        MemoryStore,
+        MemoryStore2,
+        MemoryStore3,
+        MemoryStore3,
         DirectSqlStore,
         DirectSqlStore,
         DirectSqlStore,
@@ -681,12 +681,12 @@ mod tests {
 
         PoolOptions {
             application_sql_store: DirectSqlStore::new(temp_application_sql),
-            application_store: MemoryStore::new(),
+            application_store: MemoryStore2::new(),
             max_workers: 10,
             nft_sql_store: DirectSqlStore::new(temp_nft_sql),
-            nft_store: MemoryStore::new(),
+            nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore::new(temp_personal_sql),
-            personal_store: MemoryStore::new(),
+            personal_store: MemoryStore3::new(),
             radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
         }

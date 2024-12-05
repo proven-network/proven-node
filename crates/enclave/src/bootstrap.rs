@@ -31,7 +31,7 @@ use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStoreOptions};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
-use proven_store_nats::{NatsStore, NatsStoreOptions};
+use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
 use proven_store_s3::{S3Store, S3StoreOptions};
 use proven_stream_nats::{NatsStream, NatsStreamOptions};
 use proven_vsock_proxy::Proxy;
@@ -753,14 +753,14 @@ impl Bootstrap {
             panic!("nats client not fetched before core");
         });
 
-        let challenge_store = NatsStore::new(NatsStoreOptions {
+        let challenge_store = NatsStore1::new(NatsStoreOptions {
             bucket: "challenges".to_string(),
             client: nats_client.clone(),
             max_age: Duration::from_secs(5 * 60),
             persist: false,
         });
 
-        let sessions_store = NatsStore::new(NatsStoreOptions {
+        let sessions_store = NatsStore1::new(NatsStoreOptions {
             bucket: "sessions".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
@@ -818,7 +818,7 @@ impl Bootstrap {
 
         let application_manager = ApplicationManager::new(application_manager_sql_store).await?;
 
-        let application_store = NatsStore::new(NatsStoreOptions {
+        let application_store = NatsStore2::new(NatsStoreOptions {
             bucket: "APPLICATION_KV".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
@@ -834,7 +834,7 @@ impl Bootstrap {
             }),
         });
 
-        let personal_store = NatsStore::new(NatsStoreOptions {
+        let personal_store = NatsStore3::new(NatsStoreOptions {
             bucket: "PERSONAL_KV".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
@@ -850,7 +850,7 @@ impl Bootstrap {
             }),
         });
 
-        let nft_store = NatsStore::new(NatsStoreOptions {
+        let nft_store = NatsStore3::new(NatsStoreOptions {
             bucket: "NFT_KV".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,

@@ -13,7 +13,7 @@ use proven_nats_server::NatsServer;
 use proven_runtime::RuntimePoolManager;
 use proven_sessions::SessionManager;
 use proven_sql_streamed::{SqlStreamHandler, StreamedSqlStore};
-use proven_store_nats::NatsStore;
+use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
 use proven_stream_nats::NatsStream;
 // use proven_nats_monitor::NatsMonitor;
 use proven_postgres::Postgres;
@@ -32,14 +32,14 @@ use tracing::{error, info};
 pub type EnclaveCore = Core<
     ApplicationManager<StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>>,
     RuntimePoolManager<
-        NatsStore,
-        NatsStore,
-        NatsStore,
+        NatsStore2,
+        NatsStore3,
+        NatsStore3,
         StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>,
         StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>,
         StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>,
     >,
-    SessionManager<NsmAttestor, NatsStore, NatsStore>,
+    SessionManager<NsmAttestor, NatsStore1, NatsStore1>,
 >;
 
 pub struct Services {

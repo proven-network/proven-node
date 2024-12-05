@@ -11,6 +11,7 @@ base64 = { workspace = true }
 blake3 = { workspace = true }
 bytes = { workspace = true }
 md5 = { workspace = true }
+preinterpret = { workspace = true }
 proven-store = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

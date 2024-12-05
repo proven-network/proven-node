@@ -6194,6 +6194,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "preinterpret"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf4cb4d87d808156f56cf409c26dfc93d2cc9e37a6a407a5ebcaca0cf9850789"
+dependencies = [
+ "proc-macro2",
+ "syn 2.0.90",
+]
+
+[[package]]
 name = "pretty_assertions"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6983,6 +6993,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "preinterpret",
 ]
 
 [[package]]
@@ -6993,6 +7004,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-secretsmanager",
  "bytes",
+ "preinterpret",
  "proven-store",
  "serde_json",
  "thiserror 2.0.3",
@@ -7005,6 +7017,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "preinterpret",
  "proven-store",
  "tempfile",
  "thiserror 2.0.3",
@@ -7017,6 +7030,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "preinterpret",
  "proven-store",
  "thiserror 2.0.3",
  "tokio",
@@ -7030,6 +7044,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures",
+ "preinterpret",
  "proven-store",
  "thiserror 2.0.3",
  "tokio",
@@ -7046,6 +7061,7 @@ dependencies = [
  "blake3",
  "bytes",
  "md5",
+ "preinterpret",
  "proven-store",
  "thiserror 2.0.3",
  "tokio",

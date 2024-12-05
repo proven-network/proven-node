@@ -42,36 +42,44 @@ where
 }
 
 macro_rules! define_scoped_store {
-    ($name:ident, $parent:ident, $doc:expr) => {
-        #[async_trait]
-        #[doc = $doc]
-        pub trait $name
-        where
-            Self: Clone + Debug + Send + Store + Sync + 'static,
-        {
-            /// The scoped store type.
-            type Scoped: $parent<Error = Self::Error>;
+    ($index:expr, $parent:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! Store $index]]
 
-            /// Creates a scoped store.
-            fn scope<S>(&self, scope: S) -> Self::Scoped
+            #[async_trait]
+            #[doc = $doc]
+            pub trait #name
             where
-                S: Into<String> + Send;
+                Self: Clone + Debug + Send + Sync + 'static,
+            {
+                /// The error type for the store.
+                type Error: StoreError;
+
+                /// The scoped store type.
+                type Scoped: $parent<Error = Self::Error>;
+
+                /// Creates a scoped store.
+                fn [!ident! scope_ $index]<S>(&self, scope: S) -> <Self as #name>::Scoped
+                where
+                    S: Into<String> + Send;
+            }
+
         }
     };
 }
 
 define_scoped_store!(
-    Store1,
+    1,
     Store,
     "A trait representing a single-scoped key-value store with asynchronous operations."
 );
 define_scoped_store!(
-    Store2,
+    2,
     Store1,
     "A trait representing a double-scoped key-value store with asynchronous operations."
 );
 define_scoped_store!(
-    Store3,
+    3,
     Store2,
     "A trait representing a triple-scoped key-value store with asynchronous operations."
 );

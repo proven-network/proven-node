@@ -275,6 +275,7 @@ pem = "3.0.4"
 percent-encoding = "2.3.0"
 phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.1.7"
+preinterpret = "0.1"
 pretty_assertions = "1.4.1"
 prettyplease = "0.2.25"
 progenitor = "0.8.0"

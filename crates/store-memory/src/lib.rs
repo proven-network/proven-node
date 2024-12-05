@@ -83,25 +83,64 @@ impl Store for MemoryStore {
 }
 
 macro_rules! impl_scoped_store {
-    ($name:ident, $parent:ident) => {
-        #[async_trait]
-        impl $name for MemoryStore {
-            type Scoped = Self;
+    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! MemoryStore $index]]
+            [!set! #trait_name = [!ident! Store $index]]
 
-            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-                let new_scope = match &self.prefix {
-                    Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
-                    None => scope.into(),
-                };
-                Self::with_scope(new_scope)
+            #[doc = $doc]
+            #[derive(Clone, Debug, Default)]
+            pub struct #name {
+                prefix: Option<String>,
+            }
+
+            impl #name {
+                /// Creates a new `#name`.
+                #[must_use]
+                pub const fn new() -> Self {
+                    Self {
+                        prefix: None,
+                    }
+                }
+
+                #[allow(dead_code)]
+                const fn with_scope(prefix: String) -> Self {
+                    Self {
+                        prefix: Some(prefix),
+                    }
+                }
+            }
+
+            #[async_trait]
+            impl #trait_name for #name {
+                type Error = Error;
+                type Scoped = $parent;
+
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                    let new_scope = match &self.prefix {
+                        Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+                        None => scope.into(),
+                    };
+                    $parent::with_scope(new_scope)
+                }
             }
         }
     };
 }
 
-impl_scoped_store!(Store1, Store);
-impl_scoped_store!(Store2, Store1);
-impl_scoped_store!(Store3, Store2);
+impl_scoped_store!(1, MemoryStore, Store, "A single-scoped in-memory KV store.");
+impl_scoped_store!(
+    2,
+    MemoryStore1,
+    Store1,
+    "A double-scoped in-memory KV store."
+);
+impl_scoped_store!(
+    3,
+    MemoryStore2,
+    Store2,
+    "A triple-scoped in-memory KV store."
+);
 
 #[cfg(test)]
 mod tests {
@@ -134,8 +173,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_scope() {
-        let store = MemoryStore::new();
-        let scoped_store = Store2::scope(&store, "scope".to_string());
+        let store = MemoryStore1::new();
+        let scoped_store = store.scope_1("scope");
 
         let key = "test_key".to_string();
         let value = Bytes::from_static(b"test_value");
@@ -144,17 +183,13 @@ mod tests {
         let result = scoped_store.get(key.clone()).await.unwrap();
 
         assert_eq!(result, Some(value));
-
-        // Ensure the value is not accessible without the scope
-        let result_without_scope = store.get(key).await.unwrap();
-        assert_eq!(result_without_scope, None);
     }
 
     #[tokio::test]
     async fn test_nested_scope() {
-        let store = MemoryStore::new();
-        let partial_scoped_store = Store2::scope(&store, "scope1".to_string());
-        let scoped_store = Store3::scope(&partial_scoped_store, "scope2".to_string());
+        let store = MemoryStore2::new();
+        let partial_scoped_store = store.scope_2("scope1");
+        let scoped_store = partial_scoped_store.scope_1("scope2");
 
         let key = "test_key".to_string();
         let value = Bytes::from_static(b"test_value");
@@ -163,12 +198,5 @@ mod tests {
         let result = scoped_store.get(key.clone()).await.unwrap();
 
         assert_eq!(result, Some(value));
-
-        // Ensure the value is not accessible without the nested scope
-        let result_without_scope = store.get(key.clone()).await.unwrap();
-        assert_eq!(result_without_scope, None);
-
-        let result_with_partial_scope = partial_scoped_store.get(key).await.unwrap();
-        assert_eq!(result_with_partial_scope, None);
     }
 }

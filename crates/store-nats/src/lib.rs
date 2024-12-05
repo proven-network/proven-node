@@ -64,6 +64,7 @@ impl NatsStore {
         }
     }
 
+    #[allow(dead_code)]
     fn with_scope(&self, scope: String) -> Self {
         Self {
             bucket: scope,
@@ -139,18 +140,79 @@ impl Store for NatsStore {
 }
 
 macro_rules! impl_scoped_store {
-    ($name:ident, $parent:ident) => {
-        #[async_trait]
-        impl $name for NatsStore {
-            type Scoped = Self;
+    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! NatsStore $index]]
+            [!set! #trait_name = [!ident! Store $index]]
 
-            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-                self.with_scope(format!("{}.{}", self.bucket, scope.into()))
+            #[doc = $doc]
+            #[derive(Clone, Debug)]
+            pub struct #name {
+                bucket: String,
+                jetstream_context: JetStreamContext,
+                max_age: Duration,
+                persist: bool,
+            }
+
+            impl #name {
+                /// Creates a new `#name` with the specified options.
+                #[must_use]
+                pub fn new(
+                    NatsStoreOptions {
+                        client,
+                        bucket,
+                        max_age,
+                        persist,
+                    }: NatsStoreOptions,
+                ) -> Self {
+                    let jetstream_context = jetstream::new(client);
+
+                    Self {
+                        bucket,
+                        jetstream_context,
+                        max_age,
+                        persist,
+                    }
+                }
+
+                fn with_scope(&self, scope: String) -> $parent {
+                    $parent {
+                        bucket: scope,
+                        jetstream_context: self.jetstream_context.clone(),
+                        max_age: self.max_age,
+                        persist: self.persist,
+                    }
+                }
+            }
+
+            #[async_trait]
+            impl #trait_name for #name {
+                type Error = Error;
+                type Scoped = $parent;
+
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                    self.with_scope(format!("{}.{}", self.bucket, scope.into()))
+                }
             }
         }
     };
 }
 
-impl_scoped_store!(Store1, Store);
-impl_scoped_store!(Store2, Store1);
-impl_scoped_store!(Store3, Store2);
+impl_scoped_store!(
+    1,
+    NatsStore,
+    Store,
+    "A single-scoped KV store using NATS JetStream."
+);
+impl_scoped_store!(
+    2,
+    NatsStore1,
+    Store1,
+    "A double-scoped KV store using NATS JetStream."
+);
+impl_scoped_store!(
+    3,
+    NatsStore2,
+    Store2,
+    "A triple-scoped KV store using NATS JetStream."
+);

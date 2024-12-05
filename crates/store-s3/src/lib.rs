@@ -209,27 +209,75 @@ impl Store for S3Store {
 }
 
 macro_rules! impl_scoped_store {
-    ($name:ident, $parent:ident) => {
-        #[async_trait]
-        impl $name for S3Store {
-            type Scoped = Self;
+    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! S3Store $index]]
+            [!set! #trait_name = [!ident! Store $index]]
 
-            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-                let prefix = match &self.prefix {
-                    Some(prefix) => format!("{}/{}", prefix, scope.into()),
-                    None => scope.into(),
-                };
-                S3Store {
-                    bucket: self.bucket.clone(),
-                    client: self.client.clone(),
-                    secret_key: self.secret_key,
-                    prefix: Some(prefix),
+            #[doc = $doc]
+            #[derive(Clone, Debug)]
+            pub struct #name {
+                bucket: String,
+                client: aws_sdk_s3::Client,
+                secret_key: [u8; 32],
+                prefix: Option<String>,
+            }
+
+            impl #name {
+                /// Creates a new `#name` with the specified options.
+                pub async fn new(
+                    S3StoreOptions {
+                        bucket,
+                        region,
+                        secret_key,
+                    }: S3StoreOptions,
+                ) -> Self {
+                    let config = aws_config::from_env()
+                        .region(Region::new(region))
+                        .load()
+                        .await;
+
+                    Self {
+                        bucket,
+                        client: aws_sdk_s3::Client::new(&config),
+                        secret_key,
+                        prefix: None,
+                    }
+                }
+            }
+
+            #[async_trait]
+            impl #trait_name for #name {
+                type Error = Error;
+                type Scoped = $parent;
+
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                    let prefix = match &self.prefix {
+                        Some(prefix) => format!("{}/{}", prefix, scope.into()),
+                        None => scope.into(),
+                    };
+                    $parent {
+                        bucket: self.bucket.clone(),
+                        client: self.client.clone(),
+                        secret_key: self.secret_key,
+                        prefix: Some(prefix),
+                    }
                 }
             }
         }
     };
 }
 
-impl_scoped_store!(Store1, Store);
-impl_scoped_store!(Store2, Store1);
-impl_scoped_store!(Store3, Store2);
+impl_scoped_store!(1, S3Store, Store, "A single-scoped KV store using AWS S3.");
+impl_scoped_store!(
+    2,
+    S3Store1,
+    Store1,
+    "A double-scoped KV store using AWS S3."
+);
+impl_scoped_store!(
+    3,
+    S3Store2,
+    Store2,
+    "A triple-scoped KV store using AWS S3."
+);

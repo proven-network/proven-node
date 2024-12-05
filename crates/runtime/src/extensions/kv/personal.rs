@@ -36,7 +36,7 @@ pub async fn op_get_personal_bytes<PS: Store1>(
     // TODO: should probably err instead of returning None
     let result = if let Some(store) = personal_store.as_ref() {
         store
-            .scope(format!("{store_name}:bytes"))
+            .scope_1(format!("{store_name}:bytes"))
             .get(key)
             .await
             .map(|bytes| bytes.map(BytesMut::from))
@@ -76,7 +76,7 @@ pub async fn op_set_personal_bytes<PS: Store1>(
 
     let result = if let Some(store) = personal_store.as_ref() {
         store
-            .scope(format!("{store_name}:bytes"))
+            .scope_1(format!("{store_name}:bytes"))
             .put(key, value)
             .await
             .is_ok()
@@ -114,7 +114,7 @@ pub async fn op_get_personal_string<PS: Store1>(
     };
 
     let result = if let Some(store) = personal_store.as_ref() {
-        match store.scope(format!("{store_name}:string")).get(key).await {
+        match store.scope_1(format!("{store_name}:string")).get(key).await {
             Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
             _ => None,
         }
@@ -153,7 +153,7 @@ pub async fn op_set_personal_string<PS: Store1>(
 
     let result = if let Some(store) = personal_store.as_ref() {
         store
-            .scope(format!("{store_name}:string"))
+            .scope_1(format!("{store_name}:string"))
             .put(key, Bytes::from(value))
             .await
             .is_ok()

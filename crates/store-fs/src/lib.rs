@@ -94,23 +94,58 @@ impl Store for FsStore {
 }
 
 macro_rules! impl_scoped_store {
-    ($name:ident, $parent:ident) => {
-        #[async_trait]
-        impl $name for FsStore {
-            type Scoped = Self;
+    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! FsStore $index]]
+            [!set! #trait_name = [!ident! Store $index]]
 
-            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-                let mut dir = self.dir.clone();
-                dir.push(scope.into());
-                Self::new(dir)
+            #[doc = $doc]
+            #[derive(Clone, Debug)]
+            pub struct #name {
+                dir: PathBuf,
+            }
+
+            impl #name {
+                /// Creates a new `#name` with the specified directory.
+                #[must_use]
+                pub fn new(dir: impl Into<PathBuf>) -> Self {
+                    Self { dir: dir.into() }
+                }
+            }
+
+            #[async_trait]
+            impl #trait_name for #name {
+                type Error = Error;
+                type Scoped = $parent;
+
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                    let mut dir = self.dir.clone();
+                    dir.push(scope.into());
+                    $parent::new(dir)
+                }
             }
         }
     };
 }
 
-impl_scoped_store!(Store1, Store);
-impl_scoped_store!(Store2, Store1);
-impl_scoped_store!(Store3, Store2);
+impl_scoped_store!(
+    1,
+    FsStore,
+    Store,
+    "A single-scoped KV store using the filesystem."
+);
+impl_scoped_store!(
+    2,
+    FsStore1,
+    Store1,
+    "A double-scoped KV store using the filesystem."
+);
+impl_scoped_store!(
+    3,
+    FsStore2,
+    Store2,
+    "A triple-scoped KV store using the filesystem."
+);
 
 #[cfg(test)]
 mod tests {
@@ -161,9 +196,9 @@ mod tests {
     #[tokio::test]
     async fn test_scope() {
         let dir = tempdir().unwrap();
-        let store = FsStore::new(dir.path().to_path_buf());
+        let store = FsStore1::new(dir.path().to_path_buf());
 
-        let scoped_store = Store2::scope(&store, "scope".to_string());
+        let scoped_store = store.scope_1("scope");
 
         let key = "test_key".to_string();
         let value = Bytes::from_static(b"test_value");
