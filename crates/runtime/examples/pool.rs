@@ -2,7 +2,7 @@ use proven_runtime::{Error, ExecutionRequest, Pool, PoolOptions, PoolRuntimeOpti
 
 use std::sync::Arc;
 
-use proven_sql_direct::DirectSqlStore;
+use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore2, MemoryStore3};
 use radix_common::network::NetworkDefinition;
 use serde_json::json;
@@ -15,12 +15,12 @@ static EXECUTIONS: usize = 100;
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let pool = Pool::new(PoolOptions {
-        application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
+        application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
         application_store: MemoryStore2::new(),
         max_workers: 10,
-        nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
+        nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
         nft_store: MemoryStore3::new(),
-        personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
+        personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
         personal_store: MemoryStore3::new(),
         radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
         radix_network_definition: NetworkDefinition::stokenet(),

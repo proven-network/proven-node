@@ -52,38 +52,58 @@ impl SqlStore for DirectSqlStore {
     }
 }
 
-#[async_trait]
-impl SqlStore1 for DirectSqlStore {
-    type Scoped = Self;
+macro_rules! impl_scoped_sql_store {
+    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! DirectSqlStore $index]]
+            [!set! #trait_name = [!ident! SqlStore $index]]
 
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let mut dir = self.dir.clone();
-        dir.push(scope.into());
-        Self::new(dir)
-    }
+            #[doc = $doc]
+            #[derive(Clone, Debug)]
+            pub struct #name {
+                dir: PathBuf,
+            }
+
+            impl #name {
+                /// Creates a new `#name` with the specified directory.
+                pub fn new(dir: impl Into<PathBuf>) -> Self {
+                    Self { dir: dir.into() }
+                }
+            }
+
+            #[async_trait]
+            impl #trait_name for #name {
+                type Error = Error;
+                type Scoped = $parent;
+
+                fn [!ident! scope_ $index]<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped {
+                    let mut new_dir = self.dir.clone();
+                    new_dir.push(scope.into());
+                    $parent::new(new_dir)
+                }
+            }
+        }
+    };
 }
 
-#[async_trait]
-impl SqlStore2 for DirectSqlStore {
-    type Scoped = Self;
-
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let mut dir = self.dir.clone();
-        dir.push(scope.into());
-        Self::new(dir)
-    }
-}
-
-#[async_trait]
-impl SqlStore3 for DirectSqlStore {
-    type Scoped = Self;
-
-    fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
-        let mut dir = self.dir.clone();
-        dir.push(scope.into());
-        Self::new(dir)
-    }
-}
+impl_scoped_sql_store!(
+    1,
+    DirectSqlStore,
+    SqlStore,
+    "A single-scoped SQL store that uses files on disk for local development."
+);
+impl_scoped_sql_store!(
+    2,
+    DirectSqlStore1,
+    SqlStore1,
+    "A double-scoped SQL store that uses files on disk for local development."
+);
+impl_scoped_sql_store!(
+    3,
+    DirectSqlStore2,
+    SqlStore2,
+    "A triple-scoped SQL store that uses files on disk for local development."
+);
 
 #[cfg(test)]
 mod tests {

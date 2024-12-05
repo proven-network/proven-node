@@ -8,6 +8,7 @@ edition = "2021"
 async-trait = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
+preinterpret = { workspace = true }
 proven-stream = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

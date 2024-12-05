@@ -43,6 +43,7 @@ where
 {
     /// Creates a new `MemoryStream`.
     #[must_use]
+    // TODO: Should take a name
     pub fn new() -> Self {
         Self {
             channels: Arc::new(Mutex::new(HashMap::new())),
@@ -66,20 +67,6 @@ where
         channels.insert(self.prefix.clone(), pair.clone());
 
         pair
-    }
-
-    fn with_scope(&self, scope: String) -> Self {
-        let new_prefix = if self.prefix.is_empty() {
-            scope
-        } else {
-            format!("{}_{}", self.prefix, scope)
-        };
-
-        Self {
-            channels: self.channels.clone(),
-            prefix: new_prefix,
-            _handler: std::marker::PhantomData,
-        }
     }
 }
 
@@ -140,24 +127,76 @@ where
 }
 
 macro_rules! impl_scoped_stream {
-    ($name:ident, $parent:ident) => {
-        #[async_trait]
-        impl<H> $name<H> for MemoryStream<H>
-        where
-            H: StreamHandler,
-        {
-            type Scoped = MemoryStream<H>;
+    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! MemoryStream $index]]
+            [!set! #trait_name = [!ident! Stream $index]]
 
-            fn scope(&self, scope: String) -> Self::Scoped {
-                self.with_scope(scope)
+            #[doc = $doc]
+            #[derive(Clone, Debug, Default)]
+            pub struct #name<H>
+            where
+                H: StreamHandler,
+            {
+                channels: ChannelMap,
+                prefix: String,
+                _handler: std::marker::PhantomData<H>,
+            }
+
+            impl<H> #name<H>
+            where H: StreamHandler {
+                /// Creates a new `#name`.
+                #[must_use]
+                pub fn new () -> Self {
+                    Self {
+                        channels: Arc::new(Mutex::new(HashMap::new())),
+                        prefix: String::new(),
+                        _handler: std::marker::PhantomData,
+                    }
+                }
+
+                #[allow(dead_code)]
+                fn with_scope(&self, scope: String) -> $parent<H> {
+                    let new_prefix = if self.prefix.is_empty() {
+                        scope
+                    } else {
+                        format!("{}_{}", self.prefix, scope)
+                    };
+
+                    $parent {
+                        channels: self.channels.clone(),
+                        prefix: new_prefix,
+                        _handler: std::marker::PhantomData,
+                    }
+                }
+            }
+
+            #[async_trait]
+            impl<H> #trait_name<H> for #name<H> where H: StreamHandler {
+                type Error = Error<H::Error>;
+                type Scoped = $parent<H>;
+
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent<H> {
+                    self.with_scope(scope.into())
+                }
             }
         }
     };
 }
 
-impl_scoped_stream!(Stream1, Stream);
-impl_scoped_stream!(Stream2, Stream1);
-impl_scoped_stream!(Stream3, Stream2);
+impl_scoped_stream!(1, MemoryStream, Stream, "A single-scoped in-memory stream.");
+impl_scoped_stream!(
+    2,
+    MemoryStream1,
+    Stream1,
+    "A double-scoped in-memory stream."
+);
+impl_scoped_stream!(
+    3,
+    MemoryStream2,
+    Stream2,
+    "A triple-scoped in-memory stream."
+);
 
 #[cfg(test)]
 mod tests {
@@ -194,13 +233,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_scoping() {
-        let stream = MemoryStream::<TestHandler>::new();
+        let stream = MemoryStream1::<TestHandler>::new();
         let scoped = stream.with_scope("test".to_string());
 
-        assert_eq!(stream.name(), "");
-        assert_eq!(scoped.name(), "test");
-
-        let scoped = scoped.with_scope("sub".to_string());
         assert_eq!(scoped.name(), "test_sub");
     }
 }

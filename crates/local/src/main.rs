@@ -17,7 +17,7 @@ use proven_core::{Core, CoreOptions};
 use proven_http_insecure::InsecureHttpServer;
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
-use proven_sql_direct::DirectSqlStore;
+use proven_sql_direct::{DirectSqlStore, DirectSqlStore2, DirectSqlStore3};
 use proven_store_fs::{FsStore1, FsStore2, FsStore3};
 use proven_store_memory::MemoryStore1;
 use radix_common::network::NetworkDefinition;
@@ -62,9 +62,9 @@ async fn main() -> Result<()> {
     let personal_store = FsStore3::new("/tmp/proven/kv/personal");
     let nft_store = FsStore3::new("/tmp/proven/kv/nft");
 
-    let application_sql_store = DirectSqlStore::new("/tmp/proven/sql/application");
-    let personal_sql_store = DirectSqlStore::new("/tmp/proven/sql/personal");
-    let nft_sql_store = DirectSqlStore::new("/tmp/proven/sql/nft");
+    let application_sql_store = DirectSqlStore2::new("/tmp/proven/sql/application");
+    let personal_sql_store = DirectSqlStore3::new("/tmp/proven/sql/personal");
+    let nft_sql_store = DirectSqlStore3::new("/tmp/proven/sql/nft");
 
     let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
         application_sql_store,

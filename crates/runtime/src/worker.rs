@@ -162,7 +162,7 @@ where
 mod tests {
     use super::*;
 
-    use proven_sql_direct::DirectSqlStore;
+    use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
     use radix_common::network::NetworkDefinition;
     use serde_json::json;
@@ -175,9 +175,9 @@ mod tests {
         MemoryStore2,
         MemoryStore3,
         MemoryStore3,
-        DirectSqlStore,
-        DirectSqlStore,
-        DirectSqlStore,
+        DirectSqlStore2,
+        DirectSqlStore3,
+        DirectSqlStore3,
     > {
         let mut temp_application_sql = tempdir().unwrap().into_path();
         temp_application_sql.push("application.db");
@@ -187,13 +187,13 @@ mod tests {
         temp_personal_sql.push("personal.db");
 
         RuntimeOptions {
-            application_sql_store: DirectSqlStore::new(temp_application_sql),
+            application_sql_store: DirectSqlStore2::new(temp_application_sql),
             application_store: MemoryStore2::new(),
             handler_name,
             module: script.to_string(),
-            nft_sql_store: DirectSqlStore::new(temp_nft_sql),
+            nft_sql_store: DirectSqlStore3::new(temp_nft_sql),
             nft_store: MemoryStore3::new(),
-            personal_sql_store: DirectSqlStore::new(temp_personal_sql),
+            personal_sql_store: DirectSqlStore3::new(temp_personal_sql),
             personal_store: MemoryStore3::new(),
             radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),

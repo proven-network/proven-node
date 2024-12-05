@@ -17,6 +17,8 @@ use response::Response;
 pub use stream_handler::SqlStreamHandler;
 use stream_handler::SqlStreamHandlerOptions;
 
+use std::fmt::Debug;
+
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_libsql::Database;
@@ -26,8 +28,8 @@ use proven_stream::{Stream, Stream1, Stream2, Stream3};
 use tokio::sync::oneshot;
 
 /// Options for configuring a `StreamedSqlStore`.
-#[derive(Clone)]
-pub struct StreamedSqlStoreOptions<S: Stream<SqlStreamHandler>, LS: Store> {
+#[derive(Clone, Debug)]
+pub struct StreamedSqlStoreOptions<S, LS> {
     /// The store that keeps track of the current leader.
     pub leader_store: LS,
 
@@ -148,64 +150,89 @@ where
     }
 }
 
-#[async_trait]
-impl<S, LS> SqlStore1 for StreamedSqlStore<S, LS>
-where
-    S: Stream<SqlStreamHandler> + Stream1<SqlStreamHandler>,
-    LS: Store,
-{
-    type Scoped = StreamedSqlStore<S::Scoped, LS>;
+macro_rules! impl_scoped_sql_store {
+    ($index:expr, $parent:ident, $parent_trait:ident, $stream_trait:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! StreamedSqlStore $index]]
+            [!set! #trait_name = [!ident! SqlStore $index]]
 
-    fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
-        StreamedSqlStore {
-            leader_store: self.leader_store.clone(),
-            local_name: self.local_name.clone(),
-            stream: self.stream.scope(scope.into()),
+            #[doc = $doc]
+            #[derive(Clone, Debug)]
+            pub struct #name<S, LS>
+            where
+                S: $stream_trait<SqlStreamHandler>,
+                LS: Store,
+            {
+                leader_store: LS,
+                local_name: String,
+                stream: S,
+            }
+
+            impl<S, LS> #name<S, LS>
+            where
+                Self: Clone + Debug + Send + Sync + 'static,
+                S: $stream_trait<SqlStreamHandler>,
+                LS: Store,
+            {
+                /// Creates a new `#name` with the specified options.
+                pub fn new(
+                    StreamedSqlStoreOptions {
+                        leader_store,
+                        local_name,
+                        stream,
+                    }: StreamedSqlStoreOptions<S, LS>,
+                ) -> Self {
+                    Self {
+                        leader_store,
+                        local_name,
+                        stream,
+                    }
+                }
+            }
+
+            #[async_trait]
+            impl<S, LS> #trait_name for #name<S, LS>
+            where
+                Self: Clone + Debug + Send + Sync + 'static,
+                S: $stream_trait<SqlStreamHandler>,
+                LS: Store,
+            {
+                type Error = Error<S::Error, LS::Error>;
+                type Scoped = $parent<S::Scoped, LS>;
+
+                fn [!ident! scope_ $index]<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+                    $parent {
+                        leader_store: self.leader_store.clone(),
+                        local_name: self.local_name.clone(),
+                        stream: self.stream.[!ident! scope_ $index](scope.into()),
+                    }
+                }
+            }
         }
-    }
+    };
 }
 
-#[async_trait]
-impl<S, LS> SqlStore2 for StreamedSqlStore<S, LS>
-where
-    S: Stream<SqlStreamHandler> + Stream1<SqlStreamHandler> + Stream2<SqlStreamHandler>,
-    LS: Store,
-    <S as Stream2<SqlStreamHandler>>::Scoped: Stream<SqlStreamHandler>,
-{
-    type Scoped = StreamedSqlStore<<S as Stream2<SqlStreamHandler>>::Scoped, LS>;
-
-    fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
-        StreamedSqlStore {
-            leader_store: self.leader_store.clone(),
-            local_name: self.local_name.clone(),
-            stream: Stream2::scope(&self.stream, scope.into()),
-        }
-    }
-}
-
-#[async_trait]
-impl<S, LS> SqlStore3 for StreamedSqlStore<S, LS>
-where
-    S: Stream<SqlStreamHandler>
-        + Stream1<SqlStreamHandler>
-        + Stream2<SqlStreamHandler>
-        + Stream3<SqlStreamHandler>,
-    LS: Store,
-    <S as Stream3<SqlStreamHandler>>::Scoped:
-        Stream<SqlStreamHandler> + Stream1<SqlStreamHandler> + Stream2<SqlStreamHandler>,
-    <<S as Stream3<SqlStreamHandler>>::Scoped as Stream2<SqlStreamHandler>>::Scoped:
-        Stream<SqlStreamHandler>,
-{
-    type Scoped = StreamedSqlStore<<S as Stream3<SqlStreamHandler>>::Scoped, LS>;
-
-    fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
-        StreamedSqlStore {
-            leader_store: self.leader_store.clone(),
-            local_name: self.local_name.clone(),
-            stream: Stream3::scope(&self.stream, scope.into()),
-        }
-    }
-}
+impl_scoped_sql_store!(
+    1,
+    StreamedSqlStore,
+    SqlStore,
+    Stream1,
+    "A single-scoped SQL store that uses a stream as an append-only log."
+);
+impl_scoped_sql_store!(
+    2,
+    StreamedSqlStore1,
+    SqlStore1,
+    Stream2,
+    "A double-scoped SQL store that uses a stream as an append-only log."
+);
+impl_scoped_sql_store!(
+    3,
+    StreamedSqlStore2,
+    SqlStore2,
+    Stream3,
+    "A triple-scoped SQL store that uses a stream as an append-only log."
+);
 
 #[cfg(test)]
 mod tests {

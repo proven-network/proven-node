@@ -44,8 +44,8 @@ impl<NSS: SqlStore2> NftSqlConnectionManager<NSS> {
             .sql_store
             .lock()
             .await
-            .scope(db_name.clone())
-            .scope(nft_id.clone())
+            .scope_2(db_name.clone())
+            .scope_1(nft_id.clone())
             .connect(migrations)
             .await?;
 

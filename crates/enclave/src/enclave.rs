@@ -12,9 +12,11 @@ use proven_instance_details::Instance;
 use proven_nats_server::NatsServer;
 use proven_runtime::RuntimePoolManager;
 use proven_sessions::SessionManager;
-use proven_sql_streamed::{SqlStreamHandler, StreamedSqlStore};
+use proven_sql_streamed::{
+    SqlStreamHandler, StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3,
+};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
-use proven_stream_nats::NatsStream;
+use proven_stream_nats::{NatsStream, NatsStream2, NatsStream3};
 // use proven_nats_monitor::NatsMonitor;
 use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
@@ -35,9 +37,9 @@ pub type EnclaveCore = Core<
         NatsStore2,
         NatsStore3,
         NatsStore3,
-        StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>,
-        StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>,
-        StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>,
+        StreamedSqlStore2<NatsStream2<SqlStreamHandler>, NatsStore>,
+        StreamedSqlStore3<NatsStream3<SqlStreamHandler>, NatsStore>,
+        StreamedSqlStore3<NatsStream3<SqlStreamHandler>, NatsStore>,
     >,
     SessionManager<NsmAttestor, NatsStore1, NatsStore1>,
 >;

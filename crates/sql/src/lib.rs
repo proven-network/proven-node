@@ -70,31 +70,41 @@ where
 }
 
 macro_rules! define_scoped_sql_store {
-    ($name:ident, $parent:ident, $doc:expr) => {
-        #[async_trait]
-        #[doc = $doc]
-        pub trait $name: Clone + Debug + Send + SqlStore + Sync + 'static {
-            /// The scoped version of the store
-            type Scoped: $parent<Error = Self::Error>;
+    ($index:expr, $parent:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! SqlStore $index]]
 
-            /// Create a scoped version of the store
-            fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
+            #[async_trait]
+            #[doc = $doc]
+            pub trait #name
+            where
+                Self: Clone + Debug + Send + Sync + 'static,
+            {
+                /// The error type for the store.
+                type Error: SqlStoreError;
+
+                /// The scoped version of the store.
+                type Scoped: $parent<Error = Self::Error> + Clone + Debug + Send + Sync + 'static;
+
+                /// Create a scoped version of the store.
+                fn [!ident! scope_ $index]<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
+            }
         }
     };
 }
 
 define_scoped_sql_store!(
-    SqlStore1,
+    1,
     SqlStore,
     "A trait representing a single-scoped SQL store with asynchronous operations."
 );
 define_scoped_sql_store!(
-    SqlStore2,
+    2,
     SqlStore1,
     "A trait representing a double-scoped SQL store with asynchronous operations."
 );
 define_scoped_sql_store!(
-    SqlStore3,
+    3,
     SqlStore2,
     "A trait representing a triple-scoped SQL store with asynchronous operations."
 );

@@ -28,12 +28,14 @@ use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
-use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStoreOptions};
+use proven_sql_streamed::{
+    StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3, StreamedSqlStoreOptions,
+};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
 use proven_store_s3::{S3Store, S3StoreOptions};
-use proven_stream_nats::{NatsStream, NatsStreamOptions};
+use proven_stream_nats::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
 use radix_common::network::NetworkDefinition;
@@ -825,10 +827,10 @@ impl Bootstrap {
             persist: true,
         });
 
-        let application_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
+        let application_sql_store = StreamedSqlStore2::new(StreamedSqlStoreOptions {
             leader_store: leader_store.clone(),
             local_name: instance_details.instance_id.clone(),
-            stream: NatsStream::new(NatsStreamOptions {
+            stream: NatsStream2::new(NatsStreamOptions {
                 client: nats_client.clone(),
                 stream_name: "APPLICATION_SQL".to_string(),
             }),
@@ -841,10 +843,10 @@ impl Bootstrap {
             persist: true,
         });
 
-        let personal_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
+        let personal_sql_store = StreamedSqlStore3::new(StreamedSqlStoreOptions {
             leader_store: leader_store.clone(),
             local_name: instance_details.instance_id.clone(),
-            stream: NatsStream::new(NatsStreamOptions {
+            stream: NatsStream3::new(NatsStreamOptions {
                 client: nats_client.clone(),
                 stream_name: "PERSONAL_SQL".to_string(),
             }),
@@ -857,10 +859,10 @@ impl Bootstrap {
             persist: true,
         });
 
-        let nft_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
+        let nft_sql_store = StreamedSqlStore3::new(StreamedSqlStoreOptions {
             leader_store,
             local_name: instance_details.instance_id.clone(),
-            stream: NatsStream::new(NatsStreamOptions {
+            stream: NatsStream3::new(NatsStreamOptions {
                 client: nats_client.clone(),
                 stream_name: "NFT_SQL".to_string(),
             }),

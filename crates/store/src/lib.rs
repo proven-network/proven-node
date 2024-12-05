@@ -56,7 +56,7 @@ macro_rules! define_scoped_store {
                 type Error: StoreError;
 
                 /// The scoped store type.
-                type Scoped: $parent<Error = Self::Error>;
+                type Scoped: $parent<Error = Self::Error> + Clone + Debug + Send + Sync + 'static;
 
                 /// Creates a scoped store.
                 fn [!ident! scope_ $index]<S>(&self, scope: S) -> <Self as #name>::Scoped

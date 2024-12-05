@@ -69,35 +69,41 @@ where
 }
 
 macro_rules! define_scoped_stream {
-    ($name:ident, $parent:ident, $doc:expr) => {
-        #[async_trait]
-        #[doc = $doc]
-        pub trait $name<Handler>
-        where
-            Self: Clone + Debug + Send + Stream<Handler> + Sync + 'static,
-            Handler: StreamHandler,
-        {
-            /// The scoped version of the stream.
-            type Scoped: $parent<Handler, Error = Self::Error>;
+    ($index:expr, $parent:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! Stream $index]]
 
-            /// Creates a scoped version of the stream.
-            fn scope(&self, scope: String) -> Self::Scoped;
+            #[async_trait]
+            #[doc = $doc]
+            pub trait #name<Handler>
+            where
+                Handler: StreamHandler,
+            {
+                /// The error type for the stream.
+                type Error: StreamError;
+
+                /// The scoped version of the stream.
+                type Scoped: $parent<Handler, Error = Self::Error> + Clone + Debug + Send + Sync;
+
+                /// Creates a scoped version of the stream.
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> <Self as #name<Handler>>::Scoped;
+            }
         }
     };
 }
 
 define_scoped_stream!(
-    Stream1,
+    1,
     Stream,
     "A trait representing a single-scoped stream with asynchronous operations."
 );
 define_scoped_stream!(
-    Stream2,
+    2,
     Stream1,
     "A trait representing a double-scoped stream with asynchronous operations."
 );
 define_scoped_stream!(
-    Stream3,
+    3,
     Stream2,
     "A trait representing a triple-scoped stream with asynchronous operations."
 );

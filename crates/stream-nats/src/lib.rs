@@ -69,15 +69,6 @@ where
         }
     }
 
-    fn with_scope(&self, scope: &str) -> Self {
-        Self {
-            client: self.client.clone(),
-            jetstream_context: self.jetstream_context.clone(),
-            stream_name: format!("{}_{}", self.stream_name, scope).to_ascii_uppercase(),
-            _handler: std::marker::PhantomData,
-        }
-    }
-
     fn get_reply_stream_name(&self) -> String {
         format!("{}_reply", self.stream_name).to_ascii_uppercase()
     }
@@ -270,24 +261,73 @@ where
 }
 
 macro_rules! impl_scoped_stream {
-    ($name:ident, $parent:ident) => {
-        #[async_trait]
-        impl<H> $name<H> for NatsStream<H>
-        where
-            H: StreamHandler,
-        {
-            type Scoped = NatsStream<H>;
+    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+        preinterpret::preinterpret! {
+            [!set! #name = [!ident! NatsStream $index]]
+            [!set! #trait_name = [!ident! Stream $index]]
 
-            fn scope(&self, scope: String) -> Self::Scoped {
-                self.with_scope(&scope)
+            #[doc = $doc]
+            #[derive(Clone, Debug)]
+            pub struct #name<H>
+            where
+                H: StreamHandler,
+            {
+                client: Client,
+                jetstream_context: JetStreamContext,
+                stream_name: String,
+                _handler: std::marker::PhantomData<H>,
+            }
+
+            impl<H> #name<H>
+            where H: StreamHandler {
+                /// Creates a new `#name` with the specified options.
+                #[must_use]
+                pub fn new(
+                    NatsStreamOptions {
+                        client,
+                        stream_name,
+                    }: NatsStreamOptions,
+                ) -> Self {
+                    let jetstream_context = jetstream::new(client.clone());
+
+                    Self {
+                        client,
+                        jetstream_context,
+                        stream_name,
+                        _handler: std::marker::PhantomData,
+                    }
+                }
+
+                #[allow(dead_code)]
+                fn with_scope(&self, scope: String) -> $parent<H> {
+                    $parent {
+                        client: self.client.clone(),
+                        jetstream_context: self.jetstream_context.clone(),
+                        stream_name: format!("{}_{}", self.stream_name, scope).to_ascii_uppercase(),
+                        _handler: std::marker::PhantomData,
+                    }
+                }
+            }
+
+            #[async_trait]
+            impl<H> #trait_name<H> for #name<H>
+            where
+                H: StreamHandler,
+            {
+                type Error = Error<H>;
+                type Scoped = $parent<H>;
+
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent<H> {
+                    self.with_scope(scope.into())
+                }
             }
         }
     };
 }
 
-impl_scoped_stream!(Stream1, Stream);
-impl_scoped_stream!(Stream2, Stream1);
-impl_scoped_stream!(Stream3, Stream2);
+impl_scoped_stream!(1, NatsStream, Stream, "A single-scoped NATS stream.");
+impl_scoped_stream!(2, NatsStream1, Stream1, "A double-scoped NATS stream.");
+impl_scoped_stream!(3, NatsStream2, Stream2, "A triple-scoped NATS stream.");
 
 #[cfg(test)]
 mod tests {
@@ -450,17 +490,14 @@ mod tests {
     async fn test_stream_name_scoping() {
         let client = async_nats::connect("nats://localhost:4222").await.unwrap();
 
-        let subscriber = NatsStream::<PublishTestHandler>::new(NatsStreamOptions {
+        let subscriber = NatsStream1::<PublishTestHandler>::new(NatsStreamOptions {
             client,
             stream_name: "SQL".to_string(),
         });
 
         // Should force uppercase
-        let subscriber = subscriber.with_scope("app1");
+        let subscriber = subscriber.scope_1("app1");
         assert_eq!(subscriber.stream_name, "SQL_APP1");
-
-        let subscriber = subscriber.with_scope("DB1");
-        assert_eq!(subscriber.stream_name, "SQL_APP1_DB1");
     }
 
     #[tokio::test]

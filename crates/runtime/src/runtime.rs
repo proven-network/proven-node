@@ -332,7 +332,7 @@ where
         self.runtime.put(ApplicationSqlConnectionManager::new(
             self.application_sql_store
                 .clone()
-                .scope(dapp_definition_address.clone()),
+                .scope_2(dapp_definition_address.clone()),
             self.sql_migrations.application.clone(),
         ))?;
 
@@ -341,15 +341,15 @@ where
             Some(current_identity) => Some(PersonalSqlConnectionManager::new(
                 self.personal_sql_store
                     .clone()
-                    .scope(dapp_definition_address.clone())
-                    .scope(current_identity.clone()),
+                    .scope_3(dapp_definition_address.clone())
+                    .scope_2(current_identity.clone()),
                 self.sql_migrations.personal.clone(),
             )),
             None => None,
         })?;
 
         self.runtime.put(NftSqlConnectionManager::new(
-            self.nft_sql_store.clone().scope(dapp_definition_address),
+            self.nft_sql_store.clone().scope_3(dapp_definition_address),
             self.sql_migrations.nft.clone(),
         ))?;
 
@@ -427,7 +427,7 @@ where
 mod tests {
     use super::*;
 
-    use proven_sql_direct::DirectSqlStore;
+    use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
     use serde_json::json;
     use tempfile::tempdir;
@@ -444,18 +444,18 @@ mod tests {
         MemoryStore2,
         MemoryStore3,
         MemoryStore3,
-        DirectSqlStore,
-        DirectSqlStore,
-        DirectSqlStore,
+        DirectSqlStore2,
+        DirectSqlStore3,
+        DirectSqlStore3,
     > {
         RuntimeOptions {
-            application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
+            application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
             handler_name,
             module: script.to_string(),
-            nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
+            nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
-            personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
+            personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore3::new(),
             radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
