@@ -10,9 +10,10 @@ mod sql_param;
 pub use rows::Rows;
 pub use sql_param::SqlParam;
 
-use async_trait::async_trait;
 use std::error::Error;
 use std::fmt::Debug;
+
+use async_trait::async_trait;
 
 /// Marker trait for `SQLStore` errors
 pub trait SqlStoreError: Debug + Error + Send + Sync {}
@@ -21,7 +22,7 @@ pub trait SqlStoreError: Debug + Error + Send + Sync {}
 #[async_trait]
 pub trait SqlConnection
 where
-    Self: Clone + Debug + Send + Sync + 'static,
+    Self: Clone + Send + Sync + 'static,
 {
     /// The error type for the connection
     type Error: SqlStoreError;
@@ -55,7 +56,7 @@ where
 #[async_trait]
 pub trait SqlStore
 where
-    Self: Clone + Debug + Send + Sync + 'static,
+    Self: Clone + Send + Sync + 'static,
 {
     /// The error type for the store
     type Error: SqlStoreError;
@@ -78,13 +79,13 @@ macro_rules! define_scoped_sql_store {
             #[doc = $doc]
             pub trait #name
             where
-                Self: Clone + Debug + Send + Sync + 'static,
+                Self: Clone + Send + Sync + 'static,
             {
                 /// The error type for the store.
                 type Error: SqlStoreError;
 
                 /// The scoped version of the store.
-                type Scoped: $parent<Error = Self::Error> + Clone + Debug + Send + Sync + 'static;
+                type Scoped: $parent<Error = Self::Error> + Clone + Send + Sync + 'static;
 
                 /// Create a scoped version of the store.
                 fn [!ident! scope_ $index]<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;

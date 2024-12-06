@@ -9,7 +9,7 @@ use proven_store::Store;
 use proven_stream::Stream;
 
 /// A connection to a streamed SQL store.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Connection<S: Stream<SqlStreamHandler>, LS: Store> {
     stream: S,
     _marker: PhantomData<LS>,

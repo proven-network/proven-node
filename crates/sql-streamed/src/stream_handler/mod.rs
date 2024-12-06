@@ -13,7 +13,7 @@ use proven_stream::{HandlerResponse, StreamHandler};
 use tokio::sync::{oneshot, Mutex};
 
 /// A stream handler that executes SQL queries and migrations.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SqlStreamHandler {
     applied_migrations: Arc<Mutex<Vec<String>>>,
     caught_up_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,

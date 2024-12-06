@@ -9,6 +9,10 @@ mod error;
 
 use error::Error;
 
+use std::convert::Infallible;
+use std::error::Error as StdError;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
@@ -19,14 +23,34 @@ use tokio::io::{self, AsyncWriteExt};
 
 /// KV store using files on disk.
 #[derive(Clone, Debug)]
-pub struct FsStore {
+pub struct FsStore<T = Bytes, DE = Infallible, SE = Infallible>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
     dir: PathBuf,
+    _marker: PhantomData<T>,
+    _marker2: PhantomData<DE>,
+    _marker3: PhantomData<SE>,
 }
 
-impl FsStore {
+impl<T, DE, SE> FsStore<T, DE, SE>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
     /// Creates a new `FsStore` with the specified directory.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: dir.into(),
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
+        }
     }
 
     fn get_file_path(&self, key: &str) -> PathBuf {
@@ -35,8 +59,20 @@ impl FsStore {
 }
 
 #[async_trait]
-impl Store for FsStore {
-    type Error = Error;
+impl<T, DE, SE> Store<T, DE, SE> for FsStore<T, DE, SE>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = DE>
+        + TryInto<Bytes, Error = SE>
+        + 'static,
+{
+    type Error = Error<DE, SE>;
 
     async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let path = self.get_file_path(&key.into());
@@ -46,10 +82,15 @@ impl Store for FsStore {
         Ok(())
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
         let path = self.get_file_path(&key.into());
         match fs::read(path).await {
-            Ok(data) => Ok(Some(Bytes::from(data))),
+            Ok(data) => {
+                let bytes: Bytes = data.into();
+                let value: T = bytes.try_into().map_err(|e| Error::Deserialize(e))?;
+
+                Ok(Some(value))
+            }
             Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(Error::Io("error reading file", e)),
         }
@@ -74,7 +115,7 @@ impl Store for FsStore {
         Ok(keys)
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error> {
+    async fn put<K: Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
         let path = self.get_file_path(&key.into());
         if let Some(parent) = path.parent() {
             if !parent.exists() {
@@ -86,7 +127,8 @@ impl Store for FsStore {
         let mut file = fs::File::create(path)
             .await
             .map_err(|e| Error::Io("error creating file", e))?;
-        file.write_all(&bytes)
+        let value: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
+        file.write_all(&value)
             .await
             .map_err(|e| Error::Io("error writing file", e))?;
         Ok(())
@@ -100,28 +142,114 @@ macro_rules! impl_scoped_store {
             [!set! #trait_name = [!ident! Store $index]]
 
             #[doc = $doc]
-            #[derive(Clone, Debug)]
-            pub struct #name {
+            pub struct #name<T = Bytes, DE = Infallible, SE = Infallible>
+            where
+            Self: Debug + Send + Sync + 'static,
+            DE: Send + StdError + Sync + 'static,
+            SE: Send + StdError + Sync + 'static,
+            T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
                 dir: PathBuf,
+                _marker: PhantomData<T>,
+                _marker2: PhantomData<DE>,
+                _marker3: PhantomData<SE>,
             }
 
-            impl #name {
+            impl<T, DE, SE> Clone for $parent<T, DE, SE>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                fn clone(&self) -> Self {
+                    Self {
+                        dir: self.dir.clone(),
+                        _marker: PhantomData,
+                        _marker2: PhantomData,
+                        _marker3: PhantomData,
+                    }
+                }
+            }
+
+            impl<T, DE, SE> Debug for $parent<T, DE, SE>
+            where
+                Self: Clone + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+                    f.debug_struct(stringify!(#name))
+                        .field("dir", &self.dir)
+                        .finish()
+                }
+            }
+
+            impl<T, DE, SE> #name<T, DE, SE>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
                 /// Creates a new `#name` with the specified directory.
                 #[must_use]
                 pub fn new(dir: impl Into<PathBuf>) -> Self {
-                    Self { dir: dir.into() }
+                    Self {
+                        dir: dir.into(),
+                        _marker: PhantomData,
+                        _marker2: PhantomData,
+                        _marker3: PhantomData,
+                    }
                 }
             }
 
             #[async_trait]
-            impl #trait_name for #name {
-                type Error = Error;
-                type Scoped = $parent;
+            impl<T, DE, SE> #trait_name<T, DE, SE> for #name<T, DE, SE>
+            where
+                Self: Clone + Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                type Error = Error<DE, SE>;
+                type Scoped = $parent<T, DE, SE>;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let mut dir = self.dir.clone();
                     dir.push(scope.into());
-                    $parent::new(dir)
+                    Self::Scoped::new(dir)
                 }
             }
         }
@@ -151,6 +279,8 @@ impl_scoped_store!(
 mod tests {
     use super::*;
 
+    use std::fmt::Display;
+
     use tempfile::tempdir;
 
     #[tokio::test]
@@ -170,7 +300,7 @@ mod tests {
     #[tokio::test]
     async fn test_get_nonexistent_key() {
         let dir = tempdir().unwrap();
-        let store = FsStore::new(dir.path().to_path_buf());
+        let store: FsStore<Bytes> = FsStore::new(dir.path().to_path_buf());
 
         let key = "nonexistent_key".to_string();
         let result = store.get(key).await.unwrap();
@@ -221,5 +351,62 @@ mod tests {
         let result = store.get(key.clone()).await.unwrap();
 
         assert_eq!(result, Some(value));
+    }
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct MyType {
+        data: String,
+    }
+
+    #[derive(Debug, Clone)]
+    struct MyError;
+
+    impl Display for MyError {
+        fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+            write!(f, "MyError")
+        }
+    }
+
+    impl StdError for MyError {}
+
+    impl TryFrom<Bytes> for MyType {
+        type Error = MyError;
+
+        fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+            let data = String::from_utf8(value.to_vec()).map_err(|_| MyError)?;
+            Ok(Self { data })
+        }
+    }
+
+    impl TryInto<Bytes> for MyType {
+        type Error = MyError;
+
+        fn try_into(self) -> Result<Bytes, Self::Error> {
+            Ok(Bytes::from(self.data))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_non_bytes() {
+        let store = FsStore::<MyType, MyError, MyError>::new("/tmp/test_store");
+
+        // Test put
+        let key = "test_key";
+        let value = MyType {
+            data: "test_value".to_string(),
+        };
+        store
+            .put(key, value.clone())
+            .await
+            .expect("Failed to put value");
+
+        // Test get
+        let retrieved_value = store.get(key).await.expect("Failed to get value");
+        assert_eq!(retrieved_value, Some(value));
+
+        // Test del
+        store.del(key).await.expect("Failed to delete value");
+        let retrieved_value = store.get(key).await.expect("Failed to get value");
+        assert_eq!(retrieved_value, None);
     }
 }

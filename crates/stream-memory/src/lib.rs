@@ -18,7 +18,7 @@ use tokio::sync::{mpsc, Mutex};
 
 type ReceiverType<T, Q> = mpsc::Receiver<(T, mpsc::Sender<Q>)>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct ChannelPair<T, Q> {
     tx: mpsc::Sender<(T, mpsc::Sender<Q>)>,
     rx: Arc<Mutex<ReceiverType<T, Q>>>,
@@ -27,7 +27,7 @@ struct ChannelPair<T, Q> {
 type ChannelMap<T, Q> = Arc<Mutex<HashMap<String, ChannelPair<T, Q>>>>;
 
 /// In-memory stream implementation.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct MemoryStream<H>
 where
     H: StreamHandler,
@@ -143,7 +143,7 @@ macro_rules! impl_scoped_stream {
             [!set! #trait_name = [!ident! Stream $index]]
 
             #[doc = $doc]
-            #[derive(Clone, Debug, Default)]
+            #[derive(Clone, Default)]
             pub struct #name<H>
             where
                 H: StreamHandler,
@@ -229,7 +229,7 @@ mod tests {
     impl std::error::Error for TestHandlerError {}
     impl StreamHandlerError for TestHandlerError {}
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone)]
     struct TestHandler;
 
     #[derive(Clone, Debug)]

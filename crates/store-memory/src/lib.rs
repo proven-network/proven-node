@@ -9,8 +9,8 @@ mod error;
 
 pub use error::Error;
 
-use std::collections::HashMap;
 use std::sync::Arc;
+use std::{collections::HashMap, fmt::Debug};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -19,12 +19,12 @@ use tokio::sync::Mutex;
 
 /// In-memory key-value store.
 #[derive(Clone, Debug, Default)]
-pub struct MemoryStore {
-    map: Arc<Mutex<HashMap<String, Bytes>>>,
+pub struct MemoryStore<T = Bytes> {
+    map: Arc<Mutex<HashMap<String, T>>>,
     prefix: Option<String>,
 }
 
-impl MemoryStore {
+impl<T> MemoryStore<T> {
     /// Creates a new `MemoryStore`.
     #[must_use]
     pub fn new() -> Self {
@@ -50,7 +50,10 @@ impl MemoryStore {
 }
 
 #[async_trait]
-impl Store for MemoryStore {
+impl<T> Store<T> for MemoryStore<T>
+where
+    T: Clone + Debug + Send + Sync + 'static,
+{
     type Error = Error;
 
     async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
@@ -58,7 +61,7 @@ impl Store for MemoryStore {
         Ok(())
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
         let map = self.map.lock().await;
         Ok(map.get(&self.get_key(key)).cloned())
     }
@@ -76,8 +79,8 @@ impl Store for MemoryStore {
             .collect())
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error> {
-        self.map.lock().await.insert(self.get_key(key), bytes);
+    async fn put<K: Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+        self.map.lock().await.insert(self.get_key(key), value);
         Ok(())
     }
 }
@@ -196,6 +199,18 @@ mod tests {
 
         scoped_store.put(key.clone(), value.clone()).await.unwrap();
         let result = scoped_store.get(key.clone()).await.unwrap();
+
+        assert_eq!(result, Some(value));
+    }
+
+    #[tokio::test]
+    async fn test_non_bytes() {
+        let store = MemoryStore::new();
+        let key = "test_key".to_string();
+        let value = 42;
+
+        store.put(key.clone(), value).await.unwrap();
+        let result = store.get(key.clone()).await.unwrap();
 
         assert_eq!(result, Some(value));
     }

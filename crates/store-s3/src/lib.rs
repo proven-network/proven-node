@@ -9,6 +9,12 @@ mod error;
 
 pub use error::Error;
 
+use std::convert::Infallible;
+use std::convert::{TryFrom, TryInto};
+use std::error::Error as StdError;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::marker::PhantomData;
+
 use async_trait::async_trait;
 use aws_config::Region;
 use base64::{engine::general_purpose::STANDARD as base64, Engine};
@@ -19,11 +25,20 @@ use tokio::io::AsyncReadExt;
 
 /// KV store using AWS S3.
 #[derive(Clone, Debug)]
-pub struct S3Store {
+pub struct S3Store<T = Bytes, DE = Infallible, SE = Infallible>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
     bucket: String,
     client: aws_sdk_s3::Client,
     secret_key: [u8; 32],
     prefix: Option<String>,
+    _marker: PhantomData<T>,
+    _marker2: PhantomData<DE>,
+    _marker3: PhantomData<SE>,
 }
 
 /// Options for configuring an `S3Store`.
@@ -38,7 +53,13 @@ pub struct S3StoreOptions {
     pub secret_key: [u8; 32],
 }
 
-impl S3Store {
+impl<T, DE, SE> S3Store<T, DE, SE>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
     /// Creates a new `S3Store` with the specified options.
     pub async fn new(
         S3StoreOptions {
@@ -57,6 +78,9 @@ impl S3Store {
             client: aws_sdk_s3::Client::new(&config),
             secret_key,
             prefix: None,
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
         }
     }
 
@@ -75,7 +99,19 @@ impl S3Store {
 }
 
 #[async_trait]
-impl Store for S3Store {
+impl<T, DE, SE> Store<T, DE, SE> for S3Store<T, DE, SE>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = DE>
+        + TryInto<Bytes, Error = SE>
+        + 'static,
+{
     type Error = Error;
 
     async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
@@ -95,7 +131,7 @@ impl Store for S3Store {
         }
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -134,7 +170,10 @@ impl Store for S3Store {
                     .await
                     .map_err(|e| Error::Io("read body error", e))?;
 
-                Ok(Some(Bytes::from(buf)))
+                let value: T = Bytes::from(buf)
+                    .try_into()
+                    .map_err(|e| Error::Deserialize(e))?;
+                Ok(Some(value))
             }
         }
     }
@@ -185,10 +224,11 @@ impl Store for S3Store {
         }
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error> {
+    async fn put<K: Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
+        let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
         let resp = self
             .client
             .put_object()
@@ -216,14 +256,88 @@ macro_rules! impl_scoped_store {
 
             #[doc = $doc]
             #[derive(Clone, Debug)]
-            pub struct #name {
+            pub struct #name<T = Bytes, DE = Infallible, SE = Infallible>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
                 bucket: String,
                 client: aws_sdk_s3::Client,
                 secret_key: [u8; 32],
                 prefix: Option<String>,
+                _marker: PhantomData<T>,
+                _marker2: PhantomData<DE>,
+                _marker3: PhantomData<SE>,
             }
 
-            impl #name {
+            impl<T, DE, SE> Clone for $parent<T, DE, SE>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                fn clone(&self) -> Self {
+                    Self {
+                        bucket: self.bucket.clone(),
+                        client: self.client.clone(),
+                        secret_key: self.secret_key,
+                        prefix: self.prefix.clone(),
+                        _marker: PhantomData,
+                        _marker2: PhantomData,
+                        _marker3: PhantomData,
+                    }
+                }
+            }
+
+            impl<T, DE, SE> Debug for $parent<T, DE, SE>
+            where
+                Self: Clone + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+                    f.debug_struct(stringify!(#name))
+                        .field("bucket", &self.bucket)
+                        .field("prefix", &self.prefix)
+                        .finish()
+                }
+            }
+
+            impl<T, DE, SE> #name<T, DE, SE>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
                 /// Creates a new `#name` with the specified options.
                 pub async fn new(
                     S3StoreOptions {
@@ -242,25 +356,43 @@ macro_rules! impl_scoped_store {
                         client: aws_sdk_s3::Client::new(&config),
                         secret_key,
                         prefix: None,
+                        _marker: PhantomData,
+                        _marker2: PhantomData,
+                        _marker3: PhantomData,
                     }
                 }
             }
 
             #[async_trait]
-            impl #trait_name for #name {
+            impl<T, DE, SE> #trait_name<T, DE, SE> for #name<T, DE, SE>
+            where
+                Self: Clone + Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
                 type Error = Error;
-                type Scoped = $parent;
+                type Scoped = $parent<T, DE, SE>;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let prefix = match &self.prefix {
                         Some(prefix) => format!("{}/{}", prefix, scope.into()),
                         None => scope.into(),
                     };
-                    $parent {
+                    Self::Scoped {
                         bucket: self.bucket.clone(),
                         client: self.client.clone(),
                         secret_key: self.secret_key,
                         prefix: Some(prefix),
+                        _marker: PhantomData,
+                        _marker2: PhantomData,
+                        _marker3: PhantomData,
                     }
                 }
             }

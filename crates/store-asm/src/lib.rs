@@ -10,6 +10,11 @@ mod error;
 pub use error::Error;
 
 use std::collections::HashMap;
+use std::convert::Infallible;
+use std::convert::{TryFrom, TryInto};
+use std::error::Error as StdError;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use aws_config::Region;
@@ -19,10 +24,17 @@ use proven_store::{Store, Store1, Store2, Store3};
 
 /// KV store using AWS Secrets Manager.
 #[derive(Clone, Debug)]
-pub struct AsmStore {
+pub struct AsmStore<T = Bytes, DE = Infallible, SE = Infallible>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
     client: aws_sdk_secretsmanager::Client,
     prefix: Option<String>,
     secret_name: String,
+    _marker: PhantomData<T>,
+    _marker2: PhantomData<DE>,
+    _marker3: PhantomData<SE>,
 }
 
 /// Options for configuring an `AsmStore`.
@@ -34,7 +46,13 @@ pub struct AsmStoreOptions {
     pub secret_name: String,
 }
 
-impl AsmStore {
+impl<T, DE, SE> AsmStore<T, DE, SE>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
+{
     /// Creates a new `AsmStore` with the specified options.
     pub async fn new(
         AsmStoreOptions {
@@ -51,6 +69,9 @@ impl AsmStore {
             client: Client::new(&config),
             prefix: None,
             secret_name,
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
         }
     }
 
@@ -63,6 +84,9 @@ impl AsmStore {
             client,
             prefix,
             secret_name,
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
         }
     }
 
@@ -73,7 +97,7 @@ impl AsmStore {
         )
     }
 
-    async fn get_secret_map(&self) -> Result<HashMap<String, Bytes>, Error> {
+    async fn get_secret_map(&self) -> Result<HashMap<String, Bytes>, Error<DE, SE>> {
         let resp = self
             .client
             .get_secret_value()
@@ -90,7 +114,10 @@ impl AsmStore {
         }
     }
 
-    async fn update_secret_map(&self, secret_map: HashMap<String, Bytes>) -> Result<(), Error> {
+    async fn update_secret_map(
+        &self,
+        secret_map: HashMap<String, Bytes>,
+    ) -> Result<(), Error<DE, SE>> {
         let updated_secret_string = serde_json::to_string(&secret_map).unwrap();
         let update_resp = self
             .client
@@ -108,8 +135,20 @@ impl AsmStore {
 }
 
 #[async_trait]
-impl Store for AsmStore {
-    type Error = Error;
+impl<T, DE, SE> Store<T, DE, SE> for AsmStore<T, DE, SE>
+where
+    Self: Clone + Send + Sync + 'static,
+    DE: Clone + Send + StdError + Sync + 'static,
+    SE: Clone + Send + StdError + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = DE>
+        + TryInto<Bytes, Error = SE>
+        + 'static,
+{
+    type Error = Error<DE, SE>;
 
     async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
@@ -119,10 +158,19 @@ impl Store for AsmStore {
         self.update_secret_map(secret_map).await
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error> {
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
         let secret_map = self.get_secret_map().await?;
 
-        Ok(secret_map.get(&key.into()).cloned())
+        match secret_map.get(&key.into()) {
+            Some(bytes) => {
+                let value: T = bytes
+                    .clone()
+                    .try_into()
+                    .map_err(|e| Error::Deserialize(e))?;
+                Ok(Some(value))
+            }
+            None => Ok(None),
+        }
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
@@ -130,10 +178,11 @@ impl Store for AsmStore {
         Ok(secret_map.keys().cloned().collect())
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, value: Bytes) -> Result<(), Self::Error> {
+    async fn put<K: Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
 
-        secret_map.insert(key.into(), value);
+        let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
+        secret_map.insert(key.into(), bytes);
 
         self.update_secret_map(secret_map).await
     }
@@ -146,14 +195,84 @@ macro_rules! impl_scoped_store {
             [!set! #trait_name = [!ident! Store $index]]
 
             #[doc = $doc]
-            #[derive(Clone, Debug)]
-            pub struct #name {
+            pub struct #name<T = Bytes, DE = Infallible, SE = Infallible>
+            where
+            Self: Debug + Send + Sync + 'static,
+            DE: Send + StdError + Sync + 'static,
+            SE: Send + StdError + Sync + 'static,
+            T: Clone
+                + Debug
+                + Send
+                + Sync
+                + TryFrom<Bytes, Error = DE>
+                + TryInto<Bytes, Error = SE>
+                + 'static,
+            {
                 client: aws_sdk_secretsmanager::Client,
                 prefix: Option<String>,
                 secret_name: String,
+                _marker: PhantomData<T>,
+                _marker2: PhantomData<DE>,
+                _marker3: PhantomData<SE>,
             }
 
-            impl #name {
+            impl<T, DE, SE> Clone for $parent<T, DE, SE>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                fn clone(&self) -> Self {
+                    Self::new_with_client_and_prefix(
+                        self.client.clone(),
+                        self.secret_name.clone(),
+                        self.prefix.clone(),
+                    )
+                }
+            }
+
+            impl<T, DE, SE> Debug for $parent<T, DE, SE>
+            where
+                Self: Clone + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+                    f.debug_struct(stringify!(#name))
+                        .field("client", &self.client)
+                        .field("prefix", &self.prefix)
+                        .field("secret_name", &self.secret_name)
+                        .finish()
+                }
+            }
+
+            impl<T, DE, SE> #name<T, DE, SE>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
                 /// Creates a new `#name` with the specified options.
                 #[must_use]
                 pub const fn new_with_client_and_prefix(
@@ -165,22 +284,37 @@ macro_rules! impl_scoped_store {
                         client,
                         prefix,
                         secret_name,
+                        _marker: PhantomData,
+                        _marker2: PhantomData,
+                        _marker3: PhantomData,
                     }
                 }
             }
 
             #[async_trait]
-            impl #trait_name for #name {
-                type Error = Error;
-                type Scoped = $parent;
+            impl<T, DE, SE> #trait_name<T, DE, SE> for #name<T, DE, SE>
+            where
+                Self: Clone + Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                type Error = Error<DE, SE>;
+                type Scoped = $parent<T, DE, SE>;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let new_scope = match &self.prefix {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                         None => scope.into(),
                     };
 
-                    $parent::new_with_client_and_prefix(
+                    Self::Scoped::new_with_client_and_prefix(
                         self.client.clone(),
                         self.secret_name.clone(),
                         Some(new_scope),

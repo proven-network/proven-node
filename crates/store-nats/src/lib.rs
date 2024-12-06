@@ -8,6 +8,11 @@ mod error;
 
 pub use error::Error;
 
+use std::convert::Infallible;
+use std::convert::{TryFrom, TryInto};
+use std::error::Error as StdError;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::marker::PhantomData;
 use std::time::Duration;
 
 use async_nats::jetstream;
@@ -36,14 +41,29 @@ pub struct NatsStoreOptions {
 
 /// KV store using NATS JS.
 #[derive(Clone, Debug)]
-pub struct NatsStore {
+pub struct NatsStore<T = Bytes, DE = Infallible, SE = Infallible>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
     bucket: String,
     jetstream_context: JetStreamContext,
     max_age: Duration,
     persist: bool,
+    _marker: PhantomData<T>,
+    _marker2: PhantomData<DE>,
+    _marker3: PhantomData<SE>,
 }
 
-impl NatsStore {
+impl<T, DE, SE> NatsStore<T, DE, SE>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
     /// Creates a new `NatsStore` with the specified options.
     #[must_use]
     pub fn new(
@@ -61,16 +81,21 @@ impl NatsStore {
             jetstream_context,
             max_age,
             persist,
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
         }
     }
 
-    #[allow(dead_code)]
     fn with_scope(&self, scope: String) -> Self {
         Self {
             bucket: scope,
             jetstream_context: self.jetstream_context.clone(),
             max_age: self.max_age,
             persist: self.persist,
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
         }
     }
 
@@ -94,7 +119,19 @@ impl NatsStore {
 }
 
 #[async_trait]
-impl Store for NatsStore {
+impl<T, DE, SE> Store<T, DE, SE> for NatsStore<T, DE, SE>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = DE>
+        + TryInto<Bytes, Error = SE>
+        + 'static,
+{
     type Error = Error;
 
     async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
@@ -107,15 +144,18 @@ impl Store for NatsStore {
         Ok(())
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<Bytes>, Self::Error> {
-        self.get_kv_store()
+    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
+        let bytes = self
+            .get_kv_store()
             .await?
             .get(key)
             .await
-            .map_err(|e| Error::Entry(e.kind()))
+            .map_err(|e| Error::Entry(e.kind()))?;
+
+        let value: T = bytes.try_into().map_err(|e| Error::Deserialize(e))?;
+        Ok(Some(value))
     }
 
-    // TODO: Better error handling
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
         Ok(self
             .get_kv_store()
@@ -128,7 +168,8 @@ impl Store for NatsStore {
             .unwrap())
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, bytes: Bytes) -> Result<(), Self::Error> {
+    async fn put<K: Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+        let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
         self.get_kv_store()
             .await?
             .put(key.into(), bytes)
@@ -147,14 +188,87 @@ macro_rules! impl_scoped_store {
 
             #[doc = $doc]
             #[derive(Clone, Debug)]
-            pub struct #name {
+            pub struct #name<T = Bytes, DE = Infallible, SE = Infallible>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
                 bucket: String,
                 jetstream_context: JetStreamContext,
                 max_age: Duration,
                 persist: bool,
+                _marker: PhantomData<T>,
+                _marker2: PhantomData<DE>,
+                _marker3: PhantomData<SE>,
             }
 
-            impl #name {
+            impl<T, DE, SE> Clone for $parent<T, DE, SE>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                fn clone(&self) -> Self {
+                    Self {
+                        bucket: self.bucket.clone(),
+                        jetstream_context: self.jetstream_context.clone(),
+                        max_age: self.max_age,
+                        persist: self.persist,
+                        _marker: PhantomData,
+                        _marker2: PhantomData,
+                        _marker3: PhantomData,
+                    }
+                }
+            }
+
+            impl<T, DE, SE> Debug for $parent<T, DE, SE>
+            where
+                Self: Clone + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
+                fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+                    f.debug_struct(stringify!(#name))
+                        .field("bucket", &self.bucket)
+                        .finish()
+                }
+            }
+
+            impl<T, DE, SE> #name<T, DE, SE>
+            where
+                Self: Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
                 /// Creates a new `#name` with the specified options.
                 #[must_use]
                 pub fn new(
@@ -172,26 +286,39 @@ macro_rules! impl_scoped_store {
                         jetstream_context,
                         max_age,
                         persist,
-                    }
-                }
-
-                fn with_scope(&self, scope: String) -> $parent {
-                    $parent {
-                        bucket: scope,
-                        jetstream_context: self.jetstream_context.clone(),
-                        max_age: self.max_age,
-                        persist: self.persist,
+                        _marker: PhantomData,
+                        _marker2: PhantomData,
+                        _marker3: PhantomData,
                     }
                 }
             }
 
             #[async_trait]
-            impl #trait_name for #name {
+            impl<T, DE, SE> #trait_name<T, DE, SE> for #name<T, DE, SE>
+            where
+                Self: Clone + Debug + Send + Sync + 'static,
+                DE: Send + StdError + Sync + 'static,
+                SE: Send + StdError + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = DE>
+                    + TryInto<Bytes, Error = SE>
+                    + 'static,
+            {
                 type Error = Error;
-                type Scoped = $parent;
+                type Scoped = $parent<T, DE, SE>;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
-                    self.with_scope(format!("{}.{}", self.bucket, scope.into()))
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                    let mut bucket = self.bucket.clone();
+                    bucket.push_str(&format!(".{}", scope.into()));
+                    Self::Scoped::new(NatsStoreOptions {
+                        client: self.jetstream_context.client().clone(),
+                        bucket,
+                        max_age: self.max_age,
+                        persist: self.persist,
+                    })
                 }
             }
         }

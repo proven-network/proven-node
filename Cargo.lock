@@ -7024,6 +7024,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "ciborium",
  "preinterpret",
  "proven-store",
  "tempfile",
@@ -7050,6 +7051,7 @@ dependencies = [
  "async-nats",
  "async-trait",
  "bytes",
+ "ciborium",
  "futures",
  "preinterpret",
  "proven-store",

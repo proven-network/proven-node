@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use proven_attestation::AttestorError;
 use thiserror::Error;
 
@@ -5,7 +7,7 @@ use thiserror::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Errors that can occur in this crate.
-#[derive(Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum Error {
     /// CBOR error.
     #[error("CBOR error")]
@@ -13,7 +15,13 @@ pub enum Error {
 
     /// COSE error.
     #[error(transparent)]
-    Cose(#[from] coset::CoseError),
+    Cose(Arc<coset::CoseError>),
 }
 
 impl AttestorError for Error {}
+
+impl From<coset::CoseError> for Error {
+    fn from(err: coset::CoseError) -> Self {
+        Self::Cose(Arc::new(err))
+    }
+}

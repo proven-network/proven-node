@@ -35,7 +35,7 @@ where
 #[async_trait]
 pub trait StreamHandler
 where
-    Self: Clone + Debug + Send + Sync + 'static,
+    Self: Clone + Send + Sync + 'static,
     Self::Request: Clone + Debug + Send + Sync + TryFrom<Bytes> + TryInto<Bytes> + 'static,
     Self::Response: Clone + Debug + Send + Sync + TryFrom<Bytes> + TryInto<Bytes> + 'static,
 {
@@ -64,7 +64,7 @@ where
 #[async_trait]
 pub trait Stream<H>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
+    Self: Clone + Send + Sync + 'static,
     H: StreamHandler,
 {
     /// The error type for the stream.
@@ -101,7 +101,7 @@ macro_rules! define_scoped_stream {
                 type Error: StreamError;
 
                 /// The scoped version of the stream.
-                type Scoped: $parent<H, Error = Self::Error> + Clone + Debug + Send + Sync;
+                type Scoped: $parent<H, Error = Self::Error> + Clone + Send + Sync + 'static;
 
                 /// Creates a scoped version of the stream.
                 fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> <Self as #name<H>>::Scoped;

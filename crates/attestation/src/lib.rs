@@ -23,7 +23,7 @@ pub struct AttestationParams {
 }
 
 /// Marker trait for `Attestor` errors.
-pub trait AttestorError: Debug + Error + Send + Sync {}
+pub trait AttestorError: Clone + Debug + Error + Send + Sync {}
 
 /// Trait for remote attestation provider.
 #[async_trait]

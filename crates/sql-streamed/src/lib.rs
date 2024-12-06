@@ -18,8 +18,6 @@ use response::Response;
 use stream_handler::SqlStreamHandler;
 use stream_handler::SqlStreamHandlerOptions;
 
-use std::fmt::Debug;
-
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_libsql::Database;
@@ -29,7 +27,7 @@ use proven_stream::{Stream, Stream1, Stream2, Stream3};
 use tokio::sync::oneshot;
 
 /// Options for configuring a `StreamedSqlStore`.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct StreamedSqlStoreOptions<S, LS> {
     /// The store that keeps track of the current leader.
     pub leader_store: LS,
@@ -42,7 +40,7 @@ pub struct StreamedSqlStoreOptions<S, LS> {
 }
 
 /// Sql store that uses a stream as an append-only log.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct StreamedSqlStore<S, LS>
 where
     S: Stream<SqlStreamHandler>,
@@ -156,7 +154,7 @@ macro_rules! impl_scoped_sql_store {
             [!set! #trait_name = [!ident! SqlStore $index]]
 
             #[doc = $doc]
-            #[derive(Clone, Debug)]
+            #[derive(Clone)]
             pub struct #name<S, LS>
             where
                 S: $stream_trait<SqlStreamHandler>,
@@ -169,7 +167,7 @@ macro_rules! impl_scoped_sql_store {
 
             impl<S, LS> #name<S, LS>
             where
-                Self: Clone + Debug + Send + Sync + 'static,
+                Self: Clone + Send + Sync + 'static,
                 S: $stream_trait<SqlStreamHandler>,
                 LS: Store,
             {
@@ -192,7 +190,7 @@ macro_rules! impl_scoped_sql_store {
             #[async_trait]
             impl<S, LS> #trait_name for #name<S, LS>
             where
-                Self: Clone + Debug + Send + Sync + 'static,
+                Self: Clone + Send + Sync + 'static,
                 S: $stream_trait<SqlStreamHandler>,
                 LS: Store,
             {
