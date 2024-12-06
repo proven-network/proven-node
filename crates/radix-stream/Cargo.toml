@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait = { workspace = true }
 bytes = { workspace = true }
 ciborium = { workspace = true }
 proven-radix-gateway-sdk = { workspace = true }
@@ -14,8 +15,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 async-nats = { workspace = true }
 proven-stream-memory = { workspace = true }
 proven-stream-nats = { workspace = true }
+tracing-subscriber = { workspace = true }

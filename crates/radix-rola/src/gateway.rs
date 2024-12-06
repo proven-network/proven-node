@@ -4,7 +4,7 @@ use crate::error::Result;
 use proven_radix_gateway_sdk::types::{
     Address, StateEntityDetailsOptIns, StateEntityDetailsRequest,
 };
-use proven_radix_gateway_sdk::Client;
+use proven_radix_gateway_sdk::{build_client, Client};
 
 pub struct GatewayService {
     client: Client,
@@ -12,24 +12,9 @@ pub struct GatewayService {
 
 impl GatewayService {
     pub fn new(gateway_url: &str, dapp_definition: &str, application_name: &str) -> Self {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "User-Agent",
-            "proven-radix-gateway-sdk/0.1.0".parse().unwrap(),
-        );
-
-        headers.insert("Rdx-App-Dapp-Definition", dapp_definition.parse().unwrap());
-        headers.insert("Rdx-App-Name", application_name.parse().unwrap());
-
-        let client = Client::new_with_client(
-            gateway_url,
-            reqwest::Client::builder()
-                .default_headers(headers)
-                .build()
-                .unwrap(),
-        );
-
-        Self { client }
+        Self {
+            client: build_client(gateway_url, Some(dapp_definition), Some(application_name)),
+        }
     }
 
     pub async fn get_entity_owner_keys(&self, address: String) -> Result<String> {

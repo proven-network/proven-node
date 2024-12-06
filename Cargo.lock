@@ -6886,6 +6886,7 @@ name = "proven-radix-stream"
 version = "0.1.0"
 dependencies = [
  "async-nats",
+ "async-trait",
  "bytes",
  "ciborium",
  "proven-radix-gateway-sdk",
@@ -6898,6 +6899,9 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.3",
  "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
