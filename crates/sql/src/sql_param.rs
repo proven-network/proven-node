@@ -2,7 +2,7 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 /// Represents a parameter for a SQL query
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum SqlParam {
     /// Represents a BLOB value
     Blob(Bytes),

@@ -1,8 +1,7 @@
 use std::time::Duration;
 
-use proven_sql_streamed::{
-    Connection, SqlStreamHandler, StreamedSqlStore, StreamedSqlStoreOptions,
-};
+use proven_sql_streamed::stream_handler::SqlStreamHandler;
+use proven_sql_streamed::{Connection, StreamedSqlStore, StreamedSqlStoreOptions};
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use proven_sql::{SqlConnection, SqlParam, SqlStore};

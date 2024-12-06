@@ -3,7 +3,7 @@ use proven_sql::SqlParam;
 use serde::{Deserialize, Serialize};
 
 /// A request to a SQL store.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Request {
     /// Executes a SQL mutation.
     Execute(String, Vec<SqlParam>),

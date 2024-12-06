@@ -1,4 +1,5 @@
 //! Abstract interface for managing distributed streams.
+#![feature(associated_type_defaults)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -19,12 +20,15 @@ pub trait StreamHandlerError: Clone + Debug + Error + Send + Sync + 'static {}
 
 /// A struct representing a handler response.
 #[derive(Debug, Default)]
-pub struct HandlerResponse {
+pub struct HandlerResponse<T>
+where
+    T: Clone + Debug + Send + Sync + TryFrom<Bytes> + TryInto<Bytes> + 'static,
+{
     /// The response headers
     pub headers: HashMap<String, String>,
 
     /// The response data
-    pub data: Bytes,
+    pub data: T,
 }
 
 /// A trait for handling stream data with asynchronous operations.
@@ -32,12 +36,23 @@ pub struct HandlerResponse {
 pub trait StreamHandler
 where
     Self: Clone + Debug + Send + Sync + 'static,
+    Self::Request: Clone + Debug + Send + Sync + TryFrom<Bytes> + TryInto<Bytes> + 'static,
+    Self::Response: Clone + Debug + Send + Sync + TryFrom<Bytes> + TryInto<Bytes> + 'static,
 {
     /// The error type for the handler.
     type Error: StreamHandlerError;
 
+    /// The request type for the handler.
+    type Request: Clone + Debug + Send + Sync + TryFrom<Bytes> + TryInto<Bytes> + 'static;
+
+    /// The response type for the handler.
+    type Response: Clone + Debug + Send + Sync + TryFrom<Bytes> + TryInto<Bytes> + 'static;
+
     /// Handles the given data and returns a response.
-    async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error>;
+    async fn handle(
+        &self,
+        data: Self::Request,
+    ) -> Result<HandlerResponse<Self::Response>, Self::Error>;
 
     /// Hook for when the stream is caught up.
     async fn on_caught_up(&self) -> Result<(), Self::Error> {
@@ -47,28 +62,28 @@ where
 
 /// A trait representing a stream with asynchronous operations.
 #[async_trait]
-pub trait Stream<Handler>
+pub trait Stream<H>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    Handler: StreamHandler,
+    H: StreamHandler,
 {
     /// The error type for the stream.
     type Error: StreamError;
 
     /// Begins consuming the stream with the given handler.
-    async fn handle(&self, handler: Handler) -> Result<(), Self::Error>;
+    async fn handle(&self, handler: H) -> Result<(), Self::Error>;
 
     /// Returns the last message in the stream.
-    async fn last_message(&self) -> Result<Option<Bytes>, Self::Error>;
+    async fn last_message(&self) -> Result<Option<H::Request>, Self::Error>;
 
     /// Returns the name of the stream.
     fn name(&self) -> String;
 
     /// Publishes the given data with no expectation of a response.
-    async fn publish(&self, data: Bytes) -> Result<(), Self::Error>;
+    async fn publish(&self, data: H::Request) -> Result<(), Self::Error>;
 
     /// Sends a request with the given data and returns the response.
-    async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error>;
+    async fn request(&self, data: H::Request) -> Result<H::Response, Self::Error>;
 }
 
 macro_rules! define_scoped_stream {
@@ -78,18 +93,18 @@ macro_rules! define_scoped_stream {
 
             #[async_trait]
             #[doc = $doc]
-            pub trait #name<Handler>
+            pub trait #name<H>
             where
-                Handler: StreamHandler,
+                H: StreamHandler,
             {
                 /// The error type for the stream.
                 type Error: StreamError;
 
                 /// The scoped version of the stream.
-                type Scoped: $parent<Handler, Error = Self::Error> + Clone + Debug + Send + Sync;
+                type Scoped: $parent<H, Error = Self::Error> + Clone + Debug + Send + Sync;
 
                 /// Creates a scoped version of the stream.
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> <Self as #name<Handler>>::Scoped;
+                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> <Self as #name<H>>::Scoped;
             }
         }
     };

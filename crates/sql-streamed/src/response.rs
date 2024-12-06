@@ -3,7 +3,7 @@ use proven_sql::Rows;
 use serde::{Deserialize, Serialize};
 
 /// A response from a SQL store.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Response {
     /// The number of rows affected by a mutation.
     Execute(u64),

@@ -22,7 +22,7 @@ pub enum Error {
         #[from]
         proven_applications::Error<
             proven_sql_streamed::Error<
-                proven_stream_nats::Error<proven_sql_streamed::SqlStreamHandler>,
+                proven_stream_nats::Error<proven_sql_streamed::stream_handler::Error>,
                 proven_store_nats::Error,
             >,
         >,

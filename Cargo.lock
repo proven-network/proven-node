@@ -7089,6 +7089,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "ciborium",
  "futures",
  "preinterpret",
  "proven-stream",

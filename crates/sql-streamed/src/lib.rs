@@ -8,13 +8,14 @@ mod connection;
 mod error;
 mod request;
 mod response;
-mod stream_handler;
+/// Stream handler for SQL queries and migrations.
+pub mod stream_handler;
 
 pub use connection::Connection;
 pub use error::Error;
 use request::Request;
 use response::Response;
-pub use stream_handler::SqlStreamHandler;
+use stream_handler::SqlStreamHandler;
 use stream_handler::SqlStreamHandlerOptions;
 
 use std::fmt::Debug;
@@ -135,10 +136,8 @@ where
             let migration_sql = migration.into();
             if !applied_migrations.contains(&migration_sql) {
                 let request = Request::Migrate(migration_sql);
-                let bytes: Bytes = request.try_into()?;
 
-                let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
-                let response: Response = raw_response.try_into()?;
+                let response = self.stream.request(request).await.map_err(Error::Stream)?;
 
                 if let Response::Failed(error) = response {
                     return Err(Error::Libsql(error));

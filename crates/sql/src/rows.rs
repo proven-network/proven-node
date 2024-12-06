@@ -3,7 +3,7 @@ use crate::SqlParam;
 use serde::{Deserialize, Serialize};
 
 /// Represents a set of rows returned from a SQL query
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Rows {
     /// The number of columns in the result set
     pub column_count: u16,

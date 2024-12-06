@@ -6,7 +6,7 @@ use thiserror::Error;
 pub enum Error<HE: StreamHandlerError> {
     /// Handler error.
     #[error("Handler error: {0}")]
-    Handler(#[from] HE),
+    Handler(HE),
 
     /// Channel send error.
     #[error("Channel send error")]

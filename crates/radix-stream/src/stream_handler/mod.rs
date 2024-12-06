@@ -20,8 +20,10 @@ impl Handler {
 #[async_trait]
 impl StreamHandler for Handler {
     type Error = Error;
+    type Request = Bytes;
+    type Response = Bytes;
 
-    async fn handle(&self, _data: Bytes) -> Result<HandlerResponse, Self::Error> {
+    async fn handle(&self, _data: Bytes) -> Result<HandlerResponse<Self::Response>, Self::Error> {
         Ok(HandlerResponse {
             data: Bytes::new(),
             ..Default::default()

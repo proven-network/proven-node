@@ -12,9 +12,8 @@ use proven_instance_details::Instance;
 use proven_nats_server::NatsServer;
 use proven_runtime::RuntimePoolManager;
 use proven_sessions::SessionManager;
-use proven_sql_streamed::{
-    SqlStreamHandler, StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3,
-};
+use proven_sql_streamed::stream_handler::SqlStreamHandler;
+use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
 use proven_stream_nats::{NatsStream, NatsStream2, NatsStream3};
 // use proven_nats_monitor::NatsMonitor;

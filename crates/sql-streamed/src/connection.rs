@@ -4,7 +4,6 @@ use crate::{Error, Request, Response};
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use proven_sql::{Rows, SqlConnection, SqlParam};
 use proven_store::Store;
 use proven_stream::Stream;
@@ -36,10 +35,8 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
         params: Vec<SqlParam>,
     ) -> Result<u64, Self::Error> {
         let request = Request::Execute(query.into(), params);
-        let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
-        let response: Response = raw_response.try_into()?;
+        let response = self.stream.request(request).await.map_err(Error::Stream)?;
 
         match response {
             Response::Execute(affected_rows) => Ok(affected_rows),
@@ -54,10 +51,8 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
         params: Vec<Vec<SqlParam>>,
     ) -> Result<u64, Self::Error> {
         let request = Request::ExecuteBatch(query.into(), params);
-        let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
-        let response: Response = raw_response.try_into()?;
+        let response = self.stream.request(request).await.map_err(Error::Stream)?;
 
         match response {
             Response::ExecuteBatch(affected_rows) => Ok(affected_rows),
@@ -68,10 +63,8 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
 
     async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error> {
         let request = Request::Migrate(query.into());
-        let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
-        let response: Response = raw_response.try_into()?;
+        let response = self.stream.request(request).await.map_err(Error::Stream)?;
 
         match response {
             Response::Migrate(needed_migration) => Ok(needed_migration),
@@ -86,10 +79,8 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
         params: Vec<SqlParam>,
     ) -> Result<Rows, Self::Error> {
         let request = Request::Query(query.into(), params);
-        let bytes: Bytes = request.try_into()?;
 
-        let raw_response = self.stream.request(bytes).await.map_err(Error::Stream)?;
-        let response: Response = raw_response.try_into()?;
+        let response = self.stream.request(request).await.map_err(Error::Stream)?;
 
         match response {
             Response::Query(rows) => Ok(rows),

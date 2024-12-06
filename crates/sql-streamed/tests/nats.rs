@@ -1,4 +1,5 @@
-use proven_sql_streamed::{SqlStreamHandler, StreamedSqlStore, StreamedSqlStoreOptions};
+use proven_sql_streamed::stream_handler::SqlStreamHandler;
+use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStoreOptions};
 
 use proven_sql::{SqlConnection, SqlParam, SqlStore};
 use proven_store_memory::MemoryStore;

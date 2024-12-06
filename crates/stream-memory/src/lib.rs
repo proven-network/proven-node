@@ -16,15 +16,15 @@ use bytes::Bytes;
 use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandler};
 use tokio::sync::{mpsc, Mutex};
 
-type ReceiverType = mpsc::Receiver<(Bytes, mpsc::Sender<Bytes>)>;
+type ReceiverType<T, Q> = mpsc::Receiver<(T, mpsc::Sender<Q>)>;
 
 #[derive(Clone, Debug)]
-struct ChannelPair {
-    tx: mpsc::Sender<(Bytes, mpsc::Sender<Bytes>)>,
-    rx: Arc<Mutex<ReceiverType>>,
+struct ChannelPair<T, Q> {
+    tx: mpsc::Sender<(T, mpsc::Sender<Q>)>,
+    rx: Arc<Mutex<ReceiverType<T, Q>>>,
 }
 
-type ChannelMap = Arc<Mutex<HashMap<String, ChannelPair>>>;
+type ChannelMap<T, Q> = Arc<Mutex<HashMap<String, ChannelPair<T, Q>>>>;
 
 /// In-memory stream implementation.
 #[derive(Clone, Debug, Default)]
@@ -32,10 +32,9 @@ pub struct MemoryStream<H>
 where
     H: StreamHandler,
 {
-    channels: ChannelMap,
-    last_message: Arc<Mutex<Option<Bytes>>>,
+    channels: ChannelMap<H::Request, H::Response>,
+    last_message: Arc<Mutex<Option<H::Request>>>,
     prefix: String,
-    _handler: std::marker::PhantomData<H>,
 }
 
 impl<H> MemoryStream<H>
@@ -50,11 +49,10 @@ where
             channels: Arc::new(Mutex::new(HashMap::new())),
             last_message: Arc::new(Mutex::new(None)),
             prefix: String::new(),
-            _handler: std::marker::PhantomData,
         }
     }
 
-    async fn get_or_create_channel(&self) -> ChannelPair {
+    async fn get_or_create_channel(&self) -> ChannelPair<H::Request, H::Response> {
         let mut channels = self.channels.lock().await;
 
         if let Some(pair) = channels.get(&self.prefix) {
@@ -62,7 +60,7 @@ where
         }
 
         let (tx, rx) = mpsc::channel(32);
-        let pair = ChannelPair {
+        let pair: ChannelPair<H::Request, H::Response> = ChannelPair {
             tx,
             rx: Arc::new(Mutex::new(rx)),
         };
@@ -76,11 +74,13 @@ where
 impl<H> Stream<H> for MemoryStream<H>
 where
     H: StreamHandler,
+    H::Request: Clone + Debug + Send + Sync + TryFrom<Bytes> + TryInto<Bytes> + 'static,
+    H::Response: Clone + Debug + Send + Sync + TryFrom<Bytes> + TryInto<Bytes> + 'static,
 {
     type Error = Error<H::Error>;
 
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
-        handler.on_caught_up().await?;
+        handler.on_caught_up().await.map_err(Error::Handler)?;
 
         let pair = self.get_or_create_channel().await;
 
@@ -101,7 +101,7 @@ where
         Ok(())
     }
 
-    async fn last_message(&self) -> Result<Option<Bytes>, Self::Error> {
+    async fn last_message(&self) -> Result<Option<H::Request>, Self::Error> {
         Ok(self.last_message.lock().await.clone())
     }
 
@@ -109,7 +109,7 @@ where
         self.prefix.clone()
     }
 
-    async fn publish(&self, data: Bytes) -> Result<(), Self::Error> {
+    async fn publish(&self, data: H::Request) -> Result<(), Self::Error> {
         let (response_tx, _) = mpsc::channel(1);
         let pair = self.get_or_create_channel().await;
 
@@ -121,7 +121,7 @@ where
             .map_err(|_| Error::Send)
     }
 
-    async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error> {
+    async fn request(&self, data: H::Request) -> Result<H::Response, Self::Error> {
         let (response_tx, mut response_rx) = mpsc::channel(1);
         let pair = self.get_or_create_channel().await;
 
@@ -148,14 +148,14 @@ macro_rules! impl_scoped_stream {
             where
                 H: StreamHandler,
             {
-                channels: ChannelMap,
-                last_message: Arc<Mutex<Option<Bytes>>>,
+                channels: ChannelMap<H::Request, H::Response>,
+                last_message: Arc<Mutex<Option<H::Request>>>,
                 prefix: String,
-                _handler: std::marker::PhantomData<H>,
             }
 
             impl<H> #name<H>
-            where H: StreamHandler {
+            where H: StreamHandler,
+            {
                 /// Creates a new `#name`.
                 #[must_use]
                 pub fn new () -> Self {
@@ -163,7 +163,6 @@ macro_rules! impl_scoped_stream {
                         channels: Arc::new(Mutex::new(HashMap::new())),
                         last_message: Arc::new(Mutex::new(None)),
                         prefix: String::new(),
-                        _handler: std::marker::PhantomData,
                     }
                 }
 
@@ -179,7 +178,6 @@ macro_rules! impl_scoped_stream {
                         channels: self.channels.clone(),
                         last_message: self.last_message.clone(),
                         prefix: new_prefix,
-                        _handler: std::marker::PhantomData,
                     }
                 }
             }
@@ -215,6 +213,8 @@ impl_scoped_stream!(
 mod tests {
     use super::*;
 
+    use std::convert::{TryFrom, TryInto};
+
     use proven_stream::{HandlerResponse, StreamHandlerError};
 
     #[derive(Clone, Debug)]
@@ -232,14 +232,37 @@ mod tests {
     #[derive(Clone, Debug)]
     struct TestHandler;
 
+    #[derive(Clone, Debug)]
+    struct Message(String);
+
+    impl TryFrom<Bytes> for Message {
+        type Error = TestHandlerError;
+
+        fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+            Ok(Self(
+                String::from_utf8(value.to_vec()).map_err(|_| TestHandlerError)?,
+            ))
+        }
+    }
+
+    impl TryInto<Bytes> for Message {
+        type Error = TestHandlerError;
+
+        fn try_into(self) -> Result<Bytes, Self::Error> {
+            Ok(Bytes::copy_from_slice(self.0.as_bytes()))
+        }
+    }
+
     #[async_trait]
     impl StreamHandler for TestHandler {
         type Error = TestHandlerError;
+        type Request = Message;
+        type Response = Message;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
+        async fn handle(&self, data: Message) -> Result<HandlerResponse<Message>, Self::Error> {
             Ok(HandlerResponse {
                 data,
-                ..Default::default()
+                headers: HashMap::default(),
             })
         }
     }

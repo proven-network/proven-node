@@ -19,6 +19,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandler};
 use serde::Deserialize;
+use std::fmt::Debug;
 
 #[derive(Deserialize)]
 struct StreamPublishReply {
@@ -44,7 +45,7 @@ where
     client: Client,
     jetstream_context: JetStreamContext,
     stream_name: String,
-    _handler: std::marker::PhantomData<H>,
+    _marker: std::marker::PhantomData<H>,
 }
 
 impl<H> NatsStream<H>
@@ -65,7 +66,7 @@ where
             client,
             jetstream_context,
             stream_name,
-            _handler: std::marker::PhantomData,
+            _marker: std::marker::PhantomData,
         }
     }
 
@@ -73,7 +74,7 @@ where
         format!("{}_reply", self.stream_name).to_ascii_uppercase()
     }
 
-    async fn get_reply_stream(&self) -> Result<JetsteamSteam, Error<H>> {
+    async fn get_reply_stream(&self) -> Result<JetsteamSteam, Error<H::Error>> {
         self.jetstream_context
             .create_stream(StreamConfig {
                 name: self.get_reply_stream_name(),
@@ -81,21 +82,21 @@ where
                 ..Default::default()
             })
             .await
-            .map_err(|e| Error::StreamCreate(e.kind()))
+            .map_err(|e| Error::<H::Error>::StreamCreate(e.kind()))
     }
 
     fn get_request_stream_name(&self) -> String {
         format!("{}_request", self.stream_name).to_ascii_uppercase()
     }
 
-    async fn get_request_stream(&self) -> Result<JetsteamSteam, Error<H>> {
+    async fn get_request_stream(&self) -> Result<JetsteamSteam, Error<H::Error>> {
         self.jetstream_context
             .create_stream(StreamConfig {
                 name: self.get_request_stream_name(),
                 ..Default::default()
             })
             .await
-            .map_err(|e| Error::StreamCreate(e.kind()))
+            .map_err(|e| Error::<H::Error>::StreamCreate(e.kind()))
     }
 }
 
@@ -104,7 +105,7 @@ impl<H> Stream<H> for NatsStream<H>
 where
     H: StreamHandler,
 {
-    type Error = Error<H>;
+    type Error = Error<H::Error>;
 
     async fn handle(&self, handler: H) -> Result<(), Self::Error> {
         let mut stream = self.get_request_stream().await?;
@@ -138,10 +139,10 @@ where
             let message = message.map_err(|e| Error::ConsumerMessages(e.kind()))?;
             let seq = message.info().map_err(|_| Error::NoInfo)?.stream_sequence;
 
-            let response = handler
-                .handle(message.payload.clone())
-                .await
-                .map_err(Error::Handler)?;
+            let data = H::Request::try_from(message.payload.clone())
+                .map_err(|_| Error::PayloadDeserialize)?;
+
+            let response = handler.handle(data).await.map_err(Error::Handler)?;
 
             // Ensure reply stream exists
             self.get_reply_stream().await?;
@@ -154,8 +155,13 @@ where
                 headers.insert(key, value);
             }
 
+            let payload: Bytes = response
+                .data
+                .try_into()
+                .map_err(|_| Error::PayloadSerialize)?;
+
             self.client
-                .publish_with_headers(self.get_reply_stream_name(), headers, response.data)
+                .publish_with_headers(self.get_reply_stream_name(), headers, payload)
                 .await
                 .map_err(|e| Error::ReplyPublish(e.kind()))?;
 
@@ -184,22 +190,26 @@ where
         Ok(())
     }
 
-    async fn last_message(&self) -> Result<Option<Bytes>, Self::Error> {
+    async fn last_message(&self) -> Result<Option<H::Request>, Self::Error> {
         let mut stream = self.get_request_stream().await?;
         let last_seq = stream
             .info()
             .await
-            .map_err(|e| Error::StreamInfo(e.kind()))?
+            .map_err(|e| Error::<H::Error>::StreamInfo(e.kind()))?
             .state
             .last_sequence;
 
         match stream.direct_get(last_seq).await {
-            Ok(message) => Ok(Some(message.payload)),
+            Ok(message) => {
+                let data = H::Request::try_from(message.payload)
+                    .map_err(|_| Error::<H::Error>::PayloadDeserialize)?;
+                Ok(Some(data))
+            }
             Err(e) => {
                 if e.kind() == async_nats::jetstream::stream::DirectGetErrorKind::NotFound {
                     Ok(None)
                 } else {
-                    Err(Error::ReplyDirectGet(e.kind()))
+                    Err(Error::<H::Error>::ReplyDirectGet(e.kind()))
                 }
             }
         }
@@ -209,25 +219,33 @@ where
         self.stream_name.clone()
     }
 
-    async fn publish(&self, data: Bytes) -> Result<(), Self::Error> {
+    async fn publish(&self, data: H::Request) -> Result<(), Self::Error> {
         self.get_request_stream().await?;
 
+        let payload: Bytes = data
+            .try_into()
+            .map_err(|_| Error::<H::Error>::PayloadSerialize)?;
+
         self.client
-            .publish(self.get_request_stream_name(), data.clone())
+            .publish(self.get_request_stream_name(), payload)
             .await
-            .map_err(|e| Error::Publish(e.kind()))?;
+            .map_err(|e| Error::<H::Error>::Publish(e.kind()))?;
 
         Ok(())
     }
 
-    async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error> {
+    async fn request(&self, data: H::Request) -> Result<H::Response, Self::Error> {
         // Ensure request stream exists
         self.get_request_stream().await?;
+
+        let payload: Bytes = data
+            .try_into()
+            .map_err(|_| Error::<H::Error>::PayloadSerialize)?;
 
         let response = loop {
             match self
                 .client
-                .request(self.get_request_stream_name(), data.clone())
+                .request(self.get_request_stream_name(), payload.clone())
                 .await
             {
                 Ok(response) => break response,
@@ -235,7 +253,7 @@ where
                     if e.kind() == async_nats::client::RequestErrorKind::NoResponders {
                         tokio::task::yield_now().await;
                     } else {
-                        return Err(Error::Request(e.kind()));
+                        return Err(Error::<H::Error>::Request(e.kind()));
                     }
                 }
             }
@@ -253,7 +271,7 @@ where
                     reply_stream
                         .delete_message(response.seq)
                         .await
-                        .map_err(|e| Error::ReplyDelete(e.kind()))?;
+                        .map_err(|e| Error::<H::Error>::ReplyDelete(e.kind()))?;
 
                     // Check and handle message persistence
                     if let Some(value) = message.headers.get("Request-Message-Should-Persist") {
@@ -262,18 +280,20 @@ where
                                 stream
                                     .delete_message(response.seq)
                                     .await
-                                    .map_err(|e| Error::RequestDelete(e.kind()))?;
+                                    .map_err(|e| Error::<H::Error>::RequestDelete(e.kind()))?;
                             }
                         }
                     }
 
-                    return Ok(message.payload);
+                    let data = H::Response::try_from(message.payload)
+                        .map_err(|_| Error::<H::Error>::PayloadDeserialize)?;
+                    return Ok(data);
                 }
                 Err(e) => {
                     if e.kind() == async_nats::jetstream::stream::DirectGetErrorKind::NotFound {
                         tokio::task::yield_now().await;
                     } else {
-                        return Err(Error::ReplyDirectGet(e.kind()));
+                        return Err(Error::<H::Error>::ReplyDirectGet(e.kind()));
                     }
                 }
             }
@@ -296,11 +316,13 @@ macro_rules! impl_scoped_stream {
                 client: Client,
                 jetstream_context: JetStreamContext,
                 stream_name: String,
-                _handler: std::marker::PhantomData<H>,
+                _marker: std::marker::PhantomData<H>,
             }
 
             impl<H> #name<H>
-            where H: StreamHandler {
+            where
+                H: StreamHandler,
+            {
                 /// Creates a new `#name` with the specified options.
                 #[must_use]
                 pub fn new(
@@ -315,7 +337,7 @@ macro_rules! impl_scoped_stream {
                         client,
                         jetstream_context,
                         stream_name,
-                        _handler: std::marker::PhantomData,
+                        _marker: std::marker::PhantomData,
                     }
                 }
 
@@ -325,7 +347,7 @@ macro_rules! impl_scoped_stream {
                         client: self.client.clone(),
                         jetstream_context: self.jetstream_context.clone(),
                         stream_name: format!("{}_{}", self.stream_name, scope).to_ascii_uppercase(),
-                        _handler: std::marker::PhantomData,
+                        _marker: std::marker::PhantomData,
                     }
                 }
             }
@@ -335,7 +357,7 @@ macro_rules! impl_scoped_stream {
             where
                 H: StreamHandler,
             {
-                type Error = Error<H>;
+                type Error = Error<H::Error>;
                 type Scoped = $parent<H>;
 
                 fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent<H> {
@@ -382,8 +404,10 @@ mod tests {
     #[async_trait]
     impl StreamHandler for PublishTestHandler {
         type Error = TestHandlerError;
+        type Request = Bytes;
+        type Response = Bytes;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse<Bytes>, Self::Error> {
             self.tx.send(data.clone()).await.unwrap();
 
             Ok(HandlerResponse {
@@ -399,8 +423,10 @@ mod tests {
     #[async_trait]
     impl StreamHandler for RequestTestHandler {
         type Error = TestHandlerError;
+        type Request = Bytes;
+        type Response = Bytes;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse<Bytes>, Self::Error> {
             let mut response = b"reply: ".to_vec();
             response.extend_from_slice(&data);
 
@@ -437,8 +463,10 @@ mod tests {
     #[async_trait]
     impl StreamHandler for CatchUpTestHandler {
         type Error = TestHandlerError;
+        type Request = Bytes;
+        type Response = Bytes;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse<Bytes>, Self::Error> {
             self.message_count
                 .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
@@ -605,8 +633,10 @@ mod tests {
     #[async_trait]
     impl StreamHandler for NonPersistentRequestTestHandler {
         type Error = TestHandlerError;
+        type Request = Bytes;
+        type Response = Bytes;
 
-        async fn handle(&self, data: Bytes) -> Result<HandlerResponse, Self::Error> {
+        async fn handle(&self, data: Bytes) -> Result<HandlerResponse<Bytes>, Self::Error> {
             let mut headers = std::collections::HashMap::new();
             headers.insert("Request-Should-Persist".to_string(), "false".to_string());
 

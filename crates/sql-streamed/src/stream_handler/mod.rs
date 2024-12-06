@@ -8,7 +8,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use proven_libsql::Database;
 use proven_stream::{HandlerResponse, StreamHandler};
 use tokio::sync::{oneshot, Mutex};
@@ -22,7 +21,7 @@ pub struct SqlStreamHandler {
 }
 
 /// Options for configuring a `SqlStreamHandler`.
-pub struct SqlStreamHandlerOptions {
+pub(crate) struct SqlStreamHandlerOptions {
     pub caught_up_tx: oneshot::Sender<()>,
     pub database: Database,
 }
@@ -50,10 +49,10 @@ impl SqlStreamHandler {
 #[async_trait]
 impl StreamHandler for SqlStreamHandler {
     type Error = Error;
+    type Request = Request;
+    type Response = Response;
 
-    async fn handle(&self, bytes: Bytes) -> Result<HandlerResponse> {
-        let request: Request = bytes.try_into()?;
-
+    async fn handle(&self, request: Request) -> Result<HandlerResponse<Response>> {
         let mut headers = HashMap::with_capacity(1);
 
         let response = match request {
@@ -102,11 +101,10 @@ impl StreamHandler for SqlStreamHandler {
             }
         };
 
-        let data = response
-            .try_into()
-            .map_err(|e| Error::CborSerialize(Arc::new(e)))?;
-
-        Ok(HandlerResponse { headers, data })
+        Ok(HandlerResponse {
+            headers,
+            data: response,
+        })
     }
 
     async fn on_caught_up(&self) -> Result<()> {

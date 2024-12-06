@@ -1,14 +1,14 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use proven_stream::{StreamError, StreamHandler};
+use proven_stream::{StreamError, StreamHandlerError};
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
 #[derive(Clone, Debug, Error)]
-pub enum Error<H>
+pub enum Error<HE>
 where
-    H: StreamHandler,
+    HE: StreamHandlerError,
 {
     /// Acknowledgment failed.
     #[error("Consumer acknowledgment failed")]
@@ -36,11 +36,19 @@ where
 
     /// Handler error.
     #[error("Handler error: {0}")]
-    Handler(H::Error),
+    Handler(HE),
 
     /// No message info available.
     #[error("No message info available")]
     NoInfo,
+
+    /// Failed to deserialize payload
+    #[error("Failed to deserialize payload")]
+    PayloadDeserialize,
+
+    /// Failed to serialize payload
+    #[error("Failed to serialize payload")]
+    PayloadSerialize,
 
     /// Publish error.
     #[error("Failed to publish: {0}")]
@@ -79,13 +87,13 @@ where
     StreamInfo(async_nats::jetstream::context::RequestErrorKind),
 }
 
-impl<H> From<serde_json::Error> for Error<H>
+impl<HE> From<serde_json::Error> for Error<HE>
 where
-    H: StreamHandler,
+    HE: StreamHandlerError,
 {
     fn from(error: serde_json::Error) -> Self {
         Self::SerdeJson(Arc::new(error))
     }
 }
 
-impl<H> StreamError for Error<H> where H: StreamHandler {}
+impl<HE> StreamError for Error<HE> where HE: StreamHandlerError {}
