@@ -14,7 +14,9 @@ async fn main() {
         event_stream: MemoryStream::new(),
         radix_gateway_origin: "https://mainnet.radixdlt.com",
         transaction_stream: MemoryStream::new(),
-    });
+    })
+    .await
+    .unwrap();
 
     match radix_stream.start().await {
         Ok(handle) => {

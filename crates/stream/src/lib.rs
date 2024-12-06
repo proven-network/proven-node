@@ -58,6 +58,9 @@ where
     /// Begins consuming the stream with the given handler.
     async fn handle(&self, handler: Handler) -> Result<(), Self::Error>;
 
+    /// Returns the last message in the stream.
+    async fn last_message(&self) -> Result<Option<Bytes>, Self::Error>;
+
     /// Returns the name of the stream.
     fn name(&self) -> String;
 

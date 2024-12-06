@@ -15,6 +15,10 @@ impl Transaction {
             .map(|event| Event(event.clone()))
             .collect()
     }
+
+    pub fn state_version(&self) -> u64 {
+        self.0.state_version.try_into().unwrap_or(0)
+    }
 }
 
 impl From<CommittedTransactionInfo> for Transaction {

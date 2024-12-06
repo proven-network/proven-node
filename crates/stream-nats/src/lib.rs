@@ -184,6 +184,27 @@ where
         Ok(())
     }
 
+    async fn last_message(&self) -> Result<Option<Bytes>, Self::Error> {
+        let mut stream = self.get_request_stream().await?;
+        let last_seq = stream
+            .info()
+            .await
+            .map_err(|e| Error::StreamInfo(e.kind()))?
+            .state
+            .last_sequence;
+
+        match stream.direct_get(last_seq).await {
+            Ok(message) => Ok(Some(message.payload)),
+            Err(e) => {
+                if e.kind() == async_nats::jetstream::stream::DirectGetErrorKind::NotFound {
+                    Ok(None)
+                } else {
+                    Err(Error::ReplyDirectGet(e.kind()))
+                }
+            }
+        }
+    }
+
     fn name(&self) -> String {
         self.stream_name.clone()
     }

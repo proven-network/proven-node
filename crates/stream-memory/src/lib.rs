@@ -33,6 +33,7 @@ where
     H: StreamHandler,
 {
     channels: ChannelMap,
+    last_message: Arc<Mutex<Option<Bytes>>>,
     prefix: String,
     _handler: std::marker::PhantomData<H>,
 }
@@ -47,6 +48,7 @@ where
     pub fn new() -> Self {
         Self {
             channels: Arc::new(Mutex::new(HashMap::new())),
+            last_message: Arc::new(Mutex::new(None)),
             prefix: String::new(),
             _handler: std::marker::PhantomData,
         }
@@ -99,6 +101,10 @@ where
         Ok(())
     }
 
+    async fn last_message(&self) -> Result<Option<Bytes>, Self::Error> {
+        Ok(self.last_message.lock().await.clone())
+    }
+
     fn name(&self) -> String {
         self.prefix.clone()
     }
@@ -106,6 +112,8 @@ where
     async fn publish(&self, data: Bytes) -> Result<(), Self::Error> {
         let (response_tx, _) = mpsc::channel(1);
         let pair = self.get_or_create_channel().await;
+
+        *self.last_message.lock().await = Some(data.clone());
 
         pair.tx
             .send((data, response_tx))
@@ -116,6 +124,8 @@ where
     async fn request(&self, data: Bytes) -> Result<Bytes, Self::Error> {
         let (response_tx, mut response_rx) = mpsc::channel(1);
         let pair = self.get_or_create_channel().await;
+
+        *self.last_message.lock().await = Some(data.clone());
 
         pair.tx
             .send((data, response_tx))
@@ -139,6 +149,7 @@ macro_rules! impl_scoped_stream {
                 H: StreamHandler,
             {
                 channels: ChannelMap,
+                last_message: Arc<Mutex<Option<Bytes>>>,
                 prefix: String,
                 _handler: std::marker::PhantomData<H>,
             }
@@ -150,6 +161,7 @@ macro_rules! impl_scoped_stream {
                 pub fn new () -> Self {
                     Self {
                         channels: Arc::new(Mutex::new(HashMap::new())),
+                        last_message: Arc::new(Mutex::new(None)),
                         prefix: String::new(),
                         _handler: std::marker::PhantomData,
                     }
@@ -165,6 +177,7 @@ macro_rules! impl_scoped_stream {
 
                     $parent {
                         channels: self.channels.clone(),
+                        last_message: self.last_message.clone(),
                         prefix: new_prefix,
                         _handler: std::marker::PhantomData,
                     }

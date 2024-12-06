@@ -30,6 +30,10 @@ where
     #[error("Consumer stream error: {0}")]
     ConsumerStream(async_nats::jetstream::consumer::StreamErrorKind),
 
+    /// Direct get error.
+    #[error("Failed to get message: {0}")]
+    DirectGet(async_nats::jetstream::stream::DirectGetErrorKind),
+
     /// Handler error.
     #[error("Handler error: {0}")]
     Handler(H::Error),
