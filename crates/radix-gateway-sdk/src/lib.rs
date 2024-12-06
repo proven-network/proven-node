@@ -18511,6 +18511,40 @@ This property is ignored when the value is used as an input to the API.
             value.parse()
         }
     }
+    ///SborData
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "hex",
+    ///    "programmatic_json"
+    ///  ],
+    ///  "properties": {
+    ///    "hex": {
+    ///      "$ref": "#/components/schemas/HexString"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct SborData {
+        pub hex: HexString,
+        pub programmatic_json: ::serde_json::Value,
+    }
+    impl From<&SborData> for SborData {
+        fn from(value: &SborData) -> Self {
+            value.clone()
+        }
+    }
+    impl SborData {
+        pub fn builder() -> builder::SborData {
+            Default::default()
+        }
+    }
     ///ScryptoSborValue
     ///
     /// <details><summary>JSON schema</summary>
@@ -18663,8 +18697,8 @@ This property is ignored when the value is used as an input to the API.
     ///{
     ///  "examples": [
     ///    {
-    ///      "locker_address": "<locker-address>",
-    ///      "account_address": "<account-address>"
+    ///      "account_address": "<account-address>",
+    ///      "locker_address": "<locker-address>"
     ///    }
     ///  ],
     ///  "allOf": [
@@ -18759,8 +18793,8 @@ This property is ignored when the value is used as an input to the API.
     ///    {
     ///      "account_lockers": [
     ///        {
-    ///          "locker_address": "<locker-address>",
-    ///          "account_address": "<account-address>"
+    ///          "account_address": "<account-address>",
+    ///          "locker_address": "<locker-address>"
     ///        }
     ///      ]
     ///    }
@@ -19105,14 +19139,14 @@ This property is ignored when the value is used as an input to the API.
     ///        "ancestor_identities": true,
     ///        "component_royalty_config": true,
     ///        "component_royalty_vault_balance": true,
-    ///        "package_royalty_vault_balance": true,
-    ///        "non_fungible_include_nfids": true,
     ///        "dapp_two_way_links": true,
-    ///        "native_resource_details": true,
     ///        "explicit_metadata": [
     ///          "name",
     ///          "description"
-    ///        ]
+    ///        ],
+    ///        "native_resource_details": true,
+    ///        "non_fungible_include_nfids": true,
+    ///        "package_royalty_vault_balance": true
     ///      }
     ///    }
     ///  ],
@@ -21340,13 +21374,13 @@ custom JSON model defined in the Core API schema.
     ///        },
     ///        {
     ///          "key_json": {
-    ///            "kind": "Tuple",
     ///            "fields": [
     ///              {
     ///                "kind": "U32",
     ///                "value": "1"
     ///              }
-    ///            ]
+    ///            ],
+    ///            "kind": "Tuple"
     ///          }
     ///        }
     ///      ]
@@ -21730,10 +21764,10 @@ custom JSON model defined in the Core API schema.
     ///{
     ///  "examples": [
     ///    {
-    ///      "resource_address": "<non-fungible-entity-address>",
     ///      "non_fungible_ids": [
     ///        "#1#"
-    ///      ]
+    ///      ],
+    ///      "resource_address": "<non-fungible-entity-address>"
     ///    }
     ///  ],
     ///  "allOf": [
@@ -21990,10 +22024,10 @@ custom JSON model defined in the Core API schema.
     ///{
     ///  "examples": [
     ///    {
-    ///      "resource_address": "<non-fungible-entity-address>",
     ///      "non_fungible_ids": [
     ///        "#1#"
-    ///      ]
+    ///      ],
+    ///      "resource_address": "<non-fungible-entity-address>"
     ///    }
     ///  ],
     ///  "allOf": [
@@ -24514,20 +24548,20 @@ the response.
     ///{
     ///  "examples": [
     ///    {
-    ///      "preview_transaction": {
-    ///        "type": "Compiled",
-    ///        "preview_transaction_hex": "<sample-preview-transaction-hex>"
-    ///      },
     ///      "flags": {
-    ///        "use_free_credit": true,
     ///        "assume_all_signature_proofs": true,
+    ///        "disable_auth_checks": true,
     ///        "skip_epoch_check": true,
-    ///        "disable_auth_checks": true
+    ///        "use_free_credit": true
     ///      },
     ///      "opt_ins": {
     ///        "core_api_receipt": true,
-    ///        "radix_engine_toolkit_receipt": true,
-    ///        "logs": true
+    ///        "logs": true,
+    ///        "radix_engine_toolkit_receipt": true
+    ///      },
+    ///      "preview_transaction": {
+    ///        "preview_transaction_hex": "<sample-preview-transaction-hex>",
+    ///        "type": "Compiled"
     ///      }
     ///    }
     ///  ],
@@ -24737,7 +24771,10 @@ This type is defined in the Core API as `TransactionReceipt`. See the Core API d
     ///    },
     ///    "output": {
     ///      "description": "The manifest line-by-line engine return data (only present if `status` is `CommittedSuccess`).\nThis type is defined in the Core API as `SborData`. See the Core API documentation for more details.\n",
-    ///      "type": "object"
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/SborData"
+    ///      }
     ///    },
     ///    "state_updates": {
     ///      "description": "This type is defined in the Core API as `StateUpdates`. See the Core API documentation for more details.\n",
@@ -24780,8 +24817,8 @@ This type is defined in the Core API as `NextEpoch`. See the Core API documentat
         /**The manifest line-by-line engine return data (only present if `status` is `CommittedSuccess`).
 This type is defined in the Core API as `SborData`. See the Core API documentation for more details.
 */
-        #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
-        pub output: ::serde_json::Map<String, ::serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub output: Vec<SborData>,
         /**This type is defined in the Core API as `StateUpdates`. See the Core API documentation for more details.
 */
         #[serde(default, skip_serializing_if = "::serde_json::Map::is_empty")]
@@ -26287,7 +26324,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -26301,8 +26338,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_id: {}",
-                            e,
+                            "error converting supplied value for non_fungible_id: {}", e
                         )
                     });
                 self
@@ -26316,8 +26352,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -26400,7 +26435,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -26414,8 +26449,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -26523,7 +26557,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for default_deposit_rule: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -26538,7 +26572,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for is_badge_authorized_depositor: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -26557,7 +26591,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for resource_specific_details: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -26633,8 +26667,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -26649,7 +26682,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for resource_preference_rule: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -26663,8 +26696,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for vault_exists: {}",
-                            e,
+                            "error converting supplied value for vault_exists: {}", e
                         )
                     });
                 self
@@ -26746,8 +26778,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_id: {}",
-                            e,
+                            "error converting supplied value for non_fungible_id: {}", e
                         )
                     });
                 self
@@ -26761,8 +26792,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -26825,8 +26855,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -26857,7 +26886,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for resource_addresses: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -26928,8 +26957,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -26984,7 +27012,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for allows_try_deposit: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -26998,8 +27026,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -27071,7 +27098,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for allows_try_deposit_batch: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -27087,8 +27114,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for deciding_factors: {}",
-                            e,
+                            "error converting supplied value for deciding_factors: {}", e
                         )
                     });
                 self
@@ -27102,8 +27128,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -27118,7 +27143,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for resource_specific: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -27135,7 +27160,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for resource_specific_behaviour: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -27195,8 +27220,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -27210,8 +27234,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for locker_address: {}",
-                            e,
+                            "error converting supplied value for locker_address: {}", e
                         )
                     });
                 self
@@ -27266,8 +27289,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -27281,8 +27303,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for locker_address: {}",
-                            e,
+                            "error converting supplied value for locker_address: {}", e
                         )
                     });
                 self
@@ -27432,7 +27453,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -27446,8 +27467,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -27473,8 +27493,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for vault_address: {}",
-                            e,
+                            "error converting supplied value for vault_address: {}", e
                         )
                     });
                 self
@@ -27556,7 +27575,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -27570,8 +27589,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -27599,8 +27617,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for vault_address: {}",
-                            e,
+                            "error converting supplied value for vault_address: {}", e
                         )
                     });
                 self
@@ -27675,7 +27692,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -27689,8 +27706,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -27730,8 +27746,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for vault_address: {}",
-                            e,
+                            "error converting supplied value for vault_address: {}", e
                         )
                     });
                 self
@@ -27882,7 +27897,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -27896,8 +27911,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -27912,7 +27926,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for resource_preference_rule: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -27964,8 +27978,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -28023,8 +28036,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for royalty_amount: {}",
-                            e,
+                            "error converting supplied value for royalty_amount: {}", e
                         )
                     });
                 self
@@ -28085,8 +28097,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for method_rules: {}",
-                            e,
+                            "error converting supplied value for method_rules: {}", e
                         )
                     });
                 self
@@ -28176,7 +28187,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for affected_global_entities: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -28190,8 +28201,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for balance_changes: {}",
-                            e,
+                            "error converting supplied value for balance_changes: {}", e
                         )
                     });
                 self
@@ -28206,7 +28216,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for child_subintent_hashes: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -28220,8 +28230,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for confirmed_at: {}",
-                            e,
+                            "error converting supplied value for confirmed_at: {}", e
                         )
                     });
                 self
@@ -28247,8 +28256,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for error_message: {}",
-                            e,
+                            "error converting supplied value for error_message: {}", e
                         )
                     });
                 self
@@ -28286,8 +28294,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for manifest_classes: {}",
-                            e,
+                            "error converting supplied value for manifest_classes: {}", e
                         )
                     });
                 self
@@ -28302,7 +28309,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for manifest_instructions: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -28328,8 +28335,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for payload_hash: {}",
-                            e,
+                            "error converting supplied value for payload_hash: {}", e
                         )
                     });
                 self
@@ -28379,8 +28385,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for round_timestamp: {}",
-                            e,
+                            "error converting supplied value for round_timestamp: {}", e
                         )
                     });
                 self
@@ -28394,8 +28399,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for state_version: {}",
-                            e,
+                            "error converting supplied value for state_version: {}", e
                         )
                     });
                 self
@@ -28410,7 +28414,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for subintent_details: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -28425,7 +28429,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for transaction_status: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -28511,7 +28515,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for preview_transaction_hex: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -28603,8 +28607,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for updater_roles: {}",
-                            e,
+                            "error converting supplied value for updater_roles: {}", e
                         )
                     });
                 self
@@ -28659,8 +28662,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for explicit_rule: {}",
-                            e,
+                            "error converting supplied value for explicit_rule: {}", e
                         )
                     });
                 self
@@ -28794,8 +28796,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for royalty_amount: {}",
-                            e,
+                            "error converting supplied value for royalty_amount: {}", e
                         )
                     });
                 self
@@ -28856,8 +28857,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for method_rules: {}",
-                            e,
+                            "error converting supplied value for method_rules: {}", e
                         )
                     });
                 self
@@ -28918,8 +28918,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -29076,7 +29075,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29147,7 +29146,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for programmatic_json: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29357,8 +29356,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for schema_hash_hex: {}",
-                            e,
+                            "error converting supplied value for schema_hash_hex: {}", e
                         )
                     });
                 self
@@ -29582,7 +29580,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for from_ledger_state: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29711,7 +29709,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for aggregation_level: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29726,7 +29724,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29740,8 +29738,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -29814,7 +29811,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for aggregation_level: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29841,7 +29838,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29856,7 +29853,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29870,8 +29867,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -29948,7 +29944,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for aggregation_level: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29963,7 +29959,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -29977,8 +29973,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -30151,7 +30146,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -30165,8 +30160,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for vault_address: {}",
-                            e,
+                            "error converting supplied value for vault_address: {}", e
                         )
                     });
                 self
@@ -30259,8 +30253,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for state_version: {}",
-                            e,
+                            "error converting supplied value for state_version: {}", e
                         )
                     });
                 self
@@ -30327,7 +30320,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for open_api_schema_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -30341,8 +30334,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for release_version: {}",
-                            e,
+                            "error converting supplied value for release_version: {}", e
                         )
                     });
                 self
@@ -30394,8 +30386,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -30409,8 +30400,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for release_info: {}",
-                            e,
+                            "error converting supplied value for release_info: {}", e
                         )
                     });
                 self
@@ -30606,7 +30596,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for validation_errors: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -30726,7 +30716,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for proposer_round_timestamp: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -30752,8 +30742,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for state_version: {}",
-                            e,
+                            "error converting supplied value for state_version: {}", e
                         )
                     });
                 self
@@ -30805,8 +30794,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -30880,8 +30868,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for state_version: {}",
-                            e,
+                            "error converting supplied value for state_version: {}", e
                         )
                     });
                 self
@@ -31563,7 +31550,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for values_unix_timestamp_seconds: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -31633,7 +31620,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for unix_timestamp_seconds: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -31767,8 +31754,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_id: {}",
-                            e,
+                            "error converting supplied value for non_fungible_id: {}", e
                         )
                     });
                 self
@@ -31782,8 +31768,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -31841,8 +31826,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_id: {}",
-                            e,
+                            "error converting supplied value for non_fungible_id: {}", e
                         )
                     });
                 self
@@ -31856,8 +31840,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -33027,7 +33010,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for access_controller_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33325,8 +33308,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for pool_address: {}",
-                            e,
+                            "error converting supplied value for pool_address: {}", e
                         )
                     });
                 self
@@ -33341,7 +33323,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for redemption_resource_count: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33356,7 +33338,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for unit_redemption_value: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33435,8 +33417,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for pool_address: {}",
-                            e,
+                            "error converting supplied value for pool_address: {}", e
                         )
                     });
                 self
@@ -33451,7 +33432,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for redemption_resource_count: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33466,7 +33447,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for unit_redemption_value: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33623,8 +33604,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -33788,8 +33768,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for pool_address: {}",
-                            e,
+                            "error converting supplied value for pool_address: {}", e
                         )
                     });
                 self
@@ -33804,7 +33783,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for redemption_resource_count: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33819,7 +33798,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for unit_redemption_value: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33890,7 +33869,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for validator_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33968,7 +33947,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for redemption_resource_count: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33983,7 +33962,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for unit_redemption_value: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -33998,7 +33977,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for validator_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34152,8 +34131,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for network_name: {}",
-                            e,
+                            "error converting supplied value for network_name: {}", e
                         )
                     });
                 self
@@ -34170,7 +34148,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for well_known_addresses: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34336,7 +34314,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for access_controller_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34351,7 +34329,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for access_rules_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34366,7 +34344,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for account_owner_badge: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34380,8 +34358,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_package: {}",
-                            e,
+                            "error converting supplied value for account_package: {}", e
                         )
                     });
                 self
@@ -34396,7 +34373,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for consensus_manager: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34411,7 +34388,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for consensus_manager_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34426,7 +34403,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for ed25519_signature_virtual_badge: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34452,8 +34429,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for faucet_package: {}",
-                            e,
+                            "error converting supplied value for faucet_package: {}", e
                         )
                     });
                 self
@@ -34467,8 +34443,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for genesis_helper: {}",
-                            e,
+                            "error converting supplied value for genesis_helper: {}", e
                         )
                     });
                 self
@@ -34483,7 +34458,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for genesis_helper_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34498,7 +34473,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for global_caller_virtual_badge: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34513,7 +34488,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for identity_owner_badge: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34527,8 +34502,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for identity_package: {}",
-                            e,
+                            "error converting supplied value for identity_package: {}", e
                         )
                     });
                 self
@@ -34542,8 +34516,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for locker_package: {}",
-                            e,
+                            "error converting supplied value for locker_package: {}", e
                         )
                     });
                 self
@@ -34558,7 +34531,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for metadata_module_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34573,7 +34546,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for package_of_direct_caller_virtual_badge: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34588,7 +34561,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for package_owner_badge: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34602,8 +34575,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for package_package: {}",
-                            e,
+                            "error converting supplied value for package_package: {}", e
                         )
                     });
                 self
@@ -34617,8 +34589,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for pool_package: {}",
-                            e,
+                            "error converting supplied value for pool_package: {}", e
                         )
                     });
                 self
@@ -34632,8 +34603,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_package: {}",
-                            e,
+                            "error converting supplied value for resource_package: {}", e
                         )
                     });
                 self
@@ -34648,7 +34618,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for role_assignment_module_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34663,7 +34633,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for royalty_module_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34678,7 +34648,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for secp256k1_signature_virtual_badge: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34693,7 +34663,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for system_transaction_badge: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34708,7 +34678,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for test_utils_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34723,7 +34693,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for transaction_processor_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34738,7 +34708,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for transaction_tracker: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34753,7 +34723,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for transaction_tracker_package: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -34768,7 +34738,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for validator_owner_badge: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35062,7 +35032,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for aggregation_level: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35077,7 +35047,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35091,8 +35061,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -35165,7 +35134,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for aggregation_level: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35192,7 +35161,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35207,7 +35176,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35221,8 +35190,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -35299,7 +35267,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for aggregation_level: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35314,7 +35282,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35328,8 +35296,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -35509,7 +35476,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35547,8 +35514,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for vault_address: {}",
-                            e,
+                            "error converting supplied value for vault_address: {}", e
                         )
                     });
                 self
@@ -35619,7 +35585,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for current_sync_delay_seconds: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35634,7 +35600,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for max_allowed_sync_delay_seconds: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35648,8 +35614,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for request_type: {}",
-                            e,
+                            "error converting supplied value for request_type: {}", e
                         )
                     });
                 self
@@ -35882,8 +35847,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for auth_template: {}",
-                            e,
+                            "error converting supplied value for auth_template: {}", e
                         )
                     });
                 self
@@ -35898,7 +35862,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for auth_template_is_locked: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35925,7 +35889,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for dependant_entities: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -35951,8 +35915,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for royalty_config: {}",
-                            e,
+                            "error converting supplied value for royalty_config: {}", e
                         )
                     });
                 self
@@ -35967,7 +35930,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for royalty_config_is_locked: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -36120,8 +36083,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for code_hash_hex: {}",
-                            e,
+                            "error converting supplied value for code_hash_hex: {}", e
                         )
                     });
                 self
@@ -36201,7 +36163,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for assume_all_signature_proofs: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -36216,7 +36178,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for disable_auth_checks: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -36230,8 +36192,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for skip_epoch_check: {}",
-                            e,
+                            "error converting supplied value for skip_epoch_check: {}", e
                         )
                     });
                 self
@@ -36245,8 +36206,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for use_free_credit: {}",
-                            e,
+                            "error converting supplied value for use_free_credit: {}", e
                         )
                     });
                 self
@@ -36345,8 +36305,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for element_kind: {}",
-                            e,
+                            "error converting supplied value for element_kind: {}", e
                         )
                     });
                 self
@@ -36361,7 +36320,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for element_type_name: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -36643,8 +36602,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for element_kind: {}",
-                            e,
+                            "error converting supplied value for element_kind: {}", e
                         )
                     });
                 self
@@ -36659,7 +36617,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for element_type_name: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -36925,8 +36883,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for variant_name: {}",
-                            e,
+                            "error converting supplied value for variant_name: {}", e
                         )
                     });
                 self
@@ -37494,8 +37451,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for key_type_name: {}",
-                            e,
+                            "error converting supplied value for key_type_name: {}", e
                         )
                     });
                 self
@@ -37545,8 +37501,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for value_type_name: {}",
-                            e,
+                            "error converting supplied value for value_type_name: {}", e
                         )
                     });
                 self
@@ -38847,8 +38802,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for key_hash_type: {}",
-                            e,
+                            "error converting supplied value for key_hash_type: {}", e
                         )
                     });
                 self
@@ -38906,8 +38860,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for key_hash_type: {}",
-                            e,
+                            "error converting supplied value for key_hash_type: {}", e
                         )
                     });
                 self
@@ -38968,8 +38921,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for key_hash_type: {}",
-                            e,
+                            "error converting supplied value for key_hash_type: {}", e
                         )
                     });
                 self
@@ -39116,8 +39068,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for holder_address: {}",
-                            e,
+                            "error converting supplied value for holder_address: {}", e
                         )
                     });
                 self
@@ -39132,7 +39083,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -39210,8 +39161,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for holder_address: {}",
-                            e,
+                            "error converting supplied value for holder_address: {}", e
                         )
                     });
                 self
@@ -39226,7 +39176,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -39305,8 +39255,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for holder_address: {}",
-                            e,
+                            "error converting supplied value for holder_address: {}", e
                         )
                     });
                 self
@@ -39321,7 +39270,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -39336,7 +39285,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for non_fungible_ids_count: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -39422,8 +39371,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -39437,8 +39385,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -39640,6 +39587,67 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
             }
         }
         #[derive(Clone, Debug)]
+        pub struct SborData {
+            hex: Result<super::HexString, String>,
+            programmatic_json: Result<::serde_json::Value, String>,
+        }
+        impl Default for SborData {
+            fn default() -> Self {
+                Self {
+                    hex: Err("no value supplied for hex".to_string()),
+                    programmatic_json: Err(
+                        "no value supplied for programmatic_json".to_string(),
+                    ),
+                }
+            }
+        }
+        impl SborData {
+            pub fn hex<T>(mut self, value: T) -> Self
+            where
+                T: std::convert::TryInto<super::HexString>,
+                T::Error: std::fmt::Display,
+            {
+                self.hex = value
+                    .try_into()
+                    .map_err(|e| {
+                        format!("error converting supplied value for hex: {}", e)
+                    });
+                self
+            }
+            pub fn programmatic_json<T>(mut self, value: T) -> Self
+            where
+                T: std::convert::TryInto<::serde_json::Value>,
+                T::Error: std::fmt::Display,
+            {
+                self.programmatic_json = value
+                    .try_into()
+                    .map_err(|e| {
+                        format!(
+                            "error converting supplied value for programmatic_json: {}",
+                            e
+                        )
+                    });
+                self
+            }
+        }
+        impl std::convert::TryFrom<SborData> for super::SborData {
+            type Error = super::error::ConversionError;
+            fn try_from(value: SborData) -> Result<Self, super::error::ConversionError> {
+                Ok(Self {
+                    hex: value.hex?,
+                    programmatic_json: value.programmatic_json?,
+                })
+            }
+        }
+        impl From<super::SborData> for SborData {
+            fn from(value: super::SborData) -> Self {
+                Self {
+                    hex: Ok(value.hex),
+                    programmatic_json: Ok(value.programmatic_json),
+                }
+            }
+        }
+        #[derive(Clone, Debug)]
         pub struct ScryptoSborValue {
             programmatic_json: Result<super::ProgrammaticScryptoSborValue, String>,
             raw_hex: Result<super::HexString, String>,
@@ -39665,7 +39673,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for programmatic_json: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -39731,8 +39739,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -39746,8 +39753,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -39773,8 +39779,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -39836,8 +39841,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -39865,8 +39869,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -39956,8 +39959,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -39971,8 +39973,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -39998,8 +39999,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -40013,8 +40013,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for locker_address: {}",
-                            e,
+                            "error converting supplied value for locker_address: {}", e
                         )
                     });
                 self
@@ -40082,8 +40081,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -40109,8 +40107,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -40124,8 +40121,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for locker_address: {}",
-                            e,
+                            "error converting supplied value for locker_address: {}", e
                         )
                     });
                 self
@@ -40209,8 +40205,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_lockers: {}",
-                            e,
+                            "error converting supplied value for account_lockers: {}", e
                         )
                     });
                 self
@@ -40224,8 +40219,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -40289,8 +40283,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -40351,8 +40344,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -40367,7 +40359,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_touched_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40381,8 +40373,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for locker_address: {}",
-                            e,
+                            "error converting supplied value for locker_address: {}", e
                         )
                     });
                 self
@@ -40442,8 +40433,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -40457,8 +40447,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -40484,8 +40473,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -40547,8 +40535,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for account_address: {}",
-                            e,
+                            "error converting supplied value for account_address: {}", e
                         )
                     });
                 self
@@ -40576,8 +40563,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -40670,7 +40656,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for ancestor_identities: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40685,7 +40671,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for component_royalty_config: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40700,7 +40686,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for component_royalty_vault_balance: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40715,7 +40701,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for dapp_two_way_links: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40730,7 +40716,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40745,7 +40731,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for native_resource_details: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40760,7 +40746,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for non_fungible_include_nfids: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40775,7 +40761,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for package_royalty_vault_balance: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40858,7 +40844,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for aggregation_level: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -40872,8 +40858,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -40950,8 +40935,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -41031,8 +41015,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for blueprint_name: {}",
-                            e,
+                            "error converting supplied value for blueprint_name: {}", e
                         )
                     });
                 self
@@ -41047,7 +41030,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for blueprint_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41062,7 +41045,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for native_resource_details: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41076,8 +41059,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for package_address: {}",
-                            e,
+                            "error converting supplied value for package_address: {}", e
                         )
                     });
                 self
@@ -41091,8 +41073,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for role_assignments: {}",
-                            e,
+                            "error converting supplied value for role_assignments: {}", e
                         )
                     });
                 self
@@ -41106,8 +41087,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for royalty_config: {}",
-                            e,
+                            "error converting supplied value for royalty_config: {}", e
                         )
                     });
                 self
@@ -41122,7 +41102,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for royalty_vault_balance: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41149,7 +41129,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for two_way_linked_dapp_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41164,7 +41144,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for two_way_linked_dapp_details: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41269,8 +41249,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for divisibility: {}",
-                            e,
+                            "error converting supplied value for divisibility: {}", e
                         )
                     });
                 self
@@ -41285,7 +41264,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for native_resource_details: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41299,8 +41278,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for role_assignments: {}",
-                            e,
+                            "error converting supplied value for role_assignments: {}", e
                         )
                     });
                 self
@@ -41314,8 +41292,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for total_burned: {}",
-                            e,
+                            "error converting supplied value for total_burned: {}", e
                         )
                     });
                 self
@@ -41329,8 +41306,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for total_minted: {}",
-                            e,
+                            "error converting supplied value for total_minted: {}", e
                         )
                     });
                 self
@@ -41344,8 +41320,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for total_supply: {}",
-                            e,
+                            "error converting supplied value for total_supply: {}", e
                         )
                     });
                 self
@@ -41360,7 +41335,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for two_way_linked_dapps: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41462,8 +41437,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -41568,7 +41542,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for ancestor_identities: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41597,7 +41571,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41612,7 +41586,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for fungible_resources: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41639,7 +41613,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for non_fungible_resources: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41701,8 +41675,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for global_address: {}",
-                            e,
+                            "error converting supplied value for global_address: {}", e
                         )
                     });
                 self
@@ -41716,8 +41689,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for owner_address: {}",
-                            e,
+                            "error converting supplied value for owner_address: {}", e
                         )
                     });
                 self
@@ -41731,8 +41703,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for parent_address: {}",
-                            e,
+                            "error converting supplied value for parent_address: {}", e
                         )
                     });
                 self
@@ -41859,7 +41830,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for native_resource_details: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41874,7 +41845,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for non_fungible_data_mutable_fields: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41889,7 +41860,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for non_fungible_id_type: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -41903,8 +41874,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for role_assignments: {}",
-                            e,
+                            "error converting supplied value for role_assignments: {}", e
                         )
                     });
                 self
@@ -41918,8 +41888,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for total_burned: {}",
-                            e,
+                            "error converting supplied value for total_burned: {}", e
                         )
                     });
                 self
@@ -41933,8 +41902,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for total_minted: {}",
-                            e,
+                            "error converting supplied value for total_minted: {}", e
                         )
                     });
                 self
@@ -41948,8 +41916,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for total_supply: {}",
-                            e,
+                            "error converting supplied value for total_supply: {}", e
                         )
                     });
                 self
@@ -41964,7 +41931,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for two_way_linked_dapps: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -42071,8 +42038,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -42173,8 +42139,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for code_hash_hex: {}",
-                            e,
+                            "error converting supplied value for code_hash_hex: {}", e
                         )
                     });
                 self
@@ -42212,8 +42177,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for role_assignments: {}",
-                            e,
+                            "error converting supplied value for role_assignments: {}", e
                         )
                     });
                 self
@@ -42228,7 +42192,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for royalty_vault_balance: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -42255,7 +42219,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for two_way_linked_dapp_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -42367,8 +42331,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -42394,8 +42357,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -42409,8 +42371,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -42505,8 +42466,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -42532,8 +42492,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -42629,7 +42588,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for aggregation_level: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -42643,8 +42602,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -42670,8 +42628,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -42742,7 +42699,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -42820,8 +42777,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -42917,8 +42873,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -42944,8 +42899,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -43029,8 +42983,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -43132,8 +43085,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -43159,8 +43111,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -43174,8 +43125,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -43189,8 +43139,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for vault_address: {}",
-                            e,
+                            "error converting supplied value for vault_address: {}", e
                         )
                     });
                 self
@@ -43282,8 +43231,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -43309,8 +43257,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -43379,7 +43326,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for non_fungible_include_nfids: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -43454,8 +43401,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -43481,8 +43427,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -43510,8 +43455,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -43612,8 +43556,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -43639,8 +43582,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -43736,7 +43678,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for aggregation_level: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -43750,8 +43692,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -43777,8 +43718,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -43851,7 +43791,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for explicit_metadata: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -43866,7 +43806,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for non_fungible_include_nfids: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -43946,8 +43886,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -44043,8 +43982,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -44070,8 +44008,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -44154,8 +44091,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -44239,8 +44175,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -44255,7 +44190,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for key_value_store_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -44398,7 +44333,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for key_value_store_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -44412,8 +44347,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -44499,7 +44433,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -44649,8 +44583,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -44677,7 +44610,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for key_value_store_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -44691,8 +44624,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -44767,7 +44699,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for key_value_store_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -44781,8 +44713,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -44880,7 +44811,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -44938,8 +44869,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -44953,8 +44883,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_ids: {}",
-                            e,
+                            "error converting supplied value for non_fungible_ids: {}", e
                         )
                     });
                 self
@@ -44968,8 +44897,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -45033,8 +44961,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -45049,7 +44976,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for non_fungible_id_type: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -45065,8 +44992,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_ids: {}",
-                            e,
+                            "error converting supplied value for non_fungible_ids: {}", e
                         )
                     });
                 self
@@ -45080,8 +45006,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -45170,7 +45095,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -45184,8 +45109,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_id: {}",
-                            e,
+                            "error converting supplied value for non_fungible_id: {}", e
                         )
                     });
                 self
@@ -45247,8 +45171,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -45274,8 +45197,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -45289,8 +45211,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -45349,8 +45270,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -45364,8 +45284,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_ids: {}",
-                            e,
+                            "error converting supplied value for non_fungible_ids: {}", e
                         )
                     });
                 self
@@ -45379,8 +45298,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -45437,8 +45355,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -45452,8 +45369,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_ids: {}",
-                            e,
+                            "error converting supplied value for non_fungible_ids: {}", e
                         )
                     });
                 self
@@ -45467,8 +45383,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -45529,8 +45444,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -45546,8 +45460,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_ids: {}",
-                            e,
+                            "error converting supplied value for non_fungible_ids: {}", e
                         )
                     });
                 self
@@ -45561,8 +45474,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -45642,7 +45554,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_updated_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -45656,8 +45568,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for non_fungible_id: {}",
-                            e,
+                            "error converting supplied value for non_fungible_id: {}", e
                         )
                     });
                 self
@@ -45672,7 +45583,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for owning_vault_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -45687,7 +45598,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for owning_vault_global_ancestor_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -45702,7 +45613,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for owning_vault_parent_ancestor_address: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -45774,8 +45685,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -45801,8 +45711,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -45816,8 +45725,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for package_address: {}",
-                            e,
+                            "error converting supplied value for package_address: {}", e
                         )
                     });
                 self
@@ -45891,8 +45799,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -45918,8 +45825,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for package_address: {}",
-                            e,
+                            "error converting supplied value for package_address: {}", e
                         )
                     });
                 self
@@ -45993,8 +45899,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -46020,8 +45925,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -46035,8 +45939,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for package_address: {}",
-                            e,
+                            "error converting supplied value for package_address: {}", e
                         )
                     });
                 self
@@ -46109,8 +46012,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -46136,8 +46038,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for package_address: {}",
-                            e,
+                            "error converting supplied value for package_address: {}", e
                         )
                     });
                 self
@@ -46204,8 +46105,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -46266,8 +46166,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -46377,7 +46276,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for accounts_with_manifest_owner_method_calls: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46395,7 +46294,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for accounts_without_manifest_owner_method_calls: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46410,7 +46309,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for affected_global_entities_filter: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46424,8 +46323,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -46452,7 +46350,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for event_global_emitters_filter: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46468,8 +46366,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for events_filter: {}",
-                            e,
+                            "error converting supplied value for events_filter: {}", e
                         )
                     });
                 self
@@ -46484,7 +46381,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for from_ledger_state: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46512,8 +46409,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for limit_per_page: {}",
-                            e,
+                            "error converting supplied value for limit_per_page: {}", e
                         )
                     });
                 self
@@ -46528,7 +46424,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for manifest_accounts_deposited_into_filter: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46543,7 +46439,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for manifest_accounts_withdrawn_from_filter: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46558,7 +46454,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for manifest_badges_presented_filter: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46575,7 +46471,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for manifest_class_filter: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46590,7 +46486,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for manifest_resources_filter: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46713,8 +46609,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for emitter_address: {}",
-                            e,
+                            "error converting supplied value for emitter_address: {}", e
                         )
                     });
                 self
@@ -46742,8 +46637,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -46808,7 +46702,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for match_only_most_specific: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -46872,8 +46766,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -46951,8 +46844,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -47024,7 +46916,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for fungible_balance_changes: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47041,7 +46933,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for fungible_fee_balance_changes: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47058,7 +46950,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for non_fungible_balance_changes: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47112,8 +47004,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -47189,8 +47080,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -47271,7 +47161,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for affected_global_entities: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47285,8 +47175,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for balance_changes: {}",
-                            e,
+                            "error converting supplied value for balance_changes: {}", e
                         )
                     });
                 self
@@ -47301,7 +47190,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for manifest_instructions: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47328,7 +47217,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for receipt_costing_parameters: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47342,8 +47231,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for receipt_events: {}",
-                            e,
+                            "error converting supplied value for receipt_events: {}", e
                         )
                     });
                 self
@@ -47358,7 +47246,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for receipt_fee_destination: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47373,7 +47261,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for receipt_fee_source: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47388,7 +47276,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for receipt_fee_summary: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47402,8 +47290,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for receipt_output: {}",
-                            e,
+                            "error converting supplied value for receipt_output: {}", e
                         )
                     });
                 self
@@ -47418,7 +47305,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for receipt_state_changes: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47493,8 +47380,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for balance_change: {}",
-                            e,
+                            "error converting supplied value for balance_change: {}", e
                         )
                     });
                 self
@@ -47508,8 +47394,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for entity_address: {}",
-                            e,
+                            "error converting supplied value for entity_address: {}", e
                         )
                     });
                 self
@@ -47523,8 +47408,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -47586,8 +47470,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for balance_change: {}",
-                            e,
+                            "error converting supplied value for balance_change: {}", e
                         )
                     });
                 self
@@ -47601,8 +47484,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for entity_address: {}",
-                            e,
+                            "error converting supplied value for entity_address: {}", e
                         )
                     });
                 self
@@ -47616,8 +47498,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -47703,8 +47584,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for entity_address: {}",
-                            e,
+                            "error converting supplied value for entity_address: {}", e
                         )
                     });
                 self
@@ -47730,8 +47610,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_address: {}",
-                            e,
+                            "error converting supplied value for resource_address: {}", e
                         )
                     });
                 self
@@ -47843,7 +47722,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for radix_engine_toolkit_receipt: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47923,7 +47802,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for end_epoch_exclusive: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -47986,7 +47865,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for notary_is_signatory: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48001,7 +47880,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for notary_public_key: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48028,7 +47907,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for signer_public_keys: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48043,7 +47922,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for start_epoch_inclusive: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48057,8 +47936,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for tip_percentage: {}",
-                            e,
+                            "error converting supplied value for tip_percentage: {}", e
                         )
                     });
                 self
@@ -48143,8 +48021,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for encoded_receipt: {}",
-                            e,
+                            "error converting supplied value for encoded_receipt: {}", e
                         )
                     });
                 self
@@ -48171,7 +48048,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for radix_engine_toolkit_receipt: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48199,8 +48076,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for resource_changes: {}",
-                            e,
+                            "error converting supplied value for resource_changes: {}", e
                         )
                     });
                 self
@@ -48317,8 +48193,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for core_api_receipt: {}",
-                            e,
+                            "error converting supplied value for core_api_receipt: {}", e
                         )
                     });
                 self
@@ -48345,7 +48220,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for radix_engine_toolkit_receipt: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48425,7 +48300,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for preview_transaction: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48486,7 +48361,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for at_ledger_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48515,7 +48390,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for radix_engine_toolkit_receipt: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48632,7 +48507,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
             fee_source: Result<::serde_json::Map<String, ::serde_json::Value>, String>,
             fee_summary: Result<::serde_json::Map<String, ::serde_json::Value>, String>,
             next_epoch: Result<::serde_json::Map<String, ::serde_json::Value>, String>,
-            output: Result<::serde_json::Map<String, ::serde_json::Value>, String>,
+            output: Result<Vec<super::SborData>, String>,
             state_updates: Result<
                 ::serde_json::Map<String, ::serde_json::Value>,
                 String,
@@ -48666,7 +48541,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for costing_parameters: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48680,8 +48555,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for error_message: {}",
-                            e,
+                            "error converting supplied value for error_message: {}", e
                         )
                     });
                 self
@@ -48707,8 +48581,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for fee_destination: {}",
-                            e,
+                            "error converting supplied value for fee_destination: {}", e
                         )
                     });
                 self
@@ -48751,7 +48624,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
             }
             pub fn output<T>(mut self, value: T) -> Self
             where
-                T: std::convert::TryInto<::serde_json::Map<String, ::serde_json::Value>>,
+                T: std::convert::TryInto<Vec<super::SborData>>,
                 T::Error: std::fmt::Display,
             {
                 self.output = value
@@ -48770,8 +48643,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for state_updates: {}",
-                            e,
+                            "error converting supplied value for state_updates: {}", e
                         )
                     });
                 self
@@ -48912,7 +48784,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for committed_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48926,8 +48798,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for error_message: {}",
-                            e,
+                            "error converting supplied value for error_message: {}", e
                         )
                     });
                 self
@@ -48941,8 +48812,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for intent_status: {}",
-                            e,
+                            "error converting supplied value for intent_status: {}", e
                         )
                     });
                 self
@@ -48957,7 +48827,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for intent_status_description: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -48973,8 +48843,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for known_payloads: {}",
-                            e,
+                            "error converting supplied value for known_payloads: {}", e
                         )
                     });
                 self
@@ -48988,8 +48857,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -49004,7 +48872,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for permanently_rejects_at_epoch: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49094,8 +48962,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for error_message: {}",
-                            e,
+                            "error converting supplied value for error_message: {}", e
                         )
                     });
                 self
@@ -49111,8 +48978,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for handling_status: {}",
-                            e,
+                            "error converting supplied value for handling_status: {}", e
                         )
                     });
                 self
@@ -49127,7 +48993,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for handling_status_reason: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49142,7 +49008,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for latest_error_message: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49156,8 +49022,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for payload_hash: {}",
-                            e,
+                            "error converting supplied value for payload_hash: {}", e
                         )
                     });
                 self
@@ -49171,8 +49036,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for payload_status: {}",
-                            e,
+                            "error converting supplied value for payload_status: {}", e
                         )
                     });
                 self
@@ -49187,7 +49051,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for payload_status_description: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49213,8 +49077,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for submission_error: {}",
-                            e,
+                            "error converting supplied value for submission_error: {}", e
                         )
                     });
                 self
@@ -49285,7 +49148,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for child_subintent_hashes: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49300,7 +49163,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for manifest_instructions: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49326,8 +49189,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for subintent_hash: {}",
-                            e,
+                            "error converting supplied value for subintent_hash: {}", e
                         )
                     });
                 self
@@ -49380,8 +49242,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for subintent_hash: {}",
-                            e,
+                            "error converting supplied value for subintent_hash: {}", e
                         )
                     });
                 self
@@ -49443,7 +49304,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for finalized_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49458,7 +49319,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for finalized_at_transaction_intent_hash: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49472,8 +49333,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -49487,8 +49347,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for subintent_status: {}",
-                            e,
+                            "error converting supplied value for subintent_status: {}", e
                         )
                     });
                 self
@@ -49503,7 +49362,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for subintent_status_description: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49566,7 +49425,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for notarized_transaction_hex: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -49682,8 +49541,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for primary_locker: {}",
-                            e,
+                            "error converting supplied value for primary_locker: {}", e
                         )
                     });
                 self
@@ -49772,8 +49630,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for dapp_address: {}",
-                            e,
+                            "error converting supplied value for dapp_address: {}", e
                         )
                     });
                 self
@@ -49861,8 +49718,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for entity_address: {}",
-                            e,
+                            "error converting supplied value for entity_address: {}", e
                         )
                     });
                 self
@@ -50080,8 +49936,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for active_in_epoch: {}",
-                            e,
+                            "error converting supplied value for active_in_epoch: {}", e
                         )
                     });
                 self
@@ -50110,7 +49965,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for effective_fee_factor: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -50125,7 +49980,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for locked_owner_stake_unit_vault: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -50152,7 +50007,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for pending_owner_stake_unit_unlock_vault: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -50167,7 +50022,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for pending_xrd_withdraw_vault: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -50289,8 +50144,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for stake_percentage: {}",
-                            e,
+                            "error converting supplied value for stake_percentage: {}", e
                         )
                     });
                 self
@@ -50461,7 +50315,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for effective_at_epoch: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -50582,8 +50436,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for epochs_active_in: {}",
-                            e,
+                            "error converting supplied value for epochs_active_in: {}", e
                         )
                     });
                 self
@@ -50597,8 +50450,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for proposals_made: {}",
-                            e,
+                            "error converting supplied value for proposals_made: {}", e
                         )
                     });
                 self
@@ -50612,8 +50464,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for proposals_missed: {}",
-                            e,
+                            "error converting supplied value for proposals_missed: {}", e
                         )
                     });
                 self
@@ -50696,7 +50547,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for last_changed_at_state_version: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -50750,8 +50601,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for at_ledger_state: {}",
-                            e,
+                            "error converting supplied value for at_ledger_state: {}", e
                         )
                     });
                 self
@@ -50766,7 +50616,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for from_ledger_state: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -50781,7 +50631,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .map_err(|e| {
                         format!(
                             "error converting supplied value for validator_addresses: {}",
-                            e,
+                            e
                         )
                     });
                 self
@@ -50832,8 +50682,7 @@ i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_st
                     .try_into()
                     .map_err(|e| {
                         format!(
-                            "error converting supplied value for ledger_state: {}",
-                            e,
+                            "error converting supplied value for ledger_state: {}", e
                         )
                     });
                 self
@@ -51556,7 +51405,7 @@ pub mod builder {
             self,
         ) -> Result<ResponseValue<types::GatewayStatusResponse>, Error<()>> {
             let Self { client } = self;
-            let url = format!("{}/status/gateway-status", client.baseurl);
+            let url = format!("{}/status/gateway-status", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -51590,7 +51439,7 @@ pub mod builder {
             self,
         ) -> Result<ResponseValue<types::NetworkConfigurationResponse>, Error<()>> {
             let Self { client } = self;
-            let url = format!("{}/status/network-configuration", client.baseurl);
+            let url = format!("{}/status/network-configuration", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -51624,7 +51473,7 @@ pub mod builder {
             self,
         ) -> Result<ResponseValue<types::TransactionConstructionResponse>, Error<()>> {
             let Self { client } = self;
-            let url = format!("{}/transaction/construction", client.baseurl);
+            let url = format!("{}/transaction/construction", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -51670,7 +51519,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `TransactionPreviewRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -51698,7 +51547,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/transaction/preview", client.baseurl);
+            let url = format!("{}/transaction/preview", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -51752,7 +51601,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `TransactionPreviewV2Request` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -51780,7 +51629,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/transaction/preview-v2", client.baseurl);
+            let url = format!("{}/transaction/preview-v2", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -51833,8 +51682,7 @@ pub mod builder {
                 .map(From::from)
                 .map_err(|s| {
                     format!(
-                        "conversion to `TransactionSubmitRequest` for body failed: {}",
-                        s,
+                        "conversion to `TransactionSubmitRequest` for body failed: {}", s
                     )
                 });
             self
@@ -51862,7 +51710,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/transaction/submit", client.baseurl);
+            let url = format!("{}/transaction/submit", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -51916,7 +51764,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `TransactionCommittedDetailsRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -51944,7 +51792,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/transaction/committed-details", client.baseurl);
+            let url = format!("{}/transaction/committed-details", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -51997,8 +51845,7 @@ pub mod builder {
                 .map(From::from)
                 .map_err(|s| {
                     format!(
-                        "conversion to `TransactionStatusRequest` for body failed: {}",
-                        s,
+                        "conversion to `TransactionStatusRequest` for body failed: {}", s
                     )
                 });
             self
@@ -52026,7 +51873,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/transaction/status", client.baseurl);
+            let url = format!("{}/transaction/status", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -52080,7 +51927,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `TransactionSubintentStatusRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52108,7 +51955,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/transaction/subintent-status", client.baseurl);
+            let url = format!("{}/transaction/subintent-status", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -52162,7 +52009,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `AccountDepositPreValidationRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52191,8 +52038,7 @@ pub mod builder {
                 })
                 .map_err(Error::InvalidRequest)?;
             let url = format!(
-                "{}/transaction/account-deposit-pre-validation",
-                client.baseurl,
+                "{}/transaction/account-deposit-pre-validation", client.baseurl,
             );
             #[allow(unused_mut)]
             let mut request = client
@@ -52247,7 +52093,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StreamTransactionsRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52275,7 +52121,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/stream/transactions", client.baseurl);
+            let url = format!("{}/stream/transactions", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -52329,7 +52175,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateEntityDetailsRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52357,7 +52203,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/entity/details", client.baseurl);
+            let url = format!("{}/state/entity/details", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -52411,7 +52257,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateEntityMetadataPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52439,7 +52285,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/entity/page/metadata", client.baseurl);
+            let url = format!("{}/state/entity/page/metadata", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -52493,7 +52339,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateEntitySchemaPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52521,7 +52367,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/entity/page/schemas", client.baseurl);
+            let url = format!("{}/state/entity/page/schemas", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -52575,7 +52421,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateEntityFungiblesPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52603,7 +52449,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/entity/page/fungibles/", client.baseurl);
+            let url = format!("{}/state/entity/page/fungibles/", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -52664,7 +52510,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateEntityFungibleResourceVaultsPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52692,7 +52538,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/entity/page/fungible-vaults/", client.baseurl);
+            let url = format!("{}/state/entity/page/fungible-vaults/", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -52746,7 +52592,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateEntityNonFungiblesPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52774,7 +52620,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/entity/page/non-fungibles/", client.baseurl);
+            let url = format!("{}/state/entity/page/non-fungibles/", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -52835,7 +52681,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateEntityNonFungibleResourceVaultsPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52864,8 +52710,7 @@ pub mod builder {
                 })
                 .map_err(Error::InvalidRequest)?;
             let url = format!(
-                "{}/state/entity/page/non-fungible-vaults/",
-                client.baseurl,
+                "{}/state/entity/page/non-fungible-vaults/", client.baseurl,
             );
             #[allow(unused_mut)]
             let mut request = client
@@ -52920,7 +52765,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateEntityNonFungibleIdsPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -52949,8 +52794,7 @@ pub mod builder {
                 })
                 .map_err(Error::InvalidRequest)?;
             let url = format!(
-                "{}/state/entity/page/non-fungible-vault/ids",
-                client.baseurl,
+                "{}/state/entity/page/non-fungible-vault/ids", client.baseurl,
             );
             #[allow(unused_mut)]
             let mut request = client
@@ -53005,7 +52849,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateNonFungibleIdsRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53033,7 +52877,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/non-fungible/ids", client.baseurl);
+            let url = format!("{}/state/non-fungible/ids", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -53087,7 +52931,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateNonFungibleDataRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53115,7 +52959,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/non-fungible/data", client.baseurl);
+            let url = format!("{}/state/non-fungible/data", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -53169,7 +53013,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateNonFungibleLocationRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53197,7 +53041,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/non-fungible/location", client.baseurl);
+            let url = format!("{}/state/non-fungible/location", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -53251,7 +53095,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateKeyValueStoreKeysRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53279,7 +53123,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/key-value-store/keys", client.baseurl);
+            let url = format!("{}/state/key-value-store/keys", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -53333,7 +53177,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateKeyValueStoreDataRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53361,7 +53205,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/key-value-store/data", client.baseurl);
+            let url = format!("{}/state/key-value-store/data", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -53415,7 +53259,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateValidatorsListRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53443,7 +53287,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/validators/list", client.baseurl);
+            let url = format!("{}/state/validators/list", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -53499,7 +53343,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateAccountResourcePreferencesPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53528,8 +53372,7 @@ pub mod builder {
                 })
                 .map_err(Error::InvalidRequest)?;
             let url = format!(
-                "{}/state/account/page/resource-preferences",
-                client.baseurl,
+                "{}/state/account/page/resource-preferences", client.baseurl,
             );
             #[allow(unused_mut)]
             let mut request = client
@@ -53589,7 +53432,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateAccountAuthorizedDepositorsPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53618,8 +53461,7 @@ pub mod builder {
                 })
                 .map_err(Error::InvalidRequest)?;
             let url = format!(
-                "{}/state/account/page/authorized-depositors",
-                client.baseurl,
+                "{}/state/account/page/authorized-depositors", client.baseurl,
             );
             #[allow(unused_mut)]
             let mut request = client
@@ -53674,7 +53516,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StatePackageBlueprintPageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53702,7 +53544,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/package/page/blueprints", client.baseurl);
+            let url = format!("{}/state/package/page/blueprints", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -53756,7 +53598,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StatePackageCodePageRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53784,7 +53626,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/package/page/codes", client.baseurl);
+            let url = format!("{}/state/package/page/codes", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -53838,7 +53680,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateAccountLockerPageVaultsRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53866,7 +53708,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/account-locker/page/vaults", client.baseurl);
+            let url = format!("{}/state/account-locker/page/vaults", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -53920,7 +53762,7 @@ pub mod builder {
                 .map_err(|s| {
                     format!(
                         "conversion to `StateAccountLockersTouchedAtRequest` for body failed: {}",
-                        s,
+                        s
                     )
                 });
             self
@@ -53948,7 +53790,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/state/account-lockers/touched-at", client.baseurl);
+            let url = format!("{}/state/account-lockers/touched-at", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -54001,8 +53843,7 @@ pub mod builder {
                 .map(From::from)
                 .map_err(|s| {
                     format!(
-                        "conversion to `ValidatorsUptimeRequest` for body failed: {}",
-                        s,
+                        "conversion to `ValidatorsUptimeRequest` for body failed: {}", s
                     )
                 });
             self
@@ -54030,7 +53871,7 @@ pub mod builder {
                         .map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/statistics/validators/uptime", client.baseurl);
+            let url = format!("{}/statistics/validators/uptime", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client
@@ -54083,8 +53924,7 @@ pub mod builder {
                 .map(From::from)
                 .map_err(|s| {
                     format!(
-                        "conversion to `ResourceHoldersRequest` for body failed: {}",
-                        s,
+                        "conversion to `ResourceHoldersRequest` for body failed: {}", s
                     )
                 });
             self
@@ -54111,7 +53951,7 @@ pub mod builder {
                     types::ResourceHoldersRequest::try_from(v).map_err(|e| e.to_string())
                 })
                 .map_err(Error::InvalidRequest)?;
-            let url = format!("{}/extensions/resource-holders/page", client.baseurl);
+            let url = format!("{}/extensions/resource-holders/page", client.baseurl,);
             #[allow(unused_mut)]
             let mut request = client
                 .client

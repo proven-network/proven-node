@@ -3148,10 +3148,12 @@ components:
             Information (number and active validator list) about new epoch if occured.
             This type is defined in the Core API as `NextEpoch`. See the Core API documentation for more details.
         output:
-          type: object
+          type: array
           description: |
             The manifest line-by-line engine return data (only present if `status` is `CommittedSuccess`).
             This type is defined in the Core API as `SborData`. See the Core API documentation for more details.
+          items:
+            $ref: "#/components/schemas/SborData"
         events:
           description: Events emitted by a transaction.
           type: array
@@ -3162,6 +3164,15 @@ components:
           description: Error message (only present if status is `Failed` or `Rejected`)
           type: string
           nullable: true
+
+    SborData:
+      type: object
+      required:
+        - hex
+        - programmatic_json
+      properties:
+        hex:
+          $ref: "#/components/schemas/HexString"
 
     EventsItem:
       type: object
