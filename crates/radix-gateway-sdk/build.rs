@@ -22,7 +22,7 @@ fn main() {
     let ast = syn::parse2(tokens).unwrap();
     let content = prettyplease::unparse(&ast);
 
-    let out_file = Path::new("./src/lib.rs");
+    let out_file = Path::new("./src/codegen.rs");
 
     std::fs::write(out_file, content).unwrap();
 }
