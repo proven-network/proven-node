@@ -1,5 +1,6 @@
 use crate::{Handler, Subscriber};
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::Debug;
@@ -27,6 +28,11 @@ where
 
     /// Publishes the given data with no expectation of a response.
     async fn publish(&self, data: T) -> Result<(), Self::Error>;
+
+    /// Publishes the given data with the given headers and no expectation of a response.
+    async fn publish_with_headers<H>(&self, data: T, headers: H) -> Result<(), Self::Error>
+    where
+        H: Clone + Into<HashMap<String, String>> + Send;
 
     /// Subscribes to the subject and processes messages with the given handler.
     async fn subscribe<X, Y>(&self, subscriber: X) -> Result<Y, Y::Error>

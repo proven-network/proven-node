@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
 
@@ -17,5 +18,10 @@ where
     type Error: HandlerError;
 
     /// Handles the given data.
-    async fn handle(&self, data: T) -> Result<(), Self::Error>;
+    async fn handle(
+        &self,
+        subject: String,
+        data: T,
+        headers: Option<HashMap<String, String>>,
+    ) -> Result<(), Self::Error>;
 }

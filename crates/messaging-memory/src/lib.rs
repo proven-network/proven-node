@@ -21,9 +21,13 @@ use tokio::sync::{broadcast, Mutex};
 static GLOBAL_STATE: LazyLock<Mutex<GothamState>> =
     LazyLock::new(|| Mutex::new(GothamState::default()));
 
+type Headers = HashMap<String, String>;
+type OptionalHeaders = Option<Headers>;
+type MessageWithOptionalHeaders<T> = (T, OptionalHeaders);
+
 #[derive(Clone, Debug)]
 struct SubjectState<T> {
-    subjects: Arc<Mutex<HashMap<String, broadcast::Sender<T>>>>,
+    subjects: Arc<Mutex<HashMap<String, broadcast::Sender<MessageWithOptionalHeaders<T>>>>>,
 }
 
 impl<T> Default for SubjectState<T> {
@@ -39,6 +43,7 @@ mod tests {
     use super::subject::*;
     use super::subscriber::*;
 
+    use std::collections::HashMap;
     use std::error::Error as StdError;
 
     use async_trait::async_trait;
@@ -71,7 +76,12 @@ mod tests {
     impl Handler<Bytes> for TestHandler {
         type Error = InMemorySubscriberHandlerError;
 
-        async fn handle(&self, data: Bytes) -> Result<(), Self::Error> {
+        async fn handle(
+            &self,
+            _subject: String,
+            data: Bytes,
+            _headers_opt: Option<HashMap<String, String>>,
+        ) -> Result<(), Self::Error> {
             println!("Handling data: {:?}", data);
             self.sender
                 .send(data)
@@ -310,7 +320,12 @@ mod tests {
     #[async_trait]
     impl Handler<CustomType> for CustomHandler {
         type Error = InMemorySubscriberHandlerError;
-        async fn handle(&self, data: CustomType) -> Result<(), Self::Error> {
+        async fn handle(
+            &self,
+            _subject: String,
+            data: CustomType,
+            _headers_opt: Option<HashMap<String, String>>,
+        ) -> Result<(), Self::Error> {
             self.0
                 .send(data)
                 .await

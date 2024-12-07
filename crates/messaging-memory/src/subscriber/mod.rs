@@ -34,7 +34,7 @@ where
         let subject_state = state.borrow::<SubjectState<T>>();
         let mut subjects = subject_state.subjects.lock().await;
         let sender = subjects
-            .entry(subject_string)
+            .entry(subject_string.clone())
             .or_insert_with(|| broadcast::channel(100).0)
             .clone();
 
@@ -47,8 +47,11 @@ where
 
         let subscriber_clone = subscriber.clone();
         tokio::spawn(async move {
-            while let Ok(message) = receiver.recv().await {
-                let _ = subscriber_clone.handler().handle(message.clone()).await;
+            while let Ok((message, headers)) = receiver.recv().await {
+                let _ = subscriber_clone
+                    .handler()
+                    .handle(subject_string.clone(), message.clone(), headers)
+                    .await;
                 subscriber_clone.last_message.lock().await.replace(message);
             }
         });

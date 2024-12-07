@@ -4,7 +4,7 @@ mod error;
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
 
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -41,8 +41,16 @@ where
     type Error = Error;
     type Type = T;
 
-    #[allow(clippy::significant_drop_tightening)]
     async fn publish(&self, data: T) -> Result<(), Self::Error> {
+        self.publish_with_headers(data, std::collections::HashMap::new())
+            .await
+    }
+
+    #[allow(clippy::significant_drop_tightening)]
+    async fn publish_with_headers<H>(&self, data: T, headers: H) -> Result<(), Self::Error>
+    where
+        H: Clone + Into<HashMap<String, String>> + Send,
+    {
         let mut state = GLOBAL_STATE.lock().await;
         if !state.has::<SubjectState<T>>() {
             state.put(SubjectState::<T>::default());
@@ -59,7 +67,12 @@ where
                 .all(|(n, s)| *s == "*" || *s == ">" || *n == *s)
             {
                 if let Some(sender) = subjects.get(&subscriber) {
-                    let _ = sender.send(data.clone());
+                    let headers = headers.clone().into();
+                    if headers.is_empty() {
+                        let _ = sender.send((data.clone(), None));
+                    } else {
+                        let _ = sender.send((data.clone(), Some(headers)));
+                    }
                 }
             }
         }
