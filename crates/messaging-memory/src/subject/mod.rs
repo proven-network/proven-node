@@ -298,3 +298,54 @@ impl_scoped_subject!(
     "A triple-scoped in-memory publishable subject.",
     "A triple-scoped in-memory subject."
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_publishable_subject_validation() {
+        // Valid names should work
+        assert!(InMemoryPublishableSubject::<()>::new("foo").is_ok());
+        assert!(InMemoryPublishableSubject::<()>::new("foo-bar").is_ok());
+        assert!(InMemoryPublishableSubject::<()>::new("foo_bar").is_ok());
+        assert!(InMemoryPublishableSubject::<()>::new("123").is_ok());
+
+        // Invalid names should fail
+        assert!(matches!(
+            InMemoryPublishableSubject::<()>::new("foo.bar"),
+            Err(Error::InvalidSubjectPartial)
+        ));
+        assert!(matches!(
+            InMemoryPublishableSubject::<()>::new("foo*"),
+            Err(Error::InvalidSubjectPartial)
+        ));
+        assert!(matches!(
+            InMemoryPublishableSubject::<()>::new("foo>"),
+            Err(Error::InvalidSubjectPartial)
+        ));
+    }
+
+    #[test]
+    fn test_subject_validation() {
+        // Valid names should work
+        assert!(InMemorySubject::<()>::new("foo").is_ok());
+        assert!(InMemorySubject::<()>::new("foo-bar").is_ok());
+        assert!(InMemorySubject::<()>::new("foo_bar").is_ok());
+        assert!(InMemorySubject::<()>::new("123").is_ok());
+
+        // Invalid names should fail
+        assert!(matches!(
+            InMemorySubject::<()>::new("foo.bar"),
+            Err(Error::InvalidSubjectPartial)
+        ));
+        assert!(matches!(
+            InMemorySubject::<()>::new("foo*"),
+            Err(Error::InvalidSubjectPartial)
+        ));
+        assert!(matches!(
+            InMemorySubject::<()>::new("foo>"),
+            Err(Error::InvalidSubjectPartial)
+        ));
+    }
+}
