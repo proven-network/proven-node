@@ -1,0 +1,9 @@
+[package]
+name = "proven-messaging"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+bytes = { workspace = true }
+preinterpret = { workspace = true }

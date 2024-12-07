@@ -27,6 +27,8 @@ members = [
     "crates/local",
     "crates/locks",
     "crates/locks-memory",
+    "crates/messaging",
+    "crates/messaging-memory",
     "crates/nats-monitor",
     "crates/nats-server",
     "crates/postgres",
@@ -301,6 +303,8 @@ proven-libsql = { path = "crates/libsql" }
 proven-local = { path = "crates/local" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
+proven-messaging = { path = "crates/messaging" }
+proven-messaging-memory = { path = "crates/messaging-memory" }
 proven-nats-monitor = { path = "crates/nats-monitor" }
 proven-nats-server = { path = "crates/nats-server" }
 proven-postgres = { path = "crates/postgres" }
@@ -351,6 +355,7 @@ serde = { version = "1.0.215", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.133"
 serde_yaml = "0.9.34+deprecated"
+serial_test = "3.2.0"
 sha1 = { version = "0.10.6", features = ["oid"] }
 sha2 = { version = "0.10.8", features = ["oid"] }
 signature = "2.2.0"
