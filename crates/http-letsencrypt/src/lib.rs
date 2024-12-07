@@ -25,7 +25,7 @@ use axum::http::Method;
 use axum::Router;
 use hickory_proto::rr::{RData, RecordType};
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
-use hickory_resolver::AsyncResolver;
+use hickory_resolver::Resolver;
 use proven_http::HttpServer;
 use proven_store::Store;
 use tokio::task::JoinHandle;
@@ -162,7 +162,7 @@ where
     }
 
     async fn verify_domain_dns(domain: &str, expected_cname: &str) -> bool {
-        let dns_resolver = AsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+        let dns_resolver = Resolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
         if let Ok(response) = dns_resolver.lookup(domain, RecordType::CNAME).await {
             if let Some(RData::CNAME(cname)) = response.iter().next() {

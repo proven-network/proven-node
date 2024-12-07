@@ -26,7 +26,6 @@ impl OptionsParser {
             timeout: Duration::from_millis(5000),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
-                deno_telemetry::deno_telemetry::init_ops_and_esm(), // TODO: Remove this after rustyscript updates
                 run_options_parser_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
