@@ -18,9 +18,9 @@ async fn main() {
     .await
     .unwrap();
 
-    match radix_stream.start().await {
+    match radix_stream.start() {
         Ok(handle) => {
-            handle.await.unwrap(); // This will keep running until the task completes
+            let _ = handle.await.unwrap(); // This will keep running until the task completes
         }
         Err(e) => {
             eprintln!("Failed to start stream: {:?}", e);

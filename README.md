@@ -92,7 +92,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [radix-gateway-sdk](crates/radix-gateway-sdk): Rust port of the Radix Gateway SDK.
 - [radix-node](crates/radix-node): Configures and runs a local Radix Babylon Node.
 - [radix-rola](crates/radix-rola): Rust port of the Radix ROLA example code.
-- [radix-stream](crates/radix-stream): Handles processing transactions from Radix DLT.
+- [radix-stream](crates/radix-stream): Handles processing transactions and events from Radix DLT.
 - [runtime](crates/runtime): Manages a pool of V8 isolates for running proven application code.
 - [sessions](crates/sessions): Manages all user sessions (created via ROLA) and their associated data.
 - [sql](crates/sql): Abstract interface for managing SQL storage.

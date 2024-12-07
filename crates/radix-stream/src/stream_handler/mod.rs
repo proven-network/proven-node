@@ -12,7 +12,7 @@ pub struct Handler {}
 
 impl Handler {
     #[allow(dead_code)]
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {}
     }
 }

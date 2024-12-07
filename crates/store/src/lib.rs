@@ -18,8 +18,8 @@ pub trait StoreError: Error + Send + Sync + 'static {}
 pub trait Store<T = Bytes, DE = Infallible, SE = Infallible>
 where
     Self: Clone + Send + Sync + 'static,
-    DE: std::error::Error + Send + Sync + 'static,
-    SE: std::error::Error + Send + Sync + 'static,
+    DE: Error + Send + Sync + 'static,
+    SE: Error + Send + Sync + 'static,
     T: Clone + Send + Sync + 'static,
 {
     /// The error type for the store.
@@ -54,8 +54,8 @@ macro_rules! define_scoped_store {
             pub trait #name<T = Bytes, DE = Infallible, SE = Infallible>
             where
                 Self: Clone + Send + Sync + 'static,
-                DE: std::error::Error + Send + Sync + 'static,
-                SE: std::error::Error + Send + Sync + 'static,
+                DE: Error + Send + Sync + 'static,
+                SE: Error + Send + Sync + 'static,
                 T: Clone + Send + Sync + 'static,
             {
                 /// The error type for the store.
