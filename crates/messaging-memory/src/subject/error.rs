@@ -1,9 +1,12 @@
 use proven_messaging::SubjectError;
 use thiserror::Error;
 
-/// Errors that can occur in this crate.
+/// An error that can occur when working with subjects.
 #[derive(Clone, Debug, Error)]
-#[error("Subject error")]
-pub struct Error;
+pub enum Error {
+    /// The subject name is invalid.
+    #[error("invalid subject name - must not contain '.', '*', or '>'")]
+    InvalidSubjectPartial,
+}
 
 impl SubjectError for Error {}

@@ -22,14 +22,21 @@ pub struct InMemoryPublishableSubject<T = Bytes> {
 
 impl<T> InMemoryPublishableSubject<T> {
     /// Creates a new in-memory publishable subject.
-    pub fn new<K>(subject_partial: K) -> Self
+    ///
+    /// # Errors
+    /// Returns an error if the subject partial contains '.', '*' or '>'
+    pub fn new<K>(subject_partial: K) -> Result<Self, Error>
     where
         K: Into<String> + Send,
     {
-        Self {
-            full_subject: subject_partial.into(),
-            _phantom: std::marker::PhantomData,
+        let subject = subject_partial.into();
+        if subject.contains('.') || subject.contains('*') || subject.contains('>') {
+            return Err(Error::InvalidSubjectPartial);
         }
+        Ok(Self {
+            full_subject: subject,
+            _phantom: std::marker::PhantomData,
+        })
     }
 }
 
@@ -97,14 +104,21 @@ pub struct InMemorySubject<T = Bytes> {
 
 impl<T> InMemorySubject<T> {
     /// Creates a new in-memory subject.
-    pub fn new<K>(subject_partial: K) -> Self
+    ///
+    /// # Errors
+    /// Returns an error if the subject partial contains '.', '*' or '>'
+    pub fn new<K>(subject_partial: K) -> Result<Self, Error>
     where
         K: Into<String> + Send,
     {
-        Self {
-            full_subject: subject_partial.into(),
-            _phantom: std::marker::PhantomData,
+        let subject = subject_partial.into();
+        if subject.contains('.') || subject.contains('*') || subject.contains('>') {
+            return Err(Error::InvalidSubjectPartial);
         }
+        Ok(Self {
+            full_subject: subject,
+            _phantom: std::marker::PhantomData,
+        })
     }
 }
 
@@ -142,14 +156,21 @@ macro_rules! impl_scoped_subject {
 
             impl<T> #pub_full_subject<T> {
                 /// Creates a new in-memory publishable subject.
-                pub fn new<K>(subject_partial: K) -> Self
+                ///
+                /// # Errors
+                /// Returns an error if the subject partial contains '.', '*' or '>'
+                pub fn new<K>(subject_partial: K) -> Result<Self, Error>
                 where
                     K: Into<String> + Send,
                 {
-                    Self {
-                        full_subject: subject_partial.into(),
-                        _phantom: std::marker::PhantomData,
+                    let subject = subject_partial.into();
+                    if subject.contains('.') || subject.contains('*') || subject.contains('>') {
+                        return Err(Error::InvalidSubjectPartial);
                     }
+                    Ok(Self {
+                        full_subject: subject,
+                        _phantom: std::marker::PhantomData,
+                    })
                 }
             }
 
@@ -198,14 +219,21 @@ macro_rules! impl_scoped_subject {
 
             impl<T> #sub_full_subject<T> {
                 /// Creates a new in-memory subject.
-                pub fn new<K>(subject_partial: K) -> Self
+                ///
+                /// # Errors
+                /// Returns an error if the subject partial contains '.', '*' or '>'
+                pub fn new<K>(subject_partial: K) -> Result<Self, Error>
                 where
                     K: Into<String> + Send,
                 {
-                    Self {
-                        full_subject: subject_partial.into(),
-                        _phantom: std::marker::PhantomData,
+                    let subject = subject_partial.into();
+                    if subject.contains('.') || subject.contains('*') || subject.contains('>') {
+                        return Err(Error::InvalidSubjectPartial);
                     }
+                    Ok(Self {
+                        full_subject: subject,
+                        _phantom: std::marker::PhantomData,
+                    })
                 }
             }
 

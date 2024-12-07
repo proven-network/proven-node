@@ -98,7 +98,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_no_scope() {
-        let subject = InMemoryPublishableSubject::new("test");
+        let subject = InMemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
         let _: InMemorySubscriber<Bytes, TestHandler> = subject.subscribe(handler).await.unwrap();
@@ -125,7 +125,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_single_scope() {
-        let subject2 = InMemoryPublishableSubject2::new("test");
+        let subject2 = InMemoryPublishableSubject2::new("test").unwrap();
         let subject1 = subject2.scope("scope1").scope("scope2");
 
         let (handler, mut receiver) = setup_test_handler();
@@ -154,7 +154,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_double_scope() {
-        let subject3 = InMemoryPublishableSubject3::new("test");
+        let subject3 = InMemoryPublishableSubject3::new("test").unwrap();
         let subject2 = subject3.scope("scope2");
         let subject1 = subject2.scope("scope1").scope("scope3");
 
@@ -184,7 +184,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_triple_scope() {
-        let subject3 = InMemoryPublishableSubject3::new("test");
+        let subject3 = InMemoryPublishableSubject3::new("test").unwrap();
         let subject2 = subject3.scope("scope1");
         let subject1 = subject2.scope("scope2");
         let subject = subject1.scope("scope3");
@@ -215,7 +215,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_wildcard_scope() {
-        let subject3 = InMemoryPublishableSubject3::new("test");
+        let subject3 = InMemoryPublishableSubject3::new("test").unwrap();
         let subject2 = subject3.scope("scope2");
         let subject1 = subject2.scope("scope1").scope("scope3");
 
@@ -248,7 +248,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_greedy_wildcard_scope() {
-        let subject3 = InMemoryPublishableSubject3::new("test");
+        let subject3 = InMemoryPublishableSubject3::new("test").unwrap();
         let subject2 = subject3.scope("scope2");
         let subject1 = subject2.scope("scope1").scope("scope3");
 
@@ -281,7 +281,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_last_message() {
-        let subject = InMemoryPublishableSubject::new("test");
+        let subject = InMemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
         let subscriber: InMemorySubscriber<Bytes, TestHandler> =
@@ -336,7 +336,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_non_bytes() {
-        let subject = InMemoryPublishableSubject::new("test");
+        let subject = InMemoryPublishableSubject::new("test").unwrap();
 
         let (sender, mut receiver) = mpsc::channel(10);
         let handler = CustomHandler(sender);
