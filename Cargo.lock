@@ -6810,6 +6810,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures",
+ "paste",
  "proven-messaging",
  "serde",
  "serial_test",

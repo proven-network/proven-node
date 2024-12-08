@@ -4,7 +4,9 @@ mod error;
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
 
-use std::{collections::HashMap, fmt::Debug};
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -17,7 +19,7 @@ use proven_messaging::{
 #[derive(Clone, Debug)]
 pub struct InMemoryPublishableSubject<T = Bytes> {
     full_subject: String,
-    _phantom: std::marker::PhantomData<T>,
+    _marker: PhantomData<T>,
 }
 
 impl<T> InMemoryPublishableSubject<T> {
@@ -35,7 +37,7 @@ impl<T> InMemoryPublishableSubject<T> {
         }
         Ok(Self {
             full_subject: subject,
-            _phantom: std::marker::PhantomData,
+            _marker: PhantomData,
         })
     }
 }
@@ -99,7 +101,7 @@ where
 #[derive(Clone, Debug)]
 pub struct InMemorySubject<T = Bytes> {
     full_subject: String,
-    _phantom: std::marker::PhantomData<T>,
+    _marker: PhantomData<T>,
 }
 
 impl<T> InMemorySubject<T> {
@@ -117,7 +119,7 @@ impl<T> InMemorySubject<T> {
         }
         Ok(Self {
             full_subject: subject,
-            _phantom: std::marker::PhantomData,
+            _marker: PhantomData,
         })
     }
 }
@@ -146,7 +148,7 @@ macro_rules! impl_scoped_subject {
             #[doc = $doc_pub]
             pub struct [< InMemoryPublishableSubject $index >]<T = Bytes> {
                 full_subject: String,
-                _phantom: std::marker::PhantomData<T>,
+                _marker: PhantomData<T>,
             }
 
             impl<T> [< InMemoryPublishableSubject $index >]<T> {
@@ -164,7 +166,7 @@ macro_rules! impl_scoped_subject {
                     }
                     Ok(Self {
                         full_subject: subject,
-                        _phantom: std::marker::PhantomData,
+                        _marker: PhantomData,
                     })
                 }
             }
@@ -183,14 +185,14 @@ macro_rules! impl_scoped_subject {
                 fn any(&self) -> Self::WildcardAnyScoped {
                     $parent_sub {
                         full_subject: format!("{}.*", self.full_subject),
-                        _phantom: std::marker::PhantomData,
+                        _marker: PhantomData,
                     }
                 }
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     InMemorySubject {
                         full_subject: format!("{}.>", self.full_subject),
-                        _phantom: std::marker::PhantomData,
+                        _marker: PhantomData,
                     }
                 }
 
@@ -200,7 +202,7 @@ macro_rules! impl_scoped_subject {
                 {
                     $parent_pub {
                         full_subject: format!("{}.{}", self.full_subject, scope.into()),
-                        _phantom: std::marker::PhantomData,
+                        _marker: PhantomData,
                     }
                 }
             }
@@ -209,7 +211,7 @@ macro_rules! impl_scoped_subject {
             #[doc = $doc_sub]
             pub struct [< InMemorySubject $index >]<T = Bytes> {
                 full_subject: String,
-                _phantom: std::marker::PhantomData<T>,
+                _marker: PhantomData<T>,
             }
 
             impl<T> [< InMemorySubject $index >]<T> {
@@ -227,7 +229,7 @@ macro_rules! impl_scoped_subject {
                     }
                     Ok(Self {
                         full_subject: subject,
-                        _phantom: std::marker::PhantomData,
+                        _marker: PhantomData,
                     })
                 }
             }
@@ -245,14 +247,14 @@ macro_rules! impl_scoped_subject {
                 fn any(&self) -> Self::Scoped {
                     $parent_sub {
                         full_subject: format!("{}.*", self.full_subject),
-                        _phantom: std::marker::PhantomData,
+                        _marker: PhantomData,
                     }
                 }
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     InMemorySubject {
                         full_subject: format!("{}.>", self.full_subject),
-                        _phantom: std::marker::PhantomData,
+                        _marker: PhantomData,
                     }
                 }
 
@@ -262,7 +264,7 @@ macro_rules! impl_scoped_subject {
                 {
                     $parent_sub {
                         full_subject: format!("{}.{}", self.full_subject, scope.into()),
-                        _phantom: std::marker::PhantomData,
+                        _marker: PhantomData,
                     }
                 }
             }

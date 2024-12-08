@@ -8,6 +8,7 @@ async-nats = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
+paste = { workspace = true }
 proven-messaging = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
