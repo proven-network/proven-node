@@ -11,7 +11,7 @@ use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
 use proven_nats_server::NatsServer;
 use proven_runtime::RuntimePoolManager;
-use proven_sessions::SessionManager;
+use proven_sessions::{Session, SessionManager};
 use proven_sql_streamed::stream_handler::SqlStreamHandler;
 use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
@@ -40,7 +40,15 @@ pub type EnclaveCore = Core<
         StreamedSqlStore3<NatsStream3<SqlStreamHandler>, NatsStore>,
         StreamedSqlStore3<NatsStream3<SqlStreamHandler>, NatsStore>,
     >,
-    SessionManager<NsmAttestor, NatsStore1, NatsStore1>,
+    SessionManager<
+        NsmAttestor,
+        NatsStore1,
+        NatsStore1<
+            Session,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
+    >,
 >;
 
 pub struct Services {

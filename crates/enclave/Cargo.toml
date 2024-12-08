@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 async-nats = { workspace = true }
 bytes = { workspace = true }
+ciborium = { workspace = true }
 cidr = { workspace = true }
 fdlimit = { workspace = true }
 futures = { workspace = true }

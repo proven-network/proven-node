@@ -23,8 +23,19 @@ use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
 use tokio::io::AsyncReadExt;
 
+/// Options for configuring an `S3Store`.
+pub struct S3StoreOptions {
+    /// The S3 bucket to use for the key-value store (must be created in advance currently).
+    pub bucket: String,
+
+    /// The AWS region to use.
+    pub region: String,
+
+    /// The secret key to use for AES-256 encryption.
+    pub secret_key: [u8; 32],
+}
+
 /// KV store using AWS S3.
-#[derive(Clone, Debug)]
 pub struct S3Store<T = Bytes, DE = Infallible, SE = Infallible>
 where
     Self: Clone + Debug + Send + Sync + 'static,
@@ -41,16 +52,37 @@ where
     _marker3: PhantomData<SE>,
 }
 
-/// Options for configuring an `S3Store`.
-pub struct S3StoreOptions {
-    /// The S3 bucket to use for the key-value store (must be created in advance currently).
-    pub bucket: String,
+impl<T, DE, SE> Clone for S3Store<T, DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            bucket: self.bucket.clone(),
+            client: self.client.clone(),
+            secret_key: self.secret_key,
+            prefix: self.prefix.clone(),
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
+        }
+    }
+}
 
-    /// The AWS region to use.
-    pub region: String,
-
-    /// The secret key to use for AES-256 encryption.
-    pub secret_key: [u8; 32],
+impl<T, DE, SE> Debug for S3Store<T, DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("S3Store")
+            .field("bucket", &self.bucket)
+            .field("prefix", &self.prefix)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<T, DE, SE> S3Store<T, DE, SE>
@@ -112,7 +144,7 @@ where
         + TryInto<Bytes, Error = SE>
         + 'static,
 {
-    type Error = Error;
+    type Error = Error<DE, SE>;
 
     async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let key = self.get_key(key);
@@ -252,10 +284,9 @@ macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            #[derive(Clone, Debug)]
             pub struct [< S3Store $index >]<T = Bytes, DE = Infallible, SE = Infallible>
             where
-                Self: Debug + Send + Sync + 'static,
+                Self: Clone + Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone
@@ -275,9 +306,8 @@ macro_rules! impl_scoped_store {
                 _marker3: PhantomData<SE>,
             }
 
-            impl<T, DE, SE> Clone for $parent<T, DE, SE>
+            impl<T, DE, SE> Clone for [< S3Store $index >]<T, DE, SE>
             where
-                Self: Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone
@@ -301,9 +331,8 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> Debug for $parent<T, DE, SE>
+            impl<T, DE, SE> Debug for [< S3Store $index >]<T, DE, SE>
             where
-                Self: Clone + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone
@@ -324,7 +353,7 @@ macro_rules! impl_scoped_store {
 
             impl<T, DE, SE> [< S3Store $index >]<T, DE, SE>
             where
-                Self: Debug + Send + Sync + 'static,
+                Self: Clone + Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone
@@ -374,7 +403,7 @@ macro_rules! impl_scoped_store {
                     + TryInto<Bytes, Error = SE>
                     + 'static,
             {
-                type Error = Error;
+                type Error = Error<DE, SE>;
                 type Scoped = $parent<T, DE, SE>;
 
                 fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {

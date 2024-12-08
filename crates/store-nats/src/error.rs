@@ -1,9 +1,11 @@
+use std::convert::Infallible;
+
 use proven_store::StoreError;
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
 #[derive(Clone, Debug, Error)]
-pub enum Error<DE, SE>
+pub enum Error<DE = Infallible, SE = Infallible>
 where
     DE: std::error::Error + Send + Sync + 'static,
     SE: std::error::Error + Send + Sync + 'static,

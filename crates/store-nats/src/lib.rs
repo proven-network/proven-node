@@ -214,7 +214,7 @@ macro_rules! impl_scoped_store {
             #[doc = $doc]
             pub struct [< NatsStore $index >]<T = Bytes, DE = Infallible, SE = Infallible>
             where
-                Self: Debug + Send + Sync + 'static,
+                Self: Clone + Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone

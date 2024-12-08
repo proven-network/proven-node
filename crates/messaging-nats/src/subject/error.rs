@@ -1,9 +1,11 @@
+use std::convert::Infallible;
+
 use proven_messaging::SubjectError;
 use thiserror::Error;
 
 /// Error type for NATS operations.
 #[derive(Debug, Error, Clone)]
-pub enum Error<DE, SE>
+pub enum Error<DE = Infallible, SE = Infallible>
 where
     DE: std::error::Error + Send + Sync + 'static,
     SE: std::error::Error + Send + Sync + 'static,
