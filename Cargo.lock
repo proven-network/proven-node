@@ -7135,6 +7135,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "paste",
+ "proven-messaging",
 ]
 
 [[package]]

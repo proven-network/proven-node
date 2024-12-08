@@ -7,3 +7,4 @@ edition = "2021"
 async-trait = { workspace = true }
 bytes = { workspace = true }
 paste = { workspace = true }
+proven-messaging = { workspace = true }
