@@ -21,6 +21,10 @@ where
     /// Subscribe error.
     #[error("Failed to subscribe")]
     Subscribe,
+
+    /// Unsubscribe error.
+    #[error("Failed to unsubscribe")]
+    Unsubscribe,
 }
 
 impl<DE, SE> SubscriptionError for Error<DE, SE>

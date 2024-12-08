@@ -11,6 +11,7 @@ use bytes::Bytes;
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
 use proven_messaging::subscription_handler::SubscriptionHandler;
 use tokio::sync::{broadcast, Mutex};
+use tokio_util::sync::CancellationToken;
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -20,6 +21,7 @@ impl SubscriptionOptions for InMemorySubscriberOptions {}
 /// A in-memory subscriber.
 #[derive(Clone, Debug, Default)]
 pub struct InMemorySubscriber<X, T = Bytes> {
+    cancel_token: CancellationToken,
     handler: X,
     last_message: Arc<Mutex<Option<T>>>,
 }
@@ -53,18 +55,24 @@ where
         let mut receiver = sender.subscribe();
 
         let subscriber = Self {
+            cancel_token: CancellationToken::new(),
             handler,
             last_message: Arc::new(Mutex::new(None)),
         };
 
         let subscriber_clone = subscriber.clone();
+        let cancel_token = subscriber.cancel_token.clone();
         tokio::spawn(async move {
-            while let Ok((message, headers)) = receiver.recv().await {
-                let _ = subscriber_clone
-                    .handler()
-                    .handle(subject_string.clone(), message.clone(), headers)
-                    .await;
-                subscriber_clone.last_message.lock().await.replace(message);
+            tokio::select! {
+                () = cancel_token.cancelled() => {
+                    drop(receiver);
+                }
+                message = receiver.recv() => {
+                    if let Ok((message, headers)) = message {
+                        let _ = subscriber_clone.handler().handle(subject_string.clone(), message.clone(), headers).await;
+                        subscriber_clone.last_message.lock().await.replace(message);
+                    }
+                }
             }
         });
 

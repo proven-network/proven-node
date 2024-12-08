@@ -6801,6 +6801,7 @@ dependencies = [
  "serial_test",
  "thiserror 2.0.5",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -6817,6 +6818,7 @@ dependencies = [
  "serial_test",
  "thiserror 2.0.5",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

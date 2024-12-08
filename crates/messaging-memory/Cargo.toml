@@ -10,6 +10,7 @@ paste = { workspace = true }
 proven-messaging = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 
 [dev-dependencies]
 serial_test = { workspace = true }

@@ -12,7 +12,10 @@ use bytes::Bytes;
 use futures::StreamExt;
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
 use proven_messaging::subscription_handler::SubscriptionHandler;
-use tokio::sync::Mutex;
+use tokio::sync::{oneshot, Mutex};
+use tokio_util::sync::CancellationToken;
+
+type CancelResultChannel<DE, SE> = oneshot::Sender<Result<(), Error<DE, SE>>>;
 
 /// Options for new NATS subscribers.
 #[derive(Clone, Debug)]
@@ -32,6 +35,8 @@ where
     T: Clone + Debug + Send + Sync + 'static,
     X: SubscriptionHandler<T>,
 {
+    cancel_result_channel: Arc<Mutex<Option<CancelResultChannel<DE, SE>>>>,
+    cancel_token: CancellationToken,
     handler: X,
     last_message: Arc<Mutex<Option<T>>>,
     _marker: std::marker::PhantomData<DE>,
@@ -91,43 +96,60 @@ where
         options: Self::Options,
         handler: X,
     ) -> Result<Self, Self::Error> {
-        let subscriber = Self {
+        let subscription = Self {
+            cancel_result_channel: Arc::new(Mutex::new(None)),
+            cancel_token: CancellationToken::new(),
             handler,
             last_message: Arc::new(Mutex::new(None)),
             _marker: std::marker::PhantomData,
             _marker2: std::marker::PhantomData,
         };
 
-        let mut subscription = options
+        let mut subscriber = options
             .client
             .subscribe(subject_string.clone())
             .await
             .map_err(|_| Error::<DE, SE>::Subscribe)?;
 
-        let subscriber_clone = subscriber.clone();
+        let subscription_clone = subscription.clone();
+        let token = subscription.cancel_token.clone();
+
         tokio::spawn(async move {
-            while let Some(msg) = subscription.next().await {
-                let data: T = msg
-                    .payload
-                    .try_into()
-                    .map_err(|e| Error::<DE, SE>::Deserialize(e))
-                    .unwrap();
-                let headers = msg.headers.as_ref().and_then(Self::extract_headers);
+            tokio::select! {
+                () = token.cancelled() => {
+                    let result = subscriber.unsubscribe().await.map_err(|_| Error::<DE, SE>::Unsubscribe);
 
-                let _ = subscriber_clone
-                    .handler()
-                    .handle(subject_string.clone(), data.clone(), headers)
-                    .await;
+                    subscription_clone.cancel_result_channel.lock().await.take().unwrap().send(result).unwrap();
+                }
+                message = subscriber.next() => {
+                    if let Some(msg) = message {
+                        let data: T = msg
+                            .payload
+                            .try_into()
+                            .map_err(|e| Error::<DE, SE>::Deserialize(e))
+                            .unwrap();
+                        let headers = msg.headers.as_ref().and_then(Self::extract_headers);
 
-                subscriber_clone.last_message.lock().await.replace(data);
+                        let _ = subscription_clone
+                            .handler()
+                            .handle(subject_string.clone(), data.clone(), headers)
+                            .await;
+
+                            subscription_clone.last_message.lock().await.replace(data);
+                    }
+                }
             }
         });
 
-        Ok(subscriber)
+        Ok(subscription)
     }
 
     async fn cancel(self) -> Result<(), Self::Error> {
-        Ok(())
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        self.cancel_result_channel.lock().await.replace(sender);
+        self.cancel_token.cancel();
+
+        receiver.await.unwrap()
     }
 
     fn handler(&self) -> X {
