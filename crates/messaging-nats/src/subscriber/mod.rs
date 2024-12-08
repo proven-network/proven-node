@@ -115,27 +115,29 @@ where
         let token = subscription.cancel_token.clone();
 
         tokio::spawn(async move {
-            tokio::select! {
-                () = token.cancelled() => {
-                    let result = subscriber.unsubscribe().await.map_err(|_| Error::<DE, SE>::Unsubscribe);
+            loop {
+                tokio::select! {
+                    () = token.cancelled() => {
+                        let result = subscriber.unsubscribe().await.map_err(|_| Error::<DE, SE>::Unsubscribe);
 
-                    subscription_clone.cancel_result_channel.lock().await.take().unwrap().send(result).unwrap();
-                }
-                message = subscriber.next() => {
-                    if let Some(msg) = message {
-                        let data: T = msg
-                            .payload
-                            .try_into()
-                            .map_err(|e| Error::<DE, SE>::Deserialize(e))
-                            .unwrap();
-                        let headers = msg.headers.as_ref().and_then(Self::extract_headers);
+                        subscription_clone.cancel_result_channel.lock().await.take().unwrap().send(result).unwrap();
+                    }
+                    message = subscriber.next() => {
+                        if let Some(msg) = message {
+                            let data: T = msg
+                                .payload
+                                .try_into()
+                                .map_err(|e| Error::<DE, SE>::Deserialize(e))
+                                .unwrap();
+                            let headers = msg.headers.as_ref().and_then(Self::extract_headers);
 
-                        let _ = subscription_clone
-                            .handler()
-                            .handle(subject_string.clone(), data.clone(), headers)
-                            .await;
+                            let _ = subscription_clone
+                                .handler()
+                                .handle(subject_string.clone(), data.clone(), headers)
+                                .await;
 
-                            subscription_clone.last_message.lock().await.replace(data);
+                                subscription_clone.last_message.lock().await.replace(data);
+                        }
                     }
                 }
             }

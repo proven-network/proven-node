@@ -65,14 +65,16 @@ where
         let subscriber_clone = subscriber.clone();
         let cancel_token = subscriber.cancel_token.clone();
         tokio::spawn(async move {
-            tokio::select! {
-                () = cancel_token.cancelled() => {
-                    drop(receiver);
-                }
-                message = receiver.recv() => {
-                    if let Ok((message, headers)) = message {
-                        let _ = subscriber_clone.handler().handle(subject_string, message.clone(), headers).await;
-                        subscriber_clone.last_message.lock().await.replace(message);
+            loop {
+                tokio::select! {
+                    () = cancel_token.cancelled() => {
+                        break;
+                    }
+                    message = receiver.recv() => {
+                        if let Ok((message, headers)) = message {
+                            let _ = subscriber_clone.handler().handle(subject_string.clone(), message.clone(), headers).await;
+                            subscriber_clone.last_message.lock().await.replace(message);
+                        }
                     }
                 }
             }
@@ -82,6 +84,7 @@ where
     }
 
     async fn cancel(self) -> Result<(), Self::Error> {
+        self.cancel_token.cancel();
         Ok(())
     }
 
