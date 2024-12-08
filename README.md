@@ -83,7 +83,10 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [local](crates/local): Binary to bootstrap other components locally. Similar to [enclave](crates/enclave) but for local development.
 - [locks](crates/locks): Abstract interface for managing system-global distributed locks.
 - [locks-memory](crates/locks-memory): In-memory (single node) implementation of locks for local development.
-- locks-nats: TODO: Implementation of distributed locks using NATS with HA replication.
+- locks-nats: TODO: Implementation of distributed locks using NATS Jetstream with HA replication.
+- [messaging](crates/messaging): Abstract interface for pub/sub messaging across subjects.
+- [messaging-memory](crates/messaging-memory): In-memory (single node) implementation of messaging for local development.
+- [messaging-nats](crates/messaging-nats): Implementation of messaging using Core NATS.
 - [nats-monitor](crates/nats-monitor): Helper crate for querying NATS HTTP monitoring endpoints.
 - [nats-server](crates/nats-server): Configures and runs a NATS server for inter-node communication.
 - [postgres](crates/postgres): Configures and runs a Postgres server to provide storage for Radix Gateway.
@@ -102,11 +105,11 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [store-asm](crates/store-asm): Implementation of key-value storage using AWS Secrets Manager. Values typically double-encrypted using KMS with enclave-specific keys.
 - [store-fs](crates/store-fs): Implementation of key-value storage using files on disk, for local development.
 - [store-memory](crates/store-memory): In-memory (single node) implementation of key-value storage for local development.
-- [store-nats](crates/store-nats): Implementation of key-value storage using NATS with HA replication.
+- [store-nats](crates/store-nats): Implementation of key-value storage using NATS Jetstream with HA replication.
 - [store-s3](crates/store-s3): Implementation of key-value storage using AWS S3. Values encrypted using AES-256 via SSE-C.
-- [stream](crates/stream): Abstract interface for managing streams.
+- [stream](crates/stream): Abstract interface for managing stateful streams on top of the messaging layer.
 - [stream-memory](crates/stream-memory): In-memory (single node) implementation of streams for local development.
-- [stream-nats](crates/stream-nats): Implementation of streams using NATS with HA replication.
+- [stream-nats](crates/stream-nats): Implementation of streams using NATS Jetstream with HA replication.
 - [vsock-proxy](crates/vsock-proxy): High performance layer-3 proxy for enabling enclave networking over virtio sockets.
 - [vsock-rpc](crates/vsock-rpc): Manages RPC between host and enclave over virtio sockets. Defines commands like initialize, shutdown, add peer, etc.
 - [vsock-tracing](crates/vsock-tracing): Provides a tracing subscriber to allow logs to be sent from enclave to host for processing.
