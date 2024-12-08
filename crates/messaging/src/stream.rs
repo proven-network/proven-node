@@ -37,6 +37,9 @@ where
     /// Returns the name of the stream.
     async fn name(&self) -> String;
 
+    /// Publishes a message directly to the stream.
+    async fn publish(&self, message: T) -> Result<usize, Self::Error>;
+
     /// Consumes the stream with the given consumer.
     async fn start_consumer<C>(&self, consumer: C) -> Result<(), Self::Error>
     where

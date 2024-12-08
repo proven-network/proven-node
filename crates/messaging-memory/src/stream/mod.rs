@@ -87,6 +87,15 @@ where
         self.name.clone()
     }
 
+    /// Publishes a message directly to the stream.
+    async fn publish(&self, message: T) -> Result<usize, Self::Error> {
+        let mut messages = self.messages.lock().await;
+        let seq = messages.len();
+        messages.push(message);
+
+        Ok(seq)
+    }
+
     /// Consumes the stream with the given consumer.
     async fn start_consumer<C>(&self, _consumer: C) -> Result<(), Self::Error>
     where
@@ -285,5 +294,24 @@ mod tests {
         let stream = scoped_stream.init(vec![subject]).await.unwrap();
 
         assert_eq!(stream.name().await, "scope1:scope2");
+    }
+
+    #[tokio::test]
+    async fn test_direct_publish() {
+        let subject = MemorySubject::new("test_direct_publish").unwrap();
+        let stream: MemoryStream<String> = MemoryStream::new("test_stream", vec![subject])
+            .await
+            .unwrap();
+
+        let message1 = "test_message1".to_string();
+        let message2 = "test_message2".to_string();
+
+        let seq1 = stream.publish(message1.clone()).await.unwrap();
+        let seq2 = stream.publish(message2.clone()).await.unwrap();
+
+        assert_eq!(seq1, 0);
+        assert_eq!(seq2, 1);
+        assert_eq!(stream.get(0).await.unwrap(), Some(message1));
+        assert_eq!(stream.get(1).await.unwrap(), Some(message2));
     }
 }
