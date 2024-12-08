@@ -23,13 +23,13 @@ where
     type Error: StreamError;
 
     /// Creates a new stream with the given subjects - must all be the same type.
-    async fn new<J, N>(stream_name: N, subjects: Vec<J>) -> Self
+    async fn new<J, N>(stream_name: N, subjects: Vec<J>) -> Result<Self, Self::Error>
     where
         N: Into<String> + Send,
         J: Subject<T, DE, SE>;
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: u64) -> Result<Option<T>, Self::Error>;
+    async fn get(&self, seq: usize) -> Result<Option<T>, Self::Error>;
 
     /// The last message in the stream.
     async fn last_message(&self) -> Result<Option<T>, Self::Error>;

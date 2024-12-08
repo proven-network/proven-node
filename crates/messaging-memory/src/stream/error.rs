@@ -1,28 +1,21 @@
-use std::convert::Infallible;
-use std::error::Error as StdError;
+use std::fmt::Debug;
 
 use proven_messaging::stream::StreamError;
 use thiserror::Error;
 
 /// Error type for memory stream operations.
-#[derive(Debug, Error, Clone)]
-pub enum Error<DE = Infallible, SE = Infallible>
+#[derive(Debug, Error)]
+pub enum Error<T>
 where
-    DE: std::error::Error + Send + Sync + 'static,
-    SE: std::error::Error + Send + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
 {
-    /// Deserialization error.
+    /// An error occured while subscribing to a subject.
     #[error(transparent)]
-    Deserialize(DE),
+    Subscription(#[from] crate::subscription::Error),
 
-    /// Serialization error.
+    /// An error occurred while handling a subscription.
     #[error(transparent)]
-    Serialize(SE),
+    SubscriptionHandler(#[from] super::subscription_handler::Error<T>),
 }
 
-impl<DE, SE> StreamError for Error<DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-{
-}
+impl<T> StreamError for Error<T> where T: Clone + Debug + Send + Sync + 'static {}
