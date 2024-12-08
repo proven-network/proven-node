@@ -2,9 +2,12 @@ mod error;
 
 pub use error::Error;
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error as StdError;
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::sync::Arc;
 
 use async_nats::Client;
 use async_trait::async_trait;
@@ -39,7 +42,7 @@ where
     cancel_token: CancellationToken,
     handler: X,
     last_message: Arc<Mutex<Option<T>>>,
-    _marker: std::marker::PhantomData<(T, DE, SE)>,
+    _marker: PhantomData<(T, DE, SE)>,
 }
 
 impl<X, T, DE, SE> NatsSubscriber<X, T, DE, SE>
@@ -100,7 +103,7 @@ where
             cancel_token: CancellationToken::new(),
             handler,
             last_message: Arc::new(Mutex::new(None)),
-            _marker: std::marker::PhantomData,
+            _marker: PhantomData,
         };
 
         let mut subscriber = options

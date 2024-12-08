@@ -8,6 +8,9 @@ mod error;
 
 pub use error::Error;
 
+use std::fmt::Debug;
+use std::marker::PhantomData;
+
 use async_nats::jetstream;
 use async_nats::jetstream::consumer::pull::Config as ConsumerConfig;
 use async_nats::jetstream::stream::Config as StreamConfig;
@@ -19,7 +22,6 @@ use bytes::Bytes;
 use futures::StreamExt;
 use proven_stream::{Stream, Stream1, Stream2, Stream3, StreamHandler};
 use serde::Deserialize;
-use std::fmt::Debug;
 
 #[derive(Deserialize)]
 struct StreamPublishReply {
@@ -45,7 +47,7 @@ where
     client: Client,
     jetstream_context: JetStreamContext,
     stream_name: String,
-    _marker: std::marker::PhantomData<H>,
+    _marker: PhantomData<H>,
 }
 
 impl<H> NatsStream<H>
@@ -66,7 +68,7 @@ where
             client,
             jetstream_context,
             stream_name,
-            _marker: std::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 
@@ -313,7 +315,7 @@ macro_rules! impl_scoped_stream {
                 client: Client,
                 jetstream_context: JetStreamContext,
                 stream_name: String,
-                _marker: std::marker::PhantomData<H>,
+                _marker: PhantomData<H>,
             }
 
             impl<H> [< NatsStream $index >]<H>
@@ -334,7 +336,7 @@ macro_rules! impl_scoped_stream {
                         client,
                         jetstream_context,
                         stream_name,
-                        _marker: std::marker::PhantomData,
+                        _marker: PhantomData,
                     }
                 }
 
@@ -344,7 +346,7 @@ macro_rules! impl_scoped_stream {
                         client: self.client.clone(),
                         jetstream_context: self.jetstream_context.clone(),
                         stream_name: format!("{}_{}", self.stream_name, scope).to_ascii_uppercase(),
-                        _marker: std::marker::PhantomData,
+                        _marker: PhantomData,
                     }
                 }
             }
