@@ -9,12 +9,13 @@ use subscription_handler::StreamSubscriptionHandler;
 
 use std::convert::Infallible;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use proven_messaging::consumer::Consumer;
 use proven_messaging::service::Service;
-use proven_messaging::stream::Stream;
+use proven_messaging::stream::{ScopedStream, ScopedStream1, ScopedStream2, ScopedStream3, Stream};
 use proven_messaging::subject::Subject;
 use tokio::sync::{mpsc, Mutex};
 
@@ -102,6 +103,117 @@ where
         unimplemented!()
     }
 }
+
+/// All scopes applied and can initialize.
+#[derive(Clone, Debug, Default)]
+pub struct ScopedMemoryStream<T>
+where
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    prefix: Option<String>,
+    _marker: PhantomData<T>,
+}
+
+impl<T> ScopedMemoryStream<T>
+where
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    const fn with_scope(prefix: String) -> Self {
+        Self {
+            prefix: Some(prefix),
+            _marker: PhantomData,
+        }
+    }
+}
+
+#[async_trait]
+impl<T> ScopedStream<T, Infallible, Infallible> for ScopedMemoryStream<T>
+where
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    type Error = Error<T>;
+
+    async fn init<J>(&self, subjects: Vec<J>) -> Result<MemoryStream<T>, Self::Error>
+    where
+        J: Subject<T, Infallible, Infallible>,
+    {
+        let stream = MemoryStream::new(self.prefix.clone().unwrap(), subjects).await?;
+        Ok(stream)
+    }
+}
+
+macro_rules! impl_scoped_stream {
+    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+        paste::paste! {
+            #[doc = $doc]
+            #[derive(Clone, Debug, Default)]
+            pub struct [< ScopedMemoryStream $index >]<T>
+            where
+                T: Clone + Debug + Send + Sync + 'static,
+            {
+                prefix: Option<String>,
+                _marker: PhantomData<T>,
+            }
+
+            impl<T> [< ScopedMemoryStream $index >]<T>
+            where
+                T: Clone + Debug + Send + Sync + 'static,
+            {
+                /// Creates a new `[< MemoryStream $index >]`.
+                #[must_use]
+                pub const fn new() -> Self {
+                    Self {
+                        prefix: None,
+                        _marker: PhantomData,
+                    }
+                }
+
+                const fn with_scope(prefix: String) -> Self {
+                    Self {
+                        prefix: Some(prefix),
+                        _marker: PhantomData,
+                    }
+                }
+            }
+
+            #[async_trait]
+            impl<T> [< ScopedStream $index >]<T, Infallible, Infallible> for [< ScopedMemoryStream $index >]<T>
+            where
+                T: Clone + Debug + Send + Sync + 'static,
+            {
+                type Error = Error<T>;
+                type Scoped = $parent<T>;
+
+                fn scope<S: Into<String> + Send>(&self, scope: S) -> $parent<T> {
+                    let new_scope = match &self.prefix {
+                        Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
+                        None => scope.into(),
+                    };
+                    $parent::<T>::with_scope(new_scope)
+                }
+            }
+        }
+    };
+}
+impl_scoped_stream!(
+    1,
+    ScopedMemoryStream,
+    Stream1,
+    "A double-scoped in-memory stream."
+);
+impl_scoped_stream!(
+    2,
+    ScopedMemoryStream1,
+    Stream1,
+    "A double-scoped in-memory stream."
+);
+impl_scoped_stream!(
+    3,
+    ScopedMemoryStream2,
+    Stream2,
+    "A triple-scoped in-memory stream."
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,5 +263,27 @@ mod tests {
             .unwrap();
         assert_eq!(stream.get(0).await.unwrap(), None);
         assert_eq!(stream.last_message().await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn test_scoped_stream() {
+        let stream1: ScopedMemoryStream1<String> = ScopedMemoryStream1::new();
+        let scoped_stream = stream1.scope("scope1");
+
+        let subject = MemorySubject::new("test_scoped").unwrap();
+        let stream = scoped_stream.init(vec![subject]).await.unwrap();
+
+        assert_eq!(stream.name().await, "scope1");
+    }
+
+    #[tokio::test]
+    async fn test_nested_scoped_stream() {
+        let stream2: ScopedMemoryStream2<String> = ScopedMemoryStream2::new();
+        let scoped_stream = stream2.scope("scope1").scope("scope2");
+
+        let subject = MemorySubject::new("test_nested_scoped").unwrap();
+        let stream = scoped_stream.init(vec![subject]).await.unwrap();
+
+        assert_eq!(stream.name().await, "scope1:scope2");
     }
 }
