@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 
 /// Marker trait for subject errors
-pub trait SubjectError: Clone + Debug + Error + Send + Sync + 'static {}
+pub trait SubjectError: Error + Send + Sync + 'static {}
 
 /// A trait representing a subject.
 #[async_trait]
@@ -35,10 +35,10 @@ where
         H: Clone + Into<HashMap<String, String>> + Send;
 
     /// Subscribes to the subject and processes messages with the given handler.
-    async fn subscribe<X, Y>(&self, subscriber: X) -> Result<Y, Y::Error>
+    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
         X: Handler<Self::Type>,
-        Y: Subscriber<Self::Type, X>;
+        Y: Subscriber<X, Self::Type, DE, SE>;
 }
 
 /// A trait representing a subject.
@@ -57,10 +57,10 @@ where
     type Type: Clone + Debug + Send + Sync = T;
 
     /// Subscribes to the subject and processes messages with the given handler.
-    async fn subscribe<X, Y>(&self, handler: X) -> Result<Y, Y::Error>
+    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
         X: Handler<Self::Type>,
-        Y: Subscriber<Self::Type, X>;
+        Y: Subscriber<X, Self::Type, DE, SE>;
 }
 
 macro_rules! define_scoped_subject {

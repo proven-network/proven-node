@@ -9,7 +9,6 @@ mod error;
 pub use error::Error;
 
 use std::convert::Infallible;
-use std::convert::{TryFrom, TryInto};
 use std::error::Error as StdError;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::marker::PhantomData;

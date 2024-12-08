@@ -6,8 +6,10 @@
 #![warn(clippy::nursery)]
 
 mod gotham_state;
+
 /// Subjects can be published to and subscribed to (by passing a handler).
 pub mod subject;
+
 /// Subscribers are created by subscribing to a subject.
 pub mod subscriber;
 
@@ -101,7 +103,10 @@ mod tests {
         let subject = InMemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<Bytes, TestHandler> = subject.subscribe(handler).await.unwrap();
+        let _: InMemorySubscriber<TestHandler> = subject
+            .subscribe(InMemorySubscriberOptions, handler)
+            .await
+            .unwrap();
 
         subject.publish(Bytes::from("message1")).await.unwrap();
         subject.publish(Bytes::from("message2")).await.unwrap();
@@ -130,7 +135,10 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<Bytes, TestHandler> = subject1.subscribe(handler).await.unwrap();
+        let _: InMemorySubscriber<TestHandler> = subject1
+            .subscribe(InMemorySubscriberOptions, handler)
+            .await
+            .unwrap();
 
         subject1.publish(Bytes::from("message1")).await.unwrap();
         subject1.publish(Bytes::from("message2")).await.unwrap();
@@ -160,7 +168,10 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<Bytes, TestHandler> = subject1.subscribe(handler).await.unwrap();
+        let _: InMemorySubscriber<TestHandler> = subject1
+            .subscribe(InMemorySubscriberOptions, handler)
+            .await
+            .unwrap();
 
         subject1.publish(Bytes::from("message1")).await.unwrap();
         subject1.publish(Bytes::from("message2")).await.unwrap();
@@ -191,7 +202,10 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<Bytes, TestHandler> = subject.subscribe(handler).await.unwrap();
+        let _: InMemorySubscriber<TestHandler> = subject
+            .subscribe(InMemorySubscriberOptions, handler)
+            .await
+            .unwrap();
 
         subject.publish(Bytes::from("message1")).await.unwrap();
         subject.publish(Bytes::from("message2")).await.unwrap();
@@ -223,8 +237,10 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<Bytes, TestHandler> =
-            wildcard_subject.subscribe(handler).await.unwrap();
+        let _: InMemorySubscriber<TestHandler> = wildcard_subject
+            .subscribe(InMemorySubscriberOptions, handler)
+            .await
+            .unwrap();
 
         subject1.publish(Bytes::from("message1")).await.unwrap();
         subject1.publish(Bytes::from("message2")).await.unwrap();
@@ -256,8 +272,10 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<Bytes, TestHandler> =
-            greedy_wildcard_subject.subscribe(handler).await.unwrap();
+        let _: InMemorySubscriber<TestHandler> = greedy_wildcard_subject
+            .subscribe(InMemorySubscriberOptions, handler)
+            .await
+            .unwrap();
 
         subject1.publish(Bytes::from("message1")).await.unwrap();
         subject1.publish(Bytes::from("message2")).await.unwrap();
@@ -284,8 +302,10 @@ mod tests {
         let subject = InMemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let subscriber: InMemorySubscriber<Bytes, TestHandler> =
-            subject.subscribe(handler).await.unwrap();
+        let subscriber: InMemorySubscriber<TestHandler> = subject
+            .subscribe(InMemorySubscriberOptions, handler)
+            .await
+            .unwrap();
 
         subject.publish(Bytes::from("message1")).await.unwrap();
         subject.publish(Bytes::from("message2")).await.unwrap();
@@ -341,7 +361,10 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(10);
         let handler = CustomHandler(sender);
 
-        let _: InMemorySubscriber<CustomType, _> = subject.subscribe(handler).await.unwrap();
+        let _: InMemorySubscriber<_, CustomType> = subject
+            .subscribe(InMemorySubscriberOptions, handler)
+            .await
+            .unwrap();
 
         subject.publish(CustomType(42)).await.unwrap();
 

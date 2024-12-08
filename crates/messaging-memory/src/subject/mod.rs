@@ -86,12 +86,12 @@ where
         Ok(())
     }
 
-    async fn subscribe<X, Y>(&self, handler: X) -> Result<Y, Y::Error>
+    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
         X: Handler<Self::Type>,
-        Y: Subscriber<Self::Type, X>,
+        Y: Subscriber<X, Self::Type>,
     {
-        Ok(Y::new(self.full_subject.clone(), handler.clone()).await?)
+        Ok(Y::new(self.full_subject.clone(), options, handler.clone()).await?)
     }
 }
 
@@ -130,12 +130,12 @@ where
     type Error = Error;
     type Type = T;
 
-    async fn subscribe<X, Y>(&self, handler: X) -> Result<Y, Y::Error>
+    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
         X: Handler<Self::Type>,
-        Y: Subscriber<Self::Type, X>,
+        Y: Subscriber<X, Self::Type>,
     {
-        Ok(Y::new(self.full_subject.clone(), handler.clone()).await?)
+        Ok(Y::new(self.full_subject.clone(), options, handler.clone()).await?)
     }
 }
 

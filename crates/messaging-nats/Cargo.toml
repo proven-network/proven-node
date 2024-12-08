@@ -1,0 +1,17 @@
+[package]
+name = "proven-messaging-nats"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-nats = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+futures = { workspace = true }
+proven-messaging = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+serial_test = { workspace = true }

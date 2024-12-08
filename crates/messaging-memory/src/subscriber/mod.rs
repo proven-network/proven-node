@@ -7,26 +7,37 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use proven_messaging::{Handler, Subscriber};
+use bytes::Bytes;
+use proven_messaging::{Handler, Subscriber, SubscriberOptions};
 use tokio::sync::{broadcast, Mutex};
+
+/// Options for the in-memory subscriber (there are none).
+#[derive(Clone, Debug)]
+pub struct InMemorySubscriberOptions;
+impl SubscriberOptions for InMemorySubscriberOptions {}
 
 /// A in-memory subscriber.
 #[derive(Clone, Debug, Default)]
-pub struct InMemorySubscriber<T, X> {
+pub struct InMemorySubscriber<X, T = Bytes> {
     handler: X,
     last_message: Arc<Mutex<Option<T>>>,
 }
 
 #[async_trait]
-impl<T, X> Subscriber<T, X> for InMemorySubscriber<T, X>
+impl<X, T> Subscriber<X, T> for InMemorySubscriber<X, T>
 where
     T: Clone + Debug + Send + Sync + 'static,
     X: Handler<T>,
 {
     type Error = Error;
+    type Options = InMemorySubscriberOptions;
 
     #[allow(clippy::significant_drop_tightening)]
-    async fn new(subject_string: String, handler: X) -> Result<Self, Self::Error> {
+    async fn new(
+        subject_string: String,
+        _options: Self::Options,
+        handler: X,
+    ) -> Result<Self, Self::Error> {
         let mut state = GLOBAL_STATE.lock().await;
         if !state.has::<SubjectState<T>>() {
             state.put(SubjectState::<T>::default());
