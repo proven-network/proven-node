@@ -141,20 +141,15 @@ where
 
 macro_rules! impl_scoped_subject {
     ($index:expr, $parent_pub:ident, $parent_sub:ident, $doc_pub:expr, $doc_sub:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #pub_full_subject = [!ident! InMemoryPublishableSubject $index]]
-            [!set! #sub_full_subject = [!ident! InMemorySubject $index]]
-            [!set! #pub_trait_full_subject = [!ident! PublishableSubject $index]]
-            [!set! #sub_trait_full_subject = [!ident! Subject $index]]
-
+        paste::paste! {
             #[derive(Clone, Debug)]
             #[doc = $doc_pub]
-            pub struct #pub_full_subject<T = Bytes> {
+            pub struct [< InMemoryPublishableSubject $index >]<T = Bytes> {
                 full_subject: String,
                 _phantom: std::marker::PhantomData<T>,
             }
 
-            impl<T> #pub_full_subject<T> {
+            impl<T> [< InMemoryPublishableSubject $index >]<T> {
                 /// Creates a new in-memory publishable subject.
                 ///
                 /// # Errors
@@ -175,7 +170,7 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> #pub_trait_full_subject<T> for #pub_full_subject<T>
+            impl<T> [< PublishableSubject $index >]<T> for [< InMemoryPublishableSubject $index >]<T>
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {
@@ -212,12 +207,12 @@ macro_rules! impl_scoped_subject {
 
             #[derive(Clone, Debug)]
             #[doc = $doc_sub]
-            pub struct #sub_full_subject<T = Bytes> {
+            pub struct [< InMemorySubject $index >]<T = Bytes> {
                 full_subject: String,
                 _phantom: std::marker::PhantomData<T>,
             }
 
-            impl<T> #sub_full_subject<T> {
+            impl<T> [< InMemorySubject $index >]<T> {
                 /// Creates a new in-memory subject.
                 ///
                 /// # Errors
@@ -238,7 +233,7 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> #sub_trait_full_subject<T> for #sub_full_subject<T>
+            impl<T> [< Subject $index >]<T> for [< InMemorySubject $index >]<T>
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {

@@ -149,13 +149,10 @@ where
 
 macro_rules! impl_scoped_sql_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $stream_trait:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! StreamedSqlStore $index]]
-            [!set! #trait_name = [!ident! SqlStore $index]]
-
+        paste::paste! {
             #[doc = $doc]
             #[derive(Clone)]
-            pub struct #name<S, LS>
+            pub struct [< StreamedSqlStore $index >]<S, LS>
             where
                 S: $stream_trait<SqlStreamHandler>,
                 LS: Store,
@@ -165,13 +162,13 @@ macro_rules! impl_scoped_sql_store {
                 stream: S,
             }
 
-            impl<S, LS> #name<S, LS>
+            impl<S, LS> [< StreamedSqlStore $index >]<S, LS>
             where
                 Self: Clone + Send + Sync + 'static,
                 S: $stream_trait<SqlStreamHandler>,
                 LS: Store,
             {
-                /// Creates a new `#name` with the specified options.
+                /// Creates a new `[< StreamedSqlStore $index >]` with the specified options.
                 pub fn new(
                     StreamedSqlStoreOptions {
                         leader_store,
@@ -188,7 +185,7 @@ macro_rules! impl_scoped_sql_store {
             }
 
             #[async_trait]
-            impl<S, LS> #trait_name for #name<S, LS>
+            impl<S, LS> [< SqlStore $index >] for [< StreamedSqlStore $index >]<S, LS>
             where
                 Self: Clone + Send + Sync + 'static,
                 S: $stream_trait<SqlStreamHandler>,
@@ -197,11 +194,11 @@ macro_rules! impl_scoped_sql_store {
                 type Error = Error<S::Error, LS::Error>;
                 type Scoped = $parent<S::Scoped, LS>;
 
-                fn [!ident! scope_ $index]<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+                fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
                     $parent {
                         leader_store: self.leader_store.clone(),
                         local_name: self.local_name.clone(),
-                        stream: self.stream.[!ident! scope_ $index](scope.into()),
+                        stream: self.stream.scope(scope.into()),
                     }
                 }
             }

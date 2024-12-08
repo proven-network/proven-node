@@ -88,12 +88,10 @@ where
 
 macro_rules! define_scoped_stream {
     ($index:expr, $parent:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! Stream $index]]
-
+        paste::paste! {
             #[async_trait]
             #[doc = $doc]
-            pub trait #name<H>
+            pub trait [< Stream $index >]<H>
             where
                 H: StreamHandler,
             {
@@ -104,7 +102,7 @@ macro_rules! define_scoped_stream {
                 type Scoped: $parent<H, Error = Self::Error> + Clone + Send + Sync + 'static;
 
                 /// Creates a scoped version of the stream.
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> <Self as #name<H>>::Scoped;
+                fn scope<S: Into<String> + Send>(&self, scope: S) -> <Self as [< Stream $index >]<H>>::Scoped;
             }
         }
     };

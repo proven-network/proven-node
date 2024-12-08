@@ -34,7 +34,7 @@ pub async fn op_get_application_bytes<AS: Store1>(
     };
 
     let result = match application_store
-        .scope_1(format!("{store_name}:bytes"))
+        .scope(format!("{store_name}:bytes"))
         .get(key)
         .await
     {
@@ -72,7 +72,7 @@ pub async fn op_set_application_bytes<AS: Store1>(
     };
 
     let result = application_store
-        .scope_1(format!("{store_name}:bytes"))
+        .scope(format!("{store_name}:bytes"))
         .put(key, value)
         .await
         .is_ok();
@@ -107,7 +107,7 @@ pub async fn op_get_application_string<AS: Store1>(
     };
 
     let result = match application_store
-        .scope_1(format!("{store_name}:string"))
+        .scope(format!("{store_name}:string"))
         .get(key)
         .await
     {
@@ -145,7 +145,7 @@ pub async fn op_set_application_string<AS: Store1>(
     };
 
     let result = application_store
-        .scope_1(format!("{store_name}:string"))
+        .scope(format!("{store_name}:string"))
         .put(key, Bytes::from(value))
         .await
         .is_ok();

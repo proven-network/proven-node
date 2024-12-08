@@ -1208,7 +1208,7 @@ dependencies = [
  "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -5249,11 +5249,10 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "1.0.2"
+version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80e04d1dcff3aae0704555fe5fee3bcfaf3d1fdf8a7e521d5b9d2b42acb52cec"
+checksum = "2886843bf800fba2e3377cff24abf6379b4c4d5c6681eaf9ea5b0d15090450bd"
 dependencies = [
- "hermit-abi 0.3.9",
  "libc",
  "log",
  "wasi",
@@ -6081,9 +6080,9 @@ dependencies = [
 
 [[package]]
 name = "pin-project-lite"
-version = "0.2.14"
+version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bda66fc9667c18cb2758a2ac84d1167245054bcf85d5d1aaa6923f45801bdd02"
+checksum = "915a1e146535de9163f3987b8944ed8cf49a18bb0056bcebcdcece385cece4ff"
 
 [[package]]
 name = "pin-utils"
@@ -6217,16 +6216,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77957b295656769bb8ad2b6a6b09d897d94f05c41b069aede1fcdaa675eaea04"
 dependencies = [
  "zerocopy",
-]
-
-[[package]]
-name = "preinterpret"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf4cb4d87d808156f56cf409c26dfc93d2cc9e37a6a407a5ebcaca0cf9850789"
-dependencies = [
- "proc-macro2",
- "syn 2.0.90",
 ]
 
 [[package]]
@@ -6425,7 +6414,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0f3e5beed80eb580c68e2c600937ac2c4eedabdfd5ef1e5b7ea4f3fba84497b"
 dependencies = [
  "heck 0.5.0",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "once_cell",
@@ -6445,7 +6434,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "157c5a9d7ea5c2ed2d9fb8f495b64759f7816c7eaea54ba3978f0d63000162e3"
 dependencies = [
  "anyhow",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.90",
@@ -6797,7 +6786,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "preinterpret",
+ "paste",
 ]
 
 [[package]]
@@ -6806,7 +6795,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "preinterpret",
+ "paste",
  "proven-messaging",
  "serial_test",
  "thiserror 2.0.5",
@@ -7016,7 +7005,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "preinterpret",
+ "paste",
  "serde",
 ]
 
@@ -7025,7 +7014,7 @@ name = "proven-sql-direct"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "preinterpret",
+ "paste",
  "proven-libsql",
  "proven-sql",
  "tempfile",
@@ -7042,7 +7031,7 @@ dependencies = [
  "bytes",
  "ciborium",
  "criterion",
- "preinterpret",
+ "paste",
  "proven-libsql",
  "proven-sql",
  "proven-store",
@@ -7061,7 +7050,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "preinterpret",
+ "paste",
 ]
 
 [[package]]
@@ -7072,7 +7061,7 @@ dependencies = [
  "aws-config",
  "aws-sdk-secretsmanager",
  "bytes",
- "preinterpret",
+ "paste",
  "proven-store",
  "serde_json",
  "thiserror 2.0.5",
@@ -7086,7 +7075,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "ciborium",
- "preinterpret",
+ "paste",
  "proven-store",
  "tempfile",
  "thiserror 2.0.5",
@@ -7099,7 +7088,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "preinterpret",
+ "paste",
  "proven-store",
  "thiserror 2.0.5",
  "tokio",
@@ -7114,7 +7103,7 @@ dependencies = [
  "bytes",
  "ciborium",
  "futures",
- "preinterpret",
+ "paste",
  "proven-store",
  "thiserror 2.0.5",
  "tokio",
@@ -7131,7 +7120,7 @@ dependencies = [
  "blake3",
  "bytes",
  "md5",
- "preinterpret",
+ "paste",
  "proven-store",
  "thiserror 2.0.5",
  "tokio",
@@ -7143,7 +7132,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "preinterpret",
+ "paste",
 ]
 
 [[package]]
@@ -7154,7 +7143,7 @@ dependencies = [
  "bytes",
  "ciborium",
  "futures",
- "preinterpret",
+ "paste",
  "proven-stream",
  "thiserror 2.0.5",
  "tokio",
@@ -7168,7 +7157,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures",
- "preinterpret",
+ "paste",
  "proven-stream",
  "serde",
  "serde_json",

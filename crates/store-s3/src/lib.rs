@@ -250,13 +250,10 @@ where
 
 macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! S3Store $index]]
-            [!set! #trait_name = [!ident! Store $index]]
-
+        paste::paste! {
             #[doc = $doc]
             #[derive(Clone, Debug)]
-            pub struct #name<T = Bytes, DE = Infallible, SE = Infallible>
+            pub struct [< S3Store $index >]<T = Bytes, DE = Infallible, SE = Infallible>
             where
                 Self: Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
@@ -318,14 +315,14 @@ macro_rules! impl_scoped_store {
                     + 'static,
             {
                 fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-                    f.debug_struct(stringify!(#name))
+                    f.debug_struct(stringify!([< S3Store $index >]))
                         .field("bucket", &self.bucket)
                         .field("prefix", &self.prefix)
                         .finish()
                 }
             }
 
-            impl<T, DE, SE> #name<T, DE, SE>
+            impl<T, DE, SE> [< S3Store $index >]<T, DE, SE>
             where
                 Self: Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
@@ -338,7 +335,7 @@ macro_rules! impl_scoped_store {
                     + TryInto<Bytes, Error = SE>
                     + 'static,
             {
-                /// Creates a new `#name` with the specified options.
+                /// Creates a new `[< S3Store $index >]` with the specified options.
                 pub async fn new(
                     S3StoreOptions {
                         bucket,
@@ -364,7 +361,7 @@ macro_rules! impl_scoped_store {
             }
 
             #[async_trait]
-            impl<T, DE, SE> #trait_name<T, DE, SE> for #name<T, DE, SE>
+            impl<T, DE, SE> [< Store $index >]<T, DE, SE> for [< S3Store $index >]<T, DE, SE>
             where
                 Self: Clone + Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
@@ -380,7 +377,7 @@ macro_rules! impl_scoped_store {
                 type Error = Error;
                 type Scoped = $parent<T, DE, SE>;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let prefix = match &self.prefix {
                         Some(prefix) => format!("{}/{}", prefix, scope.into()),
                         None => scope.into(),

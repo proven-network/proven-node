@@ -138,13 +138,10 @@ where
 
 macro_rules! impl_scoped_stream {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! MemoryStream $index]]
-            [!set! #trait_name = [!ident! Stream $index]]
-
+        paste::paste! {
             #[doc = $doc]
             #[derive(Clone, Default)]
-            pub struct #name<H>
+            pub struct [< MemoryStream $index >]<H>
             where
                 H: StreamHandler,
             {
@@ -153,10 +150,10 @@ macro_rules! impl_scoped_stream {
                 prefix: String,
             }
 
-            impl<H> #name<H>
+            impl<H> [< MemoryStream $index >]<H>
             where H: StreamHandler,
             {
-                /// Creates a new `#name`.
+                /// Creates a new `[< MemoryStream $index >]`.
                 #[must_use]
                 pub fn new () -> Self {
                     Self {
@@ -183,11 +180,11 @@ macro_rules! impl_scoped_stream {
             }
 
             #[async_trait]
-            impl<H> #trait_name<H> for #name<H> where H: StreamHandler {
+            impl<H> [< Stream $index >]<H> for [< MemoryStream $index >]<H> where H: StreamHandler {
                 type Error = Error<H::Error>;
                 type Scoped = $parent<H>;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent<H> {
+                fn scope<S: Into<String> + Send>(&self, scope: S) -> $parent<H> {
                     self.with_scope(scope.into())
                 }
             }

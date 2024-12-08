@@ -6,5 +6,5 @@ edition = "2021"
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
-preinterpret = { workspace = true }
+paste = { workspace = true }
 serde = { workspace = true }

@@ -40,7 +40,7 @@ impl<ASS: SqlStore1> ApplicationSqlConnectionManager<ASS> {
             .sql_store
             .lock()
             .await
-            .scope_1(db_name.clone())
+            .scope(db_name.clone())
             .connect(migrations)
             .await?;
 

@@ -87,18 +87,15 @@ where
 
 macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! MemoryStore $index]]
-            [!set! #trait_name = [!ident! Store $index]]
-
+        paste::paste! {
             #[doc = $doc]
             #[derive(Clone, Debug, Default)]
-            pub struct #name {
+            pub struct [< MemoryStore $index >] {
                 prefix: Option<String>,
             }
 
-            impl #name {
-                /// Creates a new `#name`.
+            impl [< MemoryStore $index >] {
+                /// Creates a new `[< MemoryStore $index >]`.
                 #[must_use]
                 pub const fn new() -> Self {
                     Self {
@@ -115,11 +112,11 @@ macro_rules! impl_scoped_store {
             }
 
             #[async_trait]
-            impl #trait_name for #name {
+            impl [< Store $index >] for [< MemoryStore $index >] {
                 type Error = Error;
                 type Scoped = $parent;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                fn scope<S: Into<String> + Send>(&self, scope: S) -> $parent {
                     let new_scope = match &self.prefix {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                         None => scope.into(),
@@ -177,7 +174,7 @@ mod tests {
     #[tokio::test]
     async fn test_scope() {
         let store = MemoryStore1::new();
-        let scoped_store = store.scope_1("scope");
+        let scoped_store = store.scope("scope");
 
         let key = "test_key".to_string();
         let value = Bytes::from_static(b"test_value");
@@ -191,8 +188,8 @@ mod tests {
     #[tokio::test]
     async fn test_nested_scope() {
         let store = MemoryStore2::new();
-        let partial_scoped_store = store.scope_2("scope1");
-        let scoped_store = partial_scoped_store.scope_1("scope2");
+        let partial_scoped_store = store.scope("scope1");
+        let scoped_store = partial_scoped_store.scope("scope2");
 
         let key = "test_key".to_string();
         let value = Bytes::from_static(b"test_value");

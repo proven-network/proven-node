@@ -164,12 +164,9 @@ where
 
 macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! FsStore $index]]
-            [!set! #trait_name = [!ident! Store $index]]
-
+        paste::paste! {
             #[doc = $doc]
-            pub struct #name<T = Bytes, DE = Infallible, SE = Infallible>
+            pub struct [< FsStore $index >]<T = Bytes, DE = Infallible, SE = Infallible>
             where
             Self: Debug + Send + Sync + 'static,
             DE: Send + StdError + Sync + 'static,
@@ -188,7 +185,7 @@ macro_rules! impl_scoped_store {
                 _marker3: PhantomData<SE>,
             }
 
-            impl<T, DE, SE> Clone for #name<T, DE, SE>
+            impl<T, DE, SE> Clone for [< FsStore $index >]<T, DE, SE>
             where
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
@@ -210,7 +207,7 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> Debug for #name<T, DE, SE>
+            impl<T, DE, SE> Debug for [< FsStore $index >]<T, DE, SE>
             where
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
@@ -223,13 +220,13 @@ macro_rules! impl_scoped_store {
                     + 'static,
             {
                 fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-                    f.debug_struct(stringify!(#name))
+                    f.debug_struct(stringify!([< FsStore $index >]))
                         .field("dir", &self.dir)
                         .finish()
                 }
             }
 
-            impl<T, DE, SE> #name<T, DE, SE>
+            impl<T, DE, SE> [< FsStore $index >]<T, DE, SE>
             where
                 Self: Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
@@ -242,7 +239,7 @@ macro_rules! impl_scoped_store {
                     + TryInto<Bytes, Error = SE>
                     + 'static,
             {
-                /// Creates a new `#name` with the specified directory.
+                /// Creates a new `[< FsStore $index >]` with the specified directory.
                 #[must_use]
                 pub fn new(dir: impl Into<PathBuf>) -> Self {
                     Self {
@@ -255,7 +252,7 @@ macro_rules! impl_scoped_store {
             }
 
             #[async_trait]
-            impl<T, DE, SE> #trait_name<T, DE, SE> for #name<T, DE, SE>
+            impl<T, DE, SE> [< Store $index >]<T, DE, SE> for [< FsStore $index >]<T, DE, SE>
             where
                 Self: Clone + Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
@@ -271,7 +268,7 @@ macro_rules! impl_scoped_store {
                 type Error = Error<DE, SE>;
                 type Scoped = $parent<T, DE, SE>;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let mut dir = self.dir.clone();
                     dir.push(scope.into());
                     Self::Scoped::new(dir)
@@ -353,7 +350,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = FsStore1::new(dir.path().to_path_buf());
 
-        let scoped_store = store.scope_1("scope");
+        let scoped_store = store.scope("scope");
 
         let key = "test_key".to_string();
         let value = Bytes::from_static(b"test_value");

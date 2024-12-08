@@ -210,12 +210,9 @@ where
 
 macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! NatsStore $index]]
-            [!set! #trait_name = [!ident! Store $index]]
-
+        paste::paste! {
             #[doc = $doc]
-            pub struct #name<T = Bytes, DE = Infallible, SE = Infallible>
+            pub struct [< NatsStore $index >]<T = Bytes, DE = Infallible, SE = Infallible>
             where
                 Self: Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
@@ -238,7 +235,7 @@ macro_rules! impl_scoped_store {
                 _marker3: PhantomData<SE>,
             }
 
-            impl<T, DE, SE> Clone for #name<T, DE, SE>
+            impl<T, DE, SE> Clone for [< NatsStore $index >]<T, DE, SE>
             where
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
@@ -264,7 +261,7 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> Debug for #name<T, DE, SE>
+            impl<T, DE, SE> Debug for [< NatsStore $index >]<T, DE, SE>
             where
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
@@ -277,13 +274,13 @@ macro_rules! impl_scoped_store {
                     + 'static,
             {
                 fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-                    f.debug_struct(stringify!(#name))
+                    f.debug_struct(stringify!([< NatsStore $index >]))
                         .field("bucket", &self.bucket)
                         .finish()
                 }
             }
 
-            impl<T, DE, SE> #name<T, DE, SE>
+            impl<T, DE, SE> [< NatsStore $index >]<T, DE, SE>
             where
                 Self: Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
@@ -296,7 +293,7 @@ macro_rules! impl_scoped_store {
                     + TryInto<Bytes, Error = SE>
                     + 'static,
             {
-                /// Creates a new `#name` with the specified options.
+                /// Creates a new `[< NatsStore $index >]` with the specified options.
                 #[must_use]
                 pub fn new(
                     NatsStoreOptions {
@@ -322,7 +319,7 @@ macro_rules! impl_scoped_store {
             }
 
             #[async_trait]
-            impl<T, DE, SE> #trait_name<T, DE, SE> for #name<T, DE, SE>
+            impl<T, DE, SE> [< Store $index >]<T, DE, SE> for [< NatsStore $index >]<T, DE, SE>
             where
                 Self: Clone + Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
@@ -338,7 +335,7 @@ macro_rules! impl_scoped_store {
                 type Error = Error<DE, SE>;
                 type Scoped = $parent<T, DE, SE>;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let mut bucket = self.bucket.clone();
                     bucket.push_str(&format!(".{}", scope.into()));
                     Self::Scoped::new(NatsStoreOptions {

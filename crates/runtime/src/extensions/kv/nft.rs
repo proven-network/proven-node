@@ -36,8 +36,8 @@ pub async fn op_get_nft_bytes<NS: Store2>(
 
     let result = if let Some(store) = nft_store.as_ref() {
         store
-            .scope_2(format!("{store_name}:bytes"))
-            .scope_1(nft_id)
+            .scope(format!("{store_name}:bytes"))
+            .scope(nft_id)
             .get(key)
             .await
             .map(|bytes| bytes.map(BytesMut::from))
@@ -78,8 +78,8 @@ pub async fn op_set_nft_bytes<NS: Store2>(
 
     let result = if let Some(store) = nft_store.as_ref() {
         store
-            .scope_2(format!("{store_name}:bytes"))
-            .scope_1(nft_id)
+            .scope(format!("{store_name}:bytes"))
+            .scope(nft_id)
             .put(key, value)
             .await
             .is_ok()
@@ -119,8 +119,8 @@ pub async fn op_get_nft_string<NS: Store2>(
 
     let result = if let Some(store) = nft_store.as_ref() {
         match store
-            .scope_2(format!("{store_name}:string"))
-            .scope_1(nft_id)
+            .scope(format!("{store_name}:string"))
+            .scope(nft_id)
             .get(key)
             .await
         {
@@ -163,8 +163,8 @@ pub async fn op_set_nft_string<NS: Store2>(
 
     let result = if let Some(store) = nft_store.as_ref() {
         store
-            .scope_2(format!("{store_name}:string"))
-            .scope_1(nft_id)
+            .scope(format!("{store_name}:string"))
+            .scope(nft_id)
             .put(key, Bytes::from(value))
             .await
             .is_ok()

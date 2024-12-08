@@ -9,7 +9,7 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 ciborium = { workspace = true }
 futures = { workspace = true }
-preinterpret = { workspace = true }
+paste = { workspace = true }
 proven-stream = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

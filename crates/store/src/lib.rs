@@ -46,12 +46,10 @@ where
 
 macro_rules! define_scoped_store {
     ($index:expr, $parent:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! Store $index]]
-
+        paste::paste! {
             #[async_trait]
             #[doc = $doc]
-            pub trait #name<T = Bytes, DE = Infallible, SE = Infallible>
+            pub trait [< Store $index >]<T = Bytes, DE = Infallible, SE = Infallible>
             where
                 Self: Clone + Send + Sync + 'static,
                 DE: Error + Send + Sync + 'static,
@@ -65,7 +63,7 @@ macro_rules! define_scoped_store {
                 type Scoped: $parent<T, DE, SE, Error = Self::Error> + Clone + Send + Sync + 'static;
 
                 /// Creates a scoped store.
-                fn [!ident! scope_ $index]<S>(&self, scope: S) -> <Self as #name<T, DE, SE>>::Scoped
+                fn scope<S>(&self, scope: S) -> <Self as [< Store $index >]<T, DE, SE>>::Scoped
                 where
                     S: Into<String> + Send;
             }

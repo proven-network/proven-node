@@ -186,7 +186,7 @@ where
         }
 
         self.challenge_store
-            .scope_1(origin)
+            .scope(origin)
             .put(challenge.clone(), Bytes::from_static(&[1u8]))
             .await
             .map_err(Error::ChallengeStore)?;
@@ -220,7 +220,7 @@ where
         }
 
         for challenge in challenges {
-            let scoped_challenge_store = self.challenge_store.scope_1(origin.clone());
+            let scoped_challenge_store = self.challenge_store.scope(origin.clone());
 
             match scoped_challenge_store.get(challenge.clone()).await {
                 Ok(_) => {
@@ -274,7 +274,7 @@ where
         };
 
         self.sessions_store
-            .scope_1(application_id)
+            .scope(application_id)
             .put(session.session_id.clone(), session.clone())
             .await
             .map_err(Error::SessionStore)?;
@@ -300,7 +300,7 @@ where
     ) -> Result<Option<Session>, Error<A::Error, CS::Error, SS::Error>> {
         match self
             .sessions_store
-            .scope_1(application_id)
+            .scope(application_id)
             .get(session_id.clone())
             .await
         {

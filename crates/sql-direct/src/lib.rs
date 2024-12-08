@@ -54,29 +54,26 @@ impl SqlStore for DirectSqlStore {
 
 macro_rules! impl_scoped_sql_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! DirectSqlStore $index]]
-            [!set! #trait_name = [!ident! SqlStore $index]]
-
+        paste::paste! {
             #[doc = $doc]
             #[derive(Clone, Debug)]
-            pub struct #name {
+            pub struct [< DirectSqlStore $index >] {
                 dir: PathBuf,
             }
 
-            impl #name {
-                /// Creates a new `#name` with the specified directory.
+            impl [< DirectSqlStore $index >] {
+                /// Creates a new `[< DirectSqlStore $index >]` with the specified directory.
                 pub fn new(dir: impl Into<PathBuf>) -> Self {
                     Self { dir: dir.into() }
                 }
             }
 
             #[async_trait]
-            impl #trait_name for #name {
+            impl [< SqlStore $index >] for [< DirectSqlStore $index >] {
                 type Error = Error;
                 type Scoped = $parent;
 
-                fn [!ident! scope_ $index]<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped {
+                fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped {
                     let mut new_dir = self.dir.clone();
                     new_dir.push(scope.into());
                     $parent::new(new_dir)

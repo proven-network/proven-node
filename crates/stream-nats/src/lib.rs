@@ -303,13 +303,10 @@ where
 
 macro_rules! impl_scoped_stream {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! NatsStream $index]]
-            [!set! #trait_name = [!ident! Stream $index]]
-
+        paste::paste! {
             #[doc = $doc]
             #[derive(Clone, Debug)]
-            pub struct #name<H>
+            pub struct [< NatsStream $index >]<H>
             where
                 H: StreamHandler,
             {
@@ -319,11 +316,11 @@ macro_rules! impl_scoped_stream {
                 _marker: std::marker::PhantomData<H>,
             }
 
-            impl<H> #name<H>
+            impl<H> [< NatsStream $index >]<H>
             where
                 H: StreamHandler,
             {
-                /// Creates a new `#name` with the specified options.
+                /// Creates a new `[< NatsStream $index >]` with the specified options.
                 #[must_use]
                 pub fn new(
                     NatsStreamOptions {
@@ -353,14 +350,14 @@ macro_rules! impl_scoped_stream {
             }
 
             #[async_trait]
-            impl<H> #trait_name<H> for #name<H>
+            impl<H> [< Stream $index >]<H> for [< NatsStream $index >]<H>
             where
                 H: StreamHandler,
             {
                 type Error = Error<H::Error>;
                 type Scoped = $parent<H>;
 
-                fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> $parent<H> {
+                fn scope<S: Into<String> + Send>(&self, scope: S) -> $parent<H> {
                     self.with_scope(scope.into())
                 }
             }
@@ -545,7 +542,7 @@ mod tests {
         });
 
         // Should force uppercase
-        let subscriber = subscriber.scope_1("app1");
+        let subscriber = subscriber.scope("app1");
         assert_eq!(subscriber.stream_name, "SQL_APP1");
     }
 

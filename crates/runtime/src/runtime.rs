@@ -307,15 +307,15 @@ where
         self.runtime.put(
             self.application_store
                 .clone()
-                .scope_2(dapp_definition_address.clone()),
+                .scope(dapp_definition_address.clone()),
         )?;
 
         self.runtime.put(match identity.as_ref() {
             Some(current_identity) => Some(
                 self.personal_store
                     .clone()
-                    .scope_3(dapp_definition_address.clone())
-                    .scope_2(current_identity.clone()),
+                    .scope(dapp_definition_address.clone())
+                    .scope(current_identity.clone()),
             ),
             None => None,
         })?;
@@ -323,7 +323,7 @@ where
         self.runtime.put(
             self.nft_store
                 .clone()
-                .scope_3(dapp_definition_address.clone()),
+                .scope(dapp_definition_address.clone()),
         )?;
 
         // Set the sql stores for the storage extension
@@ -331,7 +331,7 @@ where
         self.runtime.put(ApplicationSqlConnectionManager::new(
             self.application_sql_store
                 .clone()
-                .scope_2(dapp_definition_address.clone()),
+                .scope(dapp_definition_address.clone()),
             self.sql_migrations.application.clone(),
         ))?;
 
@@ -340,15 +340,15 @@ where
             Some(current_identity) => Some(PersonalSqlConnectionManager::new(
                 self.personal_sql_store
                     .clone()
-                    .scope_3(dapp_definition_address.clone())
-                    .scope_2(current_identity.clone()),
+                    .scope(dapp_definition_address.clone())
+                    .scope(current_identity.clone()),
                 self.sql_migrations.personal.clone(),
             )),
             None => None,
         })?;
 
         self.runtime.put(NftSqlConnectionManager::new(
-            self.nft_sql_store.clone().scope_3(dapp_definition_address),
+            self.nft_sql_store.clone().scope(dapp_definition_address),
             self.sql_migrations.nft.clone(),
         ))?;
 

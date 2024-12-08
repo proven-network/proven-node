@@ -65,13 +65,10 @@ where
 
 macro_rules! define_scoped_subject {
     ($index:expr, $parent_pub:ident, $parent_sub:ident, $doc_pub:expr, $doc_sub:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #pub_name = [!ident! PublishableSubject $index]]
-            [!set! #sub_name = [!ident! Subject $index]]
-
+        paste::paste! {
             #[async_trait]
             #[doc = $doc_pub]
-            pub trait #pub_name<T = Bytes, DE = Infallible, SE = Infallible>
+            pub trait [< PublishableSubject $index >]<T = Bytes, DE = Infallible, SE = Infallible>
             where
                 Self: Clone + Send + Sync + 'static,
                 DE: Error + Send + Sync + 'static,
@@ -107,7 +104,7 @@ macro_rules! define_scoped_subject {
 
             #[async_trait]
             #[doc = $doc_sub]
-            pub trait #sub_name<T = Bytes, DE = Infallible, SE = Infallible>
+            pub trait [< Subject $index >]<T = Bytes, DE = Infallible, SE = Infallible>
             where
                 Self: Clone + Send + Sync + 'static,
                 DE: Error + Send + Sync + 'static,

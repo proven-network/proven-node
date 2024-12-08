@@ -72,12 +72,10 @@ where
 
 macro_rules! define_scoped_sql_store {
     ($index:expr, $parent:ident, $doc:expr) => {
-        preinterpret::preinterpret! {
-            [!set! #name = [!ident! SqlStore $index]]
-
+        paste::paste! {
             #[async_trait]
             #[doc = $doc]
-            pub trait #name
+            pub trait [< SqlStore $index >]
             where
                 Self: Clone + Send + Sync + 'static,
             {
@@ -88,7 +86,7 @@ macro_rules! define_scoped_sql_store {
                 type Scoped: $parent<Error = Self::Error> + Clone + Send + Sync + 'static;
 
                 /// Create a scoped version of the store.
-                fn [!ident! scope_ $index]<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
+                fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
             }
         }
     };
