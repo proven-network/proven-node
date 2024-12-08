@@ -431,4 +431,28 @@ mod tests {
         let retrieved_value = store.get(key).await.expect("Failed to get value");
         assert_eq!(retrieved_value, None);
     }
+
+    #[tokio::test]
+    async fn test_non_bytes_scoped() {
+        let store = FsStore1::<MyType, MyError, MyError>::new("/tmp/test_store").scope("scope");
+
+        // Test put
+        let key = "test_key";
+        let value = MyType {
+            data: "test_value".to_string(),
+        };
+        store
+            .put(key, value.clone())
+            .await
+            .expect("Failed to put value");
+
+        // Test get
+        let retrieved_value = store.get(key).await.expect("Failed to get value");
+        assert_eq!(retrieved_value, Some(value));
+
+        // Test del
+        store.del(key).await.expect("Failed to delete value");
+        let retrieved_value = store.get(key).await.expect("Failed to get value");
+        assert_eq!(retrieved_value, None);
+    }
 }
