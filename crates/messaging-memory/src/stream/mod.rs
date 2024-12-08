@@ -1,11 +1,13 @@
 #![allow(dead_code)]
 
 mod error;
+mod subscription_handler;
 
+use crate::subscription::{InMemorySubscriber, InMemorySubscriberOptions};
 pub use error::Error;
-use proven_messaging::subject::Subject;
+use subscription_handler::StreamSubscriptionHandler;
 
-use std::error::Error as StdError;
+use std::convert::Infallible;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -13,25 +15,23 @@ use async_trait::async_trait;
 use proven_messaging::consumer::Consumer;
 use proven_messaging::service::Service;
 use proven_messaging::stream::Stream;
+use proven_messaging::subject::Subject;
+use tokio::sync::mpsc;
 
 /// An in-memory stream.
 #[derive(Clone, Debug)]
-pub struct MemoryStream<T, DE, SE>
+pub struct MemoryStream<T>
 where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
-    subjects: Vec<String>,
-    _marker: PhantomData<(T, DE, SE)>,
+    subscriptions: Vec<InMemorySubscriber<StreamSubscriptionHandler<T>, T>>,
+    _marker: PhantomData<T>,
 }
 
 #[async_trait]
-impl<T, DE, SE> Stream<T, DE, SE> for MemoryStream<T, DE, SE>
+impl<T> Stream<T, Infallible, Infallible> for MemoryStream<T>
 where
     Self: Clone + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error;
@@ -39,11 +39,26 @@ where
     /// Creates a new stream with the given subjects - must all be the same type.
     async fn new<J, N>(_stream_name: N, subjects: Vec<J>) -> Self
     where
-        J: Subject<T, DE, SE>,
+        J: Subject<T, Infallible, Infallible>,
         N: Into<String> + Send,
     {
+        let (sender, _receiver) = mpsc::channel::<T>(100);
+
+        let mut subscriptions = Vec::new();
+        for subject in subjects {
+            let handler = StreamSubscriptionHandler::new(sender.clone());
+            subscriptions.push(
+                subject
+                    .subscribe(InMemorySubscriberOptions, handler)
+                    .await
+                    .unwrap(),
+            );
+        }
+
+        // TODO: do something with the receiver
+
         Self {
-            subjects: subjects.into_iter().map(Into::into).collect(),
+            subscriptions,
             _marker: PhantomData,
         }
     }
@@ -66,7 +81,7 @@ where
     /// Consumes the stream with the given consumer.
     async fn start_consumer<C>(&self, _consumer: C) -> Result<(), Self::Error>
     where
-        C: Consumer<Self, T, DE, SE>,
+        C: Consumer<Self, T, Infallible, Infallible>,
     {
         unimplemented!()
     }
@@ -74,7 +89,7 @@ where
     /// Consumes the stream with the given service.
     async fn start_service<S>(&self, _service: S) -> Result<(), Self::Error>
     where
-        S: Service<Self, T, DE, SE>,
+        S: Service<Self, T, Infallible, Infallible>,
     {
         unimplemented!()
     }
