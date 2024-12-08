@@ -7,13 +7,13 @@
   },
   "dependencies": {
     "@radixdlt/babylon-gateway-api-sdk": "1.8.1",
-    "@radixdlt/radix-engine-toolkit": "^1.0.5",
-    "openai": "4.73.1",
-    "uuid": "^11.0.3",
-    "zod": "^3.23.8"
+    "@radixdlt/radix-engine-toolkit": "1.0.5",
+    "openai": "4.76.0",
+    "uuid": "11.0.3",
+    "zod": "3.23.8"
   },
   "devDependencies": {
-    "@rollup/plugin-node-resolve": "^15.3.0",
-    "rollup": "4.28.0"
+    "@rollup/plugin-node-resolve": "15.3.0",
+    "rollup": "4.28.1"
   }
 }
