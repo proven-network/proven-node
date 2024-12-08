@@ -11,7 +11,7 @@ mod gotham_state;
 pub mod subject;
 
 /// Subscribers are created by subscribing to a subject.
-pub mod subsciption;
+pub mod subscription;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -43,7 +43,7 @@ impl<T> Default for SubjectState<T> {
 #[cfg(test)]
 mod tests {
     use super::subject::*;
-    use super::subsciption::*;
+    use super::subscription::*;
 
     use std::collections::HashMap;
     use std::error::Error as StdError;
@@ -77,7 +77,7 @@ mod tests {
     impl SubscriptionHandlerError for TestSubscriptionHandlerError {}
 
     #[async_trait]
-    impl SubscriptionHandler<Bytes> for TestSubscriptionHandler {
+    impl SubscriptionHandler for TestSubscriptionHandler {
         type Error = TestSubscriptionHandlerError;
 
         async fn handle(
@@ -336,7 +336,7 @@ mod tests {
     #[derive(Clone, Debug, PartialEq)]
     struct CustomType(i32);
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct CustomHandler(mpsc::Sender<CustomType>);
 
     #[async_trait]

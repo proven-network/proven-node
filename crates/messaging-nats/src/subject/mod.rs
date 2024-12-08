@@ -38,6 +38,23 @@ where
     _marker3: PhantomData<SE>,
 }
 
+impl<T, DE, SE> From<NatsPublishableSubject<T, DE, SE>> for String
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = DE>
+        + TryInto<Bytes, Error = SE>
+        + 'static,
+{
+    fn from(subject: NatsPublishableSubject<T, DE, SE>) -> Self {
+        subject.full_subject
+    }
+}
+
 impl<T, DE, SE> Clone for NatsPublishableSubject<T, DE, SE>
 where
     DE: Send + StdError + Sync + 'static,
@@ -124,6 +141,7 @@ where
 #[async_trait]
 impl<T, DE, SE> PublishableSubject<T, DE, SE> for NatsPublishableSubject<T, DE, SE>
 where
+    Self: Clone + Debug + Send + Sync + 'static,
     DE: Send + StdError + Sync + 'static,
     SE: Send + StdError + Sync + 'static,
     T: Clone
@@ -135,7 +153,6 @@ where
         + 'static,
 {
     type Error = Error<DE, SE>;
-    type Type = T;
 
     async fn publish(&self, data: T) -> Result<(), Self::Error> {
         self.publish_with_headers(data, HashMap::new()).await
@@ -158,8 +175,8 @@ where
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<Self::Type>,
-        Y: Subscription<X, Self::Type, DE, SE>,
+        X: SubscriptionHandler<T, DE, SE>,
+        Y: Subscription<X, T, DE, SE>,
     {
         Y::new(self.full_subject.clone(), options, handler).await
     }
@@ -172,6 +189,23 @@ pub struct NatsSubject<T = Bytes, DE = Infallible, SE = Infallible> {
     _marker: PhantomData<T>,
     _marker2: PhantomData<DE>,
     _marker3: PhantomData<SE>,
+}
+
+impl<T, DE, SE> From<NatsSubject<T, DE, SE>> for String
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = DE>
+        + TryInto<Bytes, Error = SE>
+        + 'static,
+{
+    fn from(subject: NatsSubject<T, DE, SE>) -> Self {
+        subject.full_subject
+    }
 }
 
 impl<T, DE, SE> Clone for NatsSubject<T, DE, SE> {
@@ -241,12 +275,11 @@ where
         + 'static,
 {
     type Error = Error<DE, SE>;
-    type Type = T;
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<Self::Type>,
-        Y: Subscription<X, Self::Type, DE, SE>,
+        X: SubscriptionHandler<T, DE, SE>,
+        Y: Subscription<X, T, DE, SE>,
     {
         Y::new(self.full_subject.clone(), options, handler).await
     }

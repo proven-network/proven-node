@@ -33,7 +33,7 @@ where
     DE: Send + StdError + Sync + 'static,
     SE: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: SubscriptionHandler<T>,
+    X: SubscriptionHandler<T, DE, SE>,
 {
     cancel_result_channel: Arc<Mutex<Option<CancelResultChannel<DE, SE>>>>,
     cancel_token: CancellationToken,
@@ -49,7 +49,7 @@ where
     DE: Send + StdError + Sync + 'static,
     SE: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: SubscriptionHandler<T>,
+    X: SubscriptionHandler<T, DE, SE>,
 {
     fn extract_headers(headers: &async_nats::HeaderMap) -> Option<HashMap<String, String>> {
         let mut result = HashMap::new();
@@ -86,7 +86,7 @@ where
         + TryFrom<Bytes, Error = DE>
         + TryInto<Bytes, Error = SE>
         + 'static,
-    X: SubscriptionHandler<T>,
+    X: SubscriptionHandler<T, DE, SE>,
 {
     type Error = Error<DE, SE>;
     type Options = NatsSubscriberOptions;

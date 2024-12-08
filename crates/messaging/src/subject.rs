@@ -2,21 +2,19 @@ use crate::subscription::Subscription;
 use crate::subscription_handler::SubscriptionHandler;
 
 use std::collections::HashMap;
-use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
-use bytes::Bytes;
 
 /// Marker trait for subject errors
 pub trait SubjectError: Error + Send + Sync + 'static {}
 
 /// A trait representing a subject.
 #[async_trait]
-pub trait PublishableSubject<T = Bytes, DE = Infallible, SE = Infallible>
+pub trait PublishableSubject<T, DE, SE>
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Into<String> + Send + Sync + 'static,
     DE: Error + Send + Sync + 'static,
     SE: Error + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
@@ -38,15 +36,15 @@ where
     /// Subscribes to the subject and processes messages with the given handler.
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<Self::Type>,
-        Y: Subscription<X, Self::Type, DE, SE>;
+        X: SubscriptionHandler<T, DE, SE>,
+        Y: Subscription<X, T, DE, SE>;
 }
 
 /// A trait representing a subject.
 #[async_trait]
-pub trait Subject<T = Bytes, DE = Infallible, SE = Infallible>
+pub trait Subject<T, DE, SE>
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Into<String> + Send + Sync + 'static,
     DE: Error + Send + Sync + 'static,
     SE: Error + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
@@ -54,14 +52,11 @@ where
     /// The error type for the stream.
     type Error: SubjectError;
 
-    /// The type of data in the stream.
-    type Type: Clone + Debug + Send + Sync = T;
-
     /// Subscribes to the subject and processes messages with the given handler.
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<Self::Type>,
-        Y: Subscription<X, Self::Type, DE, SE>;
+        X: SubscriptionHandler<T, DE, SE>,
+        Y: Subscription<X, T, DE, SE>;
 }
 
 macro_rules! define_scoped_subject {
@@ -69,7 +64,7 @@ macro_rules! define_scoped_subject {
         paste::paste! {
             #[async_trait]
             #[doc = $doc_pub]
-            pub trait [< PublishableSubject $index >]<T = Bytes, DE = Infallible, SE = Infallible>
+            pub trait [< PublishableSubject $index >]<T, DE, SE>
             where
                 Self: Clone + Send + Sync + 'static,
                 DE: Error + Send + Sync + 'static,
@@ -105,7 +100,7 @@ macro_rules! define_scoped_subject {
 
             #[async_trait]
             #[doc = $doc_sub]
-            pub trait [< Subject $index >]<T = Bytes, DE = Infallible, SE = Infallible>
+            pub trait [< Subject $index >]<T, DE, SE>
             where
                 Self: Clone + Send + Sync + 'static,
                 DE: Error + Send + Sync + 'static,

@@ -5,6 +5,7 @@ use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
 
 use std::collections::HashMap;
+use std::convert::Infallible;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -22,6 +23,12 @@ use proven_messaging::subscription_handler::SubscriptionHandler;
 pub struct InMemoryPublishableSubject<T = Bytes> {
     full_subject: String,
     _marker: PhantomData<T>,
+}
+
+impl<T> From<InMemoryPublishableSubject<T>> for String {
+    fn from(subject: InMemoryPublishableSubject<T>) -> Self {
+        subject.full_subject
+    }
 }
 
 impl<T> InMemoryPublishableSubject<T> {
@@ -45,16 +52,15 @@ impl<T> InMemoryPublishableSubject<T> {
 }
 
 #[async_trait]
-impl<T> PublishableSubject<T> for InMemoryPublishableSubject<T>
+impl<T> PublishableSubject<T, Infallible, Infallible> for InMemoryPublishableSubject<T>
 where
+    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error;
-    type Type = T;
 
     async fn publish(&self, data: T) -> Result<(), Self::Error> {
-        self.publish_with_headers(data, std::collections::HashMap::new())
-            .await
+        self.publish_with_headers(data, HashMap::new()).await
     }
 
     #[allow(clippy::significant_drop_tightening)]
@@ -92,8 +98,8 @@ where
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<Self::Type>,
-        Y: Subscription<X, Self::Type>,
+        X: SubscriptionHandler<T, Infallible, Infallible>,
+        Y: Subscription<X, T, Infallible, Infallible>,
     {
         Ok(Y::new(self.full_subject.clone(), options, handler.clone()).await?)
     }
@@ -104,6 +110,12 @@ where
 pub struct InMemorySubject<T = Bytes> {
     full_subject: String,
     _marker: PhantomData<T>,
+}
+
+impl<T> From<InMemorySubject<T>> for String {
+    fn from(subject: InMemorySubject<T>) -> Self {
+        subject.full_subject
+    }
 }
 
 impl<T> InMemorySubject<T> {
@@ -127,17 +139,17 @@ impl<T> InMemorySubject<T> {
 }
 
 #[async_trait]
-impl<T> Subject<T> for InMemorySubject<T>
+impl<T> Subject<T, Infallible, Infallible> for InMemorySubject<T>
 where
+    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error;
-    type Type = T;
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<Self::Type>,
-        Y: Subscription<X, Self::Type>,
+        X: SubscriptionHandler<T, Infallible, Infallible>,
+        Y: Subscription<X, T, Infallible, Infallible>,
     {
         Ok(Y::new(self.full_subject.clone(), options, handler.clone()).await?)
     }
@@ -174,7 +186,7 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> [< PublishableSubject $index >]<T> for [< InMemoryPublishableSubject $index >]<T>
+            impl<T> [< PublishableSubject $index >]<T, Infallible, Infallible> for [< InMemoryPublishableSubject $index >]<T>
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {
@@ -237,7 +249,7 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> [< Subject $index >]<T> for [< InMemorySubject $index >]<T>
+            impl<T> [< Subject $index >]<T, Infallible, Infallible> for [< InMemorySubject $index >]<T>
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {

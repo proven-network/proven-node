@@ -3,6 +3,7 @@ mod error;
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
 
+use std::convert::Infallible;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -27,10 +28,11 @@ pub struct InMemorySubscriber<X, T = Bytes> {
 }
 
 #[async_trait]
-impl<X, T> Subscription<X, T> for InMemorySubscriber<X, T>
+impl<X, T> Subscription<X, T, Infallible, Infallible> for InMemorySubscriber<X, T>
 where
+    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: SubscriptionHandler<T>,
+    X: SubscriptionHandler<T, Infallible, Infallible>,
 {
     type Error = Error;
     type Options = InMemorySubscriberOptions;
@@ -69,7 +71,7 @@ where
                 }
                 message = receiver.recv() => {
                     if let Ok((message, headers)) = message {
-                        let _ = subscriber_clone.handler().handle(subject_string.clone(), message.clone(), headers).await;
+                        let _ = subscriber_clone.handler().handle(subject_string, message.clone(), headers).await;
                         subscriber_clone.last_message.lock().await.replace(message);
                     }
                 }

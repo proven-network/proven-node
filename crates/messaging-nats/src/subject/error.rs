@@ -1,14 +1,14 @@
-use std::convert::Infallible;
+use std::error::Error as StdError;
 
 use proven_messaging::subject::SubjectError;
 use thiserror::Error;
 
 /// Error type for NATS operations.
 #[derive(Debug, Error, Clone)]
-pub enum Error<DE = Infallible, SE = Infallible>
+pub enum Error<DE, SE>
 where
-    DE: std::error::Error + Send + Sync + 'static,
-    SE: std::error::Error + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
 {
     /// Deserialization error.
     #[error(transparent)]
@@ -29,7 +29,7 @@ where
 
 impl<DE, SE> SubjectError for Error<DE, SE>
 where
-    DE: std::error::Error + Send + Sync + 'static,
-    SE: std::error::Error + Send + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
 {
 }
