@@ -4,6 +4,7 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
+#![allow(clippy::too_many_lines)]
 
 mod error;
 
@@ -22,8 +23,16 @@ use aws_sdk_secretsmanager::Client;
 use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
 
+/// Options for configuring an `AsmStore`.
+pub struct AsmStoreOptions {
+    /// The AWS region to use.
+    pub region: String,
+
+    /// The name of the secret to use.
+    pub secret_name: String,
+}
+
 /// KV store using AWS Secrets Manager.
-#[derive(Clone, Debug)]
 pub struct AsmStore<T = Bytes, DE = Infallible, SE = Infallible>
 where
     Self: Clone + Debug + Send + Sync + 'static,
@@ -37,13 +46,37 @@ where
     _marker3: PhantomData<SE>,
 }
 
-/// Options for configuring an `AsmStore`.
-pub struct AsmStoreOptions {
-    /// The AWS region to use.
-    pub region: String,
+impl<T, DE, SE> Clone for AsmStore<T, DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            prefix: self.prefix.clone(),
+            secret_name: self.secret_name.clone(),
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
+        }
+    }
+}
 
-    /// The name of the secret to use.
-    pub secret_name: String,
+impl<T, DE, SE> Debug for AsmStore<T, DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("AsmStore")
+            .field("client", &self.client)
+            .field("prefix", &self.prefix)
+            .field("secret_name", &self.secret_name)
+            .finish()
+    }
 }
 
 impl<T, DE, SE> AsmStore<T, DE, SE>
@@ -51,7 +84,13 @@ where
     Self: Clone + Debug + Send + Sync + 'static,
     DE: Send + StdError + Sync + 'static,
     SE: Send + StdError + Sync + 'static,
-    T: Clone + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = DE>
+        + TryInto<Bytes, Error = SE>
+        + 'static,
 {
     /// Creates a new `AsmStore` with the specified options.
     pub async fn new(
@@ -138,8 +177,8 @@ where
 impl<T, DE, SE> Store<T, DE, SE> for AsmStore<T, DE, SE>
 where
     Self: Clone + Send + Sync + 'static,
-    DE: Clone + Send + StdError + Sync + 'static,
-    SE: Clone + Send + StdError + Sync + 'static,
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -216,9 +255,8 @@ macro_rules! impl_scoped_store {
                 _marker3: PhantomData<SE>,
             }
 
-            impl<T, DE, SE> Clone for $parent<T, DE, SE>
+            impl<T, DE, SE> Clone for #name<T, DE, SE>
             where
-                Self: Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone
@@ -230,17 +268,19 @@ macro_rules! impl_scoped_store {
                     + 'static,
             {
                 fn clone(&self) -> Self {
-                    Self::new_with_client_and_prefix(
-                        self.client.clone(),
-                        self.secret_name.clone(),
-                        self.prefix.clone(),
-                    )
+                    Self {
+                        client: self.client.clone(),
+                        prefix: self.prefix.clone(),
+                        secret_name: self.secret_name.clone(),
+                        _marker: PhantomData,
+                        _marker2: PhantomData,
+                        _marker3: PhantomData,
+                    }
                 }
             }
 
-            impl<T, DE, SE> Debug for $parent<T, DE, SE>
+            impl<T, DE, SE> Debug for #name<T, DE, SE>
             where
-                Self: Clone + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone

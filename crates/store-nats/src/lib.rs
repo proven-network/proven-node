@@ -3,6 +3,7 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
+#![allow(clippy::too_many_lines)]
 
 mod error;
 
@@ -39,7 +40,6 @@ pub struct NatsStoreOptions {
 }
 
 /// KV store using NATS JS.
-#[derive(Clone, Debug)]
 pub struct NatsStore<T = Bytes, DE = Infallible, SE = Infallible>
 where
     Self: Clone + Debug + Send + Sync + 'static,
@@ -48,12 +48,48 @@ where
     T: Clone + Debug + Send + Sync + 'static,
 {
     bucket: String,
+    client: Client,
     jetstream_context: JetStreamContext,
     max_age: Duration,
     persist: bool,
     _marker: PhantomData<T>,
     _marker2: PhantomData<DE>,
     _marker3: PhantomData<SE>,
+}
+
+impl<T, DE, SE> Clone for NatsStore<T, DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            bucket: self.bucket.clone(),
+            client: self.client.clone(),
+            jetstream_context: self.jetstream_context.clone(),
+            max_age: self.max_age,
+            persist: self.persist,
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
+        }
+    }
+}
+
+impl<T, DE, SE> Debug for NatsStore<T, DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("NatsStore")
+            .field("bucket", &self.bucket)
+            .field("max_age", &self.max_age)
+            .field("persist", &self.persist)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<T, DE, SE> NatsStore<T, DE, SE>
@@ -73,10 +109,11 @@ where
             persist,
         }: NatsStoreOptions,
     ) -> Self {
-        let jetstream_context = jetstream::new(client);
+        let jetstream_context = jetstream::new(client.clone());
 
         Self {
             bucket,
+            client,
             jetstream_context,
             max_age,
             persist,
@@ -86,19 +123,7 @@ where
         }
     }
 
-    fn with_scope(&self, scope: String) -> Self {
-        Self {
-            bucket: scope,
-            jetstream_context: self.jetstream_context.clone(),
-            max_age: self.max_age,
-            persist: self.persist,
-            _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
-        }
-    }
-
-    async fn get_kv_store(&self) -> Result<KvStore, Error> {
+    async fn get_kv_store(&self) -> Result<KvStore, Error<DE, SE>> {
         let config = Config {
             bucket: self.bucket.clone(),
             max_age: self.max_age,
@@ -131,7 +156,7 @@ where
         + TryInto<Bytes, Error = SE>
         + 'static,
 {
-    type Error = Error;
+    type Error = Error<DE, SE>;
 
     async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         self.get_kv_store()
@@ -144,15 +169,19 @@ where
     }
 
     async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
-        let bytes = self
+        if let Some(bytes) = self
             .get_kv_store()
             .await?
             .get(key)
             .await
-            .map_err(|e| Error::Entry(e.kind()))?;
+            .map_err(|e| Error::Entry(e.kind()))?
+        {
+            let value: T = bytes.try_into().map_err(|e| Error::Deserialize(e))?;
 
-        let value: T = bytes.try_into().map_err(|e| Error::Deserialize(e))?;
-        Ok(Some(value))
+            Ok(Some(value))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
@@ -186,7 +215,6 @@ macro_rules! impl_scoped_store {
             [!set! #trait_name = [!ident! Store $index]]
 
             #[doc = $doc]
-            #[derive(Clone, Debug)]
             pub struct #name<T = Bytes, DE = Infallible, SE = Infallible>
             where
                 Self: Debug + Send + Sync + 'static,
@@ -201,6 +229,7 @@ macro_rules! impl_scoped_store {
                     + 'static,
             {
                 bucket: String,
+                client: Client,
                 jetstream_context: JetStreamContext,
                 max_age: Duration,
                 persist: bool,
@@ -209,9 +238,8 @@ macro_rules! impl_scoped_store {
                 _marker3: PhantomData<SE>,
             }
 
-            impl<T, DE, SE> Clone for $parent<T, DE, SE>
+            impl<T, DE, SE> Clone for #name<T, DE, SE>
             where
-                Self: Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone
@@ -225,6 +253,7 @@ macro_rules! impl_scoped_store {
                 fn clone(&self) -> Self {
                     Self {
                         bucket: self.bucket.clone(),
+                        client: self.client.clone(),
                         jetstream_context: self.jetstream_context.clone(),
                         max_age: self.max_age,
                         persist: self.persist,
@@ -235,9 +264,8 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> Debug for $parent<T, DE, SE>
+            impl<T, DE, SE> Debug for #name<T, DE, SE>
             where
-                Self: Clone + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone
@@ -278,10 +306,11 @@ macro_rules! impl_scoped_store {
                         persist,
                     }: NatsStoreOptions,
                 ) -> Self {
-                    let jetstream_context = jetstream::new(client);
+                    let jetstream_context = jetstream::new(client.clone());
 
                     Self {
                         bucket,
+                        client,
                         jetstream_context,
                         max_age,
                         persist,
@@ -306,14 +335,14 @@ macro_rules! impl_scoped_store {
                     + TryInto<Bytes, Error = SE>
                     + 'static,
             {
-                type Error = Error;
+                type Error = Error<DE, SE>;
                 type Scoped = $parent<T, DE, SE>;
 
                 fn [!ident! scope_ $index]<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let mut bucket = self.bucket.clone();
                     bucket.push_str(&format!(".{}", scope.into()));
                     Self::Scoped::new(NatsStoreOptions {
-                        client: self.jetstream_context.client().clone(),
+                        client: self.client.clone(),
                         bucket,
                         max_age: self.max_age,
                         persist: self.persist,

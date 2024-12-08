@@ -4,6 +4,7 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
+#![allow(clippy::too_many_lines)]
 
 mod error;
 
@@ -22,7 +23,6 @@ use tokio::fs;
 use tokio::io::{self, AsyncWriteExt};
 
 /// KV store using files on disk.
-#[derive(Clone, Debug)]
 pub struct FsStore<T = Bytes, DE = Infallible, SE = Infallible>
 where
     Self: Clone + Debug + Send + Sync + 'static,
@@ -36,9 +36,36 @@ where
     _marker3: PhantomData<SE>,
 }
 
+impl<T, DE, SE> Clone for FsStore<T, DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            dir: self.dir.clone(),
+            _marker: PhantomData,
+            _marker2: PhantomData,
+            _marker3: PhantomData,
+        }
+    }
+}
+
+impl<T, DE, SE> Debug for FsStore<T, DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        f.debug_struct("FsStore").field("dir", &self.dir).finish()
+    }
+}
+
 impl<T, DE, SE> FsStore<T, DE, SE>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
+    Self: Debug + Send + Sync + 'static,
     DE: Send + StdError + Sync + 'static,
     SE: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
@@ -161,9 +188,8 @@ macro_rules! impl_scoped_store {
                 _marker3: PhantomData<SE>,
             }
 
-            impl<T, DE, SE> Clone for $parent<T, DE, SE>
+            impl<T, DE, SE> Clone for #name<T, DE, SE>
             where
-                Self: Debug + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone
@@ -184,9 +210,8 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> Debug for $parent<T, DE, SE>
+            impl<T, DE, SE> Debug for #name<T, DE, SE>
             where
-                Self: Clone + Send + Sync + 'static,
                 DE: Send + StdError + Sync + 'static,
                 SE: Send + StdError + Sync + 'static,
                 T: Clone
