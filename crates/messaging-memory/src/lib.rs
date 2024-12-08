@@ -7,10 +7,13 @@
 
 mod gotham_state;
 
-/// Subjects can be published to and subscribed to (by passing a handler).
+/// Streams are persistent, ordered, and append-only sequences of messages.
+pub mod stream;
+
+/// Subjects are named channels for messages.
 pub mod subject;
 
-/// Subscribers are created by subscribing to a subject.
+/// Subscribers consume messages from subjects.
 pub mod subscription;
 
 use std::collections::HashMap;

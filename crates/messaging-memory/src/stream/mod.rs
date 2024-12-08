@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod error;
 
 pub use error::Error;
@@ -41,7 +43,7 @@ where
         N: Into<String> + Send,
     {
         Self {
-            subjects: subjects.into_iter().map(|s| s.name()).collect(),
+            subjects: subjects.into_iter().map(Into::into).collect(),
             _marker: PhantomData,
         }
     }
