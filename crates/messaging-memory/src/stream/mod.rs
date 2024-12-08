@@ -3,7 +3,7 @@
 mod error;
 mod subscription_handler;
 
-use crate::subscription::{InMemorySubscriber, InMemorySubscriberOptions};
+use crate::subscription::{MemorySubscriber, MemorySubscriberOptions};
 pub use error::Error;
 use subscription_handler::StreamSubscriptionHandler;
 
@@ -26,7 +26,7 @@ where
 {
     messages: Arc<Mutex<Vec<T>>>,
     name: String,
-    subscriptions: Vec<InMemorySubscriber<StreamSubscriptionHandler<T>, T>>,
+    subscriptions: Vec<MemorySubscriber<StreamSubscriptionHandler<T>, T>>,
 }
 
 #[async_trait]
@@ -49,7 +49,7 @@ where
         for subject in subjects {
             let handler = StreamSubscriptionHandler::new(sender.clone());
             let subscription = subject
-                .subscribe(InMemorySubscriberOptions, handler)
+                .subscribe(MemorySubscriberOptions, handler)
                 .await
                 .map_err(|e| Error::Subscription(e))?;
 
@@ -106,13 +106,13 @@ where
 mod tests {
     use super::*;
 
-    use crate::subject::{InMemoryPublishableSubject, InMemorySubject};
+    use crate::subject::{MemoryPublishableSubject, MemorySubject};
     use proven_messaging::subject::PublishableSubject;
 
     #[tokio::test]
     async fn test_get_message() {
-        let publishable_subject = InMemoryPublishableSubject::new("test_get_message").unwrap();
-        let subject = InMemorySubject::new("test_get_message").unwrap();
+        let publishable_subject = MemoryPublishableSubject::new("test_get_message").unwrap();
+        let subject = MemorySubject::new("test_get_message").unwrap();
         let stream: MemoryStream<String> = MemoryStream::new("test_stream", vec![subject])
             .await
             .unwrap();
@@ -127,8 +127,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_last_message() {
-        let publishable_subject = InMemoryPublishableSubject::new("test_last_message").unwrap();
-        let subject = InMemorySubject::new("test_last_message").unwrap();
+        let publishable_subject = MemoryPublishableSubject::new("test_last_message").unwrap();
+        let subject = MemorySubject::new("test_last_message").unwrap();
         let stream: MemoryStream<String> = MemoryStream::new("test_last_message", vec![subject])
             .await
             .unwrap();
@@ -145,7 +145,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_stream() {
-        let subject = InMemorySubject::new("test_empty_stream").unwrap();
+        let subject = MemorySubject::new("test_empty_stream").unwrap();
         let stream: MemoryStream<String> = MemoryStream::new("test_stream", vec![subject])
             .await
             .unwrap();

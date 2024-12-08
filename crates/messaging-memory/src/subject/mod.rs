@@ -20,18 +20,18 @@ use proven_messaging::subscription_handler::SubscriptionHandler;
 
 /// A in-memory publishable subject.
 #[derive(Clone, Debug)]
-pub struct InMemoryPublishableSubject<T = Bytes> {
+pub struct MemoryPublishableSubject<T = Bytes> {
     full_subject: String,
     _marker: PhantomData<T>,
 }
 
-impl<T> From<InMemoryPublishableSubject<T>> for String {
-    fn from(subject: InMemoryPublishableSubject<T>) -> Self {
+impl<T> From<MemoryPublishableSubject<T>> for String {
+    fn from(subject: MemoryPublishableSubject<T>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T> InMemoryPublishableSubject<T> {
+impl<T> MemoryPublishableSubject<T> {
     /// Creates a new in-memory publishable subject.
     ///
     /// # Errors
@@ -52,7 +52,7 @@ impl<T> InMemoryPublishableSubject<T> {
 }
 
 #[async_trait]
-impl<T> PublishableSubject<T, Infallible, Infallible> for InMemoryPublishableSubject<T>
+impl<T> PublishableSubject<T, Infallible, Infallible> for MemoryPublishableSubject<T>
 where
     Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
@@ -107,18 +107,18 @@ where
 
 /// A in-memory subject which can be subscribed only.
 #[derive(Clone, Debug)]
-pub struct InMemorySubject<T = Bytes> {
+pub struct MemorySubject<T = Bytes> {
     full_subject: String,
     _marker: PhantomData<T>,
 }
 
-impl<T> From<InMemorySubject<T>> for String {
-    fn from(subject: InMemorySubject<T>) -> Self {
+impl<T> From<MemorySubject<T>> for String {
+    fn from(subject: MemorySubject<T>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T> InMemorySubject<T> {
+impl<T> MemorySubject<T> {
     /// Creates a new in-memory subject.
     ///
     /// # Errors
@@ -139,7 +139,7 @@ impl<T> InMemorySubject<T> {
 }
 
 #[async_trait]
-impl<T> Subject<T, Infallible, Infallible> for InMemorySubject<T>
+impl<T> Subject<T, Infallible, Infallible> for MemorySubject<T>
 where
     Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
@@ -160,12 +160,12 @@ macro_rules! impl_scoped_subject {
         paste::paste! {
             #[derive(Clone, Debug)]
             #[doc = $doc_pub]
-            pub struct [< InMemoryPublishableSubject $index >]<T = Bytes> {
+            pub struct [< MemoryPublishableSubject $index >]<T = Bytes> {
                 full_subject: String,
                 _marker: PhantomData<T>,
             }
 
-            impl<T> [< InMemoryPublishableSubject $index >]<T> {
+            impl<T> [< MemoryPublishableSubject $index >]<T> {
                 /// Creates a new in-memory publishable subject.
                 ///
                 /// # Errors
@@ -186,14 +186,14 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> [< PublishableSubject $index >]<T, Infallible, Infallible> for [< InMemoryPublishableSubject $index >]<T>
+            impl<T> [< PublishableSubject $index >]<T, Infallible, Infallible> for [< MemoryPublishableSubject $index >]<T>
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {
                 type Error = Error;
                 type Type = T;
                 type Scoped = $parent_pub<T>;
-                type WildcardAllScoped = InMemorySubject<T>;
+                type WildcardAllScoped = MemorySubject<T>;
                 type WildcardAnyScoped = $parent_sub<T>;
 
                 fn any(&self) -> Self::WildcardAnyScoped {
@@ -204,7 +204,7 @@ macro_rules! impl_scoped_subject {
                 }
 
                 fn all(&self) -> Self::WildcardAllScoped {
-                    InMemorySubject {
+                    MemorySubject {
                         full_subject: format!("{}.>", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -223,12 +223,12 @@ macro_rules! impl_scoped_subject {
 
             #[derive(Clone, Debug)]
             #[doc = $doc_sub]
-            pub struct [< InMemorySubject $index >]<T = Bytes> {
+            pub struct [< MemorySubject $index >]<T = Bytes> {
                 full_subject: String,
                 _marker: PhantomData<T>,
             }
 
-            impl<T> [< InMemorySubject $index >]<T> {
+            impl<T> [< MemorySubject $index >]<T> {
                 /// Creates a new in-memory subject.
                 ///
                 /// # Errors
@@ -249,14 +249,14 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> [< Subject $index >]<T, Infallible, Infallible> for [< InMemorySubject $index >]<T>
+            impl<T> [< Subject $index >]<T, Infallible, Infallible> for [< MemorySubject $index >]<T>
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {
                 type Error = Error;
                 type Type = T;
                 type Scoped = $parent_sub<T>;
-                type WildcardAllScoped = InMemorySubject<T>;
+                type WildcardAllScoped = MemorySubject<T>;
 
                 fn any(&self) -> Self::Scoped {
                     $parent_sub {
@@ -266,7 +266,7 @@ macro_rules! impl_scoped_subject {
                 }
 
                 fn all(&self) -> Self::WildcardAllScoped {
-                    InMemorySubject {
+                    MemorySubject {
                         full_subject: format!("{}.>", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -288,24 +288,24 @@ macro_rules! impl_scoped_subject {
 
 impl_scoped_subject!(
     1,
-    InMemoryPublishableSubject,
-    InMemorySubject,
+    MemoryPublishableSubject,
+    MemorySubject,
     "A single-scoped in-memory publishable subject.",
     "A single-scoped in-memory subject."
 );
 
 impl_scoped_subject!(
     2,
-    InMemoryPublishableSubject1,
-    InMemorySubject1,
+    MemoryPublishableSubject1,
+    MemorySubject1,
     "A double-scoped in-memory publishable subject.",
     "A double-scoped in-memory subject."
 );
 
 impl_scoped_subject!(
     3,
-    InMemoryPublishableSubject2,
-    InMemorySubject2,
+    MemoryPublishableSubject2,
+    MemorySubject2,
     "A triple-scoped in-memory publishable subject.",
     "A triple-scoped in-memory subject."
 );
@@ -317,22 +317,22 @@ mod tests {
     #[test]
     fn test_publishable_subject_validation() {
         // Valid names should work
-        assert!(InMemoryPublishableSubject::<()>::new("foo").is_ok());
-        assert!(InMemoryPublishableSubject::<()>::new("foo-bar").is_ok());
-        assert!(InMemoryPublishableSubject::<()>::new("foo_bar").is_ok());
-        assert!(InMemoryPublishableSubject::<()>::new("123").is_ok());
+        assert!(MemoryPublishableSubject::<()>::new("foo").is_ok());
+        assert!(MemoryPublishableSubject::<()>::new("foo-bar").is_ok());
+        assert!(MemoryPublishableSubject::<()>::new("foo_bar").is_ok());
+        assert!(MemoryPublishableSubject::<()>::new("123").is_ok());
 
         // Invalid names should fail
         assert!(matches!(
-            InMemoryPublishableSubject::<()>::new("foo.bar"),
+            MemoryPublishableSubject::<()>::new("foo.bar"),
             Err(Error::InvalidSubjectPartial)
         ));
         assert!(matches!(
-            InMemoryPublishableSubject::<()>::new("foo*"),
+            MemoryPublishableSubject::<()>::new("foo*"),
             Err(Error::InvalidSubjectPartial)
         ));
         assert!(matches!(
-            InMemoryPublishableSubject::<()>::new("foo>"),
+            MemoryPublishableSubject::<()>::new("foo>"),
             Err(Error::InvalidSubjectPartial)
         ));
     }
@@ -340,22 +340,22 @@ mod tests {
     #[test]
     fn test_subject_validation() {
         // Valid names should work
-        assert!(InMemorySubject::<()>::new("foo").is_ok());
-        assert!(InMemorySubject::<()>::new("foo-bar").is_ok());
-        assert!(InMemorySubject::<()>::new("foo_bar").is_ok());
-        assert!(InMemorySubject::<()>::new("123").is_ok());
+        assert!(MemorySubject::<()>::new("foo").is_ok());
+        assert!(MemorySubject::<()>::new("foo-bar").is_ok());
+        assert!(MemorySubject::<()>::new("foo_bar").is_ok());
+        assert!(MemorySubject::<()>::new("123").is_ok());
 
         // Invalid names should fail
         assert!(matches!(
-            InMemorySubject::<()>::new("foo.bar"),
+            MemorySubject::<()>::new("foo.bar"),
             Err(Error::InvalidSubjectPartial)
         ));
         assert!(matches!(
-            InMemorySubject::<()>::new("foo*"),
+            MemorySubject::<()>::new("foo*"),
             Err(Error::InvalidSubjectPartial)
         ));
         assert!(matches!(
-            InMemorySubject::<()>::new("foo>"),
+            MemorySubject::<()>::new("foo>"),
             Err(Error::InvalidSubjectPartial)
         ));
     }
