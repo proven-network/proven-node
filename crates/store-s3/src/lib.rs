@@ -47,9 +47,7 @@ where
     client: aws_sdk_s3::Client,
     secret_key: [u8; 32],
     prefix: Option<String>,
-    _marker: PhantomData<T>,
-    _marker2: PhantomData<DE>,
-    _marker3: PhantomData<SE>,
+    _marker: PhantomData<(T, DE, SE)>,
 }
 
 impl<T, DE, SE> Clone for S3Store<T, DE, SE>
@@ -65,8 +63,6 @@ where
             secret_key: self.secret_key,
             prefix: self.prefix.clone(),
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 }
@@ -111,8 +107,6 @@ where
             secret_key,
             prefix: None,
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 
@@ -301,9 +295,7 @@ macro_rules! impl_scoped_store {
                 client: aws_sdk_s3::Client,
                 secret_key: [u8; 32],
                 prefix: Option<String>,
-                _marker: PhantomData<T>,
-                _marker2: PhantomData<DE>,
-                _marker3: PhantomData<SE>,
+                _marker: PhantomData<(T, DE, SE)>,
             }
 
             impl<T, DE, SE> Clone for [< S3Store $index >]<T, DE, SE>
@@ -325,8 +317,6 @@ macro_rules! impl_scoped_store {
                         secret_key: self.secret_key,
                         prefix: self.prefix.clone(),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }
@@ -383,8 +373,6 @@ macro_rules! impl_scoped_store {
                         secret_key,
                         prefix: None,
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }
@@ -417,8 +405,6 @@ macro_rules! impl_scoped_store {
                         secret_key: self.secret_key,
                         prefix: Some(prefix),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }

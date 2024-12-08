@@ -52,9 +52,7 @@ where
     jetstream_context: JetStreamContext,
     max_age: Duration,
     persist: bool,
-    _marker: PhantomData<T>,
-    _marker2: PhantomData<DE>,
-    _marker3: PhantomData<SE>,
+    _marker: PhantomData<(T, DE, SE)>,
 }
 
 impl<T, DE, SE> Clone for NatsStore<T, DE, SE>
@@ -71,8 +69,6 @@ where
             max_age: self.max_age,
             persist: self.persist,
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 }
@@ -118,8 +114,6 @@ where
             max_age,
             persist,
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 
@@ -230,9 +224,7 @@ macro_rules! impl_scoped_store {
                 jetstream_context: JetStreamContext,
                 max_age: Duration,
                 persist: bool,
-                _marker: PhantomData<T>,
-                _marker2: PhantomData<DE>,
-                _marker3: PhantomData<SE>,
+                _marker: PhantomData<(T, DE, SE)>,
             }
 
             impl<T, DE, SE> Clone for [< NatsStore $index >]<T, DE, SE>
@@ -255,8 +247,6 @@ macro_rules! impl_scoped_store {
                         max_age: self.max_age,
                         persist: self.persist,
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }
@@ -312,8 +302,6 @@ macro_rules! impl_scoped_store {
                         max_age,
                         persist,
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }

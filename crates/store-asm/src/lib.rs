@@ -41,9 +41,7 @@ where
     client: aws_sdk_secretsmanager::Client,
     prefix: Option<String>,
     secret_name: String,
-    _marker: PhantomData<T>,
-    _marker2: PhantomData<DE>,
-    _marker3: PhantomData<SE>,
+    _marker: PhantomData<(T, DE, SE)>,
 }
 
 impl<T, DE, SE> Clone for AsmStore<T, DE, SE>
@@ -58,8 +56,6 @@ where
             prefix: self.prefix.clone(),
             secret_name: self.secret_name.clone(),
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 }
@@ -109,8 +105,6 @@ where
             prefix: None,
             secret_name,
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 
@@ -124,8 +118,6 @@ where
             prefix,
             secret_name,
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 
@@ -247,9 +239,7 @@ macro_rules! impl_scoped_store {
                 client: aws_sdk_secretsmanager::Client,
                 prefix: Option<String>,
                 secret_name: String,
-                _marker: PhantomData<T>,
-                _marker2: PhantomData<DE>,
-                _marker3: PhantomData<SE>,
+                _marker: PhantomData<(T, DE, SE)>,
             }
 
             impl<T, DE, SE> Clone for [< AsmStore $index >]<T, DE, SE>
@@ -270,8 +260,6 @@ macro_rules! impl_scoped_store {
                         prefix: self.prefix.clone(),
                         secret_name: self.secret_name.clone(),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }
@@ -322,8 +310,6 @@ macro_rules! impl_scoped_store {
                         prefix,
                         secret_name,
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }

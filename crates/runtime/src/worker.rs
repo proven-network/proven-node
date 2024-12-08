@@ -63,12 +63,7 @@ where
     NSS: SqlStore3,
 {
     sender: mpsc::Sender<WorkerRequest>,
-    _marker: PhantomData<AS>,
-    _marker2: PhantomData<PS>,
-    _marker3: PhantomData<NS>,
-    _marker4: PhantomData<ASS>,
-    _marker5: PhantomData<PSS>,
-    _marker6: PhantomData<NSS>,
+    _marker: PhantomData<(AS, PS, NS, ASS, PSS, NSS)>,
 }
 
 type WorkerRequest = (
@@ -120,11 +115,6 @@ where
         Ok(Self {
             sender,
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
-            _marker4: PhantomData,
-            _marker5: PhantomData,
-            _marker6: PhantomData,
         })
     }
 

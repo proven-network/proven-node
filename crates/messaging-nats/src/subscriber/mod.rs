@@ -39,8 +39,7 @@ where
     cancel_token: CancellationToken,
     handler: X,
     last_message: Arc<Mutex<Option<T>>>,
-    _marker: std::marker::PhantomData<DE>,
-    _marker2: std::marker::PhantomData<SE>,
+    _marker: std::marker::PhantomData<(T, DE, SE)>,
 }
 
 impl<X, T, DE, SE> NatsSubscriber<X, T, DE, SE>
@@ -102,7 +101,6 @@ where
             handler,
             last_message: Arc::new(Mutex::new(None)),
             _marker: std::marker::PhantomData,
-            _marker2: std::marker::PhantomData,
         };
 
         let mut subscriber = options

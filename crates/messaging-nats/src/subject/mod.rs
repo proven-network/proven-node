@@ -33,9 +33,7 @@ where
 {
     client: Client,
     full_subject: String,
-    _marker: PhantomData<T>,
-    _marker2: PhantomData<DE>,
-    _marker3: PhantomData<SE>,
+    _marker: PhantomData<(T, DE, SE)>,
 }
 
 impl<T, DE, SE> From<NatsPublishableSubject<T, DE, SE>> for String
@@ -72,8 +70,6 @@ where
             client: self.client.clone(),
             full_subject: self.full_subject.clone(),
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 }
@@ -124,8 +120,6 @@ where
             client,
             full_subject: subject,
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         })
     }
 
@@ -186,9 +180,7 @@ where
 pub struct NatsSubject<T = Bytes, DE = Infallible, SE = Infallible> {
     client: Client,
     full_subject: String,
-    _marker: PhantomData<T>,
-    _marker2: PhantomData<DE>,
-    _marker3: PhantomData<SE>,
+    _marker: PhantomData<(T, DE, SE)>,
 }
 
 impl<T, DE, SE> From<NatsSubject<T, DE, SE>> for String
@@ -214,8 +206,6 @@ impl<T, DE, SE> Clone for NatsSubject<T, DE, SE> {
             client: self.client.clone(),
             full_subject: self.full_subject.clone(),
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 }
@@ -255,8 +245,6 @@ where
             client,
             full_subject: subject,
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         })
     }
 }
@@ -297,9 +285,7 @@ macro_rules! impl_scoped_subject {
             {
                 client: Client,
                 full_subject: String,
-                _marker: PhantomData<T>,
-                _marker2: PhantomData<DE>,
-                _marker3: PhantomData<SE>,
+                _marker: PhantomData<(T, DE, SE)>,
             }
 
             impl<T, DE, SE> Clone for [< NatsPublishableSubject $index >]<T, DE, SE>
@@ -313,8 +299,6 @@ macro_rules! impl_scoped_subject {
                         client: self.client.clone(),
                         full_subject: self.full_subject.clone(),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }
@@ -353,8 +337,6 @@ macro_rules! impl_scoped_subject {
                         client,
                         full_subject: subject,
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     })
                 }
             }
@@ -377,8 +359,6 @@ macro_rules! impl_scoped_subject {
                         client: self.client.clone(),
                         full_subject: format!("{}.*", self.full_subject),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
 
@@ -387,8 +367,6 @@ macro_rules! impl_scoped_subject {
                         client: self.client.clone(),
                         full_subject: format!("{}.>", self.full_subject),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
 
@@ -400,8 +378,6 @@ macro_rules! impl_scoped_subject {
                         client: self.client.clone(),
                         full_subject: format!("{}.{}", self.full_subject, scope.into()),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }
@@ -415,9 +391,7 @@ macro_rules! impl_scoped_subject {
             {
                 client: Client,
                 full_subject: String,
-                _marker: PhantomData<T>,
-                _marker2: PhantomData<DE>,
-                _marker3: PhantomData<SE>,
+                _marker: PhantomData<(T, DE, SE)>,
             }
 
             impl<T, DE, SE> Clone for [< NatsSubject $index >]<T, DE, SE>
@@ -431,8 +405,6 @@ macro_rules! impl_scoped_subject {
                         client: self.client.clone(),
                         full_subject: self.full_subject.clone(),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }
@@ -471,8 +443,6 @@ macro_rules! impl_scoped_subject {
                         client,
                         full_subject: subject,
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     })
                 }
             }
@@ -494,8 +464,6 @@ macro_rules! impl_scoped_subject {
                         client: self.client.clone(),
                         full_subject: format!("{}.*", self.full_subject),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
 
@@ -504,8 +472,6 @@ macro_rules! impl_scoped_subject {
                         client: self.client.clone(),
                         full_subject: format!("{}.>", self.full_subject),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
 
@@ -517,8 +483,6 @@ macro_rules! impl_scoped_subject {
                         client: self.client.clone(),
                         full_subject: format!("{}.{}", self.full_subject, scope.into()),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }

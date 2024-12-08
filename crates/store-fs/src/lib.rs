@@ -31,9 +31,7 @@ where
     T: Clone + Debug + Send + Sync + 'static,
 {
     dir: PathBuf,
-    _marker: PhantomData<T>,
-    _marker2: PhantomData<DE>,
-    _marker3: PhantomData<SE>,
+    _marker: PhantomData<(T, DE, SE)>,
 }
 
 impl<T, DE, SE> Clone for FsStore<T, DE, SE>
@@ -46,8 +44,6 @@ where
         Self {
             dir: self.dir.clone(),
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 }
@@ -75,8 +71,6 @@ where
         Self {
             dir: dir.into(),
             _marker: PhantomData,
-            _marker2: PhantomData,
-            _marker3: PhantomData,
         }
     }
 
@@ -180,9 +174,7 @@ macro_rules! impl_scoped_store {
                     + 'static,
             {
                 dir: PathBuf,
-                _marker: PhantomData<T>,
-                _marker2: PhantomData<DE>,
-                _marker3: PhantomData<SE>,
+                _marker: PhantomData<(T, DE, SE)>,
             }
 
             impl<T, DE, SE> Clone for [< FsStore $index >]<T, DE, SE>
@@ -201,8 +193,6 @@ macro_rules! impl_scoped_store {
                     Self {
                         dir: self.dir.clone(),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }
@@ -245,8 +235,6 @@ macro_rules! impl_scoped_store {
                     Self {
                         dir: dir.into(),
                         _marker: PhantomData,
-                        _marker2: PhantomData,
-                        _marker3: PhantomData,
                     }
                 }
             }
