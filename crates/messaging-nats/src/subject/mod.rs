@@ -11,10 +11,12 @@ use std::marker::PhantomData;
 use async_nats::Client;
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_messaging::{
-    Handler, PublishableSubject, PublishableSubject1, PublishableSubject2, PublishableSubject3,
-    Subject, Subject1, Subject2, Subject3, Subscriber,
+use proven_messaging::subject::{
+    PublishableSubject, PublishableSubject1, PublishableSubject2, PublishableSubject3, Subject,
+    Subject1, Subject2, Subject3,
 };
+use proven_messaging::subscription::Subscription;
+use proven_messaging::subscription_handler::SubscriptionHandler;
 
 /// A NATS-backed publishable subject
 pub struct NatsPublishableSubject<T = Bytes, DE = Infallible, SE = Infallible>
@@ -156,8 +158,8 @@ where
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: Handler<Self::Type>,
-        Y: Subscriber<X, Self::Type, DE, SE>,
+        X: SubscriptionHandler<Self::Type>,
+        Y: Subscription<X, Self::Type, DE, SE>,
     {
         Y::new(self.full_subject.clone(), options, handler).await
     }
@@ -243,8 +245,8 @@ where
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: Handler<Self::Type>,
-        Y: Subscriber<X, Self::Type, DE, SE>,
+        X: SubscriptionHandler<Self::Type>,
+        Y: Subscription<X, Self::Type, DE, SE>,
     {
         Y::new(self.full_subject.clone(), options, handler).await
     }

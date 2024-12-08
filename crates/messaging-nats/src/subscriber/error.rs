@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use proven_messaging::SubscriberError;
+use proven_messaging::subscription::SubscriptionError;
 use thiserror::Error;
 
 /// Error type for NATS operations.
@@ -23,7 +23,7 @@ where
     Subscribe,
 }
 
-impl<DE, SE> SubscriberError for Error<DE, SE>
+impl<DE, SE> SubscriptionError for Error<DE, SE>
 where
     DE: std::error::Error + Send + Sync + 'static,
     SE: std::error::Error + Send + Sync + 'static,

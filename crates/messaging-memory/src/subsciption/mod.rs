@@ -8,13 +8,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_messaging::{Handler, Subscriber, SubscriberOptions};
+use proven_messaging::subscription::{Subscription, SubscriptionOptions};
+use proven_messaging::subscription_handler::SubscriptionHandler;
 use tokio::sync::{broadcast, Mutex};
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
 pub struct InMemorySubscriberOptions;
-impl SubscriberOptions for InMemorySubscriberOptions {}
+impl SubscriptionOptions for InMemorySubscriberOptions {}
 
 /// A in-memory subscriber.
 #[derive(Clone, Debug, Default)]
@@ -24,10 +25,10 @@ pub struct InMemorySubscriber<X, T = Bytes> {
 }
 
 #[async_trait]
-impl<X, T> Subscriber<X, T> for InMemorySubscriber<X, T>
+impl<X, T> Subscription<X, T> for InMemorySubscriber<X, T>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    X: Handler<T>,
+    X: SubscriptionHandler<T>,
 {
     type Error = Error;
     type Options = InMemorySubscriberOptions;
@@ -68,6 +69,10 @@ where
         });
 
         Ok(subscriber)
+    }
+
+    async fn cancel(self) -> Result<(), Self::Error> {
+        Ok(())
     }
 
     fn handler(&self) -> X {

@@ -11,7 +11,7 @@ mod gotham_state;
 pub mod subject;
 
 /// Subscribers are created by subscribing to a subject.
-pub mod subscriber;
+pub mod subsciption;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -43,40 +43,42 @@ impl<T> Default for SubjectState<T> {
 #[cfg(test)]
 mod tests {
     use super::subject::*;
-    use super::subscriber::*;
+    use super::subsciption::*;
 
     use std::collections::HashMap;
     use std::error::Error as StdError;
 
     use async_trait::async_trait;
     use bytes::Bytes;
-    use proven_messaging::*;
+    use proven_messaging::subject::*;
+    use proven_messaging::subscription::*;
+    use proven_messaging::subscription_handler::*;
     use serial_test::serial;
     use tokio::sync::mpsc;
     use tokio::sync::mpsc::Receiver;
     use tokio::time::{timeout, Duration};
 
     #[derive(Clone, Debug)]
-    struct TestHandler {
+    struct TestSubscriptionHandler {
         sender: mpsc::Sender<Bytes>,
     }
 
     #[derive(Debug, Clone)]
-    pub struct InMemorySubscriberHandlerError;
+    pub struct TestSubscriptionHandlerError;
 
-    impl std::fmt::Display for InMemorySubscriberHandlerError {
+    impl std::fmt::Display for TestSubscriptionHandlerError {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "InMemorySubscriberHandlerError")
         }
     }
 
-    impl StdError for InMemorySubscriberHandlerError {}
+    impl StdError for TestSubscriptionHandlerError {}
 
-    impl HandlerError for InMemorySubscriberHandlerError {}
+    impl SubscriptionHandlerError for TestSubscriptionHandlerError {}
 
     #[async_trait]
-    impl Handler<Bytes> for TestHandler {
-        type Error = InMemorySubscriberHandlerError;
+    impl SubscriptionHandler<Bytes> for TestSubscriptionHandler {
+        type Error = TestSubscriptionHandlerError;
 
         async fn handle(
             &self,
@@ -88,13 +90,13 @@ mod tests {
             self.sender
                 .send(data)
                 .await
-                .map_err(|_| InMemorySubscriberHandlerError)
+                .map_err(|_| TestSubscriptionHandlerError)
         }
     }
 
-    fn setup_test_handler() -> (TestHandler, Receiver<Bytes>) {
+    fn setup_test_handler() -> (TestSubscriptionHandler, Receiver<Bytes>) {
         let (sender, receiver) = mpsc::channel(10);
-        (TestHandler { sender }, receiver)
+        (TestSubscriptionHandler { sender }, receiver)
     }
 
     #[tokio::test]
@@ -103,7 +105,7 @@ mod tests {
         let subject = InMemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<TestHandler> = subject
+        let _: InMemorySubscriber<TestSubscriptionHandler> = subject
             .subscribe(InMemorySubscriberOptions, handler)
             .await
             .unwrap();
@@ -135,7 +137,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<TestHandler> = subject1
+        let _: InMemorySubscriber<TestSubscriptionHandler> = subject1
             .subscribe(InMemorySubscriberOptions, handler)
             .await
             .unwrap();
@@ -168,7 +170,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<TestHandler> = subject1
+        let _: InMemorySubscriber<TestSubscriptionHandler> = subject1
             .subscribe(InMemorySubscriberOptions, handler)
             .await
             .unwrap();
@@ -202,7 +204,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<TestHandler> = subject
+        let _: InMemorySubscriber<TestSubscriptionHandler> = subject
             .subscribe(InMemorySubscriberOptions, handler)
             .await
             .unwrap();
@@ -237,7 +239,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<TestHandler> = wildcard_subject
+        let _: InMemorySubscriber<TestSubscriptionHandler> = wildcard_subject
             .subscribe(InMemorySubscriberOptions, handler)
             .await
             .unwrap();
@@ -272,7 +274,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: InMemorySubscriber<TestHandler> = greedy_wildcard_subject
+        let _: InMemorySubscriber<TestSubscriptionHandler> = greedy_wildcard_subject
             .subscribe(InMemorySubscriberOptions, handler)
             .await
             .unwrap();
@@ -302,7 +304,7 @@ mod tests {
         let subject = InMemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let subscriber: InMemorySubscriber<TestHandler> = subject
+        let subscriber: InMemorySubscriber<TestSubscriptionHandler> = subject
             .subscribe(InMemorySubscriberOptions, handler)
             .await
             .unwrap();
@@ -338,8 +340,8 @@ mod tests {
     struct CustomHandler(mpsc::Sender<CustomType>);
 
     #[async_trait]
-    impl Handler<CustomType> for CustomHandler {
-        type Error = InMemorySubscriberHandlerError;
+    impl SubscriptionHandler<CustomType> for CustomHandler {
+        type Error = TestSubscriptionHandlerError;
         async fn handle(
             &self,
             _subject: String,
@@ -349,7 +351,7 @@ mod tests {
             self.0
                 .send(data)
                 .await
-                .map_err(|_| InMemorySubscriberHandlerError)
+                .map_err(|_| TestSubscriptionHandlerError)
         }
     }
 

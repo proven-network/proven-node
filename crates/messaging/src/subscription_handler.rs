@@ -5,17 +5,17 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 
 /// Marker trait for subscriber errors
-pub trait HandlerError: Clone + Debug + Error + Send + Sync + 'static {}
+pub trait SubscriptionHandlerError: Clone + Debug + Error + Send + Sync + 'static {}
 
 /// A trait representing a subscriber of a subject.
 #[async_trait]
-pub trait Handler<T>
+pub trait SubscriptionHandler<T>
 where
     Self: Clone + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the subscriber.
-    type Error: HandlerError;
+    type Error: SubscriptionHandlerError;
 
     /// Handles the given data.
     async fn handle(

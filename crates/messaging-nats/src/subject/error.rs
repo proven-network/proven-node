@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use proven_messaging::SubjectError;
+use proven_messaging::subject::SubjectError;
 use thiserror::Error;
 
 /// Error type for NATS operations.

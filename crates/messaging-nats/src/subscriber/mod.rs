@@ -10,7 +10,8 @@ use async_nats::Client;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
-use proven_messaging::{Handler, Subscriber, SubscriberOptions};
+use proven_messaging::subscription::{Subscription, SubscriptionOptions};
+use proven_messaging::subscription_handler::SubscriptionHandler;
 use tokio::sync::Mutex;
 
 /// Options for new NATS subscribers.
@@ -19,7 +20,7 @@ pub struct NatsSubscriberOptions {
     /// The NATS client to use.
     pub client: Client,
 }
-impl SubscriberOptions for NatsSubscriberOptions {}
+impl SubscriptionOptions for NatsSubscriberOptions {}
 
 /// A NATS-based subscriber
 #[derive(Clone, Debug)]
@@ -29,7 +30,7 @@ where
     DE: Send + StdError + Sync + 'static,
     SE: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: Handler<T>,
+    X: SubscriptionHandler<T>,
 {
     handler: X,
     last_message: Arc<Mutex<Option<T>>>,
@@ -43,7 +44,7 @@ where
     DE: Send + StdError + Sync + 'static,
     SE: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: Handler<T>,
+    X: SubscriptionHandler<T>,
 {
     fn extract_headers(headers: &async_nats::HeaderMap) -> Option<HashMap<String, String>> {
         let mut result = HashMap::new();
@@ -68,7 +69,7 @@ where
 }
 
 #[async_trait]
-impl<X, T, DE, SE> Subscriber<X, T, DE, SE> for NatsSubscriber<X, T, DE, SE>
+impl<X, T, DE, SE> Subscription<X, T, DE, SE> for NatsSubscriber<X, T, DE, SE>
 where
     Self: Clone + Debug + Send + Sync + 'static,
     DE: Send + StdError + Sync + 'static,
@@ -80,7 +81,7 @@ where
         + TryFrom<Bytes, Error = DE>
         + TryInto<Bytes, Error = SE>
         + 'static,
-    X: Handler<T>,
+    X: SubscriptionHandler<T>,
 {
     type Error = Error<DE, SE>;
     type Options = NatsSubscriberOptions;
@@ -123,6 +124,10 @@ where
         });
 
         Ok(subscriber)
+    }
+
+    async fn cancel(self) -> Result<(), Self::Error> {
+        Ok(())
     }
 
     fn handler(&self) -> X {

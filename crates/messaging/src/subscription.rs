@@ -1,33 +1,36 @@
+use crate::subscription_handler::SubscriptionHandler;
+
 use std::convert::Infallible;
 use std::error::Error;
 use std::fmt::Debug;
-
-use crate::Handler;
 
 use async_trait::async_trait;
 use bytes::Bytes;
 
 /// Marker trait for subscriber errors
-pub trait SubscriberError: Error + Send + Sync + 'static {}
+pub trait SubscriptionError: Error + Send + Sync + 'static {}
 
 /// Marker trait for subscriber options
-pub trait SubscriberOptions: Clone + Send + Sync + 'static {}
+pub trait SubscriptionOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a subscriber of a subject.
 #[async_trait]
-pub trait Subscriber<X, T = Bytes, DE = Infallible, SE = Infallible>
+pub trait Subscription<X, T = Bytes, DE = Infallible, SE = Infallible>
 where
     Self: Clone + Send + Sync + 'static,
     DE: Error + Send + Sync + 'static,
     SE: Error + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: Handler<T>,
+    X: SubscriptionHandler<T>,
 {
     /// The error type for the subscriber.
-    type Error: SubscriberError;
+    type Error: SubscriptionError;
 
     /// The options for the subscriber.
-    type Options: SubscriberOptions;
+    type Options: SubscriptionOptions;
+
+    /// Cancels the subscription.
+    async fn cancel(self) -> Result<(), Self::Error>;
 
     /// The handler for the subscriber.
     fn handler(&self) -> X;

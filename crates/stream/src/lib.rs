@@ -5,18 +5,6 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-/// Clients send requests to services.
-pub mod client;
-
-/// Consumers are stateful views of streams.
-pub mod consumer;
-
-/// Serivces special consumers that respond to requests.
-pub mod service;
-
-/// Streams are persistent, ordered, and append-only sequences of messages.
-pub mod stream;
-
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;

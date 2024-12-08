@@ -1,4 +1,5 @@
-use crate::{Handler, Subscriber};
+use crate::subscription::Subscription;
+use crate::subscription_handler::SubscriptionHandler;
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -37,8 +38,8 @@ where
     /// Subscribes to the subject and processes messages with the given handler.
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: Handler<Self::Type>,
-        Y: Subscriber<X, Self::Type, DE, SE>;
+        X: SubscriptionHandler<Self::Type>,
+        Y: Subscription<X, Self::Type, DE, SE>;
 }
 
 /// A trait representing a subject.
@@ -59,8 +60,8 @@ where
     /// Subscribes to the subject and processes messages with the given handler.
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: Handler<Self::Type>,
-        Y: Subscriber<X, Self::Type, DE, SE>;
+        X: SubscriptionHandler<Self::Type>,
+        Y: Subscription<X, Self::Type, DE, SE>;
 }
 
 macro_rules! define_scoped_subject {

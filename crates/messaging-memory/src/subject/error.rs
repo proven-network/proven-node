@@ -1,4 +1,4 @@
-use proven_messaging::SubjectError;
+use proven_messaging::subject::SubjectError;
 use thiserror::Error;
 
 /// An error that can occur when working with subjects.

@@ -1,6 +1,6 @@
 use crate::service::Service;
 use crate::stream::Stream;
-use proven_messaging::Subject;
+use crate::subject::Subject;
 
 use std::error::Error;
 use std::fmt::Debug;

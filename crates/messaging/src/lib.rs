@@ -5,10 +5,23 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-mod handler;
-mod subject;
-mod subscriber;
+/// Clients send requests to services.
+pub mod client;
 
-pub use handler::*;
-pub use subject::*;
-pub use subscriber::*;
+/// Consumers are stateful views of streams.
+pub mod consumer;
+
+/// Serivces special consumers that respond to requests.
+pub mod service;
+
+/// Streams are persistent, ordered, and append-only sequences of messages.
+pub mod stream;
+
+/// Subjects are named channels for messages.
+pub mod subject;
+
+/// Subscribers consume messages from subjects.
+pub mod subscription;
+
+/// Handlers process messages from subscribers.
+pub mod subscription_handler;
