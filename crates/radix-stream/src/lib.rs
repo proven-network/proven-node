@@ -262,14 +262,16 @@ where
 mod tests {
     use super::*;
 
-    use proven_messaging_memory::stream::MemoryStream;
+    use proven_messaging_memory::stream::{MemoryStream, MemoryStreamOptions};
     use tokio::time::Duration;
 
     #[tokio::test]
     async fn test_new_radix_stream() {
         let radix_stream = RadixStream::new(RadixStreamOptions {
             radix_gateway_origin: "https://mainnet.radixdlt.com",
-            transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS").await.unwrap(),
+            transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS", MemoryStreamOptions)
+                .await
+                .unwrap(),
         })
         .await
         .unwrap();
@@ -281,7 +283,9 @@ mod tests {
     async fn test_start_radix_stream() {
         let radix_stream = RadixStream::new(RadixStreamOptions {
             radix_gateway_origin: "https://mainnet.radixdlt.com",
-            transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS").await.unwrap(),
+            transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS", MemoryStreamOptions)
+                .await
+                .unwrap(),
         })
         .await
         .unwrap();
@@ -294,7 +298,9 @@ mod tests {
     async fn test_current_state_version() {
         let radix_stream = RadixStream::new(RadixStreamOptions {
             radix_gateway_origin: "https://mainnet.radixdlt.com",
-            transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS").await.unwrap(),
+            transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS", MemoryStreamOptions)
+                .await
+                .unwrap(),
         })
         .await
         .unwrap();
@@ -313,7 +319,9 @@ mod tests {
         let result = tokio::time::timeout(Duration::from_secs(5), async {
             let radix_stream = RadixStream::new(RadixStreamOptions {
                 radix_gateway_origin: "https://mainnet.radixdlt.com",
-                transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS").await.unwrap(),
+                transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS", MemoryStreamOptions)
+                    .await
+                    .unwrap(),
             })
             .await
             .unwrap();

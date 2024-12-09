@@ -12,8 +12,18 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::consumer_handler::ConsumerHandler;
 use proven_messaging::service::Service;
-use proven_messaging::stream::{ScopedStream, ScopedStream1, ScopedStream2, ScopedStream3, Stream};
+use proven_messaging::stream::{
+    ScopedStream, ScopedStream1, ScopedStream2, ScopedStream3, Stream, StreamOptions,
+};
 use proven_messaging::Message;
+
+/// Options for the NATS stream.
+#[derive(Clone, Debug)]
+pub struct NatsStreamOptions {
+    /// The NATS client.
+    pub client: async_nats::Client,
+}
+impl StreamOptions for NatsStreamOptions {}
 
 /// An in-memory stream.
 #[derive(Clone, Debug)]
@@ -40,15 +50,16 @@ where
 {
     type Error = Error;
 
+    type Options = NatsStreamOptions;
+
     type SubjectType = NatsSubject<T>;
 
     /// Creates a new stream.
-    async fn new<N>(stream_name: N) -> Result<Self, Self::Error>
+    async fn new<N>(stream_name: N, options: NatsStreamOptions) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
     {
-        let jetstram_context =
-            async_nats::jetstream::new(async_nats::connect("localhost").await.unwrap());
+        let jetstram_context = async_nats::jetstream::new(options.client);
 
         let nats_stream = jetstram_context
             .create_stream(NatsStreamConfig {
@@ -70,13 +81,13 @@ where
     /// Creates a new stream with the given subjects - must all be the same type.
     async fn new_with_subjects<N>(
         stream_name: N,
+        options: NatsStreamOptions,
         subjects: Vec<NatsSubject<T>>,
     ) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
     {
-        let jetstram_context =
-            async_nats::jetstream::new(async_nats::connect("localhost").await.unwrap());
+        let jetstram_context = async_nats::jetstream::new(options.client);
 
         let nats_stream = jetstram_context
             .create_stream(NatsStreamConfig {
@@ -178,7 +189,7 @@ where
 }
 
 /// All scopes applied and can initialize.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct ScopedNatsStream<T>
 where
     T: Clone
@@ -189,26 +200,9 @@ where
         + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
 {
+    options: NatsStreamOptions,
     prefix: Option<String>,
     _marker: PhantomData<T>,
-}
-
-impl<T> ScopedNatsStream<T>
-where
-    T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-        + 'static,
-{
-    const fn with_scope(prefix: String) -> Self {
-        Self {
-            prefix: Some(prefix),
-            _marker: PhantomData,
-        }
-    }
 }
 
 #[async_trait]
@@ -224,12 +218,15 @@ where
 {
     type Error = Error;
 
+    type Options = NatsStreamOptions;
+
     type StreamType = NatsStream<T>;
 
     type SubjectType = NatsSubject<T>;
 
     async fn init(&self) -> Result<Self::StreamType, Self::Error> {
-        let stream = NatsStream::new(self.prefix.clone().unwrap()).await?;
+        let stream = NatsStream::new(self.prefix.clone().unwrap(), self.options.clone()).await?;
+
         Ok(stream)
     }
 
@@ -237,7 +234,13 @@ where
         &self,
         subjects: Vec<Self::SubjectType>,
     ) -> Result<Self::StreamType, Self::Error> {
-        let stream = NatsStream::new_with_subjects(self.prefix.clone().unwrap(), subjects).await?;
+        let stream = NatsStream::new_with_subjects(
+            self.prefix.clone().unwrap(),
+            self.options.clone(),
+            subjects,
+        )
+        .await?;
+
         Ok(stream)
     }
 }
@@ -246,7 +249,7 @@ macro_rules! impl_scoped_stream {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            #[derive(Clone, Debug, Default)]
+            #[derive(Clone, Debug)]
             pub struct [< ScopedNatsStream $index >]<T>
             where
                 T: Clone
@@ -257,6 +260,7 @@ macro_rules! impl_scoped_stream {
                     + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
                     + 'static,
             {
+                options: NatsStreamOptions,
                 prefix: Option<String>,
                 _marker: PhantomData<T>,
             }
@@ -273,17 +277,10 @@ macro_rules! impl_scoped_stream {
             {
                 /// Creates a new `[< NatsStream $index >]`.
                 #[must_use]
-                pub const fn new() -> Self {
+                pub const fn new(options: NatsStreamOptions) -> Self {
                     Self {
+                        options,
                         prefix: None,
-                        _marker: PhantomData,
-                    }
-                }
-
-                #[allow(dead_code)]
-                const fn with_scope(prefix: String) -> Self {
-                    Self {
-                        prefix: Some(prefix),
                         _marker: PhantomData,
                     }
                 }
@@ -302,6 +299,8 @@ macro_rules! impl_scoped_stream {
             {
                 type Error = Error;
 
+                type Options = NatsStreamOptions;
+
                 type Scoped = $parent<T>;
 
                 fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> $parent<T> {
@@ -309,7 +308,11 @@ macro_rules! impl_scoped_stream {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                         None => scope.into(),
                     };
-                    $parent::<T>::with_scope(new_scope)
+                    $parent::<T> {
+                        options: self.options.clone(),
+                        prefix: Some(new_scope),
+                        _marker: PhantomData,
+                    }
                 }
             }
         }
