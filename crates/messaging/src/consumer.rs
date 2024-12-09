@@ -31,6 +31,7 @@ where
 
     /// Creates a new subscriber.
     async fn new(
+        name: String,
         stream: Self::StreamType,
         options: Self::Options,
         handler: X,

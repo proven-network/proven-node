@@ -104,6 +104,7 @@ where
 
     #[allow(clippy::significant_drop_tightening)]
     async fn new(
+        name: String,
         stream: Self::StreamType,
         options: NatsConsumerOptions,
         handler: X,
@@ -112,6 +113,7 @@ where
             .nats_jetstream_context
             .create_consumer_on_stream(
                 NatsConsumerConfig {
+                    name: Some(name),
                     durable_name: options.durable_name,
                     ..Default::default()
                 },

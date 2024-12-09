@@ -58,8 +58,13 @@ where
     async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error>;
 
     /// Consumes the stream with the given consumer.
-    async fn start_consumer<X>(&self, handler: X) -> Result<impl Consumer<X, T>, Self::Error>
+    async fn start_consumer<N, X>(
+        &self,
+        consumer_name: N,
+        handler: X,
+    ) -> Result<impl Consumer<X, T>, Self::Error>
     where
+        N: Clone + Into<String> + Send,
         X: ConsumerHandler<T>;
 
     /// Consumes the stream with the given service.

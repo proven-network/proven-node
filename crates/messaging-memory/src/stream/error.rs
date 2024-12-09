@@ -10,8 +10,8 @@ where
     T: Clone + Debug + Send + Sync + 'static,
 {
     /// Consumer error.
-    #[error(transparent)]
-    Consumer(#[from] crate::consumer::Error<T>),
+    #[error("error starting consumer")]
+    Consumer,
 
     /// An error occured while subscribing to a subject.
     #[error(transparent)]

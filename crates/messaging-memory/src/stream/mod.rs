@@ -152,11 +152,23 @@ where
     }
 
     /// Consumes the stream with the given consumer.
-    async fn start_consumer<X>(&self, _handler: X) -> Result<MemoryConsumer<X, T>, Self::Error>
+    async fn start_consumer<N, X>(
+        &self,
+        name: N,
+        handler: X,
+    ) -> Result<MemoryConsumer<X, T>, Self::Error>
     where
+        N: Clone + Into<String> + Send,
         X: ConsumerHandler<T>,
     {
-        let consumer = MemoryConsumer::new(self.clone(), MemoryConsumerOptions, _handler).await?;
+        let consumer = MemoryConsumer::new(
+            format!("{}_{}", self.name(), name.into()),
+            self.clone(),
+            MemoryConsumerOptions,
+            handler,
+        )
+        .await
+        .map_err(|_| Error::Consumer)?;
 
         Ok(consumer)
     }
@@ -292,7 +304,10 @@ mod tests {
     use super::*;
 
     use crate::subject::{MemoryPublishableSubject, MemorySubject};
-    use proven_messaging::subject::PublishableSubject;
+
+    use std::error::Error as StdError;
+
+    use proven_messaging::{consumer_handler::ConsumerHandlerError, subject::PublishableSubject};
 
     #[tokio::test]
     async fn test_get_message() {
@@ -396,5 +411,78 @@ mod tests {
         assert_eq!(seq2, 1);
         assert_eq!(stream.get(0).await.unwrap(), Some(message1.into()));
         assert_eq!(stream.get(1).await.unwrap(), Some(message2.into()));
+    }
+
+    #[tokio::test]
+    async fn test_start_consumer() {
+        use async_trait::async_trait;
+        use proven_messaging::consumer_handler::ConsumerHandler;
+
+        #[derive(Clone, Debug)]
+        struct TestHandler {
+            received_messages: Arc<Mutex<Vec<String>>>,
+        }
+
+        #[derive(Clone, Debug)]
+        struct TestHandlerError;
+
+        impl std::fmt::Display for TestHandlerError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "MemorySubscriberHandlerError")
+            }
+        }
+
+        impl StdError for TestHandlerError {}
+
+        impl ConsumerHandlerError for TestHandlerError {}
+
+        #[async_trait]
+        impl ConsumerHandler<String> for TestHandler {
+            type Error = TestHandlerError;
+            async fn handle(&self, message: Message<String>) -> Result<(), Self::Error> {
+                self.received_messages.lock().await.push(message.payload);
+
+                Ok(())
+            }
+        }
+
+        let publishable_subject = MemoryPublishableSubject::new("test_start_consumer").unwrap();
+        let subject = MemorySubject::new("test_start_consumer").unwrap();
+        let stream: MemoryStream<String> =
+            MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
+                .await
+                .unwrap();
+
+        let received_messages = Arc::new(Mutex::new(Vec::new()));
+        let handler = TestHandler {
+            received_messages: received_messages.clone(),
+        };
+
+        let prestart_message = "pre_message".to_string();
+        publishable_subject
+            .publish(prestart_message.clone().into())
+            .await
+            .unwrap();
+
+        tokio::task::yield_now().await;
+
+        let _consumer = stream.start_consumer("test", handler).await.unwrap();
+
+        tokio::task::yield_now().await;
+
+        let poststart_message = "post_message".to_string();
+        publishable_subject
+            .publish(poststart_message.clone().into())
+            .await
+            .unwrap();
+
+        // Wait for the message to be processed
+        tokio::task::yield_now().await;
+
+        let received_messages = received_messages.lock().await;
+        assert_eq!(received_messages.len(), 2);
+        assert_eq!(received_messages[0], prestart_message);
+        assert_eq!(received_messages[1], poststart_message);
+        drop(received_messages);
     }
 }

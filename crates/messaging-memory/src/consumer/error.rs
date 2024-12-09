@@ -1,24 +1,17 @@
 use std::fmt::Debug;
 
-use proven_messaging::consumer::ConsumerError;
+use proven_messaging::{consumer::ConsumerError, consumer_handler::ConsumerHandlerError};
 use thiserror::Error;
 
 /// Errors that can occur in a consumer.
 #[derive(Debug, Error)]
-pub enum Error<T>
+pub enum Error<HE>
 where
-    T: Clone + Debug + Send + Sync + 'static,
+    HE: ConsumerHandlerError,
 {
-    /// An error occurred while pulling messages from the stream.
-    #[error("An error occurred while pulling messages from the stream.")]
-    Something,
-
-    /// An error occurred while pulling messages from the stream.
-    #[error("An error occurred while pulling messages from the stream.")]
-    Else(T),
-    // / An error occurred while pulling messages from the stream.
-    // #[error(transparent)]
-    // Stream(#[from] Box<crate::stream::Error<T>>),
+    /// Handler error.
+    #[error("Handler error: {0}")]
+    Handler(HE),
 }
 
-impl<T> ConsumerError for Error<T> where T: Clone + Debug + Send + Sync + 'static {}
+impl<HE> ConsumerError for Error<HE> where HE: ConsumerHandlerError {}

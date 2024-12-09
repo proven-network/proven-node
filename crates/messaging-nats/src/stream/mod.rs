@@ -172,8 +172,13 @@ where
     }
 
     /// Consumes the stream with the given consumer.
-    async fn start_consumer<X>(&self, _handler: X) -> Result<NatsConsumer<X, T>, Self::Error>
+    async fn start_consumer<N, X>(
+        &self,
+        _name: N,
+        _handler: X,
+    ) -> Result<NatsConsumer<X, T>, Self::Error>
     where
+        N: Clone + Into<String> + Send,
         X: ConsumerHandler<T>,
     {
         unimplemented!()
