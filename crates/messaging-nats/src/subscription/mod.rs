@@ -3,8 +3,6 @@ mod error;
 pub use error::Error;
 
 use std::collections::HashMap;
-use std::convert::Infallible;
-use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -18,41 +16,27 @@ use proven_messaging::subscription_handler::SubscriptionHandler;
 use tokio::sync::{oneshot, Mutex};
 use tokio_util::sync::CancellationToken;
 
-type CancelResultChannel<DE, SE> = oneshot::Sender<Result<(), Error<DE, SE>>>;
+type CancelResultChannel = oneshot::Sender<Result<(), Error>>;
 
 /// Options for new NATS subscribers.
 #[derive(Clone, Debug)]
-pub struct NatsSubscriberOptions {
+pub struct NatsSubscriptionOptions {
     /// The NATS client to use.
     pub client: Client,
 }
-impl SubscriptionOptions for NatsSubscriberOptions {}
+impl SubscriptionOptions for NatsSubscriptionOptions {}
 
 /// A NATS-based subscriber
 #[derive(Clone, Debug)]
-pub struct NatsSubscriber<X, T = Bytes, DE = Infallible, SE = Infallible>
-where
-    Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
-    X: SubscriptionHandler<T, DE, SE>,
-{
-    cancel_result_channel: Arc<Mutex<Option<CancelResultChannel<DE, SE>>>>,
+pub struct NatsSubscription<X, T = Bytes> {
+    cancel_result_channel: Arc<Mutex<Option<CancelResultChannel>>>,
     cancel_token: CancellationToken,
     handler: X,
     last_message: Arc<Mutex<Option<T>>>,
-    _marker: PhantomData<(T, DE, SE)>,
+    _marker: PhantomData<T>,
 }
 
-impl<X, T, DE, SE> NatsSubscriber<X, T, DE, SE>
-where
-    Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
-    X: SubscriptionHandler<T, DE, SE>,
-{
+impl<X, T> NatsSubscription<X, T> {
     fn extract_headers(headers: &async_nats::HeaderMap) -> Option<HashMap<String, String>> {
         let mut result = HashMap::new();
         for (key, value) in headers.iter() {
@@ -76,22 +60,21 @@ where
 }
 
 #[async_trait]
-impl<X, T, DE, SE> Subscription<X, T, DE, SE> for NatsSubscriber<X, T, DE, SE>
+impl<X, T> Subscription<X, T> for NatsSubscription<X, T>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
     T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
+        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::de::Error<std::io::Error>>
         + 'static,
-    X: SubscriptionHandler<T, DE, SE>,
+    X: SubscriptionHandler<T>,
 {
-    type Error = Error<DE, SE>;
-    type Options = NatsSubscriberOptions;
+    type Error = Error;
+
+    type Options = NatsSubscriptionOptions;
 
     async fn new(
         subject_string: String,
@@ -110,7 +93,7 @@ where
             .client
             .subscribe(subject_string.clone())
             .await
-            .map_err(|_| Error::<DE, SE>::Subscribe)?;
+            .map_err(|_| Error::Subscribe)?;
 
         let subscription_clone = subscription.clone();
         let token = subscription.cancel_token.clone();
@@ -119,7 +102,7 @@ where
             loop {
                 tokio::select! {
                     () = token.cancelled() => {
-                        let result = subscriber.unsubscribe().await.map_err(|_| Error::<DE, SE>::Unsubscribe);
+                        let result = subscriber.unsubscribe().await.map_err(|_| Error::Unsubscribe);
 
                         subscription_clone.cancel_result_channel.lock().await.take().unwrap().send(result).unwrap();
                     }
@@ -128,7 +111,7 @@ where
                             let data: T = msg
                                 .payload
                                 .try_into()
-                                .map_err(|e| Error::<DE, SE>::Deserialize(e))
+                                .map_err(Error::Deserialize)
                                 .unwrap();
                             let headers = msg.headers.as_ref().and_then(Self::extract_headers);
 

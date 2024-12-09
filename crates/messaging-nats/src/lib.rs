@@ -9,4 +9,4 @@
 pub mod subject;
 
 /// Subscribers are created by subscribing to a subject.
-pub mod subscriber;
+pub mod subscription;

@@ -3,7 +3,6 @@ mod error;
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
 
-use std::convert::Infallible;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -28,19 +27,20 @@ pub struct MemorySubscriber<X, T = Bytes> {
 }
 
 #[async_trait]
-impl<X, T> Subscription<X, T, Infallible, Infallible> for MemorySubscriber<X, T>
+impl<X, T> Subscription<X, T> for MemorySubscriber<X, T>
 where
     Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: SubscriptionHandler<T, Infallible, Infallible>,
+    X: SubscriptionHandler<T>,
 {
     type Error = Error;
+
     type Options = MemorySubscriberOptions;
 
     #[allow(clippy::significant_drop_tightening)]
     async fn new(
         subject_string: String,
-        _options: Self::Options,
+        _options: MemorySubscriberOptions,
         handler: X,
     ) -> Result<Self, Self::Error> {
         let mut state = GLOBAL_STATE.lock().await;

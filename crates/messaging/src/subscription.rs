@@ -13,13 +13,11 @@ pub trait SubscriptionOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a subscriber of a subject.
 #[async_trait]
-pub trait Subscription<X, T, DE, SE>
+pub trait Subscription<X, T>
 where
     Self: Clone + Send + Sync + 'static,
-    DE: Error + Send + Sync + 'static,
-    SE: Error + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: SubscriptionHandler<T, DE, SE>,
+    X: SubscriptionHandler<T>,
 {
     /// The error type for the subscriber.
     type Error: SubscriptionError;

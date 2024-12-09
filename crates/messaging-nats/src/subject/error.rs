@@ -1,18 +1,12 @@
-use std::error::Error as StdError;
-
 use proven_messaging::subject::SubjectError;
 use thiserror::Error;
 
 /// Error type for NATS operations.
-#[derive(Debug, Error, Clone)]
-pub enum Error<DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-{
+#[derive(Debug, Error)]
+pub enum Error {
     /// Deserialization error.
     #[error(transparent)]
-    Deserialize(DE),
+    Deserialize(#[from] ciborium::de::Error<std::io::Error>),
 
     /// The subject name is invalid
     #[error("invalid subject name - must not contain '.', '*', or '>'")]
@@ -24,12 +18,7 @@ where
 
     /// Serialization error.
     #[error(transparent)]
-    Serialize(SE),
+    Serialize(#[from] ciborium::ser::Error<std::io::Error>),
 }
 
-impl<DE, SE> SubjectError for Error<DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-{
-}
+impl SubjectError for Error {}

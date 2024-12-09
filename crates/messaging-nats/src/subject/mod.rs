@@ -3,8 +3,6 @@ mod error;
 pub use error::Error;
 
 use std::collections::HashMap;
-use std::convert::Infallible;
-use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -19,99 +17,30 @@ use proven_messaging::subscription::Subscription;
 use proven_messaging::subscription_handler::SubscriptionHandler;
 
 /// A NATS-backed publishable subject
-pub struct NatsPublishableSubject<T = Bytes, DE = Infallible, SE = Infallible>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
-        + 'static,
-{
+#[derive(Clone, Debug)]
+pub struct NatsPublishableSubject<T = Bytes> {
     client: Client,
     full_subject: String,
-    _marker: PhantomData<(T, DE, SE)>,
+    _marker: PhantomData<T>,
 }
 
-impl<T, DE, SE> From<NatsPublishableSubject<T, DE, SE>> for String
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
-        + 'static,
-{
-    fn from(subject: NatsPublishableSubject<T, DE, SE>) -> Self {
+impl<T> From<NatsPublishableSubject<T>> for String {
+    fn from(subject: NatsPublishableSubject<T>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T, DE, SE> Clone for NatsPublishableSubject<T, DE, SE>
+impl<T> NatsPublishableSubject<T>
 where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
-        + 'static,
-{
-    fn clone(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-            full_subject: self.full_subject.clone(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<T, DE, SE> Debug for NatsPublishableSubject<T, DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
-        + 'static,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NatsPublishableSubject")
-            .field("client", &self.client)
-            .field("full_subject", &self.full_subject)
-            .finish()
-    }
-}
-
-impl<T, DE, SE> NatsPublishableSubject<T, DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
-        + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
 {
     /// Creates a new `NatsPublishableSubject`.
     ///
     /// # Errors
     ///
     /// Returns `Error::InvalidSubjectPartial` if the subject contains invalid characters.
-    pub fn new(client: Client, subject_partial: impl Into<String>) -> Result<Self, Error<DE, SE>> {
+    pub fn new(client: Client, subject_partial: impl Into<String>) -> Result<Self, Error> {
         let subject = subject_partial.into();
         if subject.contains('.') || subject.contains('*') || subject.contains('>') {
             return Err(Error::InvalidSubjectPartial);
@@ -133,30 +62,28 @@ where
 }
 
 #[async_trait]
-impl<T, DE, SE> PublishableSubject<T, DE, SE> for NatsPublishableSubject<T, DE, SE>
+impl<T> PublishableSubject<T> for NatsPublishableSubject<T>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
     T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
+        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
 {
-    type Error = Error<DE, SE>;
+    type Error = Error;
 
     async fn publish(&self, data: T) -> Result<(), Self::Error> {
         self.publish_with_headers(data, HashMap::new()).await
     }
 
-    async fn publish_with_headers<H>(&self, data: T, headers: H) -> Result<(), Self::Error>
+    async fn publish_with_headers<H>(&self, data: T, headers: H) -> Result<(), Error>
     where
         H: Clone + Into<HashMap<String, String>> + Send,
     {
-        let payload: Bytes = data.try_into().map_err(|e| Error::Serialize(e))?;
+        let payload: Bytes = data.try_into()?;
         let headers = Self::headers_to_message_headers(headers.into());
 
         self.client
@@ -169,80 +96,42 @@ where
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<T, DE, SE>,
-        Y: Subscription<X, T, DE, SE>,
+        X: SubscriptionHandler<T>,
+        Y: Subscription<X, T>,
     {
         Y::new(self.full_subject.clone(), options, handler).await
     }
 }
 
 /// A NATS-backed subscribe-only subject
-pub struct NatsSubject<T = Bytes, DE = Infallible, SE = Infallible> {
-    client: Client,
+#[derive(Clone, Debug)]
+pub struct NatsSubject<T = Bytes> {
     full_subject: String,
-    _marker: PhantomData<(T, DE, SE)>,
+    _marker: PhantomData<T>,
 }
 
-impl<T, DE, SE> From<NatsSubject<T, DE, SE>> for String
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
-        + 'static,
-{
-    fn from(subject: NatsSubject<T, DE, SE>) -> Self {
+impl<T> From<NatsSubject<T>> for String {
+    fn from(subject: NatsSubject<T>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T, DE, SE> Clone for NatsSubject<T, DE, SE> {
-    fn clone(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-            full_subject: self.full_subject.clone(),
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<T, DE, SE> Debug for NatsSubject<T, DE, SE> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NatsSubject")
-            .field("client", &self.client)
-            .field("full_subject", &self.full_subject)
-            .finish()
-    }
-}
-
-impl<T, DE, SE> NatsSubject<T, DE, SE>
+impl<T> NatsSubject<T>
 where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
-        + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
 {
     /// Creates a new `NatsSubject`.
     ///
     /// # Errors
     ///
     /// Returns `Error::InvalidSubjectPartial` if the subject contains invalid characters.
-    pub fn new(client: Client, subject_partial: impl Into<String>) -> Result<Self, Error<DE, SE>> {
+    pub fn new(subject_partial: impl Into<String>) -> Result<Self, Error> {
         let subject = subject_partial.into();
         if subject.contains('.') || subject.contains('*') || subject.contains('>') {
             return Err(Error::InvalidSubjectPartial);
         }
         Ok(Self {
-            client,
             full_subject: subject,
             _marker: PhantomData,
         })
@@ -250,24 +139,23 @@ where
 }
 
 #[async_trait]
-impl<T, DE, SE> Subject<T, DE, SE> for NatsSubject<T, DE, SE>
+impl<T> Subject<T> for NatsSubject<T>
 where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
+        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
 {
-    type Error = Error<DE, SE>;
+    type Error = Error;
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<T, DE, SE>,
-        Y: Subscription<X, T, DE, SE>,
+        X: SubscriptionHandler<T>,
+        Y: Subscription<X, T>,
     {
         Y::new(self.full_subject.clone(), options, handler).await
     }
@@ -277,58 +165,33 @@ macro_rules! impl_scoped_subject {
     ($index:expr, $parent_pub:ident, $parent_sub:ident, $doc_pub:expr, $doc_sub:expr) => {
         paste::paste! {
             #[doc = $doc_pub]
-            pub struct [< NatsPublishableSubject $index >]<T = Bytes, DE = Infallible, SE = Infallible>
+            #[derive(Clone, Debug)]
+            pub struct [< NatsPublishableSubject $index >]<T = Bytes>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
+                T: Clone + Debug + Send + Sync + 'static,
             {
                 client: Client,
                 full_subject: String,
-                _marker: PhantomData<(T, DE, SE)>,
+                _marker: PhantomData<T>,
             }
 
-            impl<T, DE, SE> Clone for [< NatsPublishableSubject $index >]<T, DE, SE>
+            impl<T> [< NatsPublishableSubject $index >]<T>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
-            {
-                fn clone(&self) -> Self {
-                    Self {
-                        client: self.client.clone(),
-                        full_subject: self.full_subject.clone(),
-                        _marker: PhantomData,
-                    }
-                }
-            }
-
-            impl<T, DE, SE> Debug for [< NatsPublishableSubject $index >]<T, DE, SE>
-            where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
-            {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    f.debug_struct("NatsPublishableSubject")
-                        .field("client", &self.client)
-                        .field("full_subject", &self.full_subject)
-                        .finish()
-                }
-            }
-
-            impl<T, DE, SE> [< NatsPublishableSubject $index >]<T, DE, SE>
-            where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
+                Self: [< PublishableSubject $index >]<T>,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+                    + 'static,
             {
                 /// Creates a new `NatsPublishableSubject`.
                 ///
                 /// # Errors
                 ///
                 /// Returns `Error::InvalidSubjectPartial` if the subject contains invalid characters.
-                pub fn new(client: Client, subject_partial: impl Into<String>) -> Result<Self, Error<DE, SE>> {
+                pub fn new(client: Client, subject_partial: impl Into<String>) -> Result<Self, Error> {
                     let subject = subject_partial.into();
                     if subject.contains('.') || subject.contains('*') || subject.contains('>') {
                         return Err(Error::InvalidSubjectPartial);
@@ -342,21 +205,29 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T, DE, SE> [< PublishableSubject $index >]<T, DE, SE> for [< NatsPublishableSubject $index >]<T, DE, SE>
+            impl<T> [< PublishableSubject $index >]<T> for [< NatsPublishableSubject $index >]<T>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
+                Self: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+                    + 'static,
             {
-                type Error = Error<DE, SE>;
+                type Error = Error;
+
                 type Type = T;
-                type Scoped = $parent_pub<T, DE, SE>;
-                type WildcardAllScoped = NatsSubject<T, DE, SE>;
-                type WildcardAnyScoped = $parent_sub<T, DE, SE>;
+
+                type Scoped = $parent_pub<T>;
+
+                type WildcardAllScoped = NatsSubject<T>;
+
+                type WildcardAnyScoped = $parent_sub<T>;
 
                 fn any(&self) -> Self::WildcardAnyScoped {
                     $parent_sub {
-                        client: self.client.clone(),
                         full_subject: format!("{}.*", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -364,7 +235,6 @@ macro_rules! impl_scoped_subject {
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     NatsSubject {
-                        client: self.client.clone(),
                         full_subject: format!("{}.>", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -383,64 +253,37 @@ macro_rules! impl_scoped_subject {
             }
 
             #[doc = $doc_sub]
-            pub struct [< NatsSubject $index >]<T = Bytes, DE = Infallible, SE = Infallible>
+            #[derive(Clone, Debug)]
+            pub struct [< NatsSubject $index >]<T = Bytes>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
+                T: Clone + Debug + Send + Sync + 'static,
             {
-                client: Client,
                 full_subject: String,
-                _marker: PhantomData<(T, DE, SE)>,
+                _marker: PhantomData<T>,
             }
 
-            impl<T, DE, SE> Clone for [< NatsSubject $index >]<T, DE, SE>
+            impl<T> [< NatsSubject $index >]<T>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
-            {
-                fn clone(&self) -> Self {
-                    Self {
-                        client: self.client.clone(),
-                        full_subject: self.full_subject.clone(),
-                        _marker: PhantomData,
-                    }
-                }
-            }
-
-            impl<T, DE, SE> Debug for [< NatsSubject $index >]<T, DE, SE>
-            where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
-            {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    f.debug_struct("NatsSubject")
-                        .field("client", &self.client)
-                        .field("full_subject", &self.full_subject)
-                        .finish()
-                }
-            }
-
-            impl<T, DE, SE> [< NatsSubject $index >]<T, DE, SE>
-            where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
+                Self: [< Subject $index >]<T>,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+                    + 'static,
             {
                 /// Creates a new `NatsSubject`.
                 ///
                 /// # Errors
                 ///
                 /// Returns `Error::InvalidSubjectPartial` if the subject contains invalid characters.
-                pub fn new(client: Client, subject_partial: impl Into<String>) -> Result<Self, Error<DE, SE>> {
+                pub fn new(subject_partial: impl Into<String>) -> Result<Self, Error> {
                     let subject = subject_partial.into();
                     if subject.contains('.') || subject.contains('*') || subject.contains('>') {
                         return Err(Error::InvalidSubjectPartial);
                     }
                     Ok(Self {
-                        client,
                         full_subject: subject,
                         _marker: PhantomData,
                     })
@@ -448,20 +291,27 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T, DE, SE> [< Subject $index >]<T, DE, SE> for [< NatsSubject $index >]<T, DE, SE>
+            impl<T> [< Subject $index >]<T> for [< NatsSubject $index >]<T>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
-                T: Clone + Debug + Send + Sync + TryFrom<Bytes, Error = DE> + TryInto<Bytes, Error = SE> + 'static,
+                Self: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+                    + 'static,
             {
-                type Error = Error<DE, SE>;
+                type Error = Error;
+
                 type Type = T;
-                type Scoped = $parent_sub<T, DE, SE>;
-                type WildcardAllScoped = NatsSubject<T, DE, SE>;
+
+                type Scoped = $parent_sub<T>;
+
+                type WildcardAllScoped = NatsSubject<T>;
 
                 fn any(&self) -> Self::Scoped {
                     $parent_sub {
-                        client: self.client.clone(),
                         full_subject: format!("{}.*", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -469,7 +319,6 @@ macro_rules! impl_scoped_subject {
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     NatsSubject {
-                        client: self.client.clone(),
                         full_subject: format!("{}.>", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -480,7 +329,6 @@ macro_rules! impl_scoped_subject {
                     K: Into<String> + Send,
                 {
                     $parent_sub {
-                        client: self.client.clone(),
                         full_subject: format!("{}.{}", self.full_subject, scope.into()),
                         _marker: PhantomData,
                     }

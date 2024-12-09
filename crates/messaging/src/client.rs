@@ -11,14 +11,12 @@ pub trait ClientError: Error + Send + Sync + 'static {}
 
 /// A trait representing a client of a service the sends requests.
 #[async_trait]
-pub trait Client<X, S, T, DE, SE>
+pub trait Client<X, S, T>
 where
     Self: Clone + Send + Sync + 'static,
-    DE: Error + Send + Sync + 'static,
-    SE: Error + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    S: Stream<T, DE, SE>,
-    X: Service<S, T, DE, SE>,
+    S: Stream<T>,
+    X: Service<S, T>,
 {
     /// The error type for the client.
     type Error: ClientError;

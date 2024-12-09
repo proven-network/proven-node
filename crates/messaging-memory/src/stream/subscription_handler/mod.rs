@@ -3,7 +3,6 @@ mod error;
 pub use error::Error;
 
 use std::collections::HashMap;
-use std::convert::Infallible;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
@@ -25,7 +24,7 @@ where
 }
 
 #[async_trait]
-impl<T> SubscriptionHandler<T, Infallible, Infallible> for StreamSubscriptionHandler<T>
+impl<T> SubscriptionHandler<T> for StreamSubscriptionHandler<T>
 where
     Self: Clone + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,

@@ -12,11 +12,9 @@ pub trait SubjectError: Error + Send + Sync + 'static {}
 
 /// A trait representing a subject.
 #[async_trait]
-pub trait PublishableSubject<T, DE, SE>
+pub trait PublishableSubject<T>
 where
     Self: Clone + Into<String> + Send + Sync + 'static,
-    DE: Error + Send + Sync + 'static,
-    SE: Error + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the stream.
@@ -36,17 +34,15 @@ where
     /// Subscribes to the subject and processes messages with the given handler.
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<T, DE, SE>,
-        Y: Subscription<X, T, DE, SE>;
+        X: SubscriptionHandler<T>,
+        Y: Subscription<X, T>;
 }
 
 /// A trait representing a subject.
 #[async_trait]
-pub trait Subject<T, DE, SE>
+pub trait Subject<T>
 where
     Self: Clone + Into<String> + Send + Sync + 'static,
-    DE: Error + Send + Sync + 'static,
-    SE: Error + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the stream.
@@ -55,8 +51,8 @@ where
     /// Subscribes to the subject and processes messages with the given handler.
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<T, DE, SE>,
-        Y: Subscription<X, T, DE, SE>;
+        X: SubscriptionHandler<T>,
+        Y: Subscription<X, T>;
 }
 
 macro_rules! define_scoped_subject {
@@ -64,11 +60,9 @@ macro_rules! define_scoped_subject {
         paste::paste! {
             #[async_trait]
             #[doc = $doc_pub]
-            pub trait [< PublishableSubject $index >]<T, DE, SE>
+            pub trait [< PublishableSubject $index >]<T>
             where
                 Self: Clone + Send + Sync + 'static,
-                DE: Error + Send + Sync + 'static,
-                SE: Error + Send + Sync + 'static,
                 T: Clone + Debug + Send + Sync + 'static,
             {
                 /// The error type for the stream.
@@ -78,13 +72,13 @@ macro_rules! define_scoped_subject {
                 type Type: Clone + Debug + Send + Sync = T;
 
                 /// The scoped type for the subject.
-                type Scoped: $parent_pub<T, DE, SE>;
+                type Scoped: $parent_pub<T>;
 
                 /// The wildcard all scoped type for the subject.
-                type WildcardAllScoped: Subject<T, DE, SE>;
+                type WildcardAllScoped: Subject<T>;
 
                 /// The wildcard any scoped type for the subject.
-                type WildcardAnyScoped: $parent_sub<T, DE, SE>;
+                type WildcardAnyScoped: $parent_sub<T>;
 
                 /// Refines the subject with a greedy wildcard scope.
                 fn all(&self) -> Self::WildcardAllScoped;
@@ -100,11 +94,9 @@ macro_rules! define_scoped_subject {
 
             #[async_trait]
             #[doc = $doc_sub]
-            pub trait [< Subject $index >]<T, DE, SE>
+            pub trait [< Subject $index >]<T>
             where
                 Self: Clone + Send + Sync + 'static,
-                DE: Error + Send + Sync + 'static,
-                SE: Error + Send + Sync + 'static,
                 T: Clone + Debug + Send + Sync + 'static,
             {
                 /// The error type for the stream.
@@ -114,10 +106,10 @@ macro_rules! define_scoped_subject {
                 type Type: Clone + Debug + Send + Sync = T;
 
                 /// The scoped type for the subject.
-                type Scoped: $parent_sub<T, DE, SE>;
+                type Scoped: $parent_sub<T>;
 
                 /// The wildcard all scoped type for the subject.
-                type WildcardAllScoped: Subject<T, DE, SE>;
+                type WildcardAllScoped: Subject<T>;
 
                 /// Refines the subject with a greedy wildcard scope.
                 fn all(&self) -> Self::WildcardAllScoped;

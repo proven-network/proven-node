@@ -345,6 +345,7 @@ mod tests {
     #[async_trait]
     impl SubscriptionHandler<CustomType> for CustomHandler {
         type Error = TestSubscriptionHandlerError;
+
         async fn handle(
             &self,
             _subject: String,

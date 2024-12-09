@@ -7,7 +7,6 @@ use crate::subscription::{MemorySubscriber, MemorySubscriberOptions};
 pub use error::Error;
 use subscription_handler::StreamSubscriptionHandler;
 
-use std::convert::Infallible;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -27,34 +26,41 @@ where
 {
     messages: Arc<Mutex<Vec<T>>>,
     name: String,
-    subscriptions: Vec<MemorySubscriber<StreamSubscriptionHandler<T>, T>>,
 }
 
 #[async_trait]
-impl<T> Stream<T, Infallible, Infallible> for MemoryStream<T>
+impl<T> Stream<T> for MemoryStream<T>
 where
     Self: Clone + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error<T>;
 
-    /// Creates a new stream with the given subjects - must all be the same type.
-    async fn new<J, N>(stream_name: N, subjects: Vec<J>) -> Result<Self, Self::Error>
+    /// Creates a new stream.
+    async fn new<N>(stream_name: N) -> Result<Self, Self::Error>
     where
-        J: Subject<T, Infallible, Infallible>,
+        N: Into<String> + Send,
+    {
+        Ok(Self {
+            messages: Arc::new(Mutex::new(Vec::new())),
+            name: stream_name.into(),
+        })
+    }
+
+    /// Creates a new stream with the given subjects - must all be the same type.
+    async fn new_with_subjects<J, N>(stream_name: N, subjects: Vec<J>) -> Result<Self, Self::Error>
+    where
+        J: Subject<T>,
         N: Into<String> + Send,
     {
         let (sender, mut receiver) = mpsc::channel::<T>(100);
 
-        let mut subscriptions = Vec::new();
         for subject in subjects {
             let handler = StreamSubscriptionHandler::new(sender.clone());
-            let subscription = subject
+            let _: MemorySubscriber<StreamSubscriptionHandler<T>, T> = subject
                 .subscribe(MemorySubscriberOptions, handler)
                 .await
                 .map_err(|e| Error::Subscription(e))?;
-
-            subscriptions.push(subscription);
         }
 
         let messages = Arc::new(Mutex::new(Vec::new()));
@@ -68,7 +74,6 @@ where
         Ok(Self {
             messages,
             name: stream_name.into(),
-            subscriptions,
         })
     }
 
@@ -89,9 +94,12 @@ where
 
     /// Publishes a message directly to the stream.
     async fn publish(&self, message: T) -> Result<usize, Self::Error> {
-        let mut messages = self.messages.lock().await;
-        let seq = messages.len();
-        messages.push(message);
+        let seq = {
+            let mut messages = self.messages.lock().await;
+            let seq = messages.len();
+            messages.push(message);
+            seq
+        };
 
         Ok(seq)
     }
@@ -99,7 +107,7 @@ where
     /// Consumes the stream with the given consumer.
     async fn start_consumer<C>(&self, _consumer: C) -> Result<(), Self::Error>
     where
-        C: Consumer<Self, T, Infallible, Infallible>,
+        C: Consumer<Self, T>,
     {
         unimplemented!()
     }
@@ -107,7 +115,7 @@ where
     /// Consumes the stream with the given service.
     async fn start_service<S>(&self, _service: S) -> Result<(), Self::Error>
     where
-        S: Service<Self, T, Infallible, Infallible>,
+        S: Service<Self, T>,
     {
         unimplemented!()
     }
@@ -136,17 +144,23 @@ where
 }
 
 #[async_trait]
-impl<T> ScopedStream<T, Infallible, Infallible> for ScopedMemoryStream<T>
+impl<T> ScopedStream<T> for ScopedMemoryStream<T>
 where
     T: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error<T>;
 
-    async fn init<J>(&self, subjects: Vec<J>) -> Result<MemoryStream<T>, Self::Error>
+    async fn init(&self) -> Result<MemoryStream<T>, Self::Error> {
+        let stream = MemoryStream::new(self.prefix.clone().unwrap()).await?;
+        Ok(stream)
+    }
+
+    async fn init_with_subjects<J>(&self, subjects: Vec<J>) -> Result<MemoryStream<T>, Self::Error>
     where
-        J: Subject<T, Infallible, Infallible>,
+        J: Subject<T>,
     {
-        let stream = MemoryStream::new(self.prefix.clone().unwrap(), subjects).await?;
+        let stream =
+            MemoryStream::new_with_subjects(self.prefix.clone().unwrap(), subjects).await?;
         Ok(stream)
     }
 }
@@ -186,11 +200,12 @@ macro_rules! impl_scoped_stream {
             }
 
             #[async_trait]
-            impl<T> [< ScopedStream $index >]<T, Infallible, Infallible> for [< ScopedMemoryStream $index >]<T>
+            impl<T> [< ScopedStream $index >]<T> for [< ScopedMemoryStream $index >]<T>
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {
                 type Error = Error<T>;
+
                 type Scoped = $parent<T>;
 
                 fn scope<S: Into<String> + Send>(&self, scope: S) -> $parent<T> {
@@ -234,9 +249,10 @@ mod tests {
     async fn test_get_message() {
         let publishable_subject = MemoryPublishableSubject::new("test_get_message").unwrap();
         let subject = MemorySubject::new("test_get_message").unwrap();
-        let stream: MemoryStream<String> = MemoryStream::new("test_stream", vec![subject])
-            .await
-            .unwrap();
+        let stream: MemoryStream<String> =
+            MemoryStream::new_with_subjects("test_stream", vec![subject])
+                .await
+                .unwrap();
         let message = "test_message".to_string();
         publishable_subject.publish(message.clone()).await.unwrap();
 
@@ -250,9 +266,10 @@ mod tests {
     async fn test_last_message() {
         let publishable_subject = MemoryPublishableSubject::new("test_last_message").unwrap();
         let subject = MemorySubject::new("test_last_message").unwrap();
-        let stream: MemoryStream<String> = MemoryStream::new("test_last_message", vec![subject])
-            .await
-            .unwrap();
+        let stream: MemoryStream<String> =
+            MemoryStream::new_with_subjects("test_last_message", vec![subject])
+                .await
+                .unwrap();
         let message1 = "test_message1".to_string();
         let message2 = "test_message2".to_string();
         publishable_subject.publish(message1).await.unwrap();
@@ -267,9 +284,10 @@ mod tests {
     #[tokio::test]
     async fn test_empty_stream() {
         let subject = MemorySubject::new("test_empty_stream").unwrap();
-        let stream: MemoryStream<String> = MemoryStream::new("test_stream", vec![subject])
-            .await
-            .unwrap();
+        let stream: MemoryStream<String> =
+            MemoryStream::new_with_subjects("test_stream", vec![subject])
+                .await
+                .unwrap();
         assert_eq!(stream.get(0).await.unwrap(), None);
         assert_eq!(stream.last_message().await.unwrap(), None);
     }
@@ -280,7 +298,10 @@ mod tests {
         let scoped_stream = stream1.scope("scope1");
 
         let subject = MemorySubject::new("test_scoped").unwrap();
-        let stream = scoped_stream.init(vec![subject]).await.unwrap();
+        let stream = scoped_stream
+            .init_with_subjects(vec![subject])
+            .await
+            .unwrap();
 
         assert_eq!(stream.name().await, "scope1");
     }
@@ -291,7 +312,10 @@ mod tests {
         let scoped_stream = stream2.scope("scope1").scope("scope2");
 
         let subject = MemorySubject::new("test_nested_scoped").unwrap();
-        let stream = scoped_stream.init(vec![subject]).await.unwrap();
+        let stream = scoped_stream
+            .init_with_subjects(vec![subject])
+            .await
+            .unwrap();
 
         assert_eq!(stream.name().await, "scope1:scope2");
     }
@@ -299,9 +323,10 @@ mod tests {
     #[tokio::test]
     async fn test_direct_publish() {
         let subject = MemorySubject::new("test_direct_publish").unwrap();
-        let stream: MemoryStream<String> = MemoryStream::new("test_stream", vec![subject])
-            .await
-            .unwrap();
+        let stream: MemoryStream<String> =
+            MemoryStream::new_with_subjects("test_stream", vec![subject])
+                .await
+                .unwrap();
 
         let message1 = "test_message1".to_string();
         let message2 = "test_message2".to_string();

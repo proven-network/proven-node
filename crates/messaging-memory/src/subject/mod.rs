@@ -5,7 +5,6 @@ use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
 
 use std::collections::HashMap;
-use std::convert::Infallible;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -52,7 +51,7 @@ impl<T> MemoryPublishableSubject<T> {
 }
 
 #[async_trait]
-impl<T> PublishableSubject<T, Infallible, Infallible> for MemoryPublishableSubject<T>
+impl<T> PublishableSubject<T> for MemoryPublishableSubject<T>
 where
     Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
@@ -98,8 +97,8 @@ where
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<T, Infallible, Infallible>,
-        Y: Subscription<X, T, Infallible, Infallible>,
+        X: SubscriptionHandler<T>,
+        Y: Subscription<X, T>,
     {
         Ok(Y::new(self.full_subject.clone(), options, handler.clone()).await?)
     }
@@ -139,7 +138,7 @@ impl<T> MemorySubject<T> {
 }
 
 #[async_trait]
-impl<T> Subject<T, Infallible, Infallible> for MemorySubject<T>
+impl<T> Subject<T> for MemorySubject<T>
 where
     Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
@@ -148,8 +147,8 @@ where
 
     async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
     where
-        X: SubscriptionHandler<T, Infallible, Infallible>,
-        Y: Subscription<X, T, Infallible, Infallible>,
+        X: SubscriptionHandler<T>,
+        Y: Subscription<X, T>,
     {
         Ok(Y::new(self.full_subject.clone(), options, handler.clone()).await?)
     }
@@ -186,14 +185,18 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> [< PublishableSubject $index >]<T, Infallible, Infallible> for [< MemoryPublishableSubject $index >]<T>
+            impl<T> [< PublishableSubject $index >]<T> for [< MemoryPublishableSubject $index >]<T>
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {
                 type Error = Error;
+
                 type Type = T;
+
                 type Scoped = $parent_pub<T>;
+
                 type WildcardAllScoped = MemorySubject<T>;
+
                 type WildcardAnyScoped = $parent_sub<T>;
 
                 fn any(&self) -> Self::WildcardAnyScoped {
@@ -249,13 +252,16 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> [< Subject $index >]<T, Infallible, Infallible> for [< MemorySubject $index >]<T>
+            impl<T> [< Subject $index >]<T> for [< MemorySubject $index >]<T>
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {
                 type Error = Error;
+
                 type Type = T;
+
                 type Scoped = $parent_sub<T>;
+
                 type WildcardAllScoped = MemorySubject<T>;
 
                 fn any(&self) -> Self::Scoped {
