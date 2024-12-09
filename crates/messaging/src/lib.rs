@@ -5,7 +5,7 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-use std::collections::HashMap;
+pub use async_nats::{HeaderMap, HeaderName, HeaderValue};
 
 /// Clients send requests to services.
 pub mod client;
@@ -35,7 +35,7 @@ pub mod subscription_handler;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Message<T> {
     /// Headers for the message.
-    pub headers: Option<HashMap<String, String>>,
+    pub headers: Option<HeaderMap>,
 
     /// Payload for the message.
     pub payload: T,

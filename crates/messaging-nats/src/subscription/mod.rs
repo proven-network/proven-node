@@ -3,7 +3,6 @@ mod error;
 pub use error::Error;
 use proven_messaging::Message;
 
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -35,29 +34,6 @@ pub struct NatsSubscription<X, T = Bytes> {
     handler: X,
     last_message: Arc<Mutex<Option<Message<T>>>>,
     _marker: PhantomData<T>,
-}
-
-impl<X, T> NatsSubscription<X, T> {
-    fn extract_headers(headers: &async_nats::HeaderMap) -> Option<HashMap<String, String>> {
-        let mut result = HashMap::new();
-        for (key, value) in headers.iter() {
-            if let Some(stripped_key) = key.to_string().strip_prefix("Proven-") {
-                #[allow(clippy::or_fun_call)]
-                result.insert(
-                    stripped_key.to_string(),
-                    value
-                        .first()
-                        .unwrap_or(&async_nats::HeaderValue::new())
-                        .to_string(),
-                );
-            }
-        }
-        if result.is_empty() {
-            None
-        } else {
-            Some(result)
-        }
-    }
 }
 
 #[async_trait]
@@ -114,11 +90,9 @@ where
                                 .map_err(Error::Deserialize)
                                 .unwrap();
 
-                            let headers = msg.headers.as_ref().and_then(Self::extract_headers);
-
                             let message = Message {
-                                headers,
-                                payload: data.clone(),
+                                headers: msg.headers,
+                                payload: data,
                             };
 
                             let _ = subscription_clone

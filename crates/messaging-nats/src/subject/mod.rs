@@ -3,7 +3,6 @@ mod error;
 pub use error::Error;
 use proven_messaging::Message;
 
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -54,14 +53,6 @@ where
             _marker: PhantomData,
         })
     }
-
-    fn headers_to_message_headers(headers: HashMap<String, String>) -> async_nats::HeaderMap {
-        let mut message_headers = async_nats::HeaderMap::new();
-        for (key, value) in headers {
-            message_headers.insert::<&str, &str>(format!("Proven-{key}").as_str(), value.as_str());
-        }
-        message_headers
-    }
 }
 
 #[async_trait]
@@ -81,7 +72,6 @@ where
         let payload: Bytes = message.payload.try_into()?;
 
         if let Some(headers) = message.headers {
-            let headers = Self::headers_to_message_headers(headers);
             self.client
                 .publish_with_headers(self.full_subject.clone(), headers, payload)
                 .await
