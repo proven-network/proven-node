@@ -92,7 +92,8 @@ where
             MemorySubscriptionOptions,
             handler.clone(),
         )
-        .await?;
+        .await
+        .map_err(|_| Error::Subscribe)?;
 
         Ok(subscription)
     }
@@ -147,7 +148,8 @@ where
             MemorySubscriptionOptions,
             handler.clone(),
         )
-        .await?;
+        .await
+        .map_err(|_| Error::Subscribe)?;
 
         Ok(subscription)
     }

@@ -33,7 +33,9 @@ where
     T: Clone + Debug + Send + Sync + 'static,
     X: SubscriptionHandler<T>,
 {
-    type Error = Error;
+    type Error = Error<X::Error>;
+
+    type HandlerError = X::Error;
 
     type Options = MemorySubscriptionOptions;
 

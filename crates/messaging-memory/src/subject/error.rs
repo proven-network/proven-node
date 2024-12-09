@@ -9,8 +9,8 @@ pub enum Error {
     InvalidSubjectPartial,
 
     /// Error making subscription.
-    #[error(transparent)]
-    SubscriptionError(#[from] crate::subscription::Error),
+    #[error("error making subscription")]
+    Subscribe,
 }
 
 impl SubjectError for Error {}

@@ -1,4 +1,4 @@
-use crate::subscription_handler::SubscriptionHandler;
+use crate::subscription_handler::{SubscriptionHandler, SubscriptionHandlerError};
 use crate::Message;
 
 use std::error::Error;
@@ -22,6 +22,9 @@ where
 {
     /// The error type for the subscriber.
     type Error: SubscriptionError;
+
+    /// The handler error type for the subscriber.
+    type HandlerError: SubscriptionHandlerError = X::Error;
 
     /// The options for the subscriber.
     type Options: SubscriptionOptions;
