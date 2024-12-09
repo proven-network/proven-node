@@ -7,23 +7,21 @@
 
 mod error;
 mod event;
-mod stream_handler;
 mod transaction;
 
 pub use error::Error;
 pub use event::Event;
-pub use stream_handler::Handler;
 pub use transaction::Transaction;
 
 use std::sync::Arc;
 use std::sync::LazyLock;
 
+use proven_messaging::stream::Stream;
 use proven_radix_gateway_sdk::types::{
     LedgerStateSelector, LedgerStateSelectorInner, StreamTransactionsRequest,
     StreamTransactionsRequestKindFilter, StreamTransactionsRequestOrder, TransactionDetailsOptIns,
 };
 use proven_radix_gateway_sdk::{build_client, Client};
-use proven_stream::Stream;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -46,13 +44,11 @@ static GATEWAY_OPT_INS: LazyLock<TransactionDetailsOptIns> =
     });
 
 /// A Radix Stream that processes transactions and events from Radix DLT.
-pub struct RadixStream<TS, ES>
+pub struct RadixStream<TS>
 where
-    ES: Stream<Handler>,
-    TS: Stream<Handler>,
+    TS: Stream<Transaction>,
 {
     client: Client,
-    event_stream: ES,
     last_state_version: Arc<Mutex<Option<u64>>>,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
@@ -60,14 +56,10 @@ where
 }
 
 /// Options for creating a new `RadixStream`.
-pub struct RadixStreamOptions<TS, ES>
+pub struct RadixStreamOptions<TS>
 where
-    ES: Stream<Handler>,
-    TS: Stream<Handler>,
+    TS: Stream<Transaction>,
 {
-    /// The event stream to publish events to.
-    pub event_stream: ES,
-
     /// The origin of the Radix Gateway.
     pub radix_gateway_origin: &'static str,
 
@@ -75,12 +67,11 @@ where
     pub transaction_stream: TS,
 }
 
-type StartResult<TSE, ESE> = Result<JoinHandle<Result<(), Error<TSE, ESE>>>, Error<TSE, ESE>>;
+type StartResult<TSE> = Result<JoinHandle<Result<(), Error<TSE>>>, Error<TSE>>;
 
-impl<TS, ES> RadixStream<TS, ES>
+impl<TS> RadixStream<TS>
 where
-    ES: Stream<Handler>,
-    TS: Stream<Handler>,
+    TS: Stream<Transaction>,
 {
     /// Creates a new `RadixStream`.
     ///
@@ -90,29 +81,24 @@ where
     /// or if the last transaction cannot be converted into a `Transaction`.
     pub async fn new(
         RadixStreamOptions {
-            event_stream,
             radix_gateway_origin,
             transaction_stream,
-        }: RadixStreamOptions<TS, ES>,
-    ) -> Result<Self, Error<TS::Error, ES::Error>> {
+        }: RadixStreamOptions<TS>,
+    ) -> Result<Self, Error<TS::Error>> {
         let client = build_client(radix_gateway_origin, None, None);
 
-        let last_state_version = if let Some(last_transaction) = transaction_stream
+        let last_state_version = (transaction_stream
             .last_message()
             .await
-            .map_err(Error::TransactionStream)?
-        {
-            let transaction = Transaction::try_from(last_transaction)?;
-            let state_version = transaction.state_version();
+            .map_err(Error::TransactionStream)?)
+        .map(|last_transaction| {
+            let state_version = last_transaction.state_version();
             info!("Starting from state version: {}", state_version);
-            Some(state_version)
-        } else {
-            None
-        };
+            state_version
+        });
 
         Ok(Self {
             client,
-            event_stream,
             last_state_version: Arc::new(Mutex::new(last_state_version)),
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
@@ -129,11 +115,10 @@ where
 
     async fn poll_transactions(
         client: Client,
-        event_stream: ES,
         transaction_stream: TS,
         last_state_version: Arc<Mutex<Option<u64>>>,
         shutdown_token: CancellationToken,
-    ) -> Result<(), Error<TS::Error, ES::Error>> {
+    ) -> Result<(), Error<TS::Error>> {
         loop {
             if shutdown_token.is_cancelled() {
                 break;
@@ -193,7 +178,6 @@ where
 
                     Self::process_transactions(
                         transactions,
-                        event_stream.clone(),
                         transaction_stream.clone(),
                         last_state_version.clone(),
                     )
@@ -216,24 +200,15 @@ where
 
     async fn process_transactions(
         transactions: Vec<Transaction>,
-        event_stream: ES,
         transaction_stream: TS,
         last_state_version: Arc<Mutex<Option<u64>>>,
-    ) -> Result<(), Error<TS::Error, ES::Error>> {
+    ) -> Result<(), Error<TS::Error>> {
         for transaction in &transactions {
             trace!("Publishing transaction: {:?}", transaction);
             transaction_stream
-                .publish(transaction.clone().try_into().unwrap())
+                .publish(transaction.clone())
                 .await
                 .map_err(Error::TransactionStream)?;
-
-            for event in &transaction.events() {
-                trace!("Publishing event: {:?}", event);
-                event_stream
-                    .publish(event.clone().try_into().unwrap())
-                    .await
-                    .map_err(Error::EventStream)?;
-            }
 
             *last_state_version.lock().await = Some(transaction.state_version());
         }
@@ -246,19 +221,17 @@ where
     /// # Errors
     ///
     /// This function will return an error if the `RadixStream` has already been started.
-    pub fn start(&self) -> StartResult<TS::Error, ES::Error> {
+    pub fn start(&self) -> StartResult<TS::Error> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
 
         let client = self.client.clone();
-        let event_stream = self.event_stream.clone();
         let shutdown_token = self.shutdown_token.clone();
         let transaction_stream = self.transaction_stream.clone();
         let last_state_version = self.last_state_version.clone();
         let handle = self.task_tracker.spawn(Self::poll_transactions(
             client,
-            event_stream,
             transaction_stream,
             last_state_version,
             shutdown_token,
@@ -283,49 +256,42 @@ where
 mod tests {
     use super::*;
 
-    use proven_stream_memory::MemoryStream;
+    use proven_messaging_memory::stream::MemoryStream;
     use tokio::time::Duration;
 
     #[tokio::test]
     async fn test_new_radix_stream() {
-        let event_stream = MemoryStream::new();
-        let transaction_stream = MemoryStream::new();
-        let options = RadixStreamOptions {
-            event_stream,
+        let radix_stream = RadixStream::new(RadixStreamOptions {
             radix_gateway_origin: "https://mainnet.radixdlt.com",
-            transaction_stream,
-        };
+            transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS").await.unwrap(),
+        })
+        .await
+        .unwrap();
 
-        let radix_stream = RadixStream::new(options).await.unwrap();
         assert!(radix_stream.current_state_version().await.is_none());
     }
 
     #[tokio::test]
     async fn test_start_radix_stream() {
-        let event_stream = MemoryStream::new();
-        let transaction_stream = MemoryStream::new();
-        let options = RadixStreamOptions {
-            event_stream,
+        let radix_stream = RadixStream::new(RadixStreamOptions {
             radix_gateway_origin: "https://mainnet.radixdlt.com",
-            transaction_stream,
-        };
+            transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS").await.unwrap(),
+        })
+        .await
+        .unwrap();
 
-        let radix_stream = RadixStream::new(options).await.unwrap();
         let handle = radix_stream.start().unwrap();
         assert!(!handle.is_finished());
     }
 
     #[tokio::test]
     async fn test_current_state_version() {
-        let event_stream = MemoryStream::new();
-        let transaction_stream = MemoryStream::new();
-        let options = RadixStreamOptions {
-            event_stream,
+        let radix_stream = RadixStream::new(RadixStreamOptions {
             radix_gateway_origin: "https://mainnet.radixdlt.com",
-            transaction_stream,
-        };
-
-        let radix_stream = RadixStream::new(options).await.unwrap();
+            transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS").await.unwrap(),
+        })
+        .await
+        .unwrap();
         assert!(radix_stream.current_state_version().await.is_none());
 
         // Simulate a transaction to update the state version
@@ -338,16 +304,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_shutdown_radix_stream() {
-        let event_stream = MemoryStream::new();
-        let transaction_stream = MemoryStream::new();
-        let options = RadixStreamOptions {
-            event_stream,
-            radix_gateway_origin: "https://mainnet.radixdlt.com",
-            transaction_stream,
-        };
-
         let result = tokio::time::timeout(Duration::from_secs(5), async {
-            let radix_stream = RadixStream::new(options).await.unwrap();
+            let radix_stream = RadixStream::new(RadixStreamOptions {
+                radix_gateway_origin: "https://mainnet.radixdlt.com",
+                transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS").await.unwrap(),
+            })
+            .await
+            .unwrap();
             let handle = radix_stream.start().unwrap();
 
             radix_stream.shutdown().await;

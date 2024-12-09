@@ -1,5 +1,6 @@
+use proven_messaging::stream::Stream;
+use proven_messaging_memory::stream::MemoryStream;
 use proven_radix_stream::{RadixStream, RadixStreamOptions};
-use proven_stream_memory::MemoryStream;
 
 #[tokio::main]
 async fn main() {
@@ -11,9 +12,8 @@ async fn main() {
     .unwrap();
 
     let radix_stream = RadixStream::new(RadixStreamOptions {
-        event_stream: MemoryStream::new(),
         radix_gateway_origin: "https://mainnet.radixdlt.com",
-        transaction_stream: MemoryStream::new(),
+        transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS").await.unwrap(),
     })
     .await
     .unwrap();
