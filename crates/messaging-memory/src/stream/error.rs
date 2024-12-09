@@ -11,7 +11,7 @@ where
 {
     /// An error occured while subscribing to a subject.
     #[error(transparent)]
-    Subscription(#[from] crate::subscription::Error),
+    Subject(#[from] crate::subject::Error),
 
     /// An error occurred while handling a subscription.
     #[error(transparent)]

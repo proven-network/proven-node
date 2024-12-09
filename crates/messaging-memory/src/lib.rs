@@ -111,10 +111,8 @@ mod tests {
         let subject = MemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> = subject
-            .subscribe(MemorySubscriptionOptions, handler)
-            .await
-            .unwrap();
+        let _: MemorySubscription<TestSubscriptionHandler> =
+            subject.subscribe(handler).await.unwrap();
 
         subject.publish(Bytes::from("message1")).await.unwrap();
         subject.publish(Bytes::from("message2")).await.unwrap();
@@ -143,10 +141,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> = subject1
-            .subscribe(MemorySubscriptionOptions, handler)
-            .await
-            .unwrap();
+        let _: MemorySubscription<TestSubscriptionHandler> =
+            subject1.subscribe(handler).await.unwrap();
 
         subject1.publish(Bytes::from("message1")).await.unwrap();
         subject1.publish(Bytes::from("message2")).await.unwrap();
@@ -176,10 +172,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> = subject1
-            .subscribe(MemorySubscriptionOptions, handler)
-            .await
-            .unwrap();
+        let _: MemorySubscription<TestSubscriptionHandler> =
+            subject1.subscribe(handler).await.unwrap();
 
         subject1.publish(Bytes::from("message1")).await.unwrap();
         subject1.publish(Bytes::from("message2")).await.unwrap();
@@ -210,10 +204,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> = subject
-            .subscribe(MemorySubscriptionOptions, handler)
-            .await
-            .unwrap();
+        let _: MemorySubscription<TestSubscriptionHandler> =
+            subject.subscribe(handler).await.unwrap();
 
         subject.publish(Bytes::from("message1")).await.unwrap();
         subject.publish(Bytes::from("message2")).await.unwrap();
@@ -245,10 +237,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> = wildcard_subject
-            .subscribe(MemorySubscriptionOptions, handler)
-            .await
-            .unwrap();
+        let _: MemorySubscription<TestSubscriptionHandler> =
+            wildcard_subject.subscribe(handler).await.unwrap();
 
         subject1.publish(Bytes::from("message1")).await.unwrap();
         subject1.publish(Bytes::from("message2")).await.unwrap();
@@ -280,10 +270,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> = greedy_wildcard_subject
-            .subscribe(MemorySubscriptionOptions, handler)
-            .await
-            .unwrap();
+        let _: MemorySubscription<TestSubscriptionHandler> =
+            greedy_wildcard_subject.subscribe(handler).await.unwrap();
 
         subject1.publish(Bytes::from("message1")).await.unwrap();
         subject1.publish(Bytes::from("message2")).await.unwrap();
@@ -310,10 +298,8 @@ mod tests {
         let subject = MemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let subscriber: MemorySubscription<TestSubscriptionHandler> = subject
-            .subscribe(MemorySubscriptionOptions, handler)
-            .await
-            .unwrap();
+        let subscriber: MemorySubscription<TestSubscriptionHandler> =
+            subject.subscribe(handler).await.unwrap();
 
         subject.publish(Bytes::from("message1")).await.unwrap();
         subject.publish(Bytes::from("message2")).await.unwrap();
@@ -370,10 +356,7 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(10);
         let handler = CustomHandler(sender);
 
-        let _: MemorySubscription<_, CustomType> = subject
-            .subscribe(MemorySubscriptionOptions, handler)
-            .await
-            .unwrap();
+        let _: MemorySubscription<_, CustomType> = subject.subscribe(handler).await.unwrap();
 
         subject.publish(CustomType(42)).await.unwrap();
 

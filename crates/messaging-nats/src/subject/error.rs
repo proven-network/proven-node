@@ -19,6 +19,10 @@ pub enum Error {
     /// Serialization error.
     #[error(transparent)]
     Serialize(#[from] ciborium::ser::Error<std::io::Error>),
+
+    /// Error making subscription.
+    #[error(transparent)]
+    SubscriptionError(#[from] crate::subscription::Error),
 }
 
 impl SubjectError for Error {}

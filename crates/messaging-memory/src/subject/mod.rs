@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_lines)]
 mod error;
 
+use crate::subscription::{MemorySubscription, MemorySubscriptionOptions};
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
 
@@ -95,12 +96,18 @@ where
         Ok(())
     }
 
-    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
+    async fn subscribe<X>(&self, handler: X) -> Result<MemorySubscription<X, T>, Error>
     where
         X: SubscriptionHandler<T>,
-        Y: Subscription<X, T>,
     {
-        Ok(Y::new(self.full_subject.clone(), options, handler.clone()).await?)
+        let subscription = MemorySubscription::new(
+            self.full_subject.clone(),
+            MemorySubscriptionOptions,
+            handler.clone(),
+        )
+        .await?;
+
+        Ok(subscription)
     }
 }
 
@@ -145,12 +152,18 @@ where
 {
     type Error = Error;
 
-    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
+    async fn subscribe<X>(&self, handler: X) -> Result<MemorySubscription<X, T>, Error>
     where
         X: SubscriptionHandler<T>,
-        Y: Subscription<X, T>,
     {
-        Ok(Y::new(self.full_subject.clone(), options, handler.clone()).await?)
+        let subscription = MemorySubscription::new(
+            self.full_subject.clone(),
+            MemorySubscriptionOptions,
+            handler.clone(),
+        )
+        .await?;
+
+        Ok(subscription)
     }
 }
 

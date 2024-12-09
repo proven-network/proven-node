@@ -16,6 +16,8 @@ use proven_messaging::subject::{
 use proven_messaging::subscription::Subscription;
 use proven_messaging::subscription_handler::SubscriptionHandler;
 
+use crate::subscription::{NatsSubscription, NatsSubscriptionOptions};
+
 /// A NATS-backed publishable subject
 #[derive(Clone, Debug)]
 pub struct NatsPublishableSubject<T = Bytes> {
@@ -94,18 +96,27 @@ where
         Ok(())
     }
 
-    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
+    async fn subscribe<X>(&self, handler: X) -> Result<NatsSubscription<X, T>, Self::Error>
     where
         X: SubscriptionHandler<T>,
-        Y: Subscription<X, T>,
     {
-        Y::new(self.full_subject.clone(), options, handler).await
+        let subscription = NatsSubscription::new(
+            self.full_subject.clone(),
+            NatsSubscriptionOptions {
+                client: self.client.clone(),
+            },
+            handler.clone(),
+        )
+        .await?;
+
+        Ok(subscription)
     }
 }
 
 /// A NATS-backed subscribe-only subject
 #[derive(Clone, Debug)]
 pub struct NatsSubject<T = Bytes> {
+    client: Client,
     full_subject: String,
     _marker: PhantomData<T>,
 }
@@ -126,12 +137,13 @@ where
     /// # Errors
     ///
     /// Returns `Error::InvalidSubjectPartial` if the subject contains invalid characters.
-    pub fn new(subject_partial: impl Into<String>) -> Result<Self, Error> {
+    pub fn new(client: Client, subject_partial: impl Into<String>) -> Result<Self, Error> {
         let subject = subject_partial.into();
         if subject.contains('.') || subject.contains('*') || subject.contains('>') {
             return Err(Error::InvalidSubjectPartial);
         }
         Ok(Self {
+            client,
             full_subject: subject,
             _marker: PhantomData,
         })
@@ -152,12 +164,20 @@ where
 {
     type Error = Error;
 
-    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
+    async fn subscribe<X>(&self, handler: X) -> Result<NatsSubscription<X, T>, Self::Error>
     where
         X: SubscriptionHandler<T>,
-        Y: Subscription<X, T>,
     {
-        Y::new(self.full_subject.clone(), options, handler).await
+        let subscription = NatsSubscription::new(
+            self.full_subject.clone(),
+            NatsSubscriptionOptions {
+                client: self.client.clone(),
+            },
+            handler.clone(),
+        )
+        .await?;
+
+        Ok(subscription)
     }
 }
 
@@ -228,6 +248,7 @@ macro_rules! impl_scoped_subject {
 
                 fn any(&self) -> Self::WildcardAnyScoped {
                     $parent_sub {
+                        client: self.client.clone(),
                         full_subject: format!("{}.*", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -235,6 +256,7 @@ macro_rules! impl_scoped_subject {
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     NatsSubject {
+                        client: self.client.clone(),
                         full_subject: format!("{}.>", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -258,6 +280,7 @@ macro_rules! impl_scoped_subject {
             where
                 T: Clone + Debug + Send + Sync + 'static,
             {
+                client: Client,
                 full_subject: String,
                 _marker: PhantomData<T>,
             }
@@ -278,12 +301,13 @@ macro_rules! impl_scoped_subject {
                 /// # Errors
                 ///
                 /// Returns `Error::InvalidSubjectPartial` if the subject contains invalid characters.
-                pub fn new(subject_partial: impl Into<String>) -> Result<Self, Error> {
+                pub fn new(client: Client, subject_partial: impl Into<String>) -> Result<Self, Error> {
                     let subject = subject_partial.into();
                     if subject.contains('.') || subject.contains('*') || subject.contains('>') {
                         return Err(Error::InvalidSubjectPartial);
                     }
                     Ok(Self {
+                        client,
                         full_subject: subject,
                         _marker: PhantomData,
                     })
@@ -312,6 +336,7 @@ macro_rules! impl_scoped_subject {
 
                 fn any(&self) -> Self::Scoped {
                     $parent_sub {
+                        client: self.client.clone(),
                         full_subject: format!("{}.*", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -319,6 +344,7 @@ macro_rules! impl_scoped_subject {
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     NatsSubject {
+                        client: self.client.clone(),
                         full_subject: format!("{}.>", self.full_subject),
                         _marker: PhantomData,
                     }
@@ -329,6 +355,7 @@ macro_rules! impl_scoped_subject {
                     K: Into<String> + Send,
                 {
                     $parent_sub {
+                        client: self.client.clone(),
                         full_subject: format!("{}.{}", self.full_subject, scope.into()),
                         _marker: PhantomData,
                     }

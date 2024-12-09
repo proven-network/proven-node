@@ -3,7 +3,6 @@
 mod error;
 mod subscription_handler;
 
-use crate::subscription::{MemorySubscription, MemorySubscriptionOptions};
 pub use error::Error;
 use subscription_handler::StreamSubscriptionHandler;
 
@@ -17,6 +16,8 @@ use proven_messaging::service::Service;
 use proven_messaging::stream::{ScopedStream, ScopedStream1, ScopedStream2, ScopedStream3, Stream};
 use proven_messaging::subject::Subject;
 use tokio::sync::{mpsc, Mutex};
+
+use crate::subject::MemorySubject;
 
 /// An in-memory stream.
 #[derive(Clone, Debug)]
@@ -36,6 +37,8 @@ where
 {
     type Error = Error<T>;
 
+    type SubjectType = MemorySubject<T>;
+
     /// Creates a new stream.
     async fn new<N>(stream_name: N) -> Result<Self, Self::Error>
     where
@@ -48,19 +51,21 @@ where
     }
 
     /// Creates a new stream with the given subjects - must all be the same type.
-    async fn new_with_subjects<J, N>(stream_name: N, subjects: Vec<J>) -> Result<Self, Self::Error>
+    async fn new_with_subjects<N>(
+        stream_name: N,
+        subjects: Vec<MemorySubject<T>>,
+    ) -> Result<Self, Self::Error>
     where
-        J: Subject<T>,
         N: Into<String> + Send,
     {
         let (sender, mut receiver) = mpsc::channel::<T>(100);
 
         for subject in subjects {
             let handler = StreamSubscriptionHandler::new(sender.clone());
-            let _: MemorySubscription<StreamSubscriptionHandler<T>, T> = subject
-                .subscribe(MemorySubscriptionOptions, handler)
+            subject
+                .subscribe(handler)
                 .await
-                .map_err(|e| Error::Subscription(e))?;
+                .map_err(|e| Error::Subject(e))?;
         }
 
         let messages = Arc::new(Mutex::new(Vec::new()));
@@ -150,15 +155,19 @@ where
 {
     type Error = Error<T>;
 
-    async fn init(&self) -> Result<MemoryStream<T>, Self::Error> {
+    type StreamType = MemoryStream<T>;
+
+    type SubjectType = MemorySubject<T>;
+
+    async fn init(&self) -> Result<Self::StreamType, Self::Error> {
         let stream = MemoryStream::new(self.prefix.clone().unwrap()).await?;
         Ok(stream)
     }
 
-    async fn init_with_subjects<J>(&self, subjects: Vec<J>) -> Result<MemoryStream<T>, Self::Error>
-    where
-        J: Subject<T>,
-    {
+    async fn init_with_subjects(
+        &self,
+        subjects: Vec<Self::SubjectType>,
+    ) -> Result<Self::StreamType, Self::Error> {
         let stream =
             MemoryStream::new_with_subjects(self.prefix.clone().unwrap(), subjects).await?;
         Ok(stream)

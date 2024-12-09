@@ -14,7 +14,7 @@ pub trait SubjectError: Error + Send + Sync + 'static {}
 #[async_trait]
 pub trait PublishableSubject<T>
 where
-    Self: Clone + Into<String> + Send + Sync + 'static,
+    Self: Clone + Into<String> + Send + Sized + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     /// The error type for the stream.
@@ -32,10 +32,9 @@ where
         H: Clone + Into<HashMap<String, String>> + Send;
 
     /// Subscribes to the subject and processes messages with the given handler.
-    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
+    async fn subscribe<X>(&self, handler: X) -> Result<impl Subscription<X, T>, Self::Error>
     where
-        X: SubscriptionHandler<T>,
-        Y: Subscription<X, T>;
+        X: SubscriptionHandler<T>;
 }
 
 /// A trait representing a subject.
@@ -49,10 +48,9 @@ where
     type Error: SubjectError;
 
     /// Subscribes to the subject and processes messages with the given handler.
-    async fn subscribe<X, Y>(&self, options: Y::Options, handler: X) -> Result<Y, Y::Error>
+    async fn subscribe<X>(&self, handler: X) -> Result<impl Subscription<X, T>, Self::Error>
     where
-        X: SubscriptionHandler<T>,
-        Y: Subscription<X, T>;
+        X: SubscriptionHandler<T>;
 }
 
 macro_rules! define_scoped_subject {

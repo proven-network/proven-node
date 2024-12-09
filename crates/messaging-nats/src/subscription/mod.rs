@@ -68,7 +68,7 @@ where
         + Send
         + Sync
         + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
     X: SubscriptionHandler<T>,
 {

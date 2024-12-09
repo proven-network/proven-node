@@ -20,16 +20,21 @@ where
     /// The error type for the stream.
     type Error: StreamError;
 
+    /// The subject type for the stream.
+    type SubjectType: Subject<T>;
+
     /// Creates a new stream.
     async fn new<N>(stream_name: N) -> Result<Self, Self::Error>
     where
         N: Into<String> + Send;
 
     /// Creates a new stream with the given subjects - must all be the same type.
-    async fn new_with_subjects<J, N>(stream_name: N, subjects: Vec<J>) -> Result<Self, Self::Error>
+    async fn new_with_subjects<N>(
+        stream_name: N,
+        subjects: Vec<Self::SubjectType>,
+    ) -> Result<Self, Self::Error>
     where
-        N: Into<String> + Send,
-        J: Subject<T>;
+        N: Into<String> + Send;
 
     /// Gets the message with the given sequence number.
     async fn get(&self, seq: usize) -> Result<Option<T>, Self::Error>;
@@ -64,13 +69,20 @@ where
     /// The error type for the stream.
     type Error: StreamError;
 
+    /// The stream type.
+    type StreamType: Stream<T>;
+
+    /// The subject type for the stream.
+    type SubjectType: Subject<T>;
+
     /// Initializes the stream.
-    async fn init(&self) -> Result<impl Stream<T>, Self::Error>;
+    async fn init(&self) -> Result<Self::StreamType, Self::Error>;
 
     /// Initializes the stream with the given subjects - must all be the same type.
-    async fn init_with_subjects<J>(&self, subjects: Vec<J>) -> Result<impl Stream<T>, Self::Error>
-    where
-        J: Subject<T>;
+    async fn init_with_subjects(
+        &self,
+        subjects: Vec<Self::SubjectType>,
+    ) -> Result<Self::StreamType, Self::Error>;
 }
 
 macro_rules! define_scoped_stream {
