@@ -4,6 +4,7 @@ mod error;
 mod subscription_handler;
 
 pub use error::Error;
+use proven_messaging::consumer_handler::ConsumerHandler;
 use subscription_handler::StreamSubscriptionHandler;
 
 use std::fmt::Debug;
@@ -11,12 +12,12 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use proven_messaging::consumer::Consumer;
 use proven_messaging::service::Service;
 use proven_messaging::stream::{ScopedStream, ScopedStream1, ScopedStream2, ScopedStream3, Stream};
 use proven_messaging::subject::Subject;
 use tokio::sync::{mpsc, Mutex};
 
+use crate::consumer::MemoryConsumer;
 use crate::subject::MemorySubject;
 
 /// An in-memory stream.
@@ -110,9 +111,12 @@ where
     }
 
     /// Consumes the stream with the given consumer.
-    async fn start_consumer<C>(&self, _consumer: C) -> Result<(), Self::Error>
+    async fn start_consumer<X>(
+        &self,
+        _handler: X,
+    ) -> Result<MemoryConsumer<X, Self, T>, Self::Error>
     where
-        C: Consumer<Self, T>,
+        X: ConsumerHandler<T>,
     {
         unimplemented!()
     }

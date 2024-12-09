@@ -1,4 +1,5 @@
 use crate::consumer::Consumer;
+use crate::consumer_handler::ConsumerHandler;
 use crate::service::Service;
 use crate::subject::Subject;
 
@@ -49,9 +50,9 @@ where
     async fn publish(&self, message: T) -> Result<usize, Self::Error>;
 
     /// Consumes the stream with the given consumer.
-    async fn start_consumer<C>(&self, consumer: C) -> Result<(), Self::Error>
+    async fn start_consumer<X>(&self, handler: X) -> Result<impl Consumer<X, Self, T>, Self::Error>
     where
-        C: Consumer<Self, T>;
+        X: ConsumerHandler<T>;
 
     /// Consumes the stream with the given service.
     async fn start_service<S>(&self, service: S) -> Result<(), Self::Error>

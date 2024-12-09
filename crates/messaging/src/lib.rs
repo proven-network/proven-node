@@ -11,6 +11,9 @@ pub mod client;
 /// Consumers are stateful views of streams.
 pub mod consumer;
 
+/// Consumer handlers process messages for consumers.
+pub mod consumer_handler;
+
 /// Serivces special consumers that respond to requests.
 pub mod service;
 
@@ -23,5 +26,5 @@ pub mod subject;
 /// Subscribers consume messages from subjects.
 pub mod subscription;
 
-/// Handlers process messages from subscribers.
+/// Subscribption handlers process messages for subscribers.
 pub mod subscription_handler;
