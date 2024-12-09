@@ -47,7 +47,7 @@ where
         + 'static,
     X: ServiceHandler<T>,
 {
-    type ClientType = NatsClient<X, NatsStream<T>, Self, T>;
+    type ClientType = NatsClient<X, T>;
 
     type Error = Error<X::Error>;
 

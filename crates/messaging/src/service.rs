@@ -31,7 +31,7 @@ where
     type StreamType: Stream<T>;
 
     /// The client type for the service.
-    type ClientType: Client<X, Self::StreamType, Self, T>;
+    type ClientType: Client<X, T>;
 
     /// Creates a new subscriber.
     async fn new(

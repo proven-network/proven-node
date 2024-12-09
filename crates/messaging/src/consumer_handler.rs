@@ -21,4 +21,9 @@ where
 
     /// Handles the given data.
     async fn handle(&self, message: Message<T>) -> Result<(), Self::Error>;
+
+    /// Hook for when the consumer is caught up.
+    async fn on_caught_up(&self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }

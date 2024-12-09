@@ -62,7 +62,7 @@ where
     T: Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T>,
 {
-    type ClientType = MemoryClient<X, MemoryStream<T>, Self, T>;
+    type ClientType = MemoryClient<X, T>;
 
     type Error = Error<X::Error>;
 

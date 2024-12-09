@@ -6,49 +6,63 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_messaging::client::Client;
-use proven_messaging::service::Service;
 use proven_messaging::service_handler::ServiceHandler;
-use proven_messaging::stream::Stream;
+
+use crate::stream::NatsStream;
 
 /// A client for an in-memory service.
-#[derive(Clone, Debug)]
-pub struct NatsClient<X, S, V, T>
+#[derive(Clone, Debug, Default)]
+pub struct NatsClient<X, T>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    S: Stream<T>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+        + 'static,
     X: ServiceHandler<T>,
-    V: Service<X, T>,
 {
-    _service: V,
-    _marker: PhantomData<(X, S, T)>,
+    _marker: PhantomData<(X, T)>,
 }
 
-impl<X, S, V, T> NatsClient<X, S, V, T>
+impl<X, T> NatsClient<X, T>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    S: Stream<T>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+        + 'static,
     X: ServiceHandler<T>,
-    V: Service<X, T>,
 {
     /// Creates a new in-memory client.
-    pub const fn new(service: V) -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
-            _service: service,
             _marker: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<X, S, V, T> Client<X, S, V, T> for NatsClient<X, S, V, T>
+impl<X, T> Client<X, T> for NatsClient<X, T>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    S: Stream<T>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+        + 'static,
     X: ServiceHandler<T>,
-    V: Service<X, T>,
 {
     type Error = Error;
+
+    type StreamType = NatsStream<T>;
 
     async fn request(&self, _request: T) -> Result<X::ResponseType, Self::Error> {
         unimplemented!()
