@@ -1,12 +1,8 @@
 mod error;
 
 pub use error::Error;
-use futures::StreamExt;
-use proven_messaging::stream::Stream;
-use proven_messaging::Message;
 
 use std::fmt::Debug;
-use std::marker::PhantomData;
 
 use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
 use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
@@ -14,8 +10,11 @@ use async_nats::jetstream::Context;
 use async_nats::Client as NatsClient;
 use async_trait::async_trait;
 use bytes::Bytes;
+use futures::StreamExt;
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
+use proven_messaging::stream::Stream;
+use proven_messaging::Message;
 
 use crate::stream::NatsStream;
 
@@ -41,11 +40,11 @@ where
         + 'static,
     X: ConsumerHandler<T>,
 {
+    handler: X,
     _nats_client: NatsClient,
-    _nats_consumer: NatsConsumerType<NatsConsumerConfig>,
+    nats_consumer: NatsConsumerType<NatsConsumerConfig>,
     _nats_jetstream_context: Context,
     stream: <Self as Consumer<X, T>>::StreamType,
-    _marker: PhantomData<(X, T)>,
 }
 
 impl<X, T> NatsConsumer<X, T>
@@ -121,15 +120,35 @@ where
             .await
             .map_err(|e| Error::Create(e.kind()))?;
 
-        tokio::spawn(Self::process_messages(nats_consumer.clone(), handler));
+        tokio::spawn(Self::process_messages(
+            nats_consumer.clone(),
+            handler.clone(),
+        ));
 
         Ok(Self {
+            handler,
             _nats_client: options.nats_client,
-            _nats_consumer: nats_consumer,
+            nats_consumer,
             _nats_jetstream_context: options.nats_jetstream_context,
             stream,
-            _marker: PhantomData,
         })
+    }
+
+    fn handler(&self) -> X {
+        self.handler.clone()
+    }
+
+    async fn last_seq(&self) -> Result<u64, Self::Error> {
+        let seq = self
+            .nats_consumer
+            .clone()
+            .info()
+            .await
+            .map_err(|e| Error::Info(e.kind()))?
+            .ack_floor
+            .stream_sequence;
+
+        Ok(seq)
     }
 
     fn stream(&self) -> Self::StreamType {

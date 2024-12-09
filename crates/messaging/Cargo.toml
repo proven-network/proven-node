@@ -7,4 +7,5 @@ edition = "2021"
 async-nats = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
+futures = { workspace = true }
 paste = { workspace = true }

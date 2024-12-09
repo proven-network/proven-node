@@ -20,6 +20,7 @@ use proven_messaging::stream::{
 };
 use proven_messaging::subject::Subject;
 use tokio::sync::{mpsc, Mutex};
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::debug;
 
 /// Options for the in-memory stream (there are none).
@@ -35,6 +36,28 @@ where
 {
     messages: Arc<Mutex<Vec<Message<T>>>>,
     name: String,
+}
+
+impl<T> MemoryStream<T>
+where
+    T: Clone + Debug + Send + Sync + 'static,
+{
+    /// Returns a stream of messages from the beginning.
+    pub async fn messages(&self) -> ReceiverStream<Message<T>> {
+        // TODO: Can't actually just use a clone here, need to pass the sender to the subscription_handler after catch-up
+        let messages = self.messages.lock().await.clone();
+        let (sender, receiver) = mpsc::channel::<Message<T>>(100);
+
+        tokio::spawn(async move {
+            for message in messages {
+                if sender.send(message).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        ReceiverStream::new(receiver)
+    }
 }
 
 #[async_trait]

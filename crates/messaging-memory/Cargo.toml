@@ -6,10 +6,12 @@ edition = "2021"
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
+futures = { workspace = true }
 paste = { workspace = true }
 proven-messaging = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tokio-stream = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 

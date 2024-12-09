@@ -14,6 +14,10 @@ pub enum Error {
     #[error("Failed to get message: {0}")]
     DirectGet(async_nats::jetstream::stream::DirectGetErrorKind),
 
+    /// Stream info error.
+    #[error("Failed to get stream info: {0}")]
+    Info(async_nats::jetstream::context::RequestErrorKind),
+
     /// Publish error.
     #[error("Failed to publish: {0}")]
     Publish(async_nats::jetstream::context::PublishErrorKind),
@@ -21,10 +25,6 @@ pub enum Error {
     /// Serialization error.
     #[error(transparent)]
     Serialize(#[from] ciborium::ser::Error<std::io::Error>),
-
-    /// Stream info error.
-    #[error("Failed to get stream info: {0}")]
-    StreamInfo(async_nats::jetstream::context::RequestErrorKind),
 
     /// An error occured while subscribing to a subject.
     #[error(transparent)]

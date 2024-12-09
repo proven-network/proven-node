@@ -131,7 +131,7 @@ where
             .clone()
             .info()
             .await
-            .map_err(|e| Error::StreamInfo(e.kind()))?
+            .map_err(|e| Error::Info(e.kind()))?
             .state
             .last_sequence;
 

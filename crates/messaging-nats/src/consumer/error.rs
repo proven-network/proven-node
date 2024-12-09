@@ -13,6 +13,10 @@ where
     #[error("Failed to create consumer: {0}")]
     Create(async_nats::jetstream::stream::ConsumerErrorKind),
 
+    /// Consumer info error.
+    #[error("Failed to get consumer info: {0}")]
+    Info(async_nats::jetstream::context::RequestErrorKind),
+
     /// Handler error.
     #[error("Handler error: {0}")]
     Handler(HE),
