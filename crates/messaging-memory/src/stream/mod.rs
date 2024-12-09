@@ -34,6 +34,7 @@ pub struct MemoryStream<T>
 where
     T: Clone + Debug + Send + Sync + 'static,
 {
+    consumer_channels: Arc<Mutex<Vec<mpsc::Sender<Message<T>>>>>,
     messages: Arc<Mutex<Vec<Message<T>>>>,
     name: String,
 }
@@ -44,17 +45,23 @@ where
 {
     /// Returns a stream of messages from the beginning.
     pub async fn messages(&self) -> ReceiverStream<Message<T>> {
-        // TODO: Can't actually just use a clone here, need to pass the sender to the subscription_handler after catch-up
         let messages = self.messages.lock().await.clone();
         let (sender, receiver) = mpsc::channel::<Message<T>>(100);
 
-        tokio::spawn(async move {
-            for message in messages {
-                if sender.send(message).await.is_err() {
-                    break;
+        // First send all existing messages
+        tokio::spawn({
+            let sender = sender.clone();
+            async move {
+                for message in messages {
+                    if sender.send(message).await.is_err() {
+                        break;
+                    }
                 }
             }
         });
+
+        // Add sender to active consumers
+        self.consumer_channels.lock().await.push(sender);
 
         ReceiverStream::new(receiver)
     }
@@ -80,6 +87,7 @@ where
         Ok(Self {
             messages: Arc::new(Mutex::new(Vec::new())),
             name: stream_name.into(),
+            consumer_channels: Arc::new(Mutex::new(Vec::new())),
         })
     }
 
@@ -104,13 +112,23 @@ where
 
         let messages = Arc::new(Mutex::new(Vec::new()));
         let messages_clone = messages.clone();
+        let consumer_channels = Arc::new(Mutex::new(Vec::<mpsc::Sender<Message<T>>>::new()));
+        let consumer_channels_clone = consumer_channels.clone();
         tokio::spawn(async move {
             while let Some(message) = receiver.recv().await {
-                messages_clone.lock().await.push(message);
+                messages_clone.lock().await.push(message.clone());
+
+                // Broadcast the message to all consumers
+                let mut channels = consumer_channels_clone.lock().await;
+                channels.retain_mut(|sender| {
+                    let message = message.clone();
+                    sender.try_send(message).is_ok()
+                });
             }
         });
 
         Ok(Self {
+            consumer_channels,
             messages,
             name: stream_name.into(),
         })
@@ -141,9 +159,17 @@ where
         let seq_usize = {
             let mut messages = self.messages.lock().await;
             let seq = messages.len();
-            messages.push(message);
+            messages.push(message.clone());
             seq
         };
+
+        // Broadcast the message to all consumers
+        let mut channels = self.consumer_channels.lock().await;
+        channels.retain_mut(|sender| {
+            let message = message.clone();
+            sender.try_send(message).is_ok()
+        });
+        drop(channels);
 
         // TODO: Add error handling for sequence number conversion
         let seq: u64 = seq_usize.try_into().unwrap();
@@ -458,21 +484,39 @@ mod tests {
             received_messages: received_messages.clone(),
         };
 
-        let prestart_message = "pre_message".to_string();
+        let prestart_subject_message = "prestart_subject_message".to_string();
         publishable_subject
-            .publish(prestart_message.clone().into())
+            .publish(prestart_subject_message.clone().into())
             .await
             .unwrap();
 
         tokio::task::yield_now().await;
 
+        let prestart_direct_message = "prestart_direct_message".to_string();
+        stream
+            .publish(prestart_direct_message.clone().into())
+            .await
+            .unwrap();
+
+        // Wait for the message to be processed
+        tokio::task::yield_now().await;
+
         let _consumer = stream.start_consumer("test", handler).await.unwrap();
+
+        // Wait for the consumer to start
+        tokio::task::yield_now().await;
+
+        let poststart_subject_message = "poststart_subject_message".to_string();
+        publishable_subject
+            .publish(poststart_subject_message.clone().into())
+            .await
+            .unwrap();
 
         tokio::task::yield_now().await;
 
-        let poststart_message = "post_message".to_string();
-        publishable_subject
-            .publish(poststart_message.clone().into())
+        let poststart_direct_message = "poststart_direct_message".to_string();
+        stream
+            .publish(poststart_direct_message.clone().into())
             .await
             .unwrap();
 
@@ -480,9 +524,11 @@ mod tests {
         tokio::task::yield_now().await;
 
         let received_messages = received_messages.lock().await;
-        assert_eq!(received_messages.len(), 2);
-        assert_eq!(received_messages[0], prestart_message);
-        assert_eq!(received_messages[1], poststart_message);
+        assert_eq!(received_messages.len(), 4);
+        assert_eq!(received_messages[0], prestart_subject_message);
+        assert_eq!(received_messages[1], prestart_direct_message);
+        assert_eq!(received_messages[2], poststart_subject_message);
+        assert_eq!(received_messages[3], poststart_direct_message);
         drop(received_messages);
     }
 }
