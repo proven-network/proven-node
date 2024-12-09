@@ -7,6 +7,9 @@
 
 mod gotham_state;
 
+/// Consumers are stateful views of streams.
+pub mod consumer;
+
 /// Streams are persistent, ordered, and append-only sequences of messages.
 pub mod stream;
 
@@ -108,8 +111,8 @@ mod tests {
         let subject = MemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscriber<TestSubscriptionHandler> = subject
-            .subscribe(MemorySubscriberOptions, handler)
+        let _: MemorySubscription<TestSubscriptionHandler> = subject
+            .subscribe(MemorySubscriptionOptions, handler)
             .await
             .unwrap();
 
@@ -140,8 +143,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscriber<TestSubscriptionHandler> = subject1
-            .subscribe(MemorySubscriberOptions, handler)
+        let _: MemorySubscription<TestSubscriptionHandler> = subject1
+            .subscribe(MemorySubscriptionOptions, handler)
             .await
             .unwrap();
 
@@ -173,8 +176,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscriber<TestSubscriptionHandler> = subject1
-            .subscribe(MemorySubscriberOptions, handler)
+        let _: MemorySubscription<TestSubscriptionHandler> = subject1
+            .subscribe(MemorySubscriptionOptions, handler)
             .await
             .unwrap();
 
@@ -207,8 +210,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscriber<TestSubscriptionHandler> = subject
-            .subscribe(MemorySubscriberOptions, handler)
+        let _: MemorySubscription<TestSubscriptionHandler> = subject
+            .subscribe(MemorySubscriptionOptions, handler)
             .await
             .unwrap();
 
@@ -242,8 +245,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscriber<TestSubscriptionHandler> = wildcard_subject
-            .subscribe(MemorySubscriberOptions, handler)
+        let _: MemorySubscription<TestSubscriptionHandler> = wildcard_subject
+            .subscribe(MemorySubscriptionOptions, handler)
             .await
             .unwrap();
 
@@ -277,8 +280,8 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscriber<TestSubscriptionHandler> = greedy_wildcard_subject
-            .subscribe(MemorySubscriberOptions, handler)
+        let _: MemorySubscription<TestSubscriptionHandler> = greedy_wildcard_subject
+            .subscribe(MemorySubscriptionOptions, handler)
             .await
             .unwrap();
 
@@ -307,8 +310,8 @@ mod tests {
         let subject = MemoryPublishableSubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let subscriber: MemorySubscriber<TestSubscriptionHandler> = subject
-            .subscribe(MemorySubscriberOptions, handler)
+        let subscriber: MemorySubscription<TestSubscriptionHandler> = subject
+            .subscribe(MemorySubscriptionOptions, handler)
             .await
             .unwrap();
 
@@ -367,8 +370,8 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(10);
         let handler = CustomHandler(sender);
 
-        let _: MemorySubscriber<_, CustomType> = subject
-            .subscribe(MemorySubscriberOptions, handler)
+        let _: MemorySubscription<_, CustomType> = subject
+            .subscribe(MemorySubscriptionOptions, handler)
             .await
             .unwrap();
 

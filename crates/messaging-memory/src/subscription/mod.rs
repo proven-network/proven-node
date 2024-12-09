@@ -15,19 +15,19 @@ use tokio_util::sync::CancellationToken;
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
-pub struct MemorySubscriberOptions;
-impl SubscriptionOptions for MemorySubscriberOptions {}
+pub struct MemorySubscriptionOptions;
+impl SubscriptionOptions for MemorySubscriptionOptions {}
 
 /// A in-memory subscriber.
 #[derive(Clone, Debug, Default)]
-pub struct MemorySubscriber<X, T = Bytes> {
+pub struct MemorySubscription<X, T = Bytes> {
     cancel_token: CancellationToken,
     handler: X,
     last_message: Arc<Mutex<Option<T>>>,
 }
 
 #[async_trait]
-impl<X, T> Subscription<X, T> for MemorySubscriber<X, T>
+impl<X, T> Subscription<X, T> for MemorySubscription<X, T>
 where
     Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
@@ -35,12 +35,12 @@ where
 {
     type Error = Error;
 
-    type Options = MemorySubscriberOptions;
+    type Options = MemorySubscriptionOptions;
 
     #[allow(clippy::significant_drop_tightening)]
     async fn new(
         subject_string: String,
-        _options: MemorySubscriberOptions,
+        _options: MemorySubscriptionOptions,
         handler: X,
     ) -> Result<Self, Self::Error> {
         let mut state = GLOBAL_STATE.lock().await;

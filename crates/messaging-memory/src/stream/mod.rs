@@ -3,7 +3,7 @@
 mod error;
 mod subscription_handler;
 
-use crate::subscription::{MemorySubscriber, MemorySubscriberOptions};
+use crate::subscription::{MemorySubscription, MemorySubscriptionOptions};
 pub use error::Error;
 use subscription_handler::StreamSubscriptionHandler;
 
@@ -57,8 +57,8 @@ where
 
         for subject in subjects {
             let handler = StreamSubscriptionHandler::new(sender.clone());
-            let _: MemorySubscriber<StreamSubscriptionHandler<T>, T> = subject
-                .subscribe(MemorySubscriberOptions, handler)
+            let _: MemorySubscription<StreamSubscriptionHandler<T>, T> = subject
+                .subscribe(MemorySubscriptionOptions, handler)
                 .await
                 .map_err(|e| Error::Subscription(e))?;
         }
