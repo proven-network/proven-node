@@ -5,6 +5,12 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
+/// Consumers are stateful views of streams.
+pub mod consumer;
+
+/// Streams are persistent, ordered, and append-only sequences of messages.
+pub mod stream;
+
 /// Subjects can be published to and subscribed to (by passing a handler).
 pub mod subject;
 

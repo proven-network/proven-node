@@ -252,7 +252,7 @@ macro_rules! impl_scoped_subject {
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped
                 where
-                    K: Into<String> + Send,
+                    K: Clone + Into<String> + Send,
                 {
                     $parent_pub {
                         client: self.client.clone(),
@@ -338,7 +338,7 @@ macro_rules! impl_scoped_subject {
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped
                 where
-                    K: Into<String> + Send,
+                    K: Clone + Into<String> + Send,
                 {
                     $parent_sub {
                         client: self.client.clone(),

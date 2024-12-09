@@ -29,7 +29,7 @@ impl<S: Stream<SqlStreamHandler>, LS: Store> Connection<S, LS> {
 impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connection<S, LS> {
     type Error = Error<S::Error, LS::Error>;
 
-    async fn execute<Q: Into<String> + Send>(
+    async fn execute<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<SqlParam>,
@@ -45,7 +45,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
         }
     }
 
-    async fn execute_batch<Q: Into<String> + Send>(
+    async fn execute_batch<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<Vec<SqlParam>>,
@@ -61,7 +61,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
         }
     }
 
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error> {
+    async fn migrate<Q: Clone + Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error> {
         let request = Request::Migrate(query.into());
 
         let response = self.stream.request(request).await.map_err(Error::Stream)?;
@@ -73,7 +73,7 @@ impl<S: Stream<SqlStreamHandler> + 'static, LS: Store> SqlConnection for Connect
         }
     }
 
-    async fn query<Q: Into<String> + Send>(
+    async fn query<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<SqlParam>,

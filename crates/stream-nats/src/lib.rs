@@ -359,7 +359,7 @@ macro_rules! impl_scoped_stream {
                 type Error = Error<H::Error>;
                 type Scoped = $parent<H>;
 
-                fn scope<S: Into<String> + Send>(&self, scope: S) -> $parent<H> {
+                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> $parent<H> {
                     self.with_scope(scope.into())
                 }
             }

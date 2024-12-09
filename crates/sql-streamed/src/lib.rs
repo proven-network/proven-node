@@ -81,7 +81,7 @@ where
     type Error = Error<S::Error, LS::Error>;
     type Connection = Connection<S, LS>;
 
-    async fn connect<Q: Into<String> + Send>(
+    async fn connect<Q: Clone + Into<String> + Send>(
         &self,
         migrations: Vec<Q>,
     ) -> Result<Self::Connection, Self::Error> {
@@ -194,7 +194,7 @@ macro_rules! impl_scoped_sql_store {
                 type Error = Error<S::Error, LS::Error>;
                 type Scoped = $parent<S::Scoped, LS>;
 
-                fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+                fn scope<K: Clone + Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
                     $parent {
                         leader_store: self.leader_store.clone(),
                         local_name: self.local_name.clone(),

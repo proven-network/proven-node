@@ -102,7 +102,7 @@ macro_rules! define_scoped_stream {
                 type Scoped: $parent<H, Error = Self::Error> + Clone + Send + Sync + 'static;
 
                 /// Creates a scoped version of the stream.
-                fn scope<S: Into<String> + Send>(&self, scope: S) -> <Self as [< Stream $index >]<H>>::Scoped;
+                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> <Self as [< Stream $index >]<H>>::Scoped;
             }
         }
     };

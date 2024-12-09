@@ -181,7 +181,7 @@ where
 {
     type Error = Error<DE, SE>;
 
-    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn del<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
 
         secret_map.remove(&key.into());
@@ -189,7 +189,7 @@ where
         self.update_secret_map(secret_map).await
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
+    async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
         let secret_map = self.get_secret_map().await?;
 
         match secret_map.get(&key.into()) {
@@ -209,7 +209,7 @@ where
         Ok(secret_map.keys().cloned().collect())
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+    async fn put<K: Clone + Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
 
         let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
@@ -331,7 +331,7 @@ macro_rules! impl_scoped_store {
                 type Error = Error<DE, SE>;
                 type Scoped = $parent<T, DE, SE>;
 
-                fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let new_scope = match &self.prefix {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                         None => scope.into(),

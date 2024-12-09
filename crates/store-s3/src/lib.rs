@@ -140,7 +140,7 @@ where
 {
     type Error = Error<DE, SE>;
 
-    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn del<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let key = self.get_key(key);
 
         let resp = self
@@ -157,7 +157,7 @@ where
         }
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
+    async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -250,7 +250,7 @@ where
         }
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+    async fn put<K: Clone + Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -394,7 +394,7 @@ macro_rules! impl_scoped_store {
                 type Error = Error<DE, SE>;
                 type Scoped = $parent<T, DE, SE>;
 
-                fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let prefix = match &self.prefix {
                         Some(prefix) => format!("{}/{}", prefix, scope.into()),
                         None => scope.into(),

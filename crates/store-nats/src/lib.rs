@@ -152,7 +152,7 @@ where
 {
     type Error = Error<DE, SE>;
 
-    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn del<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         self.get_kv_store()
             .await?
             .delete(key.into())
@@ -162,7 +162,7 @@ where
         Ok(())
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
+    async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
         if let Some(bytes) = self
             .get_kv_store()
             .await?
@@ -190,7 +190,7 @@ where
             .unwrap())
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+    async fn put<K: Clone + Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
         let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
         self.get_kv_store()
             .await?
@@ -323,7 +323,7 @@ macro_rules! impl_scoped_store {
                 type Error = Error<DE, SE>;
                 type Scoped = $parent<T, DE, SE>;
 
-                fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                     let mut bucket = self.bucket.clone();
                     bucket.push_str(&format!(".{}", scope.into()));
                     Self::Scoped::new(NatsStoreOptions {

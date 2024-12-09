@@ -28,7 +28,7 @@ where
     /// Creates a new stream.
     async fn new<N>(stream_name: N) -> Result<Self, Self::Error>
     where
-        N: Into<String> + Send;
+        N: Clone + Into<String> + Send;
 
     /// Creates a new stream with the given subjects - must all be the same type.
     async fn new_with_subjects<N>(
@@ -36,10 +36,10 @@ where
         subjects: Vec<Self::SubjectType>,
     ) -> Result<Self, Self::Error>
     where
-        N: Into<String> + Send;
+        N: Clone + Into<String> + Send;
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: usize) -> Result<Option<Message<T>>, Self::Error>;
+    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error>;
 
     /// The last message in the stream.
     async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error>;
@@ -48,7 +48,7 @@ where
     fn name(&self) -> String;
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: Message<T>) -> Result<usize, Self::Error>;
+    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error>;
 
     /// Consumes the stream with the given consumer.
     async fn start_consumer<X>(&self, handler: X) -> Result<impl Consumer<X, T>, Self::Error>
@@ -106,7 +106,7 @@ macro_rules! define_scoped_stream {
                 /// Creates a scoped stream.
                 fn scope<S>(&self, scope: S) -> <Self as [< ScopedStream $index >]<T>>::Scoped
                 where
-                    S: Into<String> + Send;
+                    S: Clone + Into<String> + Send;
             }
         }
     };

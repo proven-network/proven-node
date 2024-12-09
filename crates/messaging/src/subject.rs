@@ -82,7 +82,7 @@ macro_rules! define_scoped_subject {
                 /// Refines the subject with the given concrete scope.
                 fn scope<K>(&self, scope: K) -> Self::Scoped
                 where
-                    K: Into<String> + Send;
+                    K: Clone + Into<String> + Send;
             }
 
             #[async_trait]
@@ -113,7 +113,7 @@ macro_rules! define_scoped_subject {
                 /// Refines the subject with the given concrete scope.
                 fn scope<K>(&self, scope: K) -> Self::Scoped
                 where
-                    K: Into<String> + Send;
+                    K: Clone + Into<String> + Send;
             }
         }
     };

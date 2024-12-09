@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod error;
 mod subscription_handler;
 
@@ -45,7 +43,7 @@ where
     /// Creates a new stream.
     async fn new<N>(stream_name: N) -> Result<Self, Self::Error>
     where
-        N: Into<String> + Send,
+        N: Clone + Into<String> + Send,
     {
         Ok(Self {
             messages: Arc::new(Mutex::new(Vec::new())),
@@ -59,7 +57,7 @@ where
         subjects: Vec<MemorySubject<T>>,
     ) -> Result<Self, Self::Error>
     where
-        N: Into<String> + Send,
+        N: Clone + Into<String> + Send,
     {
         let (sender, mut receiver) = mpsc::channel::<Message<T>>(100);
 
@@ -86,8 +84,11 @@ where
     }
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: usize) -> Result<Option<Message<T>>, Self::Error> {
-        Ok(self.messages.lock().await.get(seq).cloned())
+    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error> {
+        // TODO: Add error handling for sequence number conversion
+        let seq_usize: usize = seq.try_into().unwrap();
+
+        Ok(self.messages.lock().await.get(seq_usize).cloned())
     }
 
     /// The last message in the stream.
@@ -101,15 +102,18 @@ where
     }
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: Message<T>) -> Result<usize, Self::Error> {
+    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error> {
         debug!("Publishing message to {}: {:?}", self.name(), message);
 
-        let seq = {
+        let seq_usize = {
             let mut messages = self.messages.lock().await;
             let seq = messages.len();
             messages.push(message);
             seq
         };
+
+        // TODO: Add error handling for sequence number conversion
+        let seq: u64 = seq_usize.try_into().unwrap();
 
         Ok(seq)
     }
@@ -207,6 +211,7 @@ macro_rules! impl_scoped_stream {
                     }
                 }
 
+                #[allow(dead_code)]
                 const fn with_scope(prefix: String) -> Self {
                     Self {
                         prefix: Some(prefix),
@@ -224,7 +229,7 @@ macro_rules! impl_scoped_stream {
 
                 type Scoped = $parent<T>;
 
-                fn scope<S: Into<String> + Send>(&self, scope: S) -> $parent<T> {
+                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> $parent<T> {
                     let new_scope = match &self.prefix {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                         None => scope.into(),

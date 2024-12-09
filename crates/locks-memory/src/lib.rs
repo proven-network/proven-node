@@ -75,7 +75,7 @@ macro_rules! impl_scoped_lock_manager {
             type Error = Error;
             type Scoped = Self;
 
-            fn scope<S: Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+            fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
                 let new_scope = match &self.prefix {
                     Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                     None => scope.into(),

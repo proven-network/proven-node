@@ -52,7 +52,7 @@ macro_rules! define_scoped_lock_manager {
             /// Creates a scoped lock manager.
             fn scope<S>(&self, scope: S) -> Self::Scoped
             where
-                S: Into<String> + Send;
+                S: Clone + Into<String> + Send;
         }
     };
 }

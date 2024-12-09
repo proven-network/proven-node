@@ -28,12 +28,12 @@ where
     /// Deletes a key from the store.
     async fn del<K>(&self, key: K) -> Result<(), Self::Error>
     where
-        K: Into<String> + Send;
+        K: Clone + Into<String> + Send;
 
     /// Retrieves the value associated with a key.
     async fn get<K>(&self, key: K) -> Result<Option<T>, Self::Error>
     where
-        K: Into<String> + Send;
+        K: Clone + Into<String> + Send;
 
     /// Retrieves all keys in the store.
     async fn keys(&self) -> Result<Vec<String>, Self::Error>;
@@ -41,7 +41,7 @@ where
     /// Stores a key-value pair.
     async fn put<K>(&self, key: K, value: T) -> Result<(), Self::Error>
     where
-        K: Into<String> + Send;
+        K: Clone + Into<String> + Send;
 }
 
 macro_rules! define_scoped_store {
@@ -65,7 +65,7 @@ macro_rules! define_scoped_store {
                 /// Creates a scoped store.
                 fn scope<S>(&self, scope: S) -> <Self as [< Store $index >]<T, DE, SE>>::Scoped
                 where
-                    S: Into<String> + Send;
+                    S: Clone + Into<String> + Send;
             }
 
         }

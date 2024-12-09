@@ -28,24 +28,24 @@ where
     type Error: SqlStoreError;
 
     /// Execute a SQL statement that modifies data
-    async fn execute<Q: Into<String> + Send>(
+    async fn execute<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<SqlParam>,
     ) -> Result<u64, Self::Error>;
 
     /// Execute a batch of SQL statements that modify data
-    async fn execute_batch<Q: Into<String> + Send>(
+    async fn execute_batch<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<Vec<SqlParam>>,
     ) -> Result<u64, Self::Error>;
 
     /// Execute a SQL statement that modifies schema and returns bool indicating if needed to be run
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error>;
+    async fn migrate<Q: Clone + Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error>;
 
     /// Execute a SQL query that returns data
-    async fn query<Q: Into<String> + Send>(
+    async fn query<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<SqlParam>,
@@ -64,7 +64,7 @@ where
     type Connection: SqlConnection<Error = Self::Error>;
 
     /// Connect to the SQL store - running any provided migrations
-    async fn connect<Q: Into<String> + Send>(
+    async fn connect<Q: Clone + Into<String> + Send>(
         &self,
         migrations: Vec<Q>,
     ) -> Result<Self::Connection, Self::Error>;
@@ -86,7 +86,7 @@ macro_rules! define_scoped_sql_store {
                 type Scoped: $parent<Error = Self::Error> + Clone + Send + Sync + 'static;
 
                 /// Create a scoped version of the store.
-                fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
+                fn scope<S: Clone + Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
             }
         }
     };

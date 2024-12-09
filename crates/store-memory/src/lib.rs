@@ -56,12 +56,12 @@ where
 {
     type Error = Error;
 
-    async fn del<K: Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn del<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         self.map.lock().await.remove(&self.get_key(key));
         Ok(())
     }
 
-    async fn get<K: Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
+    async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
         let map = self.map.lock().await;
         Ok(map.get(&self.get_key(key)).cloned())
     }
@@ -79,7 +79,11 @@ where
             .collect())
     }
 
-    async fn put<K: Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+    async fn put<K: Clone + Into<String> + Send>(
+        &self,
+        key: K,
+        value: T,
+    ) -> Result<(), Self::Error> {
         self.map.lock().await.insert(self.get_key(key), value);
         Ok(())
     }
@@ -116,7 +120,7 @@ macro_rules! impl_scoped_store {
                 type Error = Error;
                 type Scoped = $parent;
 
-                fn scope<S: Into<String> + Send>(&self, scope: S) -> $parent {
+                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> $parent {
                     let new_scope = match &self.prefix {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                         None => scope.into(),

@@ -38,7 +38,7 @@ impl<T> MemoryPublishableSubject<T> {
     /// Returns an error if the subject partial contains '.', '*' or '>'
     pub fn new<K>(subject_partial: K) -> Result<Self, Error>
     where
-        K: Into<String> + Send,
+        K: Clone + Into<String> + Send,
     {
         let subject = subject_partial.into();
         if subject.contains('.') || subject.contains('*') || subject.contains('>') {
@@ -118,7 +118,7 @@ impl<T> MemorySubject<T> {
     /// Returns an error if the subject partial contains '.', '*' or '>'
     pub fn new<K>(subject_partial: K) -> Result<Self, Error>
     where
-        K: Into<String> + Send,
+        K: Clone + Into<String> + Send,
     {
         let subject = subject_partial.into();
         if subject.contains('.') || subject.contains('*') || subject.contains('>') {
@@ -170,7 +170,7 @@ macro_rules! impl_scoped_subject {
                 /// Returns an error if the subject partial contains '.', '*' or '>'
                 pub fn new<K>(subject_partial: K) -> Result<Self, Error>
                 where
-                    K: Into<String> + Send,
+                    K: Clone + Into<String> + Send,
                 {
                     let subject = subject_partial.into();
                     if subject.contains('.') || subject.contains('*') || subject.contains('>') {
@@ -214,7 +214,7 @@ macro_rules! impl_scoped_subject {
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped
                 where
-                    K: Into<String> + Send,
+                    K: Clone + Into<String> + Send,
                 {
                     $parent_pub {
                         full_subject: format!("{}.{}", self.full_subject, scope.into()),
@@ -237,7 +237,7 @@ macro_rules! impl_scoped_subject {
                 /// Returns an error if the subject partial contains '.', '*' or '>'
                 pub fn new<K>(subject_partial: K) -> Result<Self, Error>
                 where
-                    K: Into<String> + Send,
+                    K: Clone + Into<String> + Send,
                 {
                     let subject = subject_partial.into();
                     if subject.contains('.') || subject.contains('*') || subject.contains('>') {
@@ -279,7 +279,7 @@ macro_rules! impl_scoped_subject {
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped
                 where
-                    K: Into<String> + Send,
+                    K: Clone + Into<String> + Send,
                 {
                     $parent_sub {
                         full_subject: format!("{}.{}", self.full_subject, scope.into()),

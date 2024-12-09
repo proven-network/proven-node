@@ -24,7 +24,7 @@ impl Connection {
 impl SqlConnection for Connection {
     type Error = Error;
 
-    async fn execute<Q: Into<String> + Send>(
+    async fn execute<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<SqlParam>,
@@ -37,7 +37,7 @@ impl SqlConnection for Connection {
             .await?)
     }
 
-    async fn execute_batch<Q: Into<String> + Send>(
+    async fn execute_batch<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<Vec<SqlParam>>,
@@ -50,11 +50,11 @@ impl SqlConnection for Connection {
             .await?)
     }
 
-    async fn migrate<Q: Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error> {
+    async fn migrate<Q: Clone + Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error> {
         Ok(self.database.lock().await.migrate(&query.into()).await?)
     }
 
-    async fn query<Q: Into<String> + Send>(
+    async fn query<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<SqlParam>,
