@@ -24,18 +24,15 @@ use std::sync::Arc;
 use std::sync::LazyLock;
 
 use gotham_state::GothamState;
+use proven_messaging::Message;
 use tokio::sync::{broadcast, Mutex};
 
 static GLOBAL_STATE: LazyLock<Mutex<GothamState>> =
     LazyLock::new(|| Mutex::new(GothamState::default()));
 
-type Headers = HashMap<String, String>;
-type OptionalHeaders = Option<Headers>;
-type MessageWithOptionalHeaders<T> = (T, OptionalHeaders);
-
 #[derive(Clone, Debug)]
 struct SubjectState<T> {
-    subjects: Arc<Mutex<HashMap<String, broadcast::Sender<MessageWithOptionalHeaders<T>>>>>,
+    subjects: Arc<Mutex<HashMap<String, broadcast::Sender<Message<T>>>>>,
 }
 
 impl<T> Default for SubjectState<T> {
@@ -51,7 +48,6 @@ mod tests {
     use super::subject::*;
     use super::subscription::*;
 
-    use std::collections::HashMap;
     use std::error::Error as StdError;
 
     use async_trait::async_trait;
@@ -59,6 +55,7 @@ mod tests {
     use proven_messaging::subject::*;
     use proven_messaging::subscription::*;
     use proven_messaging::subscription_handler::*;
+    use proven_messaging::Message;
     use serial_test::serial;
     use tokio::sync::mpsc;
     use tokio::sync::mpsc::Receiver;
@@ -66,7 +63,7 @@ mod tests {
 
     #[derive(Clone, Debug)]
     struct TestSubscriptionHandler {
-        sender: mpsc::Sender<Bytes>,
+        sender: mpsc::Sender<Message<Bytes>>,
     }
 
     #[derive(Debug, Clone)]
@@ -89,18 +86,17 @@ mod tests {
         async fn handle(
             &self,
             _subject: String,
-            data: Bytes,
-            _headers_opt: Option<HashMap<String, String>>,
+            message: Message<Bytes>,
         ) -> Result<(), Self::Error> {
-            println!("Handling data: {:?}", data);
+            println!("Handling data: {:?}", message);
             self.sender
-                .send(data)
+                .send(message)
                 .await
                 .map_err(|_| TestSubscriptionHandlerError)
         }
     }
 
-    fn setup_test_handler() -> (TestSubscriptionHandler, Receiver<Bytes>) {
+    fn setup_test_handler() -> (TestSubscriptionHandler, Receiver<Message<Bytes>>) {
         let (sender, receiver) = mpsc::channel(10);
         (TestSubscriptionHandler { sender }, receiver)
     }
@@ -114,22 +110,28 @@ mod tests {
         let _: MemorySubscription<TestSubscriptionHandler> =
             subject.subscribe(handler).await.unwrap();
 
-        subject.publish(Bytes::from("message1")).await.unwrap();
-        subject.publish(Bytes::from("message2")).await.unwrap();
+        subject
+            .publish(Bytes::from("message1").into())
+            .await
+            .unwrap();
+        subject
+            .publish(Bytes::from("message2").into())
+            .await
+            .unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1")
+            Bytes::from("message1").into()
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2")
+            Bytes::from("message2").into()
         );
     }
 
@@ -144,22 +146,28 @@ mod tests {
         let _: MemorySubscription<TestSubscriptionHandler> =
             subject1.subscribe(handler).await.unwrap();
 
-        subject1.publish(Bytes::from("message1")).await.unwrap();
-        subject1.publish(Bytes::from("message2")).await.unwrap();
+        subject1
+            .publish(Bytes::from("message1").into())
+            .await
+            .unwrap();
+        subject1
+            .publish(Bytes::from("message2").into())
+            .await
+            .unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1")
+            Bytes::from("message1").into()
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2")
+            Bytes::from("message2").into()
         );
     }
 
@@ -175,22 +183,28 @@ mod tests {
         let _: MemorySubscription<TestSubscriptionHandler> =
             subject1.subscribe(handler).await.unwrap();
 
-        subject1.publish(Bytes::from("message1")).await.unwrap();
-        subject1.publish(Bytes::from("message2")).await.unwrap();
+        subject1
+            .publish(Bytes::from("message1").into())
+            .await
+            .unwrap();
+        subject1
+            .publish(Bytes::from("message2").into())
+            .await
+            .unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1")
+            Bytes::from("message1").into()
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2")
+            Bytes::from("message2").into()
         );
     }
 
@@ -207,22 +221,28 @@ mod tests {
         let _: MemorySubscription<TestSubscriptionHandler> =
             subject.subscribe(handler).await.unwrap();
 
-        subject.publish(Bytes::from("message1")).await.unwrap();
-        subject.publish(Bytes::from("message2")).await.unwrap();
+        subject
+            .publish(Bytes::from("message1").into())
+            .await
+            .unwrap();
+        subject
+            .publish(Bytes::from("message2").into())
+            .await
+            .unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1")
+            Bytes::from("message1").into()
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2")
+            Bytes::from("message2").into()
         );
     }
 
@@ -240,22 +260,28 @@ mod tests {
         let _: MemorySubscription<TestSubscriptionHandler> =
             wildcard_subject.subscribe(handler).await.unwrap();
 
-        subject1.publish(Bytes::from("message1")).await.unwrap();
-        subject1.publish(Bytes::from("message2")).await.unwrap();
+        subject1
+            .publish(Bytes::from("message1").into())
+            .await
+            .unwrap();
+        subject1
+            .publish(Bytes::from("message2").into())
+            .await
+            .unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1")
+            Bytes::from("message1").into()
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2")
+            Bytes::from("message2").into()
         );
     }
 
@@ -273,22 +299,28 @@ mod tests {
         let _: MemorySubscription<TestSubscriptionHandler> =
             greedy_wildcard_subject.subscribe(handler).await.unwrap();
 
-        subject1.publish(Bytes::from("message1")).await.unwrap();
-        subject1.publish(Bytes::from("message2")).await.unwrap();
+        subject1
+            .publish(Bytes::from("message1").into())
+            .await
+            .unwrap();
+        subject1
+            .publish(Bytes::from("message2").into())
+            .await
+            .unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1")
+            Bytes::from("message1").into()
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2")
+            Bytes::from("message2").into()
         );
     }
 
@@ -301,27 +333,33 @@ mod tests {
         let subscriber: MemorySubscription<TestSubscriptionHandler> =
             subject.subscribe(handler).await.unwrap();
 
-        subject.publish(Bytes::from("message1")).await.unwrap();
-        subject.publish(Bytes::from("message2")).await.unwrap();
+        subject
+            .publish(Bytes::from("message1").into())
+            .await
+            .unwrap();
+        subject
+            .publish(Bytes::from("message2").into())
+            .await
+            .unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1")
+            Bytes::from("message1").into()
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2")
+            Bytes::from("message2").into()
         );
 
         assert_eq!(
             subscriber.last_message().await,
-            Some(Bytes::from("message2"))
+            Some(Bytes::from("message2").into())
         );
     }
 
@@ -329,7 +367,7 @@ mod tests {
     struct CustomType(i32);
 
     #[derive(Clone, Debug)]
-    struct CustomHandler(mpsc::Sender<CustomType>);
+    struct CustomHandler(mpsc::Sender<Message<CustomType>>);
 
     #[async_trait]
     impl SubscriptionHandler<CustomType> for CustomHandler {
@@ -338,11 +376,10 @@ mod tests {
         async fn handle(
             &self,
             _subject: String,
-            data: CustomType,
-            _headers_opt: Option<HashMap<String, String>>,
+            message: Message<CustomType>,
         ) -> Result<(), Self::Error> {
             self.0
-                .send(data)
+                .send(message)
                 .await
                 .map_err(|_| TestSubscriptionHandlerError)
         }
@@ -358,14 +395,14 @@ mod tests {
 
         let _: MemorySubscription<_, CustomType> = subject.subscribe(handler).await.unwrap();
 
-        subject.publish(CustomType(42)).await.unwrap();
+        subject.publish(CustomType(42).into()).await.unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            CustomType(42)
+            CustomType(42).into()
         );
     }
 }

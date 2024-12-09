@@ -2,6 +2,7 @@ mod error;
 
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
+use proven_messaging::Message;
 
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -23,13 +24,12 @@ impl SubscriptionOptions for MemorySubscriptionOptions {}
 pub struct MemorySubscription<X, T = Bytes> {
     cancel_token: CancellationToken,
     handler: X,
-    last_message: Arc<Mutex<Option<T>>>,
+    last_message: Arc<Mutex<Option<Message<T>>>>,
 }
 
 #[async_trait]
 impl<X, T> Subscription<X, T> for MemorySubscription<X, T>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
     X: SubscriptionHandler<T>,
 {
@@ -71,8 +71,9 @@ where
                         break;
                     }
                     message = receiver.recv() => {
-                        if let Ok((message, headers)) = message {
-                            let _ = subscriber_clone.handler().handle(subject_string.clone(), message.clone(), headers).await;
+                        if let Ok(message) = message {
+                            // TODO: Handle errors
+                            let _ = subscriber_clone.handler().handle(subject_string.clone(), message.clone()).await;
                             subscriber_clone.last_message.lock().await.replace(message);
                         }
                     }
@@ -92,7 +93,7 @@ where
         self.handler.clone()
     }
 
-    async fn last_message(&self) -> Option<T> {
+    async fn last_message(&self) -> Option<Message<T>> {
         self.last_message.lock().await.clone()
     }
 }

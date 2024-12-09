@@ -4,8 +4,8 @@ mod error;
 use crate::subscription::{MemorySubscription, MemorySubscriptionOptions};
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
+use proven_messaging::Message;
 
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -54,20 +54,12 @@ impl<T> MemoryPublishableSubject<T> {
 #[async_trait]
 impl<T> PublishableSubject<T> for MemoryPublishableSubject<T>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error;
 
-    async fn publish(&self, data: T) -> Result<(), Self::Error> {
-        self.publish_with_headers(data, HashMap::new()).await
-    }
-
     #[allow(clippy::significant_drop_tightening)]
-    async fn publish_with_headers<H>(&self, data: T, headers: H) -> Result<(), Self::Error>
-    where
-        H: Clone + Into<HashMap<String, String>> + Send,
-    {
+    async fn publish(&self, message: Message<T>) -> Result<(), Self::Error> {
         let mut state = GLOBAL_STATE.lock().await;
         if !state.has::<SubjectState<T>>() {
             state.put(SubjectState::<T>::default());
@@ -84,12 +76,7 @@ where
                 .all(|(n, s)| *s == "*" || *s == ">" || *n == *s)
             {
                 if let Some(sender) = subjects.get(&subscriber) {
-                    let headers = headers.clone().into();
-                    if headers.is_empty() {
-                        let _ = sender.send((data.clone(), None));
-                    } else {
-                        let _ = sender.send((data.clone(), Some(headers)));
-                    }
+                    let _ = sender.send(message.clone());
                 }
             }
         }
@@ -147,7 +134,6 @@ impl<T> MemorySubject<T> {
 #[async_trait]
 impl<T> Subject<T> for MemorySubject<T>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error;

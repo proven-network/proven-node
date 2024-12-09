@@ -6,10 +6,10 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
-use proven_messaging::stream::Stream;
+
+use crate::stream::MemoryStream;
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -17,29 +17,43 @@ pub struct MemoryConsumerOptions;
 impl ConsumerOptions for MemoryConsumerOptions {}
 
 /// A in-memory subscriber.
-#[derive(Clone, Debug, Default)]
-pub struct MemoryConsumer<X, S, T = Bytes> {
-    _marker: PhantomData<(X, S, T)>,
-}
-
-#[async_trait]
-impl<X, S, T> Consumer<X, S, T> for MemoryConsumer<X, S, T>
+#[derive(Clone, Debug)]
+pub struct MemoryConsumer<X, T>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
-    S: Stream<T>,
     T: Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T>,
 {
-    type Error = Error;
+    _handler: X,
+    stream: <Self as Consumer<X, T>>::StreamType,
+    _marker: PhantomData<T>,
+}
+
+#[async_trait]
+impl<X, T> Consumer<X, T> for MemoryConsumer<X, T>
+where
+    T: Clone + Debug + Send + Sync + 'static,
+    X: ConsumerHandler<T>,
+{
+    type Error = Error<T>;
 
     type Options = MemoryConsumerOptions;
 
+    type StreamType = MemoryStream<T>;
+
     #[allow(clippy::significant_drop_tightening)]
     async fn new(
-        _stream: S,
+        stream: Self::StreamType,
         _options: MemoryConsumerOptions,
-        _handler: X,
+        handler: X,
     ) -> Result<Self, Self::Error> {
-        unimplemented!()
+        Ok(Self {
+            _handler: handler,
+            stream,
+            _marker: PhantomData,
+        })
+    }
+
+    fn stream(&self) -> Self::StreamType {
+        self.stream.clone()
     }
 }

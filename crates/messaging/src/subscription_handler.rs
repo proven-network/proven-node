@@ -1,9 +1,10 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+
+use crate::Message;
 
 /// Marker trait for subscriber errors
 pub trait SubscriptionHandlerError: Error + Send + Sync + 'static {}
@@ -19,10 +20,5 @@ where
     type Error: SubscriptionHandlerError;
 
     /// Handles the given data.
-    async fn handle(
-        &self,
-        subject_string: String,
-        data: T,
-        headers: Option<HashMap<String, String>>,
-    ) -> Result<(), Self::Error>;
+    async fn handle(&self, subject_string: String, message: Message<T>) -> Result<(), Self::Error>;
 }

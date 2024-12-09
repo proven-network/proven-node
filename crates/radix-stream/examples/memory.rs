@@ -6,7 +6,7 @@ use proven_radix_stream::{RadixStream, RadixStreamOptions};
 async fn main() {
     tracing::subscriber::set_global_default(
         tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(tracing::Level::INFO)
+            .with_max_level(tracing::Level::DEBUG)
             .finish(),
     )
     .unwrap();

@@ -5,6 +5,8 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
+use std::collections::HashMap;
+
 /// Clients send requests to services.
 pub mod client;
 
@@ -28,3 +30,22 @@ pub mod subscription;
 
 /// Subscribption handlers process messages for subscribers.
 pub mod subscription_handler;
+
+/// Basic message type.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Message<T> {
+    /// Headers for the message.
+    pub headers: Option<HashMap<String, String>>,
+
+    /// Payload for the message.
+    pub payload: T,
+}
+
+impl<T> From<T> for Message<T> {
+    fn from(payload: T) -> Self {
+        Self {
+            headers: None,
+            payload,
+        }
+    }
+}

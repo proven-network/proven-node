@@ -3,8 +3,10 @@
 mod error;
 mod subscription_handler;
 
+use crate::consumer::{MemoryConsumer, MemoryConsumerOptions};
+use crate::subject::MemorySubject;
 pub use error::Error;
-use proven_messaging::consumer_handler::ConsumerHandler;
+use proven_messaging::Message;
 use subscription_handler::StreamSubscriptionHandler;
 
 use std::fmt::Debug;
@@ -12,13 +14,13 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use proven_messaging::consumer::Consumer;
+use proven_messaging::consumer_handler::ConsumerHandler;
 use proven_messaging::service::Service;
 use proven_messaging::stream::{ScopedStream, ScopedStream1, ScopedStream2, ScopedStream3, Stream};
 use proven_messaging::subject::Subject;
 use tokio::sync::{mpsc, Mutex};
-
-use crate::consumer::MemoryConsumer;
-use crate::subject::MemorySubject;
+use tracing::debug;
 
 /// An in-memory stream.
 #[derive(Clone, Debug)]
@@ -26,7 +28,7 @@ pub struct MemoryStream<T>
 where
     T: Clone + Debug + Send + Sync + 'static,
 {
-    messages: Arc<Mutex<Vec<T>>>,
+    messages: Arc<Mutex<Vec<Message<T>>>>,
     name: String,
 }
 
@@ -59,7 +61,7 @@ where
     where
         N: Into<String> + Send,
     {
-        let (sender, mut receiver) = mpsc::channel::<T>(100);
+        let (sender, mut receiver) = mpsc::channel::<Message<T>>(100);
 
         for subject in subjects {
             let handler = StreamSubscriptionHandler::new(sender.clone());
@@ -84,22 +86,24 @@ where
     }
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: usize) -> Result<Option<T>, Self::Error> {
+    async fn get(&self, seq: usize) -> Result<Option<Message<T>>, Self::Error> {
         Ok(self.messages.lock().await.get(seq).cloned())
     }
 
     /// The last message in the stream.
-    async fn last_message(&self) -> Result<Option<T>, Self::Error> {
+    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error> {
         Ok(self.messages.lock().await.last().cloned())
     }
 
     /// Returns the name of the stream.
-    async fn name(&self) -> String {
+    fn name(&self) -> String {
         self.name.clone()
     }
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: T) -> Result<usize, Self::Error> {
+    async fn publish(&self, message: Message<T>) -> Result<usize, Self::Error> {
+        debug!("Publishing message to {}: {:?}", self.name(), message);
+
         let seq = {
             let mut messages = self.messages.lock().await;
             let seq = messages.len();
@@ -111,14 +115,13 @@ where
     }
 
     /// Consumes the stream with the given consumer.
-    async fn start_consumer<X>(
-        &self,
-        _handler: X,
-    ) -> Result<MemoryConsumer<X, Self, T>, Self::Error>
+    async fn start_consumer<X>(&self, _handler: X) -> Result<MemoryConsumer<X, T>, Self::Error>
     where
         X: ConsumerHandler<T>,
     {
-        unimplemented!()
+        let consumer = MemoryConsumer::new(self.clone(), MemoryConsumerOptions, _handler).await?;
+
+        Ok(consumer)
     }
 
     /// Consumes the stream with the given service.
@@ -267,12 +270,15 @@ mod tests {
                 .await
                 .unwrap();
         let message = "test_message".to_string();
-        publishable_subject.publish(message.clone()).await.unwrap();
+        publishable_subject
+            .publish(message.clone().into())
+            .await
+            .unwrap();
 
         // Wait for the message to be processed
         tokio::task::yield_now().await;
 
-        assert_eq!(stream.get(0).await.unwrap(), Some(message));
+        assert_eq!(stream.get(0).await.unwrap(), Some(message.into()));
     }
 
     #[tokio::test]
@@ -285,13 +291,16 @@ mod tests {
                 .unwrap();
         let message1 = "test_message1".to_string();
         let message2 = "test_message2".to_string();
-        publishable_subject.publish(message1).await.unwrap();
-        publishable_subject.publish(message2.clone()).await.unwrap();
+        publishable_subject.publish(message1.into()).await.unwrap();
+        publishable_subject
+            .publish(message2.clone().into())
+            .await
+            .unwrap();
 
         // Wait for the messages to be processed
         tokio::task::yield_now().await;
 
-        assert_eq!(stream.last_message().await.unwrap(), Some(message2));
+        assert_eq!(stream.last_message().await.unwrap(), Some(message2.into()));
     }
 
     #[tokio::test]
@@ -316,7 +325,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(stream.name().await, "scope1");
+        assert_eq!(stream.name(), "scope1");
     }
 
     #[tokio::test]
@@ -330,7 +339,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(stream.name().await, "scope1:scope2");
+        assert_eq!(stream.name(), "scope1:scope2");
     }
 
     #[tokio::test]
@@ -344,12 +353,12 @@ mod tests {
         let message1 = "test_message1".to_string();
         let message2 = "test_message2".to_string();
 
-        let seq1 = stream.publish(message1.clone()).await.unwrap();
-        let seq2 = stream.publish(message2.clone()).await.unwrap();
+        let seq1 = stream.publish(message1.clone().into()).await.unwrap();
+        let seq2 = stream.publish(message2.clone().into()).await.unwrap();
 
         assert_eq!(seq1, 0);
         assert_eq!(seq2, 1);
-        assert_eq!(stream.get(0).await.unwrap(), Some(message1));
-        assert_eq!(stream.get(1).await.unwrap(), Some(message2));
+        assert_eq!(stream.get(0).await.unwrap(), Some(message1.into()));
+        assert_eq!(stream.get(1).await.unwrap(), Some(message2.into()));
     }
 }

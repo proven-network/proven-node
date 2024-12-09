@@ -9,6 +9,10 @@ pub enum Error<T>
 where
     T: Clone + Debug + Send + Sync + 'static,
 {
+    /// Consumer error.
+    #[error(transparent)]
+    Consumer(#[from] crate::consumer::Error<T>),
+
     /// An error occured while subscribing to a subject.
     #[error(transparent)]
     Subject(#[from] crate::subject::Error),

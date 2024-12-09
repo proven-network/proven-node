@@ -1,6 +1,7 @@
 mod error;
 
 pub use error::Error;
+use proven_messaging::Message;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -32,7 +33,7 @@ pub struct NatsSubscription<X, T = Bytes> {
     cancel_result_channel: Arc<Mutex<Option<CancelResultChannel>>>,
     cancel_token: CancellationToken,
     handler: X,
-    last_message: Arc<Mutex<Option<T>>>,
+    last_message: Arc<Mutex<Option<Message<T>>>>,
     _marker: PhantomData<T>,
 }
 
@@ -62,7 +63,6 @@ impl<X, T> NatsSubscription<X, T> {
 #[async_trait]
 impl<X, T> Subscription<X, T> for NatsSubscription<X, T>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -113,14 +113,20 @@ where
                                 .try_into()
                                 .map_err(Error::Deserialize)
                                 .unwrap();
+
                             let headers = msg.headers.as_ref().and_then(Self::extract_headers);
+
+                            let message = Message {
+                                headers,
+                                payload: data.clone(),
+                            };
 
                             let _ = subscription_clone
                                 .handler()
-                                .handle(subject_string.clone(), data.clone(), headers)
+                                .handle(subject_string.clone(), message.clone())
                                 .await;
 
-                                subscription_clone.last_message.lock().await.replace(data);
+                                subscription_clone.last_message.lock().await.replace(message);
                         }
                     }
                 }
@@ -142,7 +148,7 @@ where
         self.handler.clone()
     }
 
-    async fn last_message(&self) -> Option<T> {
+    async fn last_message(&self) -> Option<Message<T>> {
         self.last_message.lock().await.clone()
     }
 }

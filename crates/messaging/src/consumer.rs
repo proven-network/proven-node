@@ -14,10 +14,9 @@ pub trait ConsumerOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream.
 #[async_trait]
-pub trait Consumer<X, S, T>
+pub trait Consumer<X, T>
 where
     Self: Clone + Send + Sync + 'static,
-    S: Stream<T>,
     T: Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T>,
 {
@@ -27,6 +26,16 @@ where
     /// The options for the consumer.
     type Options: ConsumerOptions;
 
+    /// The stream type for the consumer.
+    type StreamType: Stream<T>;
+
     /// Creates a new subscriber.
-    async fn new(stream: S, options: Self::Options, handler: X) -> Result<Self, Self::Error>;
+    async fn new(
+        stream: Self::StreamType,
+        options: Self::Options,
+        handler: X,
+    ) -> Result<Self, Self::Error>;
+
+    /// Gets the stream for the consumer.
+    fn stream(&self) -> Self::StreamType;
 }

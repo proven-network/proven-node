@@ -1,6 +1,7 @@
 mod error;
 
 pub use error::Error;
+use proven_messaging::Message;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -66,7 +67,6 @@ where
 #[async_trait]
 impl<T> PublishableSubject<T> for NatsPublishableSubject<T>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -77,21 +77,21 @@ where
 {
     type Error = Error;
 
-    async fn publish(&self, data: T) -> Result<(), Self::Error> {
-        self.publish_with_headers(data, HashMap::new()).await
-    }
+    async fn publish(&self, message: Message<T>) -> Result<(), Error> {
+        let payload: Bytes = message.payload.try_into()?;
 
-    async fn publish_with_headers<H>(&self, data: T, headers: H) -> Result<(), Error>
-    where
-        H: Clone + Into<HashMap<String, String>> + Send,
-    {
-        let payload: Bytes = data.try_into()?;
-        let headers = Self::headers_to_message_headers(headers.into());
-
-        self.client
-            .publish_with_headers(self.full_subject.clone(), headers, payload)
-            .await
-            .map_err(|e| Error::Publish(e.kind()))?;
+        if let Some(headers) = message.headers {
+            let headers = Self::headers_to_message_headers(headers);
+            self.client
+                .publish_with_headers(self.full_subject.clone(), headers, payload)
+                .await
+                .map_err(|e| Error::Publish(e.kind()))?;
+        } else {
+            self.client
+                .publish(self.full_subject.clone(), payload)
+                .await
+                .map_err(|e| Error::Publish(e.kind()))?;
+        }
 
         Ok(())
     }
@@ -197,7 +197,6 @@ macro_rules! impl_scoped_subject {
 
             impl<T> [< NatsPublishableSubject $index >]<T>
             where
-                Self: [< PublishableSubject $index >]<T>,
                 T: Clone
                     + Debug
                     + Send
@@ -227,7 +226,6 @@ macro_rules! impl_scoped_subject {
             #[async_trait]
             impl<T> [< PublishableSubject $index >]<T> for [< NatsPublishableSubject $index >]<T>
             where
-                Self: Clone + Debug + Send + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
@@ -287,7 +285,6 @@ macro_rules! impl_scoped_subject {
 
             impl<T> [< NatsSubject $index >]<T>
             where
-                Self: [< Subject $index >]<T>,
                 T: Clone
                     + Debug
                     + Send
@@ -317,7 +314,6 @@ macro_rules! impl_scoped_subject {
             #[async_trait]
             impl<T> [< Subject $index >]<T> for [< NatsSubject $index >]<T>
             where
-                Self: Clone + Debug + Send + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
