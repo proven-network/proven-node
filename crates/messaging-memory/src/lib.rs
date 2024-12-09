@@ -7,8 +7,14 @@
 
 mod gotham_state;
 
+/// Clients send requests to services.
+pub mod client;
+
 /// Consumers are stateful views of streams.
 pub mod consumer;
+
+/// Services are special consumers that respond to requests.
+pub mod service;
 
 /// Streams are persistent, ordered, and append-only sequences of messages.
 pub mod stream;

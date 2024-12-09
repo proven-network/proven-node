@@ -6,10 +6,10 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 
-/// Marker trait for stream errors
+/// Marker trait for consumer errors
 pub trait ConsumerError: Error + Send + Sync + 'static {}
 
-/// Marker trait for subscriber options
+/// Marker trait for consumer options
 pub trait ConsumerOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream.

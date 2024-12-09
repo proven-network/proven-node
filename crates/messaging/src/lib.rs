@@ -16,8 +16,11 @@ pub mod consumer;
 /// Consumer handlers process messages for consumers.
 pub mod consumer_handler;
 
-/// Serivces special consumers that respond to requests.
+/// Services are special consumers that respond to requests.
 pub mod service;
+
+/// Service handlers process messages for services.
+pub mod service_handler;
 
 /// Streams are persistent, ordered, and append-only sequences of messages.
 pub mod stream;

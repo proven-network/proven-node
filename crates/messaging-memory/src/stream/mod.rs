@@ -2,8 +2,10 @@ mod error;
 mod subscription_handler;
 
 use crate::consumer::{MemoryConsumer, MemoryConsumerOptions};
+use crate::service::MemoryService;
 use crate::subject::MemorySubject;
 pub use error::Error;
+use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::Message;
 use subscription_handler::StreamSubscriptionHandler;
 
@@ -14,7 +16,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use proven_messaging::consumer::Consumer;
 use proven_messaging::consumer_handler::ConsumerHandler;
-use proven_messaging::service::Service;
 use proven_messaging::stream::{
     ScopedStream, ScopedStream1, ScopedStream2, ScopedStream3, Stream, StreamOptions,
 };
@@ -200,9 +201,14 @@ where
     }
 
     /// Consumes the stream with the given service.
-    async fn start_service<S>(&self, _service: S) -> Result<(), Self::Error>
+    async fn start_service<N, X>(
+        &self,
+        _service_name: N,
+        _handler: X,
+    ) -> Result<MemoryService<X, T>, Self::Error>
     where
-        S: Service<Self, T>,
+        N: Clone + Into<String> + Send,
+        X: ServiceHandler<T>,
     {
         unimplemented!()
     }

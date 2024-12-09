@@ -1,8 +1,10 @@
 mod error;
 
 use crate::consumer::NatsConsumer;
+use crate::service::NatsService;
 use crate::subject::NatsSubject;
 pub use error::Error;
+use proven_messaging::service_handler::ServiceHandler;
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -11,7 +13,6 @@ use async_nats::jetstream::stream::{Config as NatsStreamConfig, Stream as NatsSt
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::consumer_handler::ConsumerHandler;
-use proven_messaging::service::Service;
 use proven_messaging::stream::{
     ScopedStream, ScopedStream1, ScopedStream2, ScopedStream3, Stream, StreamOptions,
 };
@@ -29,7 +30,13 @@ impl StreamOptions for NatsStreamOptions {}
 #[derive(Clone, Debug)]
 pub struct NatsStream<T>
 where
-    T: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+        + 'static,
 {
     name: String,
     nats_stream: NatsStreamType,
@@ -185,9 +192,14 @@ where
     }
 
     /// Consumes the stream with the given service.
-    async fn start_service<S>(&self, _service: S) -> Result<(), Self::Error>
+    async fn start_service<N, X>(
+        &self,
+        _service_name: N,
+        _handler: X,
+    ) -> Result<NatsService<X, T>, Self::Error>
     where
-        S: Service<Self, T>,
+        N: Clone + Into<String> + Send,
+        X: ServiceHandler<T>,
     {
         unimplemented!()
     }

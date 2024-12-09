@@ -1,6 +1,7 @@
 use crate::consumer::Consumer;
 use crate::consumer_handler::ConsumerHandler;
 use crate::service::Service;
+use crate::service_handler::ServiceHandler;
 use crate::subject::Subject;
 use crate::Message;
 
@@ -68,9 +69,14 @@ where
         X: ConsumerHandler<T>;
 
     /// Consumes the stream with the given service.
-    async fn start_service<S>(&self, service: S) -> Result<(), Self::Error>
+    async fn start_service<N, X>(
+        &self,
+        service_name: N,
+        handler: X,
+    ) -> Result<impl Service<X, T>, Self::Error>
     where
-        S: Service<Self, T>;
+        N: Clone + Into<String> + Send,
+        X: ServiceHandler<T>;
 }
 
 /// A trait representing a scoped-stream.
