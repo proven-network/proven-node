@@ -27,9 +27,6 @@ where
     /// The type of data in the stream.
     type Type: Clone + Debug + Send + Sync;
 
-    /// The response type for the consumer.
-    type ResponseType: Clone + Debug + Send + Sync;
-
     /// The stream type for the consumer.
     type StreamType: Stream;
 
@@ -41,7 +38,7 @@ where
         handler: X,
     ) -> Result<Self, Self::Error>
     where
-        X: ConsumerHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
+        X: ConsumerHandler<Type = Self::Type>;
 
     /// Gets the last sequence number processed by the consumer.
     async fn last_seq(&self) -> Result<u64, Self::Error>;

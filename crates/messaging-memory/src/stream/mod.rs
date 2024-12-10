@@ -207,12 +207,12 @@ where
         &self,
         name: N,
         handler: X,
-    ) -> Result<MemoryConsumer<Self::Type, X::ResponseType>, Self::Error>
+    ) -> Result<MemoryConsumer<Self::Type>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<Type = Self::Type>,
     {
-        let consumer = MemoryConsumer::<Self::Type, X::ResponseType>::new(
+        let consumer = MemoryConsumer::<Self::Type>::new(
             format!("{}_{}", self.name(), name.into()),
             self.clone(),
             MemoryConsumerOptions,
@@ -514,18 +514,10 @@ mod tests {
         impl ConsumerHandler for TestHandler {
             type Error = TestHandlerError;
             type Type = String;
-            type ResponseType = String;
             async fn handle(&self, message: Message<String>) -> Result<(), Self::Error> {
                 self.received_messages.lock().await.push(message.payload);
 
                 Ok(())
-            }
-
-            async fn respond(
-                &self,
-                _message: Message<Self::Type>,
-            ) -> Result<Message<Self::ResponseType>, Self::Error> {
-                unimplemented!()
             }
         }
 

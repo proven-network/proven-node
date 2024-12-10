@@ -22,19 +22,17 @@ impl ConsumerOptions for MemoryConsumerOptions {}
 
 /// A in-memory subscriber.
 #[derive(Clone, Debug)]
-pub struct MemoryConsumer<T, R>
+pub struct MemoryConsumer<T>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
 {
     last_seq: Arc<Mutex<u64>>,
-    _marker: PhantomData<(T, R)>,
+    _marker: PhantomData<T>,
 }
 
-impl<T, R> MemoryConsumer<T, R>
+impl<T> MemoryConsumer<T>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
 {
     /// Creates a new NATS consumer.
     async fn process_messages<X>(
@@ -45,7 +43,6 @@ where
     where
         X: ConsumerHandler<Type = T> + Clone + Send + Sync + 'static,
         X::Type: Clone + Debug + Send + Sync + 'static,
-        X::ResponseType: Clone + Debug + Send + Sync + 'static,
     {
         while let Some(message) = receiver_stream.next().await {
             handler.handle(message).await.map_err(|_| Error::Handler)?;
@@ -59,18 +56,15 @@ where
 }
 
 #[async_trait]
-impl<T, R> Consumer for MemoryConsumer<T, R>
+impl<T> Consumer for MemoryConsumer<T>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error;
 
     type Options = MemoryConsumerOptions;
 
     type Type = T;
-
-    type ResponseType = R;
 
     type StreamType = MemoryStream<T>;
 
