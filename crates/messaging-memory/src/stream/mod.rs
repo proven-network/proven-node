@@ -357,224 +357,222 @@ impl_scoped_stream!(
     "A triple-scoped in-memory stream."
 );
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-//     use crate::subject::{MemoryPublishableSubject, MemorySubject};
+    use crate::subject::{MemoryPublishableSubject, MemorySubject};
 
-//     use std::error::Error as StdError;
+    use std::error::Error as StdError;
 
-//     use proven_messaging::{consumer_handler::ConsumerHandlerError, subject::PublishableSubject};
+    use proven_messaging::{consumer_handler::ConsumerHandlerError, subject::PublishableSubject};
 
-//     #[tokio::test]
-//     async fn test_get_message() {
-//         let publishable_subject: MemoryPublishableSubject<String, String> =
-//             MemoryPublishableSubject::new("test_get_message").unwrap();
-//         let subject = MemorySubject::new("test_get_message").unwrap();
-//         let stream: MemoryStream<String, String> =
-//             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
-//                 .await
-//                 .unwrap();
-//         let message = "test_message".to_string();
-//         publishable_subject
-//             .publish(message.clone().into())
-//             .await
-//             .unwrap();
+    #[tokio::test]
+    async fn test_get_message() {
+        let publishable_subject: MemoryPublishableSubject<String> =
+            MemoryPublishableSubject::new("test_get_message").unwrap();
+        let subject = MemorySubject::new("test_get_message").unwrap();
+        let stream: MemoryStream<String> =
+            MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
+                .await
+                .unwrap();
+        let message = "test_message".to_string();
+        publishable_subject
+            .publish(message.clone().into())
+            .await
+            .unwrap();
 
-//         // Wait for the message to be processed
-//         tokio::task::yield_now().await;
+        // Wait for the message to be processed
+        tokio::task::yield_now().await;
 
-//         assert_eq!(stream.get(0).await.unwrap(), Some(message.into()));
-//     }
+        assert_eq!(stream.get(0).await.unwrap(), Some(message.into()));
+    }
 
-//     #[tokio::test]
-//     async fn test_last_message() {
-//         let publishable_subject: MemoryPublishableSubject<String, String> =
-//             MemoryPublishableSubject::new("test_last_message").unwrap();
-//         let subject = MemorySubject::new("test_last_message").unwrap();
-//         let stream: MemoryStream<String, String> = MemoryStream::new_with_subjects(
-//             "test_last_message",
-//             MemoryStreamOptions,
-//             vec![subject],
-//         )
-//         .await
-//         .unwrap();
-//         let message1 = "test_message1".to_string();
-//         let message2 = "test_message2".to_string();
-//         publishable_subject.publish(message1.into()).await.unwrap();
-//         publishable_subject
-//             .publish(message2.clone().into())
-//             .await
-//             .unwrap();
+    #[tokio::test]
+    async fn test_last_message() {
+        let publishable_subject: MemoryPublishableSubject<String> =
+            MemoryPublishableSubject::new("test_last_message").unwrap();
+        let subject = MemorySubject::new("test_last_message").unwrap();
+        let stream: MemoryStream<String> = MemoryStream::new_with_subjects(
+            "test_last_message",
+            MemoryStreamOptions,
+            vec![subject],
+        )
+        .await
+        .unwrap();
+        let message1 = "test_message1".to_string();
+        let message2 = "test_message2".to_string();
+        publishable_subject.publish(message1.into()).await.unwrap();
+        publishable_subject
+            .publish(message2.clone().into())
+            .await
+            .unwrap();
 
-//         // Wait for the messages to be processed
-//         tokio::task::yield_now().await;
+        // Wait for the messages to be processed
+        tokio::task::yield_now().await;
 
-//         assert_eq!(stream.last_message().await.unwrap(), Some(message2.into()));
-//     }
+        assert_eq!(stream.last_message().await.unwrap(), Some(message2.into()));
+    }
 
-//     #[tokio::test]
-//     async fn test_empty_stream() {
-//         let subject = MemorySubject::new("test_empty_stream").unwrap();
-//         let stream: MemoryStream<String, String> =
-//             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
-//                 .await
-//                 .unwrap();
-//         assert_eq!(stream.get(0).await.unwrap(), None);
-//         assert_eq!(stream.last_message().await.unwrap(), None);
-//     }
+    #[tokio::test]
+    async fn test_empty_stream() {
+        let subject = MemorySubject::new("test_empty_stream").unwrap();
+        let stream: MemoryStream<String> =
+            MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
+                .await
+                .unwrap();
+        assert_eq!(stream.get(0).await.unwrap(), None);
+        assert_eq!(stream.last_message().await.unwrap(), None);
+    }
 
-//     #[tokio::test]
-//     async fn test_scoped_stream() {
-//         let stream1: ScopedMemoryStream1<String, String> =
-//             ScopedMemoryStream1::new(MemoryStreamOptions);
-//         let scoped_stream = stream1.scope("scope1");
+    #[tokio::test]
+    async fn test_scoped_stream() {
+        let stream1: ScopedMemoryStream1<String> = ScopedMemoryStream1::new(MemoryStreamOptions);
+        let scoped_stream = stream1.scope("scope1");
 
-//         let subject = MemorySubject::new("test_scoped").unwrap();
-//         let stream = scoped_stream
-//             .init_with_subjects(vec![subject])
-//             .await
-//             .unwrap();
+        let subject = MemorySubject::new("test_scoped").unwrap();
+        let stream = scoped_stream
+            .init_with_subjects(vec![subject])
+            .await
+            .unwrap();
 
-//         assert_eq!(stream.name(), "scope1");
-//     }
+        assert_eq!(stream.name(), "scope1");
+    }
 
-//     #[tokio::test]
-//     async fn test_nested_scoped_stream() {
-//         let stream2: ScopedMemoryStream2<String, String> =
-//             ScopedMemoryStream2::new(MemoryStreamOptions);
-//         let scoped_stream = stream2.scope("scope1").scope("scope2");
+    #[tokio::test]
+    async fn test_nested_scoped_stream() {
+        let stream2: ScopedMemoryStream2<String> = ScopedMemoryStream2::new(MemoryStreamOptions);
+        let scoped_stream = stream2.scope("scope1").scope("scope2");
 
-//         let subject = MemorySubject::new("test_nested_scoped").unwrap();
-//         let stream = scoped_stream
-//             .init_with_subjects(vec![subject])
-//             .await
-//             .unwrap();
+        let subject = MemorySubject::new("test_nested_scoped").unwrap();
+        let stream = scoped_stream
+            .init_with_subjects(vec![subject])
+            .await
+            .unwrap();
 
-//         assert_eq!(stream.name(), "scope1:scope2");
-//     }
+        assert_eq!(stream.name(), "scope1:scope2");
+    }
 
-//     #[tokio::test]
-//     async fn test_direct_publish() {
-//         let subject = MemorySubject::new("test_direct_publish").unwrap();
-//         let stream: MemoryStream<String, String> =
-//             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
-//                 .await
-//                 .unwrap();
+    #[tokio::test]
+    async fn test_direct_publish() {
+        let subject = MemorySubject::new("test_direct_publish").unwrap();
+        let stream: MemoryStream<String> =
+            MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
+                .await
+                .unwrap();
 
-//         let message1 = "test_message1".to_string();
-//         let message2 = "test_message2".to_string();
+        let message1 = "test_message1".to_string();
+        let message2 = "test_message2".to_string();
 
-//         let seq1 = stream.publish(message1.clone().into()).await.unwrap();
-//         let seq2 = stream.publish(message2.clone().into()).await.unwrap();
+        let seq1 = stream.publish(message1.clone().into()).await.unwrap();
+        let seq2 = stream.publish(message2.clone().into()).await.unwrap();
 
-//         assert_eq!(seq1, 0);
-//         assert_eq!(seq2, 1);
-//         assert_eq!(stream.get(0).await.unwrap(), Some(message1.into()));
-//         assert_eq!(stream.get(1).await.unwrap(), Some(message2.into()));
-//     }
+        assert_eq!(seq1, 0);
+        assert_eq!(seq2, 1);
+        assert_eq!(stream.get(0).await.unwrap(), Some(message1.into()));
+        assert_eq!(stream.get(1).await.unwrap(), Some(message2.into()));
+    }
 
-//     #[tokio::test]
-//     async fn test_start_consumer() {
-//         use async_trait::async_trait;
-//         use proven_messaging::consumer_handler::ConsumerHandler;
+    #[tokio::test]
+    async fn test_start_consumer() {
+        use async_trait::async_trait;
+        use proven_messaging::consumer_handler::ConsumerHandler;
 
-//         #[derive(Clone, Debug)]
-//         struct TestHandler {
-//             received_messages: Arc<Mutex<Vec<String>>>,
-//         }
+        #[derive(Clone, Debug)]
+        struct TestHandler {
+            received_messages: Arc<Mutex<Vec<String>>>,
+        }
 
-//         #[derive(Clone, Debug)]
-//         struct TestHandlerError;
+        #[derive(Clone, Debug)]
+        struct TestHandlerError;
 
-//         impl std::fmt::Display for TestHandlerError {
-//             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//                 write!(f, "MemorySubscriberHandlerError")
-//             }
-//         }
+        impl std::fmt::Display for TestHandlerError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "MemorySubscriberHandlerError")
+            }
+        }
 
-//         impl StdError for TestHandlerError {}
+        impl StdError for TestHandlerError {}
 
-//         impl ConsumerHandlerError for TestHandlerError {}
+        impl ConsumerHandlerError for TestHandlerError {}
 
-//         #[async_trait]
-//         impl ConsumerHandler for TestHandler {
-//             type Error = TestHandlerError;
-//             type Type = String;
-//             type ResponseType = String;
-//             async fn handle(&self, message: Message<String>) -> Result<(), Self::Error> {
-//                 self.received_messages.lock().await.push(message.payload);
+        #[async_trait]
+        impl ConsumerHandler for TestHandler {
+            type Error = TestHandlerError;
+            type Type = String;
+            type ResponseType = String;
+            async fn handle(&self, message: Message<String>) -> Result<(), Self::Error> {
+                self.received_messages.lock().await.push(message.payload);
 
-//                 Ok(())
-//             }
+                Ok(())
+            }
 
-//             async fn respond(
-//                 &self,
-//                 _message: Message<Self::Type>,
-//             ) -> Result<Message<Self::ResponseType>, Self::Error> {
-//                 unimplemented!()
-//             }
-//         }
+            async fn respond(
+                &self,
+                _message: Message<Self::Type>,
+            ) -> Result<Message<Self::ResponseType>, Self::Error> {
+                unimplemented!()
+            }
+        }
 
-//         let publishable_subject: MemoryPublishableSubject<String, String> =
-//             MemoryPublishableSubject::new("test_start_consumer").unwrap();
-//         let subject = MemorySubject::new("test_start_consumer").unwrap();
-//         let stream: MemoryStream<String, String> =
-//             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
-//                 .await
-//                 .unwrap();
+        let publishable_subject: MemoryPublishableSubject<String> =
+            MemoryPublishableSubject::new("test_start_consumer").unwrap();
+        let subject = MemorySubject::new("test_start_consumer").unwrap();
+        let stream: MemoryStream<String> =
+            MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
+                .await
+                .unwrap();
 
-//         let received_messages = Arc::new(Mutex::new(Vec::new()));
-//         let handler = TestHandler {
-//             received_messages: received_messages.clone(),
-//         };
+        let received_messages = Arc::new(Mutex::new(Vec::new()));
+        let handler = TestHandler {
+            received_messages: received_messages.clone(),
+        };
 
-//         let prestart_subject_message = "prestart_subject_message".to_string();
-//         publishable_subject
-//             .publish(prestart_subject_message.clone().into())
-//             .await
-//             .unwrap();
+        let prestart_subject_message = "prestart_subject_message".to_string();
+        publishable_subject
+            .publish(prestart_subject_message.clone().into())
+            .await
+            .unwrap();
 
-//         tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
 
-//         let prestart_direct_message = "prestart_direct_message".to_string();
-//         stream
-//             .publish(prestart_direct_message.clone().into())
-//             .await
-//             .unwrap();
+        let prestart_direct_message = "prestart_direct_message".to_string();
+        stream
+            .publish(prestart_direct_message.clone().into())
+            .await
+            .unwrap();
 
-//         // Wait for the message to be processed
-//         tokio::task::yield_now().await;
+        // Wait for the message to be processed
+        tokio::task::yield_now().await;
 
-//         let _consumer = stream.start_consumer("test", handler).await.unwrap();
+        let _consumer = stream.start_consumer("test", handler).await.unwrap();
 
-//         // Wait for the consumer to start
-//         tokio::task::yield_now().await;
+        // Wait for the consumer to start
+        tokio::task::yield_now().await;
 
-//         let poststart_subject_message = "poststart_subject_message".to_string();
-//         publishable_subject
-//             .publish(poststart_subject_message.clone().into())
-//             .await
-//             .unwrap();
+        let poststart_subject_message = "poststart_subject_message".to_string();
+        publishable_subject
+            .publish(poststart_subject_message.clone().into())
+            .await
+            .unwrap();
 
-//         tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
 
-//         let poststart_direct_message = "poststart_direct_message".to_string();
-//         stream
-//             .publish(poststart_direct_message.clone().into())
-//             .await
-//             .unwrap();
+        let poststart_direct_message = "poststart_direct_message".to_string();
+        stream
+            .publish(poststart_direct_message.clone().into())
+            .await
+            .unwrap();
 
-//         // Wait for the message to be processed
-//         tokio::task::yield_now().await;
+        // Wait for the message to be processed
+        tokio::task::yield_now().await;
 
-//         let received_messages = received_messages.lock().await;
-//         assert_eq!(received_messages.len(), 4);
-//         assert_eq!(received_messages[0], prestart_subject_message);
-//         assert_eq!(received_messages[1], prestart_direct_message);
-//         assert_eq!(received_messages[2], poststart_subject_message);
-//         assert_eq!(received_messages[3], poststart_direct_message);
-//         drop(received_messages);
-//     }
-// }
+        let received_messages = received_messages.lock().await;
+        assert_eq!(received_messages.len(), 4);
+        assert_eq!(received_messages[0], prestart_subject_message);
+        assert_eq!(received_messages[1], prestart_direct_message);
+        assert_eq!(received_messages[2], poststart_subject_message);
+        assert_eq!(received_messages[3], poststart_direct_message);
+        drop(received_messages);
+    }
+}
