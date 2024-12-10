@@ -1,17 +1,14 @@
 use std::fmt::Debug;
 
-use proven_messaging::{consumer::ConsumerError, consumer_handler::ConsumerHandlerError};
+use proven_messaging::consumer::ConsumerError;
 use thiserror::Error;
 
 /// Errors that can occur in a consumer.
 #[derive(Debug, Error)]
-pub enum Error<HE>
-where
-    HE: ConsumerHandlerError,
-{
+pub enum Error {
     /// Handler error.
-    #[error("Handler error: {0}")]
-    Handler(HE),
+    #[error("Handler error")]
+    Handler,
 }
 
-impl<HE> ConsumerError for Error<HE> where HE: ConsumerHandlerError {}
+impl ConsumerError for Error {}

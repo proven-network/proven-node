@@ -35,6 +35,15 @@ where
     /// The response type for the stream (streams don't actually respond but it's used for services and consumers).
     type ResponseType: Clone + Debug + Send + Sync;
 
+    /// The consumer type for the stream.
+    type ConsumerType: Consumer<Type = Self::Type, ResponseType = Self::ResponseType>;
+
+    /// The client type for the stream.
+    type ClientType: Client<Type = Self::Type, ResponseType = Self::ResponseType>;
+
+    /// The service type for the stream.
+    type ServiceType: Service<Type = Self::Type, ResponseType = Self::ResponseType>;
+
     /// The subject type for the stream.
     type SubjectType: Subject;
 
@@ -65,23 +74,16 @@ where
     async fn publish(&self, message: Message<Self::Type>) -> Result<u64, Self::Error>;
 
     /// Gets a client for a service.
-    async fn client<N, X>(
-        &self,
-        _service_name: N,
-    ) -> Result<Client<X, Self, Self::Type>, Self::Error>
+    async fn client<N, X>(&self, service_name: N) -> Result<Self::ClientType, Self::Error>
     where
-        N: Clone + Into<String> + Send,
-        X: ServiceHandler<Type = Self::Type, ResponseType = Self::ResponseType>,
-    {
-        Ok(Client::new(self.clone()))
-    }
+        N: Clone + Into<String> + Send;
 
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(
         &self,
         consumer_name: N,
         handler: X,
-    ) -> Result<impl Consumer<X, Type = Self::Type>, Self::Error>
+    ) -> Result<Self::ConsumerType, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
@@ -91,7 +93,7 @@ where
         &self,
         service_name: N,
         handler: X,
-    ) -> Result<impl Service<X, Type = Self::Type>, Self::Error>
+    ) -> Result<Self::ServiceType, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<Type = Self::Type, ResponseType = Self::ResponseType>;

@@ -1,4 +1,3 @@
-use crate::client::Client;
 use crate::service_handler::ServiceHandler;
 use crate::stream::Stream;
 
@@ -15,10 +14,9 @@ pub trait ServiceOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream which can handle requests.
 #[async_trait]
-pub trait Service<X>
+pub trait Service
 where
     Self: Clone + Send + Sync + 'static,
-    X: ServiceHandler<Type = Self::Type>,
 {
     /// The error type for the service.
     type Error: ServiceError;
@@ -36,18 +34,14 @@ where
     type StreamType: Stream;
 
     /// Creates a new service.
-    async fn new(
+    async fn new<X>(
         name: String,
         stream: Self::StreamType,
         options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error>;
-
-    /// Gets a client for the service.
-    async fn client(&self) -> Client<X, Self::StreamType, Self::Type>;
-
-    /// Gets the handler for the consumer.
-    fn handler(&self) -> X;
+    ) -> Result<Self, Self::Error>
+    where
+        X: ServiceHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
 
     /// Gets the last sequence number processed by the service.
     async fn last_seq(&self) -> Result<u64, Self::Error>;

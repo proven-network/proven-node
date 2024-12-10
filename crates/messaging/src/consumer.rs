@@ -14,10 +14,9 @@ pub trait ConsumerOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream.
 #[async_trait]
-pub trait Consumer<X>
+pub trait Consumer
 where
     Self: Clone + Send + Sync + 'static,
-    X: ConsumerHandler<Type = Self::Type>,
 {
     /// The error type for the consumer.
     type Error: ConsumerError;
@@ -35,15 +34,14 @@ where
     type StreamType: Stream;
 
     /// Creates a new subscriber.
-    async fn new(
+    async fn new<X>(
         name: String,
         stream: Self::StreamType,
         options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error>;
-
-    /// Gets the handler for the consumer.
-    fn handler(&self) -> X;
+    ) -> Result<Self, Self::Error>
+    where
+        X: ConsumerHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
 
     /// Gets the last sequence number processed by the consumer.
     async fn last_seq(&self) -> Result<u64, Self::Error>;

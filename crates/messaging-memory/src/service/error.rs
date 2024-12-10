@@ -1,17 +1,14 @@
 use std::fmt::Debug;
 
-use proven_messaging::{service::ServiceError, service_handler::ServiceHandlerError};
+use proven_messaging::service::ServiceError;
 use thiserror::Error;
 
 /// Errors that can occur in a service.
 #[derive(Debug, Error)]
-pub enum Error<HE>
-where
-    HE: ServiceHandlerError,
-{
+pub enum Error {
     /// Handler error.
-    #[error("Handler error: {0}")]
-    Handler(HE),
+    #[error("Handler error")]
+    Handler,
 }
 
-impl<HE> ServiceError for Error<HE> where HE: ServiceHandlerError {}
+impl ServiceError for Error {}

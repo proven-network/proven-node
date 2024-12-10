@@ -88,6 +88,10 @@ where
 
     type SubjectType = MemorySubject<Self::Type, Self::ResponseType>;
 
+    type ConsumerType = MemoryConsumer<Self::Type, Self::ResponseType>;
+
+    type ServiceType = MemoryService<Self::Type, Self::ResponseType>;
+
     /// Creates a new stream.
     async fn new<N>(stream_name: N, _options: MemoryStreamOptions) -> Result<Self, Self::Error>
     where
@@ -193,7 +197,7 @@ where
         &self,
         name: N,
         handler: X,
-    ) -> Result<MemoryConsumer<X, Self::Type, Self::ResponseType>, Self::Error>
+    ) -> Result<MemoryConsumer<Self::Type, Self::ResponseType>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<Type = Self::Type, ResponseType = Self::ResponseType>,
@@ -215,7 +219,7 @@ where
         &self,
         _service_name: N,
         _handler: X,
-    ) -> Result<MemoryService<X, Self::Type, Self::ResponseType>, Self::Error>
+    ) -> Result<MemoryService<Self::Type, Self::ResponseType>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<Type = Self::Type, ResponseType = Self::ResponseType>,

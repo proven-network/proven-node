@@ -1,39 +1,41 @@
-use crate::service_handler::ServiceHandler;
 use crate::stream::Stream;
-use crate::Message;
 
+use std::error::Error;
 use std::fmt::Debug;
 
-pub struct Client<X, S, T>
-where
-    T: Clone + Debug + Send + Sync + 'static,
-    X: ServiceHandler<Type = T>,
-{
-    stream: S,
-    _marker: std::marker::PhantomData<(X, S, T)>,
-}
+use async_trait::async_trait;
 
-impl<X, S, T> Client<X, S, T>
-where
-    T: Clone + Debug + Send + Sync + 'static,
-    S: Stream<Type = T>,
-    X: ServiceHandler<Type = T>,
-{
-    /// Creates a new client.
-    #[must_use]
-    pub const fn new(stream: S) -> Self {
-        Self {
-            stream,
-            _marker: std::marker::PhantomData,
-        }
-    }
+/// Marker trait for client errors
+pub trait ClientError: Error + Send + Sync + 'static {}
 
-    /// Requests a response from the service.
-    pub async fn request(
-        &self,
-        _request: Message<T>,
-    ) -> Result<Message<X::ResponseType>, X::Error> {
-        // Ok(self.stream.publish(_request).await.unwrap())
-        unimplemented!()
-    }
+/// Marker trait for client options
+pub trait ClientOptions: Clone + Send + Sync + 'static {}
+
+/// A trait representing a client of a service the sends requests.
+#[async_trait]
+pub trait Client
+where
+    Self: Clone + Send + Sync + 'static,
+{
+    /// The error type for the client.
+    type Error: ClientError;
+
+    /// The options for the service.
+    type Options: ClientOptions;
+
+    type Type: Clone + Debug + Send + Sync + 'static;
+
+    type ResponseType: Clone + Debug + Send + Sync + 'static;
+
+    type StreamType: Stream;
+
+    /// Creates a new service.
+    async fn new<X>(
+        name: String,
+        stream: Self::StreamType,
+        options: Self::Options,
+    ) -> Result<Self, Self::Error>;
+
+    /// Sends a request to the service and returns a response.
+    async fn request(&self, request: Self::Type) -> Result<Self::ResponseType, Self::Error>;
 }
