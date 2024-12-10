@@ -47,7 +47,7 @@ static GATEWAY_OPT_INS: LazyLock<TransactionDetailsOptIns> =
 /// A Radix Stream that processes transactions and events from Radix DLT.
 pub struct RadixStream<TS>
 where
-    TS: Stream<Transaction>,
+    TS: Stream<Type = Transaction>,
 {
     client: Client,
     last_state_version: Arc<Mutex<Option<u64>>>,
@@ -59,7 +59,7 @@ where
 /// Options for creating a new `RadixStream`.
 pub struct RadixStreamOptions<TS>
 where
-    TS: Stream<Transaction>,
+    TS: Stream<Type = Transaction>,
 {
     /// The origin of the Radix Gateway.
     pub radix_gateway_origin: &'static str,
@@ -72,7 +72,7 @@ type StartResult<TSE> = Result<JoinHandle<Result<(), Error<TSE>>>, Error<TSE>>;
 
 impl<TS> RadixStream<TS>
 where
-    TS: Stream<Transaction>,
+    TS: Stream<Type = Transaction>,
 {
     /// Creates a new `RadixStream`.
     ///
