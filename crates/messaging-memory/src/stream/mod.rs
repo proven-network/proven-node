@@ -387,7 +387,7 @@ impl_scoped_stream!(
 mod tests {
     use super::*;
 
-    use crate::subject::{MemoryPublishableSubject, MemorySubject};
+    use crate::subject::MemorySubject;
 
     use std::error::Error as StdError;
 
@@ -395,8 +395,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_message() {
-        let publishable_subject: MemoryPublishableSubject<String> =
-            MemoryPublishableSubject::new("test_get_message").unwrap();
+        let publishable_subject: MemorySubject<String> =
+            MemorySubject::new("test_get_message").unwrap();
         let subject = MemorySubject::new("test_get_message").unwrap();
         let stream: MemoryStream<String> =
             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
@@ -416,8 +416,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_last_message() {
-        let publishable_subject: MemoryPublishableSubject<String> =
-            MemoryPublishableSubject::new("test_last_message").unwrap();
+        let publishable_subject: MemorySubject<String> =
+            MemorySubject::new("test_last_message").unwrap();
         let subject = MemorySubject::new("test_last_message").unwrap();
         let stream: MemoryStream<String> = MemoryStream::new_with_subjects(
             "test_last_message",
@@ -533,8 +533,8 @@ mod tests {
             }
         }
 
-        let publishable_subject: MemoryPublishableSubject<String> =
-            MemoryPublishableSubject::new("test_start_consumer").unwrap();
+        let publishable_subject: MemorySubject<String> =
+            MemorySubject::new("test_start_consumer").unwrap();
         let subject = MemorySubject::new("test_start_consumer").unwrap();
         let stream: MemoryStream<String> =
             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])

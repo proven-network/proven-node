@@ -10,73 +10,40 @@ use async_trait::async_trait;
 /// Marker trait for subject errors
 pub trait SubjectError: Error + Send + Sync + 'static {}
 
-/// A trait representing a subject.
+/// Capability to publish messages (lost if wildcard scoped)
 #[async_trait]
-pub trait PublishableSubject
-where
-    Self: Clone + Into<String> + Send + Sized + Sync + 'static,
-{
-    /// The error type for the stream.
-    type Error: SubjectError;
-
-    /// The type of data in the stream.
-    type Type: Clone + Debug + Send + Sync + 'static;
-
-    /// The type of response for the stream.
-    type ResponseType: Clone + Debug + Send + Sync + 'static;
-
-    /// Publishes the given data with no expectation of a response.
+pub trait PublishableSubject: Subject {
+    /// Publish a message to the subject.
     async fn publish(&self, message: Message<Self::Type>) -> Result<(), Self::Error>;
 
-    /// Sends a request with the given data and returns the response.
+    /// Publish a message to the subject and await a response.
     async fn request(
         &self,
         message: Message<Self::Type>,
     ) -> Result<Message<Self::ResponseType>, Self::Error>;
-
-    /// Subscribes to the subject and processes messages with the given handler.
-    async fn subscribe<X>(
-        &self,
-        handler: X,
-    ) -> Result<
-        impl Subscription<X, Type = Self::Type, ResponseType = Self::ResponseType>,
-        Self::Error,
-    >
-    where
-        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
 }
 
-/// A trait representing a subject.
+/// Base subject trait
 #[async_trait]
-pub trait Subject
-where
-    Self: Clone + Into<String> + Send + Sync + 'static,
-{
-    /// The error type for the stream.
+pub trait Subject: Clone + Into<String> + Send + Sync + 'static {
+    /// The error type for the subject.
     type Error: SubjectError;
 
-    /// The type of data in the stream.
+    /// The type of messages published to the subject.
     type Type: Clone + Debug + Send + Sync + 'static;
 
-    /// The type of response for the stream.
+    /// The type of responses expected from requests.
     type ResponseType: Clone + Debug + Send + Sync + 'static;
 
-    /// Subscribes to the subject and processes messages with the given handler.
-    async fn subscribe<X>(
-        &self,
-        handler: X,
-    ) -> Result<
-        impl Subscription<X, Type = Self::Type, ResponseType = Self::ResponseType>,
-        Self::Error,
-    >
+    /// The type of subscription returned by the subject.
+    type SubscriptionType<X>: Subscription<X, Type = Self::Type, ResponseType = Self::ResponseType>
     where
-        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>
-            + Clone
-            + Send
-            + Sync
-            + 'static,
-        X::Type: Clone + Debug + Send + Sync + 'static,
-        X::ResponseType: Clone + Debug + Send + Sync + 'static;
+        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
+
+    /// Subscribe to messages on the subject.
+    async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error>
+    where
+        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
 }
 
 macro_rules! define_scoped_subject {
@@ -84,13 +51,7 @@ macro_rules! define_scoped_subject {
         paste::paste! {
             #[async_trait]
             #[doc = $doc_pub]
-            pub trait [< PublishableSubject $index >]
-            where
-                Self: Clone + Send + Sync + 'static,
-            {
-                /// The error type for the stream.
-                type Error: SubjectError;
-
+            pub trait [< PublishableSubject $index >] {
                 /// The type of data in the stream.
                 type Type: Clone + Debug + Send + Sync + 'static;
 
@@ -124,9 +85,6 @@ macro_rules! define_scoped_subject {
             where
                 Self: Clone + Send + Sync + 'static,
             {
-                /// The error type for the stream.
-                type Error: SubjectError;
-
                 /// The type of data in the stream.
                 type Type: Clone + Debug + Send + Sync + 'static;
 
@@ -139,11 +97,14 @@ macro_rules! define_scoped_subject {
                 /// The wildcard all scoped type for the subject.
                 type WildcardAllScoped: Subject<Type = Self::Type, ResponseType = Self::ResponseType>;
 
+                /// The wildcard any scoped type for the subject.
+                type WildcardAnyScoped: $parent_sub<Type = Self::Type, ResponseType = Self::ResponseType>;
+
                 /// Refines the subject with a greedy wildcard scope.
                 fn all(&self) -> Self::WildcardAllScoped;
 
                 /// Refines the subject with a wildcard scope.
-                fn any(&self) -> Self::Scoped;
+                fn any(&self) -> Self::WildcardAnyScoped;
 
                 /// Refines the subject with the given concrete scope.
                 fn scope<K>(&self, scope: K) -> Self::Scoped
