@@ -60,8 +60,9 @@ where
 {
     /// The error type for the store
     type Error: SqlStoreError;
+
     /// The connection type for the store
-    type Connection: SqlConnection<Error = Self::Error>;
+    type Connection: SqlConnection;
 
     /// Connect to the SQL store - running any provided migrations
     async fn connect<Q: Clone + Into<String> + Send>(
@@ -86,7 +87,7 @@ macro_rules! define_scoped_sql_store {
                 type Scoped: $parent<Error = Self::Error> + Clone + Send + Sync + 'static;
 
                 /// Create a scoped version of the store.
-                fn scope<S: Clone + Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
+                fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
             }
         }
     };

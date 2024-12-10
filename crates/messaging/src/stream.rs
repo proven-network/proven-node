@@ -35,6 +35,19 @@ where
     /// The subject type for the stream.
     type SubjectType: Subject;
 
+    /// The client type for the stream.
+    type ClientType<X>: Client<Type = Self::Type, ResponseType = X::ResponseType>
+    where
+        X: ServiceHandler<Type = Self::Type>;
+
+    /// The consumer type for the stream.
+    type ConsumerType: Consumer;
+
+    /// The service type for the stream.
+    type ServiceType<X>: Service
+    where
+        X: ServiceHandler<Type = Self::Type>;
+
     /// Creates a new stream.
     async fn new<N>(stream_name: N, options: Self::Options) -> Result<Self, Self::Error>
     where
@@ -50,7 +63,11 @@ where
         N: Clone + Into<String> + Send;
 
     /// Gets a client for a service.
-    async fn client<N, X>(&self, service_name: N, handler: X) -> Result<impl Client, Self::Error>
+    async fn client<N, X>(
+        &self,
+        service_name: N,
+        handler: X,
+    ) -> Result<Self::ClientType<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<Type = Self::Type>;
@@ -72,7 +89,7 @@ where
         &self,
         consumer_name: N,
         handler: X,
-    ) -> Result<impl Consumer, Self::Error>
+    ) -> Result<Self::ConsumerType, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<Type = Self::Type>;
@@ -82,7 +99,7 @@ where
         &self,
         service_name: N,
         handler: X,
-    ) -> Result<impl Service, Self::Error>
+    ) -> Result<Self::ServiceType<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<Type = Self::Type>;

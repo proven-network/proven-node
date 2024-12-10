@@ -8,245 +8,189 @@ mod connection;
 mod error;
 mod request;
 mod response;
-/// Stream handler for SQL queries and migrations.
-pub mod stream_handler;
+mod stream_handler;
+
+use std::sync::Arc;
 
 pub use connection::Connection;
 pub use error::Error;
 use request::Request;
-use response::Response;
-use stream_handler::SqlStreamHandler;
-use stream_handler::SqlStreamHandlerOptions;
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use proven_libsql::Database;
-use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
-use proven_store::Store;
-use proven_stream::{Stream, Stream1, Stream2, Stream3};
-use tokio::sync::oneshot;
+use proven_messaging::client::Client;
+// use proven_messaging::stream::{ScopedStream1, ScopedStream2, ScopedStream3, Stream};
+// use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
+use proven_messaging::stream::Stream;
+use proven_sql::SqlStore;
+use response::Response;
+use stream_handler::{SqlStreamHandler, SqlStreamHandlerOptions};
+use tokio::sync::{oneshot, Mutex};
 
 /// Options for configuring a `StreamedSqlStore`.
-#[derive(Clone)]
-pub struct StreamedSqlStoreOptions<S, LS> {
-    /// The store that keeps track of the current leader.
-    pub leader_store: LS,
-
-    /// The name of the local machine.
-    pub local_name: String,
-
+#[derive(Clone, Debug)]
+pub struct StreamedSqlStoreOptions<S> {
     /// The stream to use as an append-only log.
     pub stream: S,
 }
 
 /// Sql store that uses a stream as an append-only log.
-#[derive(Clone)]
-pub struct StreamedSqlStore<S, LS>
+#[derive(Clone, Debug)]
+pub struct StreamedSqlStore<S>
 where
-    S: Stream<SqlStreamHandler>,
-    LS: Store,
+    S: Stream<Type = Request>,
 {
-    leader_store: LS,
-    local_name: String,
     stream: S,
 }
 
-impl<S, LS> StreamedSqlStore<S, LS>
+impl<S> StreamedSqlStore<S>
 where
-    S: Stream<SqlStreamHandler>,
-    LS: Store,
+    S: Stream<Type = Request>,
 {
     /// Creates a new `StreamedSqlStore` with the specified options.
-    pub fn new(
-        StreamedSqlStoreOptions {
-            leader_store,
-            local_name,
-            stream,
-        }: StreamedSqlStoreOptions<S, LS>,
-    ) -> Self {
-        Self {
-            leader_store,
-            local_name,
-            stream,
-        }
+    pub fn new(StreamedSqlStoreOptions { stream }: StreamedSqlStoreOptions<S>) -> Self {
+        Self { stream }
     }
 }
 
 #[async_trait]
-impl<S, LS> SqlStore for StreamedSqlStore<S, LS>
+impl<S> SqlStore for StreamedSqlStore<S>
 where
-    S: Stream<SqlStreamHandler>,
-    LS: Store,
+    S: Stream<Type = Request>,
 {
-    type Error = Error<S::Error, LS::Error>;
-    type Connection = Connection<S, LS>;
+    type Error = Error<S::Error>;
+    type Connection = Connection<S::ClientType<SqlStreamHandler>>;
 
     async fn connect<Q: Clone + Into<String> + Send>(
         &self,
         migrations: Vec<Q>,
     ) -> Result<Self::Connection, Self::Error> {
-        let stream_name = self.stream.name();
-
-        let current_leader = self
-            .leader_store
-            .get(stream_name.clone())
-            .await
-            .map_err(Error::LeaderStore)?;
-
-        let current_leader_name = current_leader
-            .map(|bytes| String::from_utf8(bytes.to_vec()))
-            .transpose()
-            .map_err(Error::InvalidLeaderName)?;
-
-        if current_leader_name.is_none() || current_leader_name.as_deref() == Some(&self.local_name)
-        {
-            self.leader_store
-                .put(
-                    stream_name,
-                    Bytes::from(self.local_name.clone().into_bytes()),
-                )
-                .await
-                .map_err(Error::LeaderStore)?;
-        }
-
         let (caught_up_tx, caught_up_rx) = oneshot::channel();
 
+        let applied_migrations = Arc::new(Mutex::new(Vec::new()));
+
         let handler = SqlStreamHandler::new(SqlStreamHandlerOptions {
-            caught_up_tx,
+            applied_migrations: applied_migrations.clone(),
             database: Database::connect(":memory:").await?,
+            caught_up_tx,
         });
 
-        tokio::spawn({
-            let handler = handler.clone();
-            let stream = self.stream.clone();
-            async move {
-                stream.handle(handler).await.unwrap();
-            }
-        });
+        let _service = self
+            .stream
+            .start_service("SQL_SERVICE", handler.clone())
+            .await
+            .map_err(Error::Stream)?;
+
+        let client = self.stream.client("SQL_SERVICE", handler).await.unwrap();
 
         // Wait for the stream to catch up before applying migrations
         caught_up_rx
             .await
             .map_err(|_| Error::CaughtUpChannelClosed)?;
 
-        let applied_migrations = handler.applied_migrations().await.clone();
+        let applied_migrations = applied_migrations.lock().await.clone();
         for migration in migrations {
             let migration_sql = migration.into();
             if !applied_migrations.contains(&migration_sql) {
                 let request = Request::Migrate(migration_sql);
 
-                let response = self.stream.request(request).await.map_err(Error::Stream)?;
-
-                if let Response::Failed(error) = response {
+                if let Response::Failed(error) =
+                    client.request(request).await.map_err(|_| Error::Client)?
+                {
                     return Err(Error::Libsql(error));
                 }
             }
         }
 
-        Ok(Connection::new(self.stream.clone()))
+        Ok(Connection::new(client))
     }
 }
 
-macro_rules! impl_scoped_sql_store {
-    ($index:expr, $parent:ident, $parent_trait:ident, $stream_trait:ident, $doc:expr) => {
-        paste::paste! {
-            #[doc = $doc]
-            #[derive(Clone)]
-            pub struct [< StreamedSqlStore $index >]<S, LS>
-            where
-                S: $stream_trait<SqlStreamHandler>,
-                LS: Store,
-            {
-                leader_store: LS,
-                local_name: String,
-                stream: S,
-            }
+// macro_rules! impl_scoped_sql_store {
+//     ($index:expr, $parent:ident, $parent_trait:ident, $stream_trait:ident, $doc:expr) => {
+//         paste::paste! {
+//             #[doc = $doc]
+//             #[derive(Clone, Debug)]
+//             pub struct [< StreamedSqlStore $index >]<S>
+//             where
+//                 S: $stream_trait<Request>,
+//             {
+//                 stream: S,
+//             }
 
-            impl<S, LS> [< StreamedSqlStore $index >]<S, LS>
-            where
-                Self: Clone + Send + Sync + 'static,
-                S: $stream_trait<SqlStreamHandler>,
-                LS: Store,
-            {
-                /// Creates a new `[< StreamedSqlStore $index >]` with the specified options.
-                pub fn new(
-                    StreamedSqlStoreOptions {
-                        leader_store,
-                        local_name,
-                        stream,
-                    }: StreamedSqlStoreOptions<S, LS>,
-                ) -> Self {
-                    Self {
-                        leader_store,
-                        local_name,
-                        stream,
-                    }
-                }
-            }
+//             impl<S> [< StreamedSqlStore $index >]<S>
+//             where
+//                 Self: Clone + Send + Sync + 'static,
+//                 S: $stream_trait<Request>,
+//             {
+//                 /// Creates a new `[< StreamedSqlStore $index >]` with the specified options.
+//                 pub fn new(
+//                     StreamedSqlStoreOptions {
+//                         stream,
+//                     }: StreamedSqlStoreOptions<S>,
+//                 ) -> Self {
+//                     Self {
+//                         stream,
+//                     }
+//                 }
+//             }
 
-            #[async_trait]
-            impl<S, LS> [< SqlStore $index >] for [< StreamedSqlStore $index >]<S, LS>
-            where
-                Self: Clone + Send + Sync + 'static,
-                S: $stream_trait<SqlStreamHandler>,
-                LS: Store,
-            {
-                type Error = Error<S::Error, LS::Error>;
-                type Scoped = $parent<S::Scoped, LS>;
+//             #[async_trait]
+//             impl<S> [< SqlStore $index >] for [< StreamedSqlStore $index >]<S>
+//             where
+//                 Self: Clone + Send + Sync + 'static,
+//                 S: $stream_trait<Request>,
+//             {
+//                 type Error = Error<S::Error>;
+//                 type Scoped = $parent<S::Scoped>;
 
-                fn scope<K: Clone + Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
-                    $parent {
-                        leader_store: self.leader_store.clone(),
-                        local_name: self.local_name.clone(),
-                        stream: self.stream.scope(scope.into()),
-                    }
-                }
-            }
-        }
-    };
-}
+//                 fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+//                     $parent {
+//                         stream: self.stream.scope(scope.into()),
+//                     }
+//                 }
+//             }
+//         }
+//     };
+// }
 
-impl_scoped_sql_store!(
-    1,
-    StreamedSqlStore,
-    SqlStore,
-    Stream1,
-    "A single-scoped SQL store that uses a stream as an append-only log."
-);
-impl_scoped_sql_store!(
-    2,
-    StreamedSqlStore1,
-    SqlStore1,
-    Stream2,
-    "A double-scoped SQL store that uses a stream as an append-only log."
-);
-impl_scoped_sql_store!(
-    3,
-    StreamedSqlStore2,
-    SqlStore2,
-    Stream3,
-    "A triple-scoped SQL store that uses a stream as an append-only log."
-);
+// impl_scoped_sql_store!(
+//     1,
+//     StreamedSqlStore,
+//     SqlStore,
+//     ScopedStream1,
+//     "A single-scoped SQL store that uses a stream as an append-only log."
+// );
+// impl_scoped_sql_store!(
+//     2,
+//     StreamedSqlStore1,
+//     SqlStore1,
+//     ScopedStream2,
+//     "A double-scoped SQL store that uses a stream as an append-only log."
+// );
+// impl_scoped_sql_store!(
+//     3,
+//     StreamedSqlStore2,
+//     SqlStore2,
+//     ScopedStream3,
+//     "A triple-scoped SQL store that uses a stream as an append-only log."
+// );
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proven_messaging_memory::stream::{MemoryStream, MemoryStreamOptions};
     use proven_sql::{SqlConnection, SqlParam};
-    use proven_store_memory::MemoryStore;
-    use proven_stream_memory::MemoryStream;
     use tokio::time::{timeout, Duration};
 
     #[tokio::test]
     async fn test_sql_store() {
         let result = timeout(Duration::from_secs(5), async {
-            let leader_store = MemoryStore::new();
-            let stream = MemoryStream::new();
+            let stream = MemoryStream::new("test_sql_store", MemoryStreamOptions)
+                .await
+                .unwrap();
 
-            let sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
-                leader_store,
-                local_name: "my-machine".to_string(),
-                stream,
-            });
+            let sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions { stream });
 
             let connection = sql_store
                 .connect(vec![
@@ -298,14 +242,11 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_sql_migration() {
         let result = timeout(Duration::from_secs(5), async {
-            let leader_store = MemoryStore::new();
-            let stream = MemoryStream::new();
+            let stream = MemoryStream::new("test_invalid_sql_migration", MemoryStreamOptions)
+                .await
+                .unwrap();
 
-            let sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
-                leader_store,
-                local_name: "my-machine".to_string(),
-                stream,
-            });
+            let sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions { stream });
 
             let connection_result = sql_store.connect(vec!["INVALID SQL STATEMENT"]).await;
 

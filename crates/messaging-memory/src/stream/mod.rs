@@ -84,6 +84,18 @@ where
 
     type Type = T;
 
+    type ClientType<X>
+        = MemoryClient<Self::Type, X::ResponseType>
+    where
+        X: ServiceHandler<Type = Self::Type>;
+
+    type ConsumerType = MemoryConsumer<Self::Type>;
+
+    type ServiceType<X>
+        = MemoryService<Self::Type, X::ResponseType>
+    where
+        X: ServiceHandler<Type = Self::Type>;
+
     type SubjectType = MemorySubject<Self::Type>;
 
     /// Creates a new stream.

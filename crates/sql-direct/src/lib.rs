@@ -73,7 +73,7 @@ macro_rules! impl_scoped_sql_store {
                 type Error = Error;
                 type Scoped = $parent;
 
-                fn scope<S: Clone + Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped {
+                fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped {
                     let mut new_dir = self.dir.clone();
                     new_dir.push(scope.into());
                     $parent::new(new_dir)
