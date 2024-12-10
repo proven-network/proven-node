@@ -52,9 +52,10 @@ impl<T> Default for SubjectState<T> {
 #[cfg(test)]
 mod tests {
     use super::subject::*;
-    use super::subscription::*;
 
+    use std::convert::Infallible;
     use std::error::Error as StdError;
+    use std::fmt::Debug;
 
     use async_trait::async_trait;
     use bytes::Bytes;
@@ -86,32 +87,23 @@ mod tests {
     impl SubscriptionHandlerError for TestSubscriptionHandlerError {}
 
     #[async_trait]
-    impl SubscriptionHandler for TestSubscriptionHandler {
+    impl SubscriptionHandler<Bytes, Infallible, Infallible> for TestSubscriptionHandler {
         type Error = TestSubscriptionHandlerError;
 
-        type Type = Bytes;
         type ResponseType = Bytes;
 
-        async fn handle(&self, message: Message<Self::Type>) -> Result<(), Self::Error> {
-            println!("Handling data: {:?}", message);
-            self.sender
-                .send(message)
-                .await
-                .map_err(|_| TestSubscriptionHandlerError)
-        }
-
-        async fn respond(
+        async fn handle(
             &self,
-            message: Message<Self::Type>,
-        ) -> Result<Message<Self::ResponseType>, Self::Error> {
-            println!("Responding to data: {:?}", message);
+            message: Message<Bytes>,
+        ) -> Result<Option<Message<Self::ResponseType>>, Self::Error> {
+            println!("Handling data: {:?}", message);
             let _ = self
                 .sender
-                .send(message.clone())
+                .send(message)
                 .await
                 .map_err(|_| TestSubscriptionHandlerError);
 
-            Ok(message)
+            Ok(None)
         }
     }
 
@@ -126,8 +118,7 @@ mod tests {
         let subject = MemorySubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> =
-            subject.subscribe(handler).await.unwrap();
+        let _ = subject.subscribe(handler).await.unwrap();
 
         subject
             .publish(Bytes::from("message1").into())
@@ -162,8 +153,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> =
-            subject1.subscribe(handler).await.unwrap();
+        let _ = subject1.subscribe(handler).await.unwrap();
 
         subject1
             .publish(Bytes::from("message1").into())
@@ -199,8 +189,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> =
-            subject1.subscribe(handler).await.unwrap();
+        let _ = subject1.subscribe(handler).await.unwrap();
 
         subject1
             .publish(Bytes::from("message1").into())
@@ -237,8 +226,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> =
-            subject.subscribe(handler).await.unwrap();
+        let _ = subject.subscribe(handler).await.unwrap();
 
         subject
             .publish(Bytes::from("message1").into())
@@ -276,8 +264,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> =
-            wildcard_subject.subscribe(handler).await.unwrap();
+        let _ = wildcard_subject.subscribe(handler).await.unwrap();
 
         subject1
             .publish(Bytes::from("message1").into())
@@ -315,8 +302,7 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _: MemorySubscription<TestSubscriptionHandler> =
-            greedy_wildcard_subject.subscribe(handler).await.unwrap();
+        let _ = greedy_wildcard_subject.subscribe(handler).await.unwrap();
 
         subject1
             .publish(Bytes::from("message1").into())
@@ -349,8 +335,7 @@ mod tests {
         let subject = MemorySubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let subscriber: MemorySubscription<TestSubscriptionHandler> =
-            subject.subscribe(handler).await.unwrap();
+        let subscriber = subject.subscribe(handler).await.unwrap();
 
         subject
             .publish(Bytes::from("message1").into())
@@ -385,33 +370,42 @@ mod tests {
     #[derive(Clone, Debug, PartialEq)]
     struct CustomType(i32);
 
+    impl TryFrom<Bytes> for CustomType {
+        type Error = Infallible;
+
+        fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+            Ok(Self(i32::from_be_bytes(value.as_ref().try_into().unwrap())))
+        }
+    }
+
+    impl TryInto<Bytes> for CustomType {
+        type Error = Infallible;
+
+        fn try_into(self) -> Result<Bytes, Self::Error> {
+            Ok(Bytes::from(self.0.to_be_bytes().to_vec()))
+        }
+    }
+
     #[derive(Clone, Debug)]
     struct CustomHandler(mpsc::Sender<Message<CustomType>>);
 
     #[async_trait]
-    impl SubscriptionHandler for CustomHandler {
+    impl SubscriptionHandler<CustomType, Infallible, Infallible> for CustomHandler {
         type Error = TestSubscriptionHandlerError;
-
-        type Type = CustomType;
 
         type ResponseType = CustomType;
 
-        async fn handle(&self, message: Message<CustomType>) -> Result<(), Self::Error> {
-            self.0
-                .send(message)
-                .await
-                .map_err(|_| TestSubscriptionHandlerError)
-        }
-
-        async fn respond(
+        async fn handle(
             &self,
             message: Message<CustomType>,
-        ) -> Result<Message<CustomType>, Self::Error> {
-            self.0
-                .send(message.clone())
+        ) -> Result<Option<Message<CustomType>>, Self::Error> {
+            let _ = self
+                .0
+                .send(message)
                 .await
-                .map_err(|_| TestSubscriptionHandlerError)?;
-            Ok(message)
+                .map_err(|_| TestSubscriptionHandlerError);
+
+            Ok(None)
         }
     }
 
@@ -423,8 +417,7 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(10);
         let handler = CustomHandler(sender);
 
-        let _: MemorySubscription<_, CustomType, CustomType> =
-            subject.subscribe(handler).await.unwrap();
+        let _ = subject.subscribe(handler).await.unwrap();
 
         subject.publish(CustomType(42).into()).await.unwrap();
 

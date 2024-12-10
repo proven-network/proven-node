@@ -5,14 +5,14 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-// // /// Clients send requests to services.
-// // pub mod client;
+/// Clients send requests to services.
+pub mod client;
 
-// /// Consumers are stateful views of streams.
-// pub mod consumer;
+/// Consumers are stateful views of streams.
+pub mod consumer;
 
-// /// Services are special consumers that respond to requests.
-// pub mod service;
+/// Services are special consumers that respond to requests.
+pub mod service;
 
 /// Streams are persistent, ordered, and append-only sequences of messages.
 pub mod stream;

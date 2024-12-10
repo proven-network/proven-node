@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 
 /// Marker trait for service errors
 pub trait ServiceError: Error + Send + Sync + 'static {}
@@ -14,9 +15,20 @@ pub trait ServiceOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream which can handle requests.
 #[async_trait]
-pub trait Service
+pub trait Service<P, X, T, D, S>
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
+    P: Stream<T, D, S>,
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Error + Send + Sync + 'static,
+    S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the service.
     type Error: ServiceError;
@@ -24,24 +36,16 @@ where
     /// The options for the service.
     type Options: ServiceOptions;
 
-    /// The type of data in the stream.
-    type Type: Clone + Debug + Send + Sync;
-
-    /// The response type for the service.
-    type ResponseType: Clone + Debug + Send + Sync;
-
     /// The stream type for the service.
-    type StreamType: Stream;
+    type StreamType: Stream<T, D, S>;
 
     /// Creates a new service.
-    async fn new<X>(
+    async fn new(
         name: String,
         stream: Self::StreamType,
         options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error>
-    where
-        X: ServiceHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
+    ) -> Result<Self, Self::Error>;
 
     /// Gets the last sequence number processed by the service.
     async fn last_seq(&self) -> Result<u64, Self::Error>;

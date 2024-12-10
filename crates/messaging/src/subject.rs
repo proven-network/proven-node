@@ -7,57 +7,76 @@ use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 
 /// Marker trait for subject errors
 pub trait SubjectError: Error + Send + Sync + 'static {}
 
 /// Capability to publish messages (lost if wildcard scoped)
 #[async_trait]
-pub trait PublishableSubject: Subject {
+pub trait PublishableSubject<T, D, S>: Subject<T, D, S>
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Error + Send + Sync + 'static,
+    S: Debug + Error + Send + Sync + 'static,
+{
     /// Publish a message to the subject.
-    async fn publish(&self, message: Message<Self::Type>) -> Result<(), Self::Error>;
+    async fn publish(&self, message: Message<T>) -> Result<(), Self::Error>;
 
     /// Publish a message to the subject and await a response.
-    async fn request(
+    async fn request<X>(
         &self,
-        message: Message<Self::Type>,
-    ) -> Result<Message<Self::ResponseType>, Self::Error>;
+        message: Message<T>,
+    ) -> Result<Message<X::ResponseType>, Self::Error>
+    where
+        X: SubscriptionHandler<T, D, S>;
 }
 
 /// Base subject trait
 #[async_trait]
-pub trait Subject: Clone + Into<String> + Send + Sync + 'static {
+pub trait Subject<T, D, S>: Clone + Debug + Into<String> + Send + Sync + 'static
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Error + Send + Sync + 'static,
+    S: Debug + Error + Send + Sync + 'static,
+{
     /// The error type for the subject.
     type Error: SubjectError;
 
-    /// The type of messages published to the subject.
-    type Type: Clone + Debug + Send + Sync + 'static;
-
-    /// The type of responses expected from requests.
-    type ResponseType: Clone + Debug + Send + Sync + 'static;
-
     /// The type of subscription returned by the subject.
-    type SubscriptionType<X>: Subscription<X, Type = Self::Type, ResponseType = Self::ResponseType>
+    type SubscriptionType<X>: Subscription<Self, X, T, D, S>
     where
-        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
+        X: SubscriptionHandler<T, D, S>;
 
     /// The type of stream created by `to_stream`.
-    type StreamType: Stream<Type = Self::Type>;
+    type StreamType: Stream<T, D, S>;
 
     /// Subscribe to messages on the subject.
     async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error>
     where
-        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
+        X: SubscriptionHandler<T, D, S>;
 
     /// Convert the subject to a stream.
     async fn to_stream<K>(
         &self,
         stream_name: K,
-        options: <Self::StreamType as Stream>::Options,
-    ) -> Result<Self::StreamType, <Self::StreamType as Stream>::Error>
+        options: <Self::StreamType as Stream<T, D, S>>::Options,
+    ) -> Result<Self::StreamType, <Self::StreamType as Stream<T, D, S>>::Error>
     where
         K: Clone + Into<String> + Send,
-        Self::StreamType: Stream<Type = Self::Type>;
+        Self::StreamType: Stream<T, D, S>;
 }
 
 macro_rules! define_scoped_subject {
@@ -65,21 +84,26 @@ macro_rules! define_scoped_subject {
         paste::paste! {
             #[async_trait]
             #[doc = $doc_pub]
-            pub trait [< PublishableSubject $index >] {
-                /// The type of data in the stream.
-                type Type: Clone + Debug + Send + Sync + 'static;
-
-                /// Response type for the stream.
-                type ResponseType: Clone + Debug + Send + Sync + 'static;
-
+            pub trait [< PublishableSubject $index >]<T, D, S>
+            where
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Error + Send + Sync + 'static,
+                S: Debug + Error + Send + Sync + 'static,
+            {
                 /// The scoped type for the subject.
-                type Scoped: $parent_pub<Type = Self::Type, ResponseType = Self::ResponseType>;
+                type Scoped: $parent_pub<T, D, S>;
 
                 /// The wildcard all scoped type for the subject.
-                type WildcardAllScoped: Subject<Type = Self::Type, ResponseType = Self::ResponseType>;
+                type WildcardAllScoped: Subject<T, D, S>;
 
                 /// The wildcard any scoped type for the subject.
-                type WildcardAnyScoped: $parent_sub<Type = Self::Type, ResponseType = Self::ResponseType>;
+                type WildcardAnyScoped: $parent_sub<T, D, S>;
 
                 /// Refines the subject with a greedy wildcard scope.
                 fn all(&self) -> Self::WildcardAllScoped;
@@ -95,24 +119,27 @@ macro_rules! define_scoped_subject {
 
             #[async_trait]
             #[doc = $doc_sub]
-            pub trait [< Subject $index >]
+            pub trait [< Subject $index >]<T, D, S>
             where
-                Self: Clone + Send + Sync + 'static,
+                Self: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Error + Send + Sync + 'static,
+                S: Debug + Error + Send + Sync + 'static,
             {
-                /// The type of data in the stream.
-                type Type: Clone + Debug + Send + Sync + 'static;
-
-                /// Response type for the stream.
-                type ResponseType: Clone + Debug + Send + Sync + 'static;
-
                 /// The scoped type for the subject.
-                type Scoped: $parent_sub<Type = Self::Type, ResponseType = Self::ResponseType>;
+                type Scoped: $parent_sub<T, D, S>;
 
                 /// The wildcard all scoped type for the subject.
-                type WildcardAllScoped: Subject<Type = Self::Type, ResponseType = Self::ResponseType>;
+                type WildcardAllScoped: Subject<T, D, S>;
 
                 /// The wildcard any scoped type for the subject.
-                type WildcardAnyScoped: $parent_sub<Type = Self::Type, ResponseType = Self::ResponseType>;
+                type WildcardAnyScoped: $parent_sub<T, D, S>;
 
                 /// Refines the subject with a greedy wildcard scope.
                 fn all(&self) -> Self::WildcardAllScoped;

@@ -5,10 +5,7 @@ use thiserror::Error;
 
 /// Error type for memory stream operations.
 #[derive(Debug, Error)]
-pub enum Error<T>
-where
-    T: Clone + Debug + Send + Sync + 'static,
-{
+pub enum Error {
     /// Consumer error.
     #[error("error starting consumer")]
     Consumer,
@@ -23,7 +20,7 @@ where
 
     /// An error occurred while handling a subscription.
     #[error(transparent)]
-    SubscriptionHandler(#[from] super::subscription_handler::Error<T>),
+    SubscriptionHandler(#[from] super::subscription_handler::Error),
 }
 
-impl<T> StreamError for Error<T> where T: Clone + Debug + Send + Sync + 'static {}
+impl StreamError for Error {}

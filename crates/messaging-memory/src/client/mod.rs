@@ -1,9 +1,11 @@
 mod error;
 
+use bytes::Bytes;
 pub use error::Error;
+use proven_messaging::stream::Stream;
 
+use std::error::Error as StdError;
 use std::fmt::Debug;
-use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use proven_messaging::client::{Client, ClientOptions};
@@ -17,47 +19,76 @@ pub struct MemoryClientOptions;
 impl ClientOptions for MemoryClientOptions {}
 
 /// A client for an in-memory service.
-#[derive(Clone, Debug, Default)]
-pub struct MemoryClient<T, R>
+#[derive(Debug)]
+pub struct MemoryClient<P, X, T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    P: Stream<T, D, S>,
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
-    _marker: PhantomData<(T, R)>,
+    stream: <Self as Client<P, X, T, D, S>>::StreamType,
+}
+
+impl<P, X, T, D, S> Clone for MemoryClient<P, X, T, D, S>
+where
+    P: Stream<T, D, S>,
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            stream: self.stream.clone(),
+        }
+    }
 }
 
 #[async_trait]
-impl<T, R> Client for MemoryClient<T, R>
+impl<P, X, T, D, S> Client<P, X, T, D, S> for MemoryClient<P, X, T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    P: Stream<T, D, S>,
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = Error;
 
     type Options = MemoryClientOptions;
 
-    type Type = T;
+    type StreamType = MemoryStream<T, D, S>;
 
-    type ResponseType = R;
-
-    type StreamType = MemoryStream<T>;
-
-    async fn new<X>(
+    async fn new(
         _name: String,
-        _stream: Self::StreamType,
+        stream: Self::StreamType,
         _options: Self::Options,
-    ) -> Result<Self, Self::Error>
-    where
-        X: ServiceHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
-        X::Type: Clone + Debug + Send + Sync + 'static,
-        X::ResponseType: Clone + Debug + Send + Sync + 'static,
-    {
-        Ok(Self {
-            _marker: PhantomData,
-        })
+        _handler: X,
+    ) -> Result<Self, Self::Error> {
+        Ok(Self { stream })
     }
 
-    async fn request(&self, _request: T) -> Result<Self::ResponseType, Self::Error> {
+    async fn request(&self, _request: T) -> Result<X::ResponseType, Self::Error> {
         unimplemented!()
     }
 }

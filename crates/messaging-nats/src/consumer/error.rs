@@ -1,14 +1,11 @@
 use std::fmt::Debug;
 
-use proven_messaging::{consumer::ConsumerError, consumer_handler::ConsumerHandlerError};
+use proven_messaging::consumer::ConsumerError;
 use thiserror::Error;
 
 /// Errors that can occur in a consumer.
 #[derive(Debug, Error)]
-pub enum Error<HE>
-where
-    HE: ConsumerHandlerError,
-{
+pub enum Error {
     /// Consumer create error.
     #[error("Failed to create consumer: {0}")]
     Create(async_nats::jetstream::stream::ConsumerErrorKind),
@@ -18,8 +15,8 @@ where
     Info(async_nats::jetstream::context::RequestErrorKind),
 
     /// Handler error.
-    #[error("Handler error: {0}")]
-    Handler(HE),
+    #[error("Handler error")]
+    Handler,
 
     /// Consumer messages error.
     #[error("Failed to get consumer messages: {0}")]
@@ -30,4 +27,4 @@ where
     Stream(async_nats::jetstream::consumer::StreamErrorKind),
 }
 
-impl<HE> ConsumerError for Error<HE> where HE: ConsumerHandlerError {}
+impl ConsumerError for Error {}

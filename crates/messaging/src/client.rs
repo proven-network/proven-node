@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 
 /// Marker trait for client errors
 pub trait ClientError: Error + Send + Sync + 'static {}
@@ -14,9 +15,20 @@ pub trait ClientOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a client of a service the sends requests.
 #[async_trait]
-pub trait Client
+pub trait Client<P, X, T, D, S>
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
+    P: Stream<T, D, S>,
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Error + Send + Sync + 'static,
+    S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the client.
     type Error: ClientError;
@@ -24,24 +36,17 @@ where
     /// The options for the service.
     type Options: ClientOptions;
 
-    /// The type of data in the stream.
-    type Type: Clone + Debug + Send + Sync + 'static;
-
-    /// The response type for the service.
-    type ResponseType: Clone + Debug + Send + Sync + 'static;
-
-    /// The stream type for the service.
-    type StreamType: Stream;
+    /// The stream type for the client.
+    type StreamType: Stream<T, D, S>;
 
     /// Creates a new service.
-    async fn new<X>(
+    async fn new(
         name: String,
         stream: Self::StreamType,
         options: Self::Options,
-    ) -> Result<Self, Self::Error>
-    where
-        X: ServiceHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
+        handler: X,
+    ) -> Result<Self, Self::Error>;
 
     /// Sends a request to the service and returns a response.
-    async fn request(&self, request: Self::Type) -> Result<Self::ResponseType, Self::Error>;
+    async fn request(&self, request: T) -> Result<X::ResponseType, Self::Error>;
 }

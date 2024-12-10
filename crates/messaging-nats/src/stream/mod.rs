@@ -1,8 +1,9 @@
 mod error;
 
+use crate::client::NatsClient;
 use crate::consumer::NatsConsumer;
 use crate::service::NatsService;
-use crate::subject::NatsSubject;
+use crate::subject::NatsUnpublishableSubject;
 pub use error::Error;
 use proven_messaging::service_handler::ServiceHandler;
 
@@ -11,7 +12,7 @@ use std::marker::PhantomData;
 
 use async_nats::jetstream::stream::{Config as NatsStreamConfig, Stream as NatsStreamType};
 use async_nats::jetstream::Context as JetStreamContext;
-use async_nats::Client as NatsClient;
+use async_nats::Client as AsyncNatsClient;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::consumer_handler::ConsumerHandler;
@@ -24,7 +25,7 @@ use proven_messaging::Message;
 #[derive(Clone, Debug)]
 pub struct NatsStreamOptions {
     /// The NATS client.
-    pub client: NatsClient,
+    pub client: AsyncNatsClient,
 }
 impl StreamOptions for NatsStreamOptions {}
 
@@ -40,15 +41,14 @@ where
         + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
 {
-    jetstram_context: JetStreamContext,
+    jetstream_context: JetStreamContext,
     name: String,
-    nats_client: NatsClient,
     nats_stream: NatsStreamType,
     _marker: PhantomData<T>,
 }
 
 #[async_trait]
-impl<T> Stream<T> for NatsStream<T>
+impl<T> Stream for NatsStream<T>
 where
     Self: Clone + Send + Sync + 'static,
     T: Clone
@@ -60,19 +60,30 @@ where
         + 'static,
 {
     type Error = Error;
-
     type Options = NatsStreamOptions;
+    type Type = T;
+    type SubjectType = NatsUnpublishableSubject<Self::Type>;
 
-    type SubjectType = NatsSubject<T>;
+    type ClientType<X>
+        = NatsClient<T, X::ResponseType>
+    where
+        X: ServiceHandler<Type = T>;
+
+    type ConsumerType = NatsConsumer<T>;
+
+    type ServiceType<X>
+        = NatsService<T, X::ResponseType>
+    where
+        X: ServiceHandler<Type = T>;
 
     /// Creates a new stream.
     async fn new<N>(stream_name: N, options: NatsStreamOptions) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
     {
-        let jetstram_context = async_nats::jetstream::new(options.client);
+        let jetstream_context = async_nats::jetstream::new(options.client.clone());
 
-        let nats_stream = jetstram_context
+        let nats_stream = jetstream_context
             .create_stream(NatsStreamConfig {
                 name: stream_name.clone().into(),
                 allow_direct: true,
@@ -83,43 +94,63 @@ where
             .unwrap();
 
         Ok(Self {
-            jetstram_context,
+            jetstream_context,
             name: stream_name.into(),
-            nats_client: options.client,
             nats_stream,
             _marker: PhantomData,
         })
     }
 
     /// Creates a new stream with the given subjects - must all be the same type.
-    async fn new_with_subjects<N>(
+    async fn new_with_subjects<N, S>(
         stream_name: N,
         options: NatsStreamOptions,
-        subjects: Vec<NatsSubject<T>>,
+        subjects: Vec<S>,
     ) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
+        S: Into<Self::SubjectType> + Clone + Send,
     {
-        let jetstram_context = async_nats::jetstream::new(options.client);
+        let jetstream_context = async_nats::jetstream::new(options.client.clone());
 
-        let nats_stream = jetstram_context
+        let nats_stream = jetstream_context
             .create_stream(NatsStreamConfig {
                 name: stream_name.clone().into(),
                 allow_direct: true,
                 allow_rollup: true,
-                subjects: subjects.into_iter().map(Into::into).collect(),
+                subjects: subjects
+                    .iter()
+                    .map(|s| {
+                        let subject: Self::SubjectType = s.clone().into();
+                        let string: String = subject.into();
+                        string
+                    })
+                    .map(Into::into)
+                    .collect(),
                 ..Default::default()
             })
             .await
             .unwrap();
 
         Ok(Self {
-            jetstram_context,
+            jetstream_context,
             name: stream_name.into(),
-            nats_client: options.client,
             nats_stream,
             _marker: PhantomData,
         })
+    }
+
+    async fn client<N, X>(
+        &self,
+        _service_name: N,
+        _handler: X,
+    ) -> Result<NatsClient<Self::Type, X::ResponseType>, Self::Error>
+    where
+        N: Clone + Into<String> + Send,
+        X: ServiceHandler,
+    {
+        // Implementation here
+        unimplemented!()
     }
 
     /// Gets the message with the given sequence number.
@@ -163,7 +194,7 @@ where
         let payload: Bytes = message.payload.try_into()?;
 
         let seq = if let Some(headers) = message.headers {
-            self.jetstram_context
+            self.jetstream_context
                 .publish_with_headers(self.name(), headers, payload)
                 .await
                 .map_err(|e| Error::Publish(e.kind()))?
@@ -171,7 +202,7 @@ where
                 .map_err(|e| Error::Publish(e.kind()))?
                 .sequence
         } else {
-            self.jetstram_context
+            self.jetstream_context
                 .publish(self.name(), payload)
                 .await
                 .map_err(|e| Error::Publish(e.kind()))?
@@ -186,13 +217,14 @@ where
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(
         &self,
-        _name: N,
+        _consumer_name: N,
         _handler: X,
-    ) -> Result<NatsConsumer<X, T>, Self::Error>
+    ) -> Result<Self::ConsumerType, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        X: ConsumerHandler<T>,
+        X: ConsumerHandler<Type = Self::Type>,
     {
+        // Implementation here
         unimplemented!()
     }
 
@@ -201,11 +233,12 @@ where
         &self,
         _service_name: N,
         _handler: X,
-    ) -> Result<NatsService<X, T>, Self::Error>
+    ) -> Result<Self::ServiceType<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        X: ServiceHandler<T>,
+        X: ServiceHandler<Type = Self::Type>,
     {
+        // Implementation here
         unimplemented!()
     }
 }
@@ -228,7 +261,7 @@ where
 }
 
 #[async_trait]
-impl<T> ScopedStream<T> for ScopedNatsStream<T>
+impl<T> ScopedStream for ScopedNatsStream<T>
 where
     T: Clone
         + Debug
@@ -239,12 +272,10 @@ where
         + 'static,
 {
     type Error = Error;
-
     type Options = NatsStreamOptions;
-
+    type Type = T;
     type StreamType = NatsStream<T>;
-
-    type SubjectType = NatsSubject<T>;
+    type SubjectType = NatsUnpublishableSubject<Self::Type>;
 
     async fn init(&self) -> Result<Self::StreamType, Self::Error> {
         let stream = NatsStream::new(self.prefix.clone().unwrap(), self.options.clone()).await?;
@@ -252,10 +283,10 @@ where
         Ok(stream)
     }
 
-    async fn init_with_subjects(
-        &self,
-        subjects: Vec<Self::SubjectType>,
-    ) -> Result<Self::StreamType, Self::Error> {
+    async fn init_with_subjects<S>(&self, subjects: Vec<S>) -> Result<Self::StreamType, Self::Error>
+    where
+        S: Into<Self::SubjectType> + Clone + Send,
+    {
         let stream = NatsStream::new_with_subjects(
             self.prefix.clone().unwrap(),
             self.options.clone(),
@@ -309,7 +340,7 @@ macro_rules! impl_scoped_stream {
             }
 
             #[async_trait]
-            impl<T> [< ScopedStream $index >]<T> for [< ScopedNatsStream $index >]<T>
+            impl<T> [< ScopedStream $index >] for [< ScopedNatsStream $index >]<T>
             where
                 T: Clone
                     + Debug
@@ -320,9 +351,8 @@ macro_rules! impl_scoped_stream {
                     + 'static,
             {
                 type Error = Error;
-
                 type Options = NatsStreamOptions;
-
+                type Type = T;
                 type Scoped = $parent<T>;
 
                 fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> $parent<T> {

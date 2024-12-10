@@ -6,6 +6,7 @@ use crate::subscription::{MemorySubscription, MemorySubscriptionOptions};
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
 
+use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -21,31 +22,72 @@ use proven_messaging::subscription_handler::SubscriptionHandler;
 use proven_messaging::Message;
 
 /// A subject that is both publishable and subscribable.
-#[derive(Clone, Debug)]
-pub struct MemorySubject<T = Bytes, R = Bytes>
+#[derive(Debug)]
+pub struct MemorySubject<T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     full_subject: String,
-    _marker: PhantomData<(T, R)>,
+    _marker: PhantomData<(T, D, S)>,
 }
 
-impl<T, R> From<MemorySubject<T, R>> for String
+impl<T, D, S> Clone for MemorySubject<T, D, S>
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            full_subject: self.full_subject.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T, D, S> From<MemorySubject<T, D, S>> for String
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
-    fn from(subject: MemorySubject<T, R>) -> Self {
+    fn from(subject: MemorySubject<T, D, S>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T, R> MemorySubject<T, R>
+impl<T, D, S> MemorySubject<T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     /// Creates a new `MemorySubject`.
     ///
@@ -67,23 +109,30 @@ where
 }
 
 #[async_trait]
-impl<T, R> Subject for MemorySubject<T, R>
+impl<T, D, S> Subject<T, D, S> for MemorySubject<T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = Error;
-    type Type = T;
-    type ResponseType = R;
-    type SubscriptionType<X>
-        = MemorySubscription<X, T, R>
-    where
-        X: SubscriptionHandler<Type = T, ResponseType = R>;
-    type StreamType = MemoryStream<T>;
 
-    async fn subscribe<X>(&self, handler: X) -> Result<MemorySubscription<X, T, R>, Error>
+    type SubscriptionType<X>
+        = MemorySubscription<Self, X, T, D, S>
     where
-        X: SubscriptionHandler<Type = T, ResponseType = R>,
+        X: SubscriptionHandler<T, D, S>;
+
+    type StreamType = MemoryStream<T, D, S>;
+
+    async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Error>
+    where
+        X: SubscriptionHandler<T, D, S>,
     {
         MemorySubscription::new(
             self.full_subject.clone(),
@@ -97,17 +146,18 @@ where
     async fn to_stream<K>(
         &self,
         stream_name: K,
-        options: <MemoryStream<T> as proven_messaging::stream::Stream>::Options,
-    ) -> Result<MemoryStream<T>, <MemoryStream<T> as proven_messaging::stream::Stream>::Error>
+        options: <MemoryStream<T, D, S> as Stream<T, D, S>>::Options,
+    ) -> Result<MemoryStream<T, D, S>, <MemoryStream<T, D, S> as Stream<T, D, S>>::Error>
     where
         K: Clone + Into<String> + Send,
     {
-        let unpublishable_subject: MemoryUnpublishableSubject<T> = MemoryUnpublishableSubject {
-            full_subject: self.full_subject.clone(),
-            _marker: PhantomData,
-        };
+        let unpublishable_subject: MemoryUnpublishableSubject<T, D, S> =
+            MemoryUnpublishableSubject {
+                full_subject: self.full_subject.clone(),
+                _marker: PhantomData,
+            };
 
-        MemoryStream::<T>::new_with_subjects(
+        MemoryStream::<T, D, S>::new_with_subjects(
             stream_name.into(),
             options,
             vec![unpublishable_subject],
@@ -118,18 +168,25 @@ where
 
 // Only implement Publishable for non-wildcard subjects
 #[async_trait]
-impl<T, R> PublishableSubject for MemorySubject<T, R>
+impl<T, D, S> PublishableSubject<T, D, S> for MemorySubject<T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     #[allow(clippy::significant_drop_tightening)]
     async fn publish(&self, message: Message<T>) -> Result<(), Error> {
         let mut state = GLOBAL_STATE.lock().await;
-        if !state.has::<SubjectState<Self::Type>>() {
-            state.put(SubjectState::<Self::Type>::default());
+        if !state.has::<SubjectState<T>>() {
+            state.put(SubjectState::<T>::default());
         }
-        let subject_state = state.borrow::<SubjectState<Self::Type>>();
+        let subject_state = state.borrow::<SubjectState<T>>();
         let subjects = subject_state.subjects.lock().await;
         let subscribers = subjects.keys().cloned().collect::<Vec<_>>();
         for subscriber in subscribers {
@@ -148,40 +205,84 @@ where
         Ok(())
     }
 
-    async fn request(&self, _message: Message<T>) -> Result<Message<R>, Error> {
+    async fn request<X>(&self, _message: Message<T>) -> Result<Message<X::ResponseType>, Error>
+    where
+        X: SubscriptionHandler<T, D, S>,
+    {
         unimplemented!()
     }
 }
 
 /// A subject that is not publishable (contains a wildcard).
-#[derive(Clone, Debug)]
-pub struct MemoryUnpublishableSubject<T = Bytes, R = Bytes>
+#[derive(Debug)]
+pub struct MemoryUnpublishableSubject<T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     full_subject: String,
-    _marker: PhantomData<(T, R)>,
+    _marker: PhantomData<(T, D, S)>,
 }
 
-impl<T, R> From<MemoryUnpublishableSubject<T, R>> for String
+impl<T, D, S> Clone for MemoryUnpublishableSubject<T, D, S>
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            full_subject: self.full_subject.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T, D, S> From<MemoryUnpublishableSubject<T, D, S>> for String
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
-    fn from(subject: MemoryUnpublishableSubject<T, R>) -> Self {
+    fn from(subject: MemoryUnpublishableSubject<T, D, S>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T, R> From<MemorySubject<T, R>> for MemoryUnpublishableSubject<T, R>
+impl<T, D, S> From<MemorySubject<T, D, S>> for MemoryUnpublishableSubject<T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
-    fn from(subject: MemorySubject<T, R>) -> Self {
+    fn from(subject: MemorySubject<T, D, S>) -> Self {
         Self {
             full_subject: subject.full_subject,
             _marker: PhantomData,
@@ -190,23 +291,30 @@ where
 }
 
 #[async_trait]
-impl<T, R> Subject for MemoryUnpublishableSubject<T, R>
+impl<T, D, S> Subject<T, D, S> for MemoryUnpublishableSubject<T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = Error;
-    type Type = T;
-    type ResponseType = R;
-    type SubscriptionType<X>
-        = MemorySubscription<X, T, R>
-    where
-        X: SubscriptionHandler<Type = T, ResponseType = R>;
-    type StreamType = MemoryStream<T>;
 
-    async fn subscribe<X>(&self, handler: X) -> Result<MemorySubscription<X, T, R>, Error>
+    type SubscriptionType<X>
+        = MemorySubscription<Self, X, T, D, S>
     where
-        X: SubscriptionHandler<Type = T, ResponseType = R>,
+        X: SubscriptionHandler<T, D, S>;
+
+    type StreamType = MemoryStream<T, D, S>;
+
+    async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Error>
+    where
+        X: SubscriptionHandler<T, D, S>,
     {
         MemorySubscription::new(
             self.full_subject.clone(),
@@ -220,17 +328,17 @@ where
     async fn to_stream<K>(
         &self,
         stream_name: K,
-        options: <MemoryStream<T> as proven_messaging::stream::Stream>::Options,
-    ) -> Result<MemoryStream<T>, <MemoryStream<T> as proven_messaging::stream::Stream>::Error>
+        options: <MemoryStream<T, D, S> as Stream<T, D, S>>::Options,
+    ) -> Result<MemoryStream<T, D, S>, <MemoryStream<T, D, S> as Stream<T, D, S>>::Error>
     where
         K: Clone + Into<String> + Send,
     {
-        let unpublishable_subject: MemoryUnpublishableSubject<T> = MemoryUnpublishableSubject {
+        let unpublishable_subject = Self {
             full_subject: self.full_subject.clone(),
             _marker: PhantomData,
         };
 
-        MemoryStream::<T>::new_with_subjects(
+        MemoryStream::<T, D, S>::new_with_subjects(
             stream_name.into(),
             options,
             vec![unpublishable_subject],
@@ -243,30 +351,74 @@ macro_rules! define_scoped_subject {
     ($n:expr, $parent:ident, $parent_non_pub:ident, $doc:expr, $doc_non_pub:expr) => {
         paste::paste! {
             #[doc = $doc]
-            #[derive(Clone, Debug)]
-            pub struct [<MemorySubject $n>]<T, R>
+            #[derive(Debug)]
+            pub struct [<MemorySubject $n>]<T, D, S>
             where
-                T: Clone + Debug + Send + Sync + 'static,
-                R: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+
             {
                 full_subject: String,
-                _marker: PhantomData<(T, R)>,
+                _marker: PhantomData<(T, D, S)>,
             }
 
-            impl<T, R> From<[<MemorySubject $n>]<T, R>> for String
+            impl<T, D, S> Clone for [<MemorySubject $n>]<T, D, S>
             where
-                T: Clone + Debug + Send + Sync + 'static,
-                R: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
             {
-                fn from(subject: [<MemorySubject $n>]<T, R>) -> Self {
+                fn clone(&self) -> Self {
+                    Self {
+                        full_subject: self.full_subject.clone(),
+                        _marker: PhantomData,
+                    }
+                }
+            }
+
+            impl<T, D, S> From<[<MemorySubject $n>]<T, D, S>> for String
+            where
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+
+            {
+                fn from(subject: [<MemorySubject $n>]<T, D, S>) -> Self {
                     subject.full_subject
                 }
             }
 
-            impl<T, R> [<MemorySubject $n>]<T, R>
+            impl<T, D, S> [<MemorySubject $n>]<T, D, S>
             where
-                T: Clone + Debug + Send + Sync + 'static,
-                R: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+
             {
                 #[doc = "Creates a new `MemoryStream" $n "`."]
                 ///
@@ -287,16 +439,22 @@ macro_rules! define_scoped_subject {
                 }
             }
 
-            impl<T, R> [<PublishableSubject $n>] for [<MemorySubject $n>]<T, R>
+            impl<T, D, S> [<PublishableSubject $n>]<T, D, S> for [<MemorySubject $n>]<T, D, S>
             where
-                T: Clone + Debug + Send + Sync + 'static,
-                R: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+
             {
-                type Type = T;
-                type ResponseType = R;
-                type Scoped = $parent<T, R>;
-                type WildcardAllScoped = MemoryUnpublishableSubject<T, R>;
-                type WildcardAnyScoped = $parent_non_pub<T, R>;
+                type Scoped = $parent<T, D, S>;
+                type WildcardAllScoped = MemoryUnpublishableSubject<T, D, S>;
+                type WildcardAnyScoped = $parent_non_pub<T, D, S>;
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     MemoryUnpublishableSubject {
@@ -324,36 +482,78 @@ macro_rules! define_scoped_subject {
             }
 
             #[doc = $doc_non_pub]
-            #[derive(Clone, Debug)]
-            pub struct [<MemoryUnpublishableSubject $n>]<T, R>
+            #[derive(Debug)]
+            pub struct [<MemoryUnpublishableSubject $n>]<T, D, S>
             where
-                T: Clone + Debug + Send + Sync + 'static,
-                R: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+
             {
                 full_subject: String,
-                _marker: PhantomData<(T, R)>,
+                _marker: PhantomData<(T, D, S)>,
             }
 
-            impl<T, R> From<[<MemoryUnpublishableSubject $n>]<T, R>> for String
+            impl<T, D, S> Clone for [<MemoryUnpublishableSubject $n>]<T, D, S>
             where
-                T: Clone + Debug + Send + Sync + 'static,
-                R: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
             {
-                fn from(subject: [<MemoryUnpublishableSubject $n>]<T, R>) -> Self {
+                fn clone(&self) -> Self {
+                    Self {
+                        full_subject: self.full_subject.clone(),
+                        _marker: PhantomData,
+                    }
+                }
+            }
+
+            impl<T, D, S> From<[<MemoryUnpublishableSubject $n>]<T, D, S>> for String
+            where
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+
+            {
+                fn from(subject: [<MemoryUnpublishableSubject $n>]<T, D, S>) -> Self {
                     subject.full_subject
                 }
             }
 
-            impl<T, R> [<Subject $n>] for [<MemoryUnpublishableSubject $n>]<T, R>
+            impl<T, D, S> [<Subject $n>]<T, D, S> for [<MemoryUnpublishableSubject $n>]<T, D, S>
             where
-                T: Clone + Debug + Send + Sync + 'static,
-                R: Clone + Debug + Send + Sync + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+
             {
-                type Type = T;
-                type ResponseType = R;
-                type Scoped = $parent_non_pub<T, R>;
-                type WildcardAllScoped = MemoryUnpublishableSubject<T, R>;
-                type WildcardAnyScoped = $parent_non_pub<T, R>;
+                type Scoped = $parent_non_pub<T, D, S>;
+                type WildcardAllScoped = MemoryUnpublishableSubject<T, D, S>;
+                type WildcardAnyScoped = $parent_non_pub<T, D, S>;
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     MemoryUnpublishableSubject {

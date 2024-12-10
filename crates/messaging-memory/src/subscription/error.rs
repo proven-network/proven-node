@@ -1,18 +1,13 @@
-use proven_messaging::{
-    subscription::SubscriptionError, subscription_handler::SubscriptionHandlerError,
-};
+use proven_messaging::subscription::SubscriptionError;
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
 #[derive(Clone, Debug, Error)]
 #[error("Subscriber error")]
-pub enum Error<HE>
-where
-    HE: SubscriptionHandlerError,
-{
+pub enum Error {
     /// Handler error.
-    #[error("Handler error: {0}")]
-    Handler(HE),
+    #[error("Handler error:")]
+    Handler,
 }
 
-impl<HE> SubscriptionError for Error<HE> where HE: SubscriptionHandlerError {}
+impl SubscriptionError for Error {}

@@ -21,28 +21,21 @@ use proven_messaging::subscription_handler::SubscriptionHandler;
 
 /// A NATS-backed publishable subject
 #[derive(Clone, Debug)]
-pub struct NatsSubject<T = Bytes, R = Bytes> {
+pub struct NatsSubject<T> {
     client: Client,
     full_subject: String,
-    _marker: PhantomData<(T, R)>,
+    _marker: PhantomData<T>,
 }
 
-impl<T, R> From<NatsSubject<T, R>> for String {
-    fn from(subject: NatsSubject<T, R>) -> Self {
+impl<T> From<NatsSubject<T>> for String {
+    fn from(subject: NatsSubject<T>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T, R> NatsSubject<T, R>
+impl<T> NatsSubject<T>
 where
     T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-        + 'static,
-    R: Clone
         + Debug
         + Send
         + Sync
@@ -69,7 +62,7 @@ where
 }
 
 #[async_trait]
-impl<T, R> Subject for NatsSubject<T, R>
+impl<T> Subject for NatsSubject<T>
 where
     T: Clone
         + Debug
@@ -78,26 +71,24 @@ where
         + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
         + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
-    R: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-        + 'static,
 {
     type Error = Error;
+
     type Type = T;
-    type ResponseType = R;
+
     type SubscriptionType<X>
-        = NatsSubscription<X, T, R>
+        = NatsSubscription<X, T, X::ResponseType>
     where
-        X: SubscriptionHandler<Type = T, ResponseType = R>;
+        X: SubscriptionHandler<Type = T>;
+
     type StreamType = NatsStream<T>;
 
-    async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error>
+    async fn subscribe<X>(
+        &self,
+        handler: X,
+    ) -> Result<NatsSubscription<X, Self::Type, X::ResponseType>, Self::Error>
     where
-        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>,
+        X: SubscriptionHandler<Type = Self::Type>,
     {
         let subscription = NatsSubscription::new(
             self.full_subject.clone(),
@@ -124,16 +115,9 @@ where
 }
 
 #[async_trait]
-impl<T, R> PublishableSubject for NatsSubject<T, R>
+impl<T> PublishableSubject for NatsSubject<T>
 where
     T: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-        + 'static,
-    R: Clone
         + Debug
         + Send
         + Sync
@@ -159,27 +143,30 @@ where
         Ok(())
     }
 
-    async fn request(&self, _message: Message<T>) -> Result<Message<R>, Self::Error> {
+    async fn request<X>(&self, _message: Message<T>) -> Result<Message<X::ResponseType>, Error>
+    where
+        X: SubscriptionHandler<Type = Self::Type>,
+    {
         unimplemented!()
     }
 }
 
 /// A NATS-backed subscribe-only subject
 #[derive(Clone, Debug)]
-pub struct NatsUnpublishableSubject<T = Bytes, R = Bytes> {
+pub struct NatsUnpublishableSubject<T> {
     client: Client,
     full_subject: String,
-    _marker: PhantomData<(T, R)>,
+    _marker: PhantomData<T>,
 }
 
-impl<T, R> From<NatsUnpublishableSubject<T, R>> for String {
-    fn from(subject: NatsUnpublishableSubject<T, R>) -> Self {
+impl<T> From<NatsUnpublishableSubject<T>> for String {
+    fn from(subject: NatsUnpublishableSubject<T>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T, R> From<NatsSubject<T, R>> for NatsUnpublishableSubject<T, R> {
-    fn from(subject: NatsSubject<T, R>) -> Self {
+impl<T> From<NatsSubject<T>> for NatsUnpublishableSubject<T> {
+    fn from(subject: NatsSubject<T>) -> Self {
         Self {
             client: subject.client,
             full_subject: subject.full_subject,
@@ -188,10 +175,16 @@ impl<T, R> From<NatsSubject<T, R>> for NatsUnpublishableSubject<T, R> {
     }
 }
 
-impl<T, R> NatsUnpublishableSubject<T, R>
+impl<T> NatsUnpublishableSubject<T>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+        + 'static,
 {
     /// Creates a new `NatsSubject`.
     ///
@@ -212,7 +205,7 @@ where
 }
 
 #[async_trait]
-impl<T, R> Subject for NatsUnpublishableSubject<T, R>
+impl<T> Subject for NatsUnpublishableSubject<T>
 where
     T: Clone
         + Debug
@@ -221,26 +214,25 @@ where
         + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
         + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
-    R: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-        + 'static,
 {
     type Error = Error;
+    type DeserializationError = ciborium::de::Error<std::io::Error>;
+    type SerializationError = ciborium::ser::Error<std::io::Error>;
     type Type = T;
-    type ResponseType = R;
+
     type SubscriptionType<X>
-        = NatsSubscription<X, T, R>
+        = NatsSubscription<X, T, X::ResponseType>
     where
-        X: SubscriptionHandler<Type = T, ResponseType = R>;
+        X: SubscriptionHandler<Type = T>;
+
     type StreamType = NatsStream<T>;
 
-    async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error>
+    async fn subscribe<X>(
+        &self,
+        handler: X,
+    ) -> Result<NatsSubscription<X, Self::Type, X::ResponseType>, Self::Error>
     where
-        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>,
+        X: SubscriptionHandler<Type = Self::Type>,
     {
         let subscription = NatsSubscription::new(
             self.full_subject.clone(),
@@ -271,7 +263,7 @@ macro_rules! define_scoped_subject {
         paste::paste! {
             #[doc = $doc]
             #[derive(Clone, Debug)]
-            pub struct [<NatsSubject $n>]<T, R>
+            pub struct [<NatsSubject $n>]<T>
             where
                 T: Clone
                     + Debug
@@ -280,20 +272,14 @@ macro_rules! define_scoped_subject {
                     + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
                     + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
                     + 'static,
-                R: Clone
-                    + Debug
-                    + Send
-                    + Sync
-                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-                    + 'static,
+
             {
                 client: Client,
                 full_subject: String,
-                _marker: PhantomData<(T, R)>,
+                _marker: PhantomData<T>,
             }
 
-            impl<T, R> From<[<NatsSubject $n>]<T, R>> for String
+            impl<T> From<[<NatsSubject $n>]<T>> for String
             where
                 T: Clone
                     + Debug
@@ -302,20 +288,14 @@ macro_rules! define_scoped_subject {
                     + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
                     + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
                     + 'static,
-                R: Clone
-                    + Debug
-                    + Send
-                    + Sync
-                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-                    + 'static,
+
             {
-                fn from(subject: [<NatsSubject $n>]<T, R>) -> Self {
+                fn from(subject: [<NatsSubject $n>]<T>) -> Self {
                     subject.full_subject
                 }
             }
 
-            impl<T, R> [<NatsSubject $n>]<T, R>
+            impl<T> [<NatsSubject $n>]<T>
             where
                 T: Clone
                     + Debug
@@ -324,13 +304,7 @@ macro_rules! define_scoped_subject {
                     + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
                     + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
                     + 'static,
-                R: Clone
-                    + Debug
-                    + Send
-                    + Sync
-                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-                    + 'static,
+
             {
                 #[doc = "Creates a new `NatsStream" $n "`."]
                 ///
@@ -352,7 +326,7 @@ macro_rules! define_scoped_subject {
                 }
             }
 
-            impl<T, R> [<PublishableSubject $n>] for [<NatsSubject $n>]<T, R>
+            impl<T> [<PublishableSubject $n>] for [<NatsSubject $n>]<T>
             where
                 T: Clone
                     + Debug
@@ -361,19 +335,13 @@ macro_rules! define_scoped_subject {
                     + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
                     + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
                     + 'static,
-                R: Clone
-                    + Debug
-                    + Send
-                    + Sync
-                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-                    + 'static,
+
             {
                 type Type = T;
-                type ResponseType = R;
-                type Scoped = $parent<T, R>;
-                type WildcardAllScoped = NatsUnpublishableSubject<T, R>;
-                type WildcardAnyScoped = $parent_non_pub<T, R>;
+
+                type Scoped = $parent<T>;
+                type WildcardAllScoped = NatsUnpublishableSubject<T>;
+                type WildcardAnyScoped = $parent_non_pub<T>;
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     NatsUnpublishableSubject {
@@ -405,7 +373,7 @@ macro_rules! define_scoped_subject {
 
             #[doc = $doc_non_pub]
             #[derive(Clone, Debug)]
-            pub struct [<NatsUnpublishableSubject $n>]<T, R>
+            pub struct [<NatsUnpublishableSubject $n>]<T>
             where
                 T: Clone
                     + Debug
@@ -414,20 +382,14 @@ macro_rules! define_scoped_subject {
                     + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
                     + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
                     + 'static,
-                R: Clone
-                    + Debug
-                    + Send
-                    + Sync
-                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-                    + 'static,
+
             {
                 client: Client,
                 full_subject: String,
-                _marker: PhantomData<(T, R)>,
+                _marker: PhantomData<T>,
             }
 
-            impl<T, R> From<[<NatsUnpublishableSubject $n>]<T, R>> for String
+            impl<T> From<[<NatsUnpublishableSubject $n>]<T>> for String
             where
                 T: Clone
                     + Debug
@@ -436,20 +398,14 @@ macro_rules! define_scoped_subject {
                     + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
                     + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
                     + 'static,
-                R: Clone
-                    + Debug
-                    + Send
-                    + Sync
-                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-                    + 'static,
+
             {
-                fn from(subject: [<NatsUnpublishableSubject $n>]<T, R>) -> Self {
+                fn from(subject: [<NatsUnpublishableSubject $n>]<T>) -> Self {
                     subject.full_subject
                 }
             }
 
-            impl<T, R> [<Subject $n>] for [<NatsUnpublishableSubject $n>]<T, R>
+            impl<T> [<Subject $n>] for [<NatsUnpublishableSubject $n>]<T>
             where
                 T: Clone
                     + Debug
@@ -458,19 +414,13 @@ macro_rules! define_scoped_subject {
                     + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
                     + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
                     + 'static,
-                R: Clone
-                    + Debug
-                    + Send
-                    + Sync
-                    + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-                    + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-                    + 'static,
+
             {
                 type Type = T;
-                type ResponseType = R;
-                type Scoped = $parent_non_pub<T, R>;
-                type WildcardAllScoped = NatsUnpublishableSubject<T, R>;
-                type WildcardAnyScoped = $parent_non_pub<T, R>;
+
+                type Scoped = $parent_non_pub<T>;
+                type WildcardAllScoped = NatsUnpublishableSubject<T>;
+                type WildcardAnyScoped = $parent_non_pub<T>;
 
                 fn all(&self) -> Self::WildcardAllScoped {
                     NatsUnpublishableSubject {

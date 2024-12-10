@@ -1,10 +1,12 @@
-use crate::subscription_handler::{SubscriptionHandler, SubscriptionHandlerError};
+use crate::subject::Subject;
+use crate::subscription_handler::SubscriptionHandler;
 use crate::Message;
 
 use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 
 /// Marker trait for subscriber errors
 pub trait SubscriptionError: Error + Send + Sync + 'static {}
@@ -14,25 +16,29 @@ pub trait SubscriptionOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a subscriber of a subject.
 #[async_trait]
-pub trait Subscription<X>
+pub trait Subscription<P, X, T, D, S>
 where
-    Self: Clone + Send + Sync + 'static,
-    X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>,
+    Self: Clone + Debug + Send + Sync + 'static,
+    P: Subject<T, D, S>,
+    X: SubscriptionHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Error + Send + Sync + 'static,
+    S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the subscriber.
     type Error: SubscriptionError;
 
-    /// The handler error type for the subscriber.
-    type HandlerError: SubscriptionHandlerError = X::Error;
-
-    /// The type of data expected on the subscribed subject.
-    type Type: Clone + Debug + Send + Sync + 'static;
-
-    /// The response type for the subscriber.
-    type ResponseType: Clone + Debug + Send + Sync + 'static;
-
     /// The options for the subscriber.
     type Options: SubscriptionOptions;
+
+    /// The subject type for the subscriber.
+    type SubjectType: Subject<T, D, S>;
 
     /// Creates a new subscriber.
     async fn new(
@@ -48,5 +54,5 @@ where
     fn handler(&self) -> X;
 
     /// Returns the last message received by the subscriber.
-    async fn last_message(&self) -> Option<Message<Self::Type>>;
+    async fn last_message(&self) -> Option<Message<T>>;
 }

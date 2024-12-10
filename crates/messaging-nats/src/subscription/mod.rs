@@ -28,7 +28,7 @@ impl SubscriptionOptions for NatsSubscriptionOptions {}
 
 /// A NATS-based subscriber
 #[derive(Clone, Debug)]
-pub struct NatsSubscription<X, T = Bytes, R = Bytes> {
+pub struct NatsSubscription<X, T, R> {
     cancel_result_channel: Arc<Mutex<Option<CancelResultChannel>>>,
     cancel_token: CancellationToken,
     handler: X,

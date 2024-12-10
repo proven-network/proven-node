@@ -29,7 +29,7 @@ impl ConsumerOptions for NatsConsumerOptions {}
 
 /// A NATS consumer.
 #[derive(Clone, Debug)]
-pub struct NatsConsumer<X, T>
+pub struct NatsConsumer<T>
 where
     T: Clone
         + Debug
@@ -38,16 +38,14 @@ where
         + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
         + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
-    X: ConsumerHandler<T>,
 {
-    handler: X,
     _nats_client: NatsClient,
     nats_consumer: NatsConsumerType<NatsConsumerConfig>,
     _nats_jetstream_context: Context,
-    stream: <Self as Consumer<X, T>>::StreamType,
+    _stream: <Self as Consumer>::StreamType,
 }
 
-impl<X, T> NatsConsumer<X, T>
+impl<T> NatsConsumer<T>
 where
     T: Clone
         + Debug
@@ -56,13 +54,15 @@ where
         + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
         + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
-    X: ConsumerHandler<T>,
 {
     /// Creates a new NATS consumer.
-    async fn process_messages(
+    async fn process_messages<X>(
         nats_consumer: NatsConsumerType<NatsConsumerConfig>,
         handler: X,
-    ) -> Result<(), Error<X::Error>> {
+    ) -> Result<(), Error>
+    where
+        X: ConsumerHandler<Type = T> + Clone + Send + Sync + 'static,
+    {
         loop {
             let mut messages = nats_consumer
                 .messages()
@@ -78,14 +78,14 @@ where
                 handler
                     .handle(Message { headers, payload })
                     .await
-                    .map_err(Error::Handler)?;
+                    .map_err(|_| Error::Handler)?;
             }
         }
     }
 }
 
 #[async_trait]
-impl<X, T> Consumer<X, T> for NatsConsumer<X, T>
+impl<T> Consumer for NatsConsumer<T>
 where
     T: Clone
         + Debug
@@ -94,21 +94,29 @@ where
         + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
         + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
-    X: ConsumerHandler<T>,
 {
-    type Error = Error<X::Error>;
+    type Error = Error;
+    type HandlerError<X>
+        = X::Error
+    where
+        X: ConsumerHandler<Type = T>;
 
     type Options = NatsConsumerOptions;
+
+    type Type = T;
 
     type StreamType = NatsStream<T>;
 
     #[allow(clippy::significant_drop_tightening)]
-    async fn new(
+    async fn new<X>(
         name: String,
         stream: Self::StreamType,
         options: NatsConsumerOptions,
         handler: X,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, Self::Error>
+    where
+        X: ConsumerHandler<Type = T> + Clone + Send + Sync + 'static,
+    {
         let nats_consumer = options
             .nats_jetstream_context
             .create_consumer_on_stream(
@@ -128,16 +136,11 @@ where
         ));
 
         Ok(Self {
-            handler,
             _nats_client: options.nats_client,
             nats_consumer,
             _nats_jetstream_context: options.nats_jetstream_context,
-            stream,
+            _stream: stream,
         })
-    }
-
-    fn handler(&self) -> X {
-        self.handler.clone()
     }
 
     async fn last_seq(&self) -> Result<u64, Self::Error> {
@@ -151,9 +154,5 @@ where
             .stream_sequence;
 
         Ok(seq)
-    }
-
-    fn stream(&self) -> Self::StreamType {
-        self.stream.clone()
     }
 }

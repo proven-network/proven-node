@@ -2,54 +2,74 @@ mod error;
 
 pub use error::Error;
 
+use std::error::Error as StdError;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_messaging::subscription_handler::SubscriptionHandler;
 use proven_messaging::Message;
 use tokio::sync::mpsc;
 
-#[derive(Clone, Debug)]
-pub struct StreamSubscriptionHandler<T, R> {
+#[derive(Debug)]
+pub struct StreamSubscriptionHandler<T, D, S> {
     sender: mpsc::Sender<Message<T>>,
-    _marker: std::marker::PhantomData<R>,
+    _marker: std::marker::PhantomData<(D, S)>,
 }
 
-impl<T, R> StreamSubscriptionHandler<T, R>
+impl<T, D, S> Clone for StreamSubscriptionHandler<T, D, S> {
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T, D, S> StreamSubscriptionHandler<T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     pub const fn new(sender: mpsc::Sender<Message<T>>) -> Self {
         Self {
             sender,
-            _marker: std::marker::PhantomData,
+            _marker: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<T, R> SubscriptionHandler for StreamSubscriptionHandler<T, R>
+impl<T, D, S> SubscriptionHandler<T, D, S> for StreamSubscriptionHandler<T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
-    R: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = Error<T>;
+    type Error = Error;
 
-    type Type = T;
+    type ResponseType = T;
 
-    type ResponseType = R;
-
-    async fn handle(&self, message: Message<Self::Type>) -> Result<(), Self::Error> {
-        self.sender.send(message).await.map_err(Error::Send)
-    }
-
-    async fn respond(
+    async fn handle(
         &self,
-        message: Message<Self::Type>,
-    ) -> Result<Message<Self::ResponseType>, Self::Error> {
-        let _ = self.sender.send(message).await.map_err(Error::Send);
+        message: Message<T>,
+    ) -> Result<Option<Message<Self::ResponseType>>, Self::Error> {
+        self.sender.send(message).await.map_err(|_| Error::Send)?;
 
-        unimplemented!()
+        Ok(None)
     }
 }

@@ -2,18 +2,22 @@ mod error;
 
 pub use error::Error;
 
-use crate::stream::MemoryStream;
+use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
+use proven_messaging::stream::Stream;
 use proven_messaging::Message;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+
+use crate::stream::MemoryStream;
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -21,29 +25,69 @@ pub struct MemoryConsumerOptions;
 impl ConsumerOptions for MemoryConsumerOptions {}
 
 /// A in-memory subscriber.
-#[derive(Clone, Debug)]
-pub struct MemoryConsumer<T>
+#[derive(Debug)]
+pub struct MemoryConsumer<P, X, T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
+    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
+    handler: X,
     last_seq: Arc<Mutex<u64>>,
-    _marker: PhantomData<T>,
+    _marker: PhantomData<(P, T, S, D)>,
 }
 
-impl<T> MemoryConsumer<T>
+impl<P, X, T, D, S> Clone for MemoryConsumer<P, X, T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
+    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            handler: self.handler.clone(),
+            last_seq: self.last_seq.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<P, X, T, D, S> MemoryConsumer<P, X, T, D, S>
+where
+    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     /// Creates a new NATS consumer.
-    async fn process_messages<X>(
+    async fn process_messages(
         last_seq: Arc<Mutex<u64>>,
-        mut receiver_stream: ReceiverStream<Message<<Self as Consumer>::Type>>,
+        mut receiver_stream: ReceiverStream<Message<T>>,
         handler: X,
-    ) -> Result<(), Error>
-    where
-        X: ConsumerHandler<Type = T> + Clone + Send + Sync + 'static,
-        X::Type: Clone + Debug + Send + Sync + 'static,
-    {
+    ) -> Result<(), Error> {
         while let Some(message) = receiver_stream.next().await {
             handler.handle(message).await.map_err(|_| Error::Handler)?;
 
@@ -56,27 +100,32 @@ where
 }
 
 #[async_trait]
-impl<T> Consumer for MemoryConsumer<T>
+impl<P, X, T, D, S> Consumer<P, X, T, D, S> for MemoryConsumer<P, X, T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
+    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = Error;
 
     type Options = MemoryConsumerOptions;
 
-    type Type = T;
+    type StreamType = MemoryStream<T, D, S>;
 
-    type StreamType = MemoryStream<T>;
-
-    async fn new<X>(
+    async fn new(
         _name: String,
         stream: Self::StreamType,
-        _options: MemoryConsumerOptions,
+        _options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error>
-    where
-        X: ConsumerHandler<Type = T> + Clone + Send + Sync + 'static,
-    {
+    ) -> Result<Self, Self::Error> {
         let last_seq = Arc::new(Mutex::new(0));
 
         tokio::spawn(Self::process_messages(
@@ -86,6 +135,7 @@ where
         ));
 
         Ok(Self {
+            handler,
             last_seq,
             _marker: PhantomData,
         })
