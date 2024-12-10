@@ -54,13 +54,14 @@ where
         N: Clone + Into<String> + Send;
 
     /// Creates a new stream with the given subjects - must all be the same type.
-    async fn new_with_subjects<N>(
+    async fn new_with_subjects<N, S>(
         stream_name: N,
         options: Self::Options,
-        subjects: Vec<Self::SubjectType>,
+        subjects: Vec<S>,
     ) -> Result<Self, Self::Error>
     where
-        N: Clone + Into<String> + Send;
+        N: Clone + Into<String> + Send,
+        S: Into<Self::SubjectType> + Clone + Send;
 
     /// Gets a client for a service.
     async fn client<N, X>(
@@ -130,10 +131,12 @@ where
     async fn init(&self) -> Result<Self::StreamType, Self::Error>;
 
     /// Initializes the stream with the given subjects - must all be the same type.
-    async fn init_with_subjects(
+    async fn init_with_subjects<S>(
         &self,
-        subjects: Vec<Self::SubjectType>,
-    ) -> Result<Self::StreamType, Self::Error>;
+        subjects: Vec<S>,
+    ) -> Result<Self::StreamType, Self::Error>
+    where
+        S: Into<Self::SubjectType> + Clone + Send;
 }
 
 macro_rules! define_scoped_stream {

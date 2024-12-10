@@ -151,6 +151,20 @@ where
     }
 }
 
+impl<T, R> From<MemorySubject<T, R>> for MemoryUnpublishableSubject<T, R>
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
+{
+    fn from(subject: MemorySubject<T, R>) -> Self {
+        Self {
+            full_subject: subject.full_subject,
+            _marker: PhantomData,
+        }
+    }
+}
+
 #[async_trait]
 impl<T, R> Subject for MemoryUnpublishableSubject<T, R>
 where
