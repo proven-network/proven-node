@@ -28,16 +28,16 @@ impl SubscriptionOptions for NatsSubscriptionOptions {}
 
 /// A NATS-based subscriber
 #[derive(Clone, Debug)]
-pub struct NatsSubscription<X, T = Bytes> {
+pub struct NatsSubscription<X, T = Bytes, R = Bytes> {
     cancel_result_channel: Arc<Mutex<Option<CancelResultChannel>>>,
     cancel_token: CancellationToken,
     handler: X,
     last_message: Arc<Mutex<Option<Message<T>>>>,
-    _marker: PhantomData<T>,
+    _marker: PhantomData<R>,
 }
 
 #[async_trait]
-impl<X, T> Subscription<X, T> for NatsSubscription<X, T>
+impl<X, T, R> Subscription<X> for NatsSubscription<X, T, R>
 where
     T: Clone
         + Debug
@@ -46,10 +46,19 @@ where
         + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
         + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
-    X: SubscriptionHandler<T>,
+    R: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
+        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+        + 'static,
+    X: SubscriptionHandler<Type = T, ResponseType = R>,
 {
     type Error = Error;
-
+    type HandlerError = X::Error;
+    type Type = T;
+    type ResponseType = R;
     type Options = NatsSubscriptionOptions;
 
     async fn new(
@@ -97,7 +106,7 @@ where
 
                             let _ = subscription_clone
                                 .handler()
-                                .handle(subject_string.clone(), message.clone())
+                                .handle(message.clone())
                                 .await;
 
                                 subscription_clone.last_message.lock().await.replace(message);
