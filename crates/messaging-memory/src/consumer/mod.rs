@@ -1,8 +1,8 @@
 mod error;
 
-use crate::stream::MemoryStream;
 pub use error::Error;
 
+use crate::stream::MemoryStream;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -28,8 +28,7 @@ where
     R: Clone + Debug + Send + Sync + 'static,
 {
     last_seq: Arc<Mutex<u64>>,
-    stream: <Self as Consumer>::StreamType,
-    _marker: PhantomData<T>,
+    _marker: PhantomData<(T, R)>,
 }
 
 impl<T, R> MemoryConsumer<T, R>
@@ -44,7 +43,7 @@ where
         handler: X,
     ) -> Result<(), Error>
     where
-        X: ConsumerHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
+        X: ConsumerHandler<Type = T> + Clone + Send + Sync + 'static,
         X::Type: Clone + Debug + Send + Sync + 'static,
         X::ResponseType: Clone + Debug + Send + Sync + 'static,
     {
@@ -73,7 +72,7 @@ where
 
     type ResponseType = R;
 
-    type StreamType = MemoryStream<Self::Type, Self::ResponseType>;
+    type StreamType = MemoryStream<T>;
 
     async fn new<X>(
         _name: String,
@@ -82,9 +81,7 @@ where
         handler: X,
     ) -> Result<Self, Self::Error>
     where
-        X: ConsumerHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
-        X::Type: Clone + Debug + Send + Sync + 'static,
-        X::ResponseType: Clone + Debug + Send + Sync + 'static,
+        X: ConsumerHandler<Type = T> + Clone + Send + Sync + 'static,
     {
         let last_seq = Arc::new(Mutex::new(0));
 
@@ -96,7 +93,6 @@ where
 
         Ok(Self {
             last_seq,
-            stream,
             _marker: PhantomData,
         })
     }
@@ -104,9 +100,5 @@ where
     async fn last_seq(&self) -> Result<u64, Self::Error> {
         let seq = self.last_seq.lock().await;
         Ok(*seq)
-    }
-
-    fn stream(&self) -> Self::StreamType {
-        self.stream.clone()
     }
 }

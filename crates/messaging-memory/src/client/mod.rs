@@ -6,44 +6,53 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
-use proven_messaging::client::Client;
+use proven_messaging::client::{Client, ClientOptions};
 use proven_messaging::service_handler::ServiceHandler;
 
-use crate::service::MemoryService;
 use crate::stream::MemoryStream;
+
+/// Options for the in-memory subscriber (there are none).
+#[derive(Clone, Debug)]
+pub struct MemoryClientOptions;
+impl ClientOptions for MemoryClientOptions {}
 
 /// A client for an in-memory service.
 #[derive(Clone, Debug, Default)]
-pub struct MemoryClient<T>
+pub struct MemoryClient<T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
-    _marker: PhantomData<T>,
+    _marker: PhantomData<(T, R)>,
 }
 
 #[async_trait]
-impl<T, R> Client<T, R> for MemoryClient<T, R>
+impl<T, R> Client for MemoryClient<T, R>
 where
-    R: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error;
 
-    type ResponseType = R;
+    type Options = MemoryClientOptions;
 
-    type ServiceType = MemoryService<T>;
+    type Type = T;
+
+    type ResponseType = R;
 
     type StreamType = MemoryStream<T>;
 
     async fn new<X>(
         _name: String,
         _stream: Self::StreamType,
-        _handler: X,
+        _options: Self::Options,
     ) -> Result<Self, Self::Error>
     where
-        X: ServiceHandler<T>,
+        X: ServiceHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
+        X::Type: Clone + Debug + Send + Sync + 'static,
+        X::ResponseType: Clone + Debug + Send + Sync + 'static,
     {
-        Ok(MemoryClient {
+        Ok(Self {
             _marker: PhantomData,
         })
     }

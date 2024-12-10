@@ -45,7 +45,4 @@ where
 
     /// Gets the last sequence number processed by the consumer.
     async fn last_seq(&self) -> Result<u64, Self::Error>;
-
-    /// Gets the stream for the consumer.
-    fn stream(&self) -> Self::StreamType;
 }

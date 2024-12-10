@@ -32,18 +32,6 @@ where
     /// The type of data in the stream.
     type Type: Clone + Debug + Send + Sync;
 
-    /// The response type for the stream (streams don't actually respond but it's used for services and consumers).
-    type ResponseType: Clone + Debug + Send + Sync;
-
-    /// The consumer type for the stream.
-    type ConsumerType: Consumer<Type = Self::Type, ResponseType = Self::ResponseType>;
-
-    /// The client type for the stream.
-    type ClientType: Client<Type = Self::Type, ResponseType = Self::ResponseType>;
-
-    /// The service type for the stream.
-    type ServiceType: Service<Type = Self::Type, ResponseType = Self::ResponseType>;
-
     /// The subject type for the stream.
     type SubjectType: Subject;
 
@@ -74,29 +62,27 @@ where
     async fn publish(&self, message: Message<Self::Type>) -> Result<u64, Self::Error>;
 
     /// Gets a client for a service.
-    async fn client<N, X>(&self, service_name: N) -> Result<Self::ClientType, Self::Error>
+    async fn client<N, X>(&self, service_name: N, handler: X) -> Result<impl Client, Self::Error>
     where
-        N: Clone + Into<String> + Send;
+        N: Clone + Into<String> + Send,
+        X: ServiceHandler<Type = Self::Type>;
 
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(
         &self,
         consumer_name: N,
         handler: X,
-    ) -> Result<Self::ConsumerType, Self::Error>
+    ) -> Result<impl Consumer, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        X: ConsumerHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
+        X: ConsumerHandler<Type = Self::Type>;
 
     /// Consumes the stream with the given service.
-    async fn start_service<N, X>(
-        &self,
-        service_name: N,
-        handler: X,
-    ) -> Result<Self::ServiceType, Self::Error>
+    async fn start_service<N, X, S>(&self, service_name: N, handler: X) -> Result<S, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        X: ServiceHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
+        X: ServiceHandler<Type = Self::Type>,
+        S: Service<Type = Self::Type, ResponseType = X::ResponseType>;
 }
 
 /// A trait representing a scoped-stream.
@@ -114,14 +100,11 @@ where
     /// The type of data in the stream.
     type Type: Clone + Debug + Send + Sync;
 
-    /// The response type for the stream.
-    type ResponseType: Clone + Debug + Send + Sync;
-
     /// The stream type.
-    type StreamType: Stream<Type = Self::Type, ResponseType = Self::ResponseType>;
+    type StreamType: Stream<Type = Self::Type>;
 
     /// The subject type for the stream.
-    type SubjectType: Subject<Type = Self::Type, ResponseType = Self::ResponseType>;
+    type SubjectType: Subject<Type = Self::Type>;
 
     /// Initializes the stream.
     async fn init(&self) -> Result<Self::StreamType, Self::Error>;
@@ -150,9 +133,6 @@ macro_rules! define_scoped_stream {
 
                 /// The type of data in the stream.
                 type Type: Clone + Debug + Send + Sync;
-
-                /// The response type for the stream (streams don't actually respond but it's used for services and consumers).
-                type ResponseType: Clone + Debug + Send + Sync;
 
                 /// The scoped stream type.
                 type Scoped: $parent + Clone + Send + Sync + 'static;

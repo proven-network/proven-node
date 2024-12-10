@@ -73,7 +73,7 @@ where
 
     type ResponseType = R;
 
-    type StreamType = MemoryStream<Self::Type, Self::ResponseType>;
+    type StreamType = MemoryStream<Self::Type>;
 
     async fn new<X>(
         _name: String,
