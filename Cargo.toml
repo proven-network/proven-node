@@ -309,6 +309,7 @@ proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
 proven-messaging = { path = "crates/messaging" }
 proven-messaging-memory = { path = "crates/messaging-memory" }
+proven-messaging-nats = { path = "crates/messaging-nats" }
 proven-nats-monitor = { path = "crates/nats-monitor" }
 proven-nats-server = { path = "crates/nats-server" }
 proven-postgres = { path = "crates/postgres" }
