@@ -49,6 +49,12 @@ where
     where
         N: Clone + Into<String> + Send;
 
+    /// Gets a client for a service.
+    async fn client<N, X>(&self, service_name: N, handler: X) -> Result<impl Client, Self::Error>
+    where
+        N: Clone + Into<String> + Send,
+        X: ServiceHandler<Type = Self::Type>;
+
     /// Gets the message with the given sequence number.
     async fn get(&self, seq: u64) -> Result<Option<Message<Self::Type>>, Self::Error>;
 
@@ -61,12 +67,6 @@ where
     /// Publishes a message directly to the stream.
     async fn publish(&self, message: Message<Self::Type>) -> Result<u64, Self::Error>;
 
-    /// Gets a client for a service.
-    async fn client<N, X>(&self, service_name: N, handler: X) -> Result<impl Client, Self::Error>
-    where
-        N: Clone + Into<String> + Send,
-        X: ServiceHandler<Type = Self::Type>;
-
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(
         &self,
@@ -78,11 +78,14 @@ where
         X: ConsumerHandler<Type = Self::Type>;
 
     /// Consumes the stream with the given service.
-    async fn start_service<N, X, S>(&self, service_name: N, handler: X) -> Result<S, Self::Error>
+    async fn start_service<N, X>(
+        &self,
+        service_name: N,
+        handler: X,
+    ) -> Result<impl Service, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        X: ServiceHandler<Type = Self::Type>,
-        S: Service<Type = Self::Type, ResponseType = X::ResponseType>;
+        X: ServiceHandler<Type = Self::Type>;
 }
 
 /// A trait representing a scoped-stream.

@@ -13,6 +13,10 @@ where
     #[error("error starting consumer")]
     Consumer,
 
+    /// Consumer error.
+    #[error("error starting service")]
+    Service,
+
     /// An error occured while subscribing to a subject.
     #[error(transparent)]
     Subject(#[from] crate::subject::Error),

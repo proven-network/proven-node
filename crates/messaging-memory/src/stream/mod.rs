@@ -3,6 +3,7 @@ mod subscription_handler;
 
 use crate::client::{MemoryClient, MemoryClientOptions};
 use crate::consumer::{MemoryConsumer, MemoryConsumerOptions};
+use crate::service::{MemoryService, MemoryServiceOptions};
 use crate::subject::MemorySubject;
 pub use error::Error;
 use proven_messaging::service::Service;
@@ -224,13 +225,26 @@ where
     }
 
     /// Consumes the stream with the given service.
-    async fn start_service<N, X, S>(&self, _service_name: N, _handler: X) -> Result<S, Self::Error>
+    async fn start_service<N, X>(
+        &self,
+        name: N,
+        handler: X,
+    ) -> Result<MemoryService<Self::Type, X::ResponseType>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<Type = Self::Type>,
-        S: Service<Type = Self::Type, ResponseType = X::ResponseType>,
     {
-        unimplemented!()
+        let service: MemoryService<T, <X as ServiceHandler>::ResponseType> =
+            MemoryService::<Self::Type, X::ResponseType>::new(
+                format!("{}_{}", self.name(), name.into()),
+                self.clone(),
+                MemoryServiceOptions,
+                handler,
+            )
+            .await
+            .map_err(|_| Error::Service)?;
+
+        Ok(service)
     }
 }
 
