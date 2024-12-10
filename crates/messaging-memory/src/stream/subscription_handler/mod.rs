@@ -10,27 +10,46 @@ use proven_messaging::Message;
 use tokio::sync::mpsc;
 
 #[derive(Clone, Debug)]
-pub struct StreamSubscriptionHandler<T> {
+pub struct StreamSubscriptionHandler<T, R> {
     sender: mpsc::Sender<Message<T>>,
+    _marker: std::marker::PhantomData<R>,
 }
 
-impl<T> StreamSubscriptionHandler<T>
+impl<T, R> StreamSubscriptionHandler<T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     pub const fn new(sender: mpsc::Sender<Message<T>>) -> Self {
-        Self { sender }
+        Self {
+            sender,
+            _marker: std::marker::PhantomData,
+        }
     }
 }
 
 #[async_trait]
-impl<T> SubscriptionHandler<T> for StreamSubscriptionHandler<T>
+impl<T, R> SubscriptionHandler for StreamSubscriptionHandler<T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error<T>;
 
-    async fn handle(&self, _subject: String, message: Message<T>) -> Result<(), Self::Error> {
+    type Type = T;
+
+    type ResponseType = R;
+
+    async fn handle(&self, message: Message<Self::Type>) -> Result<(), Self::Error> {
         self.sender.send(message).await.map_err(Error::Send)
+    }
+
+    async fn respond(
+        &self,
+        message: Message<Self::Type>,
+    ) -> Result<Message<Self::ResponseType>, Self::Error> {
+        let _ = self.sender.send(message).await.map_err(Error::Send);
+
+        unimplemented!()
     }
 }

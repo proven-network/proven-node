@@ -20,18 +20,31 @@ use proven_messaging::subscription_handler::SubscriptionHandler;
 
 /// A in-memory publishable subject.
 #[derive(Clone, Debug)]
-pub struct MemoryPublishableSubject<T = Bytes> {
+pub struct MemoryPublishableSubject<T = Bytes, R = Bytes>
+where
+    T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
+{
     full_subject: String,
-    _marker: PhantomData<T>,
+    _marker: PhantomData<(T, R)>,
 }
 
-impl<T> From<MemoryPublishableSubject<T>> for String {
-    fn from(subject: MemoryPublishableSubject<T>) -> Self {
+impl<T, R> From<MemoryPublishableSubject<T, R>> for String
+where
+    Self: Clone + Debug + Send + Sync + 'static,
+    T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
+{
+    fn from(subject: MemoryPublishableSubject<T, R>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T> MemoryPublishableSubject<T> {
+impl<T, R> MemoryPublishableSubject<T, R>
+where
+    T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
+{
     /// Creates a new in-memory publishable subject.
     ///
     /// # Errors
@@ -52,19 +65,24 @@ impl<T> MemoryPublishableSubject<T> {
 }
 
 #[async_trait]
-impl<T> PublishableSubject<T> for MemoryPublishableSubject<T>
+impl<T, R> PublishableSubject for MemoryPublishableSubject<T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error;
 
+    type Type = T;
+
+    type ResponseType = R;
+
     #[allow(clippy::significant_drop_tightening)]
-    async fn publish(&self, message: Message<T>) -> Result<(), Self::Error> {
+    async fn publish(&self, message: Message<Self::Type>) -> Result<(), Self::Error> {
         let mut state = GLOBAL_STATE.lock().await;
-        if !state.has::<SubjectState<T>>() {
-            state.put(SubjectState::<T>::default());
+        if !state.has::<SubjectState<Self::Type>>() {
+            state.put(SubjectState::<Self::Type>::default());
         }
-        let subject_state = state.borrow::<SubjectState<T>>();
+        let subject_state = state.borrow::<SubjectState<Self::Type>>();
         let subjects = subject_state.subjects.lock().await;
         let subscribers = subjects.keys().cloned().collect::<Vec<_>>();
         for subscriber in subscribers {
@@ -83,9 +101,19 @@ where
         Ok(())
     }
 
-    async fn subscribe<X>(&self, handler: X) -> Result<MemorySubscription<X, T>, Error>
+    async fn request(
+        &self,
+        _message: Message<Self::Type>,
+    ) -> Result<Message<Self::ResponseType>, Self::Error> {
+        unimplemented!()
+    }
+
+    async fn subscribe<X>(
+        &self,
+        handler: X,
+    ) -> Result<MemorySubscription<X, Self::Type, Self::ResponseType>, Self::Error>
     where
-        X: SubscriptionHandler<T>,
+        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>,
     {
         let subscription = MemorySubscription::new(
             self.full_subject.clone(),
@@ -101,18 +129,18 @@ where
 
 /// A in-memory subject which can be subscribed only.
 #[derive(Clone, Debug)]
-pub struct MemorySubject<T = Bytes> {
-    full_subject: String,
-    _marker: PhantomData<T>,
+pub struct MemorySubject<T = Bytes, R = Bytes> {
+    pub(crate) full_subject: String,
+    pub(crate) _marker: PhantomData<(T, R)>,
 }
 
-impl<T> From<MemorySubject<T>> for String {
-    fn from(subject: MemorySubject<T>) -> Self {
+impl<T, R> From<MemorySubject<T, R>> for String {
+    fn from(subject: MemorySubject<T, R>) -> Self {
         subject.full_subject
     }
 }
 
-impl<T> MemorySubject<T> {
+impl<T, R> MemorySubject<T, R> {
     /// Creates a new in-memory subject.
     ///
     /// # Errors
@@ -133,15 +161,29 @@ impl<T> MemorySubject<T> {
 }
 
 #[async_trait]
-impl<T> Subject<T> for MemorySubject<T>
+impl<T, R> Subject for MemorySubject<T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error;
 
-    async fn subscribe<X>(&self, handler: X) -> Result<MemorySubscription<X, T>, Error>
+    type Type = T;
+
+    type ResponseType = R;
+
+    async fn subscribe<X>(
+        &self,
+        handler: X,
+    ) -> Result<MemorySubscription<X, Self::Type, Self::ResponseType>, Self::Error>
     where
-        X: SubscriptionHandler<T>,
+        X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+        X::Type: Clone + Debug + Send + Sync + 'static,
+        X::ResponseType: Clone + Debug + Send + Sync + 'static,
     {
         let subscription = MemorySubscription::new(
             self.full_subject.clone(),
@@ -160,12 +202,12 @@ macro_rules! impl_scoped_subject {
         paste::paste! {
             #[derive(Clone, Debug)]
             #[doc = $doc_pub]
-            pub struct [< MemoryPublishableSubject $index >]<T = Bytes> {
+            pub struct [< MemoryPublishableSubject $index >]<T = Bytes, R = Bytes> {
                 full_subject: String,
-                _marker: PhantomData<T>,
+                _marker: PhantomData<(T, R)>,
             }
 
-            impl<T> [< MemoryPublishableSubject $index >]<T> {
+            impl<T, R> [< MemoryPublishableSubject $index >]<T, R> {
                 /// Creates a new in-memory publishable subject.
                 ///
                 /// # Errors
@@ -186,19 +228,22 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> [< PublishableSubject $index >]<T> for [< MemoryPublishableSubject $index >]<T>
+            impl<T, R> [< PublishableSubject $index >] for [< MemoryPublishableSubject $index >]<T, R>
             where
                 T: Clone + Debug + Send + Sync + 'static,
+                R: Clone + Debug + Send + Sync + 'static,
             {
                 type Error = Error;
 
                 type Type = T;
 
-                type Scoped = $parent_pub<T>;
+                type ResponseType = R;
 
-                type WildcardAllScoped = MemorySubject<T>;
+                type Scoped = $parent_pub<Self::Type, Self::ResponseType>;
 
-                type WildcardAnyScoped = $parent_sub<T>;
+                type WildcardAllScoped = MemorySubject<Self::Type, Self::ResponseType>;
+
+                type WildcardAnyScoped = $parent_sub<Self::Type, Self::ResponseType>;
 
                 fn any(&self) -> Self::WildcardAnyScoped {
                     $parent_sub {
@@ -227,12 +272,12 @@ macro_rules! impl_scoped_subject {
 
             #[derive(Clone, Debug)]
             #[doc = $doc_sub]
-            pub struct [< MemorySubject $index >]<T = Bytes> {
+            pub struct [< MemorySubject $index >]<T = Bytes, R = Bytes> {
                 full_subject: String,
-                _marker: PhantomData<T>,
+                _marker: PhantomData<(T, R)>,
             }
 
-            impl<T> [< MemorySubject $index >]<T> {
+            impl<T, R> [< MemorySubject $index >]<T, R> {
                 /// Creates a new in-memory subject.
                 ///
                 /// # Errors
@@ -253,17 +298,20 @@ macro_rules! impl_scoped_subject {
             }
 
             #[async_trait]
-            impl<T> [< Subject $index >]<T> for [< MemorySubject $index >]<T>
+            impl<T, R> [< Subject $index >] for [< MemorySubject $index >]<T, R>
             where
                 T: Clone + Debug + Send + Sync + 'static,
+                R: Clone + Debug + Send + Sync + 'static,
             {
                 type Error = Error;
 
                 type Type = T;
 
-                type Scoped = $parent_sub<T>;
+                type ResponseType = R;
 
-                type WildcardAllScoped = MemorySubject<T>;
+                type Scoped = $parent_sub<Self::Type, Self::ResponseType>;
+
+                type WildcardAllScoped = MemorySubject<Self::Type, Self::ResponseType>;
 
                 fn any(&self) -> Self::Scoped {
                     $parent_sub {

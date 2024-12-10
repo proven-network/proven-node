@@ -14,17 +14,22 @@ pub trait SubscriptionOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a subscriber of a subject.
 #[async_trait]
-pub trait Subscription<X, T>
+pub trait Subscription<X>
 where
     Self: Clone + Send + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
-    X: SubscriptionHandler<T>,
+    X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>,
 {
     /// The error type for the subscriber.
     type Error: SubscriptionError;
 
     /// The handler error type for the subscriber.
     type HandlerError: SubscriptionHandlerError = X::Error;
+
+    /// The type of data expected on the subscribed subject.
+    type Type: Clone + Debug + Send + Sync + 'static;
+
+    /// The response type for the subscriber.
+    type ResponseType: Clone + Debug + Send + Sync + 'static;
 
     /// The options for the subscriber.
     type Options: SubscriptionOptions;
@@ -43,5 +48,5 @@ where
     fn handler(&self) -> X;
 
     /// Returns the last message received by the subscriber.
-    async fn last_message(&self) -> Option<Message<T>>;
+    async fn last_message(&self) -> Option<Message<Self::Type>>;
 }

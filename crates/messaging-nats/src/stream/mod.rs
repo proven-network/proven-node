@@ -10,6 +10,8 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use async_nats::jetstream::stream::{Config as NatsStreamConfig, Stream as NatsStreamType};
+use async_nats::jetstream::Context as JetStreamContext;
+use async_nats::Client as NatsClient;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::consumer_handler::ConsumerHandler;
@@ -22,7 +24,7 @@ use proven_messaging::Message;
 #[derive(Clone, Debug)]
 pub struct NatsStreamOptions {
     /// The NATS client.
-    pub client: async_nats::Client,
+    pub client: NatsClient,
 }
 impl StreamOptions for NatsStreamOptions {}
 
@@ -38,7 +40,9 @@ where
         + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
         + 'static,
 {
+    jetstram_context: JetStreamContext,
     name: String,
+    nats_client: NatsClient,
     nats_stream: NatsStreamType,
     _marker: PhantomData<T>,
 }
@@ -79,7 +83,9 @@ where
             .unwrap();
 
         Ok(Self {
+            jetstram_context,
             name: stream_name.into(),
+            nats_client: options.client,
             nats_stream,
             _marker: PhantomData,
         })
@@ -108,7 +114,9 @@ where
             .unwrap();
 
         Ok(Self {
+            jetstram_context,
             name: stream_name.into(),
+            nats_client: options.client,
             nats_stream,
             _marker: PhantomData,
         })
@@ -152,13 +160,10 @@ where
 
     /// Publishes a message directly to the stream.
     async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error> {
-        let jetstram_context =
-            async_nats::jetstream::new(async_nats::connect("localhost").await.unwrap());
-
         let payload: Bytes = message.payload.try_into()?;
 
         let seq = if let Some(headers) = message.headers {
-            jetstram_context
+            self.jetstram_context
                 .publish_with_headers(self.name(), headers, payload)
                 .await
                 .map_err(|e| Error::Publish(e.kind()))?
@@ -166,7 +171,7 @@ where
                 .map_err(|e| Error::Publish(e.kind()))?
                 .sequence
         } else {
-            jetstram_context
+            self.jetstram_context
                 .publish(self.name(), payload)
                 .await
                 .map_err(|e| Error::Publish(e.kind()))?

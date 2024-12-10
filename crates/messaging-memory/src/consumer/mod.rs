@@ -22,26 +22,32 @@ impl ConsumerOptions for MemoryConsumerOptions {}
 
 /// A in-memory subscriber.
 #[derive(Clone, Debug)]
-pub struct MemoryConsumer<X, T>
+pub struct MemoryConsumer<X, T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    X: ConsumerHandler<T>,
+    R: Clone + Debug + Send + Sync + 'static,
+    X: ConsumerHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
+    X::Type: Clone + Debug + Send + Sync + 'static,
+    X::ResponseType: Clone + Debug + Send + Sync + 'static,
 {
     last_seq: Arc<Mutex<u64>>,
     handler: X,
-    stream: <Self as Consumer<X, T>>::StreamType,
+    stream: <Self as Consumer<X>>::StreamType,
     _marker: PhantomData<T>,
 }
 
-impl<X, T> MemoryConsumer<X, T>
+impl<X, T, R> MemoryConsumer<X, T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    X: ConsumerHandler<T>,
+    R: Clone + Debug + Send + Sync + 'static,
+    X: ConsumerHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
+    X::Type: Clone + Debug + Send + Sync + 'static,
+    X::ResponseType: Clone + Debug + Send + Sync + 'static,
 {
     /// Creates a new NATS consumer.
     async fn process_messages(
         last_seq: Arc<Mutex<u64>>,
-        mut receiver_stream: ReceiverStream<Message<T>>,
+        mut receiver_stream: ReceiverStream<Message<<Self as Consumer<X>>::Type>>,
         handler: X,
     ) -> Result<(), Error<X::Error>> {
         while let Some(message) = receiver_stream.next().await {
@@ -56,16 +62,23 @@ where
 }
 
 #[async_trait]
-impl<X, T> Consumer<X, T> for MemoryConsumer<X, T>
+impl<X, T, R> Consumer<X> for MemoryConsumer<X, T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    X: ConsumerHandler<T>,
+    R: Clone + Debug + Send + Sync + 'static,
+    X: ConsumerHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
+    X::Type: Clone + Debug + Send + Sync + 'static,
+    X::ResponseType: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error<X::Error>;
 
     type Options = MemoryConsumerOptions;
 
-    type StreamType = MemoryStream<T>;
+    type Type = T;
+
+    type ResponseType = R;
+
+    type StreamType = MemoryStream<Self::Type, Self::ResponseType>;
 
     async fn new(
         _name: String,

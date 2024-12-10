@@ -7,8 +7,8 @@
 
 mod gotham_state;
 
-/// Clients send requests to services.
-pub mod client;
+// /// Clients send requests to services.
+// pub mod client;
 
 /// Consumers are stateful views of streams.
 pub mod consumer;
@@ -89,16 +89,29 @@ mod tests {
     impl SubscriptionHandler for TestSubscriptionHandler {
         type Error = TestSubscriptionHandlerError;
 
-        async fn handle(
-            &self,
-            _subject: String,
-            message: Message<Bytes>,
-        ) -> Result<(), Self::Error> {
+        type Type = Bytes;
+        type ResponseType = Bytes;
+
+        async fn handle(&self, message: Message<Self::Type>) -> Result<(), Self::Error> {
             println!("Handling data: {:?}", message);
             self.sender
                 .send(message)
                 .await
                 .map_err(|_| TestSubscriptionHandlerError)
+        }
+
+        async fn respond(
+            &self,
+            message: Message<Self::Type>,
+        ) -> Result<Message<Self::ResponseType>, Self::Error> {
+            println!("Responding to data: {:?}", message);
+            let _ = self
+                .sender
+                .send(message.clone())
+                .await
+                .map_err(|_| TestSubscriptionHandlerError);
+
+            Ok(message)
         }
     }
 
@@ -376,18 +389,29 @@ mod tests {
     struct CustomHandler(mpsc::Sender<Message<CustomType>>);
 
     #[async_trait]
-    impl SubscriptionHandler<CustomType> for CustomHandler {
+    impl SubscriptionHandler for CustomHandler {
         type Error = TestSubscriptionHandlerError;
 
-        async fn handle(
-            &self,
-            _subject: String,
-            message: Message<CustomType>,
-        ) -> Result<(), Self::Error> {
+        type Type = CustomType;
+
+        type ResponseType = CustomType;
+
+        async fn handle(&self, message: Message<CustomType>) -> Result<(), Self::Error> {
             self.0
                 .send(message)
                 .await
                 .map_err(|_| TestSubscriptionHandlerError)
+        }
+
+        async fn respond(
+            &self,
+            message: Message<CustomType>,
+        ) -> Result<Message<CustomType>, Self::Error> {
+            self.0
+                .send(message.clone())
+                .await
+                .map_err(|_| TestSubscriptionHandlerError)?;
+            Ok(message)
         }
     }
 
@@ -399,7 +423,8 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(10);
         let handler = CustomHandler(sender);
 
-        let _: MemorySubscription<_, CustomType> = subject.subscribe(handler).await.unwrap();
+        let _: MemorySubscription<_, CustomType, CustomType> =
+            subject.subscribe(handler).await.unwrap();
 
         subject.publish(CustomType(42).into()).await.unwrap();
 

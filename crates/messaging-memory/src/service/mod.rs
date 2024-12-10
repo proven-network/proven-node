@@ -1,8 +1,9 @@
 mod error;
 
-use crate::client::MemoryClient;
 use crate::stream::MemoryStream;
 pub use error::Error;
+use proven_messaging::client::Client;
+use proven_messaging::stream::Stream;
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -23,21 +24,27 @@ impl ServiceOptions for MemoryServiceOptions {}
 
 /// A in-memory subscriber.
 #[derive(Clone, Debug)]
-pub struct MemoryService<X, T>
+pub struct MemoryService<X, T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    X: ServiceHandler<T>,
+    R: Clone + Debug + Send + Sync + 'static,
+    X: ServiceHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
+    X::Type: Clone + Debug + Send + Sync + 'static,
+    X::ResponseType: Clone + Debug + Send + Sync + 'static,
 {
     last_seq: Arc<Mutex<u64>>,
     handler: X,
-    stream: <Self as Service<X, T>>::StreamType,
+    stream: <Self as Service<X>>::StreamType,
     _marker: PhantomData<T>,
 }
 
-impl<X, T> MemoryService<X, T>
+impl<X, T, R> MemoryService<X, T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    X: ServiceHandler<T>,
+    R: Clone + Debug + Send + Sync + 'static,
+    X: ServiceHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
+    X::Type: Clone + Debug + Send + Sync + 'static,
+    X::ResponseType: Clone + Debug + Send + Sync + 'static,
 {
     /// Creates a new NATS service.
     async fn process_messages(
@@ -57,18 +64,23 @@ where
 }
 
 #[async_trait]
-impl<X, T> Service<X, T> for MemoryService<X, T>
+impl<X, T, R> Service<X> for MemoryService<X, T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    X: ServiceHandler<T>,
+    R: Clone + Debug + Send + Sync + 'static,
+    X: ServiceHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
+    X::Type: Clone + Debug + Send + Sync + 'static,
+    X::ResponseType: Clone + Debug + Send + Sync + 'static,
 {
-    type ClientType = MemoryClient<X, T>;
-
     type Error = Error<X::Error>;
 
     type Options = MemoryServiceOptions;
 
-    type StreamType = MemoryStream<T>;
+    type Type = T;
+
+    type ResponseType = R;
+
+    type StreamType = MemoryStream<Self::Type, Self::ResponseType>;
 
     async fn new(
         _name: String,
@@ -92,8 +104,8 @@ where
         })
     }
 
-    fn client(&self) -> Self::ClientType {
-        unimplemented!()
+    async fn client(&self) -> Client<X, Self::StreamType, T> {
+        self.stream.client("put name here").await.unwrap()
     }
 
     fn handler(&self) -> X {

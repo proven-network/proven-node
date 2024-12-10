@@ -1,28 +1,39 @@
 use crate::service_handler::ServiceHandler;
 use crate::stream::Stream;
+use crate::Message;
 
-use std::error::Error;
 use std::fmt::Debug;
 
-use async_trait::async_trait;
-
-/// Marker trait for client errors
-pub trait ClientError: Error + Send + Sync + 'static {}
-
-/// A trait representing a client of a service the sends requests.
-#[async_trait]
-pub trait Client<X, T>
+pub struct Client<X, S, T>
 where
-    Self: Clone + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: ServiceHandler<T>,
+    X: ServiceHandler<Type = T>,
 {
-    /// The error type for the client.
-    type Error: ClientError;
+    stream: S,
+    _marker: std::marker::PhantomData<(X, S, T)>,
+}
 
-    /// The stream type for the client.
-    type StreamType: Stream<T>;
+impl<X, S, T> Client<X, S, T>
+where
+    T: Clone + Debug + Send + Sync + 'static,
+    S: Stream<Type = T>,
+    X: ServiceHandler<Type = T>,
+{
+    /// Creates a new client.
+    #[must_use]
+    pub const fn new(stream: S) -> Self {
+        Self {
+            stream,
+            _marker: std::marker::PhantomData,
+        }
+    }
 
-    /// Sends a request to the service and returns a response.
-    async fn request(&self, request: T) -> Result<X::ResponseType, Self::Error>;
+    /// Requests a response from the service.
+    pub async fn request(
+        &self,
+        _request: Message<T>,
+    ) -> Result<Message<X::ResponseType>, X::Error> {
+        // Ok(self.stream.publish(_request).await.unwrap())
+        unimplemented!()
+    }
 }

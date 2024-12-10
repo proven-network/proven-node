@@ -21,35 +21,43 @@ impl SubscriptionOptions for MemorySubscriptionOptions {}
 
 /// A in-memory subscriber.
 #[derive(Clone, Debug, Default)]
-pub struct MemorySubscription<X, T = Bytes> {
+pub struct MemorySubscription<X, T = Bytes, R = Bytes> {
     cancel_token: CancellationToken,
     handler: X,
     last_message: Arc<Mutex<Option<Message<T>>>>,
+    _marker: std::marker::PhantomData<R>,
 }
 
 #[async_trait]
-impl<X, T> Subscription<X, T> for MemorySubscription<X, T>
+impl<X, T, R> Subscription<X> for MemorySubscription<X, T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    X: SubscriptionHandler<T>,
+    R: Clone + Debug + Send + Sync + 'static,
+    X: SubscriptionHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
+    X::Type: Clone + Debug + Send + Sync + 'static,
+    X::ResponseType: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error<X::Error>;
 
     type HandlerError = X::Error;
+
+    type Type = T;
+
+    type ResponseType = R;
 
     type Options = MemorySubscriptionOptions;
 
     #[allow(clippy::significant_drop_tightening)]
     async fn new(
         subject_string: String,
-        _options: MemorySubscriptionOptions,
+        _options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, Error<X::Error>> {
         let mut state = GLOBAL_STATE.lock().await;
-        if !state.has::<SubjectState<T>>() {
-            state.put(SubjectState::<T>::default());
+        if !state.has::<SubjectState<Self::Type>>() {
+            state.put(SubjectState::<Self::Type>::default());
         }
-        let subject_state = state.borrow::<SubjectState<T>>();
+        let subject_state = state.borrow::<SubjectState<Self::Type>>();
         let mut subjects = subject_state.subjects.lock().await;
         let sender = subjects
             .entry(subject_string.clone())
@@ -62,6 +70,7 @@ where
             cancel_token: CancellationToken::new(),
             handler,
             last_message: Arc::new(Mutex::new(None)),
+            _marker: std::marker::PhantomData,
         };
 
         let subscriber_clone = subscriber.clone();
@@ -75,7 +84,7 @@ where
                     message = receiver.recv() => {
                         if let Ok(message) = message {
                             // TODO: Handle errors
-                            let _ = subscriber_clone.handler().handle(subject_string.clone(), message.clone()).await;
+                            let _ = subscriber_clone.handler().handle(message.clone()).await;
                             subscriber_clone.last_message.lock().await.replace(message);
                         }
                     }
@@ -95,7 +104,7 @@ where
         self.handler.clone()
     }
 
-    async fn last_message(&self) -> Option<Message<T>> {
+    async fn last_message(&self) -> Option<Message<Self::Type>> {
         self.last_message.lock().await.clone()
     }
 }

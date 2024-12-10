@@ -31,18 +31,21 @@ impl StreamOptions for MemoryStreamOptions {}
 
 /// An in-memory stream.
 #[derive(Clone, Debug)]
-pub struct MemoryStream<T>
+pub struct MemoryStream<T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     consumer_channels: Arc<Mutex<Vec<mpsc::Sender<Message<T>>>>>,
     messages: Arc<Mutex<Vec<Message<T>>>>,
     name: String,
+    _marker: PhantomData<R>,
 }
 
-impl<T> MemoryStream<T>
+impl<T, R> MemoryStream<T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     /// Returns a stream of messages from the beginning.
     pub async fn messages(&self) -> ReceiverStream<Message<T>> {
@@ -69,16 +72,21 @@ where
 }
 
 #[async_trait]
-impl<T> Stream<T> for MemoryStream<T>
+impl<T, R> Stream for MemoryStream<T, R>
 where
     Self: Clone + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error<T>;
 
     type Options = MemoryStreamOptions;
 
-    type SubjectType = MemorySubject<T>;
+    type Type = T;
+
+    type ResponseType = R;
+
+    type SubjectType = MemorySubject<Self::Type, Self::ResponseType>;
 
     /// Creates a new stream.
     async fn new<N>(stream_name: N, _options: MemoryStreamOptions) -> Result<Self, Self::Error>
@@ -89,6 +97,7 @@ where
             messages: Arc::new(Mutex::new(Vec::new())),
             name: stream_name.into(),
             consumer_channels: Arc::new(Mutex::new(Vec::new())),
+            _marker: PhantomData,
         })
     }
 
@@ -96,12 +105,12 @@ where
     async fn new_with_subjects<N>(
         stream_name: N,
         _options: MemoryStreamOptions,
-        subjects: Vec<MemorySubject<T>>,
+        subjects: Vec<Self::SubjectType>,
     ) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
     {
-        let (sender, mut receiver) = mpsc::channel::<Message<T>>(100);
+        let (sender, mut receiver) = mpsc::channel::<Message<Self::Type>>(100);
 
         for subject in subjects {
             let handler = StreamSubscriptionHandler::new(sender.clone());
@@ -132,6 +141,7 @@ where
             consumer_channels,
             messages,
             name: stream_name.into(),
+            _marker: PhantomData,
         })
     }
 
@@ -183,10 +193,10 @@ where
         &self,
         name: N,
         handler: X,
-    ) -> Result<MemoryConsumer<X, T>, Self::Error>
+    ) -> Result<MemoryConsumer<X, Self::Type, Self::ResponseType>, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        X: ConsumerHandler<T>,
+        X: ConsumerHandler<Type = Self::Type, ResponseType = Self::ResponseType>,
     {
         let consumer = MemoryConsumer::new(
             format!("{}_{}", self.name(), name.into()),
@@ -205,10 +215,10 @@ where
         &self,
         _service_name: N,
         _handler: X,
-    ) -> Result<MemoryService<X, T>, Self::Error>
+    ) -> Result<MemoryService<X, Self::Type, Self::ResponseType>, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        X: ServiceHandler<T>,
+        X: ServiceHandler<Type = Self::Type, ResponseType = Self::ResponseType>,
     {
         unimplemented!()
     }
@@ -216,30 +226,40 @@ where
 
 /// All scopes applied and can initialize.
 #[derive(Clone, Debug, Default)]
-pub struct ScopedMemoryStream<T>
+pub struct ScopedMemoryStream<T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     options: MemoryStreamOptions,
     prefix: Option<String>,
-    _marker: PhantomData<T>,
+    _marker: PhantomData<(T, R)>,
 }
 
 #[async_trait]
-impl<T> ScopedStream<T> for ScopedMemoryStream<T>
+impl<T, R> ScopedStream for ScopedMemoryStream<T, R>
 where
     T: Clone + Debug + Send + Sync + 'static,
+    R: Clone + Debug + Send + Sync + 'static,
 {
     type Error = Error<T>;
 
     type Options = MemoryStreamOptions;
 
-    type StreamType = MemoryStream<T>;
+    type Type = T;
 
-    type SubjectType = MemorySubject<T>;
+    type ResponseType = R;
+
+    type StreamType = MemoryStream<T, R>;
+
+    type SubjectType = MemorySubject<Self::Type, Self::ResponseType>;
 
     async fn init(&self) -> Result<Self::StreamType, Self::Error> {
-        let stream = MemoryStream::new(self.prefix.clone().unwrap(), self.options.clone()).await?;
+        let stream = MemoryStream::<Self::Type, Self::ResponseType>::new(
+            self.prefix.clone().unwrap(),
+            self.options.clone(),
+        )
+        .await?;
         Ok(stream)
     }
 
@@ -247,7 +267,7 @@ where
         &self,
         subjects: Vec<Self::SubjectType>,
     ) -> Result<Self::StreamType, Self::Error> {
-        let stream = MemoryStream::new_with_subjects(
+        let stream = MemoryStream::<Self::Type, Self::ResponseType>::new_with_subjects(
             self.prefix.clone().unwrap(),
             self.options.clone(),
             subjects,
@@ -262,18 +282,20 @@ macro_rules! impl_scoped_stream {
         paste::paste! {
             #[doc = $doc]
             #[derive(Clone, Debug, Default)]
-            pub struct [< ScopedMemoryStream $index >]<T>
+            pub struct [< ScopedMemoryStream $index >]<T, R>
             where
                 T: Clone + Debug + Send + Sync + 'static,
+                R: Clone + Debug + Send + Sync + 'static,
             {
                 options: MemoryStreamOptions,
                 prefix: Option<String>,
-                _marker: PhantomData<T>,
+                _marker: PhantomData<(T, R)>,
             }
 
-            impl<T> [< ScopedMemoryStream $index >]<T>
+            impl<T, R> [< ScopedMemoryStream $index >]<T, R>
             where
                 T: Clone + Debug + Send + Sync + 'static,
+                R: Clone + Debug + Send + Sync + 'static,
             {
                 /// Creates a new `[< MemoryStream $index >]`.
                 #[must_use]
@@ -287,22 +309,27 @@ macro_rules! impl_scoped_stream {
             }
 
             #[async_trait]
-            impl<T> [< ScopedStream $index >]<T> for [< ScopedMemoryStream $index >]<T>
+            impl<T, R> [< ScopedStream $index >] for [< ScopedMemoryStream $index >]<T, R>
             where
                 T: Clone + Debug + Send + Sync + 'static,
+                R: Clone + Debug + Send + Sync + 'static,
             {
                 type Error = Error<T>;
 
                 type Options = MemoryStreamOptions;
 
-                type Scoped = $parent<T>;
+                type Type = T;
 
-                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> $parent<T> {
+                type ResponseType = R;
+
+                type Scoped = $parent<T, R>;
+
+                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> $parent<Self::Type, Self::ResponseType> {
                     let new_scope = match &self.prefix {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                         None => scope.into(),
                     };
-                    $parent::<T> {
+                    $parent::<Self::Type, Self::ResponseType> {
                         options: self.options.clone(),
                         prefix: Some(new_scope),
                         _marker: PhantomData,
@@ -343,9 +370,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_message() {
-        let publishable_subject = MemoryPublishableSubject::new("test_get_message").unwrap();
+        let publishable_subject: MemoryPublishableSubject<String, String> =
+            MemoryPublishableSubject::new("test_get_message").unwrap();
         let subject = MemorySubject::new("test_get_message").unwrap();
-        let stream: MemoryStream<String> =
+        let stream: MemoryStream<String, String> =
             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
                 .await
                 .unwrap();
@@ -363,9 +391,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_last_message() {
-        let publishable_subject = MemoryPublishableSubject::new("test_last_message").unwrap();
+        let publishable_subject: MemoryPublishableSubject<String, String> =
+            MemoryPublishableSubject::new("test_last_message").unwrap();
         let subject = MemorySubject::new("test_last_message").unwrap();
-        let stream: MemoryStream<String> = MemoryStream::new_with_subjects(
+        let stream: MemoryStream<String, String> = MemoryStream::new_with_subjects(
             "test_last_message",
             MemoryStreamOptions,
             vec![subject],
@@ -389,7 +418,7 @@ mod tests {
     #[tokio::test]
     async fn test_empty_stream() {
         let subject = MemorySubject::new("test_empty_stream").unwrap();
-        let stream: MemoryStream<String> =
+        let stream: MemoryStream<String, String> =
             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
                 .await
                 .unwrap();
@@ -399,7 +428,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_scoped_stream() {
-        let stream1: ScopedMemoryStream1<String> = ScopedMemoryStream1::new(MemoryStreamOptions);
+        let stream1: ScopedMemoryStream1<String, String> =
+            ScopedMemoryStream1::new(MemoryStreamOptions);
         let scoped_stream = stream1.scope("scope1");
 
         let subject = MemorySubject::new("test_scoped").unwrap();
@@ -413,7 +443,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_nested_scoped_stream() {
-        let stream2: ScopedMemoryStream2<String> = ScopedMemoryStream2::new(MemoryStreamOptions);
+        let stream2: ScopedMemoryStream2<String, String> =
+            ScopedMemoryStream2::new(MemoryStreamOptions);
         let scoped_stream = stream2.scope("scope1").scope("scope2");
 
         let subject = MemorySubject::new("test_nested_scoped").unwrap();
@@ -428,7 +459,7 @@ mod tests {
     #[tokio::test]
     async fn test_direct_publish() {
         let subject = MemorySubject::new("test_direct_publish").unwrap();
-        let stream: MemoryStream<String> =
+        let stream: MemoryStream<String, String> =
             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
                 .await
                 .unwrap();
@@ -469,18 +500,28 @@ mod tests {
         impl ConsumerHandlerError for TestHandlerError {}
 
         #[async_trait]
-        impl ConsumerHandler<String> for TestHandler {
+        impl ConsumerHandler for TestHandler {
             type Error = TestHandlerError;
+            type Type = String;
+            type ResponseType = String;
             async fn handle(&self, message: Message<String>) -> Result<(), Self::Error> {
                 self.received_messages.lock().await.push(message.payload);
 
                 Ok(())
             }
+
+            async fn respond(
+                &self,
+                _message: Message<Self::Type>,
+            ) -> Result<Message<Self::ResponseType>, Self::Error> {
+                unimplemented!()
+            }
         }
 
-        let publishable_subject = MemoryPublishableSubject::new("test_start_consumer").unwrap();
+        let publishable_subject: MemoryPublishableSubject<String, String> =
+            MemoryPublishableSubject::new("test_start_consumer").unwrap();
         let subject = MemorySubject::new("test_start_consumer").unwrap();
-        let stream: MemoryStream<String> =
+        let stream: MemoryStream<String, String> =
             MemoryStream::new_with_subjects("test_stream", MemoryStreamOptions, vec![subject])
                 .await
                 .unwrap();

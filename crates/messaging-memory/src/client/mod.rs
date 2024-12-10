@@ -9,43 +9,46 @@ use async_trait::async_trait;
 use proven_messaging::client::Client;
 use proven_messaging::service_handler::ServiceHandler;
 
+use crate::service::MemoryService;
 use crate::stream::MemoryStream;
 
 /// A client for an in-memory service.
 #[derive(Clone, Debug, Default)]
-pub struct MemoryClient<X, T>
+pub struct MemoryClient<T>
 where
     T: Clone + Debug + Send + Sync + 'static,
-    X: ServiceHandler<T>,
 {
-    _marker: PhantomData<(X, T)>,
-}
-
-impl<X, T> MemoryClient<X, T>
-where
-    T: Clone + Debug + Send + Sync + 'static,
-    X: ServiceHandler<T>,
-{
-    /// Creates a new in-memory client.
-    #[must_use]
-    pub const fn new() -> Self {
-        Self {
-            _marker: PhantomData,
-        }
-    }
+    _marker: PhantomData<T>,
 }
 
 #[async_trait]
-impl<X, T> Client<X, T> for MemoryClient<X, T>
+impl<T, R> Client<T, R> for MemoryClient<T, R>
 where
+    R: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
-    X: ServiceHandler<T>,
 {
     type Error = Error;
 
+    type ResponseType = R;
+
+    type ServiceType = MemoryService<T>;
+
     type StreamType = MemoryStream<T>;
 
-    async fn request(&self, _request: T) -> Result<X::ResponseType, Self::Error> {
+    async fn new<X>(
+        _name: String,
+        _stream: Self::StreamType,
+        _handler: X,
+    ) -> Result<Self, Self::Error>
+    where
+        X: ServiceHandler<T>,
+    {
+        Ok(MemoryClient {
+            _marker: PhantomData,
+        })
+    }
+
+    async fn request(&self, _request: T) -> Result<Self::ResponseType, Self::Error> {
         unimplemented!()
     }
 }

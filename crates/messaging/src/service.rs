@@ -15,11 +15,10 @@ pub trait ServiceOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream which can handle requests.
 #[async_trait]
-pub trait Service<X, T>
+pub trait Service<X>
 where
     Self: Clone + Send + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
-    X: ServiceHandler<T>,
+    X: ServiceHandler<Type = Self::Type>,
 {
     /// The error type for the service.
     type Error: ServiceError;
@@ -27,13 +26,16 @@ where
     /// The options for the service.
     type Options: ServiceOptions;
 
+    /// The type of data in the stream.
+    type Type: Clone + Debug + Send + Sync;
+
+    /// The response type for the service.
+    type ResponseType: Clone + Debug + Send + Sync;
+
     /// The stream type for the service.
-    type StreamType: Stream<T>;
+    type StreamType: Stream;
 
-    /// The client type for the service.
-    type ClientType: Client<X, T>;
-
-    /// Creates a new subscriber.
+    /// Creates a new service.
     async fn new(
         name: String,
         stream: Self::StreamType,
@@ -41,10 +43,10 @@ where
         handler: X,
     ) -> Result<Self, Self::Error>;
 
-    /// Gets the client for the service.
-    fn client(&self) -> Self::ClientType;
+    /// Gets a client for the service.
+    async fn client(&self) -> Client<X, Self::StreamType, Self::Type>;
 
-    /// Gets the handler for the service.
+    /// Gets the handler for the consumer.
     fn handler(&self) -> X;
 
     /// Gets the last sequence number processed by the service.
