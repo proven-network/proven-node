@@ -1,22 +1,24 @@
 #![allow(clippy::too_many_lines)]
 mod error;
 
+use crate::stream::MemoryStream;
 use crate::subscription::{MemorySubscription, MemorySubscriptionOptions};
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
-use proven_messaging::Message;
 
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use proven_messaging::stream::Stream;
 use proven_messaging::subject::{
     PublishableSubject, PublishableSubject1, PublishableSubject2, PublishableSubject3, Subject,
     Subject1, Subject2, Subject3,
 };
 use proven_messaging::subscription::Subscription;
 use proven_messaging::subscription_handler::SubscriptionHandler;
+use proven_messaging::Message;
 
 /// A subject that is both publishable and subscribable.
 #[derive(Clone, Debug)]
@@ -77,6 +79,7 @@ where
         = MemorySubscription<X, T, R>
     where
         X: SubscriptionHandler<Type = T, ResponseType = R>;
+    type StreamType = MemoryStream<T>;
 
     async fn subscribe<X>(&self, handler: X) -> Result<MemorySubscription<X, T, R>, Error>
     where
@@ -89,6 +92,27 @@ where
         )
         .await
         .map_err(|_| Error::Subscribe)
+    }
+
+    async fn to_stream<K>(
+        &self,
+        stream_name: K,
+        options: <MemoryStream<T> as proven_messaging::stream::Stream>::Options,
+    ) -> Result<MemoryStream<T>, <MemoryStream<T> as proven_messaging::stream::Stream>::Error>
+    where
+        K: Clone + Into<String> + Send,
+    {
+        let unpublishable_subject: MemoryUnpublishableSubject<T> = MemoryUnpublishableSubject {
+            full_subject: self.full_subject.clone(),
+            _marker: PhantomData,
+        };
+
+        MemoryStream::<T>::new_with_subjects(
+            stream_name.into(),
+            options,
+            vec![unpublishable_subject],
+        )
+        .await
     }
 }
 
@@ -178,6 +202,7 @@ where
         = MemorySubscription<X, T, R>
     where
         X: SubscriptionHandler<Type = T, ResponseType = R>;
+    type StreamType = MemoryStream<T>;
 
     async fn subscribe<X>(&self, handler: X) -> Result<MemorySubscription<X, T, R>, Error>
     where
@@ -190,6 +215,27 @@ where
         )
         .await
         .map_err(|_| Error::Subscribe)
+    }
+
+    async fn to_stream<K>(
+        &self,
+        stream_name: K,
+        options: <MemoryStream<T> as proven_messaging::stream::Stream>::Options,
+    ) -> Result<MemoryStream<T>, <MemoryStream<T> as proven_messaging::stream::Stream>::Error>
+    where
+        K: Clone + Into<String> + Send,
+    {
+        let unpublishable_subject: MemoryUnpublishableSubject<T> = MemoryUnpublishableSubject {
+            full_subject: self.full_subject.clone(),
+            _marker: PhantomData,
+        };
+
+        MemoryStream::<T>::new_with_subjects(
+            stream_name.into(),
+            options,
+            vec![unpublishable_subject],
+        )
+        .await
     }
 }
 

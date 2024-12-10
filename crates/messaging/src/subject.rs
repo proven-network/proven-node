@@ -1,3 +1,4 @@
+use crate::stream::Stream;
 use crate::subscription::Subscription;
 use crate::subscription_handler::SubscriptionHandler;
 use crate::Message;
@@ -40,10 +41,23 @@ pub trait Subject: Clone + Into<String> + Send + Sync + 'static {
     where
         X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
 
+    /// The type of stream created by `to_stream`.
+    type StreamType: Stream<Type = Self::Type>;
+
     /// Subscribe to messages on the subject.
     async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error>
     where
         X: SubscriptionHandler<Type = Self::Type, ResponseType = Self::ResponseType>;
+
+    /// Convert the subject to a stream.
+    async fn to_stream<K>(
+        &self,
+        stream_name: K,
+        options: <Self::StreamType as Stream>::Options,
+    ) -> Result<Self::StreamType, <Self::StreamType as Stream>::Error>
+    where
+        K: Clone + Into<String> + Send,
+        Self::StreamType: Stream<Type = Self::Type>;
 }
 
 macro_rules! define_scoped_subject {
