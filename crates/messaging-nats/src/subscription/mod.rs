@@ -100,7 +100,7 @@ where
 
     type Options = NatsSubscriptionOptions;
 
-    type SubjectType = P;
+    type Subject = P;
 
     async fn new(
         subject_string: String,

@@ -68,7 +68,6 @@ macro_rules! impl_scoped_sql_store {
                 }
             }
 
-            #[async_trait]
             impl [< SqlStore $index >] for [< DirectSqlStore $index >] {
                 type Error = Error;
                 type Scoped = $parent;

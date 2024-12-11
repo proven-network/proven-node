@@ -44,9 +44,14 @@ impl SqlStreamHandler {
 }
 
 #[async_trait]
-impl ServiceHandler for SqlStreamHandler {
+impl
+    ServiceHandler<
+        Request,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    > for SqlStreamHandler
+{
     type Error = Error;
-    type Type = Request;
     type ResponseType = Response;
 
     async fn handle(

@@ -17,7 +17,7 @@ pub use transaction::Transaction;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
-use proven_messaging::stream::Stream;
+use proven_messaging::stream::InitializedStream;
 use proven_radix_gateway_sdk::types::{
     LedgerStateSelector, LedgerStateSelectorInner, StreamTransactionsRequest,
     StreamTransactionsRequestKindFilter, StreamTransactionsRequestOrder, TransactionDetailsOptIns,
@@ -47,7 +47,11 @@ static GATEWAY_OPT_INS: LazyLock<TransactionDetailsOptIns> =
 /// A Radix Stream that processes transactions and events from Radix DLT.
 pub struct RadixStream<TS>
 where
-    TS: Stream<Type = Transaction>,
+    TS: InitializedStream<
+        Transaction,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     client: Client,
     last_state_version: Arc<Mutex<Option<u64>>>,
@@ -59,7 +63,11 @@ where
 /// Options for creating a new `RadixStream`.
 pub struct RadixStreamOptions<TS>
 where
-    TS: Stream<Type = Transaction>,
+    TS: InitializedStream<
+        Transaction,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     /// The origin of the Radix Gateway.
     pub radix_gateway_origin: &'static str,
@@ -72,7 +80,11 @@ type StartResult<TSE> = Result<JoinHandle<Result<(), Error<TSE>>>, Error<TSE>>;
 
 impl<TS> RadixStream<TS>
 where
-    TS: Stream<Type = Transaction>,
+    TS: InitializedStream<
+        Transaction,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     /// Creates a new `RadixStream`.
     ///
@@ -85,7 +97,10 @@ where
             radix_gateway_origin,
             transaction_stream,
         }: RadixStreamOptions<TS>,
-    ) -> Result<Self, Error<TS::Error>> {
+    ) -> Result<
+        Self,
+        Error<TS::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>>,
+    > {
         let client = build_client(radix_gateway_origin, None, None);
 
         let last_state_version = (transaction_stream
@@ -124,7 +139,10 @@ where
         transaction_stream: TS,
         last_state_version: Arc<Mutex<Option<u64>>>,
         shutdown_token: CancellationToken,
-    ) -> Result<(), Error<TS::Error>> {
+    ) -> Result<
+        (),
+        Error<TS::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>>,
+    > {
         loop {
             if shutdown_token.is_cancelled() {
                 break;
@@ -208,7 +226,10 @@ where
         transactions: Vec<Transaction>,
         transaction_stream: TS,
         last_state_version: Arc<Mutex<Option<u64>>>,
-    ) -> Result<(), Error<TS::Error>> {
+    ) -> Result<
+        (),
+        Error<TS::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>>,
+    > {
         for transaction in &transactions {
             trace!("Publishing transaction: {:?}", transaction);
             transaction_stream
@@ -227,7 +248,11 @@ where
     /// # Errors
     ///
     /// This function will return an error if the `RadixStream` has already been started.
-    pub fn start(&self) -> StartResult<TS::Error> {
+    pub fn start(
+        &self,
+    ) -> StartResult<
+        TS::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    > {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
@@ -262,6 +287,7 @@ where
 mod tests {
     use super::*;
 
+    use proven_messaging::stream::Stream;
     use proven_messaging_memory::stream::{MemoryStream, MemoryStreamOptions};
     use tokio::time::Duration;
 
@@ -270,6 +296,7 @@ mod tests {
         let radix_stream = RadixStream::new(RadixStreamOptions {
             radix_gateway_origin: "https://mainnet.radixdlt.com",
             transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS", MemoryStreamOptions)
+                .init()
                 .await
                 .unwrap(),
         })
@@ -284,6 +311,7 @@ mod tests {
         let radix_stream = RadixStream::new(RadixStreamOptions {
             radix_gateway_origin: "https://mainnet.radixdlt.com",
             transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS", MemoryStreamOptions)
+                .init()
                 .await
                 .unwrap(),
         })
@@ -299,6 +327,7 @@ mod tests {
         let radix_stream = RadixStream::new(RadixStreamOptions {
             radix_gateway_origin: "https://mainnet.radixdlt.com",
             transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS", MemoryStreamOptions)
+                .init()
                 .await
                 .unwrap(),
         })
@@ -320,6 +349,7 @@ mod tests {
             let radix_stream = RadixStream::new(RadixStreamOptions {
                 radix_gateway_origin: "https://mainnet.radixdlt.com",
                 transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS", MemoryStreamOptions)
+                    .init()
                     .await
                     .unwrap(),
             })

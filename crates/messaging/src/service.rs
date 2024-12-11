@@ -1,5 +1,5 @@
 use crate::service_handler::ServiceHandler;
-use crate::stream::Stream;
+use crate::stream::InitializedStream;
 
 use std::error::Error;
 use std::fmt::Debug;
@@ -18,7 +18,7 @@ pub trait ServiceOptions: Clone + Send + Sync + 'static {}
 pub trait Service<P, X, T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    P: Stream<T, D, S>,
+    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -37,7 +37,7 @@ where
     type Options: ServiceOptions;
 
     /// The stream type for the service.
-    type StreamType: Stream<T, D, S>;
+    type StreamType: InitializedStream<T, D, S>;
 
     /// Creates a new service.
     async fn new(

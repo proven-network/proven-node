@@ -19,10 +19,8 @@ use request::Request;
 use async_trait::async_trait;
 use proven_libsql::Database;
 use proven_messaging::client::Client;
-// use proven_messaging::stream::{ScopedStream1, ScopedStream2, ScopedStream3, Stream};
-// use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
-use proven_messaging::stream::Stream;
-use proven_sql::SqlStore;
+use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stream3};
+use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use response::Response;
 use stream_handler::{SqlStreamHandler, SqlStreamHandlerOptions};
 use tokio::sync::{oneshot, Mutex};
@@ -38,14 +36,24 @@ pub struct StreamedSqlStoreOptions<S> {
 #[derive(Clone, Debug)]
 pub struct StreamedSqlStore<S>
 where
-    S: Stream<Type = Request>,
+    S: Stream<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    S::Initialized: InitializedStream<
+        Request,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     stream: S,
 }
 
 impl<S> StreamedSqlStore<S>
 where
-    S: Stream<Type = Request>,
+    S: Stream<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    S::Initialized: InitializedStream<
+        Request,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     /// Creates a new `StreamedSqlStore` with the specified options.
     pub fn new(StreamedSqlStoreOptions { stream }: StreamedSqlStoreOptions<S>) -> Self {
@@ -56,10 +64,21 @@ where
 #[async_trait]
 impl<S> SqlStore for StreamedSqlStore<S>
 where
-    S: Stream<Type = Request>,
+    S: Stream<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    S::Initialized: InitializedStream<
+        Request,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
-    type Error = Error<S::Error>;
-    type Connection = Connection<S::ClientType<SqlStreamHandler>>;
+    type Error = Error<
+        <S::Initialized as InitializedStream<
+            Request,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >>::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    >;
+    type Connection = Connection<S>;
 
     async fn connect<Q: Clone + Into<String> + Send>(
         &self,
@@ -75,13 +94,14 @@ where
             caught_up_tx,
         });
 
-        let _service = self
-            .stream
+        let stream = self.stream.init().await.unwrap();
+
+        let _service = stream
             .start_service("SQL_SERVICE", handler.clone())
             .await
             .map_err(Error::Stream)?;
 
-        let client = self.stream.client("SQL_SERVICE", handler).await.unwrap();
+        let client = stream.client("SQL_SERVICE", handler).await.unwrap();
 
         // Wait for the stream to catch up before applying migrations
         caught_up_rx
@@ -106,75 +126,76 @@ where
     }
 }
 
-// macro_rules! impl_scoped_sql_store {
-//     ($index:expr, $parent:ident, $parent_trait:ident, $stream_trait:ident, $doc:expr) => {
-//         paste::paste! {
-//             #[doc = $doc]
-//             #[derive(Clone, Debug)]
-//             pub struct [< StreamedSqlStore $index >]<S>
-//             where
-//                 S: $stream_trait<Request>,
-//             {
-//                 stream: S,
-//             }
+macro_rules! impl_scoped_sql_store {
+    ($index:expr, $parent:ident, $parent_trait:ident, $stream_trait:ident, $doc:expr) => {
+        paste::paste! {
+            #[doc = $doc]
+            #[derive(Clone, Debug)]
+            pub struct [< StreamedSqlStore $index >]<S>
+            where
+                S: $stream_trait<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+            {
+                stream: S,
+            }
 
-//             impl<S> [< StreamedSqlStore $index >]<S>
-//             where
-//                 Self: Clone + Send + Sync + 'static,
-//                 S: $stream_trait<Request>,
-//             {
-//                 /// Creates a new `[< StreamedSqlStore $index >]` with the specified options.
-//                 pub fn new(
-//                     StreamedSqlStoreOptions {
-//                         stream,
-//                     }: StreamedSqlStoreOptions<S>,
-//                 ) -> Self {
-//                     Self {
-//                         stream,
-//                     }
-//                 }
-//             }
+            impl<S> [< StreamedSqlStore $index >]<S>
+            where
+                Self: Clone + Send + Sync + 'static,
+                S: $stream_trait<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+            {
+                /// Creates a new `StreamedSqlStore` with the specified options.
+                pub fn new(
+                    StreamedSqlStoreOptions {
+                        stream,
+                    }: StreamedSqlStoreOptions<S>,
+                ) -> Self {
+                    Self {
+                        stream,
+                    }
+                }
+            }
 
-//             #[async_trait]
-//             impl<S> [< SqlStore $index >] for [< StreamedSqlStore $index >]<S>
-//             where
-//                 Self: Clone + Send + Sync + 'static,
-//                 S: $stream_trait<Request>,
-//             {
-//                 type Error = Error<S::Error>;
-//                 type Scoped = $parent<S::Scoped>;
+            #[async_trait]
+            impl<S> [< SqlStore $index >] for [< StreamedSqlStore $index >]<S>
+            where
+                Self: Clone + Send + Sync + 'static,
+                S: $stream_trait<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+            {
+                type Error = Error<S::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>>;
 
-//                 fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
-//                     $parent {
-//                         stream: self.stream.scope(scope.into()),
-//                     }
-//                 }
-//             }
-//         }
-//     };
-// }
+                type Scoped = $parent<S::Scoped>;
 
-// impl_scoped_sql_store!(
-//     1,
-//     StreamedSqlStore,
-//     SqlStore,
-//     ScopedStream1,
-//     "A single-scoped SQL store that uses a stream as an append-only log."
-// );
-// impl_scoped_sql_store!(
-//     2,
-//     StreamedSqlStore1,
-//     SqlStore1,
-//     ScopedStream2,
-//     "A double-scoped SQL store that uses a stream as an append-only log."
-// );
-// impl_scoped_sql_store!(
-//     3,
-//     StreamedSqlStore2,
-//     SqlStore2,
-//     ScopedStream3,
-//     "A triple-scoped SQL store that uses a stream as an append-only log."
-// );
+                fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+                    $parent {
+                        stream: self.stream.scope(scope.into()),
+                    }
+                }
+            }
+        }
+    };
+}
+
+impl_scoped_sql_store!(
+    1,
+    StreamedSqlStore,
+    SqlStore,
+    Stream1,
+    "A single-scoped SQL store that uses a stream as an append-only log."
+);
+impl_scoped_sql_store!(
+    2,
+    StreamedSqlStore1,
+    SqlStore1,
+    Stream2,
+    "A double-scoped SQL store that uses a stream as an append-only log."
+);
+impl_scoped_sql_store!(
+    3,
+    StreamedSqlStore2,
+    SqlStore2,
+    Stream3,
+    "A triple-scoped SQL store that uses a stream as an append-only log."
+);
 
 #[cfg(test)]
 mod tests {
@@ -186,9 +207,7 @@ mod tests {
     #[tokio::test]
     async fn test_sql_store() {
         let result = timeout(Duration::from_secs(5), async {
-            let stream = MemoryStream::new("test_sql_store", MemoryStreamOptions)
-                .await
-                .unwrap();
+            let stream = MemoryStream::new("test_sql_store", MemoryStreamOptions);
 
             let sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions { stream });
 
@@ -242,9 +261,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalid_sql_migration() {
         let result = timeout(Duration::from_secs(5), async {
-            let stream = MemoryStream::new("test_invalid_sql_migration", MemoryStreamOptions)
-                .await
-                .unwrap();
+            let stream = MemoryStream::new("test_invalid_sql_migration", MemoryStreamOptions);
 
             let sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions { stream });
 

@@ -14,10 +14,10 @@ use bytes::Bytes;
 use futures::StreamExt;
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
-use proven_messaging::stream::Stream;
+use proven_messaging::stream::InitializedStream;
 use proven_messaging::Message;
 
-use crate::stream::NatsStream;
+use crate::stream::InitializedNatsStream;
 
 /// Options for the nats consumer.
 #[derive(Clone, Debug)]
@@ -32,7 +32,7 @@ impl ConsumerOptions for NatsConsumerOptions {}
 #[derive(Debug)]
 pub struct NatsConsumer<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -52,7 +52,7 @@ where
 
 impl<P, X, T, D, S> Clone for NatsConsumer<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -76,7 +76,7 @@ where
 
 impl<P, X, T, D, S> NatsConsumer<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -117,7 +117,7 @@ where
 #[async_trait]
 impl<P, X, T, D, S> Consumer<P, X, T, D, S> for NatsConsumer<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -133,7 +133,7 @@ where
 
     type Options = NatsConsumerOptions;
 
-    type StreamType = NatsStream<T, D, S>;
+    type StreamType = InitializedNatsStream<T, D, S>;
 
     #[allow(clippy::significant_drop_tightening)]
     async fn new(

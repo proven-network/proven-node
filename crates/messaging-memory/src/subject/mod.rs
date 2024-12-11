@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_lines)]
 mod error;
 
-use crate::stream::MemoryStream;
+use crate::stream::InitializedMemoryStream;
 use crate::subscription::{MemorySubscription, MemorySubscriptionOptions};
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_messaging::stream::Stream;
+use proven_messaging::stream::InitializedStream;
 use proven_messaging::subject::{
     PublishableSubject, PublishableSubject1, PublishableSubject2, PublishableSubject3, Subject,
     Subject1, Subject2, Subject3,
@@ -132,7 +132,7 @@ where
     where
         X: SubscriptionHandler<T, D, S>;
 
-    type StreamType = MemoryStream<T, D, S>;
+    type StreamType = InitializedMemoryStream<T, D, S>;
 
     async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Error>
     where
@@ -150,8 +150,11 @@ where
     async fn to_stream<K>(
         &self,
         stream_name: K,
-        options: <MemoryStream<T, D, S> as Stream<T, D, S>>::Options,
-    ) -> Result<MemoryStream<T, D, S>, <Self::StreamType as Stream<T, D, S>>::Error<D, S>>
+        options: <InitializedMemoryStream<T, D, S> as InitializedStream<T, D, S>>::Options,
+    ) -> Result<
+        InitializedMemoryStream<T, D, S>,
+        <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>,
+    >
     where
         K: Clone + Into<String> + Send,
     {
@@ -161,7 +164,7 @@ where
                 _marker: PhantomData,
             };
 
-        MemoryStream::<T, D, S>::new_with_subjects(
+        InitializedMemoryStream::<T, D, S>::new_with_subjects(
             stream_name.into(),
             options,
             vec![unpublishable_subject],
@@ -318,7 +321,7 @@ where
     where
         X: SubscriptionHandler<T, D, S>;
 
-    type StreamType = MemoryStream<T, D, S>;
+    type StreamType = InitializedMemoryStream<T, D, S>;
 
     async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Error>
     where
@@ -336,8 +339,11 @@ where
     async fn to_stream<K>(
         &self,
         stream_name: K,
-        options: <MemoryStream<T, D, S> as Stream<T, D, S>>::Options,
-    ) -> Result<MemoryStream<T, D, S>, <Self::StreamType as Stream<T, D, S>>::Error<D, S>>
+        options: <InitializedMemoryStream<T, D, S> as InitializedStream<T, D, S>>::Options,
+    ) -> Result<
+        InitializedMemoryStream<T, D, S>,
+        <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>,
+    >
     where
         K: Clone + Into<String> + Send,
     {
@@ -346,7 +352,7 @@ where
             _marker: PhantomData,
         };
 
-        MemoryStream::<T, D, S>::new_with_subjects(
+        InitializedMemoryStream::<T, D, S>::new_with_subjects(
             stream_name.into(),
             options,
             vec![unpublishable_subject],

@@ -2,7 +2,7 @@ mod error;
 
 use bytes::Bytes;
 pub use error::Error;
-use proven_messaging::stream::Stream;
+use proven_messaging::stream::InitializedStream;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use proven_messaging::client::{Client, ClientOptions};
 use proven_messaging::service_handler::ServiceHandler;
 
-use crate::stream::MemoryStream;
+use crate::stream::InitializedMemoryStream;
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -22,7 +22,7 @@ impl ClientOptions for MemoryClientOptions {}
 #[derive(Debug)]
 pub struct MemoryClient<P, X, T, D, S>
 where
-    P: Stream<T, D, S>,
+    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -39,7 +39,7 @@ where
 
 impl<P, X, T, D, S> Clone for MemoryClient<P, X, T, D, S>
 where
-    P: Stream<T, D, S>,
+    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -61,7 +61,7 @@ where
 #[async_trait]
 impl<P, X, T, D, S> Client<P, X, T, D, S> for MemoryClient<P, X, T, D, S>
 where
-    P: Stream<T, D, S>,
+    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -77,7 +77,7 @@ where
 
     type Options = MemoryClientOptions;
 
-    type StreamType = MemoryStream<T, D, S>;
+    type StreamType = InitializedMemoryStream<T, D, S>;
 
     async fn new(
         _name: String,

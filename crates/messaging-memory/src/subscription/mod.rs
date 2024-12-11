@@ -93,7 +93,7 @@ where
 
     type Options = MemorySubscriptionOptions;
 
-    type SubjectType = MemorySubject<T, D, S>;
+    type Subject = MemorySubject<T, D, S>;
 
     #[allow(clippy::significant_drop_tightening)]
     async fn new(

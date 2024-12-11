@@ -810,8 +810,6 @@ impl Bootstrap {
         });
 
         let application_manager_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
-            leader_store: leader_store.clone(),
-            local_name: instance_details.instance_id.clone(),
             stream: NatsStream::new(NatsStreamOptions {
                 client: nats_client.clone(),
                 stream_name: "APPLICATION_MANAGER_SQL".to_string(),
@@ -828,8 +826,6 @@ impl Bootstrap {
         });
 
         let application_sql_store = StreamedSqlStore2::new(StreamedSqlStoreOptions {
-            leader_store: leader_store.clone(),
-            local_name: instance_details.instance_id.clone(),
             stream: NatsStream2::new(NatsStreamOptions {
                 client: nats_client.clone(),
                 stream_name: "APPLICATION_SQL".to_string(),
@@ -844,8 +840,6 @@ impl Bootstrap {
         });
 
         let personal_sql_store = StreamedSqlStore3::new(StreamedSqlStoreOptions {
-            leader_store: leader_store.clone(),
-            local_name: instance_details.instance_id.clone(),
             stream: NatsStream3::new(NatsStreamOptions {
                 client: nats_client.clone(),
                 stream_name: "PERSONAL_SQL".to_string(),
@@ -860,8 +854,6 @@ impl Bootstrap {
         });
 
         let nft_sql_store = StreamedSqlStore3::new(StreamedSqlStoreOptions {
-            leader_store,
-            local_name: instance_details.instance_id.clone(),
             stream: NatsStream3::new(NatsStreamOptions {
                 client: nats_client.clone(),
                 stream_name: "NFT_SQL".to_string(),

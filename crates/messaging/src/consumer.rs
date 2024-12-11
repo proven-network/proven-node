@@ -1,5 +1,5 @@
 use crate::consumer_handler::ConsumerHandler;
-use crate::stream::Stream;
+use crate::stream::InitializedStream;
 
 use std::error::Error;
 use std::fmt::Debug;
@@ -18,7 +18,7 @@ pub trait ConsumerOptions: Clone + Send + Sync + 'static {}
 pub trait Consumer<P, X, T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    P: Stream<T, D, S>,
+    P: InitializedStream<T, D, S>,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -37,7 +37,7 @@ where
     type Options: ConsumerOptions;
 
     /// The stream type for the consumer.
-    type StreamType: Stream<T, D, S>;
+    type StreamType: InitializedStream<T, D, S>;
 
     /// Creates a new subscriber.
     async fn new(

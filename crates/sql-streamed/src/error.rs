@@ -15,7 +15,7 @@ where
     CaughtUpChannelClosed,
 
     /// An error occurred in the client.
-    #[error("client error when applying migrations")]
+    #[error("client error")]
     Client,
 
     /// An error occurred while deserializing CBOR.

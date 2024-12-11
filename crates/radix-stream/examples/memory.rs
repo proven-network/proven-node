@@ -14,6 +14,7 @@ async fn main() {
     let radix_stream = RadixStream::new(RadixStreamOptions {
         radix_gateway_origin: "https://mainnet.radixdlt.com",
         transaction_stream: MemoryStream::new("RADIX_TRANSACTIONS", MemoryStreamOptions)
+            .init()
             .await
             .unwrap(),
     })

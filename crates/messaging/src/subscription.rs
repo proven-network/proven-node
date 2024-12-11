@@ -41,7 +41,7 @@ where
     type Options: SubscriptionOptions;
 
     /// The subject type for the subscriber.
-    type SubjectType: Subject<T, D, S>;
+    type Subject: Subject<T, D, S>;
 
     /// Creates a new subscriber.
     async fn new(

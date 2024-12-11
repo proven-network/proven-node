@@ -1,4 +1,4 @@
-use crate::stream::Stream;
+use crate::stream::InitializedStream;
 use crate::subscription::Subscription;
 use crate::subscription_handler::SubscriptionHandler;
 use crate::Message;
@@ -64,7 +64,7 @@ where
         X: SubscriptionHandler<T, D, S>;
 
     /// The type of stream created by `to_stream`.
-    type StreamType: Stream<T, D, S>;
+    type StreamType: InitializedStream<T, D, S>;
 
     /// Subscribe to messages on the subject.
     async fn subscribe<X>(
@@ -78,11 +78,11 @@ where
     async fn to_stream<K>(
         &self,
         stream_name: K,
-        options: <Self::StreamType as Stream<T, D, S>>::Options,
-    ) -> Result<Self::StreamType, <Self::StreamType as Stream<T, D, S>>::Error<D, S>>
+        options: <Self::StreamType as InitializedStream<T, D, S>>::Options,
+    ) -> Result<Self::StreamType, <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>>
     where
         K: Clone + Into<String> + Send,
-        Self::StreamType: Stream<T, D, S>;
+        Self::StreamType: InitializedStream<T, D, S>;
 }
 
 macro_rules! define_scoped_subject {

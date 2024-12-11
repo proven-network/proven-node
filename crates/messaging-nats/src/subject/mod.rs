@@ -1,6 +1,6 @@
 mod error;
 
-use crate::stream::NatsStream;
+use crate::stream::InitializedNatsStream;
 use crate::subscription::{NatsSubscription, NatsSubscriptionOptions};
 pub use error::Error;
 use proven_messaging::Message;
@@ -12,7 +12,7 @@ use std::marker::PhantomData;
 use async_nats::Client;
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_messaging::stream::Stream;
+use proven_messaging::stream::InitializedStream;
 use proven_messaging::subject::{
     PublishableSubject, PublishableSubject1, PublishableSubject2, PublishableSubject3, Subject,
     Subject1, Subject2, Subject3,
@@ -131,7 +131,7 @@ where
     where
         X: SubscriptionHandler<T, D, S>;
 
-    type StreamType = NatsStream<T, D, S>;
+    type StreamType = InitializedNatsStream<T, D, S>;
 
     async fn subscribe<X>(
         &self,
@@ -155,8 +155,8 @@ where
     async fn to_stream<K>(
         &self,
         _stream_name: K,
-        _options: <Self::StreamType as Stream<T, D, S>>::Options,
-    ) -> Result<Self::StreamType, <Self::StreamType as Stream<T, D, S>>::Error<D, S>>
+        _options: <Self::StreamType as InitializedStream<T, D, S>>::Options,
+    ) -> Result<Self::StreamType, <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>>
     where
         K: Clone + Into<String> + Send,
     {
@@ -315,7 +315,7 @@ where
     where
         X: SubscriptionHandler<T, D, S>;
 
-    type StreamType = NatsStream<T, D, S>;
+    type StreamType = InitializedNatsStream<T, D, S>;
 
     async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error<D, S>>
     where
@@ -335,8 +335,11 @@ where
     async fn to_stream<K>(
         &self,
         stream_name: K,
-        options: <NatsStream<T, D, S> as Stream<T, D, S>>::Options,
-    ) -> Result<NatsStream<T, D, S>, <Self::StreamType as Stream<T, D, S>>::Error<D, S>>
+        options: <InitializedNatsStream<T, D, S> as InitializedStream<T, D, S>>::Options,
+    ) -> Result<
+        InitializedNatsStream<T, D, S>,
+        <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>,
+    >
     where
         K: Clone + Into<String> + Send,
     {
@@ -346,7 +349,7 @@ where
             _marker: PhantomData,
         };
 
-        NatsStream::<T, D, S>::new_with_subjects(
+        InitializedNatsStream::<T, D, S>::new_with_subjects(
             stream_name.into(),
             options,
             vec![unpublishable_subject],

@@ -1,4 +1,4 @@
-use crate::client::Client;
+use crate::client::{Client, ClientError};
 use crate::consumer::Consumer;
 use crate::consumer_handler::ConsumerHandler;
 use crate::service::Service;
@@ -20,7 +20,7 @@ pub trait StreamOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a stream.
 #[async_trait]
-pub trait Stream<T, D, S>
+pub trait InitializedStream<T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
     T: Clone
@@ -44,6 +44,11 @@ where
 
     /// The subject type for the stream.
     type SubjectType: Subject<T, D, S>;
+
+    /// The client error type for the stream.
+    type ClientError<X>: ClientError
+    where
+        X: ServiceHandler<T, D, S>;
 
     /// The client type for the stream.
     type ClientType<X>: Client<Self, X, T, D, S>
@@ -120,7 +125,7 @@ where
 
 /// A trait representing a scoped-stream.
 #[async_trait]
-pub trait ScopedStream<T, D, S>
+pub trait Stream<T, D, S>
 where
     Self: Clone + Send + Sync + 'static,
     T: Clone
@@ -143,29 +148,41 @@ where
     type Options: StreamOptions;
 
     /// The stream type.
-    type StreamType: Stream<T, D, S>;
+    type Initialized: InitializedStream<
+        T,
+        D,
+        S,
+        Error<D, S> = Self::Error<D, S>,
+        Options = Self::Options,
+    >;
 
     /// The subject type for the stream.
-    type SubjectType: Subject<T, D, S>;
+    type Subject: Subject<T, D, S>;
+
+    /// Creates a new stream.
+    fn new<K>(stream_name: K, options: Self::Options) -> Self
+    where
+        K: Clone + Into<String> + Send;
 
     /// Initializes the stream.
-    async fn init(&self) -> Result<Self::StreamType, Self::Error<D, S>>;
+    async fn init(
+        &self,
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>;
 
     /// Initializes the stream with the given subjects - must all be the same type.
     async fn init_with_subjects<J>(
         &self,
         subjects: Vec<J>,
-    ) -> Result<Self::StreamType, Self::Error<D, S>>
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
     where
-        J: Into<Self::SubjectType> + Clone + Send;
+        J: Into<Self::Subject> + Clone + Send;
 }
 
 macro_rules! define_scoped_stream {
     ($index:expr, $parent:ident, $doc:expr) => {
         paste::paste! {
-            #[async_trait]
             #[doc = $doc]
-            pub trait [< ScopedStream $index >]<T, D, S>
+            pub trait [< Stream $index >]<T, D, S>
             where
                 Self: Clone + Send + Sync + 'static,
                 T: Clone
@@ -179,16 +196,19 @@ macro_rules! define_scoped_stream {
                 S: Debug + Error + Send + Sync + 'static,
             {
                 /// The error type for the stream.
-                type Error: StreamError;
+                type Error<DE, SE>: StreamError
+                where
+                    DE: Debug + Error + Send + Sync + 'static,
+                    SE: Debug + Error + Send + Sync + 'static;
 
                 /// The options for the stream.
                 type Options: StreamOptions;
 
                 /// The scoped stream type.
-                type Scoped: $parent<T, D, S> + Clone + Send + Sync + 'static;
+                type Scoped: $parent<T, D, S, Error<D, S> = Self::Error<D, S>, Options = Self::Options> + Clone + Send + Sync + 'static;
 
                 /// Creates a scoped stream.
-                fn scope<K>(&self, scope: K) -> <Self as [< ScopedStream $index >]<T, D, S>>::Scoped
+                fn scope<K>(&self, scope: K) -> <Self as [< Stream $index >]<T, D, S>>::Scoped
                 where
                     K: Clone + Into<String> + Send;
             }
@@ -196,18 +216,6 @@ macro_rules! define_scoped_stream {
     };
 }
 
-define_scoped_stream!(
-    1,
-    ScopedStream,
-    "A trait representing a single-scoped stream."
-);
-define_scoped_stream!(
-    2,
-    ScopedStream1,
-    "A trait representing a double-scoped stream."
-);
-define_scoped_stream!(
-    3,
-    ScopedStream2,
-    "A trait representing a triple-scoped stream."
-);
+define_scoped_stream!(1, Stream, "A trait representing a single-scoped stream.");
+define_scoped_stream!(2, Stream1, "A trait representing a double-scoped stream.");
+define_scoped_stream!(3, Stream2, "A trait representing a triple-scoped stream.");

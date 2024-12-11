@@ -11,13 +11,13 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
-use proven_messaging::stream::Stream;
+use proven_messaging::stream::InitializedStream;
 use proven_messaging::Message;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
 
-use crate::stream::MemoryStream;
+use crate::stream::InitializedMemoryStream;
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -28,7 +28,7 @@ impl ConsumerOptions for MemoryConsumerOptions {}
 #[derive(Debug)]
 pub struct MemoryConsumer<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -47,7 +47,7 @@ where
 
 impl<P, X, T, D, S> Clone for MemoryConsumer<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -70,7 +70,7 @@ where
 
 impl<P, X, T, D, S> MemoryConsumer<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -102,7 +102,7 @@ where
 #[async_trait]
 impl<P, X, T, D, S> Consumer<P, X, T, D, S> for MemoryConsumer<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -118,7 +118,7 @@ where
 
     type Options = MemoryConsumerOptions;
 
-    type StreamType = MemoryStream<T, D, S>;
+    type StreamType = InitializedMemoryStream<T, D, S>;
 
     async fn new(
         _name: String,

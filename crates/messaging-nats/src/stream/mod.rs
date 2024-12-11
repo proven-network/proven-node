@@ -5,6 +5,7 @@ use crate::consumer::NatsConsumer;
 use crate::service::NatsService;
 use crate::subject::NatsUnpublishableSubject;
 pub use error::Error;
+use proven_messaging::client::Client;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -18,7 +19,7 @@ use bytes::Bytes;
 use proven_messaging::consumer_handler::ConsumerHandler;
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::{
-    ScopedStream, ScopedStream1, ScopedStream2, ScopedStream3, Stream, StreamOptions,
+    InitializedStream, Stream, Stream1, Stream2, Stream3, StreamOptions,
 };
 use proven_messaging::Message;
 
@@ -32,7 +33,7 @@ impl StreamOptions for NatsStreamOptions {}
 
 /// An in-memory stream.
 #[derive(Debug)]
-pub struct NatsStream<T, D, S>
+pub struct InitializedNatsStream<T, D, S>
 where
     T: Clone
         + Debug
@@ -50,7 +51,7 @@ where
     _marker: PhantomData<T>,
 }
 
-impl<T, D, S> Clone for NatsStream<T, D, S>
+impl<T, D, S> Clone for InitializedNatsStream<T, D, S>
 where
     T: Clone
         + Debug
@@ -73,7 +74,7 @@ where
 }
 
 #[async_trait]
-impl<T, D, S> Stream<T, D, S> for NatsStream<T, D, S>
+impl<T, D, S> InitializedStream<T, D, S> for InitializedNatsStream<T, D, S>
 where
     T: Clone
         + Debug
@@ -92,6 +93,11 @@ where
         SE: Debug + Send + StdError + Sync + 'static;
     type Options = NatsStreamOptions;
     type SubjectType = NatsUnpublishableSubject<T, D, S>;
+
+    type ClientError<X>
+        = <Self::ClientType<X> as Client<Self, X, T, D, S>>::Error
+    where
+        X: ServiceHandler<T, D, S>;
 
     type ClientType<X>
         = NatsClient<Self, X, T, D, S>
@@ -284,7 +290,7 @@ where
 
 /// All scopes applied and can initialize.
 #[derive(Debug)]
-pub struct ScopedNatsStream<T, D, S>
+pub struct NatsStream<T, D, S>
 where
     T: Clone
         + Debug
@@ -301,7 +307,7 @@ where
     _marker: PhantomData<T>,
 }
 
-impl<T, D, S> Clone for ScopedNatsStream<T, D, S>
+impl<T, D, S> Clone for NatsStream<T, D, S>
 where
     T: Clone
         + Debug
@@ -323,7 +329,7 @@ where
 }
 
 #[async_trait]
-impl<T, D, S> ScopedStream<T, D, S> for ScopedNatsStream<T, D, S>
+impl<T, D, S> Stream<T, D, S> for NatsStream<T, D, S>
 where
     T: Clone
         + Debug
@@ -340,12 +346,31 @@ where
     where
         DE: Debug + Send + StdError + Sync + 'static,
         SE: Debug + Send + StdError + Sync + 'static;
-    type Options = NatsStreamOptions;
-    type StreamType = NatsStream<T, D, S>;
-    type SubjectType = NatsUnpublishableSubject<T, D, S>;
 
-    async fn init(&self) -> Result<Self::StreamType, Self::Error<D, S>> {
-        let stream = NatsStream::new(self.prefix.clone().unwrap(), self.options.clone()).await?;
+    type Options = NatsStreamOptions;
+
+    type Initialized = InitializedNatsStream<T, D, S>;
+
+    type Subject = NatsUnpublishableSubject<T, D, S>;
+
+    /// Creates a new `NatsStream`.
+    fn new<K>(stream_name: K, options: NatsStreamOptions) -> Self
+    where
+        K: Clone + Into<String> + Send,
+    {
+        Self {
+            options,
+            prefix: Some(stream_name.into()),
+            _marker: PhantomData,
+        }
+    }
+
+    async fn init(
+        &self,
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
+    {
+        let stream =
+            InitializedNatsStream::new(self.prefix.clone().unwrap(), self.options.clone()).await?;
 
         Ok(stream)
     }
@@ -353,11 +378,11 @@ where
     async fn init_with_subjects<J>(
         &self,
         subjects: Vec<J>,
-    ) -> Result<Self::StreamType, Self::Error<D, S>>
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
     where
-        J: Into<Self::SubjectType> + Clone + Send,
+        J: Into<Self::Subject> + Clone + Send,
     {
-        let stream = NatsStream::new_with_subjects(
+        let stream = InitializedNatsStream::new_with_subjects(
             self.prefix.clone().unwrap(),
             self.options.clone(),
             subjects,
@@ -373,7 +398,7 @@ macro_rules! impl_scoped_stream {
         paste::paste! {
             #[doc = $doc]
             #[derive(Debug)]
-            pub struct [< ScopedNatsStream $index >]<T, D, S>
+            pub struct [< NatsStream $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -390,7 +415,7 @@ macro_rules! impl_scoped_stream {
                 _marker: PhantomData<T>,
             }
 
-            impl<T, D, S> Clone for [< ScopedNatsStream $index >]<T, D, S>
+            impl<T, D, S> Clone for [< NatsStream $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -411,7 +436,7 @@ macro_rules! impl_scoped_stream {
                 }
             }
 
-            impl<T, D, S> [< ScopedNatsStream $index >]<T, D, S>
+            impl<T, D, S> [< NatsStream $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -435,7 +460,7 @@ macro_rules! impl_scoped_stream {
             }
 
             #[async_trait]
-            impl<T, D, S> [< ScopedStream $index >]<T, D, S> for [< ScopedNatsStream $index >]<T, D, S>
+            impl<T, D, S> [< Stream $index >]<T, D, S> for [< NatsStream $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -447,8 +472,14 @@ macro_rules! impl_scoped_stream {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
-                type Error = Error<D, S>;
+                type Error<DE, SE>
+                    = Error<DE, SE>
+                where
+                    DE: Debug + Send + StdError + Sync + 'static,
+                    SE: Debug + Send + StdError + Sync + 'static;
+
                 type Options = NatsStreamOptions;
+
                 type Scoped = $parent<T, D, S>;
 
                 fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> $parent<T, D, S> {
@@ -466,21 +497,6 @@ macro_rules! impl_scoped_stream {
         }
     };
 }
-impl_scoped_stream!(
-    1,
-    ScopedNatsStream,
-    Stream1,
-    "A double-scoped in-memory stream."
-);
-impl_scoped_stream!(
-    2,
-    ScopedNatsStream1,
-    Stream1,
-    "A double-scoped in-memory stream."
-);
-impl_scoped_stream!(
-    3,
-    ScopedNatsStream2,
-    Stream2,
-    "A triple-scoped in-memory stream."
-);
+impl_scoped_stream!(1, NatsStream, Stream1, "A single-scoped NATs stream.");
+impl_scoped_stream!(2, NatsStream1, Stream1, "A double-scoped NATs stream.");
+impl_scoped_stream!(3, NatsStream2, Stream2, "A triple-scoped NATs stream.");

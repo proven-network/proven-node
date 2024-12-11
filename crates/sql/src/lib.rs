@@ -62,7 +62,7 @@ where
     type Error: SqlStoreError;
 
     /// The connection type for the store
-    type Connection: SqlConnection;
+    type Connection: SqlConnection<Error = Self::Error>;
 
     /// Connect to the SQL store - running any provided migrations
     async fn connect<Q: Clone + Into<String> + Send>(
@@ -74,7 +74,6 @@ where
 macro_rules! define_scoped_sql_store {
     ($index:expr, $parent:ident, $doc:expr) => {
         paste::paste! {
-            #[async_trait]
             #[doc = $doc]
             pub trait [< SqlStore $index >]
             where

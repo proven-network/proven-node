@@ -1,6 +1,6 @@
 mod error;
 
-use crate::stream::NatsStream;
+use crate::stream::InitializedNatsStream;
 use bytes::Bytes;
 pub use error::Error;
 
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
-use proven_messaging::stream::Stream;
+use proven_messaging::stream::InitializedStream;
 use tokio::sync::Mutex;
 
 /// Options for the in-memory subscriber (there are none).
@@ -24,7 +24,7 @@ impl ServiceOptions for NatsServiceOptions {}
 #[derive(Debug)]
 pub struct NatsService<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -43,7 +43,7 @@ where
 
 impl<P, X, T, D, S> Clone for NatsService<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -67,7 +67,7 @@ where
 #[async_trait]
 impl<P, X, T, D, S> Service<P, X, T, D, S> for NatsService<P, X, T, D, S>
 where
-    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -83,7 +83,7 @@ where
 
     type Options = NatsServiceOptions;
 
-    type StreamType = NatsStream<T, D, S>;
+    type StreamType = InitializedNatsStream<T, D, S>;
 
     async fn new(
         _name: String,
