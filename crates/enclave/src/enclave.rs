@@ -9,13 +9,14 @@ use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
+use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_runtime::RuntimePoolManager;
 use proven_sessions::{Session, SessionManager};
-use proven_sql_streamed::stream_handler::SqlStreamHandler;
-use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
-use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
-use proven_stream_nats::{NatsStream, NatsStream2, NatsStream3};
+use proven_sql_streamed::{
+    Request as SqlRequest, StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3,
+};
+use proven_store_nats::{NatsStore1, NatsStore2, NatsStore3};
 // use proven_nats_monitor::NatsMonitor;
 use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
@@ -31,14 +32,40 @@ use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 
 pub type EnclaveCore = Core<
-    ApplicationManager<StreamedSqlStore<NatsStream<SqlStreamHandler>, NatsStore>>,
+    ApplicationManager<
+        StreamedSqlStore<
+            NatsStream<
+                SqlRequest,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >,
+        >,
+    >,
     RuntimePoolManager<
         NatsStore2,
         NatsStore3,
         NatsStore3,
-        StreamedSqlStore2<NatsStream2<SqlStreamHandler>, NatsStore>,
-        StreamedSqlStore3<NatsStream3<SqlStreamHandler>, NatsStore>,
-        StreamedSqlStore3<NatsStream3<SqlStreamHandler>, NatsStore>,
+        StreamedSqlStore2<
+            NatsStream2<
+                SqlRequest,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >,
+        >,
+        StreamedSqlStore3<
+            NatsStream3<
+                SqlRequest,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >,
+        >,
+        StreamedSqlStore3<
+            NatsStream3<
+                SqlRequest,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >,
+        >,
     >,
     SessionManager<
         NsmAttestor,

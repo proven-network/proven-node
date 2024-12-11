@@ -20,7 +20,9 @@ use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOption
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::Kms;
+use proven_messaging::stream::Stream;
 // use proven_nats_monitor::NatsMonitor;
+use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
@@ -33,9 +35,8 @@ use proven_sql_streamed::{
 };
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
-use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
+use proven_store_nats::{NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
 use proven_store_s3::{S3Store, S3StoreOptions};
-use proven_stream_nats::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
 use radix_common::network::NetworkDefinition;
@@ -802,21 +803,18 @@ impl Bootstrap {
             listen_addr: http_sock_addr,
         });
 
-        let leader_store = NatsStore::new(NatsStoreOptions {
-            bucket: "SQL_LEADER".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::ZERO,
-            persist: true,
-        });
-
         let application_manager_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
-            stream: NatsStream::new(NatsStreamOptions {
-                client: nats_client.clone(),
-                stream_name: "APPLICATION_MANAGER_SQL".to_string(),
-            }),
+            stream: NatsStream::new(
+                "APPLICATION_MANAGER_SQL",
+                NatsStreamOptions {
+                    client: nats_client.clone(),
+                },
+            ),
         });
 
-        let application_manager = ApplicationManager::new(application_manager_sql_store).await?;
+        let application_manager = ApplicationManager::new(application_manager_sql_store)
+            .await
+            .map_err(Error::ApplicationManager)?;
 
         let application_store = NatsStore2::new(NatsStoreOptions {
             bucket: "APPLICATION_KV".to_string(),
@@ -826,10 +824,12 @@ impl Bootstrap {
         });
 
         let application_sql_store = StreamedSqlStore2::new(StreamedSqlStoreOptions {
-            stream: NatsStream2::new(NatsStreamOptions {
-                client: nats_client.clone(),
-                stream_name: "APPLICATION_SQL".to_string(),
-            }),
+            stream: NatsStream2::new(
+                "APPLICATION_SQL",
+                NatsStreamOptions {
+                    client: nats_client.clone(),
+                },
+            ),
         });
 
         let personal_store = NatsStore3::new(NatsStoreOptions {
@@ -840,10 +840,12 @@ impl Bootstrap {
         });
 
         let personal_sql_store = StreamedSqlStore3::new(StreamedSqlStoreOptions {
-            stream: NatsStream3::new(NatsStreamOptions {
-                client: nats_client.clone(),
-                stream_name: "PERSONAL_SQL".to_string(),
-            }),
+            stream: NatsStream3::new(
+                "PERSONAL_SQL",
+                NatsStreamOptions {
+                    client: nats_client.clone(),
+                },
+            ),
         });
 
         let nft_store = NatsStore3::new(NatsStoreOptions {
@@ -854,10 +856,12 @@ impl Bootstrap {
         });
 
         let nft_sql_store = StreamedSqlStore3::new(StreamedSqlStoreOptions {
-            stream: NatsStream3::new(NatsStreamOptions {
-                client: nats_client.clone(),
-                stream_name: "NFT_SQL".to_string(),
-            }),
+            stream: NatsStream3::new(
+                "NFT_SQL",
+                NatsStreamOptions {
+                    client: nats_client.clone(),
+                },
+            ),
         });
 
         let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {

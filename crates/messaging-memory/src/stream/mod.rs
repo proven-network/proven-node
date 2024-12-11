@@ -317,8 +317,8 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    full_name: String,
     options: MemoryStreamOptions,
-    prefix: Option<String>,
     _marker: PhantomData<(T, D, S)>,
 }
 
@@ -336,8 +336,8 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            full_name: self.full_name.clone(),
             options: self.options.clone(),
-            prefix: self.prefix.clone(),
             _marker: PhantomData,
         }
     }
@@ -373,8 +373,8 @@ where
         N: Clone + Into<String> + Send,
     {
         Self {
+            full_name: stream_name.into(),
             options,
-            prefix: Some(stream_name.into()),
             _marker: PhantomData,
         }
     }
@@ -383,11 +383,9 @@ where
         &self,
     ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
     {
-        let stream = InitializedMemoryStream::<T, D, S>::new(
-            self.prefix.clone().unwrap(),
-            self.options.clone(),
-        )
-        .await?;
+        let stream =
+            InitializedMemoryStream::<T, D, S>::new(self.full_name.clone(), self.options.clone())
+                .await?;
         Ok(stream)
     }
 
@@ -399,7 +397,7 @@ where
         J: Into<Self::Subject> + Clone + Send,
     {
         let stream = InitializedMemoryStream::<T, D, S>::new_with_subjects(
-            self.prefix.clone().unwrap(),
+            self.full_name.clone(),
             self.options.clone(),
             subjects,
         )
@@ -425,8 +423,8 @@ macro_rules! impl_scoped_stream {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
+                full_name: String,
                 options: MemoryStreamOptions,
-                prefix: Option<String>,
                 _marker: PhantomData<(T, D, S)>,
             }
 
@@ -444,8 +442,8 @@ macro_rules! impl_scoped_stream {
             {
                 fn clone(&self) -> Self {
                     Self {
+                        full_name: self.full_name.clone(),
                         options: self.options.clone(),
-                        prefix: self.prefix.clone(),
                         _marker: PhantomData,
                     }
                 }
@@ -465,10 +463,13 @@ macro_rules! impl_scoped_stream {
             {
                 /// Creates a new `[< MemoryStream $index >]`.
                 #[must_use]
-                pub const fn new(options: MemoryStreamOptions) -> Self {
+                pub fn new<K>(stream_name: K, options: MemoryStreamOptions) -> Self
+                where
+                    K: Clone + Into<String> + Send,
+                {
                     Self {
+                        full_name: stream_name.into(),
                         options,
-                        prefix: None,
                         _marker: PhantomData,
                     }
                 }
@@ -497,13 +498,9 @@ macro_rules! impl_scoped_stream {
                 type Scoped = $parent<T, D, S>;
 
                 fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> $parent<T, D, S> {
-                    let new_scope = match &self.prefix {
-                        Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
-                        None => scope.into(),
-                    };
                     $parent::<T, D, S> {
+                        full_name: format!("{}_{}", self.full_name, scope.into()),
                         options: self.options.clone(),
-                        prefix: Some(new_scope),
                         _marker: PhantomData,
                     }
                 }
@@ -608,7 +605,7 @@ mod tests {
     #[tokio::test]
     async fn test_scoped_stream() {
         let stream1: ScopedMemoryStream1<Bytes, Infallible, Infallible> =
-            ScopedMemoryStream1::new(MemoryStreamOptions);
+            ScopedMemoryStream1::new("test_scoped_stream", MemoryStreamOptions);
         let scoped_stream = stream1.scope("scope1");
 
         let subject = MemorySubject::new("test_scoped").unwrap();
@@ -623,7 +620,7 @@ mod tests {
     #[tokio::test]
     async fn test_nested_scoped_stream() {
         let stream2: ScopedMemoryStream2<Bytes, Infallible, Infallible> =
-            ScopedMemoryStream2::new(MemoryStreamOptions);
+            ScopedMemoryStream2::new("test_nested_scoped_stream", MemoryStreamOptions);
         let scoped_stream = stream2.scope("scope1").scope("scope2");
 
         let subject = MemorySubject::new("test_nested_scoped").unwrap();

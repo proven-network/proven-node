@@ -302,8 +302,8 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    full_name: String,
     options: NatsStreamOptions,
-    prefix: Option<String>,
     _marker: PhantomData<T>,
 }
 
@@ -321,8 +321,8 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            full_name: self.full_name.clone(),
             options: self.options.clone(),
-            prefix: self.prefix.clone(),
             _marker: PhantomData,
         }
     }
@@ -359,8 +359,8 @@ where
         K: Clone + Into<String> + Send,
     {
         Self {
+            full_name: stream_name.into(),
             options,
-            prefix: Some(stream_name.into()),
             _marker: PhantomData,
         }
     }
@@ -370,7 +370,7 @@ where
     ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
     {
         let stream =
-            InitializedNatsStream::new(self.prefix.clone().unwrap(), self.options.clone()).await?;
+            InitializedNatsStream::new(self.full_name.clone(), self.options.clone()).await?;
 
         Ok(stream)
     }
@@ -383,7 +383,7 @@ where
         J: Into<Self::Subject> + Clone + Send,
     {
         let stream = InitializedNatsStream::new_with_subjects(
-            self.prefix.clone().unwrap(),
+            self.full_name.clone(),
             self.options.clone(),
             subjects,
         )
@@ -410,8 +410,8 @@ macro_rules! impl_scoped_stream {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
+                full_name: String,
                 options: NatsStreamOptions,
-                prefix: Option<String>,
                 _marker: PhantomData<T>,
             }
 
@@ -429,8 +429,8 @@ macro_rules! impl_scoped_stream {
             {
                 fn clone(&self) -> Self {
                     Self {
+                        full_name: self.full_name.clone(),
                         options: self.options.clone(),
-                        prefix: self.prefix.clone(),
                         _marker: PhantomData,
                     }
                 }
@@ -450,10 +450,13 @@ macro_rules! impl_scoped_stream {
             {
                 /// Creates a new `[< NatsStream $index >]`.
                 #[must_use]
-                pub const fn new(options: NatsStreamOptions) -> Self {
+                pub fn new<K>(stream_name: K, options: NatsStreamOptions) -> Self
+                where
+                    K: Clone + Into<String> + Send,
+                {
                     Self {
+                        full_name: stream_name.into(),
                         options,
-                        prefix: None,
                         _marker: PhantomData,
                     }
                 }
@@ -483,13 +486,9 @@ macro_rules! impl_scoped_stream {
                 type Scoped = $parent<T, D, S>;
 
                 fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> $parent<T, D, S> {
-                    let new_scope = match &self.prefix {
-                        Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
-                        None => scope.into(),
-                    };
                     $parent::<T, D, S> {
+                        full_name: format!("{}_{}", self.full_name, scope.into()),
                         options: self.options.clone(),
-                        prefix: Some(new_scope),
                         _marker: PhantomData,
                     }
                 }

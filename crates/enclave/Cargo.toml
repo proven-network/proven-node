@@ -20,6 +20,8 @@ proven-http-letsencrypt = { workspace = true }
 proven-imds = { workspace = true }
 proven-instance-details = { workspace = true }
 proven-kms = { workspace = true }
+proven-messaging = { workspace = true }
+proven-messaging-nats = { workspace = true }
 proven-nats-monitor = { workspace = true }
 proven-nats-server = { workspace = true }
 proven-postgres = { workspace = true }
@@ -34,8 +36,6 @@ proven-store = { workspace = true }
 proven-store-asm = { workspace = true }
 proven-store-nats = { workspace = true }
 proven-store-s3 = { workspace = true }
-proven-stream = { workspace = true }
-proven-stream-nats = { workspace = true }
 proven-vsock-proxy = { workspace = true }
 proven-vsock-rpc = { workspace = true }
 proven-vsock-tracing = { workspace = true }

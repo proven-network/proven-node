@@ -6565,6 +6565,8 @@ dependencies = [
  "proven-imds",
  "proven-instance-details",
  "proven-kms",
+ "proven-messaging",
+ "proven-messaging-nats",
  "proven-nats-monitor",
  "proven-nats-server",
  "proven-postgres",
@@ -6579,8 +6581,6 @@ dependencies = [
  "proven-store-asm",
  "proven-store-nats",
  "proven-store-s3",
- "proven-stream",
- "proven-stream-nats",
  "proven-vsock-proxy",
  "proven-vsock-rpc",
  "proven-vsock-tracing",
@@ -7130,46 +7130,6 @@ dependencies = [
  "md5",
  "paste",
  "proven-store",
- "thiserror 2.0.6",
- "tokio",
-]
-
-[[package]]
-name = "proven-stream"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "paste",
- "proven-messaging",
-]
-
-[[package]]
-name = "proven-stream-memory"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "ciborium",
- "futures",
- "paste",
- "proven-stream",
- "thiserror 2.0.6",
- "tokio",
-]
-
-[[package]]
-name = "proven-stream-nats"
-version = "0.1.0"
-dependencies = [
- "async-nats",
- "async-trait",
- "bytes",
- "futures",
- "paste",
- "proven-stream",
- "serde",
- "serde_json",
  "thiserror 2.0.6",
  "tokio",
 ]

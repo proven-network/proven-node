@@ -20,10 +20,10 @@ pub enum Error {
     #[error(transparent)]
     ApplicationManager(
         #[from]
-        proven_applications::Error<
-            proven_sql_streamed::Error<
-                proven_stream_nats::Error<proven_sql_streamed::stream_handler::Error>,
-                proven_store_nats::Error,
+        proven_sql_streamed::Error<
+            proven_messaging_nats::stream::Error<
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
             >,
         >,
     ),

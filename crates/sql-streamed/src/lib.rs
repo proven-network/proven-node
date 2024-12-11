@@ -14,14 +14,14 @@ use std::sync::Arc;
 
 pub use connection::Connection;
 pub use error::Error;
-use request::Request;
+pub use request::Request;
+pub use response::Response;
 
 use async_trait::async_trait;
 use proven_libsql::Database;
 use proven_messaging::client::Client;
 use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stream3};
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
-use response::Response;
 use stream_handler::{SqlStreamHandler, SqlStreamHandlerOptions};
 use tokio::sync::{oneshot, Mutex};
 
