@@ -34,7 +34,10 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the stream.
-    type Error: StreamError;
+    type Error<DE, SE>: StreamError
+    where
+        DE: Debug + Error + Send + Sync + 'static,
+        SE: Debug + Error + Send + Sync + 'static;
 
     /// The options for the stream.
     type Options: StreamOptions;
@@ -58,7 +61,7 @@ where
         X: ServiceHandler<T, D, S>;
 
     /// Creates a new stream.
-    async fn new<N>(stream_name: N, options: Self::Options) -> Result<Self, Self::Error>
+    async fn new<N>(stream_name: N, options: Self::Options) -> Result<Self, Self::Error<D, S>>
     where
         N: Clone + Into<String> + Send;
 
@@ -67,7 +70,7 @@ where
         stream_name: N,
         options: Self::Options,
         subjects: Vec<J>,
-    ) -> Result<Self, Self::Error>
+    ) -> Result<Self, Self::Error<D, S>>
     where
         N: Clone + Into<String> + Send,
         J: Into<Self::SubjectType> + Clone + Send;
@@ -77,29 +80,29 @@ where
         &self,
         service_name: N,
         handler: X,
-    ) -> Result<Self::ClientType<X>, Self::Error>
+    ) -> Result<Self::ClientType<X>, Self::Error<D, S>>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>;
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error>;
+    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error<D, S>>;
 
     /// The last message in the stream.
-    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error>;
+    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error<D, S>>;
 
     /// Returns the name of the stream.
     fn name(&self) -> String;
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error>;
+    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error<D, S>>;
 
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(
         &self,
         consumer_name: N,
         handler: X,
-    ) -> Result<Self::ConsumerType<X>, Self::Error>
+    ) -> Result<Self::ConsumerType<X>, Self::Error<D, S>>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<T, D, S>;
@@ -109,7 +112,7 @@ where
         &self,
         service_name: N,
         handler: X,
-    ) -> Result<Self::ServiceType<X>, Self::Error>
+    ) -> Result<Self::ServiceType<X>, Self::Error<D, S>>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>;
@@ -131,7 +134,10 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the stream.
-    type Error: StreamError;
+    type Error<DE, SE>: StreamError
+    where
+        DE: Debug + Error + Send + Sync + 'static,
+        SE: Debug + Error + Send + Sync + 'static;
 
     /// The options for the consumer.
     type Options: StreamOptions;
@@ -143,13 +149,13 @@ where
     type SubjectType: Subject<T, D, S>;
 
     /// Initializes the stream.
-    async fn init(&self) -> Result<Self::StreamType, Self::Error>;
+    async fn init(&self) -> Result<Self::StreamType, Self::Error<D, S>>;
 
     /// Initializes the stream with the given subjects - must all be the same type.
     async fn init_with_subjects<J>(
         &self,
         subjects: Vec<J>,
-    ) -> Result<Self::StreamType, Self::Error>
+    ) -> Result<Self::StreamType, Self::Error<D, S>>
     where
         J: Into<Self::SubjectType> + Clone + Send;
 }

@@ -4,6 +4,7 @@ use crate::stream::NatsStream;
 use bytes::Bytes;
 pub use error::Error;
 
+use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -11,6 +12,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
+use proven_messaging::stream::Stream;
 use tokio::sync::Mutex;
 
 /// Options for the in-memory subscriber (there are none).
@@ -19,68 +21,76 @@ pub struct NatsServiceOptions;
 impl ServiceOptions for NatsServiceOptions {}
 
 /// A in-memory subscriber.
-#[derive(Clone, Debug)]
-pub struct NatsService<T, R>
+#[derive(Debug)]
+pub struct NatsService<P, X, T, D, S>
 where
+    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
         + 'static,
-    R: Clone
-        + Debug
-        + Send
-        + Sync
-        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
-        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     last_seq: Arc<Mutex<u64>>,
-    stream: <Self as Service>::StreamType,
+    stream: <Self as Service<P, X, T, D, S>>::StreamType,
     _marker: PhantomData<T>,
 }
 
-#[async_trait]
-impl<T, R> Service for NatsService<T, R>
+impl<P, X, T, D, S> Clone for NatsService<P, X, T, D, S>
 where
+    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
         + 'static,
-    R: Clone
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            last_seq: self.last_seq.clone(),
+            stream: self.stream.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+#[async_trait]
+impl<P, X, T, D, S> Service<P, X, T, D, S> for NatsService<P, X, T, D, S>
+where
+    P: Stream<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = ciborium::de::Error<std::io::Error>>
-        + TryInto<Bytes, Error = ciborium::ser::Error<std::io::Error>>
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
         + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = Error;
 
     type Options = NatsServiceOptions;
 
-    type Type = T;
+    type StreamType = NatsStream<T, D, S>;
 
-    type ResponseType = R;
-
-    type StreamType = NatsStream<Self::Type>;
-
-    async fn new<X>(
+    async fn new(
         _name: String,
         stream: Self::StreamType,
         _options: NatsServiceOptions,
         _handler: X,
-    ) -> Result<Self, Self::Error>
-    where
-        X: ServiceHandler<Type = T, ResponseType = R> + Clone + Send + Sync + 'static,
-        X::Type: Clone + Debug + Send + Sync + 'static,
-        X::ResponseType: Clone + Debug + Send + Sync + 'static,
-    {
+    ) -> Result<Self, Self::Error> {
         let last_seq = Arc::new(Mutex::new(0));
 
         Ok(Self {

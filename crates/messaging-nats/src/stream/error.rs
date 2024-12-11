@@ -1,14 +1,19 @@
 use std::fmt::Debug;
 
 use proven_messaging::stream::StreamError;
+use std::error::Error as StdError;
 use thiserror::Error;
 
 /// Error type for memory stream operations.
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum Error<DE, SE>
+where
+    DE: Debug + Send + StdError + Sync + 'static,
+    SE: Debug + Send + StdError + Sync + 'static,
+{
     /// Deserialization error.
     #[error(transparent)]
-    Deserialize(#[from] ciborium::de::Error<std::io::Error>),
+    Deserialize(DE),
 
     /// Direct get error.
     #[error("Failed to get message: {0}")]
@@ -24,11 +29,16 @@ pub enum Error {
 
     /// Serialization error.
     #[error(transparent)]
-    Serialize(#[from] ciborium::ser::Error<std::io::Error>),
+    Serialize(SE),
 
     /// An error occured while subscribing to a subject.
     #[error(transparent)]
-    Subject(#[from] crate::subject::Error),
+    Subject(#[from] crate::subject::Error<DE, SE>),
 }
 
-impl StreamError for Error {}
+impl<DE, SE> StreamError for Error<DE, SE>
+where
+    DE: Debug + Send + StdError + Sync + 'static,
+    SE: Debug + Send + StdError + Sync + 'static,
+{
+}

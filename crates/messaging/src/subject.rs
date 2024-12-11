@@ -27,13 +27,13 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// Publish a message to the subject.
-    async fn publish(&self, message: Message<T>) -> Result<(), Self::Error>;
+    async fn publish(&self, message: Message<T>) -> Result<(), Self::Error<D, S>>;
 
     /// Publish a message to the subject and await a response.
     async fn request<X>(
         &self,
         message: Message<T>,
-    ) -> Result<Message<X::ResponseType>, Self::Error>
+    ) -> Result<Message<X::ResponseType>, Self::Error<D, S>>
     where
         X: SubscriptionHandler<T, D, S>;
 }
@@ -53,7 +53,10 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the subject.
-    type Error: SubjectError;
+    type Error<DE, SE>: SubjectError
+    where
+        DE: Debug + Error + Send + Sync + 'static,
+        SE: Debug + Error + Send + Sync + 'static;
 
     /// The type of subscription returned by the subject.
     type SubscriptionType<X>: Subscription<Self, X, T, D, S>
@@ -64,7 +67,10 @@ where
     type StreamType: Stream<T, D, S>;
 
     /// Subscribe to messages on the subject.
-    async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error>
+    async fn subscribe<X>(
+        &self,
+        handler: X,
+    ) -> Result<Self::SubscriptionType<X>, Self::Error<D, S>>
     where
         X: SubscriptionHandler<T, D, S>;
 
@@ -73,7 +79,7 @@ where
         &self,
         stream_name: K,
         options: <Self::StreamType as Stream<T, D, S>>::Options,
-    ) -> Result<Self::StreamType, <Self::StreamType as Stream<T, D, S>>::Error>
+    ) -> Result<Self::StreamType, <Self::StreamType as Stream<T, D, S>>::Error<D, S>>
     where
         K: Clone + Into<String> + Send,
         Self::StreamType: Stream<T, D, S>;

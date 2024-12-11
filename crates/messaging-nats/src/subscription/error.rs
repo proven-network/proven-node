@@ -1,16 +1,22 @@
+use std::error::Error as StdError;
+
 use proven_messaging::subscription::SubscriptionError;
 use thiserror::Error;
 
 /// Error type for NATS operations.
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum Error<DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+{
     /// Deserialization error.
     #[error(transparent)]
-    Deserialize(#[from] ciborium::de::Error<std::io::Error>),
+    Deserialize(DE),
 
     /// Serialization error.
     #[error(transparent)]
-    Serialize(#[from] ciborium::ser::Error<std::io::Error>),
+    Serialize(SE),
 
     /// Subscribe error.
     #[error("Failed to subscribe")]
@@ -21,4 +27,9 @@ pub enum Error {
     Unsubscribe,
 }
 
-impl SubscriptionError for Error {}
+impl<DE, SE> SubscriptionError for Error<DE, SE>
+where
+    DE: Send + StdError + Sync + 'static,
+    SE: Send + StdError + Sync + 'static,
+{
+}

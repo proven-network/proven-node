@@ -32,7 +32,10 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the subscriber.
-    type Error: SubscriptionError;
+    type Error<DE, SE>: SubscriptionError
+    where
+        DE: Debug + Error + Send + Sync + 'static,
+        SE: Debug + Error + Send + Sync + 'static;
 
     /// The options for the subscriber.
     type Options: SubscriptionOptions;
@@ -45,10 +48,10 @@ where
         subject_string: String,
         options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error>;
+    ) -> Result<Self, Self::Error<D, S>>;
 
     /// Cancels the subscription.
-    async fn cancel(self) -> Result<(), Self::Error>;
+    async fn cancel(self) -> Result<(), Self::Error<D, S>>;
 
     /// The handler for the subscriber.
     fn handler(&self) -> X;

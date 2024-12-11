@@ -121,7 +121,11 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = Error;
+    type Error<DE, SE>
+        = Error
+    where
+        DE: Debug + Send + StdError + Sync + 'static,
+        SE: Debug + Send + StdError + Sync + 'static;
 
     type SubscriptionType<X>
         = MemorySubscription<Self, X, T, D, S>
@@ -147,7 +151,7 @@ where
         &self,
         stream_name: K,
         options: <MemoryStream<T, D, S> as Stream<T, D, S>>::Options,
-    ) -> Result<MemoryStream<T, D, S>, <MemoryStream<T, D, S> as Stream<T, D, S>>::Error>
+    ) -> Result<MemoryStream<T, D, S>, <Self::StreamType as Stream<T, D, S>>::Error<D, S>>
     where
         K: Clone + Into<String> + Send,
     {
@@ -303,7 +307,11 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = Error;
+    type Error<DE, SE>
+        = Error
+    where
+        DE: Debug + Send + StdError + Sync + 'static,
+        SE: Debug + Send + StdError + Sync + 'static;
 
     type SubscriptionType<X>
         = MemorySubscription<Self, X, T, D, S>
@@ -329,7 +337,7 @@ where
         &self,
         stream_name: K,
         options: <MemoryStream<T, D, S> as Stream<T, D, S>>::Options,
-    ) -> Result<MemoryStream<T, D, S>, <MemoryStream<T, D, S> as Stream<T, D, S>>::Error>
+    ) -> Result<MemoryStream<T, D, S>, <Self::StreamType as Stream<T, D, S>>::Error<D, S>>
     where
         K: Clone + Into<String> + Send,
     {

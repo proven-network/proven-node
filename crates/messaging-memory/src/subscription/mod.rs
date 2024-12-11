@@ -85,7 +85,11 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = Error;
+    type Error<DE, SE>
+        = Error
+    where
+        DE: Debug + Send + StdError + Sync + 'static,
+        SE: Debug + Send + StdError + Sync + 'static;
 
     type Options = MemorySubscriptionOptions;
 
@@ -96,7 +100,7 @@ where
         subject_string: String,
         _options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, Self::Error<D, S>> {
         let mut state = GLOBAL_STATE.lock().await;
         if !state.has::<SubjectState<T>>() {
             state.put(SubjectState::<T>::default());
@@ -140,7 +144,7 @@ where
         Ok(subscriber)
     }
 
-    async fn cancel(self) -> Result<(), Self::Error> {
+    async fn cancel(self) -> Result<(), Self::Error<D, S>> {
         self.cancel_token.cancel();
         Ok(())
     }
