@@ -1,17 +1,23 @@
 mod error;
+mod subscription_handler;
 
-use bytes::Bytes;
+use crate::stream::InitializedMemoryStream;
+use crate::subject::MemorySubject;
 pub use error::Error;
-use proven_messaging::stream::InitializedStream;
+use subscription_handler::ClientSubscriptionHandler;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_messaging::client::{Client, ClientOptions};
 use proven_messaging::service_handler::ServiceHandler;
-
-use crate::stream::InitializedMemoryStream;
+use proven_messaging::stream::InitializedStream;
+use proven_messaging::subject::Subject;
+use proven_messaging::Message;
+use tokio::sync::{mpsc, Mutex};
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -34,6 +40,8 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    reply_receiver: Arc<Mutex<mpsc::Receiver<Message<X::ResponseType>>>>,
+    reply_subject: MemorySubject<X::ResponseType, D, S>,
     stream: <Self as Client<P, X, T, D, S>>::StreamType,
 }
 
@@ -53,6 +61,8 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            reply_receiver: self.reply_receiver.clone(),
+            reply_subject: self.reply_subject.clone(),
             stream: self.stream.clone(),
         }
     }
@@ -80,15 +90,41 @@ where
     type StreamType = InitializedMemoryStream<T, D, S>;
 
     async fn new(
-        _name: String,
+        name: String,
         stream: Self::StreamType,
         _options: Self::Options,
         _handler: X,
     ) -> Result<Self, Self::Error> {
-        Ok(Self { stream })
+        let (sender, receiver) = mpsc::channel::<Message<X::ResponseType>>(100);
+
+        let reply_handler = ClientSubscriptionHandler::new(sender);
+
+        let reply_subject: MemorySubject<X::ResponseType, D, S> =
+            MemorySubject::new(format!("{name}_reply")).unwrap();
+
+        reply_subject.subscribe(reply_handler).await.unwrap();
+
+        Ok(Self {
+            reply_receiver: Arc::new(Mutex::new(receiver)),
+            reply_subject,
+            stream,
+        })
     }
 
-    async fn request(&self, _request: T) -> Result<X::ResponseType, Self::Error> {
-        unimplemented!()
+    async fn request(&self, request: T) -> Result<X::ResponseType, Self::Error> {
+        let mut reply_receiver = self.reply_receiver.lock().await;
+
+        self.stream
+            .publish(Message {
+                headers: None,
+                payload: request,
+            })
+            .await
+            .unwrap();
+
+        let reply = reply_receiver.recv().await.unwrap();
+        drop(reply_receiver);
+
+        Ok(reply.payload)
     }
 }

@@ -198,7 +198,7 @@ where
 
     async fn client<N, X>(
         &self,
-        _service_name: N,
+        service_name: N,
         _handler: X,
     ) -> Result<Self::ClientType<X>, Self::Error<D, S>>
     where
@@ -206,7 +206,7 @@ where
         X: ServiceHandler<T, D, S>,
     {
         Ok(MemoryClient::new(
-            _service_name.into(),
+            format!("{}_{}", self.name(), service_name.into()),
             self.clone(),
             MemoryClientOptions,
             _handler,
@@ -261,7 +261,7 @@ where
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(
         &self,
-        name: N,
+        consumer_name: N,
         handler: X,
     ) -> Result<Self::ConsumerType<X>, Self::Error<D, S>>
     where
@@ -269,7 +269,7 @@ where
         X: ConsumerHandler<T, D, S>,
     {
         let consumer = MemoryConsumer::new(
-            format!("{}_{}", self.name(), name.into()),
+            format!("{}_{}", self.name(), consumer_name.into()),
             self.clone(),
             MemoryConsumerOptions,
             handler,
@@ -283,7 +283,7 @@ where
     /// Consumes the stream with the given service.
     async fn start_service<N, X>(
         &self,
-        name: N,
+        service_name: N,
         handler: X,
     ) -> Result<Self::ServiceType<X>, Self::Error<D, S>>
     where
@@ -291,7 +291,7 @@ where
         X: ServiceHandler<T, D, S>,
     {
         let service = MemoryService::new(
-            format!("{}_{}", self.name(), name.into()),
+            format!("{}_{}", self.name(), service_name.into()),
             self.clone(),
             MemoryServiceOptions,
             handler,

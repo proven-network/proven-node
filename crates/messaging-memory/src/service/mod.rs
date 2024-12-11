@@ -1,5 +1,6 @@
 mod error;
 
+use crate::subject::MemorySubject;
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -11,6 +12,7 @@ use bytes::Bytes;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
+use proven_messaging::subject::PublishableSubject;
 use proven_messaging::Message;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
@@ -82,11 +84,14 @@ where
     /// Creates a new NATS service.
     async fn process_messages(
         last_seq: Arc<Mutex<u64>>,
+        reply_subject: MemorySubject<X::ResponseType, D, S>,
         mut receiver_stream: ReceiverStream<Message<T>>,
         handler: X,
     ) -> Result<(), Error> {
         while let Some(message) = receiver_stream.next().await {
-            handler.handle(message).await.map_err(|_| Error::Handler)?;
+            let result = handler.handle(message).await.map_err(|_| Error::Handler)?;
+
+            reply_subject.publish(result).await.unwrap();
 
             let mut seq = last_seq.lock().await;
             *seq += 1;
@@ -118,7 +123,7 @@ where
     type StreamType = InitializedMemoryStream<T, D, S>;
 
     async fn new(
-        _name: String,
+        name: String,
         stream: Self::StreamType,
         _options: Self::Options,
         handler: X,
@@ -127,9 +132,12 @@ where
 
         tokio::spawn(Self::process_messages(
             last_seq.clone(),
+            MemorySubject::new(format!("{name}_reply")).unwrap(),
             stream.messages().await,
             handler.clone(),
         ));
+
+        handler.on_caught_up().await.unwrap();
 
         Ok(Self { last_seq, stream })
     }
