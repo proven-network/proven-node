@@ -97,10 +97,7 @@ where
             radix_gateway_origin,
             transaction_stream,
         }: RadixStreamOptions<TS>,
-    ) -> Result<
-        Self,
-        Error<TS::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>>,
-    > {
+    ) -> Result<Self, Error<TS::Error>> {
         let client = build_client(radix_gateway_origin, None, None);
 
         let last_state_version = (transaction_stream
@@ -139,10 +136,7 @@ where
         transaction_stream: TS,
         last_state_version: Arc<Mutex<Option<u64>>>,
         shutdown_token: CancellationToken,
-    ) -> Result<
-        (),
-        Error<TS::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>>,
-    > {
+    ) -> Result<(), Error<TS::Error>> {
         loop {
             if shutdown_token.is_cancelled() {
                 break;
@@ -226,10 +220,7 @@ where
         transactions: Vec<Transaction>,
         transaction_stream: TS,
         last_state_version: Arc<Mutex<Option<u64>>>,
-    ) -> Result<
-        (),
-        Error<TS::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>>,
-    > {
+    ) -> Result<(), Error<TS::Error>> {
         for transaction in &transactions {
             trace!("Publishing transaction: {:?}", transaction);
             transaction_stream
@@ -248,11 +239,7 @@ where
     /// # Errors
     ///
     /// This function will return an error if the `RadixStream` has already been started.
-    pub fn start(
-        &self,
-    ) -> StartResult<
-        TS::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
-    > {
+    pub fn start(&self) -> StartResult<TS::Error> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }

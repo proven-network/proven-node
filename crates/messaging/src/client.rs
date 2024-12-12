@@ -15,10 +15,9 @@ pub trait ClientOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a client of a service the sends requests.
 #[async_trait]
-pub trait Client<P, X, T, D, S>
+pub trait Client<X, T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug

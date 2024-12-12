@@ -79,7 +79,7 @@ where
         &self,
         stream_name: K,
         options: <Self::StreamType as InitializedStream<T, D, S>>::Options,
-    ) -> Result<Self::StreamType, <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>>
+    ) -> Result<Self::StreamType, <Self::StreamType as InitializedStream<T, D, S>>::Error>
     where
         K: Clone + Into<String> + Send,
         Self::StreamType: InitializedStream<T, D, S>;

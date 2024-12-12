@@ -11,7 +11,6 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
-use proven_messaging::stream::InitializedStream;
 use proven_messaging::Message;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
@@ -26,9 +25,8 @@ impl ConsumerOptions for MemoryConsumerOptions {}
 
 /// A in-memory subscriber.
 #[derive(Debug)]
-pub struct MemoryConsumer<P, X, T, D, S>
+pub struct MemoryConsumer<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -42,12 +40,11 @@ where
 {
     handler: X,
     last_seq: Arc<Mutex<u64>>,
-    _marker: PhantomData<(P, T, S, D)>,
+    _marker: PhantomData<(T, S, D)>,
 }
 
-impl<P, X, T, D, S> Clone for MemoryConsumer<P, X, T, D, S>
+impl<X, T, D, S> Clone for MemoryConsumer<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -68,9 +65,8 @@ where
     }
 }
 
-impl<P, X, T, D, S> MemoryConsumer<P, X, T, D, S>
+impl<X, T, D, S> MemoryConsumer<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -100,9 +96,8 @@ where
 }
 
 #[async_trait]
-impl<P, X, T, D, S> Consumer<P, X, T, D, S> for MemoryConsumer<P, X, T, D, S>
+impl<X, T, D, S> Consumer<X, T, D, S> for MemoryConsumer<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug

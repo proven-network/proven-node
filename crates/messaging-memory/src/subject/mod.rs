@@ -153,7 +153,7 @@ where
         options: <InitializedMemoryStream<T, D, S> as InitializedStream<T, D, S>>::Options,
     ) -> Result<
         InitializedMemoryStream<T, D, S>,
-        <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>,
+        <Self::StreamType as InitializedStream<T, D, S>>::Error,
     >
     where
         K: Clone + Into<String> + Send,
@@ -342,7 +342,7 @@ where
         options: <InitializedMemoryStream<T, D, S> as InitializedStream<T, D, S>>::Options,
     ) -> Result<
         InitializedMemoryStream<T, D, S>,
-        <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>,
+        <Self::StreamType as InitializedStream<T, D, S>>::Error,
     >
     where
         K: Clone + Into<String> + Send,

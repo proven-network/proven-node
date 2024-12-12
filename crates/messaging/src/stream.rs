@@ -1,4 +1,4 @@
-use crate::client::{Client, ClientError};
+use crate::client::Client;
 use crate::consumer::Consumer;
 use crate::consumer_handler::ConsumerHandler;
 use crate::service::Service;
@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 
 /// Marker trait for stream errors
-pub trait StreamError: Error + Send + Sync + 'static {}
+pub trait StreamError: Debug + Error + Send + Sync + 'static {}
 
 /// Marker trait for stream options
 pub trait StreamOptions: Clone + Send + Sync + 'static {}
@@ -34,39 +34,31 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the stream.
-    type Error<DE, SE>: StreamError
-    where
-        DE: Debug + Error + Send + Sync + 'static,
-        SE: Debug + Error + Send + Sync + 'static;
+    type Error: StreamError;
 
     /// The options for the stream.
     type Options: StreamOptions;
 
     /// The subject type for the stream.
-    type SubjectType: Subject<T, D, S>;
-
-    /// The client error type for the stream.
-    type ClientError<X>: ClientError
-    where
-        X: ServiceHandler<T, D, S>;
+    type Subject: Subject<T, D, S>;
 
     /// The client type for the stream.
-    type ClientType<X>: Client<Self, X, T, D, S>
+    type Client<X>: Client<X, T, D, S>
     where
         X: ServiceHandler<T, D, S>;
 
     /// The consumer type for the stream.
-    type ConsumerType<X>: Consumer<Self, X, T, D, S>
+    type Consumer<X>: Consumer<X, T, D, S>
     where
         X: ConsumerHandler<T, D, S>;
 
     /// The service type for the stream.
-    type ServiceType<X>: Service<Self, X, T, D, S>
+    type Service<X>: Service<X, T, D, S>
     where
         X: ServiceHandler<T, D, S>;
 
     /// Creates a new stream.
-    async fn new<N>(stream_name: N, options: Self::Options) -> Result<Self, Self::Error<D, S>>
+    async fn new<N>(stream_name: N, options: Self::Options) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send;
 
@@ -75,39 +67,39 @@ where
         stream_name: N,
         options: Self::Options,
         subjects: Vec<J>,
-    ) -> Result<Self, Self::Error<D, S>>
+    ) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        J: Into<Self::SubjectType> + Clone + Send;
+        J: Into<Self::Subject> + Clone + Send;
 
     /// Gets a client for a service.
     async fn client<N, X>(
         &self,
         service_name: N,
         handler: X,
-    ) -> Result<Self::ClientType<X>, Self::Error<D, S>>
+    ) -> Result<Self::Client<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>;
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error<D, S>>;
+    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error>;
 
     /// The last message in the stream.
-    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error<D, S>>;
+    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error>;
 
     /// Returns the name of the stream.
     fn name(&self) -> String;
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error<D, S>>;
+    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error>;
 
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(
         &self,
         consumer_name: N,
         handler: X,
-    ) -> Result<Self::ConsumerType<X>, Self::Error<D, S>>
+    ) -> Result<Self::Consumer<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<T, D, S>;
@@ -117,7 +109,7 @@ where
         &self,
         service_name: N,
         handler: X,
-    ) -> Result<Self::ServiceType<X>, Self::Error<D, S>>
+    ) -> Result<Self::Service<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>;
@@ -127,7 +119,7 @@ where
 #[async_trait]
 pub trait Stream<T, D, S>
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -138,23 +130,11 @@ where
     D: Debug + Error + Send + Sync + 'static,
     S: Debug + Error + Send + Sync + 'static,
 {
-    /// The error type for the stream.
-    type Error<DE, SE>: StreamError
-    where
-        DE: Debug + Error + Send + Sync + 'static,
-        SE: Debug + Error + Send + Sync + 'static;
-
     /// The options for the consumer.
     type Options: StreamOptions;
 
     /// The stream type.
-    type Initialized: InitializedStream<
-        T,
-        D,
-        S,
-        Error<D, S> = Self::Error<D, S>,
-        Options = Self::Options,
-    >;
+    type Initialized: InitializedStream<T, D, S, Options = Self::Options> + Clone;
 
     /// The subject type for the stream.
     type Subject: Subject<T, D, S>;
@@ -167,13 +147,13 @@ where
     /// Initializes the stream.
     async fn init(
         &self,
-    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>;
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error>;
 
     /// Initializes the stream with the given subjects - must all be the same type.
     async fn init_with_subjects<J>(
         &self,
         subjects: Vec<J>,
-    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error>
     where
         J: Into<Self::Subject> + Clone + Send;
 }
@@ -195,17 +175,11 @@ macro_rules! define_scoped_stream {
                 D: Debug + Error + Send + Sync + 'static,
                 S: Debug + Error + Send + Sync + 'static,
             {
-                /// The error type for the stream.
-                type Error<DE, SE>: StreamError
-                where
-                    DE: Debug + Error + Send + Sync + 'static,
-                    SE: Debug + Error + Send + Sync + 'static;
-
                 /// The options for the stream.
                 type Options: StreamOptions;
 
                 /// The scoped stream type.
-                type Scoped: $parent<T, D, S, Error<D, S> = Self::Error<D, S>, Options = Self::Options> + Clone + Send + Sync + 'static;
+                type Scoped: $parent<T, D, S> + Clone + Send + Sync + 'static;
 
                 /// Creates a scoped stream.
                 fn scope<K>(&self, scope: K) -> <Self as [< Stream $index >]<T, D, S>>::Scoped

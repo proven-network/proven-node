@@ -104,41 +104,29 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
+    type Error = Error;
 
     type Options = MemoryStreamOptions;
 
-    type ClientError<X>
-        = <Self::ClientType<X> as Client<Self, X, T, D, S>>::Error
+    type Client<X>
+        = MemoryClient<X, T, D, S>
     where
         X: ServiceHandler<T, D, S>;
 
-    type ClientType<X>
-        = MemoryClient<Self, X, T, D, S>
-    where
-        X: ServiceHandler<T, D, S>;
-
-    type ConsumerType<X>
-        = MemoryConsumer<Self, X, T, D, S>
+    type Consumer<X>
+        = MemoryConsumer<X, T, D, S>
     where
         X: ConsumerHandler<T, D, S>;
 
-    type ServiceType<X>
-        = MemoryService<Self, X, T, D, S>
+    type Service<X>
+        = MemoryService<X, T, D, S>
     where
         X: ServiceHandler<T, D, S>;
 
-    type SubjectType = MemoryUnpublishableSubject<T, D, S>;
+    type Subject = MemoryUnpublishableSubject<T, D, S>;
 
     /// Creates a new stream.
-    async fn new<N>(
-        stream_name: N,
-        _options: MemoryStreamOptions,
-    ) -> Result<Self, Self::Error<D, S>>
+    async fn new<N>(stream_name: N, _options: MemoryStreamOptions) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
     {
@@ -155,10 +143,10 @@ where
         stream_name: N,
         _options: Self::Options,
         subjects: Vec<J>,
-    ) -> Result<Self, Self::Error<D, S>>
+    ) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        J: Into<Self::SubjectType> + Clone + Send,
+        J: Into<Self::Subject> + Clone + Send,
     {
         let (sender, mut receiver) = mpsc::channel::<Message<T>>(100);
 
@@ -200,7 +188,7 @@ where
         &self,
         service_name: N,
         _handler: X,
-    ) -> Result<Self::ClientType<X>, Self::Error<D, S>>
+    ) -> Result<Self::Client<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>,
@@ -216,7 +204,7 @@ where
     }
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error<D, S>> {
+    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error> {
         // TODO: Add error handling for sequence number conversion
         let seq_usize: usize = seq.try_into().unwrap();
 
@@ -224,7 +212,7 @@ where
     }
 
     /// The last message in the stream.
-    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error<D, S>> {
+    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error> {
         Ok(self.messages.lock().await.last().cloned())
     }
 
@@ -234,7 +222,7 @@ where
     }
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error<D, S>> {
+    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error> {
         debug!("Publishing message to {}: {:?}", self.name(), message);
 
         let seq_usize = {
@@ -263,7 +251,7 @@ where
         &self,
         consumer_name: N,
         handler: X,
-    ) -> Result<Self::ConsumerType<X>, Self::Error<D, S>>
+    ) -> Result<Self::Consumer<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<T, D, S>,
@@ -285,7 +273,7 @@ where
         &self,
         service_name: N,
         handler: X,
-    ) -> Result<Self::ServiceType<X>, Self::Error<D, S>>
+    ) -> Result<Self::Service<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>,
@@ -356,14 +344,9 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
-
     type Options = MemoryStreamOptions;
 
+    /// The initialized stream type.
     type Initialized = InitializedMemoryStream<T, D, S>;
 
     type Subject = MemoryUnpublishableSubject<T, D, S>;
@@ -381,8 +364,7 @@ where
 
     async fn init(
         &self,
-    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
-    {
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error> {
         let stream =
             InitializedMemoryStream::<T, D, S>::new(self.full_name.clone(), self.options.clone())
                 .await?;
@@ -392,7 +374,7 @@ where
     async fn init_with_subjects<J>(
         &self,
         subjects: Vec<J>,
-    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error>
     where
         J: Into<Self::Subject> + Clone + Send,
     {
@@ -487,12 +469,6 @@ macro_rules! impl_scoped_stream {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
-                type Error<DE, SE>
-                    = Error
-                where
-                    DE: Debug + Send + StdError + Sync + 'static,
-                    SE: Debug + Send + StdError + Sync + 'static;
-
                 type Options = MemoryStreamOptions;
 
                 type Scoped = $parent<T, D, S>;

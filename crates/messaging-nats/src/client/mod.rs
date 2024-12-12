@@ -1,13 +1,12 @@
 mod error;
 
-use bytes::Bytes;
 pub use error::Error;
-use proven_messaging::stream::InitializedStream;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_messaging::client::{Client, ClientOptions};
 use proven_messaging::service_handler::ServiceHandler;
 
@@ -20,9 +19,8 @@ impl ClientOptions for NatsClientOptions {}
 
 /// A client for an in-memory service.
 #[derive(Debug)]
-pub struct NatsClient<P, X, T, D, S>
+pub struct NatsClient<X, T, D, S>
 where
-    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -34,12 +32,11 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    stream: <Self as Client<P, X, T, D, S>>::StreamType,
+    stream: <Self as Client<X, T, D, S>>::StreamType,
 }
 
-impl<P, X, T, D, S> Clone for NatsClient<P, X, T, D, S>
+impl<X, T, D, S> Clone for NatsClient<X, T, D, S>
 where
-    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -59,9 +56,8 @@ where
 }
 
 #[async_trait]
-impl<P, X, T, D, S> Client<P, X, T, D, S> for NatsClient<P, X, T, D, S>
+impl<X, T, D, S> Client<X, T, D, S> for NatsClient<X, T, D, S>
 where
-    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug

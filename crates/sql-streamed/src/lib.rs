@@ -1,4 +1,5 @@
 //! Implementation of SQL storage using a streams as an append-only log.
+#![feature(associated_type_defaults)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -17,6 +18,8 @@ pub use error::Error;
 pub use request::Request;
 pub use response::Response;
 
+use std::fmt::Debug;
+
 use async_trait::async_trait;
 use proven_libsql::Database;
 use proven_messaging::client::Client;
@@ -24,6 +27,9 @@ use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stre
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use stream_handler::{SqlStreamHandler, SqlStreamHandlerOptions};
 use tokio::sync::{oneshot, Mutex};
+
+type DeserializeError = ciborium::de::Error<std::io::Error>;
+type SerializeError = ciborium::ser::Error<std::io::Error>;
 
 /// Options for configuring a `StreamedSqlStore`.
 #[derive(Clone, Debug)]
@@ -36,24 +42,14 @@ pub struct StreamedSqlStoreOptions<S> {
 #[derive(Clone, Debug)]
 pub struct StreamedSqlStore<S>
 where
-    S: Stream<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
-    S::Initialized: InitializedStream<
-        Request,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+    S: Stream<Request, DeserializeError, SerializeError>,
 {
     stream: S,
 }
 
 impl<S> StreamedSqlStore<S>
 where
-    S: Stream<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
-    S::Initialized: InitializedStream<
-        Request,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+    S: Stream<Request, DeserializeError, SerializeError>,
 {
     /// Creates a new `StreamedSqlStore` with the specified options.
     pub fn new(StreamedSqlStoreOptions { stream }: StreamedSqlStoreOptions<S>) -> Self {
@@ -64,20 +60,10 @@ where
 #[async_trait]
 impl<S> SqlStore for StreamedSqlStore<S>
 where
-    S: Stream<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
-    S::Initialized: InitializedStream<
-        Request,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+    S: Stream<Request, DeserializeError, SerializeError>,
 {
-    type Error = Error<
-        <S::Initialized as InitializedStream<
-            Request,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-        >>::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
-    >;
+    type Error = Error<S>;
+
     type Connection = Connection<S>;
 
     async fn connect<Q: Clone + Into<String> + Send>(
@@ -115,7 +101,7 @@ where
                 let request = Request::Migrate(migration_sql);
 
                 if let Response::Failed(error) =
-                    client.request(request).await.map_err(|_| Error::Client)?
+                    client.request(request).await.map_err(Error::Client)?
                 {
                     return Err(Error::Libsql(error));
                 }
@@ -133,7 +119,7 @@ macro_rules! impl_scoped_sql_store {
             #[derive(Clone, Debug)]
             pub struct [< StreamedSqlStore $index >]<S>
             where
-                S: $stream_trait<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+                S: $stream_trait<Request, DeserializeError, SerializeError>,
             {
                 stream: S,
             }
@@ -141,7 +127,7 @@ macro_rules! impl_scoped_sql_store {
             impl<S> [< StreamedSqlStore $index >]<S>
             where
                 Self: Clone + Send + Sync + 'static,
-                S: $stream_trait<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+                S: $stream_trait<Request, DeserializeError, SerializeError>,
             {
                 /// Creates a new `StreamedSqlStore` with the specified options.
                 pub fn new(
@@ -159,10 +145,8 @@ macro_rules! impl_scoped_sql_store {
             impl<S> [< SqlStore $index >] for [< StreamedSqlStore $index >]<S>
             where
                 Self: Clone + Send + Sync + 'static,
-                S: $stream_trait<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+                S: $stream_trait<Request, DeserializeError, SerializeError>,
             {
-                type Error = Error<S::Error<ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>>;
-
                 type Scoped = $parent<S::Scoped>;
 
                 fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {

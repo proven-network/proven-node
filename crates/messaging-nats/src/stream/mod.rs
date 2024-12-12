@@ -5,7 +5,6 @@ use crate::consumer::NatsConsumer;
 use crate::service::NatsService;
 use crate::subject::NatsUnpublishableSubject;
 pub use error::Error;
-use proven_messaging::client::Client;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -86,36 +85,29 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error<DE, SE>
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
+    type Error = Error<D, S>;
+
     type Options = NatsStreamOptions;
-    type SubjectType = NatsUnpublishableSubject<T, D, S>;
 
-    type ClientError<X>
-        = <Self::ClientType<X> as Client<Self, X, T, D, S>>::Error
+    type Subject = NatsUnpublishableSubject<T, D, S>;
+
+    type Client<X>
+        = NatsClient<X, T, D, S>
     where
         X: ServiceHandler<T, D, S>;
 
-    type ClientType<X>
-        = NatsClient<Self, X, T, D, S>
-    where
-        X: ServiceHandler<T, D, S>;
-
-    type ConsumerType<X>
-        = NatsConsumer<Self, X, T, D, S>
+    type Consumer<X>
+        = NatsConsumer<X, T, D, S>
     where
         X: ConsumerHandler<T, D, S>;
 
-    type ServiceType<X>
-        = NatsService<Self, X, T, D, S>
+    type Service<X>
+        = NatsService<X, T, D, S>
     where
         X: ServiceHandler<T, D, S>;
 
     /// Creates a new stream.
-    async fn new<N>(stream_name: N, options: NatsStreamOptions) -> Result<Self, Self::Error<D, S>>
+    async fn new<N>(stream_name: N, options: NatsStreamOptions) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
     {
@@ -144,10 +136,10 @@ where
         stream_name: N,
         options: NatsStreamOptions,
         subjects: Vec<J>,
-    ) -> Result<Self, Self::Error<D, S>>
+    ) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
-        J: Into<Self::SubjectType> + Clone + Send,
+        J: Into<Self::Subject> + Clone + Send,
     {
         let jetstream_context = async_nats::jetstream::new(options.client.clone());
 
@@ -159,7 +151,7 @@ where
                 subjects: subjects
                     .iter()
                     .map(|s| {
-                        let subject: Self::SubjectType = s.clone().into();
+                        let subject: Self::Subject = s.clone().into();
                         let string: String = subject.into();
                         string
                     })
@@ -182,7 +174,7 @@ where
         &self,
         _service_name: N,
         _handler: X,
-    ) -> Result<NatsClient<Self, X, T, D, S>, Self::Error<D, S>>
+    ) -> Result<NatsClient<X, T, D, S>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>,
@@ -192,7 +184,7 @@ where
     }
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error<D, S>> {
+    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error> {
         match self.nats_stream.direct_get(seq).await {
             Ok(message) => {
                 let payload: T = message
@@ -213,7 +205,7 @@ where
     }
 
     /// The last message in the stream.
-    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error<D, S>> {
+    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error> {
         let last_seq = self
             .nats_stream
             .clone()
@@ -232,7 +224,7 @@ where
     }
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error<D, S>> {
+    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error> {
         let payload: Bytes = message
             .payload
             .try_into()
@@ -264,7 +256,7 @@ where
         &self,
         _consumer_name: N,
         _handler: X,
-    ) -> Result<Self::ConsumerType<X>, Self::Error<D, S>>
+    ) -> Result<Self::Consumer<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<T, D, S>,
@@ -278,7 +270,7 @@ where
         &self,
         _service_name: N,
         _handler: X,
-    ) -> Result<Self::ServiceType<X>, Self::Error<D, S>>
+    ) -> Result<Self::Service<X>, Self::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>,
@@ -341,14 +333,9 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error<DE, SE>
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
-
     type Options = NatsStreamOptions;
 
+    /// The initialized stream type.
     type Initialized = InitializedNatsStream<T, D, S>;
 
     type Subject = NatsUnpublishableSubject<T, D, S>;
@@ -367,8 +354,7 @@ where
 
     async fn init(
         &self,
-    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
-    {
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error> {
         let stream =
             InitializedNatsStream::new(self.full_name.clone(), self.options.clone()).await?;
 
@@ -378,7 +364,7 @@ where
     async fn init_with_subjects<J>(
         &self,
         subjects: Vec<J>,
-    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error<D, S>>
+    ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error>
     where
         J: Into<Self::Subject> + Clone + Send,
     {
@@ -475,12 +461,6 @@ macro_rules! impl_scoped_stream {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
-                type Error<DE, SE>
-                    = Error<DE, SE>
-                where
-                    DE: Debug + Send + StdError + Sync + 'static,
-                    SE: Debug + Send + StdError + Sync + 'static;
-
                 type Options = NatsStreamOptions;
 
                 type Scoped = $parent<T, D, S>;

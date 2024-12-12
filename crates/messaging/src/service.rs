@@ -15,10 +15,9 @@ pub trait ServiceOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream which can handle requests.
 #[async_trait]
-pub trait Service<P, X, T, D, S>
+pub trait Service<X, T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug

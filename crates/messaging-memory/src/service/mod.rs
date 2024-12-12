@@ -11,7 +11,6 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
-use proven_messaging::stream::InitializedStream;
 use proven_messaging::subject::PublishableSubject;
 use proven_messaging::Message;
 use tokio::sync::Mutex;
@@ -27,9 +26,8 @@ impl ServiceOptions for MemoryServiceOptions {}
 
 /// A in-memory subscriber.
 #[derive(Debug)]
-pub struct MemoryService<P, X, T, D, S>
+pub struct MemoryService<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -42,12 +40,11 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     last_seq: Arc<Mutex<u64>>,
-    stream: <Self as Service<P, X, T, D, S>>::StreamType,
+    stream: <Self as Service<X, T, D, S>>::StreamType,
 }
 
-impl<P, X, T, D, S> Clone for MemoryService<P, X, T, D, S>
+impl<X, T, D, S> Clone for MemoryService<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -67,9 +64,8 @@ where
     }
 }
 
-impl<P, X, T, D, S> MemoryService<P, X, T, D, S>
+impl<X, T, D, S> MemoryService<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -102,9 +98,8 @@ where
 }
 
 #[async_trait]
-impl<P, X, T, D, S> Service<P, X, T, D, S> for MemoryService<P, X, T, D, S>
+impl<X, T, D, S> Service<X, T, D, S> for MemoryService<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug

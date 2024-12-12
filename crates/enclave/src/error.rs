@@ -17,16 +17,8 @@ pub enum Error {
     AddrParse(#[from] std::net::AddrParseError),
 
     /// Application manager error.
-    #[error(transparent)]
-    ApplicationManager(
-        #[from]
-        proven_sql_streamed::Error<
-            proven_messaging_nats::stream::Error<
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >,
-        >,
-    ),
+    #[error("TODO: Fix this error")]
+    ApplicationManager,
 
     /// AWS Secrets Manager error.
     #[error(transparent)]

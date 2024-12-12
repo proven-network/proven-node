@@ -15,10 +15,9 @@ pub trait ConsumerOptions: Clone + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream.
 #[async_trait]
-pub trait Consumer<P, X, T, D, S>
+pub trait Consumer<X, T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    P: InitializedStream<T, D, S>,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug

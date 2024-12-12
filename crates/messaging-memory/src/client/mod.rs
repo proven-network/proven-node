@@ -26,9 +26,8 @@ impl ClientOptions for MemoryClientOptions {}
 
 /// A client for an in-memory service.
 #[derive(Debug)]
-pub struct MemoryClient<P, X, T, D, S>
+pub struct MemoryClient<X, T, D, S>
 where
-    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -42,12 +41,11 @@ where
 {
     reply_receiver: Arc<Mutex<mpsc::Receiver<Message<X::ResponseType>>>>,
     reply_subject: MemorySubject<X::ResponseType, D, S>,
-    stream: <Self as Client<P, X, T, D, S>>::StreamType,
+    stream: <Self as Client<X, T, D, S>>::StreamType,
 }
 
-impl<P, X, T, D, S> Clone for MemoryClient<P, X, T, D, S>
+impl<X, T, D, S> Clone for MemoryClient<X, T, D, S>
 where
-    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -69,9 +67,8 @@ where
 }
 
 #[async_trait]
-impl<P, X, T, D, S> Client<P, X, T, D, S> for MemoryClient<P, X, T, D, S>
+impl<X, T, D, S> Client<X, T, D, S> for MemoryClient<X, T, D, S>
 where
-    P: InitializedStream<T, D, S>,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug

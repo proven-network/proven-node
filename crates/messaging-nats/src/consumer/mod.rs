@@ -30,9 +30,8 @@ impl ConsumerOptions for NatsConsumerOptions {}
 
 /// A NATS consumer.
 #[derive(Debug)]
-pub struct NatsConsumer<P, X, T, D, S>
+pub struct NatsConsumer<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -47,12 +46,11 @@ where
     nats_client: NatsClient,
     nats_consumer: NatsConsumerType<NatsConsumerConfig>,
     nats_jetstream_context: Context,
-    stream: <Self as Consumer<P, X, T, D, S>>::StreamType,
+    stream: <Self as Consumer<X, T, D, S>>::StreamType,
 }
 
-impl<P, X, T, D, S> Clone for NatsConsumer<P, X, T, D, S>
+impl<X, T, D, S> Clone for NatsConsumer<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -74,9 +72,8 @@ where
     }
 }
 
-impl<P, X, T, D, S> NatsConsumer<P, X, T, D, S>
+impl<X, T, D, S> NatsConsumer<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -115,9 +112,8 @@ where
 }
 
 #[async_trait]
-impl<P, X, T, D, S> Consumer<P, X, T, D, S> for NatsConsumer<P, X, T, D, S>
+impl<X, T, D, S> Consumer<X, T, D, S> for NatsConsumer<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug

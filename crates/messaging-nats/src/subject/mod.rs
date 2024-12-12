@@ -156,7 +156,7 @@ where
         &self,
         _stream_name: K,
         _options: <Self::StreamType as InitializedStream<T, D, S>>::Options,
-    ) -> Result<Self::StreamType, <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>>
+    ) -> Result<Self::StreamType, <Self::StreamType as InitializedStream<T, D, S>>::Error>
     where
         K: Clone + Into<String> + Send,
     {
@@ -338,7 +338,7 @@ where
         options: <InitializedNatsStream<T, D, S> as InitializedStream<T, D, S>>::Options,
     ) -> Result<
         InitializedNatsStream<T, D, S>,
-        <Self::StreamType as InitializedStream<T, D, S>>::Error<D, S>,
+        <Self::StreamType as InitializedStream<T, D, S>>::Error,
     >
     where
         K: Clone + Into<String> + Send,

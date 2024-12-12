@@ -25,7 +25,10 @@ impl<NSS: SqlStore2> NftSqlConnectionManager<NSS> {
         &self,
         db_name: String,
         nft_id: String,
-    ) -> Result<<<NSS::Scoped as SqlStore1>::Scoped as SqlStore>::Connection, NSS::Error> {
+    ) -> Result<
+        <<NSS::Scoped as SqlStore1>::Scoped as SqlStore>::Connection,
+        <<NSS::Scoped as SqlStore1>::Scoped as SqlStore>::Error,
+    > {
         let connection_key = format!("{db_name}-{nft_id}");
         let mut connections = self.connections.lock().await;
 

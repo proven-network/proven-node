@@ -22,7 +22,7 @@ impl<ASS: SqlStore1> ApplicationSqlConnectionManager<ASS> {
     pub async fn connect(
         &self,
         db_name: String,
-    ) -> Result<<ASS::Scoped as SqlStore>::Connection, ASS::Error> {
+    ) -> Result<<ASS::Scoped as SqlStore>::Connection, <ASS::Scoped as SqlStore>::Error> {
         let mut connections = self.connections.lock().await;
 
         if let Some(connection) = connections.get(&db_name) {

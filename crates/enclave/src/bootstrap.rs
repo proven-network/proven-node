@@ -814,7 +814,7 @@ impl Bootstrap {
 
         let application_manager = ApplicationManager::new(application_manager_sql_store)
             .await
-            .map_err(Error::ApplicationManager)?;
+            .map_err(|_| Error::ApplicationManager)?;
 
         let application_store = NatsStore2::new(NatsStoreOptions {
             bucket: "APPLICATION_KV".to_string(),

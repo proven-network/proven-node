@@ -1,7 +1,6 @@
 mod error;
 
 use crate::stream::InitializedNatsStream;
-use bytes::Bytes;
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -10,9 +9,9 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
-use proven_messaging::stream::InitializedStream;
 use tokio::sync::Mutex;
 
 /// Options for the in-memory subscriber (there are none).
@@ -22,9 +21,8 @@ impl ServiceOptions for NatsServiceOptions {}
 
 /// A in-memory subscriber.
 #[derive(Debug)]
-pub struct NatsService<P, X, T, D, S>
+pub struct NatsService<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -37,13 +35,12 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     last_seq: Arc<Mutex<u64>>,
-    stream: <Self as Service<P, X, T, D, S>>::StreamType,
+    stream: <Self as Service<X, T, D, S>>::StreamType,
     _marker: PhantomData<T>,
 }
 
-impl<P, X, T, D, S> Clone for NatsService<P, X, T, D, S>
+impl<X, T, D, S> Clone for NatsService<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -65,9 +62,8 @@ where
 }
 
 #[async_trait]
-impl<P, X, T, D, S> Service<P, X, T, D, S> for NatsService<P, X, T, D, S>
+impl<X, T, D, S> Service<X, T, D, S> for NatsService<X, T, D, S>
 where
-    P: InitializedStream<T, D, S> + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
     T: Clone
         + Debug
