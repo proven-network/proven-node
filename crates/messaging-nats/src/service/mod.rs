@@ -1,6 +1,7 @@
 mod error;
 
 use crate::stream::InitializedNatsStream;
+use crate::subject::NatsSubject;
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -16,6 +17,7 @@ use futures::StreamExt;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
+use proven_messaging::subject::PublishableSubject;
 use proven_messaging::Message;
 
 /// Options for the nats service.
@@ -91,6 +93,7 @@ where
 {
     /// Creates a new NATS consumer.
     async fn process_messages(
+        nats_client: NatsClient,
         nats_consumer: NatsConsumerType<NatsConsumerConfig>,
         handler: X,
     ) -> Result<(), Error> {
@@ -106,10 +109,22 @@ where
                 let headers = message.headers.clone();
                 let payload: T = message.payload.clone().try_into().unwrap();
 
-                handler
-                    .handle(Message { headers, payload })
-                    .await
-                    .map_err(|_| Error::Handler)?;
+                if let Some(headers) = headers {
+                    if let Some(reply_header) = headers.get("service-client") {
+                        let reply_subject: NatsSubject<X::ResponseType, D, S> =
+                            NatsSubject::new(nats_client.clone(), reply_header.as_str()).unwrap();
+
+                        let result = handler
+                            .handle(Message {
+                                headers: None,
+                                payload,
+                            })
+                            .await
+                            .map_err(|_| Error::Handler)?;
+
+                        let _ = reply_subject.publish(result.message).await;
+                    }
+                }
             }
         }
     }
@@ -154,7 +169,11 @@ where
             .await
             .map_err(|e| Error::Create(e.kind()))?;
 
+        // TODO: Actually wait for catch up
+        let _ = handler.on_caught_up().await;
+
         tokio::spawn(Self::process_messages(
+            options.client.clone(),
             nats_consumer.clone(),
             handler.clone(),
         ));
@@ -238,8 +257,6 @@ mod tests {
             message: Message<TestMessage>,
         ) -> Result<ServiceResponse<TestMessage>, Self::Error> {
             self.message_count.fetch_add(1, Ordering::SeqCst);
-
-            println!("Handled message: {:?}", message.payload.content);
 
             // Just pong the message back
 

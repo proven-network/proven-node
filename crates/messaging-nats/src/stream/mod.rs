@@ -5,6 +5,7 @@ use crate::consumer::{NatsConsumer, NatsConsumerOptions};
 use crate::service::{NatsService, NatsServiceOptions};
 use crate::subject::NatsUnpublishableSubject;
 pub use error::Error;
+use proven_messaging::client::Client;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -173,15 +174,23 @@ where
 
     async fn client<N, X>(
         &self,
-        _service_name: N,
-        _handler: X,
-    ) -> Result<NatsClient<X, T, D, S>, Self::Error>
+        service_name: N,
+        options: <Self::Client<X> as Client<X, T, D, S>>::Options,
+        handler: X,
+    ) -> Result<Self::Client<X>, <Self::Client<X> as Client<X, T, D, S>>::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>,
     {
-        // Implementation here
-        unimplemented!()
+        let client = NatsClient::new(
+            format!("{}_{}", self.name(), service_name.into()),
+            self.clone(),
+            options,
+            handler,
+        )
+        .await?;
+
+        Ok(client)
     }
 
     /// Deletes the message with the given sequence number.

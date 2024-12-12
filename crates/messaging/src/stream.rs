@@ -76,8 +76,9 @@ where
     async fn client<N, X>(
         &self,
         service_name: N,
+        options: <Self::Client<X> as Client<X, T, D, S>>::Options,
         handler: X,
-    ) -> Result<Self::Client<X>, Self::Error>
+    ) -> Result<Self::Client<X>, <Self::Client<X> as Client<X, T, D, S>>::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>;

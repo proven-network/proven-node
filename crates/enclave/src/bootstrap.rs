@@ -21,6 +21,7 @@ use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::Kms;
 use proven_messaging::stream::Stream;
+use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
@@ -814,6 +815,7 @@ impl Bootstrap {
                 durable_name: None,
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
+            NatsClientOptions,
         );
 
         let application_manager = ApplicationManager::new(application_manager_sql_store)
@@ -839,6 +841,7 @@ impl Bootstrap {
                 durable_name: None,
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
+            NatsClientOptions,
         );
 
         let personal_store = NatsStore3::new(NatsStoreOptions {
@@ -860,6 +863,7 @@ impl Bootstrap {
                 durable_name: None,
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
+            NatsClientOptions,
         );
 
         let nft_store = NatsStore3::new(NatsStoreOptions {
@@ -881,6 +885,7 @@ impl Bootstrap {
                 durable_name: None,
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
+            NatsClientOptions,
         );
 
         let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {

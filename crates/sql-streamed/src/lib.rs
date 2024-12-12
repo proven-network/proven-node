@@ -39,6 +39,10 @@ pub struct StreamedSqlStore<S>
 where
     S: Stream<Request, DeserializeError, SerializeError>,
 {
+    client_options:
+        <<S::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
+            SqlStreamHandler,
+        > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
     service_options:
         <<S::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
             SqlStreamHandler,
@@ -63,8 +67,19 @@ where
             DeserializeError,
             SerializeError,
         >>::Options,
+        client_options: <<S::Initialized as InitializedStream<
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Client<SqlStreamHandler> as Client<
+            SqlStreamHandler,
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Options,
     ) -> Self {
         Self {
+            client_options,
             service_options,
             stream,
         }
@@ -101,7 +116,10 @@ where
             .await
             .map_err(Error::Service)?;
 
-        let client = stream.client("SQL_SERVICE", handler).await.unwrap();
+        let client = stream
+            .client("SQL_SERVICE", self.client_options.clone(), handler)
+            .await
+            .unwrap();
 
         // Wait for the stream to catch up before applying migrations
         caught_up_rx
@@ -134,6 +152,19 @@ pub struct StreamedSqlStore1<S>
 where
     S: Stream1<Request, DeserializeError, SerializeError>,
 {
+    client_options: <<<S::Scoped as Stream<Request,
+    DeserializeError,
+    SerializeError>>::Initialized as InitializedStream<
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Client<SqlStreamHandler> as Client<
+
+        SqlStreamHandler,
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Options,
     service_options: <<<S::Scoped as Stream<Request,
     DeserializeError,
     SerializeError>>::Initialized as InitializedStream<
@@ -168,8 +199,21 @@ where
             DeserializeError,
             SerializeError,
         >>::Options,
+        client_options: <<<S::Scoped as Stream<Request,
+        DeserializeError,
+        SerializeError>>::Initialized as InitializedStream<
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Client<SqlStreamHandler> as Client<
+            SqlStreamHandler,
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Options,
     ) -> Self {
         Self {
+            client_options,
             service_options,
             stream,
         }
@@ -186,6 +230,7 @@ where
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
         StreamedSqlStore {
+            client_options: self.client_options.clone(),
             service_options: self.service_options.clone(),
             stream: self.stream.scope(scope.into()),
         }
@@ -198,6 +243,14 @@ pub struct StreamedSqlStore2<S>
 where
     S: Stream2<Request, DeserializeError, SerializeError>,
 {
+    client_options:
+        <<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
+            SqlStreamHandler,
+        > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
     service_options:
         <<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
             Request,
@@ -223,8 +276,16 @@ where
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
         SqlStreamHandler,
     > as Service<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+        client_options: <<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
+        SqlStreamHandler,
+    > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
     ) -> Self {
         Self {
+            client_options,
             service_options,
             stream,
         }
@@ -241,6 +302,7 @@ where
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
         StreamedSqlStore1 {
+            client_options: self.client_options.clone(),
             service_options: self.service_options.clone(),
             stream: self.stream.scope(scope.into()),
         }
@@ -253,6 +315,14 @@ pub struct StreamedSqlStore3<S>
 where
     S: Stream3<Request, DeserializeError, SerializeError>,
 {
+    client_options:
+        <<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
+            SqlStreamHandler,
+        > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
     service_options:
         <<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
             Request,
@@ -278,8 +348,16 @@ where
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
         SqlStreamHandler,
     > as Service<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+        client_options: <<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
+        SqlStreamHandler,
+    > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
     ) -> Self {
         Self {
+            client_options,
             service_options,
             stream,
         }
@@ -296,6 +374,7 @@ where
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
         StreamedSqlStore2 {
+            client_options: self.client_options.clone(),
             service_options: self.service_options.clone(),
             stream: self.stream.scope(scope.into()),
         }
@@ -306,6 +385,7 @@ where
 mod tests {
     use super::*;
     use proven_messaging_memory::{
+        client::MemoryClientOptions,
         service::MemoryServiceOptions,
         stream::{MemoryStream, MemoryStreamOptions},
     };
@@ -317,9 +397,8 @@ mod tests {
         let result = timeout(Duration::from_secs(5), async {
             let stream = MemoryStream::new("test_sql_store", MemoryStreamOptions);
 
-            let service_options = MemoryServiceOptions;
-
-            let sql_store = StreamedSqlStore::new(stream, service_options);
+            let sql_store =
+                StreamedSqlStore::new(stream, MemoryServiceOptions, MemoryClientOptions);
 
             let connection = sql_store
                 .connect(vec![
@@ -373,9 +452,8 @@ mod tests {
         let result = timeout(Duration::from_secs(5), async {
             let stream = MemoryStream::new("test_invalid_sql_migration", MemoryStreamOptions);
 
-            let service_options = MemoryServiceOptions;
-
-            let sql_store = StreamedSqlStore::new(stream, service_options);
+            let sql_store =
+                StreamedSqlStore::new(stream, MemoryServiceOptions, MemoryClientOptions);
 
             let connection_result = sql_store.connect(vec!["INVALID SQL STATEMENT"]).await;
 
