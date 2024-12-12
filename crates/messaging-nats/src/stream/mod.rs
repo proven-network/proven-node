@@ -489,3 +489,133 @@ macro_rules! impl_scoped_stream {
 impl_scoped_stream!(1, NatsStream, Stream1, "A single-scoped NATs stream.");
 impl_scoped_stream!(2, NatsStream1, Stream1, "A double-scoped NATs stream.");
 impl_scoped_stream!(3, NatsStream2, Stream2, "A triple-scoped NATs stream.");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_nats::ConnectOptions;
+    use serde::{Deserialize, Serialize};
+    use std::time::Duration;
+
+    async fn cleanup_stream(client: &AsyncNatsClient, stream_name: &str) {
+        let js = async_nats::jetstream::new(client.clone());
+        // Ignore errors since the stream might not exist
+        let _ = js.delete_stream(stream_name).await;
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+    struct TestMessage {
+        content: String,
+    }
+
+    impl TryFrom<Bytes> for TestMessage {
+        type Error = serde_json::Error;
+
+        fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
+            serde_json::from_slice(&bytes)
+        }
+    }
+
+    impl TryInto<Bytes> for TestMessage {
+        type Error = serde_json::Error;
+
+        fn try_into(self) -> Result<Bytes, Self::Error> {
+            Ok(Bytes::from(serde_json::to_vec(&self)?))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_stream_get() {
+        // Connect to NATS
+        let client = ConnectOptions::default()
+            .connection_timeout(Duration::from_secs(5))
+            .connect("localhost:4222")
+            .await
+            .expect("Failed to connect to NATS");
+
+        cleanup_stream(&client, "test_stream").await;
+
+        // Create stream
+        let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
+            "test_stream",
+            NatsStreamOptions { client },
+        );
+
+        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
+
+        // Create test message
+        let test_message = Message {
+            headers: None,
+            payload: TestMessage {
+                content: "test content".to_string(),
+            },
+        };
+
+        // Publish message
+        let seq = initialized_stream
+            .publish(test_message.clone())
+            .await
+            .expect("Failed to publish message");
+
+        // Get message
+        let retrieved_message = initialized_stream
+            .get(seq)
+            .await
+            .expect("Failed to get message")
+            .expect("Message not found");
+
+        // Verify message content
+        assert_eq!(retrieved_message.payload, test_message.payload);
+    }
+
+    #[tokio::test]
+    async fn test_stream_delete() {
+        // Connect to NATS
+        let client = ConnectOptions::default()
+            .connection_timeout(Duration::from_secs(5))
+            .connect("localhost:4222")
+            .await
+            .expect("Failed to connect to NATS");
+
+        cleanup_stream(&client, "test_delete_stream").await;
+
+        // Create stream
+        let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
+            "test_delete_stream",
+            NatsStreamOptions { client },
+        );
+
+        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
+
+        // Create and publish test message
+        let test_message = Message {
+            headers: None,
+            payload: TestMessage {
+                content: "delete me".to_string(),
+            },
+        };
+
+        // Publish message and get sequence number
+        let seq = initialized_stream
+            .publish(test_message)
+            .await
+            .expect("Failed to publish message");
+
+        // Delete the message
+        initialized_stream
+            .del(seq)
+            .await
+            .expect("Failed to delete message");
+
+        // Verify message is deleted by attempting to get it
+        let retrieved_message = initialized_stream
+            .get(seq)
+            .await
+            .expect("Failed to query message");
+
+        assert!(
+            retrieved_message.is_none(),
+            "Message should have been deleted"
+        );
+    }
+}
