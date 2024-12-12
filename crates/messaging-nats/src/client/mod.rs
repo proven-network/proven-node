@@ -12,6 +12,7 @@ use std::sync::Arc;
 use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
 use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
 use async_nats::jetstream::stream::Config as NatsStreamConfig;
+use async_nats::jetstream::Context;
 use async_nats::HeaderMap;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -25,12 +26,12 @@ use uuid::Uuid;
 
 type ResponseMap<T> = HashMap<String, oneshot::Sender<T>>;
 
-/// Options for the in-memory subscriber (there are none).
+/// Options for the NATS service client.
 #[derive(Clone, Debug)]
 pub struct NatsClientOptions;
 impl ClientOptions for NatsClientOptions {}
 
-/// A client for an in-memory service.
+/// A client for sending requests to a NATS-based service.
 #[derive(Debug)]
 pub struct NatsClient<X, T, D, S>
 where
@@ -45,7 +46,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    reply_stream: async_nats::jetstream::stream::Stream,
+    nats_jetstream_context: Context,
     reply_stream_name: String,
     stream: <Self as Client<X, T, D, S>>::StreamType,
     response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
@@ -66,11 +67,33 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            reply_stream: self.reply_stream.clone(),
+            nats_jetstream_context: self.nats_jetstream_context.clone(),
             reply_stream_name: self.reply_stream_name.clone(),
             stream: self.stream.clone(),
             response_map: self.response_map.clone(),
         }
+    }
+}
+
+impl<X, T, D, S> Drop for NatsClient<X, T, D, S>
+where
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn drop(&mut self) {
+        let reply_stream_name = self.reply_stream_name.clone();
+        let jetstream_context = self.nats_jetstream_context.clone();
+        tokio::spawn(async move {
+            let _ = jetstream_context.delete_stream(&reply_stream_name).await;
+        });
     }
 }
 
@@ -167,7 +190,7 @@ where
         Self::spawn_response_handler(reply_stream_consumer, response_map.clone());
 
         Ok(Self {
-            reply_stream,
+            nats_jetstream_context: jetstream_context,
             reply_stream_name,
             stream,
             response_map,
