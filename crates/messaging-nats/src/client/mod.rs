@@ -7,6 +7,7 @@ use futures::StreamExt;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
@@ -25,7 +26,7 @@ use tokio::sync::{oneshot, Mutex};
 
 use uuid::Uuid;
 
-type ResponseMap<T> = HashMap<String, oneshot::Sender<T>>;
+type ResponseMap<T> = HashMap<usize, oneshot::Sender<T>>;
 
 /// Options for the NATS service client.
 #[derive(Clone, Debug)]
@@ -34,8 +35,7 @@ pub struct NatsClientOptions {
     pub client: AsyncNatsClient,
 }
 
-impl ClientOptions for NatsClientOptions {
-}
+impl ClientOptions for NatsClientOptions {}
 
 /// A client for sending requests to a NATS-based service.
 #[derive(Debug)]
@@ -55,6 +55,7 @@ where
     nats_jetstream_context: Context,
     reply_stream_name: String,
     stream: <Self as Client<X, T, D, S>>::StreamType,
+    request_id_counter: Arc<AtomicUsize>,
     response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
 }
 
@@ -76,6 +77,7 @@ where
             nats_jetstream_context: self.nats_jetstream_context.clone(),
             reply_stream_name: self.reply_stream_name.clone(),
             stream: self.stream.clone(),
+            request_id_counter: self.request_id_counter.clone(),
             response_map: self.response_map.clone(),
         }
     }
@@ -125,7 +127,7 @@ where
             while let Some(msg) = messages.next().await {
                 let msg = msg.unwrap();
                 if let Some(request_id) = msg.headers.as_ref().and_then(|h| h.get("request-id")) {
-                    let request_id = request_id.to_string();
+                    let request_id: usize = request_id.to_string().parse().unwrap();
 
                     let response: X::ResponseType = msg.payload.clone().try_into().unwrap();
 
@@ -198,23 +200,24 @@ where
             nats_jetstream_context: jetstream_context,
             reply_stream_name,
             stream,
+            request_id_counter: Arc::new(AtomicUsize::new(0)),
             response_map,
         })
     }
 
     async fn request(&self, request: T) -> Result<X::ResponseType, Self::Error> {
-        let request_id = Uuid::new_v4().to_string();
+        let request_id = self.request_id_counter.fetch_add(1, Ordering::SeqCst);
         let (sender, receiver) = oneshot::channel();
 
         // Insert sender into response map
         {
             let mut map = self.response_map.lock().await;
-            map.insert(request_id.clone(), sender);
+            map.insert(request_id, sender);
         }
 
         let mut headers = HeaderMap::new();
         headers.insert("reply-stream-name", self.reply_stream_name.clone().as_str());
-        headers.insert("request-id", request_id.clone());
+        headers.insert("request-id", request_id.to_string().as_str());
 
         // Send message
         let message = Message {
@@ -338,9 +341,13 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client("test_service", NatsClientOptions{
-                client: client.clone(),
-            }, TestHandler)
+            .client(
+                "test_service",
+                NatsClientOptions {
+                    client: client.clone(),
+                },
+                TestHandler,
+            )
             .await
             .expect("Failed to create client");
 
@@ -385,9 +392,13 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client("test_client", NatsClientOptions {
-                client: client.clone(),
-            }, TestHandler)
+            .client(
+                "test_client",
+                NatsClientOptions {
+                    client: client.clone(),
+                },
+                TestHandler,
+            )
             .await
             .expect("Failed to create client");
 
