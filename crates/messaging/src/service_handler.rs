@@ -6,9 +6,6 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use bytes::Bytes;
 
-/// Marker trait for subscriber errors
-pub trait ServiceHandlerError: Error + Send + Sync + 'static {}
-
 /// A trait representing a subscriber of a subject.
 #[async_trait]
 pub trait ServiceHandler<T, D, S>
@@ -25,7 +22,7 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the subscriber.
-    type Error: ServiceHandlerError;
+    type Error: Error + Send + Sync + 'static;
 
     /// The response type for the subscriber.
     type ResponseType: Clone

@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-use proven_messaging::subscription_handler::SubscriptionHandlerError;
 use thiserror::Error;
 
 /// Error type for memory stream subscription handlers.
@@ -10,5 +9,3 @@ pub enum Error {
     #[error("An error occurred while sending data")]
     Send,
 }
-
-impl SubscriptionHandlerError for Error {}

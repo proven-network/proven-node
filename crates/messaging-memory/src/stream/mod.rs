@@ -540,7 +540,7 @@ mod tests {
     use std::error::Error as StdError;
 
     use bytes::Bytes;
-    use proven_messaging::{consumer_handler::ConsumerHandlerError, subject::PublishableSubject};
+    use proven_messaging::subject::PublishableSubject;
 
     #[tokio::test]
     async fn test_get_message() {
@@ -679,8 +679,6 @@ mod tests {
         }
 
         impl StdError for TestHandlerError {}
-
-        impl ConsumerHandlerError for TestHandlerError {}
 
         #[async_trait]
         impl ConsumerHandler<Bytes, Infallible, Infallible> for TestHandler {

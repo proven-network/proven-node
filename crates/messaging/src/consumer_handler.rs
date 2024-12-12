@@ -6,9 +6,6 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use bytes::Bytes;
 
-/// Marker trait for subscriber errors
-pub trait ConsumerHandlerError: Error + Send + Sync + 'static {}
-
 /// A trait representing a subscriber of a subject.
 #[async_trait]
 pub trait ConsumerHandler<T, D, S>
@@ -25,7 +22,7 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the subscriber.
-    type Error: ConsumerHandlerError;
+    type Error: Error + Send + Sync + 'static;
 
     /// Handles the given data.
     async fn handle(&self, message: Message<T>) -> Result<(), Self::Error>;

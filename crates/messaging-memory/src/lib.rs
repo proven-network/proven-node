@@ -84,8 +84,6 @@ mod tests {
 
     impl StdError for TestSubscriptionHandlerError {}
 
-    impl SubscriptionHandlerError for TestSubscriptionHandlerError {}
-
     #[async_trait]
     impl SubscriptionHandler<Bytes, Infallible, Infallible> for TestSubscriptionHandler {
         type Error = TestSubscriptionHandlerError;

@@ -1,4 +1,3 @@
-use proven_messaging::service_handler::ServiceHandlerError;
 use thiserror::Error;
 
 /// Result type for the SQL stream handler.
@@ -11,5 +10,3 @@ pub enum Error {
     #[error(transparent)]
     Libsql(#[from] proven_libsql::Error),
 }
-
-impl ServiceHandlerError for Error {}
