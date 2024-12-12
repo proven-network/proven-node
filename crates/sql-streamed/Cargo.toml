@@ -22,5 +22,9 @@ criterion = { workspace = true }
 proven-messaging-nats = { workspace = true }
 
 [[bench]]
-name = "writes"
+name = "nats"
+harness = false
+
+[[bench]]
+name = "memory"
 harness = false
