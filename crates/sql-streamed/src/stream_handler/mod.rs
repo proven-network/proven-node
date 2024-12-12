@@ -9,7 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use proven_libsql::Database;
 use proven_messaging::service_handler::ServiceHandler;
-use proven_messaging::{HeaderMap, Message};
+use proven_messaging::{Message, ServiceResponse};
 use tokio::sync::{oneshot, Mutex};
 
 /// A stream handler that executes SQL queries and migrations.
@@ -60,14 +60,14 @@ impl
             headers: _,
             payload: request,
         }: Message<Request>,
-    ) -> Result<Message<Response>> {
-        let mut headers = HeaderMap::new();
+    ) -> Result<ServiceResponse<Response>> {
+        let mut persist_request = true;
 
         let response = match request {
             Request::Execute(sql, params) => match self.database.execute(&sql, params).await {
                 Ok(affected_rows) => Response::Execute(affected_rows),
                 Err(e) => {
-                    headers.insert("Request-Should-Persist", "false");
+                    persist_request = false; // Don't persist failed mutations.
                     Response::Failed(e)
                 }
             },
@@ -75,7 +75,7 @@ impl
                 match self.database.execute_batch(&sql, params).await {
                     Ok(affected_rows) => Response::ExecuteBatch(affected_rows),
                     Err(e) => {
-                        headers.insert("Request-Should-Persist", "false");
+                        persist_request = false; // Don't persist failed mutations.
                         Response::Failed(e)
                     }
                 }
@@ -85,19 +85,18 @@ impl
                     if needed_to_run {
                         self.applied_migrations.lock().await.push(sql);
                     } else {
-                        // Don't persist migrations that don't need to run.
-                        headers.insert("Request-Should-Persist", "false");
+                        persist_request = false; // Don't persist migrations that don't need to run.
                     }
                     Response::Migrate(needed_to_run)
                 }
                 Err(e) => {
-                    headers.insert("Request-Should-Persist", "false");
+                    persist_request = false; // Don't persist failed migrations.
                     Response::Failed(e)
                 }
             },
             Request::Query(sql, params) => {
                 // Never persist query responses.
-                headers.insert("Request-Should-Persist", "false");
+                persist_request = false;
 
                 match self.database.query(&sql, params).await {
                     Ok(rows) => Response::Query(rows),
@@ -106,9 +105,9 @@ impl
             }
         };
 
-        Ok(Message {
-            headers: Some(headers),
-            payload: response,
+        Ok(ServiceResponse {
+            persist_request,
+            message: response.into(),
         })
     }
 

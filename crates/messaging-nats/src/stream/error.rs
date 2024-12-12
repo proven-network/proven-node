@@ -11,6 +11,10 @@ where
     DE: Debug + Send + StdError + Sync + 'static,
     SE: Debug + Send + StdError + Sync + 'static,
 {
+    /// Delete error.
+    #[error("Failed to delete message: {0}")]
+    Delete(async_nats::jetstream::stream::DeleteMessageErrorKind),
+
     /// Deserialization error.
     #[error(transparent)]
     Deserialize(DE),

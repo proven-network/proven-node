@@ -38,7 +38,7 @@ impl StreamOptions for MemoryStreamOptions {}
 #[derive(Debug)]
 pub struct InitializedMemoryStream<T, D, S> {
     consumer_channels: Arc<Mutex<Vec<mpsc::Sender<Message<T>>>>>,
-    messages: Arc<Mutex<Vec<Message<T>>>>,
+    messages: Arc<Mutex<Vec<Option<Message<T>>>>>,
     name: String,
     _marker: PhantomData<(D, S)>,
 }
@@ -71,11 +71,11 @@ where
         let messages = self.messages.lock().await.clone();
         let (sender, receiver) = mpsc::channel::<Message<T>>(100);
 
-        // First send all existing messages
+        // First send all existing messages, filtering out None values
         tokio::spawn({
             let sender = sender.clone();
             async move {
-                for message in messages {
+                for message in messages.into_iter().flatten() {
                     if sender.send(message).await.is_err() {
                         break;
                     }
@@ -165,7 +165,7 @@ where
         let consumer_channels_clone = consumer_channels.clone();
         tokio::spawn(async move {
             while let Some(message) = receiver.recv().await {
-                messages_clone.lock().await.push(message.clone());
+                messages_clone.lock().await.push(Some(message.clone()));
 
                 // Broadcast the message to all consumers
                 let mut channels = consumer_channels_clone.lock().await;
@@ -203,17 +203,44 @@ where
         .unwrap())
     }
 
+    /// Deletes the message with the given sequence number.
+    async fn del(&self, seq: u64) -> Result<(), Self::Error> {
+        // TODO: Add error handling for sequence number conversion
+        let seq_usize: usize = seq.try_into().unwrap();
+
+        let mut messages = self.messages.lock().await;
+        if seq_usize >= messages.len() {
+            return Err(Error::InvalidSeq(seq_usize, messages.len()));
+        }
+
+        messages[seq_usize] = None;
+        drop(messages);
+
+        Ok(())
+    }
+
     /// Gets the message with the given sequence number.
     async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error> {
         // TODO: Add error handling for sequence number conversion
         let seq_usize: usize = seq.try_into().unwrap();
 
-        Ok(self.messages.lock().await.get(seq_usize).cloned())
+        let messages = self.messages.lock().await;
+        if seq_usize >= messages.len() {
+            return Err(Error::InvalidSeq(seq_usize, messages.len()));
+        }
+
+        Ok(messages.get(seq_usize).and_then(Clone::clone))
     }
 
     /// The last message in the stream.
     async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error> {
-        Ok(self.messages.lock().await.last().cloned())
+        Ok(self
+            .messages
+            .lock()
+            .await
+            .iter()
+            .rev()
+            .find_map(Clone::clone))
     }
 
     /// Returns the name of the stream.
@@ -228,7 +255,7 @@ where
         let seq_usize = {
             let mut messages = self.messages.lock().await;
             let seq = messages.len();
-            messages.push(message.clone());
+            messages.push(Some(message.clone()));
             seq
         };
 
@@ -574,7 +601,8 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(stream.get(0).await.unwrap(), None);
+
+        assert!(stream.get(0).await.is_err());
         assert_eq!(stream.last_message().await.unwrap(), None);
     }
 
@@ -590,7 +618,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(stream.name(), "scope1");
+        assert_eq!(stream.name(), "test_scoped_stream_scope1");
     }
 
     #[tokio::test]
@@ -605,7 +633,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(stream.name(), "scope1:scope2");
+        assert_eq!(stream.name(), "test_nested_scoped_stream_scope1_scope2");
     }
 
     #[tokio::test]
@@ -725,5 +753,39 @@ mod tests {
         assert_eq!(received_messages[2], poststart_subject_message);
         assert_eq!(received_messages[3], poststart_direct_message);
         drop(received_messages);
+    }
+
+    #[tokio::test]
+    async fn test_delete_message() {
+        let subject = MemorySubject::new("test_delete").unwrap();
+        let stream = InitializedMemoryStream::new_with_subjects(
+            "test_stream",
+            MemoryStreamOptions,
+            vec![subject],
+        )
+        .await
+        .unwrap();
+
+        let message1 = Bytes::from("test_message1");
+        let message2 = Bytes::from("test_message2");
+        let message3 = Bytes::from("test_message3");
+
+        stream.publish(message1.clone().into()).await.unwrap();
+        stream.publish(message2.clone().into()).await.unwrap();
+        stream.publish(message3.clone().into()).await.unwrap();
+
+        // Delete middle message
+        stream.del(1).await.unwrap();
+
+        // First and last messages should still be accessible
+        assert_eq!(stream.get(0).await.unwrap(), Some(message1.into()));
+        assert_eq!(stream.get(1).await.unwrap(), None);
+        assert_eq!(stream.get(2).await.unwrap(), Some(message3.clone().into()));
+
+        // Attempting to delete an invalid sequence should fail
+        assert!(stream.del(99).await.is_err());
+
+        // Last message should still be message3
+        assert_eq!(stream.last_message().await.unwrap(), Some(message3.into()));
     }
 }

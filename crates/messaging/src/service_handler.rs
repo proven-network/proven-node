@@ -1,4 +1,4 @@
-use crate::Message;
+use crate::{Message, ServiceResponse};
 
 use std::error::Error;
 use std::fmt::Debug;
@@ -37,8 +37,10 @@ where
         + 'static;
 
     /// Handles the given data.
-    async fn handle(&self, message: Message<T>)
-        -> Result<Message<Self::ResponseType>, Self::Error>;
+    async fn handle(
+        &self,
+        message: Message<T>,
+    ) -> Result<ServiceResponse<Self::ResponseType>, Self::Error>;
 
     /// Hook for when the consumer is caught up.
     async fn on_caught_up(&self) -> Result<(), Self::Error> {

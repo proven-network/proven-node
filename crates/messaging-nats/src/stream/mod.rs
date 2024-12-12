@@ -183,6 +183,16 @@ where
         unimplemented!()
     }
 
+    /// Deletes the message with the given sequence number.
+    async fn del(&self, seq: u64) -> Result<(), Self::Error> {
+        self.nats_stream
+            .delete_message(seq)
+            .await
+            .map_err(|e| Error::Delete(e.kind()))?;
+
+        Ok(())
+    }
+
     /// Gets the message with the given sequence number.
     async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error> {
         match self.nats_stream.direct_get(seq).await {

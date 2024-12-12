@@ -52,3 +52,22 @@ impl<T> From<T> for Message<T> {
         }
     }
 }
+
+/// Basic message type.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ServiceResponse<R> {
+    /// Whether the request being responded to should be persisted.
+    pub persist_request: bool,
+
+    /// Payload for the message.
+    pub message: Message<R>,
+}
+
+impl<R> From<R> for ServiceResponse<R> {
+    fn from(payload: R) -> Self {
+        Self {
+            persist_request: false,
+            message: Message::from(payload),
+        }
+    }
+}

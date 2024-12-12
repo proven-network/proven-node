@@ -10,6 +10,10 @@ pub enum Error {
     #[error("error starting consumer")]
     Consumer,
 
+    /// Did an operation on a seq that doesn't exist yet.
+    #[error("invalid seq. requested: {0}, current: {1}")]
+    InvalidSeq(usize, usize),
+
     /// Consumer error.
     #[error("error starting service")]
     Service,
