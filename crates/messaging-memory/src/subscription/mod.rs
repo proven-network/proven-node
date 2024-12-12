@@ -5,17 +5,15 @@ use crate::{SubjectState, GLOBAL_STATE};
 use bytes::Bytes;
 pub use error::Error;
 use proven_messaging::subject::Subject;
-use proven_messaging::Message;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
 use proven_messaging::subscription_handler::SubscriptionHandler;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 
 /// Options for the in-memory subscriber (there are none).
@@ -40,9 +38,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     cancel_token: CancellationToken,
-    handler: X,
-    last_message: Arc<Mutex<Option<Message<T>>>>,
-    _marker: PhantomData<P>,
+    _marker: PhantomData<(P, X, T, D, S)>,
 }
 
 impl<P, X, T, D, S> Clone for MemorySubscription<P, X, T, D, S>
@@ -62,8 +58,6 @@ where
     fn clone(&self) -> Self {
         Self {
             cancel_token: self.cancel_token.clone(),
-            handler: self.handler.clone(),
-            last_message: self.last_message.clone(),
             _marker: PhantomData,
         }
     }
@@ -116,12 +110,9 @@ where
 
         let subscriber = Self {
             cancel_token: CancellationToken::new(),
-            handler,
-            last_message: Arc::new(Mutex::new(None)),
             _marker: PhantomData,
         };
 
-        let subscriber_clone = subscriber.clone();
         let cancel_token = subscriber.cancel_token.clone();
         tokio::spawn(async move {
             loop {
@@ -133,8 +124,7 @@ where
                         if let Ok(message) = message {
                             // TODO: Handle errors
                             let message = message.clone();
-                            let _ = subscriber_clone.handler().handle(message.clone()).await;
-                            subscriber_clone.last_message.lock().await.replace(message);
+                            let _ = handler.handle(message.clone()).await;
                         }
                     }
                 }
@@ -147,13 +137,5 @@ where
     async fn cancel(self) -> Result<(), Self::Error<D, S>> {
         self.cancel_token.cancel();
         Ok(())
-    }
-
-    fn handler(&self) -> X {
-        self.handler.clone()
-    }
-
-    async fn last_message(&self) -> Option<Message<T>> {
-        self.last_message.lock().await.clone()
     }
 }

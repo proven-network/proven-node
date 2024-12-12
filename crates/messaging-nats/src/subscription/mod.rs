@@ -46,9 +46,7 @@ where
 {
     cancel_result_channel: Arc<Mutex<Option<oneshot::Sender<Result<(), Error<D, S>>>>>>,
     cancel_token: CancellationToken,
-    handler: X,
-    last_message: Arc<Mutex<Option<Message<T>>>>,
-    _marker: PhantomData<P>,
+    _marker: PhantomData<(P, X, T)>,
 }
 
 impl<P, X, T, D, S> Clone for NatsSubscription<P, X, T, D, S>
@@ -69,8 +67,6 @@ where
         Self {
             cancel_result_channel: self.cancel_result_channel.clone(),
             cancel_token: self.cancel_token.clone(),
-            handler: self.handler.clone(),
-            last_message: self.last_message.clone(),
             _marker: PhantomData,
         }
     }
@@ -110,8 +106,6 @@ where
         let subscription = Self {
             cancel_result_channel: Arc::new(Mutex::new(None)),
             cancel_token: CancellationToken::new(),
-            handler,
-            last_message: Arc::new(Mutex::new(None)),
             _marker: PhantomData,
         };
 
@@ -145,12 +139,10 @@ where
                                 payload: data,
                             };
 
-                            let _ = subscription_clone
-                                .handler()
+                            let _ =handler
                                 .handle(message.clone())
                                 .await;
 
-                                subscription_clone.last_message.lock().await.replace(message);
                         }
                     }
                 }
@@ -166,13 +158,5 @@ where
         self.cancel_token.cancel();
 
         receiver.await.unwrap()
-    }
-
-    fn handler(&self) -> X {
-        self.handler.clone()
-    }
-
-    async fn last_message(&self) -> Option<Message<T>> {
-        self.last_message.lock().await.clone()
     }
 }

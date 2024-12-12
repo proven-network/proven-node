@@ -1,24 +1,29 @@
 mod error;
-mod subscription_handler;
 
 use crate::stream::InitializedNatsStream;
-use crate::subject::NatsSubject;
 pub use error::Error;
-use subscription_handler::ClientSubscriptionHandler;
+use futures::StreamExt;
 
+use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
+use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
+use async_nats::jetstream::stream::Config as NatsStreamConfig;
 use async_nats::HeaderMap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::client::{Client, ClientOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
-use proven_messaging::subject::Subject;
 use proven_messaging::Message;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{oneshot, Mutex};
+
+use uuid::Uuid;
+
+type ResponseMap<T> = HashMap<String, oneshot::Sender<T>>;
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -40,9 +45,10 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    reply_receiver: Arc<Mutex<mpsc::Receiver<Message<X::ResponseType>>>>,
-    reply_subject: NatsSubject<X::ResponseType, D, S>,
+    reply_stream: async_nats::jetstream::stream::Stream,
+    reply_stream_name: String,
     stream: <Self as Client<X, T, D, S>>::StreamType,
+    response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
 }
 
 impl<X, T, D, S> Clone for NatsClient<X, T, D, S>
@@ -60,10 +66,48 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            reply_receiver: self.reply_receiver.clone(),
-            reply_subject: self.reply_subject.clone(),
+            reply_stream: self.reply_stream.clone(),
+            reply_stream_name: self.reply_stream_name.clone(),
             stream: self.stream.clone(),
+            response_map: self.response_map.clone(),
         }
+    }
+}
+
+impl<X, T, D, S> NatsClient<X, T, D, S>
+where
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn spawn_response_handler(
+        consumer: NatsConsumerType<NatsConsumerConfig>,
+        response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
+    ) {
+        tokio::spawn(async move {
+            let mut messages = consumer.messages().await.unwrap();
+            while let Some(msg) = messages.next().await {
+                let msg = msg.unwrap();
+                if let Some(request_id) = msg.headers.as_ref().and_then(|h| h.get("request-id")) {
+                    let request_id = request_id.to_string();
+
+                    let response: X::ResponseType = msg.payload.clone().try_into().unwrap();
+
+                    let mut map = response_map.lock().await;
+                    if let Some(sender) = map.remove(&request_id) {
+                        let _ = sender.send(response);
+                    }
+                }
+                let _ = msg.ack().await;
+            }
+        });
     }
 }
 
@@ -93,41 +137,75 @@ where
         _options: Self::Options,
         _handler: X,
     ) -> Result<Self, Self::Error> {
-        let (sender, receiver) = mpsc::channel::<Message<X::ResponseType>>(100);
-
-        let reply_handler = ClientSubscriptionHandler::new(sender);
+        let client_id = Uuid::new_v4().to_string();
+        let response_map = Arc::new(Mutex::new(HashMap::new()));
 
         let client = async_nats::connect("localhost:4222").await.unwrap();
-        let reply_subject: NatsSubject<X::ResponseType, D, S> =
-            NatsSubject::new(client, format!("{name}_reply")).unwrap();
+        let jetstream_context = async_nats::jetstream::new(client.clone());
+        let reply_stream_name = format!("{name}_client_{client_id}");
 
-        reply_subject.subscribe(reply_handler).await.unwrap();
+        let reply_stream = jetstream_context
+            .create_stream(NatsStreamConfig {
+                name: reply_stream_name.clone(),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        let reply_stream_consumer = reply_stream
+            .create_consumer(NatsConsumerConfig {
+                name: Some(format!("{reply_stream_name}_consumer")),
+                durable_name: None,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+
+        // Spawn response handler
+        Self::spawn_response_handler(reply_stream_consumer, response_map.clone());
 
         Ok(Self {
-            reply_receiver: Arc::new(Mutex::new(receiver)),
-            reply_subject,
+            reply_stream,
+            reply_stream_name,
             stream,
+            response_map,
         })
     }
 
     async fn request(&self, request: T) -> Result<X::ResponseType, Self::Error> {
-        let mut reply_receiver = self.reply_receiver.lock().await;
+        let request_id = Uuid::new_v4().to_string();
+        let (sender, receiver) = oneshot::channel();
+
+        // Insert sender into response map
+        {
+            let mut map = self.response_map.lock().await;
+            map.insert(request_id.clone(), sender);
+        }
 
         let mut headers = HeaderMap::new();
-        headers.insert("service-client", String::from(self.reply_subject.clone()));
+        headers.insert("reply-stream-name", self.reply_stream_name.clone().as_str());
+        headers.insert("request-id", request_id.clone());
 
-        let _ = self
-            .stream
-            .publish(Message {
-                headers: Some(headers),
-                payload: request,
-            })
-            .await;
+        // Send message
+        let message = Message {
+            headers: Some(headers),
+            payload: request,
+        };
 
-        let reply = reply_receiver.recv().await.unwrap();
-        drop(reply_receiver);
+        self.stream.publish(message).await.unwrap();
 
-        Ok(reply.payload)
+        // Wait for response with cleanup
+        if let Ok(Ok(response)) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), receiver).await
+        {
+            Ok(response)
+        } else {
+            // Clean up map on timeout/error
+            let mut map = self.response_map.lock().await;
+            map.remove(&request_id);
+            drop(map);
+            Err(Error::NoResponse)
+        }
     }
 }
 

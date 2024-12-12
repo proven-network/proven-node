@@ -119,6 +119,8 @@ where
             .await
             .unwrap();
 
+        tokio::task::yield_now().await;
+
         let reply = reply_receiver.recv().await.unwrap();
         drop(reply_receiver);
 

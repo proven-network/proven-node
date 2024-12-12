@@ -1,6 +1,5 @@
 use crate::subject::Subject;
 use crate::subscription_handler::SubscriptionHandler;
-use crate::Message;
 
 use std::error::Error;
 use std::fmt::Debug;
@@ -52,10 +51,4 @@ where
 
     /// Cancels the subscription.
     async fn cancel(self) -> Result<(), Self::Error<D, S>>;
-
-    /// The handler for the subscriber.
-    fn handler(&self) -> X;
-
-    /// Returns the last message received by the subscriber.
-    async fn last_message(&self) -> Option<Message<T>>;
 }

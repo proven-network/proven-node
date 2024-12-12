@@ -327,44 +327,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    #[serial]
-    async fn test_last_message() {
-        let subject = MemorySubject::new("test").unwrap();
-        let (handler, mut receiver) = setup_test_handler();
-
-        let subscriber = subject.subscribe(handler).await.unwrap();
-
-        subject
-            .publish(Bytes::from("message1").into())
-            .await
-            .unwrap();
-        subject
-            .publish(Bytes::from("message2").into())
-            .await
-            .unwrap();
-
-        assert_eq!(
-            timeout(Duration::from_secs(1), receiver.recv())
-                .await
-                .unwrap()
-                .unwrap(),
-            Bytes::from("message1").into()
-        );
-        assert_eq!(
-            timeout(Duration::from_secs(1), receiver.recv())
-                .await
-                .unwrap()
-                .unwrap(),
-            Bytes::from("message2").into()
-        );
-
-        assert_eq!(
-            subscriber.last_message().await,
-            Some(Bytes::from("message2").into())
-        );
-    }
-
     #[derive(Clone, Debug, PartialEq)]
     struct CustomType(i32);
 

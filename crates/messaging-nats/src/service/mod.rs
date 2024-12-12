@@ -1,7 +1,6 @@
 mod error;
 
 use crate::stream::InitializedNatsStream;
-use crate::subject::NatsSubject;
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -11,13 +10,13 @@ use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
 use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
 use async_nats::jetstream::Context;
 use async_nats::Client as NatsClient;
+use async_nats::HeaderMap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
-use proven_messaging::subject::PublishableSubject;
 use proven_messaging::Message;
 
 /// Options for the nats service.
@@ -91,8 +90,8 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    /// Creates a new NATS consumer.
-    async fn process_messages(
+    /// Process requests.
+    async fn process_requests(
         nats_client: NatsClient,
         nats_consumer: NatsConsumerType<NatsConsumerConfig>,
         handler: X,
@@ -105,25 +104,46 @@ where
 
             while let Some(message) = messages.next().await {
                 let message = message.map_err(|e| Error::Messages(e.kind()))?;
+                let handler = handler.clone();
+                let nats_client = nats_client.clone();
 
-                let headers = message.headers.clone();
                 let payload: T = message.payload.clone().try_into().unwrap();
 
-                if let Some(headers) = headers {
-                    if let Some(reply_header) = headers.get("service-client") {
-                        let reply_subject: NatsSubject<X::ResponseType, D, S> =
-                            NatsSubject::new(nats_client.clone(), reply_header.as_str()).unwrap();
+                let headers = if let Some(headers) = message.headers.as_ref() {
+                    headers.clone()
+                } else {
+                    continue;
+                };
 
-                        let result = handler
-                            .handle(Message {
-                                headers: None,
-                                payload,
-                            })
-                            .await
-                            .map_err(|_| Error::Handler)?;
+                let reply_stream_header = headers.get("reply-stream-name").cloned();
+                let request_id_header = headers.get("request-id").cloned();
 
-                        let _ = reply_subject.publish(result.message).await;
-                    }
+                if let (Some(reply_stream_name), Some(request_id)) =
+                    (reply_stream_header, request_id_header)
+                {
+                    let reply_stream_name = reply_stream_name.clone().to_string();
+                    let request_id = request_id.clone().to_string();
+
+                    let result = handler
+                        .handle(Message {
+                            headers: None,
+                            payload,
+                        })
+                        .await
+                        .map_err(|_| Error::Handler)
+                        .unwrap();
+
+                    let result_bytes: Bytes = result.message.payload.try_into().unwrap();
+
+                    let mut headers = HeaderMap::new();
+                    headers.insert("request-id", request_id.clone());
+
+                    nats_client
+                        .publish_with_headers(reply_stream_name, headers, result_bytes)
+                        .await
+                        .unwrap();
+
+                    message.ack().await.unwrap();
                 }
             }
         }
@@ -172,7 +192,7 @@ where
         // TODO: Actually wait for catch up
         let _ = handler.on_caught_up().await;
 
-        tokio::spawn(Self::process_messages(
+        tokio::spawn(Self::process_requests(
             options.client.clone(),
             nats_consumer.clone(),
             handler.clone(),
@@ -201,134 +221,5 @@ where
 
     fn stream(&self) -> Self::StreamType {
         self.stream.clone()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::stream::NatsStream;
-    use crate::stream::NatsStreamOptions;
-
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    use async_nats::{Client as AsyncNatsClient, ConnectOptions};
-    use proven_messaging::stream::Stream;
-    use proven_messaging::ServiceResponse;
-    use serde::{Deserialize, Serialize};
-    use tokio::time::sleep;
-
-    #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-    struct TestMessage {
-        content: String,
-    }
-
-    impl TryFrom<Bytes> for TestMessage {
-        type Error = serde_json::Error;
-
-        fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
-            serde_json::from_slice(&bytes)
-        }
-    }
-
-    impl TryInto<Bytes> for TestMessage {
-        type Error = serde_json::Error;
-
-        fn try_into(self) -> Result<Bytes, Self::Error> {
-            Ok(Bytes::from(serde_json::to_vec(&self)?))
-        }
-    }
-
-    #[derive(Clone, Debug)]
-    struct TestHandler {
-        message_count: Arc<AtomicU64>,
-    }
-
-    #[async_trait]
-    impl ServiceHandler<TestMessage, serde_json::Error, serde_json::Error> for TestHandler {
-        type Error = serde_json::Error;
-
-        type ResponseType = TestMessage;
-
-        async fn handle(
-            &self,
-            message: Message<TestMessage>,
-        ) -> Result<ServiceResponse<TestMessage>, Self::Error> {
-            self.message_count.fetch_add(1, Ordering::SeqCst);
-
-            // Just pong the message back
-
-            Ok(message.payload.into())
-        }
-    }
-
-    async fn cleanup_stream(client: &AsyncNatsClient, stream_name: &str) {
-        let js = async_nats::jetstream::new(client.clone());
-        let _ = js.delete_stream(stream_name).await;
-    }
-
-    #[tokio::test]
-    async fn test_service_handles_messages() {
-        // Connect to NATS
-        let client = ConnectOptions::default()
-            .connection_timeout(Duration::from_secs(5))
-            .connect("localhost:4222")
-            .await
-            .expect("Failed to connect to NATS");
-
-        cleanup_stream(&client, "test_service_stream").await;
-
-        // Create stream
-        let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
-            "test_service_stream",
-            NatsStreamOptions {
-                client: client.clone(),
-            },
-        );
-
-        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
-
-        // Create handler with counter
-        let message_count = Arc::new(AtomicU64::new(0));
-        let handler = TestHandler {
-            message_count: message_count.clone(),
-        };
-
-        // Start service
-        let _service = initialized_stream
-            .start_service(
-                "test_service",
-                NatsServiceOptions {
-                    client: client.clone(),
-                    durable_name: None,
-                    jetstream_context: async_nats::jetstream::new(client.clone()),
-                },
-                handler,
-            )
-            .await
-            .expect("Failed to start service");
-
-        // Publish some test messages
-        for i in 0..3 {
-            let test_message = Message {
-                headers: None,
-                payload: TestMessage {
-                    content: format!("test message {i}"),
-                },
-            };
-
-            initialized_stream
-                .publish(test_message)
-                .await
-                .expect("Failed to publish message");
-        }
-
-        // Wait a bit for messages to be processed
-        sleep(Duration::from_secs(1)).await;
-
-        // Verify messages were handled
-        assert_eq!(message_count.load(Ordering::SeqCst), 3);
     }
 }

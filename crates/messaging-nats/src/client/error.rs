@@ -10,6 +10,14 @@ pub enum Error {
     /// Handler error.
     #[error("Handler error")]
     Something(#[from] Box<dyn std::error::Error + Send + Sync>),
+
+    /// No response.
+    #[error("No response")]
+    NoResponse,
+
+    /// Task failure.
+    #[error("Task failure")]
+    Task,
 }
 
 impl ClientError for Error {}
