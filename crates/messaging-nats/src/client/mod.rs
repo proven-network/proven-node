@@ -105,7 +105,6 @@ where
                         let _ = sender.send(response);
                     }
                 }
-                let _ = msg.ack().await;
             }
         });
     }
@@ -147,6 +146,8 @@ where
         let reply_stream = jetstream_context
             .create_stream(NatsStreamConfig {
                 name: reply_stream_name.clone(),
+                no_ack: true,
+                storage: async_nats::jetstream::stream::StorageType::Memory,
                 ..Default::default()
             })
             .await
@@ -156,6 +157,7 @@ where
             .create_consumer(NatsConsumerConfig {
                 name: Some(format!("{reply_stream_name}_consumer")),
                 durable_name: None,
+                ack_policy: async_nats::jetstream::consumer::AckPolicy::None,
                 ..Default::default()
             })
             .await

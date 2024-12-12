@@ -60,7 +60,6 @@ mod tests {
     use async_trait::async_trait;
     use bytes::Bytes;
     use proven_messaging::subject::*;
-    use proven_messaging::subscription::*;
     use proven_messaging::subscription_handler::*;
     use proven_messaging::Message;
     use serial_test::serial;
