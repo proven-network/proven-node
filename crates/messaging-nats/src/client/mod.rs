@@ -38,6 +38,7 @@ pub struct NatsClientOptions {
 impl ClientOptions for NatsClientOptions {}
 
 /// A client for sending requests to a NATS-based service.
+/// TODO: Look into using machine identifiers and shortcut responses in-memory if service is on same machine.
 #[derive(Debug)]
 pub struct NatsClient<X, T, D, S>
 where
