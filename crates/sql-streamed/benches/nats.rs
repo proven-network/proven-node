@@ -36,7 +36,9 @@ async fn setup(
             durable_name: None,
             jetstream_context,
         },
-        NatsClientOptions,
+        NatsClientOptions {
+            client: client.clone(),
+        },
     )
     .connect(vec![
         "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT)",

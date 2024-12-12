@@ -13,6 +13,7 @@ use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
 use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
 use async_nats::jetstream::stream::Config as NatsStreamConfig;
 use async_nats::jetstream::Context;
+use async_nats::Client as AsyncNatsClient;
 use async_nats::HeaderMap;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -28,8 +29,13 @@ type ResponseMap<T> = HashMap<String, oneshot::Sender<T>>;
 
 /// Options for the NATS service client.
 #[derive(Clone, Debug)]
-pub struct NatsClientOptions;
-impl ClientOptions for NatsClientOptions {}
+pub struct NatsClientOptions {
+    /// The NATS client to use for the service client.
+    pub client: AsyncNatsClient,
+}
+
+impl ClientOptions for NatsClientOptions {
+}
 
 /// A client for sending requests to a NATS-based service.
 #[derive(Debug)]
@@ -156,14 +162,13 @@ where
     async fn new(
         name: String,
         stream: Self::StreamType,
-        _options: Self::Options,
+        options: Self::Options,
         _handler: X,
     ) -> Result<Self, Self::Error> {
         let client_id = Uuid::new_v4().to_string();
         let response_map = Arc::new(Mutex::new(HashMap::new()));
 
-        let client = async_nats::connect("localhost:4222").await.unwrap();
-        let jetstream_context = async_nats::jetstream::new(client.clone());
+        let jetstream_context = async_nats::jetstream::new(options.client);
         let reply_stream_name = format!("{name}_client_{client_id}");
 
         let reply_stream = jetstream_context
@@ -333,7 +338,9 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client("test_service", NatsClientOptions, TestHandler)
+            .client("test_service", NatsClientOptions{
+                client: client.clone(),
+            }, TestHandler)
             .await
             .expect("Failed to create client");
 
@@ -378,7 +385,9 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client("test_client", NatsClientOptions, TestHandler)
+            .client("test_client", NatsClientOptions {
+                client: client.clone(),
+            }, TestHandler)
             .await
             .expect("Failed to create client");
 

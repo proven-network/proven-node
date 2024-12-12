@@ -815,7 +815,9 @@ impl Bootstrap {
                 durable_name: None,
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
-            NatsClientOptions,
+            NatsClientOptions {
+                client: nats_client.clone(),
+            },
         );
 
         let application_manager = ApplicationManager::new(application_manager_sql_store)
@@ -841,7 +843,9 @@ impl Bootstrap {
                 durable_name: None,
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
-            NatsClientOptions,
+            NatsClientOptions {
+                client: nats_client.clone(),
+            },
         );
 
         let personal_store = NatsStore3::new(NatsStoreOptions {
@@ -863,7 +867,9 @@ impl Bootstrap {
                 durable_name: None,
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
-            NatsClientOptions,
+            NatsClientOptions {
+                client: nats_client.clone(),
+            },
         );
 
         let nft_store = NatsStore3::new(NatsStoreOptions {
@@ -885,7 +891,9 @@ impl Bootstrap {
                 durable_name: None,
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
-            NatsClientOptions,
+            NatsClientOptions {
+                client: nats_client.clone(),
+            },
         );
 
         let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
