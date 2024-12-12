@@ -16,7 +16,7 @@ use bytes::Bytes;
 pub trait StreamError: Debug + Error + Send + Sync + 'static {}
 
 /// Marker trait for stream options
-pub trait StreamOptions: Clone + Send + Sync + 'static {}
+pub trait StreamOptions: Clone + Debug + Send + Sync + 'static {}
 
 /// A trait representing a stream.
 #[async_trait]
@@ -101,6 +101,7 @@ where
     async fn start_consumer<N, X>(
         &self,
         consumer_name: N,
+        options: <Self::Consumer<X> as Consumer<X, T, D, S>>::Options,
         handler: X,
     ) -> Result<Self::Consumer<X>, Self::Error>
     where
@@ -111,8 +112,9 @@ where
     async fn start_service<N, X>(
         &self,
         service_name: N,
+        options: <Self::Service<X> as Service<X, T, D, S>>::Options,
         handler: X,
-    ) -> Result<Self::Service<X>, Self::Error>
+    ) -> Result<Self::Service<X>, <Self::Service<X> as Service<X, T, D, S>>::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>;

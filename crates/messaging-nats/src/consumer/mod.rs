@@ -22,9 +22,14 @@ use crate::stream::InitializedNatsStream;
 /// Options for the nats consumer.
 #[derive(Clone, Debug)]
 pub struct NatsConsumerOptions {
-    durable_name: Option<String>,
-    nats_client: NatsClient,
-    nats_jetstream_context: Context,
+    /// The NATS client.
+    pub client: NatsClient,
+
+    /// The durable name of the consumer.
+    pub durable_name: Option<String>,
+
+    /// The jetstream context.
+    pub jetstream_context: Context,
 }
 impl ConsumerOptions for NatsConsumerOptions {}
 
@@ -139,7 +144,7 @@ where
         handler: X,
     ) -> Result<Self, Self::Error> {
         let nats_consumer = options
-            .nats_jetstream_context
+            .jetstream_context
             .create_consumer_on_stream(
                 NatsConsumerConfig {
                     name: Some(name),
@@ -157,9 +162,9 @@ where
         ));
 
         Ok(Self {
-            nats_client: options.nats_client,
+            nats_client: options.client,
             nats_consumer,
-            nats_jetstream_context: options.nats_jetstream_context,
+            nats_jetstream_context: options.jetstream_context,
             stream,
         })
     }

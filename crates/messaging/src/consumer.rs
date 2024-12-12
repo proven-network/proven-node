@@ -11,7 +11,7 @@ use bytes::Bytes;
 pub trait ConsumerError: Error + Send + Sync + 'static {}
 
 /// Marker trait for consumer options
-pub trait ConsumerOptions: Clone + Send + Sync + 'static {}
+pub trait ConsumerOptions: Clone + Debug + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream.
 #[async_trait]

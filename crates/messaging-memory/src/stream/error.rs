@@ -14,10 +14,6 @@ pub enum Error {
     #[error("invalid seq. requested: {0}, current: {1}")]
     InvalidSeq(usize, usize),
 
-    /// Consumer error.
-    #[error("error starting service")]
-    Service,
-
     /// An error occured while subscribing to a subject.
     #[error(transparent)]
     Subject(#[from] crate::subject::Error),

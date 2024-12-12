@@ -35,6 +35,10 @@ where
     #[error(transparent)]
     Serialize(SE),
 
+    /// An error occured while starting a service.
+    #[error(transparent)]
+    Service(#[from] crate::service::Error),
+
     /// An error occured while subscribing to a subject.
     #[error(transparent)]
     Subject(#[from] crate::subject::Error<DE, SE>),

@@ -11,7 +11,7 @@ use bytes::Bytes;
 pub trait ServiceError: Error + Send + Sync + 'static {}
 
 /// Marker trait for service options
-pub trait ServiceOptions: Clone + Send + Sync + 'static {}
+pub trait ServiceOptions: Clone + Debug + Send + Sync + 'static {}
 
 /// A trait representing a stateful view of a stream which can handle requests.
 #[async_trait]

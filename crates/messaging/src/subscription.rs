@@ -12,7 +12,7 @@ use bytes::Bytes;
 pub trait SubscriptionError: Error + Send + Sync + 'static {}
 
 /// Marker trait for subscriber options
-pub trait SubscriptionOptions: Clone + Send + Sync + 'static {}
+pub trait SubscriptionOptions: Clone + Debug + Send + Sync + 'static {}
 
 /// A trait representing a subscriber of a subject.
 #[async_trait]

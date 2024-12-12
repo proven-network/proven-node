@@ -7,6 +7,7 @@ use std::error::Error as StdError;
 use std::fmt::Debug;
 
 use proven_messaging::client::Client;
+use proven_messaging::service::Service;
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::{InitializedStream, Stream, StreamError};
 use proven_sql::SqlStoreError;
@@ -40,7 +41,7 @@ pub enum Error<
     CaughtUpChannelClosed,
 
     /// An error occurred in the client.
-    #[error("client error")]
+    #[error(transparent)]
     Client(
         <<P::Initialized as InitializedStream<T, D, S>>::Client<X> as Client<X, T, D, S>>::Error,
     ),
@@ -52,6 +53,12 @@ pub enum Error<
     /// An error occurred in libsql.
     #[error(transparent)]
     Libsql(#[from] proven_libsql::Error),
+
+    /// An error occurred in the client.
+    #[error(transparent)]
+    Service(
+        <<P::Initialized as InitializedStream<T, D, S>>::Service<X> as Service<X, T, D, S>>::Error,
+    ),
 
     /// An error occurred in the stream.
     #[error(transparent)]

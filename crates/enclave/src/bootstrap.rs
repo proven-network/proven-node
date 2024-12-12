@@ -21,6 +21,7 @@ use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::Kms;
 use proven_messaging::stream::Stream;
+use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
@@ -30,9 +31,7 @@ use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
-use proven_sql_streamed::{
-    StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3, StreamedSqlStoreOptions,
-};
+use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
 use proven_store_nats::{NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
@@ -803,14 +802,19 @@ impl Bootstrap {
             listen_addr: http_sock_addr,
         });
 
-        let application_manager_sql_store = StreamedSqlStore::new(StreamedSqlStoreOptions {
-            stream: NatsStream::new(
+        let application_manager_sql_store = StreamedSqlStore::new(
+            NatsStream::new(
                 "APPLICATION_MANAGER_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
                 },
             ),
-        });
+            NatsServiceOptions {
+                client: nats_client.clone(),
+                durable_name: None,
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
+        );
 
         let application_manager = ApplicationManager::new(application_manager_sql_store)
             .await
@@ -823,14 +827,19 @@ impl Bootstrap {
             persist: true,
         });
 
-        let application_sql_store = StreamedSqlStore2::new(StreamedSqlStoreOptions {
-            stream: NatsStream2::new(
+        let application_sql_store = StreamedSqlStore2::new(
+            NatsStream2::new(
                 "APPLICATION_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
                 },
             ),
-        });
+            NatsServiceOptions {
+                client: nats_client.clone(),
+                durable_name: None,
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
+        );
 
         let personal_store = NatsStore3::new(NatsStoreOptions {
             bucket: "PERSONAL_KV".to_string(),
@@ -839,14 +848,19 @@ impl Bootstrap {
             persist: true,
         });
 
-        let personal_sql_store = StreamedSqlStore3::new(StreamedSqlStoreOptions {
-            stream: NatsStream3::new(
+        let personal_sql_store = StreamedSqlStore3::new(
+            NatsStream3::new(
                 "PERSONAL_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
                 },
             ),
-        });
+            NatsServiceOptions {
+                client: nats_client.clone(),
+                durable_name: None,
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
+        );
 
         let nft_store = NatsStore3::new(NatsStoreOptions {
             bucket: "NFT_KV".to_string(),
@@ -855,14 +869,19 @@ impl Bootstrap {
             persist: true,
         });
 
-        let nft_sql_store = StreamedSqlStore3::new(StreamedSqlStoreOptions {
-            stream: NatsStream3::new(
+        let nft_sql_store = StreamedSqlStore3::new(
+            NatsStream3::new(
                 "NFT_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
                 },
             ),
-        });
+            NatsServiceOptions {
+                client: nats_client.clone(),
+                durable_name: None,
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
+        );
 
         let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
             application_sql_store,

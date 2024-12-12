@@ -1,8 +1,8 @@
 mod error;
 
 use crate::client::NatsClient;
-use crate::consumer::NatsConsumer;
-use crate::service::NatsService;
+use crate::consumer::{NatsConsumer, NatsConsumerOptions};
+use crate::service::{NatsService, NatsServiceOptions};
 use crate::subject::NatsUnpublishableSubject;
 pub use error::Error;
 
@@ -16,6 +16,7 @@ use async_nats::Client as AsyncNatsClient;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::consumer_handler::ConsumerHandler;
+use proven_messaging::service::Service;
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::{
     InitializedStream, Stream, Stream1, Stream2, Stream3, StreamOptions,
@@ -265,6 +266,7 @@ where
     async fn start_consumer<N, X>(
         &self,
         _consumer_name: N,
+        _options: NatsConsumerOptions,
         _handler: X,
     ) -> Result<Self::Consumer<X>, Self::Error>
     where
@@ -278,15 +280,23 @@ where
     /// Consumes the stream with the given service.
     async fn start_service<N, X>(
         &self,
-        _service_name: N,
-        _handler: X,
-    ) -> Result<Self::Service<X>, Self::Error>
+        service_name: N,
+        options: NatsServiceOptions,
+        handler: X,
+    ) -> Result<Self::Service<X>, <Self::Service<X> as Service<X, T, D, S>>::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>,
     {
-        // Implementation here
-        unimplemented!()
+        let service = NatsService::new(
+            format!("{}_{}", self.name(), service_name.into()),
+            self.clone(),
+            options,
+            handler,
+        )
+        .await?;
+
+        Ok(service)
     }
 }
 

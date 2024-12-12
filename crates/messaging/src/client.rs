@@ -11,7 +11,7 @@ use bytes::Bytes;
 pub trait ClientError: Error + Send + Sync + 'static {}
 
 /// Marker trait for client options
-pub trait ClientOptions: Clone + Send + Sync + 'static {}
+pub trait ClientOptions: Clone + Debug + Send + Sync + 'static {}
 
 /// A trait representing a client of a service the sends requests.
 #[async_trait]

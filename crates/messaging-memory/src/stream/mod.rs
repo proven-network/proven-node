@@ -277,6 +277,7 @@ where
     async fn start_consumer<N, X>(
         &self,
         consumer_name: N,
+        options: MemoryConsumerOptions,
         handler: X,
     ) -> Result<Self::Consumer<X>, Self::Error>
     where
@@ -286,7 +287,7 @@ where
         let consumer = MemoryConsumer::new(
             format!("{}_{}", self.name(), consumer_name.into()),
             self.clone(),
-            MemoryConsumerOptions,
+            options,
             handler,
         )
         .await
@@ -299,8 +300,9 @@ where
     async fn start_service<N, X>(
         &self,
         service_name: N,
+        options: MemoryServiceOptions,
         handler: X,
-    ) -> Result<Self::Service<X>, Self::Error>
+    ) -> Result<Self::Service<X>, <Self::Service<X> as Service<X, T, D, S>>::Error>
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>,
@@ -308,11 +310,10 @@ where
         let service = MemoryService::new(
             format!("{}_{}", self.name(), service_name.into()),
             self.clone(),
-            MemoryServiceOptions,
+            options,
             handler,
         )
-        .await
-        .map_err(|_| Error::Service)?;
+        .await?;
 
         Ok(service)
     }
@@ -722,7 +723,10 @@ mod tests {
         // Wait for the message to be processed
         tokio::task::yield_now().await;
 
-        let _consumer = stream.start_consumer("test", handler).await.unwrap();
+        let _consumer = stream
+            .start_consumer("test", MemoryConsumerOptions, handler)
+            .await
+            .unwrap();
 
         // Wait for the consumer to start
         tokio::task::yield_now().await;
