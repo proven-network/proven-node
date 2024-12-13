@@ -59,7 +59,7 @@ where
         SE: Debug + Error + Send + Sync + 'static;
 
     /// The type of subscription returned by the subject.
-    type SubscriptionType<X>: Subscription<Self, X, T, D, S>
+    type SubscriptionType<X>: Subscription<X, T, D, S>
     where
         X: SubscriptionHandler<T, D, S>;
 

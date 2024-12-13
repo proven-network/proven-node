@@ -4,7 +4,6 @@ use crate::subject::MemorySubject;
 use crate::{SubjectState, GLOBAL_STATE};
 use bytes::Bytes;
 pub use error::Error;
-use proven_messaging::subject::Subject;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -13,8 +12,7 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
 use proven_messaging::subscription_handler::SubscriptionHandler;
-use tokio::sync::broadcast;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{broadcast, watch};
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -23,9 +21,8 @@ impl SubscriptionOptions for MemorySubscriptionOptions {}
 
 /// A in-memory subscriber.
 #[derive(Debug)]
-pub struct MemorySubscription<P, X, T, D, S>
+pub struct MemorySubscription<X, T, D, S>
 where
-    P: Subject<T, D, S>,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -37,13 +34,12 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    cancel_token: CancellationToken,
-    _marker: PhantomData<(P, X, T, D, S)>,
+    stop_sender: watch::Sender<()>,
+    _marker: PhantomData<(X, T, D, S)>,
 }
 
-impl<P, X, T, D, S> Clone for MemorySubscription<P, X, T, D, S>
+impl<X, T, D, S> Clone for MemorySubscription<X, T, D, S>
 where
-    P: Subject<T, D, S>,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -57,17 +53,16 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            cancel_token: self.cancel_token.clone(),
+            stop_sender: self.stop_sender.clone(),
             _marker: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<P, X, T, D, S> Subscription<P, X, T, D, S> for MemorySubscription<P, X, T, D, S>
+impl<X, T, D, S> Subscription<X, T, D, S> for MemorySubscription<X, T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    P: Subject<T, D, S>,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -108,16 +103,18 @@ where
 
         let mut receiver = sender.subscribe();
 
+        let (stop_sender, stop_receiver) = watch::channel(());
+
         let subscriber = Self {
-            cancel_token: CancellationToken::new(),
+            stop_sender,
             _marker: PhantomData,
         };
 
-        let cancel_token = subscriber.cancel_token.clone();
         tokio::spawn(async move {
+            let mut stop_receiver = stop_receiver.clone();
             loop {
                 tokio::select! {
-                    () = cancel_token.cancelled() => {
+                    _ = stop_receiver.changed() => {
                         break;
                     }
                     message = receiver.recv() => {
@@ -132,10 +129,5 @@ where
         });
 
         Ok(subscriber)
-    }
-
-    async fn cancel(self) -> Result<(), Self::Error<D, S>> {
-        self.cancel_token.cancel();
-        Ok(())
     }
 }

@@ -127,7 +127,7 @@ where
         SE: Debug + Send + StdError + Sync + 'static;
 
     type SubscriptionType<X>
-        = NatsSubscription<Self, X, T, D, S>
+        = NatsSubscription<X, T, D, S>
     where
         X: SubscriptionHandler<T, D, S>;
 
@@ -136,7 +136,7 @@ where
     async fn subscribe<X>(
         &self,
         handler: X,
-    ) -> Result<NatsSubscription<Self, X, T, D, S>, Self::Error<D, S>>
+    ) -> Result<NatsSubscription<X, T, D, S>, Self::Error<D, S>>
     where
         X: SubscriptionHandler<T, D, S>,
     {
@@ -311,7 +311,7 @@ where
         SE: Debug + Send + StdError + Sync + 'static;
 
     type SubscriptionType<X>
-        = NatsSubscription<Self, X, T, D, S>
+        = NatsSubscription<X, T, D, S>
     where
         X: SubscriptionHandler<T, D, S>;
 

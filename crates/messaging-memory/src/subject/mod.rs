@@ -128,7 +128,7 @@ where
         SE: Debug + Send + StdError + Sync + 'static;
 
     type SubscriptionType<X>
-        = MemorySubscription<Self, X, T, D, S>
+        = MemorySubscription<X, T, D, S>
     where
         X: SubscriptionHandler<T, D, S>;
 
@@ -317,7 +317,7 @@ where
         SE: Debug + Send + StdError + Sync + 'static;
 
     type SubscriptionType<X>
-        = MemorySubscription<Self, X, T, D, S>
+        = MemorySubscription<X, T, D, S>
     where
         X: SubscriptionHandler<T, D, S>;
 

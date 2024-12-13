@@ -3,22 +3,21 @@
 mod error;
 
 pub use error::Error;
-use proven_messaging::Message;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::sync::Arc;
 
 use async_nats::Client;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
-use proven_messaging::subject::Subject;
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
 use proven_messaging::subscription_handler::SubscriptionHandler;
-use tokio::sync::{oneshot, Mutex};
-use tokio_util::sync::CancellationToken;
+use proven_messaging::Message;
+use tokio::sync::watch;
+
+use crate::subject::NatsSubject;
 
 /// Options for new NATS subscribers.
 #[derive(Clone, Debug)]
@@ -30,9 +29,8 @@ impl SubscriptionOptions for NatsSubscriptionOptions {}
 
 /// A NATS-based subscriber
 #[derive(Debug)]
-pub struct NatsSubscription<P, X, T, D, S>
+pub struct NatsSubscription<X, T, D, S>
 where
-    P: Subject<T, D, S>,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -44,14 +42,12 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    cancel_result_channel: Arc<Mutex<Option<oneshot::Sender<Result<(), Error<D, S>>>>>>,
-    cancel_token: CancellationToken,
-    _marker: PhantomData<(P, X, T)>,
+    stop_sender: watch::Sender<()>,
+    _marker: PhantomData<(X, T)>,
 }
 
-impl<P, X, T, D, S> Clone for NatsSubscription<P, X, T, D, S>
+impl<X, T, D, S> Clone for NatsSubscription<X, T, D, S>
 where
-    P: Subject<T, D, S>,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -65,18 +61,16 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            cancel_result_channel: self.cancel_result_channel.clone(),
-            cancel_token: self.cancel_token.clone(),
+            stop_sender: self.stop_sender.clone(),
             _marker: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<P, X, T, D, S> Subscription<P, X, T, D, S> for NatsSubscription<P, X, T, D, S>
+impl<X, T, D, S> Subscription<X, T, D, S> for NatsSubscription<X, T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    P: Subject<T, D, S>,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -96,16 +90,17 @@ where
 
     type Options = NatsSubscriptionOptions;
 
-    type Subject = P;
+    type Subject = NatsSubject<T, D, S>;
 
     async fn new(
         subject_string: String,
         options: Self::Options,
         handler: X,
     ) -> Result<Self, Self::Error<D, S>> {
+        let (stop_sender, mut stop_receiver) = watch::channel(());
+
         let subscription = Self {
-            cancel_result_channel: Arc::new(Mutex::new(None)),
-            cancel_token: CancellationToken::new(),
+            stop_sender,
             _marker: PhantomData,
         };
 
@@ -115,16 +110,11 @@ where
             .await
             .map_err(|_| Error::Subscribe)?;
 
-        let subscription_clone = subscription.clone();
-        let token = subscription.cancel_token.clone();
-
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    () = token.cancelled() => {
-                        let result = subscriber.unsubscribe().await.map_err(|_| Error::Unsubscribe);
-
-                        subscription_clone.cancel_result_channel.lock().await.take().unwrap().send(result).unwrap();
+                    _ = stop_receiver.changed() => {
+                        break;
                     }
                     message = subscriber.next() => {
                         if let Some(msg) = message {
@@ -150,13 +140,5 @@ where
         });
 
         Ok(subscription)
-    }
-
-    async fn cancel(self) -> Result<(), Self::Error<D, S>> {
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-        self.cancel_result_channel.lock().await.replace(sender);
-        self.cancel_token.cancel();
-
-        receiver.await.unwrap()
     }
 }

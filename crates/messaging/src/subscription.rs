@@ -15,10 +15,9 @@ pub trait SubscriptionOptions: Clone + Debug + Send + Sync + 'static {}
 
 /// A trait representing a subscriber of a subject.
 #[async_trait]
-pub trait Subscription<P, X, T, D, S>
+pub trait Subscription<X, T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    P: Subject<T, D, S>,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -48,7 +47,4 @@ where
         options: Self::Options,
         handler: X,
     ) -> Result<Self, Self::Error<D, S>>;
-
-    /// Cancels the subscription.
-    async fn cancel(self) -> Result<(), Self::Error<D, S>>;
 }
