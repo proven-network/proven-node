@@ -158,11 +158,7 @@ where
     where
         K: Clone + Into<String> + Send,
     {
-        let unpublishable_subject: MemoryUnpublishableSubject<T, D, S> =
-            MemoryUnpublishableSubject {
-                full_subject: self.full_subject.clone(),
-                _marker: PhantomData,
-            };
+        let unpublishable_subject = MemoryUnpublishableSubject::<T, D, S>::from(self.clone());
 
         InitializedMemoryStream::<T, D, S>::new_with_subjects(
             stream_name.into(),
@@ -343,15 +339,10 @@ where
     where
         K: Clone + Into<String> + Send,
     {
-        let unpublishable_subject = Self {
-            full_subject: self.full_subject.clone(),
-            _marker: PhantomData,
-        };
-
         InitializedMemoryStream::<T, D, S>::new_with_subjects(
             stream_name.into(),
             options,
-            vec![unpublishable_subject],
+            vec![self.clone()],
         )
         .await
     }

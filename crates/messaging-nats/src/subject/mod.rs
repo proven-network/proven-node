@@ -165,13 +165,23 @@ where
 
     async fn to_stream<K>(
         &self,
-        _stream_name: K,
-        _options: <Self::StreamType as InitializedStream<T, D, S>>::Options,
-    ) -> Result<Self::StreamType, <Self::StreamType as InitializedStream<T, D, S>>::Error>
+        stream_name: K,
+        options: <InitializedNatsStream<T, D, S> as InitializedStream<T, D, S>>::Options,
+    ) -> Result<
+        InitializedNatsStream<T, D, S>,
+        <Self::StreamType as InitializedStream<T, D, S>>::Error,
+    >
     where
         K: Clone + Into<String> + Send,
     {
-        unimplemented!()
+        let unpublishable_subject = NatsUnpublishableSubject::<T, D, S>::from(self.clone());
+
+        InitializedNatsStream::<T, D, S>::new_with_subjects(
+            stream_name.into(),
+            options,
+            vec![unpublishable_subject],
+        )
+        .await
     }
 }
 
@@ -354,16 +364,10 @@ where
     where
         K: Clone + Into<String> + Send,
     {
-        let unpublishable_subject = Self {
-            client: self.client.clone(),
-            full_subject: self.full_subject.clone(),
-            _marker: PhantomData,
-        };
-
         InitializedNatsStream::<T, D, S>::new_with_subjects(
             stream_name.into(),
             options,
-            vec![unpublishable_subject],
+            vec![self.clone()],
         )
         .await
     }
