@@ -20,6 +20,13 @@ use proven_messaging::subject::{
 use proven_messaging::subscription::Subscription;
 use proven_messaging::subscription_handler::SubscriptionHandler;
 
+/// Options for a NATS subject.
+#[derive(Clone, Debug)]
+pub struct NatsSubjectOptions {
+    /// The NATS client to use.
+    pub client: Client,
+}
+
 /// A NATS-backed publishable subject
 #[derive(Debug)]
 pub struct NatsSubject<T, D, S>
@@ -94,7 +101,10 @@ where
     /// # Errors
     ///
     /// Returns `Error::InvalidSubjectPartial` if the subject contains invalid characters.
-    pub fn new(client: Client, subject_partial: impl Into<String>) -> Result<Self, Error<D, S>> {
+    pub fn new(
+        subject_partial: impl Into<String>,
+        NatsSubjectOptions { client }: NatsSubjectOptions,
+    ) -> Result<Self, Error<D, S>> {
         let subject = subject_partial.into();
         if subject.contains('.') || subject.contains('*') || subject.contains('>') {
             return Err(Error::InvalidSubjectPartial);
@@ -437,10 +447,10 @@ macro_rules! define_scoped_subject {
                 ///
                 /// # Errors
                 /// Returns an error if the subject partial contains '.', '*' or '>'
-                pub fn new<K>(client: Client, subject_partial: K) -> Result<Self, Error<D, S>>
-                where
-                    K: Clone + Into<String> + Send,
-                {
+                pub fn new(
+                    subject_partial: impl Into<String>,
+                    NatsSubjectOptions { client }: NatsSubjectOptions,
+                ) -> Result<Self, Error<D, S>> {
                     let subject = subject_partial.into();
                     if subject.contains('.') || subject.contains('*') || subject.contains('>') {
                         return Err(Error::InvalidSubjectPartial);
