@@ -281,7 +281,7 @@ where
         consumer_name: N,
         options: MemoryConsumerOptions,
         handler: X,
-    ) -> Result<Self::Consumer<X>, Self::Error>
+    ) -> Result<Self::Consumer<X>, <Self::Consumer<X> as Consumer<X, T, D, S>>::Error>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<T, D, S>,
@@ -292,8 +292,7 @@ where
             options,
             handler,
         )
-        .await
-        .map_err(|_| Error::Consumer)?;
+        .await?;
 
         Ok(consumer)
     }

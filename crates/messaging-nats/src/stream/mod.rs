@@ -5,7 +5,6 @@ use crate::consumer::{NatsConsumer, NatsConsumerOptions};
 use crate::service::{NatsService, NatsServiceOptions};
 use crate::subject::NatsUnpublishableSubject;
 pub use error::Error;
-use proven_messaging::client::Client;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -16,6 +15,8 @@ use async_nats::jetstream::Context as JetStreamContext;
 use async_nats::Client as AsyncNatsClient;
 use async_trait::async_trait;
 use bytes::Bytes;
+use proven_messaging::client::Client;
+use proven_messaging::consumer::Consumer;
 use proven_messaging::consumer_handler::ConsumerHandler;
 use proven_messaging::service::Service;
 use proven_messaging::service_handler::ServiceHandler;
@@ -276,16 +277,23 @@ where
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(
         &self,
-        _consumer_name: N,
-        _options: NatsConsumerOptions,
-        _handler: X,
-    ) -> Result<Self::Consumer<X>, Self::Error>
+        consumer_name: N,
+        options: NatsConsumerOptions,
+        handler: X,
+    ) -> Result<Self::Consumer<X>, <Self::Consumer<X> as Consumer<X, T, D, S>>::Error>
     where
         N: Clone + Into<String> + Send,
         X: ConsumerHandler<T, D, S>,
     {
-        // Implementation here
-        unimplemented!()
+        let consumer = NatsConsumer::new(
+            format!("{}_{}", self.name(), consumer_name.into()),
+            self.clone(),
+            options,
+            handler,
+        )
+        .await?;
+
+        Ok(consumer)
     }
 
     /// Consumes the stream with the given service.
