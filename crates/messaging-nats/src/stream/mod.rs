@@ -109,6 +109,8 @@ where
         X: ServiceHandler<T, D, S>;
 
     /// Creates a new stream.
+    /// TODO: Use stream metadata to ensure you can't overlap streams with different types.
+    /// (through that should probably be some tuple of type + ser/de)
     async fn new<N>(stream_name: N, options: NatsStreamOptions) -> Result<Self, Self::Error>
     where
         N: Clone + Into<String> + Send,
