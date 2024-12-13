@@ -120,6 +120,7 @@ where
 #[async_trait]
 impl<T, D, S> Subject<T, D, S> for NatsSubject<T, D, S>
 where
+    Self: Into<NatsUnpublishableSubject<T, D, S>>,
     T: Clone
         + Debug
         + Send
@@ -151,7 +152,7 @@ where
         X: SubscriptionHandler<T, D, S>,
     {
         let subscription = NatsSubscription::new(
-            self.full_subject.clone(),
+            NatsUnpublishableSubject::<T, D, S>::from(self.clone()),
             NatsSubscriptionOptions {
                 client: self.client.clone(),
             },
@@ -332,7 +333,7 @@ where
         X: SubscriptionHandler<T, D, S>,
     {
         NatsSubscription::new(
-            self.full_subject.clone(),
+            self.clone(),
             NatsSubscriptionOptions {
                 client: self.client.clone(),
             },

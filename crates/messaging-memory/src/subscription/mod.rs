@@ -1,8 +1,7 @@
 mod error;
 
-use crate::subject::MemorySubject;
+use crate::subject::MemoryUnpublishableSubject;
 use crate::{SubjectState, GLOBAL_STATE};
-use bytes::Bytes;
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -10,6 +9,7 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
 use proven_messaging::subscription_handler::SubscriptionHandler;
 use tokio::sync::{broadcast, watch};
@@ -82,11 +82,11 @@ where
 
     type Options = MemorySubscriptionOptions;
 
-    type Subject = MemorySubject<T, D, S>;
+    type Subject = MemoryUnpublishableSubject<T, D, S>;
 
     #[allow(clippy::significant_drop_tightening)]
     async fn new(
-        subject_string: String,
+        subject: Self::Subject,
         _options: Self::Options,
         handler: X,
     ) -> Result<Self, Self::Error<D, S>> {
@@ -97,7 +97,7 @@ where
         let subject_state = state.borrow::<SubjectState<T>>();
         let mut subjects = subject_state.subjects.lock().await;
         let sender = subjects
-            .entry(subject_string.clone())
+            .entry(subject.into())
             .or_insert_with(|| broadcast::channel(100).0)
             .clone();
 

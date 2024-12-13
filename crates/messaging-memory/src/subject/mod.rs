@@ -139,7 +139,7 @@ where
         X: SubscriptionHandler<T, D, S>,
     {
         MemorySubscription::new(
-            self.full_subject.clone(),
+            MemoryUnpublishableSubject::<T, D, S>::from(self.clone()),
             MemorySubscriptionOptions,
             handler,
         )
@@ -327,13 +327,9 @@ where
     where
         X: SubscriptionHandler<T, D, S>,
     {
-        MemorySubscription::new(
-            self.full_subject.clone(),
-            MemorySubscriptionOptions,
-            handler,
-        )
-        .await
-        .map_err(|_| Error::Subscribe)
+        MemorySubscription::new(self.clone(), MemorySubscriptionOptions, handler)
+            .await
+            .map_err(|_| Error::Subscribe)
     }
 
     async fn to_stream<K>(

@@ -43,7 +43,7 @@ where
 
     /// Creates a new subscriber.
     async fn new(
-        subject_string: String,
+        subject: Self::Subject,
         options: Self::Options,
         handler: X,
     ) -> Result<Self, Self::Error<D, S>>;

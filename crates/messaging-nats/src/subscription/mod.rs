@@ -17,7 +17,7 @@ use proven_messaging::subscription_handler::SubscriptionHandler;
 use proven_messaging::Message;
 use tokio::sync::watch;
 
-use crate::subject::NatsSubject;
+use crate::subject::NatsUnpublishableSubject;
 
 /// Options for new NATS subscribers.
 #[derive(Clone, Debug)]
@@ -90,10 +90,10 @@ where
 
     type Options = NatsSubscriptionOptions;
 
-    type Subject = NatsSubject<T, D, S>;
+    type Subject = NatsUnpublishableSubject<T, D, S>;
 
     async fn new(
-        subject_string: String,
+        subject: Self::Subject,
         options: Self::Options,
         handler: X,
     ) -> Result<Self, Self::Error<D, S>> {
@@ -106,7 +106,7 @@ where
 
         let mut subscriber = options
             .client
-            .subscribe(subject_string.clone())
+            .subscribe(String::from(subject))
             .await
             .map_err(|_| Error::Subscribe)?;
 
