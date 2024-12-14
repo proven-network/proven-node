@@ -23,7 +23,6 @@ use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::{
     InitializedStream, Stream, Stream1, Stream2, Stream3, StreamOptions,
 };
-use proven_messaging::Message;
 
 /// Options for the NATS stream.
 #[derive(Clone, Debug)]
@@ -207,7 +206,7 @@ where
     }
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error> {
+    async fn get(&self, seq: u64) -> Result<Option<T>, Self::Error> {
         match self.nats_stream.direct_get(seq).await {
             Ok(message) => {
                 let payload: T = message
@@ -215,10 +214,7 @@ where
                     .try_into()
                     .map_err(|e| Error::Deserialize(e))?;
 
-                Ok(Some(Message {
-                    headers: Some(message.headers),
-                    payload,
-                }))
+                Ok(Some(payload))
             }
             Err(e) => match e.kind() {
                 async_nats::jetstream::stream::DirectGetErrorKind::NotFound => Ok(None),
@@ -228,7 +224,7 @@ where
     }
 
     /// The last message in the stream.
-    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error> {
+    async fn last_message(&self) -> Result<Option<T>, Self::Error> {
         let last_seq = self
             .nats_stream
             .clone()
@@ -247,29 +243,17 @@ where
     }
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error> {
-        let payload: Bytes = message
-            .payload
-            .try_into()
-            .map_err(|e| Error::Serialize(e))?;
+    async fn publish(&self, message: T) -> Result<u64, Self::Error> {
+        let payload: Bytes = message.try_into().map_err(|e| Error::Serialize(e))?;
 
-        let seq = if let Some(headers) = message.headers {
-            self.jetstream_context
-                .publish_with_headers(self.name(), headers, payload)
-                .await
-                .map_err(|e| Error::Publish(e.kind()))?
-                .await
-                .map_err(|e| Error::Publish(e.kind()))?
-                .sequence
-        } else {
-            self.jetstream_context
-                .publish(self.name(), payload)
-                .await
-                .map_err(|e| Error::Publish(e.kind()))?
-                .await
-                .map_err(|e| Error::Publish(e.kind()))?
-                .sequence
-        };
+        let seq = self
+            .jetstream_context
+            .publish(self.name(), payload)
+            .await
+            .map_err(|e| Error::Publish(e.kind()))?
+            .await
+            .map_err(|e| Error::Publish(e.kind()))?
+            .sequence;
 
         Ok(seq)
     }
@@ -573,11 +557,8 @@ mod tests {
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");
 
         // Create test message
-        let test_message = Message {
-            headers: None,
-            payload: TestMessage {
-                content: "test content".to_string(),
-            },
+        let test_message = TestMessage {
+            content: "test content".to_string(),
         };
 
         // Publish message
@@ -594,7 +575,7 @@ mod tests {
             .expect("Message not found");
 
         // Verify message content
-        assert_eq!(retrieved_message.payload, test_message.payload);
+        assert_eq!(retrieved_message, test_message);
     }
 
     #[tokio::test]
@@ -617,11 +598,8 @@ mod tests {
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");
 
         // Create and publish test message
-        let test_message = Message {
-            headers: None,
-            payload: TestMessage {
-                content: "delete me".to_string(),
-            },
+        let test_message = TestMessage {
+            content: "delete me".to_string(),
         };
 
         // Publish message and get sequence number

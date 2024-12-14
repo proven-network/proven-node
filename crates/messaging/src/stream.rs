@@ -4,7 +4,6 @@ use crate::consumer_handler::ConsumerHandler;
 use crate::service::Service;
 use crate::service_handler::ServiceHandler;
 use crate::subject::Subject;
-use crate::Message;
 
 use std::error::Error;
 use std::fmt::Debug;
@@ -87,16 +86,16 @@ where
     async fn del(&self, seq: u64) -> Result<(), Self::Error>;
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error>;
+    async fn get(&self, seq: u64) -> Result<Option<T>, Self::Error>;
 
     /// The last message in the stream.
-    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error>;
+    async fn last_message(&self) -> Result<Option<T>, Self::Error>;
 
     /// Returns the name of the stream.
     fn name(&self) -> String;
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error>;
+    async fn publish(&self, message: T) -> Result<u64, Self::Error>;
 
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(

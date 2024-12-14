@@ -3,7 +3,6 @@ mod error;
 use crate::stream::InitializedNatsStream;
 use crate::subscription::{NatsSubscription, NatsSubscriptionOptions};
 pub use error::Error;
-use proven_messaging::Message;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -200,31 +199,18 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     #[allow(clippy::significant_drop_tightening)]
-    async fn publish(&self, message: Message<T>) -> Result<(), Self::Error<D, S>> {
-        let payload: Bytes = message
-            .payload
-            .try_into()
-            .map_err(|e| Error::Serialize(e))?;
+    async fn publish(&self, message: T) -> Result<(), Self::Error<D, S>> {
+        let payload: Bytes = message.try_into().map_err(|e| Error::Serialize(e))?;
 
-        if let Some(headers) = message.headers {
-            self.client
-                .publish_with_headers(self.full_subject.clone(), headers, payload)
-                .await
-                .map_err(|e| Error::Publish(e.kind()))?;
-        } else {
-            self.client
-                .publish(self.full_subject.clone(), payload)
-                .await
-                .map_err(|e| Error::Publish(e.kind()))?;
-        }
+        self.client
+            .publish(self.full_subject.clone(), payload)
+            .await
+            .map_err(|e| Error::Publish(e.kind()))?;
 
         Ok(())
     }
 
-    async fn request<X>(
-        &self,
-        _message: Message<T>,
-    ) -> Result<Message<X::ResponseType>, Self::Error<D, S>>
+    async fn request<X>(&self, _message: T) -> Result<X::ResponseType, Self::Error<D, S>>
     where
         X: SubscriptionHandler<T, D, S>,
     {

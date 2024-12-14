@@ -1,7 +1,6 @@
 use crate::stream::InitializedStream;
 use crate::subscription::Subscription;
 use crate::subscription_handler::SubscriptionHandler;
-use crate::Message;
 
 use std::error::Error;
 use std::fmt::Debug;
@@ -27,13 +26,10 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// Publish a message to the subject.
-    async fn publish(&self, message: Message<T>) -> Result<(), Self::Error<D, S>>;
+    async fn publish(&self, message: T) -> Result<(), Self::Error<D, S>>;
 
     /// Publish a message to the subject and await a response.
-    async fn request<X>(
-        &self,
-        message: Message<T>,
-    ) -> Result<Message<X::ResponseType>, Self::Error<D, S>>
+    async fn request<X>(&self, message: T) -> Result<X::ResponseType, Self::Error<D, S>>
     where
         X: SubscriptionHandler<T, D, S>;
 }

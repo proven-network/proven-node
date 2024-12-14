@@ -5,8 +5,6 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-pub use async_nats::{HeaderMap, HeaderName, HeaderValue};
-
 /// Clients send requests to services.
 pub mod client;
 
@@ -15,6 +13,9 @@ pub mod consumer;
 
 /// Consumer handlers process messages for consumers.
 pub mod consumer_handler;
+
+/// Service responders handle responses generated in service handlers.
+pub mod service_responder;
 
 /// Services are special consumers that respond to requests.
 pub mod service;
@@ -34,40 +35,5 @@ pub mod subscription;
 /// Subscribption handlers process messages for subscribers.
 pub mod subscription_handler;
 
-/// Basic message type.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Message<T> {
-    /// Headers for the message.
-    pub headers: Option<HeaderMap>,
-
-    /// Payload for the message.
-    pub payload: T,
-}
-
-impl<T> From<T> for Message<T> {
-    fn from(payload: T) -> Self {
-        Self {
-            headers: None,
-            payload,
-        }
-    }
-}
-
-/// Basic message type.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ServiceResponse<R> {
-    /// Whether the request being responded to should be persisted.
-    pub persist_request: bool,
-
-    /// Payload for the message.
-    pub message: Message<R>,
-}
-
-impl<R> From<R> for ServiceResponse<R> {
-    fn from(payload: R) -> Self {
-        Self {
-            persist_request: false,
-            message: Message::from(payload),
-        }
-    }
-}
+/// Subscription responders handle responses generated in subscription handlers.
+pub mod subscription_responder;

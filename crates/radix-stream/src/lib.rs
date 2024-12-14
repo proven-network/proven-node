@@ -11,7 +11,6 @@ mod transaction;
 
 pub use error::Error;
 pub use event::Event;
-use proven_messaging::Message;
 pub use transaction::Transaction;
 
 use std::sync::Arc;
@@ -104,16 +103,11 @@ where
             .last_message()
             .await
             .map_err(Error::TransactionStream)?)
-        .map(
-            |Message {
-                 headers: _,
-                 payload: last_transaction,
-             }: Message<Transaction>| {
-                let state_version = last_transaction.state_version();
-                info!("Starting from state version: {}", state_version);
-                state_version
-            },
-        );
+        .map(|last_transaction| {
+            let state_version = last_transaction.state_version();
+            info!("Starting from state version: {}", state_version);
+            state_version
+        });
 
         Ok(Self {
             client,
@@ -224,7 +218,7 @@ where
         for transaction in &transactions {
             trace!("Publishing transaction: {:?}", transaction);
             transaction_stream
-                .publish(transaction.clone().into())
+                .publish(transaction.clone())
                 .await
                 .map_err(Error::TransactionStream)?;
 

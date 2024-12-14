@@ -9,12 +9,12 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::subscription_handler::SubscriptionHandler;
-use proven_messaging::Message;
+use proven_messaging::subscription_responder::SubscriptionResponder;
 use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub struct StreamSubscriptionHandler<T, D, S> {
-    sender: mpsc::Sender<Message<T>>,
+    sender: mpsc::Sender<T>,
     _marker: std::marker::PhantomData<(D, S)>,
 }
 
@@ -39,7 +39,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    pub const fn new(sender: mpsc::Sender<Message<T>>) -> Self {
+    pub const fn new(sender: mpsc::Sender<T>) -> Self {
         Self {
             sender,
             _marker: PhantomData,
@@ -63,13 +63,15 @@ where
     type Error = Error;
 
     type ResponseType = T;
+    type ResponseDeserializationError = D;
+    type ResponseSerializationError = S;
 
-    async fn handle(
-        &self,
-        message: Message<T>,
-    ) -> Result<Option<Message<Self::ResponseType>>, Self::Error> {
+    async fn handle<R>(&self, message: T, responder: R) -> Result<R::UsedResponder, Self::Error>
+    where
+        R: SubscriptionResponder<Self::ResponseType, D, S>,
+    {
         self.sender.send(message).await.map_err(|_| Error::Send)?;
 
-        Ok(None)
+        Ok(responder.no_reply().await)
     }
 }

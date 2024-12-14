@@ -21,7 +21,6 @@ use bytes::Bytes;
 use proven_messaging::client::{Client, ClientOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
-use proven_messaging::Message;
 use tokio::sync::{oneshot, Mutex};
 
 use uuid::Uuid;
@@ -53,11 +52,12 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    nats_client: AsyncNatsClient,
     nats_jetstream_context: Context,
     reply_stream_name: String,
-    stream: <Self as Client<X, T, D, S>>::StreamType,
     request_id_counter: Arc<AtomicUsize>,
     response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
+    stream_name: String,
 }
 
 impl<X, T, D, S> Clone for NatsClient<X, T, D, S>
@@ -75,11 +75,12 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            nats_client: self.nats_client.clone(),
             nats_jetstream_context: self.nats_jetstream_context.clone(),
             reply_stream_name: self.reply_stream_name.clone(),
-            stream: self.stream.clone(),
             request_id_counter: self.request_id_counter.clone(),
             response_map: self.response_map.clone(),
+            stream_name: self.stream_name.clone(),
         }
     }
 }
@@ -171,7 +172,7 @@ where
         let client_id = Uuid::new_v4().to_string();
         let response_map = Arc::new(Mutex::new(HashMap::new()));
 
-        let jetstream_context = async_nats::jetstream::new(options.client);
+        let jetstream_context = async_nats::jetstream::new(options.client.clone());
         let reply_stream_name = format!("{name}_client_{client_id}");
 
         let reply_stream = jetstream_context
@@ -198,11 +199,12 @@ where
         Self::spawn_response_handler(reply_stream_consumer, response_map.clone());
 
         Ok(Self {
+            nats_client: options.client,
             nats_jetstream_context: jetstream_context,
             reply_stream_name,
-            stream,
             request_id_counter: Arc::new(AtomicUsize::new(0)),
             response_map,
+            stream_name: stream.name(),
         })
     }
 
@@ -220,13 +222,12 @@ where
         headers.insert("reply-stream-name", self.reply_stream_name.clone().as_str());
         headers.insert("request-id", request_id.to_string().as_str());
 
-        // Send message
-        let message = Message {
-            headers: Some(headers),
-            payload: request,
-        };
+        let bytes: Bytes = request.try_into().unwrap();
 
-        self.stream.publish(message).await.unwrap();
+        self.nats_client
+            .publish_with_headers(self.stream_name.clone(), headers, bytes)
+            .await
+            .unwrap();
 
         // Wait for response with cleanup
         if let Ok(Ok(response)) =
@@ -252,9 +253,8 @@ mod tests {
     use std::time::Duration;
 
     use async_nats::ConnectOptions;
+    use proven_messaging::service_responder::ServiceResponder;
     use proven_messaging::stream::Stream;
-    use proven_messaging::Message;
-    use proven_messaging::ServiceResponse;
     use serde::{Deserialize, Serialize};
     use tokio::time::timeout;
 
@@ -286,16 +286,29 @@ mod tests {
     impl ServiceHandler<TestMessage, serde_json::Error, serde_json::Error> for TestHandler {
         type Error = serde_json::Error;
         type ResponseType = TestMessage;
+        type ResponseDeserializationError = serde_json::Error;
+        type ResponseSerializationError = serde_json::Error;
 
-        async fn handle(
+        async fn handle<R>(
             &self,
-            message: Message<TestMessage>,
-        ) -> Result<ServiceResponse<TestMessage>, Self::Error> {
-            // Echo back the message with "response: " prefixed
-            Ok(TestMessage {
-                content: format!("response: {}", message.payload.content),
-            }
-            .into())
+            msg: TestMessage,
+            responder: R,
+        ) -> Result<R::UsedResponder, Self::Error>
+        where
+            R: ServiceResponder<
+                TestMessage,
+                serde_json::Error,
+                serde_json::Error,
+                Self::ResponseType,
+                Self::ResponseDeserializationError,
+                Self::ResponseSerializationError,
+            >,
+        {
+            Ok(responder
+                .reply(TestMessage {
+                    content: format!("response: {}", msg.content),
+                })
+                .await)
         }
     }
 

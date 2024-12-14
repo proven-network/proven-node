@@ -1,4 +1,5 @@
 use crate::service_handler::ServiceHandler;
+use crate::service_responder::{ServiceResponder, UsedServiceResponder};
 use crate::stream::InitializedStream;
 
 use std::error::Error;
@@ -34,6 +35,19 @@ where
 
     /// The options for the service.
     type Options: ServiceOptions;
+
+    /// The responder type for the subscriber.
+    type Responder: ServiceResponder<
+        T,
+        D,
+        S,
+        X::ResponseType,
+        X::ResponseDeserializationError,
+        X::ResponseSerializationError,
+    >;
+
+    /// The response consumer type for the subscriber.
+    type UsedResponder: UsedServiceResponder;
 
     /// The stream type for the service.
     type StreamType: InitializedStream<T, D, S>;

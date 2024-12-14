@@ -16,7 +16,6 @@ use proven_messaging::client::{Client, ClientOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
 use proven_messaging::subject::Subject;
-use proven_messaging::Message;
 use tokio::sync::{mpsc, Mutex};
 
 /// Options for the in-memory subscriber (there are none).
@@ -39,8 +38,12 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    reply_receiver: Arc<Mutex<mpsc::Receiver<Message<X::ResponseType>>>>,
-    reply_subject: MemorySubject<X::ResponseType, D, S>,
+    reply_receiver: Arc<Mutex<mpsc::Receiver<X::ResponseType>>>,
+    reply_subject: MemorySubject<
+        X::ResponseType,
+        X::ResponseDeserializationError,
+        X::ResponseSerializationError,
+    >,
     stream: <Self as Client<X, T, D, S>>::StreamType,
 }
 
@@ -92,12 +95,15 @@ where
         _options: Self::Options,
         _handler: X,
     ) -> Result<Self, Self::Error> {
-        let (sender, receiver) = mpsc::channel::<Message<X::ResponseType>>(100);
+        let (sender, receiver) = mpsc::channel::<X::ResponseType>(100);
 
         let reply_handler = ClientSubscriptionHandler::new(sender);
 
-        let reply_subject: MemorySubject<X::ResponseType, D, S> =
-            MemorySubject::new(format!("{name}_reply")).unwrap();
+        let reply_subject: MemorySubject<
+            X::ResponseType,
+            X::ResponseDeserializationError,
+            X::ResponseSerializationError,
+        > = MemorySubject::new(format!("{name}_reply")).unwrap();
 
         reply_subject.subscribe(reply_handler).await.unwrap();
 
@@ -111,19 +117,13 @@ where
     async fn request(&self, request: T) -> Result<X::ResponseType, Self::Error> {
         let mut reply_receiver = self.reply_receiver.lock().await;
 
-        self.stream
-            .publish(Message {
-                headers: None,
-                payload: request,
-            })
-            .await
-            .unwrap();
+        self.stream.publish(request).await.unwrap();
 
         tokio::task::yield_now().await;
 
         let reply = reply_receiver.recv().await.unwrap();
         drop(reply_receiver);
 
-        Ok(reply.payload)
+        Ok(reply)
     }
 }

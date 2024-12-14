@@ -1,6 +1,7 @@
 mod error;
 
 use crate::subject::MemoryUnpublishableSubject;
+use crate::subscription_responder::{MemorySubscriptionResponder, MemoryUsedSubscriptionResponder};
 use crate::{SubjectState, GLOBAL_STATE};
 pub use error::Error;
 
@@ -119,9 +120,9 @@ where
                     }
                     message = receiver.recv() => {
                         if let Ok(message) = message {
-                            // TODO: Handle errors
+                            let responder = MemorySubscriptionResponder::new("TODO".to_string(), "TODO".to_string());
                             let message = message.clone();
-                            let _ = handler.handle(message.clone()).await;
+                            let _: MemoryUsedSubscriptionResponder = handler.handle(message.clone(), responder).await.unwrap();
                         }
                     }
                 }

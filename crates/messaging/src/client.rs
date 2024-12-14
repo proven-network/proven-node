@@ -35,6 +35,9 @@ where
     /// The options for the service.
     type Options: ClientOptions;
 
+    /// The response type for the client.
+    type ResponseType = X::ResponseType;
+
     /// The stream type for the client.
     type StreamType: InitializedStream<T, D, S>;
 

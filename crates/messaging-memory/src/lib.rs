@@ -16,6 +16,9 @@ pub mod consumer;
 /// Services are special consumers that respond to requests.
 pub mod service;
 
+/// Service responders are responders for services.
+pub mod service_responder;
+
 /// Streams are persistent, ordered, and append-only sequences of messages.
 pub mod stream;
 
@@ -25,12 +28,14 @@ pub mod subject;
 /// Subscribers consume messages from subjects.
 pub mod subscription;
 
+/// Subscription responders are responders for subscriptions.
+pub mod subscription_responder;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
 use gotham_state::GothamState;
-use proven_messaging::Message;
 use tokio::sync::{broadcast, Mutex};
 
 static GLOBAL_STATE: LazyLock<Mutex<GothamState>> =
@@ -38,7 +43,7 @@ static GLOBAL_STATE: LazyLock<Mutex<GothamState>> =
 
 #[derive(Clone, Debug)]
 struct SubjectState<T> {
-    subjects: Arc<Mutex<HashMap<String, broadcast::Sender<Message<T>>>>>,
+    subjects: Arc<Mutex<HashMap<String, broadcast::Sender<T>>>>,
 }
 
 impl<T> Default for SubjectState<T> {
@@ -61,7 +66,7 @@ mod tests {
     use bytes::Bytes;
     use proven_messaging::subject::*;
     use proven_messaging::subscription_handler::*;
-    use proven_messaging::Message;
+    use proven_messaging::subscription_responder::SubscriptionResponder;
     use serial_test::serial;
     use tokio::sync::mpsc;
     use tokio::sync::mpsc::Receiver;
@@ -69,7 +74,7 @@ mod tests {
 
     #[derive(Clone, Debug)]
     struct TestSubscriptionHandler {
-        sender: mpsc::Sender<Message<Bytes>>,
+        sender: mpsc::Sender<Bytes>,
     }
 
     #[derive(Debug, Clone)]
@@ -88,23 +93,28 @@ mod tests {
         type Error = TestSubscriptionHandlerError;
 
         type ResponseType = Bytes;
+        type ResponseDeserializationError = Infallible;
+        type ResponseSerializationError = Infallible;
 
-        async fn handle(
+        async fn handle<R>(
             &self,
-            message: Message<Bytes>,
-        ) -> Result<Option<Message<Self::ResponseType>>, Self::Error> {
-            println!("Handling data: {:?}", message);
+            message: Bytes,
+            responder: R,
+        ) -> Result<R::UsedResponder, Self::Error>
+        where
+            R: SubscriptionResponder<Self::ResponseType, Infallible, Infallible>,
+        {
             let _ = self
                 .sender
                 .send(message)
                 .await
                 .map_err(|_| TestSubscriptionHandlerError);
 
-            Ok(None)
+            Ok(responder.no_reply().await)
         }
     }
 
-    fn setup_test_handler() -> (TestSubscriptionHandler, Receiver<Message<Bytes>>) {
+    fn setup_test_handler() -> (TestSubscriptionHandler, Receiver<Bytes>) {
         let (sender, receiver) = mpsc::channel(10);
         (TestSubscriptionHandler { sender }, receiver)
     }
@@ -115,30 +125,24 @@ mod tests {
         let subject = MemorySubject::new("test").unwrap();
         let (handler, mut receiver) = setup_test_handler();
 
-        let _ = subject.subscribe(handler).await.unwrap();
+        let _subscription = subject.subscribe(handler).await.unwrap();
 
-        subject
-            .publish(Bytes::from("message1").into())
-            .await
-            .unwrap();
-        subject
-            .publish(Bytes::from("message2").into())
-            .await
-            .unwrap();
+        subject.publish(Bytes::from("message1")).await.unwrap();
+        subject.publish(Bytes::from("message2")).await.unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1").into()
+            Bytes::from("message1")
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2").into()
+            Bytes::from("message2")
         );
     }
 
@@ -150,30 +154,24 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _ = subject1.subscribe(handler).await.unwrap();
+        let _subscription = subject1.subscribe(handler).await.unwrap();
 
-        subject1
-            .publish(Bytes::from("message1").into())
-            .await
-            .unwrap();
-        subject1
-            .publish(Bytes::from("message2").into())
-            .await
-            .unwrap();
+        subject1.publish(Bytes::from("message1")).await.unwrap();
+        subject1.publish(Bytes::from("message2")).await.unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1").into()
+            Bytes::from("message1")
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2").into()
+            Bytes::from("message2")
         );
     }
 
@@ -186,30 +184,24 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _ = subject1.subscribe(handler).await.unwrap();
+        let _subscription = subject1.subscribe(handler).await.unwrap();
 
-        subject1
-            .publish(Bytes::from("message1").into())
-            .await
-            .unwrap();
-        subject1
-            .publish(Bytes::from("message2").into())
-            .await
-            .unwrap();
+        subject1.publish(Bytes::from("message1")).await.unwrap();
+        subject1.publish(Bytes::from("message2")).await.unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1").into()
+            Bytes::from("message1")
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2").into()
+            Bytes::from("message2")
         );
     }
 
@@ -223,30 +215,24 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _ = subject.subscribe(handler).await.unwrap();
+        let _subscription = subject.subscribe(handler).await.unwrap();
 
-        subject
-            .publish(Bytes::from("message1").into())
-            .await
-            .unwrap();
-        subject
-            .publish(Bytes::from("message2").into())
-            .await
-            .unwrap();
+        subject.publish(Bytes::from("message1")).await.unwrap();
+        subject.publish(Bytes::from("message2")).await.unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1").into()
+            Bytes::from("message1")
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2").into()
+            Bytes::from("message2")
         );
     }
 
@@ -261,30 +247,24 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _ = wildcard_subject.subscribe(handler).await.unwrap();
+        let _subscription = wildcard_subject.subscribe(handler).await.unwrap();
 
-        subject1
-            .publish(Bytes::from("message1").into())
-            .await
-            .unwrap();
-        subject1
-            .publish(Bytes::from("message2").into())
-            .await
-            .unwrap();
+        subject1.publish(Bytes::from("message1")).await.unwrap();
+        subject1.publish(Bytes::from("message2")).await.unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1").into()
+            Bytes::from("message1")
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2").into()
+            Bytes::from("message2")
         );
     }
 
@@ -299,30 +279,24 @@ mod tests {
 
         let (handler, mut receiver) = setup_test_handler();
 
-        let _ = greedy_wildcard_subject.subscribe(handler).await.unwrap();
+        let _subscription = greedy_wildcard_subject.subscribe(handler).await.unwrap();
 
-        subject1
-            .publish(Bytes::from("message1").into())
-            .await
-            .unwrap();
-        subject1
-            .publish(Bytes::from("message2").into())
-            .await
-            .unwrap();
+        subject1.publish(Bytes::from("message1")).await.unwrap();
+        subject1.publish(Bytes::from("message2")).await.unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message1").into()
+            Bytes::from("message1")
         );
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            Bytes::from("message2").into()
+            Bytes::from("message2")
         );
     }
 
@@ -346,25 +320,31 @@ mod tests {
     }
 
     #[derive(Clone, Debug)]
-    struct CustomHandler(mpsc::Sender<Message<CustomType>>);
+    struct CustomHandler(mpsc::Sender<CustomType>);
 
     #[async_trait]
     impl SubscriptionHandler<CustomType, Infallible, Infallible> for CustomHandler {
         type Error = TestSubscriptionHandlerError;
 
         type ResponseType = CustomType;
+        type ResponseDeserializationError = Infallible;
+        type ResponseSerializationError = Infallible;
 
-        async fn handle(
+        async fn handle<R>(
             &self,
-            message: Message<CustomType>,
-        ) -> Result<Option<Message<CustomType>>, Self::Error> {
+            message: CustomType,
+            responder: R,
+        ) -> Result<R::UsedResponder, Self::Error>
+        where
+            R: SubscriptionResponder<Self::ResponseType, Infallible, Infallible>,
+        {
             let _ = self
                 .0
                 .send(message)
                 .await
                 .map_err(|_| TestSubscriptionHandlerError);
 
-            Ok(None)
+            Ok(responder.no_reply().await)
         }
     }
 
@@ -376,16 +356,16 @@ mod tests {
         let (sender, mut receiver) = mpsc::channel(10);
         let handler = CustomHandler(sender);
 
-        let _ = subject.subscribe(handler).await.unwrap();
+        let _subscription = subject.subscribe(handler).await.unwrap();
 
-        subject.publish(CustomType(42).into()).await.unwrap();
+        subject.publish(CustomType(42)).await.unwrap();
 
         assert_eq!(
             timeout(Duration::from_secs(1), receiver.recv())
                 .await
                 .unwrap()
                 .unwrap(),
-            CustomType(42).into()
+            CustomType(42)
         );
     }
 }

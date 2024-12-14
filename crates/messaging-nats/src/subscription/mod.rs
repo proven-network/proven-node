@@ -2,6 +2,8 @@
 
 mod error;
 
+use crate::subject::NatsUnpublishableSubject;
+use crate::subscription_responder::{NatsSubscriptionResponder, NatsUsedSubscriptionResponder};
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -14,10 +16,7 @@ use bytes::Bytes;
 use futures::StreamExt;
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
 use proven_messaging::subscription_handler::SubscriptionHandler;
-use proven_messaging::Message;
 use tokio::sync::watch;
-
-use crate::subject::NatsUnpublishableSubject;
 
 /// Options for new NATS subscribers.
 #[derive(Clone, Debug)]
@@ -118,21 +117,14 @@ where
                     }
                     message = subscriber.next() => {
                         if let Some(msg) = message {
-                            let data: T = msg
-                                .payload
+                            let data: T = msg.payload
                                 .try_into()
                                 .map_err(Error::<D, S>::Deserialize)
                                 .unwrap();
 
-                            let message = Message {
-                                headers: msg.headers,
-                                payload: data,
-                            };
+                                let responder = NatsSubscriptionResponder::new(options.client.clone(), "TODO".to_string(), "TODO".to_string());
 
-                            let _ =handler
-                                .handle(message.clone())
-                                .await;
-
+                                let _: NatsUsedSubscriptionResponder = handler.handle(data.clone(), responder).await.unwrap();
                         }
                     }
                 }

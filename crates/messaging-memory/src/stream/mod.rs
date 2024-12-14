@@ -5,6 +5,7 @@ use crate::client::MemoryClient;
 use crate::consumer::{MemoryConsumer, MemoryConsumerOptions};
 use crate::service::{MemoryService, MemoryServiceOptions};
 use crate::subject::MemoryUnpublishableSubject;
+use crate::subscription::MemorySubscription;
 pub use error::Error;
 use proven_messaging::service::Service;
 use subscription_handler::StreamSubscriptionHandler;
@@ -24,10 +25,12 @@ use proven_messaging::stream::{
     InitializedStream, Stream, Stream1, Stream2, Stream3, StreamOptions,
 };
 use proven_messaging::subject::Subject;
-use proven_messaging::Message;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::debug;
+
+type InternalSubscription<T, D, S> =
+    MemorySubscription<StreamSubscriptionHandler<T, D, S>, T, D, S>;
 
 /// Options for the in-memory stream (there are none).
 #[derive(Clone, Debug, Default)]
@@ -36,19 +39,43 @@ impl StreamOptions for MemoryStreamOptions {}
 
 /// An in-memory stream.
 #[derive(Debug)]
-pub struct InitializedMemoryStream<T, D, S> {
-    consumer_channels: Arc<Mutex<Vec<mpsc::Sender<Message<T>>>>>,
-    messages: Arc<Mutex<Vec<Option<Message<T>>>>>,
+pub struct InitializedMemoryStream<T, D, S>
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    consumer_channels: Arc<Mutex<Vec<mpsc::Sender<T>>>>,
+    messages: Arc<Mutex<Vec<Option<T>>>>,
     name: String,
+    subscriptions: Vec<InternalSubscription<T, D, S>>,
     _marker: PhantomData<(D, S)>,
 }
 
-impl<T, D, S> Clone for InitializedMemoryStream<T, D, S> {
+impl<T, D, S> Clone for InitializedMemoryStream<T, D, S>
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
     fn clone(&self) -> Self {
         Self {
             consumer_channels: self.consumer_channels.clone(),
             messages: self.messages.clone(),
             name: self.name.clone(),
+            subscriptions: self.subscriptions.clone(),
             _marker: PhantomData,
         }
     }
@@ -67,9 +94,9 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     /// Returns a stream of messages from the beginning.
-    pub async fn messages(&self) -> ReceiverStream<Message<T>> {
+    pub async fn messages(&self) -> ReceiverStream<T> {
         let messages = self.messages.lock().await.clone();
-        let (sender, receiver) = mpsc::channel::<Message<T>>(100);
+        let (sender, receiver) = mpsc::channel::<T>(100);
 
         // First send all existing messages, filtering out None values
         tokio::spawn({
@@ -131,9 +158,10 @@ where
         N: Clone + Into<String> + Send,
     {
         Ok(Self {
+            consumer_channels: Arc::new(Mutex::new(Vec::new())),
             messages: Arc::new(Mutex::new(Vec::new())),
             name: stream_name.into(),
-            consumer_channels: Arc::new(Mutex::new(Vec::new())),
+            subscriptions: Vec::new(),
             _marker: PhantomData,
         })
     }
@@ -148,20 +176,23 @@ where
         N: Clone + Into<String> + Send,
         J: Into<Self::Subject> + Clone + Send,
     {
-        let (sender, mut receiver) = mpsc::channel::<Message<T>>(100);
+        let (sender, mut receiver) = mpsc::channel::<T>(100);
 
+        let mut subscriptions = Vec::new();
         for subject in subjects {
             let handler = StreamSubscriptionHandler::new(sender.clone());
-            subject
-                .into()
-                .subscribe(handler)
-                .await
-                .map_err(Error::Subject)?;
+            subscriptions.push(
+                subject
+                    .into()
+                    .subscribe(handler)
+                    .await
+                    .map_err(Error::Subject)?,
+            );
         }
 
         let messages = Arc::new(Mutex::new(Vec::new()));
         let messages_clone = messages.clone();
-        let consumer_channels = Arc::new(Mutex::new(Vec::<mpsc::Sender<Message<T>>>::new()));
+        let consumer_channels = Arc::new(Mutex::new(Vec::<mpsc::Sender<T>>::new()));
         let consumer_channels_clone = consumer_channels.clone();
         tokio::spawn(async move {
             while let Some(message) = receiver.recv().await {
@@ -180,6 +211,7 @@ where
             consumer_channels,
             messages,
             name: stream_name.into(),
+            subscriptions,
             _marker: PhantomData,
         })
     }
@@ -222,7 +254,7 @@ where
     }
 
     /// Gets the message with the given sequence number.
-    async fn get(&self, seq: u64) -> Result<Option<Message<T>>, Self::Error> {
+    async fn get(&self, seq: u64) -> Result<Option<T>, Self::Error> {
         // TODO: Add error handling for sequence number conversion
         let seq_usize: usize = seq.try_into().unwrap();
 
@@ -235,7 +267,7 @@ where
     }
 
     /// The last message in the stream.
-    async fn last_message(&self) -> Result<Option<Message<T>>, Self::Error> {
+    async fn last_message(&self) -> Result<Option<T>, Self::Error> {
         Ok(self
             .messages
             .lock()
@@ -251,7 +283,7 @@ where
     }
 
     /// Publishes a message directly to the stream.
-    async fn publish(&self, message: Message<T>) -> Result<u64, Self::Error> {
+    async fn publish(&self, message: T) -> Result<u64, Self::Error> {
         debug!("Publishing message to {}: {:?}", self.name(), message);
 
         let seq_usize = {
@@ -556,15 +588,12 @@ mod tests {
         .await
         .unwrap();
         let message = Bytes::from("test_message");
-        publishable_subject
-            .publish(message.clone().into())
-            .await
-            .unwrap();
+        publishable_subject.publish(message.clone()).await.unwrap();
 
         // Wait for the message to be processed
         tokio::task::yield_now().await;
 
-        assert_eq!(stream.get(0).await.unwrap(), Some(message.into()));
+        assert_eq!(stream.get(0).await.unwrap(), Some(message));
     }
 
     #[tokio::test]
@@ -580,16 +609,13 @@ mod tests {
         .unwrap();
         let message1 = Bytes::from("test_message1");
         let message2 = Bytes::from("test_message2");
-        publishable_subject.publish(message1.into()).await.unwrap();
-        publishable_subject
-            .publish(message2.clone().into())
-            .await
-            .unwrap();
+        publishable_subject.publish(message1).await.unwrap();
+        publishable_subject.publish(message2.clone()).await.unwrap();
 
         // Wait for the messages to be processed
         tokio::task::yield_now().await;
 
-        assert_eq!(stream.last_message().await.unwrap(), Some(message2.into()));
+        assert_eq!(stream.last_message().await.unwrap(), Some(message2));
     }
 
     #[tokio::test]
@@ -652,13 +678,13 @@ mod tests {
         let message1 = Bytes::from("test_message1");
         let message2 = Bytes::from("test_message2");
 
-        let seq1 = stream.publish(message1.clone().into()).await.unwrap();
-        let seq2 = stream.publish(message2.clone().into()).await.unwrap();
+        let seq1 = stream.publish(message1.clone()).await.unwrap();
+        let seq2 = stream.publish(message2.clone()).await.unwrap();
 
         assert_eq!(seq1, 0);
         assert_eq!(seq2, 1);
-        assert_eq!(stream.get(0).await.unwrap(), Some(message1.into()));
-        assert_eq!(stream.get(1).await.unwrap(), Some(message2.into()));
+        assert_eq!(stream.get(0).await.unwrap(), Some(message1));
+        assert_eq!(stream.get(1).await.unwrap(), Some(message2));
     }
 
     #[tokio::test]
@@ -686,8 +712,8 @@ mod tests {
         impl ConsumerHandler<Bytes, Infallible, Infallible> for TestHandler {
             type Error = TestHandlerError;
 
-            async fn handle(&self, message: Message<Bytes>) -> Result<(), Self::Error> {
-                self.received_messages.lock().await.push(message.payload);
+            async fn handle(&self, message: Bytes) -> Result<(), Self::Error> {
+                self.received_messages.lock().await.push(message);
                 Ok(())
             }
         }
@@ -709,7 +735,7 @@ mod tests {
 
         let prestart_subject_message = Bytes::from("prestart_subject_message");
         publishable_subject
-            .publish(prestart_subject_message.clone().into())
+            .publish(prestart_subject_message.clone())
             .await
             .unwrap();
 
@@ -717,7 +743,7 @@ mod tests {
 
         let prestart_direct_message = Bytes::from("prestart_direct_message");
         stream
-            .publish(prestart_direct_message.clone().into())
+            .publish(prestart_direct_message.clone())
             .await
             .unwrap();
 
@@ -734,7 +760,7 @@ mod tests {
 
         let poststart_subject_message = Bytes::from("poststart_subject_message");
         publishable_subject
-            .publish(poststart_subject_message.clone().into())
+            .publish(poststart_subject_message.clone())
             .await
             .unwrap();
 
@@ -742,7 +768,7 @@ mod tests {
 
         let poststart_direct_message = Bytes::from("poststart_direct_message");
         stream
-            .publish(poststart_direct_message.clone().into())
+            .publish(poststart_direct_message.clone())
             .await
             .unwrap();
 
@@ -773,22 +799,22 @@ mod tests {
         let message2 = Bytes::from("test_message2");
         let message3 = Bytes::from("test_message3");
 
-        stream.publish(message1.clone().into()).await.unwrap();
-        stream.publish(message2.clone().into()).await.unwrap();
-        stream.publish(message3.clone().into()).await.unwrap();
+        stream.publish(message1.clone()).await.unwrap();
+        stream.publish(message2.clone()).await.unwrap();
+        stream.publish(message3.clone()).await.unwrap();
 
         // Delete middle message
         stream.del(1).await.unwrap();
 
         // First and last messages should still be accessible
-        assert_eq!(stream.get(0).await.unwrap(), Some(message1.into()));
+        assert_eq!(stream.get(0).await.unwrap(), Some(message1));
         assert_eq!(stream.get(1).await.unwrap(), None);
-        assert_eq!(stream.get(2).await.unwrap(), Some(message3.clone().into()));
+        assert_eq!(stream.get(2).await.unwrap(), Some(message3.clone()));
 
         // Attempting to delete an invalid sequence should fail
         assert!(stream.del(99).await.is_err());
 
         // Last message should still be message3
-        assert_eq!(stream.last_message().await.unwrap(), Some(message3.into()));
+        assert_eq!(stream.last_message().await.unwrap(), Some(message3));
     }
 }

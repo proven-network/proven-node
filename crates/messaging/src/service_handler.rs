@@ -1,10 +1,10 @@
-use crate::{Message, ServiceResponse};
-
 use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+
+use crate::service_responder::ServiceResponder;
 
 /// A trait representing a subscriber of a subject.
 #[async_trait]
@@ -29,15 +29,27 @@ where
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = D>
-        + TryInto<Bytes, Error = S>
+        + TryFrom<Bytes, Error = Self::ResponseDeserializationError>
+        + TryInto<Bytes, Error = Self::ResponseSerializationError>
         + 'static;
 
+    /// Deserialization error for responses.
+    type ResponseDeserializationError: Error + Send + Sync + 'static;
+
+    /// Serialization error for responses.
+    type ResponseSerializationError: Error + Send + Sync + 'static;
+
     /// Handles the given data.
-    async fn handle(
-        &self,
-        message: Message<T>,
-    ) -> Result<ServiceResponse<Self::ResponseType>, Self::Error>;
+    async fn handle<R>(&self, message: T, responder: R) -> Result<R::UsedResponder, Self::Error>
+    where
+        R: ServiceResponder<
+            T,
+            D,
+            S,
+            Self::ResponseType,
+            Self::ResponseDeserializationError,
+            Self::ResponseSerializationError,
+        >;
 
     /// Hook for when the consumer is caught up.
     async fn on_caught_up(&self) -> Result<(), Self::Error> {

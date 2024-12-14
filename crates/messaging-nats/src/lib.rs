@@ -14,6 +14,9 @@ pub mod consumer;
 /// Services are special consumers that respond to requests.
 pub mod service;
 
+/// Service responders are responders for services.
+pub mod service_responder;
+
 /// Streams are persistent, ordered, and append-only sequences of messages.
 pub mod stream;
 
@@ -22,3 +25,6 @@ pub mod subject;
 
 /// Subscribers are created by subscribing to a subject.
 pub mod subscription;
+
+/// Subscription responders are responders for subscriptions.
+pub mod subscription_responder;

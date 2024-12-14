@@ -1,5 +1,6 @@
 mod error;
 
+use crate::service_responder::{NatsServiceResponder, NatsUsedServiceResponder};
 use crate::stream::InitializedNatsStream;
 pub use error::Error;
 
@@ -10,14 +11,12 @@ use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
 use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
 use async_nats::jetstream::Context;
 use async_nats::Client as NatsClient;
-use async_nats::HeaderMap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
-use proven_messaging::Message;
 
 /// Options for the nats service.
 #[derive(Clone, Debug)]
@@ -94,8 +93,12 @@ where
     async fn process_requests(
         nats_client: NatsClient,
         mut nats_consumer: NatsConsumerType<NatsConsumerConfig>,
+        stream: InitializedNatsStream<T, D, S>,
         handler: X,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    where
+        X: ServiceHandler<T, D, S>,
+    {
         let mut caught_up = false;
 
         loop {
@@ -106,6 +109,7 @@ where
 
             while let Some(message) = messages.next().await {
                 let message = message.map_err(|e| Error::Messages(e.kind()))?;
+
                 let handler = handler.clone();
                 let nats_client = nats_client.clone();
 
@@ -123,27 +127,18 @@ where
                 if let (Some(reply_stream_name), Some(request_id)) =
                     (reply_stream_header, request_id_header)
                 {
-                    let reply_stream_name = reply_stream_name.clone().to_string();
-                    let request_id = request_id.clone().to_string();
+                    let responder = NatsServiceResponder::new(
+                        nats_client.clone(),
+                        reply_stream_name.clone().to_string(),
+                        request_id.clone().to_string(),
+                        stream.clone(),
+                        message.info().unwrap().stream_sequence,
+                    );
 
-                    let result = handler
-                        .handle(Message {
-                            headers: None,
-                            payload,
-                        })
+                    handler
+                        .handle(payload, responder)
                         .await
-                        .map_err(|_| Error::Handler)
-                        .unwrap();
-
-                    let result_bytes: Bytes = result.message.payload.try_into().unwrap();
-
-                    let mut headers = HeaderMap::new();
-                    headers.insert("request-id", request_id.clone());
-
-                    nats_client
-                        .publish_with_headers(reply_stream_name, headers, result_bytes)
-                        .await
-                        .unwrap();
+                        .map_err(|_| Error::Handler)?;
 
                     message.ack().await.unwrap();
 
@@ -152,11 +147,6 @@ where
                             .info()
                             .await
                             .map_err(|e| Error::Info(e.kind()))?;
-
-                        print!(
-                            "num_pending: {}, num_waiting: {}",
-                            consumer_info.num_pending, consumer_info.num_waiting
-                        );
 
                         if consumer_info.num_pending == 0 {
                             caught_up = true;
@@ -189,6 +179,17 @@ where
 
     type StreamType = InitializedNatsStream<T, D, S>;
 
+    type Responder = NatsServiceResponder<
+        T,
+        D,
+        S,
+        X::ResponseType,
+        X::ResponseDeserializationError,
+        X::ResponseSerializationError,
+    >;
+
+    type UsedResponder = NatsUsedServiceResponder;
+
     async fn new(
         name: String,
         stream: Self::StreamType,
@@ -211,6 +212,7 @@ where
         tokio::spawn(Self::process_requests(
             options.client.clone(),
             nats_consumer.clone(),
+            stream.clone(),
             handler.clone(),
         ));
 
@@ -249,8 +251,7 @@ mod tests {
 
     use async_trait::async_trait;
     use proven_messaging::stream::Stream;
-    use proven_messaging::ServiceResponse;
-    use proven_messaging::{service_handler::ServiceHandler, Message};
+    use proven_messaging::{service_handler::ServiceHandler, service_responder::ServiceResponder};
     use serde::{Deserialize, Serialize};
     use tokio::sync::Mutex;
 
@@ -296,22 +297,33 @@ mod tests {
     impl ServiceHandler<TestMessage, serde_json::Error, serde_json::Error> for MockHandler {
         type Error = serde_json::Error;
         type ResponseType = TestMessage;
+        type ResponseDeserializationError = serde_json::Error;
+        type ResponseSerializationError = serde_json::Error;
 
-        async fn handle(
+        async fn handle<R>(
             &self,
-            msg: Message<TestMessage>,
-        ) -> Result<ServiceResponse<TestMessage>, Self::Error> {
+            msg: TestMessage,
+            responder: R,
+        ) -> Result<R::UsedResponder, Self::Error>
+        where
+            R: ServiceResponder<
+                TestMessage,
+                serde_json::Error,
+                serde_json::Error,
+                Self::ResponseType,
+                Self::ResponseDeserializationError,
+                Self::ResponseSerializationError,
+            >,
+        {
             let mut count = self.messages_processed.lock().await;
             *count += 1;
             drop(count);
 
-            Ok(ServiceResponse {
-                persist_request: false,
-                message: TestMessage {
-                    content: format!("handled: {}", msg.payload.content),
-                }
-                .into(),
-            })
+            Ok(responder
+                .reply(TestMessage {
+                    content: format!("handled: {}", msg.content),
+                })
+                .await)
         }
 
         async fn on_caught_up(&self) -> Result<(), Self::Error> {
@@ -347,21 +359,21 @@ mod tests {
 
         let initialized_stream = stream.init().await.unwrap();
 
-        // Just needed to service actually will process messages (simulates client publishing messages)
-        let mut dummy_headers = async_nats::HeaderMap::new();
-        dummy_headers.insert("reply-stream-name", "test_on_caught_up_called_reply");
-        dummy_headers.insert("request-id", "123");
-
         // Publish exactly 3 messages before creating the service
         for i in 1..=3 {
-            let message = Message {
-                headers: Some(dummy_headers.clone()),
-                payload: TestMessage {
-                    content: format!("message_{i}"),
-                },
+            // Just needed to service actually will process messages (simulates client publishing messages)
+            let mut dummy_headers = async_nats::HeaderMap::new();
+            dummy_headers.insert("reply-stream-name", "test_on_caught_up_called_reply");
+            dummy_headers.insert("request-id", i.to_string());
+            let message = TestMessage {
+                content: format!("message_{i}"),
             };
-            initialized_stream
-                .publish(message)
+            client
+                .publish_with_headers(
+                    "test_on_caught_up_called",
+                    dummy_headers.clone(),
+                    message.try_into().unwrap(),
+                )
                 .await
                 .expect("Failed to publish message");
         }

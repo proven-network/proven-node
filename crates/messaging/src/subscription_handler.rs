@@ -1,10 +1,10 @@
-use crate::Message;
-
 use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+
+use crate::subscription_responder::SubscriptionResponder;
 
 /// A trait representing a subscriber of a subject.
 #[async_trait]
@@ -29,13 +29,22 @@ where
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = D>
-        + TryInto<Bytes, Error = S>
+        + TryFrom<Bytes, Error = Self::ResponseDeserializationError>
+        + TryInto<Bytes, Error = Self::ResponseSerializationError>
         + 'static;
 
+    /// Deserialization error for responses.
+    type ResponseDeserializationError: Error + Send + Sync + 'static;
+
+    /// Serialization error for responses.
+    type ResponseSerializationError: Error + Send + Sync + 'static;
+
     /// Handles the given data and optionally reply.
-    async fn handle(
-        &self,
-        message: Message<T>,
-    ) -> Result<Option<Message<Self::ResponseType>>, Self::Error>;
+    async fn handle<R>(&self, message: T, responder: R) -> Result<R::UsedResponder, Self::Error>
+    where
+        R: SubscriptionResponder<
+            Self::ResponseType,
+            Self::ResponseDeserializationError,
+            Self::ResponseSerializationError,
+        >;
 }

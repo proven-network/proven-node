@@ -11,7 +11,6 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
-use proven_messaging::Message;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
@@ -81,7 +80,7 @@ where
     /// Creates a new NATS consumer.
     async fn process_messages(
         last_seq: Arc<Mutex<u64>>,
-        mut receiver_stream: ReceiverStream<Message<T>>,
+        mut receiver_stream: ReceiverStream<T>,
         handler: X,
     ) -> Result<(), Error> {
         while let Some(message) = receiver_stream.next().await {

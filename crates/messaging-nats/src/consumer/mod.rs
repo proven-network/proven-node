@@ -15,7 +15,6 @@ use futures::StreamExt;
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
 use proven_messaging::stream::InitializedStream;
-use proven_messaging::Message;
 
 use crate::stream::InitializedNatsStream;
 
@@ -105,14 +104,9 @@ where
 
             while let Some(message) = messages.next().await {
                 let message = message.map_err(|e| Error::Messages(e.kind()))?;
-
-                let headers = message.headers.clone();
                 let payload: T = message.payload.clone().try_into().unwrap();
 
-                handler
-                    .handle(Message { headers, payload })
-                    .await
-                    .map_err(|_| Error::Handler)?;
+                handler.handle(payload).await.map_err(|_| Error::Handler)?;
 
                 message.ack().await.unwrap();
 
@@ -208,7 +202,6 @@ mod tests {
 
     use async_trait::async_trait;
     use proven_messaging::stream::Stream;
-    use proven_messaging::Message;
     use serde::{Deserialize, Serialize};
     use tokio::sync::Mutex;
 
@@ -254,7 +247,7 @@ mod tests {
     impl ConsumerHandler<TestMessage, serde_json::Error, serde_json::Error> for MockHandler {
         type Error = serde_json::Error;
 
-        async fn handle(&self, _msg: Message<TestMessage>) -> Result<(), Self::Error> {
+        async fn handle(&self, _msg: TestMessage) -> Result<(), Self::Error> {
             let mut count = self.messages_processed.lock().await;
             *count += 1;
             drop(count);
@@ -296,11 +289,8 @@ mod tests {
 
         // Publish exactly 3 messages before creating the consumer
         for i in 1..=3 {
-            let message = Message {
-                headers: None,
-                payload: TestMessage {
-                    content: format!("message_{i}"),
-                },
+            let message = TestMessage {
+                content: format!("message_{i}"),
             };
             initialized_stream
                 .publish(message)

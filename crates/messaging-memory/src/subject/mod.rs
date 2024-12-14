@@ -19,7 +19,6 @@ use proven_messaging::subject::{
 };
 use proven_messaging::subscription::Subscription;
 use proven_messaging::subscription_handler::SubscriptionHandler;
-use proven_messaging::Message;
 
 /// A subject that is both publishable and subscribable.
 #[derive(Debug)]
@@ -184,7 +183,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     #[allow(clippy::significant_drop_tightening)]
-    async fn publish(&self, message: Message<T>) -> Result<(), Error> {
+    async fn publish(&self, message: T) -> Result<(), Error> {
         let mut state = GLOBAL_STATE.lock().await;
         if !state.has::<SubjectState<T>>() {
             state.put(SubjectState::<T>::default());
@@ -208,7 +207,7 @@ where
         Ok(())
     }
 
-    async fn request<X>(&self, _message: Message<T>) -> Result<Message<X::ResponseType>, Error>
+    async fn request<X>(&self, _message: T) -> Result<X::ResponseType, Error>
     where
         X: SubscriptionHandler<T, D, S>,
     {

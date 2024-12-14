@@ -1,8 +1,10 @@
+#![allow(clippy::or_fun_call)]
+
 mod error;
 
+use crate::service_responder::{MemoryServiceResponder, MemoryUsedServiceResponder};
 use crate::subject::MemorySubject;
 pub use error::Error;
-use proven_messaging::stream::InitializedStream;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -10,12 +12,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use futures::StreamExt;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
-use proven_messaging::subject::PublishableSubject;
-use proven_messaging::ServiceResponse;
+use proven_messaging::stream::InitializedStream;
 use tokio::sync::Mutex;
-use tokio_stream::StreamExt;
+use uuid::Uuid;
 
 use crate::stream::InitializedMemoryStream;
 
@@ -84,6 +86,17 @@ where
 
     type StreamType = InitializedMemoryStream<T, D, S>;
 
+    type Responder = MemoryServiceResponder<
+        T,
+        D,
+        S,
+        X::ResponseType,
+        X::ResponseDeserializationError,
+        X::ResponseSerializationError,
+    >;
+
+    type UsedResponder = MemoryUsedServiceResponder;
+
     async fn new(
         name: String,
         stream: Self::StreamType,
@@ -97,29 +110,26 @@ where
 
         let mut messages = stream.messages().await;
 
-        let reply_subject = MemorySubject::new(format!("{name}_reply")).unwrap();
         let last_seq_clone = last_seq.clone();
         let stream_clone = stream.clone();
         tokio::spawn(async move {
             while let Some(message) = messages.next().await {
-                let ServiceResponse {
-                    persist_request,
-                    message: result,
-                } = handler
-                    .handle(message)
+                let responder = MemoryServiceResponder::new(
+                    MemorySubject::new(format!("{name}_reply")).unwrap(),
+                    Uuid::new_v4().to_string(),
+                    stream_clone.clone(),
+                    0, // TODO: this should be the actual seq.
+                );
+
+                handler
+                    .handle(message, responder)
                     .await
                     .map_err(|_| Error::Handler)
                     .unwrap();
 
-                reply_subject.publish(result).await.unwrap();
-
                 let mut seq = last_seq_clone.lock().await;
                 *seq += 1;
                 drop(seq);
-
-                if persist_request {
-                    continue;
-                }
 
                 // TODO: Use actual seq.
                 stream_clone.del(0).await.unwrap();
