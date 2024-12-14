@@ -225,16 +225,19 @@ where
 
     /// The last message in the stream.
     async fn last_message(&self) -> Result<Option<T>, Self::Error> {
-        let last_seq = self
+        self.get(self.last_seq().await?).await
+    }
+
+    /// The last sequence number in the stream.
+    async fn last_seq(&self) -> Result<u64, Self::Error> {
+        Ok(self
             .nats_stream
             .clone()
             .info()
             .await
             .map_err(|e| Error::Info(e.kind()))?
             .state
-            .last_sequence;
-
-        self.get(last_seq).await
+            .last_sequence)
     }
 
     /// Returns the name of the stream.

@@ -277,6 +277,10 @@ where
             .find_map(Clone::clone))
     }
 
+    async fn last_seq(&self) -> Result<u64, Self::Error> {
+        Ok(self.messages.lock().await.len().try_into().unwrap())
+    }
+
     /// Returns the name of the stream.
     fn name(&self) -> String {
         self.name.clone()

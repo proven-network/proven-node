@@ -92,14 +92,19 @@ where
     /// Process requests.
     async fn process_requests(
         nats_client: NatsClient,
-        mut nats_consumer: NatsConsumerType<NatsConsumerConfig>,
-        stream: InitializedNatsStream<T, D, S>,
         handler: X,
+        nats_consumer: NatsConsumerType<NatsConsumerConfig>,
+        stream: InitializedNatsStream<T, D, S>,
     ) -> Result<(), Error>
     where
         X: ServiceHandler<T, D, S>,
     {
-        let mut caught_up = false;
+        let initial_stream_seq = stream.last_seq().await.unwrap_or(0);
+        let mut caught_up = initial_stream_seq == 0;
+
+        if caught_up {
+            let _ = handler.on_caught_up().await;
+        }
 
         loop {
             let mut messages = nats_consumer
@@ -141,18 +146,15 @@ where
                         .map_err(|_| Error::Handler)?;
 
                     message.ack().await.unwrap();
+                }
 
-                    if !caught_up {
-                        let consumer_info = nats_consumer
-                            .info()
-                            .await
-                            .map_err(|e| Error::Info(e.kind()))?;
-
-                        if consumer_info.num_pending == 0 {
-                            caught_up = true;
-                            let _ = handler.on_caught_up().await;
-                        }
-                    }
+                if !caught_up
+                    && message.info().unwrap().stream_sequence >= initial_stream_seq
+                    && stream.last_seq().await.unwrap_or(0)
+                        == message.info().unwrap().stream_sequence
+                {
+                    caught_up = true;
+                    let _ = handler.on_caught_up().await;
                 }
             }
         }
@@ -211,9 +213,9 @@ where
 
         tokio::spawn(Self::process_requests(
             options.client.clone(),
+            handler.clone(),
             nats_consumer.clone(),
             stream.clone(),
-            handler.clone(),
         ));
 
         Ok(Self {
