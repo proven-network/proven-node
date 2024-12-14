@@ -14,26 +14,17 @@ use tokio::sync::{oneshot, Mutex};
 
 /// A stream handler that executes SQL queries and migrations.
 #[derive(Clone, Debug)]
-pub struct SqlStreamHandler {
+pub struct SqlServiceHandler {
     applied_migrations: Arc<Mutex<Vec<String>>>,
     caught_up_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     database: Database,
 }
 
-/// Options for configuring a `SqlStreamHandler`.
-pub struct SqlStreamHandlerOptions {
-    pub applied_migrations: Arc<Mutex<Vec<String>>>,
-    pub caught_up_tx: oneshot::Sender<()>,
-    pub database: Database,
-}
-
-impl SqlStreamHandler {
+impl SqlServiceHandler {
     pub(crate) fn new(
-        SqlStreamHandlerOptions {
-            applied_migrations,
-            caught_up_tx,
-            database,
-        }: SqlStreamHandlerOptions,
+        applied_migrations: Arc<Mutex<Vec<String>>>,
+        caught_up_tx: oneshot::Sender<()>,
+        database: Database,
     ) -> Self {
         Self {
             applied_migrations,
@@ -49,7 +40,7 @@ impl
         Request,
         ciborium::de::Error<std::io::Error>,
         ciborium::ser::Error<std::io::Error>,
-    > for SqlStreamHandler
+    > for SqlServiceHandler
 {
     type Error = Error;
     type ResponseType = Response;

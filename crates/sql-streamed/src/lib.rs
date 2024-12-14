@@ -10,7 +10,7 @@ mod connection;
 mod error;
 mod request;
 mod response;
-mod stream_handler;
+mod service_handler;
 
 use std::sync::Arc;
 
@@ -27,7 +27,7 @@ use proven_messaging::client::Client;
 use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stream3};
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
-use stream_handler::{SqlStreamHandler, SqlStreamHandlerOptions};
+use service_handler::SqlServiceHandler;
 use tokio::sync::{oneshot, Mutex};
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
@@ -41,12 +41,12 @@ where
 {
     client_options:
         <<S::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-            SqlStreamHandler,
-        > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler,
+        > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
     service_options:
         <<S::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-            SqlStreamHandler,
-        > as Service<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler,
+        > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
     stream: S,
 }
 
@@ -61,8 +61,8 @@ where
             Request,
             DeserializeError,
             SerializeError,
-        >>::Service<SqlStreamHandler> as Service<
-            SqlStreamHandler,
+        >>::Service<SqlServiceHandler> as Service<
+            SqlServiceHandler,
             Request,
             DeserializeError,
             SerializeError,
@@ -71,8 +71,8 @@ where
             Request,
             DeserializeError,
             SerializeError,
-        >>::Client<SqlStreamHandler> as Client<
-            SqlStreamHandler,
+        >>::Client<SqlServiceHandler> as Client<
+            SqlServiceHandler,
             Request,
             DeserializeError,
             SerializeError,
@@ -103,11 +103,11 @@ where
 
         let applied_migrations = Arc::new(Mutex::new(Vec::new()));
 
-        let handler = SqlStreamHandler::new(SqlStreamHandlerOptions {
-            applied_migrations: applied_migrations.clone(),
-            database: Database::connect(":memory:").await?,
+        let handler = SqlServiceHandler::new(
+            applied_migrations.clone(),
             caught_up_tx,
-        });
+            Database::connect(":memory:").await?,
+        );
 
         let stream = self.stream.init().await.unwrap();
 
@@ -158,9 +158,9 @@ where
         Request,
         DeserializeError,
         SerializeError,
-    >>::Client<SqlStreamHandler> as Client<
+    >>::Client<SqlServiceHandler> as Client<
 
-        SqlStreamHandler,
+        SqlServiceHandler,
         Request,
         DeserializeError,
         SerializeError,
@@ -171,8 +171,8 @@ where
         Request,
         DeserializeError,
         SerializeError,
-    >>::Service<SqlStreamHandler> as Service<
-        SqlStreamHandler,
+    >>::Service<SqlServiceHandler> as Service<
+        SqlServiceHandler,
         Request,
         DeserializeError,
         SerializeError,
@@ -193,8 +193,8 @@ where
             Request,
             DeserializeError,
             SerializeError,
-        >>::Service<SqlStreamHandler> as Service<
-            SqlStreamHandler,
+        >>::Service<SqlServiceHandler> as Service<
+            SqlServiceHandler,
             Request,
             DeserializeError,
             SerializeError,
@@ -205,8 +205,8 @@ where
             Request,
             DeserializeError,
             SerializeError,
-        >>::Client<SqlStreamHandler> as Client<
-            SqlStreamHandler,
+        >>::Client<SqlServiceHandler> as Client<
+            SqlServiceHandler,
             Request,
             DeserializeError,
             SerializeError,
@@ -249,16 +249,16 @@ where
             DeserializeError,
             SerializeError,
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-            SqlStreamHandler,
-        > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler,
+        > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
     service_options:
         <<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
             Request,
             DeserializeError,
             SerializeError,
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-            SqlStreamHandler,
-        > as Service<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler,
+        > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
     stream: S,
 }
 
@@ -274,15 +274,15 @@ where
         DeserializeError,
         SerializeError,
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-        SqlStreamHandler,
-    > as Service<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+        SqlServiceHandler,
+    > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
         client_options: <<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
         Request,
         DeserializeError,
         SerializeError,
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-        SqlStreamHandler,
-    > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+        SqlServiceHandler,
+    > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
     ) -> Self {
         Self {
             client_options,
@@ -321,16 +321,16 @@ where
             DeserializeError,
             SerializeError,
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-            SqlStreamHandler,
-        > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler,
+        > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
     service_options:
         <<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
             Request,
             DeserializeError,
             SerializeError,
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-            SqlStreamHandler,
-        > as Service<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler,
+        > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
     stream: S,
 }
 
@@ -346,15 +346,15 @@ where
         DeserializeError,
         SerializeError,
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-        SqlStreamHandler,
-    > as Service<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+        SqlServiceHandler,
+    > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
         client_options: <<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
         Request,
         DeserializeError,
         SerializeError,
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-        SqlStreamHandler,
-    > as Client<SqlStreamHandler, Request, DeserializeError, SerializeError>>::Options,
+        SqlServiceHandler,
+    > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
     ) -> Self {
         Self {
             client_options,

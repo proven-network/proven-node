@@ -1,7 +1,7 @@
 #![allow(clippy::type_complexity)]
 
 use crate::Request;
-use crate::SqlStreamHandler;
+use crate::SqlServiceHandler;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -17,7 +17,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum Error<
     P,
-    X = SqlStreamHandler,
+    X = SqlServiceHandler,
     T = Request,
     D = ciborium::de::Error<std::io::Error>,
     S = ciborium::ser::Error<std::io::Error>,

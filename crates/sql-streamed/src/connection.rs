@@ -1,6 +1,6 @@
 use crate::{
     DeserializeError as D, Error, Request, Request as T, Response, SerializeError as S,
-    SqlStreamHandler as X,
+    SqlServiceHandler as X,
 };
 
 use async_trait::async_trait;
