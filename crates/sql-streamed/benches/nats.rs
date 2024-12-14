@@ -20,7 +20,7 @@ async fn setup(
     let client = async_nats::connect("localhost:4222").await.unwrap();
     let jetstream_context = async_nats::jetstream::new(client.clone());
 
-    jetstream_context.delete_stream(stream_name).await.unwrap();
+    let _ = jetstream_context.delete_stream(stream_name).await;
 
     let stream = NatsStream::new(
         stream_name,
