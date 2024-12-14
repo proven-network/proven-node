@@ -1,8 +1,11 @@
+#![allow(clippy::type_complexity)]
+
 mod error;
 mod subscription_handler;
 
 use crate::stream::InitializedMemoryStream;
 use crate::subject::MemorySubject;
+use crate::subscription::MemorySubscription;
 pub use error::Error;
 use subscription_handler::ClientSubscriptionHandler;
 
@@ -45,6 +48,16 @@ where
         X::ResponseSerializationError,
     >,
     stream: <Self as Client<X, T, D, S>>::StreamType,
+    subscription: MemorySubscription<
+        ClientSubscriptionHandler<
+            X::ResponseType,
+            X::ResponseDeserializationError,
+            X::ResponseSerializationError,
+        >,
+        X::ResponseType,
+        X::ResponseDeserializationError,
+        X::ResponseSerializationError,
+    >,
 }
 
 impl<X, T, D, S> Clone for MemoryClient<X, T, D, S>
@@ -65,6 +78,7 @@ where
             reply_receiver: self.reply_receiver.clone(),
             reply_subject: self.reply_subject.clone(),
             stream: self.stream.clone(),
+            subscription: self.subscription.clone(),
         }
     }
 }
@@ -105,12 +119,13 @@ where
             X::ResponseSerializationError,
         > = MemorySubject::new(format!("{name}_reply")).unwrap();
 
-        reply_subject.subscribe(reply_handler).await.unwrap();
+        let subscription = reply_subject.subscribe(reply_handler).await.unwrap();
 
         Ok(Self {
             reply_receiver: Arc::new(Mutex::new(receiver)),
             reply_subject,
             stream,
+            subscription,
         })
     }
 
@@ -125,5 +140,106 @@ where
         drop(reply_receiver);
 
         Ok(reply)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::service::MemoryServiceOptions;
+    use crate::stream::{MemoryStream, MemoryStreamOptions};
+
+    use std::convert::Infallible;
+    use std::time::Duration;
+
+    use proven_messaging::service_responder::ServiceResponder;
+    use proven_messaging::stream::Stream;
+    use tokio::time::timeout;
+
+    #[derive(Clone, Debug)]
+    struct TestHandler;
+
+    #[async_trait]
+    impl ServiceHandler<Bytes, Infallible, Infallible> for TestHandler {
+        type Error = Infallible;
+        type ResponseType = Bytes;
+        type ResponseDeserializationError = Infallible;
+        type ResponseSerializationError = Infallible;
+
+        async fn handle<R>(&self, msg: Bytes, responder: R) -> Result<R::UsedResponder, Self::Error>
+        where
+            R: ServiceResponder<
+                Bytes,
+                Infallible,
+                Infallible,
+                Self::ResponseType,
+                Self::ResponseDeserializationError,
+                Self::ResponseSerializationError,
+            >,
+        {
+            Ok(responder
+                .reply(Bytes::from(format!(
+                    "response: {}",
+                    String::from_utf8(msg.to_vec()).unwrap()
+                )))
+                .await)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_client_request_response() {
+        // Create stream
+        let stream = MemoryStream::<Bytes, Infallible, Infallible>::new(
+            "test_client_stream",
+            MemoryStreamOptions {},
+        );
+
+        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
+
+        // Start service
+        let _service = initialized_stream
+            .clone()
+            .start_service("test_service", MemoryServiceOptions {}, TestHandler)
+            .await
+            .expect("Failed to start service");
+
+        // Create client
+        let client = initialized_stream
+            .client("test_service", MemoryClientOptions {}, TestHandler)
+            .await
+            .expect("Failed to create client");
+
+        // Send request and get response with timeout
+        let request = Bytes::from("hello");
+
+        let response = timeout(Duration::from_secs(5), client.request(request))
+            .await
+            .expect("Request timed out")
+            .expect("Failed to send request");
+
+        assert_eq!(response, Bytes::from("response: hello"));
+    }
+
+    #[tokio::test]
+    async fn test_client_request_timeout() {
+        // Create stream without service
+        let stream = MemoryStream::<Bytes, Infallible, Infallible>::new(
+            "test_client_timeout",
+            MemoryStreamOptions {},
+        );
+
+        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
+
+        // Create client
+        let client = initialized_stream
+            .client("test_client", MemoryClientOptions {}, TestHandler)
+            .await
+            .expect("Failed to create client");
+
+        // Send request without service running
+        let request = Bytes::from("hello");
+
+        let result = timeout(Duration::from_secs(1), client.request(request)).await;
+        assert!(result.is_err(), "Expected timeout error");
     }
 }
