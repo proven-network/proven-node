@@ -5,10 +5,8 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-mod rows;
 mod sql_param;
 
-pub use rows::Rows;
 pub use sql_param::SqlParam;
 
 use std::error::Error;
