@@ -93,30 +93,31 @@ class PersonalSqlStore {
 
   async query (sql) {
     if (sql instanceof Sql) {
-      let rowData
+      let rows
       if (sql.values.length === 0) {
-        rowData = await queryPersonalSql(this.sqlStoreName, sql.statement)
+        rows = await queryPersonalSql(this.sqlStoreName, sql.statement)
       } else {
         const paramListId = preparePersonalParamList(sql.values);
 
-        rowData = await queryPersonalSql(this.sqlStoreName, sql.statement, paramListId)
+        rows = await queryPersonalSql(this.sqlStoreName, sql.statement, paramListId)
       }
-
-      const { column_count, column_names, column_types, rows } = rowData
 
       // TODO: Reworks rows code to use generators
       const results = []
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i]
-        const result = {}
-        for (let j = 0; j < column_count; j++) {
-          const columnName = column_names[j]
-          const columnType = column_types[j]
-          const columnValue = row[j]
-          if (columnType === 'INTEGER') {
-            result[columnName] = Number(columnValue['Integer'])
-          } else {
-            result[columnName] = columnValue['Text']
+        const result = []
+        for (let j = 0; j < row.length; j++) {
+          if (row[j].Integer) {
+            result.push(row[j].Integer)
+          } else if (row[j].Real) {
+            result.push(row[j].Real)
+          } else if (row[j].Text) {
+            result.push(row[j].Text)
+          } else if (row[j].Blob) {
+            result.push(row[j].Blob)
+          } else if (row[j].Null) {
+            result.push(null)
           }
         }
         results.push(result)

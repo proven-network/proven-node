@@ -821,9 +821,9 @@ mod tests {
 
                     await DB.execute(sql`INSERT INTO users (email) VALUES (${email})`);
 
-                    const results = await DB.query(sql`SELECT * FROM users`);
+                    const results = await DB.query(sql`SELECT id, email FROM users`);
 
-                    return results[0].email;
+                    return results[0][1];
                 };
             "#,
                 Some("test".to_string()),
