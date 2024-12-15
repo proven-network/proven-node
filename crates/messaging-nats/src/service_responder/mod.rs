@@ -1,12 +1,15 @@
 mod error;
 
 use crate::stream::InitializedNatsStream;
+use bytes::BufMut;
+use bytes::BytesMut;
 pub use error::Error;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::task::Poll;
 
 use async_nats::Client as NatsClient;
 use async_nats::HeaderMap;
@@ -16,6 +19,8 @@ use futures::Stream;
 use futures::StreamExt;
 use proven_messaging::service_responder::{ServiceResponder, UsedServiceResponder};
 use proven_messaging::stream::InitializedStream;
+
+static MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
 /// A used responder for a NATS service.
 #[derive(Debug)]
@@ -93,6 +98,58 @@ where
             _marker: PhantomData,
         }
     }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn batch_stream<W>(stream: W) -> impl Stream<Item = Bytes> + Send + Unpin
+    where
+        W: Stream<Item = R> + Send + Unpin,
+    {
+        let mut stream = Box::pin(stream);
+        let mut current_batch = BytesMut::with_capacity(MAX_MESSAGE_SIZE);
+        let mut current_size = 0;
+
+        futures::stream::poll_fn(move |cx| {
+            loop {
+                match stream.as_mut().poll_next(cx) {
+                    Poll::Ready(Some(item)) => {
+                        if let Ok(item_bytes) = item.try_into() as Result<Bytes, RS> {
+                            let item_size = item_bytes.len();
+                            let total_size = item_size + 4;
+
+                            if !current_batch.is_empty()
+                                && current_size + total_size > MAX_MESSAGE_SIZE
+                            {
+                                // Yield current batch
+                                let batch = current_batch.split().freeze();
+                                current_batch.reserve(MAX_MESSAGE_SIZE);
+
+                                // Start new batch with current item
+                                current_batch.put_u32(item_bytes.len() as u32);
+                                current_batch.extend_from_slice(&item_bytes);
+                                current_size = total_size;
+
+                                return Poll::Ready(Some(batch));
+                            }
+
+                            // Add to current batch
+                            current_batch.put_u32(item_bytes.len() as u32);
+                            current_batch.extend_from_slice(&item_bytes);
+                            current_size += total_size;
+                        }
+                    }
+                    Poll::Ready(None) => {
+                        return if current_batch.is_empty() {
+                            Poll::Ready(None)
+                        } else {
+                            let batch = current_batch.split().freeze();
+                            Poll::Ready(Some(batch))
+                        }
+                    }
+                    Poll::Pending => return Poll::Pending,
+                }
+            }
+        })
+    }
 }
 
 #[async_trait]
@@ -136,25 +193,22 @@ where
     }
 
     async fn reply_and_delete_request(self, response: R) -> Self::UsedResponder {
-        let result_bytes: Bytes = response.try_into().unwrap();
-        let mut headers = HeaderMap::new();
-        headers.insert("request-id", self.request_id.clone());
+        let stream_sequence = self.stream_sequence;
+        let stream = self.stream.clone();
 
-        self.nats_client
-            .publish_with_headers(self.reply_stream_name, headers, result_bytes)
-            .await
-            .unwrap();
+        let used_responder = Self::reply(self, response).await;
 
-        self.stream.del(self.stream_sequence).await.unwrap();
+        stream.del(stream_sequence).await.unwrap();
 
-        NatsUsedServiceResponder
+        used_responder
     }
 
-    async fn stream<W>(self, stream: W) -> Self::UsedResponder
+    async fn stream<W>(self, response_stream: W) -> Self::UsedResponder
     where
         W: Stream<Item = R> + Send + Unpin,
     {
-        let mut peekable_stream = stream.peekable();
+        let batched_stream = Self::batch_stream(response_stream);
+        let mut peekable_stream = batched_stream.peekable();
         let mut pinned_stream = Pin::new(&mut peekable_stream);
 
         let mut stream_id = 0;
@@ -164,21 +218,23 @@ where
                 pinned_stream.as_mut().next().await,
                 pinned_stream.as_mut().peek().await,
             ) {
-                (Some(payload), Some(_)) => {
+                (Some(batched_bytes), Some(_)) => {
                     stream_id += 1;
 
                     let mut next_headers = HeaderMap::new();
                     next_headers.insert("request-id", self.request_id.clone());
                     next_headers.insert("stream-id", stream_id.to_string());
 
-                    let bytes: Bytes = payload.try_into().unwrap();
-
                     self.nats_client
-                        .publish_with_headers(self.reply_stream_name.clone(), next_headers, bytes)
+                        .publish_with_headers(
+                            self.reply_stream_name.clone(),
+                            next_headers,
+                            batched_bytes,
+                        )
                         .await
                         .unwrap();
                 }
-                (Some(payload), None) => {
+                (Some(batched_bytes), None) => {
                     stream_id += 1;
 
                     let mut end_headers = HeaderMap::new();
@@ -186,10 +242,8 @@ where
                     end_headers.insert("stream-id", stream_id.to_string());
                     end_headers.insert("stream-end", stream_id.to_string());
 
-                    let bytes: Bytes = payload.try_into().unwrap();
-
                     self.nats_client
-                        .publish_with_headers(self.reply_stream_name, end_headers, bytes)
+                        .publish_with_headers(self.reply_stream_name, end_headers, batched_bytes)
                         .await
                         .unwrap();
 
@@ -202,57 +256,17 @@ where
         NatsUsedServiceResponder
     }
 
-    async fn stream_and_delete_request<W>(self, stream: W) -> Self::UsedResponder
+    async fn stream_and_delete_request<W>(self, response_stream: W) -> Self::UsedResponder
     where
         W: Stream<Item = R> + Send + Unpin,
     {
-        let mut peekable_stream = stream.peekable();
-        let mut pinned_stream = Pin::new(&mut peekable_stream);
+        let stream_sequence = self.stream_sequence;
+        let stream = self.stream.clone();
 
-        let mut stream_id = 0;
+        let used_responder = Self::stream(self, response_stream).await;
 
-        loop {
-            match (
-                pinned_stream.as_mut().next().await,
-                pinned_stream.as_mut().peek().await,
-            ) {
-                (Some(payload), Some(_)) => {
-                    stream_id += 1;
+        stream.del(stream_sequence).await.unwrap();
 
-                    let mut next_headers = HeaderMap::new();
-                    next_headers.insert("request-id", self.request_id.clone());
-                    next_headers.insert("stream-id", stream_id.to_string());
-
-                    let bytes: Bytes = payload.try_into().unwrap();
-
-                    self.nats_client
-                        .publish_with_headers(self.reply_stream_name.clone(), next_headers, bytes)
-                        .await
-                        .unwrap();
-                }
-                (Some(payload), None) => {
-                    stream_id += 1;
-
-                    let mut end_headers = HeaderMap::new();
-                    end_headers.insert("request-id", self.request_id);
-                    end_headers.insert("stream-id", stream_id.to_string());
-                    end_headers.insert("stream-end", stream_id.to_string());
-
-                    let bytes: Bytes = payload.try_into().unwrap();
-
-                    self.nats_client
-                        .publish_with_headers(self.reply_stream_name, end_headers, bytes)
-                        .await
-                        .unwrap();
-
-                    break;
-                }
-                (None, Some(_) | None) => unreachable!(),
-            }
-        }
-
-        self.stream.del(self.stream_sequence).await.unwrap();
-
-        NatsUsedServiceResponder
+        used_responder
     }
 }

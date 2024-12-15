@@ -18,11 +18,12 @@ use async_nats::Client as AsyncNatsClient;
 use async_nats::HeaderMap;
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::channel::mpsc::{self, Sender};
 use proven_messaging::client::{Client, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::time::{sleep, timeout, Duration};
+use tokio_stream::wrappers::ReceiverStream;
 
 use uuid::Uuid;
 
@@ -32,7 +33,7 @@ type StreamMap<R> = HashMap<usize, StreamState<R>>;
 /// The state of a streaming response.
 #[derive(Debug)]
 struct StreamState<R> {
-    sender: Sender<R>,
+    sender: mpsc::Sender<R>,
     received_messages: HashSet<usize>,
     total_expected: Option<usize>,
 }
@@ -132,6 +133,53 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    fn deserialize_batch(payload: &Bytes) -> Vec<X::ResponseType> {
+        let mut responses = Vec::new();
+        let mut offset = 0;
+
+        while offset < payload.len() {
+            if offset + 4 > payload.len() {
+                break;
+            }
+
+            // Read length prefix
+            let len = u32::from_be_bytes(payload[offset..offset + 4].try_into().unwrap()) as usize;
+            offset += 4;
+
+            if offset + len > payload.len() {
+                break;
+            }
+
+            // Extract item bytes
+            let item_bytes = payload.slice(offset..offset + len);
+            offset += len;
+
+            // Deserialize item
+            if let Ok(response) = item_bytes.try_into() {
+                responses.push(response);
+            }
+        }
+        responses
+    }
+
+    async fn retry_send_stream_response(
+        sender: &mpsc::Sender<X::ResponseType>,
+        item: X::ResponseType,
+        max_retries: usize,
+    ) {
+        let mut retries = 0;
+        while retries < max_retries {
+            match sender.try_send(item.clone()) {
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    retries += 1;
+                    sleep(Duration::from_millis(10 * retries as u64)).await;
+                    continue;
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) | Ok(()) => return,
+            }
+        }
+    }
+
     fn spawn_response_handler(
         consumer: NatsConsumerType<NatsConsumerConfig>,
         response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
@@ -163,14 +211,16 @@ where
                         let request_id: usize = request_id.to_string().parse().unwrap();
                         let stream_id: usize = stream_id.to_string().parse().unwrap();
                         let total_expected: usize = total_expected.to_string().parse().unwrap();
-                        let response: X::ResponseType = msg.payload.clone().try_into().unwrap();
+
+                        // Deserialize batch of responses
+                        let responses = Self::deserialize_batch(&msg.payload);
 
                         // No need to manage stream state if only one message is expected
                         if total_expected == 1 {
                             let mut response_map = response_map.lock().await;
                             if let Some(sender) = response_map.remove(&request_id) {
                                 let _ = sender.send(ClientResponseType::Stream(Box::new(
-                                    futures::stream::iter(vec![response]),
+                                    futures::stream::iter(responses),
                                 )));
                             }
                             drop(response_map);
@@ -181,26 +231,31 @@ where
                         if let Some(state) = stream_map.get_mut(&request_id) {
                             state.received_messages.insert(stream_id);
                             state.total_expected = Some(total_expected);
-                            let _ = state.sender.try_send(response);
+                            for response in responses {
+                                Self::retry_send_stream_response(&state.sender, response, 3).await;
+                            }
 
                             if state.received_messages.len() == total_expected {
-                                state.sender.close_channel();
                                 stream_map.remove(&request_id);
                             }
                         } else {
-                            let (tx, rx) = mpsc::channel(32);
+                            // Initialize channel with double the current batch size (in case there are more messages in other batches)
+                            let (tx, rx) = mpsc::channel(responses.len() * 2);
                             let mut state = StreamState {
                                 sender: tx,
                                 received_messages: HashSet::new(),
                                 total_expected: Some(total_expected),
                             };
                             state.received_messages.insert(stream_id);
-                            let _ = state.sender.try_send(response);
+                            for response in responses {
+                                Self::retry_send_stream_response(&state.sender, response, 3).await;
+                            }
                             stream_map.insert(request_id, state);
 
                             let mut response_map = response_map.lock().await;
                             if let Some(sender) = response_map.remove(&request_id) {
-                                let stream = Box::new(rx);
+                                // Convert tokio mpsc receiver to stream
+                                let stream = Box::new(ReceiverStream::new(rx));
                                 let _ = sender.send(ClientResponseType::Stream(stream));
                             }
                         }
@@ -210,26 +265,34 @@ where
                     Some((Some(request_id), Some(stream_id), None)) => {
                         let request_id: usize = request_id.to_string().parse().unwrap();
                         let stream_id: usize = stream_id.to_string().parse().unwrap();
-                        let response: X::ResponseType = msg.payload.clone().try_into().unwrap();
+
+                        // Deserialize batch of responses
+                        let responses = Self::deserialize_batch(&msg.payload);
 
                         let mut stream_map = stream_map.lock().await;
                         if let Some(state) = stream_map.get_mut(&request_id) {
                             state.received_messages.insert(stream_id);
-                            let _ = state.sender.try_send(response);
+                            for response in responses {
+                                let _ = state.sender.try_send(response);
+                            }
                         } else {
-                            let (tx, rx) = mpsc::channel(32);
+                            // Initialize channel with double the current batch size (in case there are more messages in other batches)
+                            let (tx, rx) = mpsc::channel(responses.len() * 2);
                             let mut state = StreamState {
                                 sender: tx,
                                 received_messages: HashSet::new(),
                                 total_expected: None,
                             };
                             state.received_messages.insert(stream_id);
-                            let _ = state.sender.try_send(response);
+                            for response in responses {
+                                let _ = state.sender.try_send(response);
+                            }
                             stream_map.insert(request_id, state);
 
                             let mut response_map = response_map.lock().await;
                             if let Some(sender) = response_map.remove(&request_id) {
-                                let stream = Box::new(rx);
+                                // Convert tokio mpsc receiver to stream
+                                let stream = Box::new(ReceiverStream::new(rx));
                                 let _ = sender.send(ClientResponseType::Stream(stream));
                             }
                         }
@@ -339,9 +402,7 @@ where
             .unwrap();
 
         // Wait for response with cleanup
-        if let Ok(Ok(response)) =
-            tokio::time::timeout(std::time::Duration::from_secs(5), receiver).await
-        {
+        if let Ok(Ok(response)) = timeout(Duration::from_secs(5), receiver).await {
             Ok(response)
         } else {
             // Clean up map on timeout/error

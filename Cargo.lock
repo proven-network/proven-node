@@ -6827,6 +6827,7 @@ dependencies = [
  "serial_test",
  "thiserror 2.0.6",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "uuid",
 ]
