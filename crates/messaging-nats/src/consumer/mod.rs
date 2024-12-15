@@ -91,10 +91,16 @@ where
 {
     /// Creates a new NATS consumer.
     async fn process_messages(
-        mut nats_consumer: NatsConsumerType<NatsConsumerConfig>,
+        nats_consumer: NatsConsumerType<NatsConsumerConfig>,
         handler: X,
+        stream: InitializedNatsStream<T, D, S>,
     ) -> Result<(), Error> {
-        let mut caught_up = false;
+        let initial_stream_seq = stream.last_seq().await.unwrap_or(0);
+        let mut caught_up = initial_stream_seq == 0;
+
+        if caught_up {
+            let _ = handler.on_caught_up().await;
+        }
 
         loop {
             let mut messages = nats_consumer
@@ -110,16 +116,13 @@ where
 
                 message.ack().await.unwrap();
 
-                if !caught_up {
-                    let consumer_info = nats_consumer
-                        .info()
-                        .await
-                        .map_err(|e| Error::Info(e.kind()))?;
-
-                    if consumer_info.num_pending == 0 {
-                        caught_up = true;
-                        handler.on_caught_up().await.map_err(|_| Error::Handler)?;
-                    }
+                if !caught_up
+                    && message.info().unwrap().stream_sequence >= initial_stream_seq
+                    && stream.last_seq().await.unwrap_or(0)
+                        == message.info().unwrap().stream_sequence
+                {
+                    caught_up = true;
+                    let _ = handler.on_caught_up().await;
                 }
             }
         }
@@ -169,6 +172,7 @@ where
         tokio::spawn(Self::process_messages(
             nats_consumer.clone(),
             handler.clone(),
+            stream.clone(),
         ));
 
         Ok(Self {
