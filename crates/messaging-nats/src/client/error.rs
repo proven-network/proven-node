@@ -7,16 +7,20 @@ use proven_messaging::client::ClientError;
 /// Errors that can occur in a client.
 #[derive(Debug, Error)]
 pub enum Error {
-    /// Handler error.
-    #[error("Handler error")]
-    Something(#[from] Box<dyn std::error::Error + Send + Sync>),
+    /// Deserialization error.
+    #[error("deserialization error")]
+    Deserialization,
+
+    /// Batch item length.
+    #[error("batch item length could not be determined")]
+    BatchItemLength,
 
     /// No response.
-    #[error("No response")]
+    #[error("no response")]
     NoResponse,
 
     /// Task failure.
-    #[error("Task failure")]
+    #[error("task failure")]
     Task,
 }
 

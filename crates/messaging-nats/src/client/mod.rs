@@ -133,7 +133,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    fn deserialize_batch(payload: &Bytes) -> Vec<X::ResponseType> {
+    fn deserialize_batch(payload: &Bytes) -> Result<Vec<X::ResponseType>, Error> {
         let mut responses = Vec::new();
         let mut offset = 0;
 
@@ -143,7 +143,11 @@ where
             }
 
             // Read length prefix
-            let len = u32::from_be_bytes(payload[offset..offset + 4].try_into().unwrap()) as usize;
+            let len = u32::from_be_bytes(
+                payload[offset..offset + 4]
+                    .try_into()
+                    .map_err(|_| Error::BatchItemLength)?,
+            ) as usize;
             offset += 4;
 
             if offset + len > payload.len() {
@@ -157,9 +161,12 @@ where
             // Deserialize item
             if let Ok(response) = item_bytes.try_into() {
                 responses.push(response);
+            } else {
+                return Err(Error::Deserialization);
             }
         }
-        responses
+
+        Ok(responses)
     }
 
     async fn retry_send_stream_response(
@@ -213,7 +220,7 @@ where
                         let total_expected: usize = total_expected.to_string().parse().unwrap();
 
                         // Deserialize batch of responses
-                        let responses = Self::deserialize_batch(&msg.payload);
+                        let responses = Self::deserialize_batch(&msg.payload).unwrap();
 
                         // No need to manage stream state if only one message is expected
                         if total_expected == 1 {
@@ -267,7 +274,7 @@ where
                         let stream_id: usize = stream_id.to_string().parse().unwrap();
 
                         // Deserialize batch of responses
-                        let responses = Self::deserialize_batch(&msg.payload);
+                        let responses = Self::deserialize_batch(&msg.payload).unwrap();
 
                         let mut stream_map = stream_map.lock().await;
                         if let Some(state) = stream_map.get_mut(&request_id) {
