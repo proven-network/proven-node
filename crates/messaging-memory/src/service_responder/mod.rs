@@ -1,14 +1,12 @@
 mod error;
 
 use crate::stream::InitializedMemoryStream;
-use crate::subject::MemorySubject;
+use crate::{GlobalState, ServiceResponse, GLOBAL_STATE};
 pub use error::Error;
-use proven_messaging::subject::PublishableSubject;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::pin::Pin;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -16,7 +14,6 @@ use futures::Stream;
 use futures::StreamExt;
 use proven_messaging::service_responder::{ServiceResponder, UsedServiceResponder};
 use proven_messaging::stream::InitializedStream;
-use uuid::Uuid;
 
 /// A used responder for a NATS service.
 #[derive(Debug)]
@@ -47,8 +44,9 @@ where
     RD: Debug + Send + StdError + Sync + 'static,
     RS: Debug + Send + StdError + Sync + 'static,
 {
-    reply_subject: MemorySubject<R, RD, RS>,
+    client_id: String,
     request_id: String,
+    service_name: String,
     stream: InitializedMemoryStream<T, TD, TS>,
     stream_sequence: u64,
     _marker: PhantomData<R>,
@@ -78,14 +76,16 @@ where
     /// Creates a new NATS service responder.
     #[must_use]
     pub const fn new(
-        reply_subject: MemorySubject<R, RD, RS>,
+        service_name: String,
+        client_id: String,
         request_id: String,
         stream: InitializedMemoryStream<T, TD, TS>,
         stream_sequence: u64,
     ) -> Self {
         Self {
-            reply_subject,
+            client_id,
             request_id,
+            service_name,
             stream,
             stream_sequence,
             _marker: PhantomData,
@@ -120,38 +120,98 @@ where
 
     type UsedResponder = MemoryUsedServiceResponder;
 
-    async fn reply(self, response: R) -> MemoryUsedServiceResponder {
-        self.reply_subject.publish(response).await.unwrap();
+    async fn reply(self, response: R) -> Self::UsedResponder {
+        let mut state = GLOBAL_STATE.lock().await;
+        if !state.has::<GlobalState<R>>() {
+            state.put(GlobalState::<R>::default());
+        }
+        let global_state = state.borrow::<GlobalState<R>>();
+        let service_responses = global_state.service_responses.lock().await;
+
+        // Format key as "{service_name}:{client_id}"
+        let response_key = format!("{}:{}", self.service_name, self.client_id);
+        if let Some(sender) = service_responses.get(&response_key) {
+            let response = ServiceResponse {
+                request_id: self.request_id,
+                stream_id: None,
+                stream_end: None,
+                payload: response,
+            };
+            let _ = sender.send(response);
+        }
+
+        drop(service_responses);
+        drop(state);
 
         MemoryUsedServiceResponder
     }
 
     async fn reply_and_delete_request(self, response: R) -> MemoryUsedServiceResponder {
-        self.reply_subject.publish(response).await.unwrap();
+        let mut state = GLOBAL_STATE.lock().await;
+        if !state.has::<GlobalState<R>>() {
+            state.put(GlobalState::<R>::default());
+        }
+        let subject_state = state.borrow::<GlobalState<R>>();
+        let service_responses = subject_state.service_responses.lock().await;
+
+        // Format key as "{service_name}:{client_id}"
+        let response_key = format!("{}:{}", self.service_name, self.client_id);
+        if let Some(sender) = service_responses.get(&response_key) {
+            let response = ServiceResponse {
+                request_id: self.request_id,
+                stream_id: None,
+                stream_end: None,
+                payload: response,
+            };
+            let _ = sender.send(response);
+        }
+
+        drop(service_responses);
+        drop(state);
 
         self.stream.del(self.stream_sequence).await.unwrap();
 
         MemoryUsedServiceResponder
     }
 
-    async fn stream<W>(self, stream: W) -> MemoryUsedServiceResponder
+    async fn stream<W>(self, stream: W) -> Self::UsedResponder
     where
         W: Stream<Item = R> + Send + Unpin,
     {
-        let mut peekable_stream = stream.peekable();
-        let mut pinned_stream = Pin::new(&mut peekable_stream);
+        let mut stream_id = 0;
+        let peekable = stream.peekable();
 
-        let _stream_uuid = Uuid::new_v4();
+        tokio::pin!(peekable);
 
-        match (pinned_stream.next().await, pinned_stream.peek().await) {
-            // TODO: Need to deliminate the stream
-            (Some(payload), Some(_)) => {
-                self.reply_subject.publish(payload).await.unwrap();
+        while let Some(response) = peekable.as_mut().next().await {
+            stream_id += 1;
+
+            let service_response = ServiceResponse {
+                request_id: self.request_id.clone(),
+                stream_id: Some(stream_id),
+                stream_end: if peekable.as_mut().peek().await.is_none() {
+                    Some(stream_id)
+                } else {
+                    None
+                },
+                payload: response,
+            };
+
+            let mut state = GLOBAL_STATE.lock().await;
+            if !state.has::<GlobalState<R>>() {
+                state.put(GlobalState::<R>::default());
             }
-            (Some(payload), None) => {
-                self.reply_subject.publish(payload).await.unwrap();
+            let global_state = state.borrow::<GlobalState<R>>();
+            let service_responses = global_state.service_responses.lock().await;
+
+            // Format key as "{service_name}:{client_id}"
+            let response_key = format!("{}:{}", self.service_name, self.client_id);
+            if let Some(sender) = service_responses.get(&response_key) {
+                let _ = sender.send(service_response);
             }
-            (None, Some(_) | None) => unreachable!(),
+
+            drop(service_responses);
+            drop(state);
         }
 
         MemoryUsedServiceResponder
@@ -161,18 +221,40 @@ where
     where
         W: Stream<Item = R> + Send + Unpin,
     {
-        let mut peekable_stream = stream.peekable();
-        let mut pinned_stream = Pin::new(&mut peekable_stream);
+        let mut stream_id = 0;
+        let peekable = stream.peekable();
 
-        match (pinned_stream.next().await, pinned_stream.peek().await) {
-            // TODO: Need to deliminate the stream
-            (Some(payload), Some(_)) => {
-                self.reply_subject.publish(payload).await.unwrap();
+        tokio::pin!(peekable);
+
+        while let Some(response) = peekable.as_mut().next().await {
+            stream_id += 1;
+
+            let service_response = ServiceResponse {
+                request_id: self.request_id.clone(),
+                stream_id: Some(stream_id),
+                stream_end: if peekable.as_mut().peek().await.is_none() {
+                    Some(stream_id)
+                } else {
+                    None
+                },
+                payload: response,
+            };
+
+            let mut state = GLOBAL_STATE.lock().await;
+            if !state.has::<GlobalState<R>>() {
+                state.put(GlobalState::<R>::default());
             }
-            (Some(payload), None) => {
-                self.reply_subject.publish(payload).await.unwrap();
+            let global_state = state.borrow::<GlobalState<R>>();
+            let service_responses = global_state.service_responses.lock().await;
+
+            // Format key as "{service_name}:{client_id}"
+            let response_key = format!("{}:{}", self.service_name, self.client_id);
+            if let Some(sender) = service_responses.get(&response_key) {
+                let _ = sender.send(service_response);
             }
-            (None, Some(_) | None) => unreachable!(),
+
+            drop(service_responses);
+            drop(state);
         }
 
         self.stream.del(self.stream_sequence).await.unwrap();

@@ -1,25 +1,34 @@
-#![allow(clippy::type_complexity)]
-
 mod error;
-mod subscription_handler;
 
 use crate::stream::InitializedMemoryStream;
-use crate::subject::MemorySubject;
-use crate::subscription::MemorySubscription;
+use crate::{ClientRequest, GlobalState, ServiceResponse, GLOBAL_STATE};
 pub use error::Error;
-use subscription_handler::ClientSubscriptionHandler;
+use proven_messaging::stream::InitializedStream;
 
+use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt::Debug;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use futures::channel::mpsc::{self, Sender};
 use proven_messaging::client::{Client, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
-use proven_messaging::stream::InitializedStream;
-use proven_messaging::subject::Subject;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{broadcast, oneshot, Mutex};
+use uuid::Uuid;
+
+type ResponseMap<R> = HashMap<String, oneshot::Sender<ClientResponseType<R>>>;
+type StreamMap<R> = HashMap<String, StreamState<R>>;
+
+/// The state of a streaming response.
+#[derive(Debug)]
+struct StreamState<R> {
+    sender: Sender<R>,
+    received_messages: HashSet<usize>,
+    total_expected: Option<usize>,
+}
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -41,23 +50,12 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    reply_receiver: Arc<Mutex<mpsc::Receiver<X::ResponseType>>>,
-    reply_subject: MemorySubject<
-        X::ResponseType,
-        X::ResponseDeserializationError,
-        X::ResponseSerializationError,
-    >,
-    stream: <Self as Client<X, T, D, S>>::StreamType,
-    subscription: MemorySubscription<
-        ClientSubscriptionHandler<
-            X::ResponseType,
-            X::ResponseDeserializationError,
-            X::ResponseSerializationError,
-        >,
-        X::ResponseType,
-        X::ResponseDeserializationError,
-        X::ResponseSerializationError,
-    >,
+    client_id: String,
+    request_id_counter: Arc<AtomicUsize>,
+    response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
+    stream_map: Arc<Mutex<StreamMap<X::ResponseType>>>,
+    service_name: String,
+    stream: InitializedMemoryStream<T, D, S>,
 }
 
 impl<X, T, D, S> Clone for MemoryClient<X, T, D, S>
@@ -75,11 +73,106 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            reply_receiver: self.reply_receiver.clone(),
-            reply_subject: self.reply_subject.clone(),
+            client_id: self.client_id.clone(),
+            request_id_counter: self.request_id_counter.clone(),
+            response_map: self.response_map.clone(),
+            stream_map: self.stream_map.clone(),
+            service_name: self.service_name.clone(),
             stream: self.stream.clone(),
-            subscription: self.subscription.clone(),
         }
+    }
+}
+
+impl<X, T, D, S> MemoryClient<X, T, D, S>
+where
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn spawn_response_handler(
+        mut receiver: broadcast::Receiver<ServiceResponse<X::ResponseType>>,
+        response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
+        stream_map: Arc<Mutex<StreamMap<X::ResponseType>>>,
+    ) {
+        tokio::spawn(async move {
+            while let Ok(response) = receiver.recv().await {
+                match (response.stream_id, response.stream_end) {
+                    // Single response
+                    (None, None) => {
+                        let mut map = response_map.lock().await;
+                        if let Some(sender) = map.remove(&response.request_id) {
+                            let _ = sender.send(ClientResponseType::Response(response.payload));
+                        }
+                    }
+                    // Stream response with end marker
+                    (Some(stream_id), Some(total_expected)) => {
+                        let mut stream_map = stream_map.lock().await;
+                        if let Some(state) = stream_map.get_mut(&response.request_id) {
+                            state.received_messages.insert(stream_id);
+                            state.total_expected = Some(total_expected);
+                            let _ = state.sender.try_send(response.payload);
+
+                            if state.received_messages.len() == total_expected {
+                                state.sender.close_channel();
+                                stream_map.remove(&response.request_id);
+                            }
+                        } else {
+                            let (tx, rx) = mpsc::channel(32);
+                            let mut state = StreamState {
+                                sender: tx,
+                                received_messages: HashSet::new(),
+                                total_expected: Some(total_expected),
+                            };
+                            state.received_messages.insert(stream_id);
+                            let _ = state.sender.try_send(response.payload);
+                            stream_map.insert(response.request_id.clone(), state);
+
+                            let mut response_map = response_map.lock().await;
+                            if let Some(sender) = response_map.remove(&response.request_id) {
+                                let stream = Box::new(rx);
+                                let _ = sender.send(ClientResponseType::Stream(stream));
+                            }
+                        }
+
+                        drop(stream_map);
+                    }
+                    // Stream response without end marker
+                    (Some(stream_id), None) => {
+                        let mut stream_map = stream_map.lock().await;
+                        if let Some(state) = stream_map.get_mut(&response.request_id) {
+                            state.received_messages.insert(stream_id);
+                            let _ = state.sender.try_send(response.payload);
+                        } else {
+                            let (tx, rx) = mpsc::channel(32);
+                            let mut state = StreamState {
+                                sender: tx,
+                                received_messages: HashSet::new(),
+                                total_expected: None,
+                            };
+                            state.received_messages.insert(stream_id);
+                            let _ = state.sender.try_send(response.payload);
+                            stream_map.insert(response.request_id.clone(), state);
+
+                            let mut response_map = response_map.lock().await;
+                            if let Some(sender) = response_map.remove(&response.request_id) {
+                                let stream = Box::new(rx);
+                                let _ = sender.send(ClientResponseType::Stream(stream));
+                            }
+                        }
+
+                        drop(stream_map);
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        });
     }
 }
 
@@ -98,9 +191,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = Error;
-
     type Options = MemoryClientOptions;
-
     type StreamType = InitializedMemoryStream<T, D, S>;
 
     async fn new(
@@ -109,23 +200,34 @@ where
         _options: Self::Options,
         _handler: X,
     ) -> Result<Self, Self::Error> {
-        let (sender, receiver) = mpsc::channel::<X::ResponseType>(100);
+        let client_id = Uuid::new_v4().to_string();
+        let (sender, receiver) = broadcast::channel(100);
+        let response_map = Arc::new(Mutex::new(HashMap::new()));
+        let stream_map = Arc::new(Mutex::new(HashMap::new()));
 
-        let reply_handler = ClientSubscriptionHandler::new(sender);
+        let mut state = GLOBAL_STATE.lock().await;
+        if !state.has::<GlobalState<X::ResponseType>>() {
+            state.put(GlobalState::<X::ResponseType>::default());
+        }
+        let global_state = state.borrow::<GlobalState<X::ResponseType>>();
+        let mut service_responses = global_state.service_responses.lock().await;
 
-        let reply_subject: MemorySubject<
-            X::ResponseType,
-            X::ResponseDeserializationError,
-            X::ResponseSerializationError,
-        > = MemorySubject::new(format!("{name}_reply")).unwrap();
+        // Format key as "{service_name}:{client_id}"
+        let response_key = format!("{name}:{client_id}");
+        service_responses.insert(response_key, sender);
 
-        let subscription = reply_subject.subscribe(reply_handler).await.unwrap();
+        drop(service_responses);
+        drop(state);
+
+        Self::spawn_response_handler(receiver, response_map.clone(), stream_map.clone());
 
         Ok(Self {
-            reply_receiver: Arc::new(Mutex::new(receiver)),
-            reply_subject,
+            client_id,
+            request_id_counter: Arc::new(AtomicUsize::new(0)),
+            response_map,
+            stream_map,
+            service_name: name,
             stream,
-            subscription,
         })
     }
 
@@ -133,18 +235,53 @@ where
         &self,
         request: T,
     ) -> Result<ClientResponseType<X::ResponseType>, Self::Error> {
-        let mut reply_receiver = self.reply_receiver.lock().await;
+        let sequence_number = self.stream.publish(request.clone()).await.unwrap();
 
-        self.stream.publish(request).await.unwrap();
+        let request_id = self
+            .request_id_counter
+            .fetch_add(1, Ordering::SeqCst)
+            .to_string();
+        let (sender, receiver) = oneshot::channel();
 
-        tokio::task::yield_now().await;
+        {
+            let mut map = self.response_map.lock().await;
+            map.insert(request_id.clone(), sender);
+        }
 
-        let reply = reply_receiver.recv().await.unwrap();
-        drop(reply_receiver);
+        let mut state = GLOBAL_STATE.lock().await;
+        if !state.has::<GlobalState<T>>() {
+            state.put(GlobalState::<T>::default());
+        }
+        let subject_state = state.borrow::<GlobalState<T>>();
+        let client_requests = subject_state.client_requests.lock().await;
 
-        // TODO: Handle stream responses
+        if let Some(sender) = client_requests.get(&self.service_name) {
+            let client_request = ClientRequest {
+                client_id: self.client_id.clone(),
+                request_id: request_id.clone(),
+                payload: request,
+                sequence_number,
+            };
+            sender.send(client_request).map_err(|_| Error::Send)?;
+        } else {
+            let mut map = self.response_map.lock().await;
+            map.remove(&request_id);
+            drop(map);
+            return Err(Error::NoService);
+        }
+        drop(client_requests);
+        drop(state);
 
-        Ok(ClientResponseType::Response(reply))
+        if let Ok(Ok(response)) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), receiver).await
+        {
+            Ok(response)
+        } else {
+            let mut map = self.response_map.lock().await;
+            map.remove(&request_id);
+            drop(map);
+            Err(Error::NoResponse)
+        }
     }
 }
 
@@ -230,7 +367,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_client_request_timeout() {
+    async fn test_client_request_no_service() {
         // Create stream without service
         let stream = MemoryStream::<Bytes, Infallible, Infallible>::new(
             "test_client_timeout",
@@ -241,14 +378,14 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client("test_client", MemoryClientOptions {}, TestHandler)
+            .client("test_client_timeout", MemoryClientOptions {}, TestHandler)
             .await
             .expect("Failed to create client");
 
         // Send request without service running
         let request = Bytes::from("hello");
 
-        let result = timeout(Duration::from_secs(1), client.request(request)).await;
-        assert!(result.is_err(), "Expected timeout error");
+        let result = client.request(request).await;
+        assert!(result.is_err(), "Expected no service error");
     }
 }

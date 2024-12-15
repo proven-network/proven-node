@@ -3,7 +3,7 @@ mod error;
 
 use crate::stream::InitializedMemoryStream;
 use crate::subscription::{MemorySubscription, MemorySubscriptionOptions};
-use crate::{SubjectState, GLOBAL_STATE};
+use crate::{GlobalState, GLOBAL_STATE};
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -185,10 +185,10 @@ where
     #[allow(clippy::significant_drop_tightening)]
     async fn publish(&self, message: T) -> Result<(), Error> {
         let mut state = GLOBAL_STATE.lock().await;
-        if !state.has::<SubjectState<T>>() {
-            state.put(SubjectState::<T>::default());
+        if !state.has::<GlobalState<T>>() {
+            state.put(GlobalState::<T>::default());
         }
-        let subject_state = state.borrow::<SubjectState<T>>();
+        let subject_state = state.borrow::<GlobalState<T>>();
         let subjects = subject_state.subjects.lock().await;
         let subscribers = subjects.keys().cloned().collect::<Vec<_>>();
         for subscriber in subscribers {

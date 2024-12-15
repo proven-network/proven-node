@@ -3,7 +3,8 @@
 mod error;
 
 use crate::service_responder::{MemoryServiceResponder, MemoryUsedServiceResponder};
-use crate::subject::MemorySubject;
+use crate::stream::InitializedMemoryStream;
+use crate::{GlobalState, GLOBAL_STATE};
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -12,14 +13,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::StreamExt;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
-use proven_messaging::stream::InitializedStream;
-use tokio::sync::Mutex;
-use uuid::Uuid;
-
-use crate::stream::InitializedMemoryStream;
+use tokio::sync::{broadcast, Mutex};
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -105,36 +101,48 @@ where
     ) -> Result<Self, Self::Error> {
         let last_seq = Arc::new(Mutex::new(0));
 
-        // In-memory never has anythong to catch up on.
-        handler.on_caught_up().await.unwrap();
+        // Subscribe to client requests
+        let mut state = GLOBAL_STATE.lock().await;
+        if !state.has::<GlobalState<T>>() {
+            state.put(GlobalState::<T>::default());
+        }
+        let subject_state = state.borrow::<GlobalState<T>>();
+        let mut client_requests = subject_state.client_requests.lock().await;
+        let (tx, mut rx) = broadcast::channel(100);
+        client_requests.insert(name.clone(), tx);
+        drop(client_requests);
+        drop(state);
 
-        let mut messages = stream.messages().await;
+        let handler_clone = handler.clone();
+        let stream_clone = stream.clone();
+        let name_clone = name.clone();
 
         let last_seq_clone = last_seq.clone();
-        let stream_clone = stream.clone();
         tokio::spawn(async move {
-            while let Some(message) = messages.next().await {
+            while let Ok(request) = rx.recv().await {
+                let handler = handler_clone.clone();
+                let stream = stream_clone.clone();
+
                 let responder = MemoryServiceResponder::new(
-                    MemorySubject::new(format!("{name}_reply")).unwrap(),
-                    Uuid::new_v4().to_string(),
-                    stream_clone.clone(),
-                    0, // TODO: this should be the actual seq.
+                    name_clone.clone(),
+                    request.client_id,
+                    request.request_id,
+                    stream.clone(),
+                    request.sequence_number,
                 );
 
-                handler
-                    .handle(message, responder)
-                    .await
-                    .map_err(|_| Error::Handler)
-                    .unwrap();
+                handler.handle(request.payload, responder).await.unwrap();
 
                 let mut seq = last_seq_clone.lock().await;
-                *seq += 1;
+                if request.sequence_number > *seq {
+                    *seq = request.sequence_number;
+                }
                 drop(seq);
-
-                // TODO: Use actual seq.
-                stream_clone.del(0).await.unwrap();
             }
         });
+
+        // Nothing to catch up on for in-memory
+        handler.on_caught_up().await.unwrap();
 
         Ok(Self { last_seq, stream })
     }

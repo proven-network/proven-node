@@ -42,13 +42,33 @@ static GLOBAL_STATE: LazyLock<Mutex<GothamState>> =
     LazyLock::new(|| Mutex::new(GothamState::default()));
 
 #[derive(Clone, Debug)]
-struct SubjectState<T> {
+struct ClientRequest<T> {
+    client_id: String,
+    request_id: String,
+    payload: T,
+    sequence_number: u64,
+}
+
+#[derive(Clone, Debug)]
+struct ServiceResponse<R> {
+    request_id: String,
+    stream_id: Option<usize>,
+    stream_end: Option<usize>,
+    payload: R,
+}
+
+#[derive(Clone, Debug)]
+struct GlobalState<T> {
+    client_requests: Arc<Mutex<HashMap<String, broadcast::Sender<ClientRequest<T>>>>>,
+    service_responses: Arc<Mutex<HashMap<String, broadcast::Sender<ServiceResponse<T>>>>>,
     subjects: Arc<Mutex<HashMap<String, broadcast::Sender<T>>>>,
 }
 
-impl<T> Default for SubjectState<T> {
+impl<T> Default for GlobalState<T> {
     fn default() -> Self {
         Self {
+            client_requests: Arc::new(Mutex::new(HashMap::new())),
+            service_responses: Arc::new(Mutex::new(HashMap::new())),
             subjects: Arc::new(Mutex::new(HashMap::new())),
         }
     }
