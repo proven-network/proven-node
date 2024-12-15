@@ -3,8 +3,25 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-static VENDOR_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+static IMPORT_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
     let mut map = HashMap::with_capacity(1);
+
+    // First-party packages
+    map.insert(
+        "@proven-network/crypto".to_string(),
+        "proven:crypto".to_string(),
+    );
+
+    map.insert("@proven-network/kv".to_string(), "proven:kv".to_string());
+
+    map.insert(
+        "@proven-network/session".to_string(),
+        "proven:session".to_string(),
+    );
+
+    map.insert("@proven-network/sql".to_string(), "proven:sql".to_string());
+
+    // Vendor packages
 
     map.insert(
         "@radixdlt/babylon-gateway-api-sdk".to_string(),
@@ -25,7 +42,7 @@ static VENDOR_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
     map
 });
 
-pub fn replace_vendor_imports(module_source: &str) -> String {
+pub fn replace_esm_imports(module_source: &str) -> String {
     let import_regex = Regex::new(
         r#"((import|export)(?:[\s\n]+(?:type\s+)?[^"']+from\s+)?[\s\n]*["'])([^"']+)(["'])"#,
     )
@@ -37,7 +54,7 @@ pub fn replace_vendor_imports(module_source: &str) -> String {
             let path = &caps[3];
             let post_path = &caps[4];
 
-            let new_path = VENDOR_REPLACEMENTS
+            let new_path = IMPORT_REPLACEMENTS
                 .iter()
                 .find(|(vendor, _)| path.starts_with(*vendor))
                 .map_or_else(
@@ -55,7 +72,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_replace_vendor_imports() {
+    fn test_replace_esm_imports() {
         let input = r#"
             import { v4 } from "uuid";
             import { Gateway } from "@radixdlt/babylon-gateway-api-sdk";
@@ -63,7 +80,7 @@ mod tests {
             export { something } from "uuid/v4";
         "#;
 
-        let output = replace_vendor_imports(input);
+        let output = replace_esm_imports(input);
 
         assert!(output.contains(r#"from "proven:uuid""#));
         assert!(output.contains(r#"from "proven:radixdlt_babylon_gateway_api""#));
@@ -75,7 +92,7 @@ mod tests {
     fn test_handle_package_name_appearing_in_renames() {
         let input = r#"import { v4 as uuidv4 } from "uuid";"#;
 
-        let output = replace_vendor_imports(input);
+        let output = replace_esm_imports(input);
 
         assert_eq!(output, r#"import { v4 as uuidv4 } from "proven:uuid";"#);
     }

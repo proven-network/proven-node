@@ -6,11 +6,11 @@ use crate::extensions::{
     GatewayDetailsState, NftSqlConnectionManager, PersonalSqlConnectionManager,
     PersonalSqlParamListManager, SessionsState,
 };
+use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
 use crate::options_parser::OptionsParser;
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
-use crate::vendor_replacements::replace_vendor_imports;
 use crate::{ExecutionLogs, ExecutionRequest, ExecutionResult, Result};
 
 use std::sync::Arc;
@@ -257,7 +257,7 @@ where
         runtime.put(ConsoleState::default())?;
 
         let async_module = Self::ensure_exported_functions_are_async(module.as_str())?;
-        let async_module = replace_vendor_imports(&async_module);
+        let async_module = replace_esm_imports(&async_module);
 
         let module = Module::new("module.ts", async_module.as_str());
         let module_handle = runtime.load_module(&module)?;

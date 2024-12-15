@@ -3,10 +3,10 @@ use crate::extensions::{
     radixdlt_radix_engine_toolkit_ext, run_options_parser_ext, sessions_ext, sql_migrations_ext,
     sql_options_parser_ext, uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
 };
+use crate::import_replacements::replace_esm_imports;
 use crate::options::{ModuleHandlerOptions, ModuleOptions, SqlMigrations};
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
-use crate::vendor_replacements::replace_vendor_imports;
 use crate::Error;
 
 use std::sync::Arc;
@@ -82,7 +82,7 @@ impl OptionsParser {
     }
 
     fn preprocess_source(module_source: &str) -> String {
-        let module_source = replace_vendor_imports(module_source);
+        let module_source = replace_esm_imports(module_source);
         let module_source = Self::strip_comments(&module_source);
         let module_source = Self::name_default_export(&module_source);
         Self::rewrite_run_functions(&module_source)
