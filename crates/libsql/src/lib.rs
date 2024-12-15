@@ -5,18 +5,18 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-mod conversion;
 mod error;
 mod sql_type;
 
 use std::fmt::Debug;
 
-use conversion::convert_libsql_rows;
-pub use error::{Error, Result};
+pub use error::Error;
 use sql_type::SqlType;
 
+use bytes::Bytes;
+use futures::{Stream, StreamExt};
 use libsql::{Builder, Connection, Value};
-use proven_sql::{Rows, SqlParam};
+use proven_sql::SqlParam;
 use sha2::{Digest, Sha256};
 
 static RESERVED_TABLE_PREFIX: &str = "__proven_";
@@ -41,7 +41,7 @@ impl Database {
     /// # Errors
     ///
     /// This function will return an error if the connection to the database fails.
-    pub async fn connect(path: impl AsRef<std::path::Path> + Send) -> Result<Self> {
+    pub async fn connect(path: impl AsRef<std::path::Path> + Send) -> Result<Self, Error> {
         let connection = Builder::new_local(path).build().await?.connect()?;
 
         connection
@@ -57,7 +57,7 @@ impl Database {
     ///
     /// This function will return an error if the query contains a reserved table prefix,
     /// if the SQL type is incorrect, or if there is an issue executing the query.
-    pub async fn execute(&self, query: &str, params: Vec<SqlParam>) -> Result<u64> {
+    pub async fn execute(&self, query: &str, params: Vec<SqlParam>) -> Result<u64, Error> {
         if query.contains(RESERVED_TABLE_PREFIX) {
             return Err(Error::UsedReservedTablePrefix);
         }
@@ -84,7 +84,11 @@ impl Database {
     ///
     /// This function will return an error if the query contains a reserved table prefix,
     /// if the SQL type is incorrect, or if there is an issue executing the query.
-    pub async fn execute_batch(&self, query: &str, params: Vec<Vec<SqlParam>>) -> Result<u64> {
+    pub async fn execute_batch(
+        &self,
+        query: &str,
+        params: Vec<Vec<SqlParam>>,
+    ) -> Result<u64, Error> {
         if query.contains(RESERVED_TABLE_PREFIX) {
             return Err(Error::UsedReservedTablePrefix);
         }
@@ -118,7 +122,7 @@ impl Database {
     ///
     /// This function will return an error if the query contains a reserved table prefix,
     /// if the SQL type is incorrect, or if there is an issue executing the query.
-    pub async fn migrate(&self, query: &str) -> Result<bool> {
+    pub async fn migrate(&self, query: &str) -> Result<bool, Error> {
         if query.contains(RESERVED_TABLE_PREFIX) {
             return Err(Error::UsedReservedTablePrefix);
         }
@@ -177,7 +181,15 @@ impl Database {
     ///
     /// This function will return an error if the query contains a reserved table prefix,
     /// if the SQL type is incorrect, or if there is an issue executing the query.
-    pub async fn query(&self, query: &str, params: Vec<SqlParam>) -> Result<Rows> {
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if there is an issue with unwrapping the row value.
+    pub async fn query(
+        &self,
+        query: &str,
+        params: Vec<SqlParam>,
+    ) -> Result<Box<dyn Stream<Item = Vec<SqlParam>> + Send + Unpin>, Error> {
         if query.contains(RESERVED_TABLE_PREFIX) {
             return Err(Error::UsedReservedTablePrefix);
         }
@@ -194,7 +206,28 @@ impl Database {
                     .await
                     .map_err(Error::from)?;
 
-                convert_libsql_rows(libsql_rows).await
+                let column_count = libsql_rows.column_count();
+
+                Ok(Box::new(Box::pin(libsql_rows.into_stream().map(
+                    move |r| {
+                        r.map_or_else(
+                            |_| Vec::new(),
+                            |row| {
+                                (0..column_count)
+                                    .filter_map(move |i| {
+                                        row.get_value(i).ok().map(|value| match value {
+                                            Value::Null => SqlParam::Null,
+                                            Value::Integer(i) => SqlParam::Integer(i),
+                                            Value::Real(r) => SqlParam::Real(r),
+                                            Value::Text(s) => SqlParam::Text(s),
+                                            Value::Blob(b) => SqlParam::Blob(Bytes::from(b)),
+                                        })
+                                    })
+                                    .collect::<Vec<SqlParam>>()
+                            },
+                        )
+                    },
+                ))))
             }
         }
     }
@@ -227,6 +260,8 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    use tokio::pin;
+
     use super::*;
 
     #[tokio::test]
@@ -245,44 +280,40 @@ mod tests {
     async fn test_basics() {
         let db = Database::connect(":memory:").await.unwrap();
 
-        let response = db
-            .migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
-            .await;
-        assert!(response.is_ok());
-
-        let affected = db
-            .execute(
-                "INSERT INTO users (id, email) VALUES (?1, ?2)",
-                vec![
-                    SqlParam::Integer(1),
-                    SqlParam::Text("alice@example.com".to_string()),
-                ],
-            )
+        db.migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
             .await
             .unwrap();
-        assert_eq!(affected, 1);
+
+        db.execute(
+            "INSERT INTO users (id, email) VALUES (?1, ?2)",
+            vec![
+                SqlParam::Integer(1),
+                SqlParam::Text("alice@example.com".to_string()),
+            ],
+        )
+        .await
+        .unwrap();
 
         let rows = db
             .query("SELECT id, email FROM users", vec![])
             .await
             .unwrap();
 
-        assert_eq!(rows.column_count, 2);
-        assert_eq!(
-            rows.column_names,
-            vec!["id".to_string(), "email".to_string()]
-        );
-        assert_eq!(
-            rows.column_types,
-            vec!["INTEGER".to_string(), "TEXT".to_string()]
-        );
-        assert_eq!(
-            rows.rows,
-            vec![vec![
-                SqlParam::Integer(1),
-                SqlParam::Text("alice@example.com".to_string())
-            ]]
-        );
+        pin!(rows);
+
+        if let Some(row) = rows.next().await {
+            assert_eq!(
+                row,
+                vec![
+                    SqlParam::Integer(1),
+                    SqlParam::Text("alice@example.com".to_string())
+                ]
+            );
+        } else {
+            panic!("No rows returned");
+        }
+
+        assert!(rows.next().await.is_none(), "Too many rows returned");
     }
 
     #[tokio::test]

@@ -519,9 +519,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-ec2"
-version = "1.96.0"
+version = "1.97.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eca1dc40d52f385619d63b9855ed624b69dfb7f17cace6c764a6b015c1fba389"
+checksum = "12d80a57365bf877c656e5b95d2f32f1cc50aac7a5586ca7fb3bfa67c9fc5a73"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -4996,6 +4996,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe18646e4ef8db446bc3e3f5fb96131483203bc5f4998ff149f79a067530c01c"
 dependencies = [
+ "async-stream",
  "async-trait",
  "bitflags 2.6.0",
  "bytes",
@@ -6455,6 +6456,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "futures",
  "proven-sql",
  "serde",
  "thiserror 2.0.6",
@@ -6733,6 +6735,7 @@ name = "proven-libsql"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "futures",
  "libsql",
  "proven-sql",
  "serde",
@@ -7015,6 +7018,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "futures",
  "paste",
  "serde",
 ]
@@ -7024,6 +7028,7 @@ name = "proven-sql-direct"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures",
  "paste",
  "proven-libsql",
  "proven-sql",
@@ -7041,6 +7046,7 @@ dependencies = [
  "bytes",
  "ciborium",
  "criterion",
+ "futures",
  "paste",
  "proven-libsql",
  "proven-messaging",
@@ -7215,9 +7221,9 @@ dependencies = [
 
 [[package]]
 name = "quanta"
-version = "0.12.3"
+version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e5167a477619228a0b284fac2674e3c388cba90631d7b7de620e6f1fcd08da5"
+checksum = "773ce68d0bb9bc7ef20be3536ffe94e223e1f365bd374108b2659fac0c65cfe6"
 dependencies = [
  "crossbeam-utils",
  "libc",

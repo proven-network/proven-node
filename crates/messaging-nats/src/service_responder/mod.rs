@@ -16,7 +16,6 @@ use futures::Stream;
 use futures::StreamExt;
 use proven_messaging::service_responder::{ServiceResponder, UsedServiceResponder};
 use proven_messaging::stream::InitializedStream;
-use uuid::Uuid;
 
 /// A used responder for a NATS service.
 #[derive(Debug)]
@@ -153,36 +152,51 @@ where
 
     async fn stream<W>(self, stream: W) -> Self::UsedResponder
     where
-        W: Stream<Item = R> + Send + Sync + Unpin,
+        W: Stream<Item = R> + Send + Unpin,
     {
         let mut peekable_stream = stream.peekable();
         let mut pinned_stream = Pin::new(&mut peekable_stream);
 
-        let stream_uuid = Uuid::new_v4();
-        let mut next_headers = HeaderMap::new();
-        next_headers.insert("request-id", self.request_id.clone());
-        next_headers.insert("stream", format!("next:{stream_uuid}"));
+        let mut stream_id = 0;
 
-        match (pinned_stream.next().await, pinned_stream.peek().await) {
-            (Some(payload), Some(_)) => {
-                let bytes: Bytes = payload.try_into().unwrap();
-                self.nats_client
-                    .publish_with_headers(self.reply_stream_name, next_headers, bytes)
-                    .await
-                    .unwrap();
-            }
-            (Some(payload), None) => {
-                let mut end_headers = HeaderMap::new();
-                end_headers.insert("request-id", self.request_id);
-                end_headers.insert("stream", format!("end:{stream_uuid}"));
+        loop {
+            match (
+                pinned_stream.as_mut().next().await,
+                pinned_stream.as_mut().peek().await,
+            ) {
+                (Some(payload), Some(_)) => {
+                    stream_id += 1;
 
-                let bytes: Bytes = payload.try_into().unwrap();
-                self.nats_client
-                    .publish_with_headers(self.reply_stream_name, end_headers, bytes)
-                    .await
-                    .unwrap();
+                    let mut next_headers = HeaderMap::new();
+                    next_headers.insert("request-id", self.request_id.clone());
+                    next_headers.insert("stream-id", stream_id.to_string());
+
+                    let bytes: Bytes = payload.try_into().unwrap();
+
+                    self.nats_client
+                        .publish_with_headers(self.reply_stream_name.clone(), next_headers, bytes)
+                        .await
+                        .unwrap();
+                }
+                (Some(payload), None) => {
+                    stream_id += 1;
+
+                    let mut end_headers = HeaderMap::new();
+                    end_headers.insert("request-id", self.request_id);
+                    end_headers.insert("stream-id", stream_id.to_string());
+                    end_headers.insert("stream-end", stream_id.to_string());
+
+                    let bytes: Bytes = payload.try_into().unwrap();
+
+                    self.nats_client
+                        .publish_with_headers(self.reply_stream_name, end_headers, bytes)
+                        .await
+                        .unwrap();
+
+                    break;
+                }
+                (None, Some(_) | None) => unreachable!(),
             }
-            (None, Some(_) | None) => unreachable!(),
         }
 
         NatsUsedServiceResponder
@@ -190,36 +204,51 @@ where
 
     async fn stream_and_delete_request<W>(self, stream: W) -> Self::UsedResponder
     where
-        W: Stream<Item = R> + Send + Sync + Unpin,
+        W: Stream<Item = R> + Send + Unpin,
     {
         let mut peekable_stream = stream.peekable();
         let mut pinned_stream = Pin::new(&mut peekable_stream);
 
-        let stream_uuid = Uuid::new_v4();
-        let mut next_headers = HeaderMap::new();
-        next_headers.insert("request-id", self.request_id.clone());
-        next_headers.insert("stream", format!("next:{stream_uuid}"));
+        let mut stream_id = 0;
 
-        match (pinned_stream.next().await, pinned_stream.peek().await) {
-            (Some(payload), Some(_)) => {
-                let bytes: Bytes = payload.try_into().unwrap();
-                self.nats_client
-                    .publish_with_headers(self.reply_stream_name, next_headers, bytes)
-                    .await
-                    .unwrap();
-            }
-            (Some(payload), None) => {
-                let mut end_headers = HeaderMap::new();
-                end_headers.insert("request-id", self.request_id);
-                end_headers.insert("stream", format!("end:{stream_uuid}"));
+        loop {
+            match (
+                pinned_stream.as_mut().next().await,
+                pinned_stream.as_mut().peek().await,
+            ) {
+                (Some(payload), Some(_)) => {
+                    stream_id += 1;
 
-                let bytes: Bytes = payload.try_into().unwrap();
-                self.nats_client
-                    .publish_with_headers(self.reply_stream_name, end_headers, bytes)
-                    .await
-                    .unwrap();
+                    let mut next_headers = HeaderMap::new();
+                    next_headers.insert("request-id", self.request_id.clone());
+                    next_headers.insert("stream-id", stream_id.to_string());
+
+                    let bytes: Bytes = payload.try_into().unwrap();
+
+                    self.nats_client
+                        .publish_with_headers(self.reply_stream_name.clone(), next_headers, bytes)
+                        .await
+                        .unwrap();
+                }
+                (Some(payload), None) => {
+                    stream_id += 1;
+
+                    let mut end_headers = HeaderMap::new();
+                    end_headers.insert("request-id", self.request_id);
+                    end_headers.insert("stream-id", stream_id.to_string());
+                    end_headers.insert("stream-end", stream_id.to_string());
+
+                    let bytes: Bytes = payload.try_into().unwrap();
+
+                    self.nats_client
+                        .publish_with_headers(self.reply_stream_name, end_headers, bytes)
+                        .await
+                        .unwrap();
+
+                    break;
+                }
+                (None, Some(_) | None) => unreachable!(),
             }
-            (None, Some(_) | None) => unreachable!(),
         }
 
         self.stream.del(self.stream_sequence).await.unwrap();

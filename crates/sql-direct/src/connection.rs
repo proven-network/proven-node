@@ -4,7 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use proven_libsql::Database;
-use proven_sql::{Rows, SqlConnection, SqlParam};
+use proven_sql::{SqlConnection, SqlParam};
 use tokio::sync::Mutex;
 
 #[derive(Clone, Debug)]
@@ -58,12 +58,15 @@ impl SqlConnection for Connection {
         &self,
         query: Q,
         params: Vec<SqlParam>,
-    ) -> Result<Rows, Self::Error> {
-        Ok(self
-            .database
-            .lock()
-            .await
-            .query(&query.into(), params)
-            .await?)
+    ) -> Result<Box<dyn futures::Stream<Item = Vec<SqlParam>> + Send + Unpin>, Self::Error> {
+        let query_stream = Box::new(
+            self.database
+                .lock()
+                .await
+                .query(&query.into(), params)
+                .await?,
+        );
+
+        Ok(query_stream)
     }
 }

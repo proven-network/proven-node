@@ -7,6 +7,7 @@ pub use error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures::StreamExt;
 use proven_libsql::Database;
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::service_responder::ServiceResponder;
@@ -97,7 +98,15 @@ impl
                 }
             },
             Request::Query(sql, params) => match self.database.query(&sql, params).await {
-                Ok(rows) => responder.reply(Response::Query(rows)).await,
+                Ok(rows) => {
+                    tokio::pin!(rows);
+
+                    // TODO: Should actually batch these into chunks (ensuring that the size of each batch is under 1MB for NATS)
+
+                    responder
+                        .stream_and_delete_request(rows.map(Response::Row))
+                        .await
+                }
                 Err(e) => {
                     responder
                         .reply_and_delete_request(Response::Failed(e))

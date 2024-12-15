@@ -50,10 +50,10 @@ where
     /// Streams the given response.
     async fn stream<W>(self, stream: W) -> Self::UsedResponder
     where
-        W: Stream<Item = R> + Send + Sync + Unpin;
+        W: Stream<Item = R> + Send + Unpin;
 
     /// Streams the given response and deletes the request.
     async fn stream_and_delete_request<W>(self, stream: W) -> Self::UsedResponder
     where
-        W: Stream<Item = R> + Send + Sync + Unpin;
+        W: Stream<Item = R> + Send + Unpin;
 }

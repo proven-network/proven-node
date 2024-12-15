@@ -23,7 +23,7 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use proven_libsql::Database;
-use proven_messaging::client::Client;
+use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stream3};
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
@@ -132,7 +132,7 @@ where
             if !applied_migrations.contains(&migration_sql) {
                 let request = Request::Migrate(migration_sql);
 
-                if let Response::Failed(error) =
+                if let ClientResponseType::Response(Response::Failed(error)) =
                     client.request(request).await.map_err(Error::Client)?
                 {
                     return Err(Error::Libsql(error));
@@ -384,6 +384,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use futures::StreamExt;
     use proven_messaging_memory::{
         client::MemoryClientOptions,
         service::MemoryServiceOptions,
@@ -420,26 +422,23 @@ mod tests {
 
             assert_eq!(response, 1);
 
-            let response = connection
+            let mut rows = connection
                 .query("SELECT id, email FROM users".to_string(), vec![])
                 .await
                 .unwrap();
 
-            assert_eq!(response.column_count, 2);
+            let mut results = Vec::new();
+            while let Some(row) = rows.next().await {
+                results.push(row);
+            }
+
+            assert_eq!(results.len(), 1);
             assert_eq!(
-                response.column_names,
-                vec!["id".to_string(), "email".to_string()]
-            );
-            assert_eq!(
-                response.column_types,
-                vec!["INTEGER".to_string(), "TEXT".to_string()]
-            );
-            assert_eq!(
-                response.rows,
-                vec![vec![
+                results[0],
+                vec![
                     SqlParam::Integer(1),
                     SqlParam::Text("alice@example.com".to_string())
-                ]]
+                ]
             );
         })
         .await;

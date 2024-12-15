@@ -11,6 +11,7 @@ pub use application::Application;
 pub use error::Error;
 
 use async_trait::async_trait;
+use futures::StreamExt;
 use proven_sql::{SqlConnection, SqlParam, SqlStore};
 use uuid::Uuid;
 
@@ -123,11 +124,11 @@ where
         &self,
         application_id: String,
     ) -> Result<Option<Application>, <S::Connection as SqlConnection>::Error> {
-        let rows = self
+        let mut rows = self
             .connection
             .query(
                 r"
-                    SELECT * FROM applications
+                    SELECT owner_identity, dapps.dapp_definition_address FROM applications
                     JOIN dapps ON applications.id = dapps.application_id
                     WHERE id = ?1
                 "
@@ -136,19 +137,36 @@ where
             )
             .await?;
 
-        if rows.is_empty() {
+        // Early return if no rows found
+        let Some(first_row) = rows.next().await else {
             return Ok(None);
-        }
-
-        let application = Application {
-            id: application_id,
-            owner_identity_address: rows.row(0).unwrap().get_text(1).unwrap().to_string(),
-            dapp_definition_addresses: rows
-                .iter()
-                .map(|row| row.get_text(3).unwrap().to_string())
-                .collect(),
         };
 
-        Ok(Some(application))
+        // Get owner from first row
+        let owner_identity = match &first_row[0] {
+            SqlParam::Text(text) => text.clone(),
+            _ => unreachable!(),
+        };
+
+        // Collect all dapp addresses including from first row
+        let mut dapp_addresses = Vec::new();
+
+        // Add first row's dapp address
+        if let SqlParam::Text(addr) = &first_row[1] {
+            dapp_addresses.push(addr.clone());
+        }
+
+        // Add remaining rows' dapp addresses
+        while let Some(row) = rows.next().await {
+            if let SqlParam::Text(addr) = &row[1] {
+                dapp_addresses.push(addr.clone());
+            }
+        }
+
+        Ok(Some(Application {
+            id: application_id,
+            owner_identity_address: owner_identity,
+            dapp_definition_addresses: dapp_addresses,
+        }))
     }
 }

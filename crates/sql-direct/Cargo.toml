@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 async-trait = { workspace = true }
+futures = { workspace = true }
 paste = { workspace = true }
 proven-libsql = { workspace = true }
 proven-sql = { workspace = true }

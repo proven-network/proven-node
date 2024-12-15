@@ -50,7 +50,7 @@ where
         &self,
         query: Q,
         params: Vec<SqlParam>,
-    ) -> Result<Rows, Self::Error>;
+    ) -> Result<Box<dyn futures::Stream<Item = Vec<SqlParam>> + Send + Unpin>, Self::Error>;
 }
 
 /// A trait representing a SQL store with asynchronous operations.

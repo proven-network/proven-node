@@ -13,7 +13,8 @@ use std::rc::Rc;
 
 use bytes::Bytes;
 use deno_core::{extension, op2, OpDecl, OpState};
-use proven_sql::{Rows, SqlConnection, SqlStore1};
+use futures::StreamExt;
+use proven_sql::{SqlConnection, SqlParam, SqlStore1};
 
 #[op2(fast)]
 #[bigint]
@@ -141,7 +142,7 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
     #[string] db_name: String,
     #[string] query: String,
     #[bigint] param_list_id_opt: Option<u64>,
-) -> Rows {
+) -> Vec<Vec<SqlParam>> {
     let connection_manager_opt = {
         loop {
             let connection_manager_opt = {
@@ -167,7 +168,7 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
     };
     state.borrow_mut().put(connection_manager_opt);
 
-    if let Some(param_list_id) = param_list_id_opt {
+    let stream = if let Some(param_list_id) = param_list_id_opt {
         let mut params_lists = {
             loop {
                 let params_lists = {
@@ -192,7 +193,9 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
         connection_opt.unwrap().query(query, params).await.unwrap()
     } else {
         connection_opt.unwrap().query(query, vec![]).await.unwrap()
-    }
+    };
+
+    stream.collect().await
 }
 
 fn get_ops<PSS: SqlStore1>() -> Vec<OpDecl> {

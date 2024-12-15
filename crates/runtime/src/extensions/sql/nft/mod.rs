@@ -10,7 +10,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_core::{extension, op2, OpDecl, OpState};
-use proven_sql::{Rows, SqlConnection, SqlParam, SqlStore2};
+use futures::StreamExt;
+use proven_sql::{SqlConnection, SqlParam, SqlStore2};
 
 #[op2(async)]
 #[bigint]
@@ -53,7 +54,7 @@ pub async fn op_query_nft_sql<NSS: SqlStore2>(
     #[string] nft_id: String,
     #[string] query: String,
     #[serde] params: Vec<SqlParam>,
-) -> Rows {
+) -> Vec<Vec<SqlParam>> {
     let connection_manager = {
         loop {
             let connection_manager = {
@@ -75,7 +76,12 @@ pub async fn op_query_nft_sql<NSS: SqlStore2>(
     let connection = connection_manager.connect(db_name, nft_id).await.unwrap();
     state.borrow_mut().put(connection_manager);
 
-    connection.query(query, params).await.unwrap()
+    connection
+        .query(query, params)
+        .await
+        .unwrap()
+        .collect()
+        .await
 }
 
 fn get_ops<NSS: SqlStore2>() -> Vec<OpDecl> {

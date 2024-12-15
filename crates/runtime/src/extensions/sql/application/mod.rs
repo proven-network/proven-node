@@ -13,7 +13,8 @@ use std::rc::Rc;
 
 use bytes::Bytes;
 use deno_core::{extension, op2, OpDecl, OpState};
-use proven_sql::{Rows, SqlConnection, SqlStore1};
+use futures::StreamExt;
+use proven_sql::{SqlConnection, SqlParam, SqlStore1};
 
 #[op2(fast)]
 #[bigint]
@@ -131,7 +132,7 @@ async fn op_query_application_sql<ASS: SqlStore1>(
     #[string] db_name: String,
     #[string] query: String,
     #[bigint] param_list_id_opt: Option<u64>,
-) -> Rows {
+) -> Vec<Vec<SqlParam>> {
     let connection_manager = {
         loop {
             let connection_manager = {
@@ -153,7 +154,7 @@ async fn op_query_application_sql<ASS: SqlStore1>(
     let connection = connection_manager.connect(db_name).await.unwrap();
     state.borrow_mut().put(connection_manager);
 
-    if let Some(param_list_id) = param_list_id_opt {
+    let stream = if let Some(param_list_id) = param_list_id_opt {
         let mut params_lists = {
             loop {
                 let params_lists = {
@@ -178,7 +179,9 @@ async fn op_query_application_sql<ASS: SqlStore1>(
         connection.query(query, params).await.unwrap()
     } else {
         connection.query(query, vec![]).await.unwrap()
-    }
+    };
+
+    stream.collect().await
 }
 
 fn get_ops<ASS: SqlStore1>() -> Vec<OpDecl> {

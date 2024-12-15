@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 bytes = { workspace = true }
+futures = { workspace = true }
 libsql = { workspace = true }
 proven-sql = { workspace = true }
 serde = { workspace = true }

@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_messaging::client::{Client, ClientOptions};
+use proven_messaging::client::{Client, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
 use proven_messaging::subject::Subject;
@@ -129,7 +129,10 @@ where
         })
     }
 
-    async fn request(&self, request: T) -> Result<X::ResponseType, Self::Error> {
+    async fn request(
+        &self,
+        request: T,
+    ) -> Result<ClientResponseType<X::ResponseType>, Self::Error> {
         let mut reply_receiver = self.reply_receiver.lock().await;
 
         self.stream.publish(request).await.unwrap();
@@ -139,7 +142,9 @@ where
         let reply = reply_receiver.recv().await.unwrap();
         drop(reply_receiver);
 
-        Ok(reply)
+        // TODO: Handle stream responses
+
+        Ok(ClientResponseType::Response(reply))
     }
 }
 
@@ -212,12 +217,16 @@ mod tests {
         // Send request and get response with timeout
         let request = Bytes::from("hello");
 
-        let response = timeout(Duration::from_secs(5), client.request(request))
-            .await
-            .expect("Request timed out")
-            .expect("Failed to send request");
-
-        assert_eq!(response, Bytes::from("response: hello"));
+        if let ClientResponseType::Response(response) =
+            timeout(Duration::from_secs(5), client.request(request))
+                .await
+                .expect("Request timed out")
+                .expect("Failed to send request")
+        {
+            assert_eq!(response, Bytes::from("response: hello"));
+        } else {
+            panic!("Expected single response");
+        }
     }
 
     #[tokio::test]

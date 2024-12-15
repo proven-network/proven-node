@@ -136,7 +136,7 @@ where
 
     async fn stream<W>(self, stream: W) -> MemoryUsedServiceResponder
     where
-        W: Stream<Item = R> + Send + Sync + Unpin,
+        W: Stream<Item = R> + Send + Unpin,
     {
         let mut peekable_stream = stream.peekable();
         let mut pinned_stream = Pin::new(&mut peekable_stream);
@@ -159,7 +159,7 @@ where
 
     async fn stream_and_delete_request<W>(self, stream: W) -> MemoryUsedServiceResponder
     where
-        W: Stream<Item = R> + Send + Sync + Unpin,
+        W: Stream<Item = R> + Send + Unpin,
     {
         let mut peekable_stream = stream.peekable();
         let mut pinned_stream = Pin::new(&mut peekable_stream);

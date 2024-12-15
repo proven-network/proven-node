@@ -4,11 +4,12 @@ use crate::{
 };
 
 use async_trait::async_trait;
+use futures::StreamExt;
 use proven_messaging::{
-    client::Client,
+    client::{Client, ClientResponseType},
     stream::{InitializedStream, Stream},
 };
-use proven_sql::{Rows, SqlConnection, SqlParam};
+use proven_sql::{SqlConnection, SqlParam};
 
 /// A connection to a streamed SQL store.
 #[derive(Clone)]
@@ -44,8 +45,8 @@ where
         let request = Request::Execute(query.into(), params);
 
         match self.client.request(request).await.map_err(Error::Client)? {
-            Response::Execute(affected_rows) => Ok(affected_rows),
-            Response::Failed(error) => Err(Error::Libsql(error)),
+            ClientResponseType::Response(Response::Execute(affected_rows)) => Ok(affected_rows),
+            ClientResponseType::Response(Response::Failed(error)) => Err(Error::Libsql(error)),
             _ => unreachable!(),
         }
     }
@@ -58,8 +59,10 @@ where
         let request = Request::ExecuteBatch(query.into(), params);
 
         match self.client.request(request).await.map_err(Error::Client)? {
-            Response::ExecuteBatch(affected_rows) => Ok(affected_rows),
-            Response::Failed(error) => Err(Error::Libsql(error)),
+            ClientResponseType::Response(Response::ExecuteBatch(affected_rows)) => {
+                Ok(affected_rows)
+            }
+            ClientResponseType::Response(Response::Failed(error)) => Err(Error::Libsql(error)),
             _ => unreachable!(),
         }
     }
@@ -68,8 +71,10 @@ where
         let request = Request::Migrate(query.into());
 
         match self.client.request(request).await.map_err(Error::Client)? {
-            Response::Migrate(needed_migration) => Ok(needed_migration),
-            Response::Failed(error) => Err(Error::Libsql(error)),
+            ClientResponseType::Response(Response::Migrate(needed_migration)) => {
+                Ok(needed_migration)
+            }
+            ClientResponseType::Response(Response::Failed(error)) => Err(Error::Libsql(error)),
             _ => unreachable!(),
         }
     }
@@ -78,13 +83,16 @@ where
         &self,
         query: Q,
         params: Vec<SqlParam>,
-    ) -> Result<Rows, Self::Error> {
+    ) -> Result<Box<dyn futures::Stream<Item = Vec<SqlParam>> + Send + Unpin>, Self::Error> {
         let request = Request::Query(query.into(), params);
 
         match self.client.request(request).await.map_err(Error::Client)? {
-            Response::Query(rows) => Ok(rows),
-            Response::Failed(error) => Err(Error::Libsql(error)),
-            _ => unreachable!(),
+            ClientResponseType::Stream(stream) => Ok(Box::new(stream.map(|item| match item {
+                Response::Row(row) => row,
+                _ => unreachable!(),
+            }))),
+            ClientResponseType::Response(Response::Failed(error)) => Err(Error::Libsql(error)),
+            ClientResponseType::Response(_) => unreachable!(),
         }
     }
 }

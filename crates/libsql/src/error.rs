@@ -3,9 +3,6 @@ use crate::SqlType;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-/// Result type for this crate.
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Copy of `libsql::Error` with some adjustments for serialization.
 #[derive(Clone, Debug, Deserialize, Error, Serialize)]
 pub enum LibSqlError {

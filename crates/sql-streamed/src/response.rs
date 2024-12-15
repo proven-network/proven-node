@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use proven_sql::Rows;
+use proven_sql::SqlParam;
 use serde::{Deserialize, Serialize};
 
 /// A response from a SQL store.
@@ -17,8 +17,8 @@ pub enum Response {
     /// Whether a schema migration was needed.
     Migrate(bool),
 
-    /// The rows returned by a query.
-    Query(Rows),
+    /// A row returned by a query.
+    Row(Vec<SqlParam>),
 }
 
 impl TryFrom<Bytes> for Response {

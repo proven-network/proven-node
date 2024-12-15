@@ -9,6 +9,7 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 deno_core = { workspace = true }
 deno_permissions = { workspace = true }
+futures = { workspace = true }
 proven-locks = { workspace = true }
 proven-sql = { workspace = true }
 proven-store = { workspace = true }

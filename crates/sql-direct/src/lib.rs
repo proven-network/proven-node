@@ -103,7 +103,7 @@ impl_scoped_sql_store!(
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use futures::StreamExt;
     use proven_sql::{SqlConnection, SqlParam};
     use tempfile::tempdir;
 
@@ -134,20 +134,19 @@ mod tests {
 
         assert_eq!(response, 1);
 
-        let response = connection
+        let mut stream = connection
             .query("SELECT id, email FROM users", vec![])
             .await
             .unwrap();
 
-        assert_eq!(response.column_count, 2);
-        assert_eq!(response.column_names, vec!["id", "email"]);
-        assert_eq!(response.column_types, vec!["INTEGER", "TEXT"]);
+        let row = stream.next().await.unwrap();
+
         assert_eq!(
-            response.rows,
-            vec![vec![
+            row,
+            vec![
                 SqlParam::Integer(1),
                 SqlParam::Text("alice@example.com".to_string())
-            ]]
+            ]
         );
     }
 }

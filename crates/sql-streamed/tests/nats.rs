@@ -1,3 +1,4 @@
+use futures::StreamExt;
 use proven_messaging::stream::Stream;
 use proven_messaging_nats::{
     client::NatsClientOptions,
@@ -63,26 +64,23 @@ async fn test_nats_sql_store() {
 
         assert_eq!(response, 1);
 
-        let response = connection
+        let mut rows = connection
             .query("SELECT id, email FROM users".to_string(), vec![])
             .await
             .unwrap();
 
-        assert_eq!(response.column_count, 2);
+        let mut results = Vec::new();
+        while let Some(row) = rows.next().await {
+            results.push(row);
+        }
+
+        assert_eq!(results.len(), 1);
         assert_eq!(
-            response.column_names,
-            vec!["id".to_string(), "email".to_string()]
-        );
-        assert_eq!(
-            response.column_types,
-            vec!["INTEGER".to_string(), "TEXT".to_string()]
-        );
-        assert_eq!(
-            response.rows,
-            vec![vec![
+            results[0],
+            vec![
                 SqlParam::Integer(1),
                 SqlParam::Text("alice@example.com".to_string())
-            ]]
+            ]
         );
     })
     .await;
