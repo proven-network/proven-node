@@ -26,7 +26,7 @@ where
     type Error: StoreError;
 
     /// Deletes a key from the store.
-    async fn del<K>(&self, key: K) -> Result<(), Self::Error>
+    async fn delete<K>(&self, key: K) -> Result<(), Self::Error>
     where
         K: Clone + Into<String> + Send;
 

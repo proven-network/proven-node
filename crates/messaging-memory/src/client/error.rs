@@ -18,6 +18,10 @@ pub enum Error {
     /// Error sending.
     #[error("send error")]
     Send,
+
+    /// Stream publish error.
+    #[error("stream publish error")]
+    StreamPublish,
 }
 
 impl ClientError for Error {}

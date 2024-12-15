@@ -100,7 +100,7 @@ where
         handler: X,
     ) -> Result<Self, Self::Error> {
         // Nothing to catch up on for in-memory
-        handler.on_caught_up().await.unwrap();
+        let _ = handler.on_caught_up().await;
 
         let last_seq = Arc::new(Mutex::new(0));
 
@@ -134,7 +134,7 @@ where
                     request.sequence_number,
                 );
 
-                handler.handle(request.payload, responder).await.unwrap();
+                let _ = handler.handle(request.payload, responder).await;
 
                 let mut seq = last_seq_clone.lock().await;
                 if request.sequence_number > *seq {

@@ -238,7 +238,7 @@ where
     }
 
     /// Deletes the message with the given sequence number.
-    async fn del(&self, seq: u64) -> Result<(), Self::Error> {
+    async fn delete(&self, seq: u64) -> Result<(), Self::Error> {
         // TODO: Add error handling for sequence number conversion
         let seq_usize: usize = seq.try_into().unwrap();
 
@@ -808,7 +808,7 @@ mod tests {
         stream.publish(message3.clone()).await.unwrap();
 
         // Delete middle message
-        stream.del(1).await.unwrap();
+        stream.delete(1).await.unwrap();
 
         // First and last messages should still be accessible
         assert_eq!(stream.get(0).await.unwrap(), Some(message1));
@@ -816,7 +816,7 @@ mod tests {
         assert_eq!(stream.get(2).await.unwrap(), Some(message3.clone()));
 
         // Attempting to delete an invalid sequence should fail
-        assert!(stream.del(99).await.is_err());
+        assert!(stream.delete(99).await.is_err());
 
         // Last message should still be message3
         assert_eq!(stream.last_message().await.unwrap(), Some(message3));

@@ -95,7 +95,7 @@ where
 {
     type Error = Error<DE, SE>;
 
-    async fn del<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let path = self.get_file_path(&key.into());
         fs::remove_file(path)
             .await
@@ -327,7 +327,7 @@ mod tests {
         let value = Bytes::from_static(b"test_value");
 
         store.put(key.clone(), value.clone()).await.unwrap();
-        store.del(key.clone()).await.unwrap();
+        store.delete(key.clone()).await.unwrap();
         let result = store.get(key).await.unwrap();
 
         assert_eq!(result, None);
@@ -415,7 +415,7 @@ mod tests {
         assert_eq!(retrieved_value, Some(value));
 
         // Test del
-        store.del(key).await.expect("Failed to delete value");
+        store.delete(key).await.expect("Failed to delete value");
         let retrieved_value = store.get(key).await.expect("Failed to get value");
         assert_eq!(retrieved_value, None);
     }
@@ -439,7 +439,7 @@ mod tests {
         assert_eq!(retrieved_value, Some(value));
 
         // Test del
-        store.del(key).await.expect("Failed to delete value");
+        store.delete(key).await.expect("Failed to delete value");
         let retrieved_value = store.get(key).await.expect("Failed to get value");
         assert_eq!(retrieved_value, None);
     }

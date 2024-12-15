@@ -169,7 +169,7 @@ where
         drop(service_responses);
         drop(state);
 
-        self.stream.del(self.stream_sequence).await.unwrap();
+        let _ = self.stream.delete(self.stream_sequence).await;
 
         MemoryUsedServiceResponder
     }
@@ -258,7 +258,7 @@ where
             drop(state);
         }
 
-        self.stream.del(self.stream_sequence).await.unwrap();
+        self.stream.delete(self.stream_sequence).await.unwrap();
 
         MemoryUsedServiceResponder
     }

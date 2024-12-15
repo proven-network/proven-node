@@ -83,7 +83,7 @@ where
         X: ServiceHandler<T, D, S>;
 
     /// Deletes the message with the given sequence number.
-    async fn del(&self, seq: u64) -> Result<(), Self::Error>;
+    async fn delete(&self, seq: u64) -> Result<(), Self::Error>;
 
     /// Gets the message with the given sequence number.
     async fn get(&self, seq: u64) -> Result<Option<T>, Self::Error>;

@@ -225,7 +225,7 @@ where
             match scoped_challenge_store.get(challenge.clone()).await {
                 Ok(_) => {
                     scoped_challenge_store
-                        .del(challenge.clone())
+                        .delete(challenge.clone())
                         .await
                         .map_err(Error::ChallengeStore)?;
                 }

@@ -140,7 +140,7 @@ where
 {
     type Error = Error<DE, SE>;
 
-    async fn del<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let key = self.get_key(key);
 
         let resp = self

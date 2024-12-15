@@ -51,6 +51,7 @@ where
     RD: Debug + Send + StdError + Sync + 'static,
     RS: Debug + Send + StdError + Sync + 'static,
 {
+    caught_up: bool,
     nats_client: NatsClient,
     reply_stream_name: String,
     request_id: String,
@@ -83,6 +84,7 @@ where
     /// Creates a new NATS service responder.
     #[must_use]
     pub const fn new(
+        caught_up: bool,
         nats_client: NatsClient,
         reply_stream_name: String,
         request_id: String,
@@ -90,6 +92,7 @@ where
         stream_sequence: u64,
     ) -> Self {
         Self {
+            caught_up,
             nats_client,
             reply_stream_name,
             request_id,
@@ -180,6 +183,11 @@ where
     type UsedResponder = NatsUsedServiceResponder;
 
     async fn reply(self, response: R) -> Self::UsedResponder {
+        // No need to reply if service still catching up with stream
+        if !self.caught_up {
+            return NatsUsedServiceResponder;
+        }
+
         let result_bytes: Bytes = response.try_into().unwrap();
         let mut headers = HeaderMap::new();
         headers.insert("request-id", self.request_id.clone());
@@ -193,12 +201,17 @@ where
     }
 
     async fn reply_and_delete_request(self, response: R) -> Self::UsedResponder {
+        // No need to reply if service still catching up with stream
+        if !self.caught_up {
+            return NatsUsedServiceResponder;
+        }
+
         let stream_sequence = self.stream_sequence;
         let stream = self.stream.clone();
 
         let used_responder = Self::reply(self, response).await;
 
-        stream.del(stream_sequence).await.unwrap();
+        stream.delete(stream_sequence).await.unwrap();
 
         used_responder
     }
@@ -207,6 +220,11 @@ where
     where
         W: Stream<Item = R> + Send + Unpin,
     {
+        // No need to reply if service still catching up with stream
+        if !self.caught_up {
+            return NatsUsedServiceResponder;
+        }
+
         let batched_stream = Self::batch_stream(response_stream);
         let mut peekable_stream = batched_stream.peekable();
         let mut pinned_stream = Pin::new(&mut peekable_stream);
@@ -260,12 +278,17 @@ where
     where
         W: Stream<Item = R> + Send + Unpin,
     {
+        // No need to reply if service still catching up with stream
+        if !self.caught_up {
+            return NatsUsedServiceResponder;
+        }
+
         let stream_sequence = self.stream_sequence;
         let stream = self.stream.clone();
 
         let used_responder = Self::stream(self, response_stream).await;
 
-        stream.del(stream_sequence).await.unwrap();
+        stream.delete(stream_sequence).await.unwrap();
 
         used_responder
     }

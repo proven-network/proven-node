@@ -133,6 +133,7 @@ where
                     (reply_stream_header, request_id_header)
                 {
                     let responder = NatsServiceResponder::new(
+                        caught_up,
                         nats_client.clone(),
                         reply_stream_name.clone().to_string(),
                         request_id.clone().to_string(),
@@ -148,6 +149,8 @@ where
                     message.ack().await.unwrap();
                 }
 
+                // This check will re-fetch the last sequence number from the
+                // stream in case it's changed since the service initialized
                 if !caught_up
                     && message.info().unwrap().stream_sequence >= initial_stream_seq
                     && stream.last_seq().await.unwrap_or(0)
@@ -257,6 +260,11 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use tokio::sync::Mutex;
 
+    async fn cleanup_stream(client: &async_nats::Client, stream_name: &str) {
+        let js = async_nats::jetstream::new(client.clone());
+        let _ = js.delete_stream(stream_name).await;
+    }
+
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
     struct TestMessage {
         content: String,
@@ -339,11 +347,6 @@ mod tests {
 
             Ok(())
         }
-    }
-
-    async fn cleanup_stream(client: &async_nats::Client, stream_name: &str) {
-        let js = async_nats::jetstream::new(client.clone());
-        let _ = js.delete_stream(stream_name).await;
     }
 
     #[tokio::test]

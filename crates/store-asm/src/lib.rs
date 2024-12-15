@@ -181,7 +181,7 @@ where
 {
     type Error = Error<DE, SE>;
 
-    async fn del<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
 
         secret_map.remove(&key.into());
@@ -209,7 +209,11 @@ where
         Ok(secret_map.keys().cloned().collect())
     }
 
-    async fn put<K: Clone + Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+    async fn put<K: Clone + Into<String> + Send>(
+        &self,
+        key: K,
+        value: T,
+    ) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
 
         let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;

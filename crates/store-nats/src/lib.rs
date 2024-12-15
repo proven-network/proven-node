@@ -152,7 +152,7 @@ where
 {
     type Error = Error<DE, SE>;
 
-    async fn del<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         self.get_kv_store()
             .await?
             .delete(key.into())

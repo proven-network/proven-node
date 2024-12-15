@@ -246,7 +246,11 @@ where
         &self,
         request: T,
     ) -> Result<ClientResponseType<X::ResponseType>, Self::Error> {
-        let sequence_number = self.stream.publish(request.clone()).await.unwrap();
+        let sequence_number = self
+            .stream
+            .publish(request.clone())
+            .await
+            .map_err(|_| Error::StreamPublish)?;
 
         let request_id = self
             .request_id_counter

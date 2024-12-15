@@ -428,6 +428,11 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use tokio::time::timeout;
 
+    async fn cleanup_stream(client: &async_nats::Client, stream_name: &str) {
+        let js = async_nats::jetstream::new(client.clone());
+        let _ = js.delete_stream(stream_name).await;
+    }
+
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
     struct TestMessage {
         content: String,
@@ -525,11 +530,6 @@ mod tests {
         }
     }
 
-    async fn cleanup_stream(client: &async_nats::Client, stream_name: &str) {
-        let js = async_nats::jetstream::new(client.clone());
-        let _ = js.delete_stream(stream_name).await;
-    }
-
     #[tokio::test]
     async fn test_client_request_response() {
         // Connect to NATS
@@ -539,11 +539,11 @@ mod tests {
             .await
             .expect("Failed to connect to NATS");
 
-        cleanup_stream(&client, "test_client_stream").await;
+        cleanup_stream(&client, "test_client_request_response").await;
 
         // Create stream
         let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
-            "test_client_stream",
+            "test_client_request_response",
             NatsStreamOptions {
                 client: client.clone(),
             },
@@ -555,7 +555,7 @@ mod tests {
         let _service = initialized_stream
             .clone()
             .start_service(
-                "test_service",
+                "test_client_request_response",
                 NatsServiceOptions {
                     client: client.clone(),
                     durable_name: None,
@@ -569,7 +569,7 @@ mod tests {
         // Create client
         let client = initialized_stream
             .client(
-                "test_service",
+                "test_client_request_response",
                 NatsClientOptions {
                     client: client.clone(),
                 },
@@ -651,11 +651,11 @@ mod tests {
             .await
             .expect("Failed to connect to NATS");
 
-        cleanup_stream(&client, "test_client_stream").await;
+        cleanup_stream(&client, "test_client_stream_response").await;
 
         // Create stream
         let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
-            "test_client_stream",
+            "test_client_stream_response",
             NatsStreamOptions {
                 client: client.clone(),
             },
@@ -667,7 +667,7 @@ mod tests {
         let _service = initialized_stream
             .clone()
             .start_service(
-                "test_service",
+                "test_client_stream_response",
                 NatsServiceOptions {
                     client: client.clone(),
                     durable_name: None,
@@ -681,7 +681,7 @@ mod tests {
         // Create client
         let client = initialized_stream
             .client(
-                "test_service",
+                "test_client_stream_response",
                 NatsClientOptions {
                     client: client.clone(),
                 },

@@ -123,7 +123,7 @@ where
         let last_seq = Arc::new(Mutex::new(0));
 
         // In-memory never has anythong to catch up on.
-        handler.on_caught_up().await.unwrap();
+        let _ = handler.on_caught_up().await;
 
         tokio::spawn(Self::process_messages(
             last_seq.clone(),

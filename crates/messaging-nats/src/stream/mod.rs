@@ -196,7 +196,7 @@ where
     }
 
     /// Deletes the message with the given sequence number.
-    async fn del(&self, seq: u64) -> Result<(), Self::Error> {
+    async fn delete(&self, seq: u64) -> Result<(), Self::Error> {
         self.nats_stream
             .delete_message(seq)
             .await
@@ -613,7 +613,7 @@ mod tests {
 
         // Delete the message
         initialized_stream
-            .del(seq)
+            .delete(seq)
             .await
             .expect("Failed to delete message");
 

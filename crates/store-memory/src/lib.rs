@@ -56,7 +56,7 @@ where
 {
     type Error = Error;
 
-    async fn del<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         self.map.lock().await.remove(&self.get_key(key));
         Ok(())
     }
@@ -169,7 +169,7 @@ mod tests {
         let value = Bytes::from_static(b"test_value");
 
         store.put(key.clone(), value.clone()).await.unwrap();
-        store.del(key.clone()).await.unwrap();
+        store.delete(key.clone()).await.unwrap();
         let result = store.get(key).await.unwrap();
 
         assert_eq!(result, None);
