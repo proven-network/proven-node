@@ -101,8 +101,6 @@ impl
                 Ok(rows) => {
                     tokio::pin!(rows);
 
-                    // TODO: Should actually batch these into chunks (ensuring that the size of each batch is under 1MB for NATS)
-
                     responder
                         .stream_and_delete_request(rows.map(Response::Row))
                         .await
@@ -117,10 +115,8 @@ impl
     }
 
     async fn on_caught_up(&self) -> Result<(), Error> {
-        let value = self.caught_up_tx.lock().await.take();
-        if let Some(tx) = value {
-            let _ = tx.send(());
-        }
-        Ok(())
+        self.caught_up_tx.lock().await.take().map_or(Ok(()), |tx| {
+            tx.send(()).map_err(|()| Error::CaughtUpChannelClosed)
+        })
     }
 }

@@ -99,6 +99,9 @@ where
         _options: Self::Options,
         handler: X,
     ) -> Result<Self, Self::Error> {
+        // Nothing to catch up on for in-memory
+        handler.on_caught_up().await.unwrap();
+
         let last_seq = Arc::new(Mutex::new(0));
 
         // Subscribe to client requests
@@ -106,8 +109,8 @@ where
         if !state.has::<GlobalState<T>>() {
             state.put(GlobalState::<T>::default());
         }
-        let subject_state = state.borrow::<GlobalState<T>>();
-        let mut client_requests = subject_state.client_requests.lock().await;
+        let global_state = state.borrow::<GlobalState<T>>();
+        let mut client_requests = global_state.client_requests.lock().await;
         let (tx, mut rx) = broadcast::channel(100);
         client_requests.insert(name.clone(), tx);
         drop(client_requests);
@@ -140,9 +143,6 @@ where
                 drop(seq);
             }
         });
-
-        // Nothing to catch up on for in-memory
-        handler.on_caught_up().await.unwrap();
 
         Ok(Self { last_seq, stream })
     }

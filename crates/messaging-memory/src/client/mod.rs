@@ -113,6 +113,17 @@ where
                     }
                     // Stream response with end marker
                     (Some(stream_id), Some(total_expected)) => {
+                        if total_expected == 1 {
+                            let mut response_map = response_map.lock().await;
+                            if let Some(sender) = response_map.remove(&response.request_id) {
+                                let _ = sender.send(ClientResponseType::Stream(Box::new(
+                                    futures::stream::iter(vec![response.payload]),
+                                )));
+                            }
+                            drop(response_map);
+                            continue;
+                        }
+
                         let mut stream_map = stream_map.lock().await;
                         if let Some(state) = stream_map.get_mut(&response.request_id) {
                             state.received_messages.insert(stream_id);

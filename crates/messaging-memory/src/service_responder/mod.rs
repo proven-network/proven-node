@@ -206,6 +206,7 @@ where
 
             // Format key as "{service_name}:{client_id}"
             let response_key = format!("{}:{}", self.service_name, self.client_id);
+
             if let Some(sender) = service_responses.get(&response_key) {
                 let _ = sender.send(service_response);
             }
