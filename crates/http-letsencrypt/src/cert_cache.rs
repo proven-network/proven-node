@@ -1,5 +1,7 @@
 use crate::Error;
 
+use std::convert::Infallible;
+
 use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -7,11 +9,17 @@ use bytes::Bytes;
 use proven_store::Store;
 use ring::digest::{Context, SHA256};
 
-pub struct CertCache<S: Store> {
+pub struct CertCache<S>
+where
+    S: Store<Bytes, Infallible, Infallible>,
+{
     store: S,
 }
 
-impl<S: Store> CertCache<S> {
+impl<S> CertCache<S>
+where
+    S: Store<Bytes, Infallible, Infallible>,
+{
     pub const fn new(store: S) -> Self {
         Self { store }
     }
@@ -62,7 +70,10 @@ impl<S: Store> CertCache<S> {
 }
 
 #[async_trait]
-impl<S: Store> tokio_rustls_acme::CertCache for CertCache<S> {
+impl<S> tokio_rustls_acme::CertCache for CertCache<S>
+where
+    S: Store<Bytes, Infallible, Infallible>,
+{
     type EC = Error<S::Error>;
 
     async fn load_cert(
@@ -87,7 +98,10 @@ impl<S: Store> tokio_rustls_acme::CertCache for CertCache<S> {
 }
 
 #[async_trait]
-impl<S: Store> tokio_rustls_acme::AccountCache for CertCache<S> {
+impl<S> tokio_rustls_acme::AccountCache for CertCache<S>
+where
+    S: Store<Bytes, Infallible, Infallible>,
+{
     type EA = Error<S::Error>;
 
     async fn load_account(

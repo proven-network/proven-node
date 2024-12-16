@@ -40,26 +40,38 @@ pub struct NatsStoreOptions {
 }
 
 /// KV store using NATS JS.
-pub struct NatsStore<T = Bytes, DE = Infallible, SE = Infallible>
+#[derive(Debug)]
+pub struct NatsStore<T = Bytes, D = Infallible, S = Infallible>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
 {
     bucket: String,
     client: Client,
     jetstream_context: JetStreamContext,
     max_age: Duration,
     persist: bool,
-    _marker: PhantomData<(T, DE, SE)>,
+    _marker: PhantomData<(T, D, S)>,
 }
 
-impl<T, DE, SE> Clone for NatsStore<T, DE, SE>
+impl<T, D, S> Clone for NatsStore<T, D, S>
 where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -73,27 +85,17 @@ where
     }
 }
 
-impl<T, DE, SE> Debug for NatsStore<T, DE, SE>
+impl<T, D, S> NatsStore<T, D, S>
 where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        f.debug_struct("NatsStore")
-            .field("bucket", &self.bucket)
-            .field("max_age", &self.max_age)
-            .field("persist", &self.persist)
-            .finish_non_exhaustive()
-    }
-}
-
-impl<T, DE, SE> NatsStore<T, DE, SE>
-where
-    Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
 {
     /// Creates a new `NatsStore` with the specified options.
     #[must_use]
@@ -117,7 +119,7 @@ where
         }
     }
 
-    async fn get_kv_store(&self) -> Result<KvStore, Error<DE, SE>> {
+    async fn get_kv_store(&self) -> Result<KvStore, Error<D, S>> {
         let config = Config {
             bucket: self.bucket.clone(),
             max_age: self.max_age,
@@ -137,20 +139,19 @@ where
 }
 
 #[async_trait]
-impl<T, DE, SE> Store<T, DE, SE> for NatsStore<T, DE, SE>
+impl<T, D, S> Store<T, D, S> for NatsStore<T, D, S>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
     T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
         + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
 {
-    type Error = Error<DE, SE>;
+    type Error = Error<D, S>;
 
     async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         self.get_kv_store()
@@ -190,7 +191,11 @@ where
             .unwrap())
     }
 
-    async fn put<K: Clone + Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+    async fn put<K: Clone + Into<String> + Send>(
+        &self,
+        key: K,
+        value: T,
+    ) -> Result<(), Self::Error> {
         let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
         self.get_kv_store()
             .await?
@@ -206,38 +211,38 @@ macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            pub struct [< NatsStore $index >]<T = Bytes, DE = Infallible, SE = Infallible>
+            pub struct [< NatsStore $index >]<T = Bytes, D = Infallible, S = Infallible>
             where
                 Self: Clone + Debug + Send + Sync + 'static,
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
             {
                 bucket: String,
                 client: Client,
                 jetstream_context: JetStreamContext,
                 max_age: Duration,
                 persist: bool,
-                _marker: PhantomData<(T, DE, SE)>,
+                _marker: PhantomData<(T, D, S)>,
             }
 
-            impl<T, DE, SE> Clone for [< NatsStore $index >]<T, DE, SE>
+            impl<T, D, S> Clone for [< NatsStore $index >]<T, D, S>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
             {
                 fn clone(&self) -> Self {
                     Self {
@@ -251,17 +256,17 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> Debug for [< NatsStore $index >]<T, DE, SE>
+            impl<T, D, S> Debug for [< NatsStore $index >]<T, D, S>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
             {
                 fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
                     f.debug_struct(stringify!([< NatsStore $index >]))
@@ -270,18 +275,18 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> [< NatsStore $index >]<T, DE, SE>
+            impl<T, D, S> [< NatsStore $index >]<T, D, S>
             where
                 Self: Debug + Send + Sync + 'static,
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
             {
                 /// Creates a new `[< NatsStore $index >]` with the specified options.
                 #[must_use]
@@ -307,23 +312,26 @@ macro_rules! impl_scoped_store {
             }
 
             #[async_trait]
-            impl<T, DE, SE> [< Store $index >]<T, DE, SE> for [< NatsStore $index >]<T, DE, SE>
+            impl<T, D, S> [< Store $index >]<T, D, S> for [< NatsStore $index >]<T, D, S>
             where
                 Self: Clone + Debug + Send + Sync + 'static,
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
             {
-                type Error = Error<DE, SE>;
-                type Scoped = $parent<T, DE, SE>;
+                type Error = Error<D, S>;
+                type Scoped = $parent<T, D, S>;
 
-                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                fn scope<K>(&self, scope: K) -> Self::Scoped
+                where
+                    K: Clone + Into<String> + Send,
+                {
                     let mut bucket = self.bucket.clone();
                     bucket.push_str(&format!(".{}", scope.into()));
                     Self::Scoped::new(NatsStoreOptions {

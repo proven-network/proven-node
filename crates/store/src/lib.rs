@@ -15,7 +15,7 @@ pub trait StoreError: Error + Send + Sync + 'static {}
 
 /// A trait representing a key-value store with asynchronous operations.
 #[async_trait]
-pub trait Store<T = Bytes, DE = Infallible, SE = Infallible>
+pub trait Store<T, DE, SE>
 where
     Self: Clone + Send + Sync + 'static,
     DE: Error + Send + Sync + 'static,

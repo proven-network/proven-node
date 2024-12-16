@@ -23,22 +23,28 @@ use tokio::fs;
 use tokio::io::{self, AsyncWriteExt};
 
 /// KV store using files on disk.
-pub struct FsStore<T = Bytes, DE = Infallible, SE = Infallible>
+#[derive(Debug)]
+pub struct FsStore<T = Bytes, D = Infallible, S = Infallible>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
 {
     dir: PathBuf,
-    _marker: PhantomData<(T, DE, SE)>,
+    _marker: PhantomData<(T, D, S)>,
 }
 
-impl<T, DE, SE> Clone for FsStore<T, DE, SE>
+impl<T, D, S> Clone for FsStore<T, D, S>
 where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -48,23 +54,18 @@ where
     }
 }
 
-impl<T, DE, SE> Debug for FsStore<T, DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        f.debug_struct("FsStore").field("dir", &self.dir).finish()
-    }
-}
-
-impl<T, DE, SE> FsStore<T, DE, SE>
+impl<T, D, S> FsStore<T, D, S>
 where
     Self: Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-    T: Clone + Debug + Send + Sync + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
 {
     /// Creates a new `FsStore` with the specified directory.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
@@ -80,20 +81,20 @@ where
 }
 
 #[async_trait]
-impl<T, DE, SE> Store<T, DE, SE> for FsStore<T, DE, SE>
+impl<T, D, S> Store<T, D, S> for FsStore<T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
     T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
         + 'static,
 {
-    type Error = Error<DE, SE>;
+    type Error = Error<D, S>;
 
     async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let path = self.get_file_path(&key.into());
@@ -136,7 +137,11 @@ where
         Ok(keys)
     }
 
-    async fn put<K: Clone + Into<String> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+    async fn put<K: Clone + Into<String> + Send>(
+        &self,
+        key: K,
+        value: T,
+    ) -> Result<(), Self::Error> {
         let path = self.get_file_path(&key.into());
         if let Some(parent) = path.parent() {
             if !parent.exists() {
@@ -160,34 +165,33 @@ macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            pub struct [< FsStore $index >]<T = Bytes, DE = Infallible, SE = Infallible>
+            pub struct [< FsStore $index >]<T = Bytes, D = Infallible, S = Infallible>
             where
-            Self: Debug + Send + Sync + 'static,
-            DE: Send + StdError + Sync + 'static,
-            SE: Send + StdError + Sync + 'static,
-            T: Clone
-                    + Debug
-                    + Send
-                    + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
-                    + 'static,
-            {
-                dir: PathBuf,
-                _marker: PhantomData<(T, DE, SE)>,
-            }
-
-            impl<T, DE, SE> Clone for [< FsStore $index >]<T, DE, SE>
-            where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
+            {
+                dir: PathBuf,
+                _marker: PhantomData<(T, D, S)>,
+            }
+
+            impl<T, D, S> Clone for [< FsStore $index >]<T, D, S>
+            where
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
             {
                 fn clone(&self) -> Self {
                     Self {
@@ -197,17 +201,17 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> Debug for [< FsStore $index >]<T, DE, SE>
+            impl<T, D, S> Debug for [< FsStore $index >]<T, D, S>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
             {
                 fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
                     f.debug_struct(stringify!([< FsStore $index >]))
@@ -216,18 +220,17 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> [< FsStore $index >]<T, DE, SE>
+            impl<T, D, S> [< FsStore $index >]<T, D, S>
             where
-                Self: Debug + Send + Sync + 'static,
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
             {
                 /// Creates a new `[< FsStore $index >]` with the specified directory.
                 #[must_use]
@@ -240,23 +243,25 @@ macro_rules! impl_scoped_store {
             }
 
             #[async_trait]
-            impl<T, DE, SE> [< Store $index >]<T, DE, SE> for [< FsStore $index >]<T, DE, SE>
+            impl<T, D, S> [< Store $index >]<T, D, S> for [< FsStore $index >]<T, D, S>
             where
-                Self: Clone + Debug + Send + Sync + 'static,
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
             {
-                type Error = Error<DE, SE>;
-                type Scoped = $parent<T, DE, SE>;
+                type Error = Error<D, S>;
+                type Scoped = $parent<T, D, S>;
 
-                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                fn scope<K>(&self, scope: K) -> Self::Scoped
+                where
+                    K: Clone + Into<String> + Send,
+                {
                     let mut dir = self.dir.clone();
                     dir.push(scope.into());
                     Self::Scoped::new(dir)

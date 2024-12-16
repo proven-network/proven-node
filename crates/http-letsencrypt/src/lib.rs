@@ -16,6 +16,7 @@ use cert_cache::CertCache;
 pub use error::Error;
 use multi_resolver::MultiResolver;
 
+use std::convert::Infallible;
 use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -23,6 +24,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::http::Method;
 use axum::Router;
+use bytes::Bytes;
 use hickory_proto::rr::{RData, RecordType};
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use hickory_resolver::Resolver;
@@ -38,7 +40,10 @@ use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 
 /// Secure HTTPS server using Let's Encrypt certificates.
-pub struct LetsEncryptHttpServer<S: Store> {
+pub struct LetsEncryptHttpServer<S>
+where
+    S: Store<Bytes, Infallible, Infallible>,
+{
     acceptor: AxumAcceptor,
     cert_store: S,
     cname_domain: String,
@@ -52,7 +57,7 @@ pub struct LetsEncryptHttpServer<S: Store> {
 /// Options for creating a new `LetsEncryptHttpServer`.
 pub struct LetsEncryptHttpServerOptions<S>
 where
-    S: Store,
+    S: Store<Bytes, Infallible, Infallible>,
 {
     /// The store for certificates.
     pub cert_store: S,
@@ -72,7 +77,7 @@ where
 
 impl<S> LetsEncryptHttpServer<S>
 where
-    S: Store,
+    S: Store<Bytes, Infallible, Infallible>,
 {
     /// Creates a new `LetsEncryptHttpServer`.
     ///
@@ -177,7 +182,10 @@ where
 }
 
 #[async_trait]
-impl<S: Store> HttpServer for LetsEncryptHttpServer<S> {
+impl<S> HttpServer for LetsEncryptHttpServer<S>
+where
+    S: Store<Bytes, Infallible, Infallible>,
+{
     type Error = Error<S::Error>;
 
     async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::Error> {

@@ -9,6 +9,8 @@ mod error;
 
 pub use error::Error;
 
+use std::convert::Infallible;
+use std::error::Error as StdError;
 use std::sync::Arc;
 use std::{collections::HashMap, fmt::Debug};
 
@@ -18,19 +20,64 @@ use proven_store::{Store, Store1, Store2, Store3};
 use tokio::sync::Mutex;
 
 /// In-memory key-value store.
-#[derive(Clone, Debug, Default)]
-pub struct MemoryStore<T = Bytes> {
+#[derive(Debug, Default)]
+pub struct MemoryStore<T = Bytes, D = Infallible, S = Infallible>
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
     map: Arc<Mutex<HashMap<String, T>>>,
     prefix: Option<String>,
+    _marker: std::marker::PhantomData<(D, S)>,
 }
 
-impl<T> MemoryStore<T> {
+impl<T, D, S> Clone for MemoryStore<T, D, S>
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            map: self.map.clone(),
+            prefix: self.prefix.clone(),
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T, D, S> MemoryStore<T, D, S>
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
     /// Creates a new `MemoryStore`.
     #[must_use]
     pub fn new() -> Self {
         Self {
             map: Arc::new(Mutex::new(HashMap::new())),
             prefix: None,
+            _marker: std::marker::PhantomData,
         }
     }
 
@@ -38,6 +85,7 @@ impl<T> MemoryStore<T> {
         Self {
             map: Arc::new(Mutex::new(HashMap::new())),
             prefix: Some(prefix),
+            _marker: std::marker::PhantomData,
         }
     }
 
@@ -50,9 +98,17 @@ impl<T> MemoryStore<T> {
 }
 
 #[async_trait]
-impl<T> Store<T> for MemoryStore<T>
+impl<T, D, S> Store<T, D, S> for MemoryStore<T, D, S>
 where
-    T: Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = Error;
 
@@ -93,17 +149,61 @@ macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            #[derive(Clone, Debug, Default)]
-            pub struct [< MemoryStore $index >] {
+            #[derive(Debug, Default)]
+            pub struct [< MemoryStore $index >]<T = Bytes, D = Infallible, S = Infallible>
+            where
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+            {
                 prefix: Option<String>,
+                _marker: std::marker::PhantomData<(T, D, S)>,
             }
 
-            impl [< MemoryStore $index >] {
+            impl<T, D, S> Clone for [< MemoryStore $index >]<T, D, S>
+            where
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+            {
+                fn clone(&self) -> Self {
+                    Self {
+                        prefix: self.prefix.clone(),
+                        _marker: std::marker::PhantomData,
+                    }
+                }
+            }
+
+            impl<T, D, S> [< MemoryStore $index >]<T, D, S>
+            where
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+            {
                 /// Creates a new `[< MemoryStore $index >]`.
                 #[must_use]
                 pub const fn new() -> Self {
                     Self {
                         prefix: None,
+                        _marker: std::marker::PhantomData,
                     }
                 }
 
@@ -111,21 +211,36 @@ macro_rules! impl_scoped_store {
                 const fn with_scope(prefix: String) -> Self {
                     Self {
                         prefix: Some(prefix),
+                        _marker: std::marker::PhantomData,
                     }
                 }
             }
 
             #[async_trait]
-            impl [< Store $index >] for [< MemoryStore $index >] {
+            impl<T, D, S> [< Store $index >]<T, D, S> for [< MemoryStore $index >]<T, D, S>
+            where
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+            {
                 type Error = Error;
-                type Scoped = $parent;
+                type Scoped = $parent<T, D, S>;
 
-                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> $parent {
+                fn scope<K>(&self, scope: K) -> $parent<T, D, S>
+                where
+                    K: Clone + Into<String> + Send,
+                {
                     let new_scope = match &self.prefix {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                         None => scope.into(),
                     };
-                    $parent::with_scope(new_scope)
+                    $parent::<T, D, S>::with_scope(new_scope)
                 }
             }
         }
@@ -204,13 +319,32 @@ mod tests {
         assert_eq!(result, Some(value));
     }
 
+    #[derive(Clone, Debug, PartialEq)]
+    struct CustomType(i32);
+
+    impl TryFrom<Bytes> for CustomType {
+        type Error = Infallible;
+
+        fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+            Ok(Self(i32::from_be_bytes(value.as_ref().try_into().unwrap())))
+        }
+    }
+
+    impl TryInto<Bytes> for CustomType {
+        type Error = Infallible;
+
+        fn try_into(self) -> Result<Bytes, Self::Error> {
+            Ok(Bytes::from(self.0.to_be_bytes().to_vec()))
+        }
+    }
+
     #[tokio::test]
     async fn test_non_bytes() {
-        let store = MemoryStore::new();
+        let store: MemoryStore<CustomType> = MemoryStore::new();
         let key = "test_key".to_string();
-        let value = 42;
+        let value = CustomType(42);
 
-        store.put(key.clone(), value).await.unwrap();
+        store.put(key.clone(), value.clone()).await.unwrap();
         let result = store.get(key.clone()).await.unwrap();
 
         assert_eq!(result, Some(value));
