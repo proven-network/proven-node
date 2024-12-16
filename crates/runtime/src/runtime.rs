@@ -13,9 +13,11 @@ use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
 use crate::{ExecutionLogs, ExecutionRequest, ExecutionResult, Result};
 
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
+use bytes::Bytes;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use radix_common::network::NetworkDefinition;
@@ -82,21 +84,21 @@ where
 /// # Example
 /// ```rust
 /// use proven_runtime::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
-/// use proven_sql_direct::DirectSqlStore;
-/// use proven_store_memory::MemoryStore;
+/// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
+/// use proven_store_memory::{MemoryStore2, MemoryStore3};
 /// use radix_common::network::NetworkDefinition;
 /// use serde_json::json;
 /// use tempfile::tempdir;
 ///
 /// let mut runtime = Runtime::new(RuntimeOptions {
-///     application_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
-///     application_store: MemoryStore::new(),
+///     application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
+///     application_store: MemoryStore2::new(),
 ///     handler_name: Some("handler".to_string()),
 ///     module: "export const handler = (a, b) => a + b;".to_string(),
-///     nft_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
-///     nft_store: MemoryStore::new(),
-///     personal_sql_store: DirectSqlStore::new(tempdir().unwrap().into_path()),
-///     personal_store: MemoryStore::new(),
+///     nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+///     nft_store: MemoryStore3::new(),
+///     personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+///     personal_store: MemoryStore3::new(),
 ///     radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///     radix_network_definition: NetworkDefinition::stokenet(),
 /// })
@@ -111,9 +113,9 @@ where
 /// ```
 pub struct Runtime<AS, PS, NS, ASS, PSS, NSS>
 where
-    AS: Store2,
-    PS: Store3,
-    NS: Store3,
+    AS: Store2<Bytes, Infallible, Infallible>,
+    PS: Store3<Bytes, Infallible, Infallible>,
+    NS: Store3<Bytes, Infallible, Infallible>,
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
