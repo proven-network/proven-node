@@ -1,11 +1,14 @@
 mod error;
 
+use bytes::BufMut;
+use bytes::BytesMut;
 pub use error::Error;
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::task::Poll;
 
 use async_nats::Client as NatsClient;
 use async_nats::HeaderMap;
@@ -14,7 +17,8 @@ use bytes::Bytes;
 use futures::Stream;
 use futures::StreamExt;
 use proven_messaging::subscription_responder::{SubscriptionResponder, UsedSubscriptionResponder};
-use uuid::Uuid;
+
+static MAX_MESSAGE_SIZE: usize = 1024 * 1024;
 
 /// A used responder for a NATS subscription.
 #[derive(Debug)]
@@ -68,6 +72,58 @@ where
             _marker: PhantomData,
         }
     }
+
+    #[allow(clippy::cast_possible_truncation)]
+    fn batch_stream<W>(stream: W) -> impl Stream<Item = Bytes> + Send + Unpin
+    where
+        W: Stream<Item = R> + Send + Unpin,
+    {
+        let mut stream = Box::pin(stream);
+        let mut current_batch = BytesMut::with_capacity(MAX_MESSAGE_SIZE);
+        let mut current_size = 0;
+
+        futures::stream::poll_fn(move |cx| {
+            loop {
+                match stream.as_mut().poll_next(cx) {
+                    Poll::Ready(Some(item)) => {
+                        if let Ok(item_bytes) = item.try_into() as Result<Bytes, RS> {
+                            let item_size = item_bytes.len();
+                            let total_size = item_size + 4;
+
+                            if !current_batch.is_empty()
+                                && current_size + total_size > MAX_MESSAGE_SIZE
+                            {
+                                // Yield current batch
+                                let batch = current_batch.split().freeze();
+                                current_batch.reserve(MAX_MESSAGE_SIZE);
+
+                                // Start new batch with current item
+                                current_batch.put_u32(item_bytes.len() as u32);
+                                current_batch.extend_from_slice(&item_bytes);
+                                current_size = total_size;
+
+                                return Poll::Ready(Some(batch));
+                            }
+
+                            // Add to current batch
+                            current_batch.put_u32(item_bytes.len() as u32);
+                            current_batch.extend_from_slice(&item_bytes);
+                            current_size += total_size;
+                        }
+                    }
+                    Poll::Ready(None) => {
+                        return if current_batch.is_empty() {
+                            Poll::Ready(None)
+                        } else {
+                            let batch = current_batch.split().freeze();
+                            Poll::Ready(Some(batch))
+                        }
+                    }
+                    Poll::Pending => return Poll::Pending,
+                }
+            }
+        })
+    }
 }
 
 #[async_trait]
@@ -94,7 +150,7 @@ where
     async fn reply(self, response: R) -> Self::UsedResponder {
         let result_bytes: Bytes = response.try_into().unwrap();
         let mut headers = HeaderMap::new();
-        headers.insert("request-id", self.request_id.clone());
+        headers.insert("Reply-Id", self.request_id.clone());
 
         self.nats_client
             .publish_with_headers(self.reply_stream_name, headers, result_bytes)
@@ -104,38 +160,58 @@ where
         NatsUsedSubscriptionResponder
     }
 
-    async fn stream<W>(self, stream: W) -> Self::UsedResponder
+    async fn stream<W>(self, response_stream: W) -> Self::UsedResponder
     where
         W: Stream<Item = R> + Send + Sync + Unpin,
     {
-        let mut peekable_stream = stream.peekable();
+        let batched_stream = Self::batch_stream(response_stream);
+        let mut peekable_stream = batched_stream.peekable();
         let mut pinned_stream = Pin::new(&mut peekable_stream);
 
-        let stream_uuid = Uuid::new_v4();
-        let mut next_headers = HeaderMap::new();
-        next_headers.insert("request-id", self.request_id.clone());
-        next_headers.insert("stream", format!("next:{stream_uuid}"));
+        let mut stream_id = 0;
 
-        match (pinned_stream.next().await, pinned_stream.peek().await) {
-            (Some(payload), Some(_)) => {
-                let bytes: Bytes = payload.try_into().unwrap();
-                self.nats_client
-                    .publish_with_headers(self.reply_stream_name, next_headers, bytes)
-                    .await
-                    .unwrap();
-            }
-            (Some(payload), None) => {
-                let mut end_headers = HeaderMap::new();
-                end_headers.insert("request-id", self.request_id);
-                end_headers.insert("stream", format!("end:{stream_uuid}"));
+        loop {
+            match (
+                pinned_stream.as_mut().next().await,
+                pinned_stream.as_mut().peek().await,
+            ) {
+                (Some(batched_bytes), Some(_)) => {
+                    stream_id += 1;
 
-                let bytes: Bytes = payload.try_into().unwrap();
-                self.nats_client
-                    .publish_with_headers(self.reply_stream_name, end_headers, bytes)
-                    .await
-                    .unwrap();
+                    let mut next_headers = HeaderMap::new();
+                    next_headers.insert("Reply-Msg-Id", self.request_id.clone());
+                    next_headers.insert("Reply-Seq", stream_id.to_string());
+
+                    self.nats_client
+                        .publish_with_headers(
+                            self.reply_stream_name.clone(),
+                            next_headers,
+                            batched_bytes,
+                        )
+                        .await
+                        .unwrap();
+                }
+                (Some(batched_bytes), None) => {
+                    stream_id += 1;
+
+                    let mut end_headers = HeaderMap::new();
+                    end_headers.insert(
+                        "Nats-Msg-Id",
+                        format!("reply:{}:{}", self.request_id.clone(), stream_id),
+                    );
+                    end_headers.insert("Reply-Msg-Id", self.request_id.clone());
+                    end_headers.insert("Reply-Seq", stream_id.to_string());
+                    end_headers.insert("Reply-Seq-End", stream_id.to_string());
+
+                    self.nats_client
+                        .publish_with_headers(self.reply_stream_name, end_headers, batched_bytes)
+                        .await
+                        .unwrap();
+
+                    break;
+                }
+                (None, Some(_) | None) => unreachable!(),
             }
-            (None, Some(_) | None) => unreachable!(),
         }
 
         NatsUsedSubscriptionResponder
