@@ -193,8 +193,6 @@ where
         headers.insert("Nats-Msg-Id", self.request_id.clone());
         headers.insert("Reply-Msg-Id", self.request_id.clone());
 
-        println!("Replying to {:?}", headers);
-
         self.nats_client
             .publish_with_headers(self.reply_stream_name, headers, result_bytes)
             .await

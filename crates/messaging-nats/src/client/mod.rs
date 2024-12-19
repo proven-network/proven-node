@@ -199,8 +199,6 @@ where
             while let Some(msg) = messages.next().await {
                 let msg = msg.unwrap();
 
-                println!("Received reply: {:?}", msg.headers);
-
                 match msg.headers.as_ref().map(|h| {
                     (
                         h.get("Reply-Msg-Id"),
