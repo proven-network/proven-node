@@ -190,7 +190,10 @@ where
 
         let result_bytes: Bytes = response.try_into().unwrap();
         let mut headers = HeaderMap::new();
-        headers.insert("request-id", self.request_id.clone());
+        headers.insert("Nats-Msg-Id", self.request_id.clone());
+        headers.insert("Reply-Msg-Id", self.request_id.clone());
+
+        println!("Replying to {:?}", headers);
 
         self.nats_client
             .publish_with_headers(self.reply_stream_name, headers, result_bytes)
@@ -240,8 +243,12 @@ where
                     stream_id += 1;
 
                     let mut next_headers = HeaderMap::new();
-                    next_headers.insert("request-id", self.request_id.clone());
-                    next_headers.insert("stream-id", stream_id.to_string());
+                    next_headers.insert(
+                        "Nats-Msg-Id",
+                        format!("reply:{}:{}", self.request_id.clone(), stream_id),
+                    );
+                    next_headers.insert("Reply-Msg-Id", self.request_id.clone());
+                    next_headers.insert("Reply-Seq", stream_id.to_string());
 
                     self.nats_client
                         .publish_with_headers(
@@ -256,9 +263,13 @@ where
                     stream_id += 1;
 
                     let mut end_headers = HeaderMap::new();
-                    end_headers.insert("request-id", self.request_id);
-                    end_headers.insert("stream-id", stream_id.to_string());
-                    end_headers.insert("stream-end", stream_id.to_string());
+                    end_headers.insert(
+                        "Nats-Msg-Id",
+                        format!("reply:{}:{}", self.request_id.clone(), stream_id),
+                    );
+                    end_headers.insert("Reply-Msg-Id", self.request_id.clone());
+                    end_headers.insert("Reply-Seq", stream_id.to_string());
+                    end_headers.insert("Reply-Seq-End", stream_id.to_string());
 
                     self.nats_client
                         .publish_with_headers(self.reply_stream_name, end_headers, batched_bytes)

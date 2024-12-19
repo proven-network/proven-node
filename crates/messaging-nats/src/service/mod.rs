@@ -126,8 +126,8 @@ where
                     continue;
                 };
 
-                let reply_stream_header = headers.get("reply-stream-name").cloned();
-                let request_id_header = headers.get("request-id").cloned();
+                let request_id_header = headers.get("Reply-Id").cloned();
+                let reply_stream_header = headers.get("Reply-Stream").cloned();
 
                 if let (Some(reply_stream_name), Some(request_id)) =
                     (reply_stream_header, request_id_header)
@@ -368,8 +368,9 @@ mod tests {
         for i in 1..=3 {
             // Just needed to service actually will process messages (simulates client publishing messages)
             let mut dummy_headers = async_nats::HeaderMap::new();
-            dummy_headers.insert("reply-stream-name", "test_on_caught_up_called_reply");
-            dummy_headers.insert("request-id", i.to_string());
+            dummy_headers.insert("Reply-Id", i.to_string());
+            dummy_headers.insert("Reply-Stream", "test_on_caught_up_called_reply");
+
             let message = TestMessage {
                 content: format!("message_{i}"),
             };

@@ -63,6 +63,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    client_id: String,
     nats_client: AsyncNatsClient,
     nats_jetstream_context: Context,
     reply_stream_name: String,
@@ -87,6 +88,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            client_id: self.client_id.clone(),
             nats_client: self.nats_client.clone(),
             nats_jetstream_context: self.nats_jetstream_context.clone(),
             reply_stream_name: self.reply_stream_name.clone(),
@@ -197,11 +199,15 @@ where
             while let Some(msg) = messages.next().await {
                 let msg = msg.unwrap();
 
-                match msg
-                    .headers
-                    .as_ref()
-                    .map(|h| (h.get("request-id"), h.get("stream-id"), h.get("stream-end")))
-                {
+                println!("Received reply: {:?}", msg.headers);
+
+                match msg.headers.as_ref().map(|h| {
+                    (
+                        h.get("Reply-Msg-Id"),
+                        h.get("Reply-Seq"),
+                        h.get("Reply-Seq-End"),
+                    )
+                }) {
                     // Single response
                     Some((Some(request_id), None, None)) => {
                         let request_id: usize = request_id.to_string().parse().unwrap();
@@ -342,7 +348,7 @@ where
         let response_map = Arc::new(Mutex::new(HashMap::new()));
 
         let jetstream_context = async_nats::jetstream::new(options.client.clone());
-        let reply_stream_name = format!("{name}_client_{client_id}");
+        let reply_stream_name = format!("{name}_CLIENT_{client_id}");
 
         let reply_stream = jetstream_context
             .create_stream(NatsStreamConfig {
@@ -356,7 +362,7 @@ where
 
         let reply_stream_consumer = reply_stream
             .create_consumer(NatsConsumerConfig {
-                name: Some(format!("{reply_stream_name}_consumer")),
+                name: Some(format!("{reply_stream_name}_CONSUMER")),
                 durable_name: None,
                 ack_policy: async_nats::jetstream::consumer::AckPolicy::None,
                 ..Default::default()
@@ -374,6 +380,7 @@ where
         );
 
         Ok(Self {
+            client_id,
             nats_client: options.client,
             nats_jetstream_context: jetstream_context,
             reply_stream_name,
@@ -398,8 +405,15 @@ where
         }
 
         let mut headers = HeaderMap::new();
-        headers.insert("reply-stream-name", self.reply_stream_name.clone().as_str());
-        headers.insert("request-id", request_id.to_string().as_str());
+        // Used for Nats-intenal deduplication & exactly-once semantics
+        headers.insert(
+            "Nats-Msg-Id",
+            format!("{}:{}", self.client_id, request_id).as_str(),
+        );
+        // Echoed back in response
+        headers.insert("Reply-Id", request_id.to_string().as_str());
+        // Used for routing response back to client
+        headers.insert("Reply-Stream", self.reply_stream_name.clone().as_str());
 
         let bytes: Bytes = request.try_into().unwrap();
 
