@@ -1,4 +1,4 @@
-use crate::SqlType;
+use crate::StatementType;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -97,7 +97,7 @@ pub enum LibSqlError {
 pub enum Error {
     /// Incorrect SQL type for request.
     #[error("Incorrect SQL type. Expected {0}, got {1}")]
-    IncorrectSqlType(SqlType, SqlType),
+    IncorrectSqlType(StatementType, StatementType),
 
     /// Invalid column count.
     #[error("Invalid column count")]

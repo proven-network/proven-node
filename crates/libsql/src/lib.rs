@@ -11,7 +11,7 @@ mod sql_type;
 use std::fmt::Debug;
 
 pub use error::Error;
-use sql_type::SqlType;
+use sql_type::StatementType;
 
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
@@ -63,18 +63,25 @@ impl Database {
         }
 
         match Self::classify_sql(query) {
-            SqlType::Migration => Err(Error::IncorrectSqlType(
-                SqlType::Mutation,
-                SqlType::Migration,
+            StatementType::Migration => Err(Error::IncorrectSqlType(
+                StatementType::Mutation,
+                StatementType::Migration,
             )),
-            SqlType::Mutation => {
+            StatementType::Mutation => {
                 let libsql_params = Self::convert_params(params);
                 self.connection
                     .execute(query, libsql_params)
                     .await
                     .map_err(Error::from)
             }
-            SqlType::Query => Err(Error::IncorrectSqlType(SqlType::Mutation, SqlType::Query)),
+            StatementType::Query => Err(Error::IncorrectSqlType(
+                StatementType::Mutation,
+                StatementType::Query,
+            )),
+            StatementType::Unknown => Err(Error::IncorrectSqlType(
+                StatementType::Mutation,
+                StatementType::Unknown,
+            )),
         }
     }
 
@@ -94,11 +101,11 @@ impl Database {
         }
 
         match Self::classify_sql(query) {
-            SqlType::Migration => Err(Error::IncorrectSqlType(
-                SqlType::Mutation,
-                SqlType::Migration,
+            StatementType::Migration => Err(Error::IncorrectSqlType(
+                StatementType::Mutation,
+                StatementType::Migration,
             )),
-            SqlType::Mutation => {
+            StatementType::Mutation => {
                 let libsql_params = params
                     .into_iter()
                     .map(Self::convert_params)
@@ -112,7 +119,14 @@ impl Database {
 
                 Ok(total)
             }
-            SqlType::Query => Err(Error::IncorrectSqlType(SqlType::Mutation, SqlType::Query)),
+            StatementType::Query => Err(Error::IncorrectSqlType(
+                StatementType::Mutation,
+                StatementType::Query,
+            )),
+            StatementType::Unknown => Err(Error::IncorrectSqlType(
+                StatementType::Mutation,
+                StatementType::Unknown,
+            )),
         }
     }
 
@@ -128,7 +142,7 @@ impl Database {
         }
 
         match Self::classify_sql(query) {
-            SqlType::Migration => {
+            StatementType::Migration => {
                 let mut hasher = Sha256::new();
                 hasher.update(query);
                 let hash = format!("{:x}", hasher.finalize());
@@ -167,11 +181,18 @@ impl Database {
 
                 Ok(true)
             }
-            SqlType::Mutation => Err(Error::IncorrectSqlType(
-                SqlType::Migration,
-                SqlType::Mutation,
+            StatementType::Mutation => Err(Error::IncorrectSqlType(
+                StatementType::Migration,
+                StatementType::Mutation,
             )),
-            SqlType::Query => Err(Error::IncorrectSqlType(SqlType::Migration, SqlType::Query)),
+            StatementType::Query => Err(Error::IncorrectSqlType(
+                StatementType::Migration,
+                StatementType::Query,
+            )),
+            StatementType::Unknown => Err(Error::IncorrectSqlType(
+                StatementType::Migration,
+                StatementType::Unknown,
+            )),
         }
     }
 
@@ -195,9 +216,15 @@ impl Database {
         }
 
         match Self::classify_sql(query) {
-            SqlType::Migration => Err(Error::IncorrectSqlType(SqlType::Query, SqlType::Migration)),
-            SqlType::Mutation => Err(Error::IncorrectSqlType(SqlType::Query, SqlType::Mutation)),
-            SqlType::Query => {
+            StatementType::Migration => Err(Error::IncorrectSqlType(
+                StatementType::Query,
+                StatementType::Migration,
+            )),
+            StatementType::Mutation => Err(Error::IncorrectSqlType(
+                StatementType::Query,
+                StatementType::Mutation,
+            )),
+            StatementType::Query => {
                 let libsql_params = Self::convert_params(params);
 
                 let libsql_rows = self
@@ -229,6 +256,10 @@ impl Database {
                     },
                 ))))
             }
+            StatementType::Unknown => Err(Error::IncorrectSqlType(
+                StatementType::Query,
+                StatementType::Unknown,
+            )),
         }
     }
 
@@ -245,15 +276,27 @@ impl Database {
             .collect()
     }
 
-    fn classify_sql(sql: &str) -> SqlType {
+    fn classify_sql(sql: &str) -> StatementType {
         let sql = sql.trim_start().to_uppercase();
 
         if sql.starts_with("SELECT") {
-            SqlType::Query
-        } else if sql.starts_with("CREATE") || sql.starts_with("ALTER") || sql.starts_with("DROP") {
-            SqlType::Migration
+            StatementType::Query
+        } else if sql.starts_with("CREATE TABLE")
+            || sql.starts_with("ALTER TABLE")
+            || sql.starts_with("DROP TABLE")
+            || sql.starts_with("CREATE INDEX")
+            || sql.starts_with("DROP INDEX")
+        {
+            StatementType::Migration
+        } else if sql.starts_with("INSERT")
+            || sql.starts_with("REPLACE")
+            || sql.starts_with("UPDATE")
+            || sql.starts_with("DELETE")
+            || sql.starts_with("UPSERT")
+        {
+            StatementType::Mutation
         } else {
-            SqlType::Mutation
+            StatementType::Unknown
         }
     }
 }
