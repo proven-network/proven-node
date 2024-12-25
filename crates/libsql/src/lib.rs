@@ -143,6 +143,20 @@ impl Database {
 
         match Self::classify_sql(query) {
             StatementType::Migration => {
+                // Check for schema names in table operations
+                let upper_query = query.trim_start().to_uppercase();
+                let mut words = upper_query.split_whitespace();
+                while let Some(word) = words.next() {
+                    if word == "TABLE" {
+                        if let Some(next_word) = words.next() {
+                            if next_word.contains('.') {
+                                return Err(Error::SchemaNameNotAllowed);
+                            }
+                        }
+                        break;
+                    }
+                }
+
                 let mut hasher = Sha256::new();
                 hasher.update(query);
                 let hash = format!("{:x}", hasher.finalize());
@@ -374,6 +388,24 @@ mod tests {
 
         let result = db
             .migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_schema_names_not_allowed_in_migrations() {
+        let db = Database::connect(":memory:").await.unwrap();
+
+        let result = db
+            .migrate("CREATE TABLE main.users (id INTEGER, email TEXT)")
+            .await;
+
+        assert!(matches!(result, Err(Error::SchemaNameNotAllowed)));
+
+        // Ensure regular table creation still works
+        let result = db
+            .migrate("CREATE TABLE users (id INTEGER, email TEXT)")
             .await;
 
         assert!(result.is_ok());

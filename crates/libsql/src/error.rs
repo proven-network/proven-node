@@ -110,6 +110,10 @@ pub enum Error {
     /// Used reserved table prefix.
     #[error("Cannot use reserved table prefix")]
     UsedReservedTablePrefix,
+
+    /// Disallow schema names (unneeded complication when DBs are easy to create).
+    #[error("Schema names (e.g., \"main.table\") are not allowed in migrations")]
+    SchemaNameNotAllowed,
 }
 
 impl From<libsql::Error> for Error {
