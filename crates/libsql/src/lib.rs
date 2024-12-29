@@ -1,17 +1,17 @@
 //! Wrapper around [libsql](https://github.com/tursodatabase/libsql) which
-//! provides additional functionality like migration
+//! provides additional functionality like migrations
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
 mod error;
-mod sql_type;
+mod statement_type;
 
 use std::fmt::Debug;
 
 pub use error::Error;
-use sql_type::StatementType;
+use statement_type::StatementType;
 
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
