@@ -130,17 +130,17 @@ default-members = [
 
 [workspace.dependencies]
 aes = "0.8.4"
-anyhow = "1.0.94"
+anyhow = "1.0.95"
 asn1-rs = "0.6.2"
 async-nats = "0.38.0"
 async-trait = "0.1.82"
-aws-config = { version = "1.5.10", features = ["behavior-version-latest"] }
+aws-config = { version = "1.5.12", features = ["behavior-version-latest"] }
 aws-nitro-enclaves-nsm-api = { git = "https://github.com/flightofthefox/aws-nitro-enclaves-nsm-api", branch = "main" }
-aws-sdk-ec2 = "1.95.0"
-aws-sdk-kms = "1.51.0"
-aws-sdk-route53resolver = "1.55.0"
-aws-sdk-s3 = "1.65.0"
-aws-sdk-secretsmanager = "1.54.0"
+aws-sdk-ec2 = "1.99.0"
+aws-sdk-kms = "1.53.0"
+aws-sdk-route53resolver = "1.57.0"
+aws-sdk-s3 = "1.67.0"
+aws-sdk-secretsmanager = "1.56.0"
 axum = { version = "0.7.9", features = ["ws"] }
 axum-extra = { version = "0.9.6", features = ["typed-header"] }
 axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
@@ -215,7 +215,7 @@ ed25519-dalek = { version = "2.1.1", features = ["rand_core", "signature"] }
 elliptic-curve = { version = "0.13.8", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 encoding_rs = "0.8.35"
 error_reporter = "1"
-fast-socks5 = "0.9.6"
+fast-socks5 = "0.10.0"
 faster-hex = "0.10.0"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
 fdlimit = "0.3.0"
@@ -223,7 +223,7 @@ filetime = "0.2.16"
 flate2 = { version = "1.0.35", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
-glob = "0.3.1"
+glob = "0.3.2"
 h2 = "0.4.7"
 headers = "0.4.0"
 hex = "0.4.3"
@@ -236,8 +236,8 @@ http-body-util = "0.1.2"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
 httpclient = "0.23.21"
-hyper = { version = "1.5.1", features = ["full"] }
-hyper-rustls = { version = "0.27.3", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
+hyper = { version = "1.5.2", features = ["full"] }
+hyper-rustls = { version = "0.27.5", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
 hyper-util = { version = "0.1.10", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "2", features = ["serde"] }
@@ -278,8 +278,8 @@ phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.1.7"
 pretty_assertions = "1.4.1"
 prettyplease = "0.2.25"
-progenitor = "0.8.0"
-progenitor-client = "0.8.0"
+progenitor = "0.9.0"
+progenitor-client = "0.9.0"
 prost = "0.13.4"
 prost-build = "0.13.4"
 proven-applications = { path = "crates/applications" }
@@ -332,13 +332,13 @@ radix-common = { version = "1.3.0", features = ["secp256k1_sign_and_validate", "
 rand = "=0.8.5"
 raw-window-handle = "0.6.0"
 regex = "1.10.6"
-reqwest = { version = "0.12.9", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] }
+reqwest = { version = "0.12.11", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] }
 ring = "^0.17.0"
 rlimit = "0.10.2"
 rsa = { version = "0.9.7", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 rtnetlink = { git = "https://github.com/mwanner/rtnetlink", branch = "deps-update" }
 rusqlite = { version = "0.32.0", features = ["unlock_notify", "bundled"] }
-rustls = { version = "0.23.19", default-features = false, features = ["logging", "std", "tls12", "ring"] }
+rustls = { version = "0.23.20", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.3.0"
 rustls-webpki = "0.102"
@@ -347,7 +347,7 @@ rustyscript = { path = "vendor/rustyscript", features = ["web"]}
 saffron = "=0.1.0"
 scopeguard = "1.2.0"
 sec1 = "0.7"
-serde = { version = "1.0.216", features = ["derive"] }
+serde = { version = "1.0.217", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.133"
 serde_yaml = "0.9.34+deprecated"
@@ -359,22 +359,22 @@ smallvec = "1.8"
 socket2 = { version = "0.5.8", features = ["all"] }
 spki = "0.7.3"
 strip-ansi-escapes = "0.2.0"
-syn = { version = "2.0.90", features = ["full", "extra-traits"] }
+syn = { version = "2.0.93", features = ["full", "extra-traits"] }
 systemctl = "0.4.0"
 tar = "0.4.43"
 tempfile = "3.14.0"
 termcolor = "1.1.3"
 test_util = { package = "test_server", path = "vendor/deno/tests/util/server" }
-thiserror = "2.0.7"
+thiserror = "2.0.9"
 tokio = { version = "1.42.0", features = ["full"] }
 tokio-metrics = { version = "0.4.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.1", default-features = false, features = ["ring", "tls12"] }
 tokio-rustls-acme = { version = "0.6.0", features = ["axum"] }
 tokio-socks = "0.5.1"
 tokio-stream = "0.1.17"
-tokio-tun = "0.12.1"
+tokio-tun = "0.13.0"
 tokio-util = { version = "0.7.13", features = ["rt"] }
-tokio-vsock = "0.6.0"
+tokio-vsock = "0.7.0"
 tower = { version = "0.5.2", default-features = false, features = ["util"] }
 tower-http = { version = "0.6.2", features = ["decompression-br", "decompression-gzip", "cors"] }
 tower-service = "0.3.2"

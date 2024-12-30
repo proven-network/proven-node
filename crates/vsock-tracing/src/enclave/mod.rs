@@ -36,7 +36,7 @@ impl VsockTracingProducer {
 
         let _ = reload_handle.modify(|filter| *filter = filter::LevelFilter::INFO);
 
-        let mut listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, VSOCK_LOG_PORT))
+        let listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, VSOCK_LOG_PORT))
             .map_err(|e| Error::Io("failed to bind vsock listener", e))?;
 
         tokio::spawn(async move {

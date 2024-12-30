@@ -49,7 +49,7 @@ impl RpcServer {
     /// This function will return an error if there is an issue with binding the listener,
     /// accepting a connection, reading from the stream, or deserializing the request.
     pub async fn accept(&self) -> Result<RpcCall> {
-        let mut listener = VsockListener::bind(self.vsock_addr)
+        let listener = VsockListener::bind(self.vsock_addr)
             .map_err(|e| Error::Io("failed to bind vsock listener to address", e))?;
         let (mut stream, _) = listener
             .accept()
