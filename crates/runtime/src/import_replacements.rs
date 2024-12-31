@@ -19,6 +19,8 @@ static IMPORT_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
         "proven:session".to_string(),
     );
 
+    map.insert("@proven-network/run".to_string(), "proven:run".to_string());
+
     map.insert("@proven-network/sql".to_string(), "proven:sql".to_string());
 
     // Vendor packages

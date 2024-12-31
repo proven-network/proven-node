@@ -124,6 +124,7 @@ impl OptionsParser {
         hash_string
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,8 +151,8 @@ mod tests {
     #[test]
     fn test_parse_module_handler_options() {
         let module_source = r"
-            import { runOnHttp, runWithOptions } from 'proven:run';
-            import { getApplicationDb, sql } from 'proven:sql';
+            import { runOnHttp, runWithOptions } from '@proven-network/run';
+            import { getApplicationDb, sql } from '@proven-network/sql';
 
             const DB = getApplicationDb('main');
             DB.migrate(sql`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY);`);

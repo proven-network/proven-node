@@ -634,7 +634,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { getCurrentIdentity } from "proven:sessions";
+                import { getCurrentIdentity } from "@proven-network/sessions";
 
                 export const test = () => {
                     const identity = getCurrentIdentity();
@@ -659,7 +659,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { getCurrentAccounts } from "proven:sessions";
+                import { getCurrentAccounts } from "@proven-network/sessions";
 
                 export const test = () => {
                     const accounts = getCurrentAccounts();
@@ -694,7 +694,7 @@ mod tests {
             // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
             let options = create_runtime_options(
                 r#"
-                import { runWithOptions } from "proven:run";
+                import { runWithOptions } from "@proven-network/run";
 
                 export const test = runWithOptions(async () => {
                     return new Promise((resolve) => {
@@ -718,7 +718,7 @@ mod tests {
             // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
             let options = create_runtime_options(
                 r#"
-                import { runWithOptions } from "proven:run";
+                import { runWithOptions } from "@proven-network/run";
 
                 export const test = runWithOptions(() => {
                     const largeArray = new Array(40 * 1024 * 1024).fill('a');
@@ -735,39 +735,12 @@ mod tests {
         });
     }
 
-    // Slow test - disabled for now
-    // #[tokio::test]
-    // async fn test_runtime_custom_max_heap_size() {
-    //     run_in_thread(|| {
-    //         // The script will allocate 40MB of memory, and the max heap size is set to 2048MB
-    //         let options = create_runtime_options(
-    //             r#"
-    //             import { runWithOptions } from "proven:run";
-
-    //             export const test = runWithOptions(() => {
-    //                 const largeArray = new Array(40 * 1024 * 1024).fill('a');
-    //                 return largeArray;
-    //             }, { memory: 2048, timeout: 30000 });
-    //         "#,
-    //             Some("test".to_string()),
-    //         );
-
-    //         let mut runtime = Runtime::new(options).unwrap();
-
-    //         let request = create_execution_request();
-
-    //         let result = runtime.execute(request);
-    //         println!("{:?}", result);
-    //         assert!(result.is_ok());
-    //     });
-    // }
-
     #[tokio::test]
     async fn test_runtime_execute_with_disallowed_origins() {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { runWithOptions } from "proven:run";
+                import { runWithOptions } from "@proven-network/run";
 
                 export const test = runWithOptions(async () => {
                     const response = await fetch("https://example.com/");
@@ -789,7 +762,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { runWithOptions } from "proven:run";
+                import { runWithOptions } from "@proven-network/run";
 
                 export const test = runWithOptions(async () => {
                     const response = await fetch("https://example.com/");
@@ -812,7 +785,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { getApplicationDb, sql } from "proven:sql";
+                import { getApplicationDb, sql } from "@proven-network/sql";
 
                 const DB = getApplicationDb("main");
 
