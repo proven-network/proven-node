@@ -410,4 +410,102 @@ mod tests {
 
         assert!(result.is_ok());
     }
+
+    #[tokio::test]
+    async fn test_vector_search() {
+        let db = Database::connect(":memory:").await.unwrap();
+
+        db.migrate(
+            "CREATE TABLE movies (
+            title TEXT,
+            year INT,
+            embedding FLOAT32(3)
+        );",
+        )
+        .await
+        .unwrap();
+
+        db.execute(
+            "INSERT INTO movies (title, year, embedding)
+            VALUES
+            (
+                'Napoleon',
+                2023,
+                vector('[1,2,3]')
+            ),
+            (
+                'Black Hawk Down',
+                2001,
+                vector('[10,11,12]')
+            ),
+            (
+                'Gladiator',
+                2000,
+                vector('[7,8,9]')
+            ),
+            (
+                'Blade Runner',
+                1982,
+                vector('[4,5,6]')
+            );",
+            vec![],
+        )
+        .await
+        .unwrap();
+
+        let rows = db.query("SELECT title, vector_extract(embedding), vector_distance_cos(embedding, '[5,6,7]') FROM movies;", vec![])
+            .await
+            .unwrap();
+
+        pin!(rows);
+
+        // Expect 4 rows back with distances
+        let mut count = 0;
+        while let Some(row) = rows.next().await {
+            count += 1;
+            match count {
+                1 => {
+                    assert_eq!(
+                        row,
+                        vec![
+                            SqlParam::Text("Napoleon".to_string()),
+                            SqlParam::Text("[1,2,3]".to_string()),
+                            SqlParam::Real(0.031_670_335_680_246_35)
+                        ]
+                    );
+                }
+                2 => {
+                    assert_eq!(
+                        row,
+                        vec![
+                            SqlParam::Text("Black Hawk Down".to_string()),
+                            SqlParam::Text("[10,11,12]".to_string()),
+                            SqlParam::Real(0.001_869_742_991_402_745_2)
+                        ]
+                    );
+                }
+                3 => {
+                    assert_eq!(
+                        row,
+                        vec![
+                            SqlParam::Text("Gladiator".to_string()),
+                            SqlParam::Text("[7,8,9]".to_string()),
+                            SqlParam::Real(0.000_562_482_455_279_678_1)
+                        ]
+                    );
+                }
+                4 => {
+                    assert_eq!(
+                        row,
+                        vec![
+                            SqlParam::Text("Blade Runner".to_string()),
+                            SqlParam::Text("[4,5,6]".to_string()),
+                            SqlParam::Real(0.000_354_254_007_106_646_9)
+                        ]
+                    );
+                }
+                _ => panic!("Too many rows returned"),
+            }
+        }
+    }
 }
