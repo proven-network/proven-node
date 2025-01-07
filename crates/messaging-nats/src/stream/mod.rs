@@ -13,6 +13,7 @@ use std::marker::PhantomData;
 use async_nats::jetstream::stream::{Config as NatsStreamConfig, Stream as NatsStreamType};
 use async_nats::jetstream::Context as JetStreamContext;
 use async_nats::Client as AsyncNatsClient;
+use async_nats::HeaderMap;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::client::Client;
@@ -252,6 +253,27 @@ where
         let seq = self
             .jetstream_context
             .publish(self.name(), payload)
+            .await
+            .map_err(|e| Error::Publish(e.kind()))?
+            .await
+            .map_err(|e| Error::Publish(e.kind()))?
+            .sequence;
+
+        Ok(seq)
+    }
+
+    /// Publishes a rollup message directly to the stream - purges all prior messages.
+    /// Must provide expected sequence number for optimistic concurrency control.
+    async fn rollup(&self, message: T, expected_seq: u64) -> Result<u64, Self::Error> {
+        let payload: Bytes = message.try_into().map_err(|e| Error::Serialize(e))?;
+
+        let mut headers = HeaderMap::new();
+        headers.insert("Nats-Rollup", "all");
+        headers.insert("Nats-Expected-Last-Sequence", expected_seq.to_string());
+
+        let seq = self
+            .jetstream_context
+            .publish_with_headers(self.name(), headers, payload)
             .await
             .map_err(|e| Error::Publish(e.kind()))?
             .await
@@ -627,5 +649,85 @@ mod tests {
             retrieved_message.is_none(),
             "Message should have been deleted"
         );
+    }
+
+    #[tokio::test]
+    async fn test_rollup() {
+        // Connect to NATS
+        let client = ConnectOptions::default()
+            .connection_timeout(Duration::from_secs(5))
+            .connect("localhost:4222")
+            .await
+            .expect("Failed to connect to NATS");
+
+        cleanup_stream(&client, "test_rollup").await;
+
+        // Create stream
+        let stream = NatsStream::new("test_rollup", NatsStreamOptions { client });
+
+        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
+
+        let message1 = Bytes::from("test_message1");
+        let message2 = Bytes::from("test_message2");
+        let message3 = Bytes::from("test_message3");
+
+        initialized_stream.publish(message1.clone()).await.unwrap();
+        initialized_stream.publish(message2.clone()).await.unwrap();
+
+        // Perform rollup with message3, expecting the sequence number to be 2
+        let seq = initialized_stream
+            .rollup(message3.clone(), 2)
+            .await
+            .unwrap();
+
+        // Verify the sequence number returned by rollup
+        assert_eq!(seq, 3);
+
+        // Verify that only message3 is present in the stream
+        assert_eq!(initialized_stream.get(1).await.unwrap(), None);
+        assert_eq!(initialized_stream.get(2).await.unwrap(), None);
+        assert_eq!(
+            initialized_stream.get(3).await.unwrap(),
+            Some(message3.clone())
+        );
+
+        // Verify that the last message is message3
+        assert_eq!(
+            initialized_stream.last_message().await.unwrap(),
+            Some(message3)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rollup_with_outdated_seq() {
+        // Connect to NATS
+        let client = ConnectOptions::default()
+            .connection_timeout(Duration::from_secs(5))
+            .connect("localhost:4222")
+            .await
+            .expect("Failed to connect to NATS");
+
+        cleanup_stream(&client, "test_rollup_with_outdated_seq").await;
+
+        // Create stream
+        let stream = NatsStream::new(
+            "test_rollup_with_outdated_seq",
+            NatsStreamOptions { client },
+        );
+
+        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
+
+        let message1 = Bytes::from("test_message1");
+        let message2 = Bytes::from("test_message2");
+        let message3 = Bytes::from("test_message3");
+
+        initialized_stream.publish(message1.clone()).await.unwrap();
+        initialized_stream.publish(message2.clone()).await.unwrap();
+
+        // Attempt rollup with message3, providing an outdated expected sequence number
+        let result = initialized_stream.rollup(message3.clone(), 1).await;
+
+        // Verify that an error is returned
+        assert!(result.is_err());
     }
 }

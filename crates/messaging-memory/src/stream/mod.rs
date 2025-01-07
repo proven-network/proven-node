@@ -27,7 +27,6 @@ use proven_messaging::stream::{
 use proven_messaging::subject::Subject;
 use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::debug;
 
 type InternalSubscription<T, D, S> =
     MemorySubscription<StreamSubscriptionHandler<T, D, S>, T, D, S>;
@@ -288,11 +287,45 @@ where
 
     /// Publishes a message directly to the stream.
     async fn publish(&self, message: T) -> Result<u64, Self::Error> {
-        debug!("Publishing message to {}: {:?}", self.name(), message);
+        let seq_usize = {
+            let mut messages = self.messages.lock().await;
+            let seq = messages.len();
+            messages.push(Some(message.clone()));
+            seq
+        };
+
+        // Broadcast the message to all consumers
+        let mut channels = self.consumer_channels.lock().await;
+        channels.retain_mut(|sender| {
+            let message = message.clone();
+            sender.try_send(message).is_ok()
+        });
+        drop(channels);
+
+        // TODO: Add error handling for sequence number conversion
+        let seq: u64 = seq_usize.try_into().unwrap();
+
+        Ok(seq)
+    }
+
+    /// Publishes a rollup message directly to the stream - purges all prior messages.
+    /// Must provide expected sequence number for optimistic concurrency control.
+    async fn rollup(&self, message: T, expected_seq: u64) -> Result<u64, Self::Error> {
+        let expected_seq_usize: usize = expected_seq.try_into().unwrap();
 
         let seq_usize = {
             let mut messages = self.messages.lock().await;
             let seq = messages.len();
+
+            if seq != expected_seq_usize {
+                return Err(Error::OutdatedSeq(seq, expected_seq_usize));
+            }
+
+            // Tombstone all prior messages by setting them to None
+            for message in messages.iter_mut() {
+                *message = None;
+            }
+
             messages.push(Some(message.clone()));
             seq
         };
@@ -820,5 +853,69 @@ mod tests {
 
         // Last message should still be message3
         assert_eq!(stream.last_message().await.unwrap(), Some(message3));
+    }
+
+    #[tokio::test]
+    async fn test_rollup() {
+        let subject = MemorySubject::new("test_rollup").unwrap();
+        let stream = InitializedMemoryStream::new_with_subjects(
+            "test_stream",
+            MemoryStreamOptions,
+            vec![subject],
+        )
+        .await
+        .unwrap();
+
+        let message1 = Bytes::from("test_message1");
+        let message2 = Bytes::from("test_message2");
+        let message3 = Bytes::from("test_message3");
+
+        stream.publish(message1.clone()).await.unwrap();
+        stream.publish(message2.clone()).await.unwrap();
+
+        // Perform rollup with message3, expecting the sequence number to be 2
+        let seq = stream.rollup(message3.clone(), 2).await.unwrap();
+
+        // Verify the sequence number returned by rollup
+        assert_eq!(seq, 2);
+
+        // Verify that only message3 is present in the stream
+        assert_eq!(stream.get(0).await.unwrap(), None);
+        assert_eq!(stream.get(1).await.unwrap(), None);
+        assert_eq!(stream.get(2).await.unwrap(), Some(message3.clone()));
+
+        // Verify that the last message is message3
+        assert_eq!(stream.last_message().await.unwrap(), Some(message3));
+    }
+
+    #[tokio::test]
+    async fn test_rollup_with_outdated_seq() {
+        let subject = MemorySubject::new("test_rollup_with_outdated_seq").unwrap();
+        let stream = InitializedMemoryStream::new_with_subjects(
+            "test_stream",
+            MemoryStreamOptions,
+            vec![subject],
+        )
+        .await
+        .unwrap();
+
+        let message1 = Bytes::from("test_message1");
+        let message2 = Bytes::from("test_message2");
+        let message3 = Bytes::from("test_message3");
+
+        stream.publish(message1.clone()).await.unwrap();
+        stream.publish(message2.clone()).await.unwrap();
+
+        // Attempt rollup with message3, providing an outdated expected sequence number
+        let result = stream.rollup(message3.clone(), 1).await;
+
+        // Verify that an error is returned
+        assert!(result.is_err());
+        if let Err(Error::OutdatedSeq(current_seq, expected_seq)) = result {
+            assert_eq!(current_seq, 2);
+            assert_eq!(expected_seq, 1);
+        } else {
+            panic!("Expected Error::OutdatedSeq");
+        }
     }
 }

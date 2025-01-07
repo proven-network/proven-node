@@ -100,6 +100,10 @@ where
     /// Publishes a message directly to the stream.
     async fn publish(&self, message: T) -> Result<u64, Self::Error>;
 
+    /// Publishes a rollup message directly to the stream - purges all prior messages.
+    /// Must provide expected sequence number for optimistic concurrency control.
+    async fn rollup(&self, message: T, expected_seq: u64) -> Result<u64, Self::Error>;
+
     /// Consumes the stream with the given consumer.
     async fn start_consumer<N, X>(
         &self,

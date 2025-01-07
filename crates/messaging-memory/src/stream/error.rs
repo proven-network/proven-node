@@ -14,6 +14,10 @@ pub enum Error {
     #[error("invalid seq. requested: {0}, current: {1}")]
     InvalidSeq(usize, usize),
 
+    /// Attempting rollup with an outdated seq (may be missing data).
+    #[error("outdated seq. gave: {0}, expected: {1}")]
+    OutdatedSeq(usize, usize),
+
     /// An error occured while subscribing to a subject.
     #[error(transparent)]
     Subject(#[from] crate::subject::Error),
