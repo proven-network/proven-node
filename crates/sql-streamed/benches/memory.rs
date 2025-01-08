@@ -10,6 +10,7 @@ use proven_messaging_memory::{
     stream::{MemoryStream, MemoryStreamOptions},
 };
 use proven_sql::{SqlConnection, SqlParam, SqlStore};
+use proven_store_memory::MemoryStore;
 use tokio::runtime::Runtime;
 
 async fn setup(
@@ -23,12 +24,17 @@ async fn setup(
 > {
     let stream = MemoryStream::new(stream_name, MemoryStreamOptions);
 
-    StreamedSqlStore::new(stream, MemoryServiceOptions, MemoryClientOptions)
-        .connect(vec![
-            "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT)",
-        ])
-        .await
-        .unwrap()
+    StreamedSqlStore::new(
+        stream,
+        MemoryServiceOptions,
+        MemoryClientOptions,
+        MemoryStore::new(),
+    )
+    .connect(vec![
+        "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT)",
+    ])
+    .await
+    .unwrap()
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

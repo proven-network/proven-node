@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
-use std::net::SocketAddrV4;
+use std::{convert::Infallible, net::SocketAddrV4};
 
+use bytes::Bytes;
 use proven_applications::ApplicationManager;
 use proven_attestation_nsm::NsmAttestor;
 use proven_core::Core;
@@ -22,6 +23,7 @@ use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
 use proven_radix_gateway::RadixGateway;
 use proven_radix_node::RadixNode;
+use proven_store_s3::{S3Store, S3Store2, S3Store3};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{AddPeerRequest, AddPeerResponse};
 use radix_common::network::NetworkDefinition;
@@ -39,6 +41,7 @@ pub type EnclaveCore = Core<
                 ciborium::de::Error<std::io::Error>,
                 ciborium::ser::Error<std::io::Error>,
             >,
+            S3Store<Bytes, Infallible, Infallible>,
         >,
     >,
     RuntimePoolManager<
@@ -51,6 +54,7 @@ pub type EnclaveCore = Core<
                 ciborium::de::Error<std::io::Error>,
                 ciborium::ser::Error<std::io::Error>,
             >,
+            S3Store2<Bytes, Infallible, Infallible>,
         >,
         StreamedSqlStore3<
             NatsStream3<
@@ -58,6 +62,7 @@ pub type EnclaveCore = Core<
                 ciborium::de::Error<std::io::Error>,
                 ciborium::ser::Error<std::io::Error>,
             >,
+            S3Store3<Bytes, Infallible, Infallible>,
         >,
         StreamedSqlStore3<
             NatsStream3<
@@ -65,6 +70,7 @@ pub type EnclaveCore = Core<
                 ciborium::de::Error<std::io::Error>,
                 ciborium::ser::Error<std::io::Error>,
             >,
+            S3Store3<Bytes, Infallible, Infallible>,
         >,
     >,
     SessionManager<

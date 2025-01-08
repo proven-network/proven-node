@@ -36,7 +36,7 @@ use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
 use proven_store_nats::{NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
-use proven_store_s3::{S3Store, S3StoreOptions};
+use proven_store_s3::{S3Store, S3Store2, S3Store3, S3StoreOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
 use radix_common::network::NetworkDefinition;
@@ -780,6 +780,7 @@ impl Bootstrap {
 
         let cert_store = S3Store::new(S3StoreOptions {
             bucket: self.args.certificates_bucket.clone(),
+            prefix: None,
             region: id.region.clone(),
             secret_key: get_or_init_encrypted_key(
                 id.region.clone(),
@@ -818,6 +819,18 @@ impl Bootstrap {
             NatsClientOptions {
                 client: nats_client.clone(),
             },
+            S3Store::new(S3StoreOptions {
+                bucket: self.args.certificates_bucket.clone(),
+                prefix: Some("application_manager".to_string()),
+                region: id.region.clone(),
+                secret_key: get_or_init_encrypted_key(
+                    id.region.clone(),
+                    self.args.kms_key_id.clone(),
+                    "APPLICATION_MANAGER_SNAPSHOTS_KEY".to_string(),
+                )
+                .await?,
+            })
+            .await,
         );
 
         let application_manager = ApplicationManager::new(application_manager_sql_store)
@@ -846,6 +859,18 @@ impl Bootstrap {
             NatsClientOptions {
                 client: nats_client.clone(),
             },
+            S3Store2::new(S3StoreOptions {
+                bucket: self.args.certificates_bucket.clone(),
+                prefix: Some("application".to_string()),
+                region: id.region.clone(),
+                secret_key: get_or_init_encrypted_key(
+                    id.region.clone(),
+                    self.args.kms_key_id.clone(),
+                    "APPLICATION_SNAPSHOTS_KEY".to_string(),
+                )
+                .await?,
+            })
+            .await,
         );
 
         let personal_store = NatsStore3::new(NatsStoreOptions {
@@ -870,6 +895,18 @@ impl Bootstrap {
             NatsClientOptions {
                 client: nats_client.clone(),
             },
+            S3Store3::new(S3StoreOptions {
+                bucket: self.args.certificates_bucket.clone(),
+                prefix: Some("personal".to_string()),
+                region: id.region.clone(),
+                secret_key: get_or_init_encrypted_key(
+                    id.region.clone(),
+                    self.args.kms_key_id.clone(),
+                    "PERSONAL_SNAPSHOTS_KEY".to_string(),
+                )
+                .await?,
+            })
+            .await,
         );
 
         let nft_store = NatsStore3::new(NatsStoreOptions {
@@ -894,6 +931,18 @@ impl Bootstrap {
             NatsClientOptions {
                 client: nats_client.clone(),
             },
+            S3Store3::new(S3StoreOptions {
+                bucket: self.args.certificates_bucket.clone(),
+                prefix: Some("nft".to_string()),
+                region: id.region.clone(),
+                secret_key: get_or_init_encrypted_key(
+                    id.region.clone(),
+                    self.args.kms_key_id.clone(),
+                    "NFT_SNAPSHOTS_KEY".to_string(),
+                )
+                .await?,
+            })
+            .await,
         );
 
         let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {

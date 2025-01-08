@@ -55,6 +55,9 @@ pub struct InitializeRequest {
     /// Should skip vacuuming postgres database.
     pub skip_vacuum: bool,
 
+    /// S3 bucket for SQL snapshots (encrypted/decrypted inside enclave).
+    pub sql_snapshots_bucket: String,
+
     /// Whether to use stokenet - or mainnet.
     pub stokenet: bool,
 }

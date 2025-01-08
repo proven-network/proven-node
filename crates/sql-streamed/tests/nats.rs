@@ -1,3 +1,6 @@
+use std::convert::Infallible;
+
+use bytes::Bytes;
 use futures::StreamExt;
 use proven_messaging::stream::Stream;
 use proven_messaging_nats::{
@@ -7,12 +10,14 @@ use proven_messaging_nats::{
 };
 use proven_sql::{SqlConnection, SqlParam, SqlStore};
 use proven_sql_streamed::{Request, StreamedSqlStore};
+use proven_store_memory::MemoryStore;
 use tokio::time::{timeout, Duration};
 
 async fn setup(
     stream_name: &str,
 ) -> StreamedSqlStore<
     NatsStream<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    MemoryStore<Bytes, Infallible, Infallible>,
 > {
     let client = async_nats::connect("localhost:4222").await.unwrap();
     let jetstream_context = async_nats::jetstream::new(client.clone());
@@ -36,6 +41,7 @@ async fn setup(
         NatsClientOptions {
             client: client.clone(),
         },
+        MemoryStore::new(),
     )
 }
 

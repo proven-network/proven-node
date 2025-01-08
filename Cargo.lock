@@ -7115,6 +7115,8 @@ dependencies = [
  "proven-messaging-memory",
  "proven-messaging-nats",
  "proven-sql",
+ "proven-store",
+ "proven-store-memory",
  "serde",
  "tempfile",
  "thiserror 2.0.9",

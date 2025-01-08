@@ -173,6 +173,7 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
             skip_fsck: args.skip_fsck,
             skip_speedtest: args.skip_speedtest,
             skip_vacuum: args.skip_vacuum,
+            sql_snapshots_bucket: args.sql_snapshots_bucket.clone(),
             stokenet: args.stokenet,
         })
         .await;

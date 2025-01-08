@@ -136,6 +136,9 @@ struct StartArgs {
     #[arg(long, default_value_t = false, env = "PROVEN_SKIP_VACUUM")]
     skip_vacuum: bool,
 
+    #[clap(long, required = true, env = "PROVEN_SQL_SNAPSHOTS_BUCKET")]
+    sql_snapshots_bucket: String,
+
     #[arg(long, default_value_t = false, env = "PROVEN_STOKENET")]
     stokenet: bool,
 

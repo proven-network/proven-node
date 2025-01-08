@@ -28,6 +28,9 @@ pub struct S3StoreOptions {
     /// The S3 bucket to use for the key-value store (must be created in advance currently).
     pub bucket: String,
 
+    /// The optional prefix to use for all keys (may be extended through scopes).
+    pub prefix: Option<String>,
+
     /// The AWS region to use.
     pub region: String,
 
@@ -95,6 +98,7 @@ where
     pub async fn new(
         S3StoreOptions {
             bucket,
+            prefix,
             region,
             secret_key,
         }: S3StoreOptions,
@@ -108,7 +112,7 @@ where
             bucket,
             client: aws_sdk_s3::Client::new(&config),
             secret_key,
-            prefix: None,
+            prefix,
             _marker: PhantomData,
         }
     }
@@ -364,6 +368,7 @@ macro_rules! impl_scoped_store {
                 pub async fn new(
                     S3StoreOptions {
                         bucket,
+                        prefix,
                         region,
                         secret_key,
                     }: S3StoreOptions,
@@ -377,7 +382,7 @@ macro_rules! impl_scoped_store {
                         bucket,
                         client: aws_sdk_s3::Client::new(&config),
                         secret_key,
-                        prefix: None,
+                        prefix,
                         _marker: PhantomData,
                     }
                 }

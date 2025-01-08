@@ -12,21 +12,23 @@ mod request;
 mod response;
 mod service_handler;
 
-use std::sync::Arc;
-
 pub use connection::Connection;
 pub use error::Error;
 pub use request::Request;
 pub use response::Response;
 
+use std::convert::Infallible;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_libsql::Database;
 use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stream3};
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
+use proven_store::{Store, Store1, Store2, Store3};
 use service_handler::SqlServiceHandler;
 use tempfile::NamedTempFile;
 use tokio::sync::{oneshot, Mutex};
@@ -36,9 +38,10 @@ type SerializeError = ciborium::ser::Error<std::io::Error>;
 
 /// A SQL store that uses a stream as an append-only log.
 #[derive(Clone, Debug)]
-pub struct StreamedSqlStore<S>
+pub struct StreamedSqlStore<S, SS>
 where
     S: Stream<Request, DeserializeError, SerializeError>,
+    SS: Store<Bytes, Infallible, Infallible>,
 {
     client_options:
         <<S::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
@@ -48,12 +51,14 @@ where
         <<S::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
             SqlServiceHandler,
         > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+    snapshot_store: SS,
     stream: S,
 }
 
-impl<S> StreamedSqlStore<S>
+impl<S, SS> StreamedSqlStore<S, SS>
 where
     S: Stream<Request, DeserializeError, SerializeError>,
+    SS: Store<Bytes, Infallible, Infallible>,
 {
     /// Creates a new `StreamedSqlStore` with the specified options.
     pub const fn new(
@@ -78,19 +83,22 @@ where
             DeserializeError,
             SerializeError,
         >>::Options,
+        snapshot_store: SS,
     ) -> Self {
         Self {
             client_options,
             service_options,
+            snapshot_store,
             stream,
         }
     }
 }
 
 #[async_trait]
-impl<S> SqlStore for StreamedSqlStore<S>
+impl<S, SS> SqlStore for StreamedSqlStore<S, SS>
 where
     S: Stream<Request, DeserializeError, SerializeError>,
+    SS: Store<Bytes, Infallible, Infallible>,
 {
     type Error = Error<S>;
 
@@ -103,6 +111,9 @@ where
         let (caught_up_tx, caught_up_rx) = oneshot::channel();
 
         let applied_migrations = Arc::new(Mutex::new(Vec::new()));
+
+        // TODO: Actually use snapshots
+        let _existing_snapshots = self.snapshot_store.keys().await.unwrap();
 
         let db_path = NamedTempFile::new()
             .map_err(|e| Error::TempFile(e))?
@@ -154,9 +165,10 @@ where
 
 /// A single-scoped SQL store that uses a stream as an append-only log.
 #[derive(Clone, Debug)]
-pub struct StreamedSqlStore1<S>
+pub struct StreamedSqlStore1<S, SS>
 where
     S: Stream1<Request, DeserializeError, SerializeError>,
+    SS: Store1<Bytes, Infallible, Infallible>,
 {
     client_options: <<<S::Scoped as Stream<Request,
     DeserializeError,
@@ -183,12 +195,14 @@ where
         DeserializeError,
         SerializeError,
     >>::Options,
+    snapshot_store: SS,
     stream: S,
 }
 
-impl<S> StreamedSqlStore1<S>
+impl<S, SS> StreamedSqlStore1<S, SS>
 where
     S: Stream1<Request, DeserializeError, SerializeError>,
+    SS: Store1<Bytes, Infallible, Infallible>,
 {
     /// Creates a new `StreamedSqlStore` with the specified options.
     pub const fn new(
@@ -217,27 +231,31 @@ where
             DeserializeError,
             SerializeError,
         >>::Options,
+        snapshot_store: SS,
     ) -> Self {
         Self {
             client_options,
             service_options,
+            snapshot_store,
             stream,
         }
     }
 }
 
 #[async_trait]
-impl<S> SqlStore1 for StreamedSqlStore1<S>
+impl<S, SS> SqlStore1 for StreamedSqlStore1<S, SS>
 where
     Self: Clone + Send + Sync + 'static,
     S: Stream1<Request, DeserializeError, SerializeError>,
+    SS: Store1<Bytes, Infallible, Infallible>,
 {
-    type Scoped = StreamedSqlStore<S::Scoped>;
+    type Scoped = StreamedSqlStore<S::Scoped, SS::Scoped>;
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
         StreamedSqlStore {
             client_options: self.client_options.clone(),
             service_options: self.service_options.clone(),
+            snapshot_store: self.snapshot_store.scope(scope.clone().into()),
             stream: self.stream.scope(scope.into()),
         }
     }
@@ -245,9 +263,10 @@ where
 
 /// A double-scoped SQL store that uses a stream as an append-only log.
 #[derive(Clone, Debug)]
-pub struct StreamedSqlStore2<S>
+pub struct StreamedSqlStore2<S, SS>
 where
     S: Stream2<Request, DeserializeError, SerializeError>,
+    SS: Store2<Bytes, Infallible, Infallible>,
 {
     client_options:
         <<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
@@ -265,12 +284,14 @@ where
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
             SqlServiceHandler,
         > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+    snapshot_store: SS,
     stream: S,
 }
 
-impl<S> StreamedSqlStore2<S>
+impl<S, SS> StreamedSqlStore2<S, SS>
 where
     S: Stream2<Request, DeserializeError, SerializeError>,
+    SS: Store2<Bytes, Infallible, Infallible>,
 {
     /// Creates a new `StreamedSqlStore` with the specified options.
     pub const fn new(
@@ -289,27 +310,31 @@ where
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
         SqlServiceHandler,
     > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+        snapshot_store: SS,
     ) -> Self {
         Self {
             client_options,
             service_options,
+            snapshot_store,
             stream,
         }
     }
 }
 
 #[async_trait]
-impl<S> SqlStore2 for StreamedSqlStore2<S>
+impl<S, SS> SqlStore2 for StreamedSqlStore2<S, SS>
 where
     Self: Clone + Send + Sync + 'static,
     S: Stream2<Request, DeserializeError, SerializeError>,
+    SS: Store2<Bytes, Infallible, Infallible>,
 {
-    type Scoped = StreamedSqlStore1<S::Scoped>;
+    type Scoped = StreamedSqlStore1<S::Scoped, SS::Scoped>;
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
         StreamedSqlStore1 {
             client_options: self.client_options.clone(),
             service_options: self.service_options.clone(),
+            snapshot_store: self.snapshot_store.scope(scope.clone().into()),
             stream: self.stream.scope(scope.into()),
         }
     }
@@ -317,9 +342,10 @@ where
 
 /// A triple-scoped SQL store that uses a stream as an append-only log.
 #[derive(Clone, Debug)]
-pub struct StreamedSqlStore3<S>
+pub struct StreamedSqlStore3<S, SS>
 where
     S: Stream3<Request, DeserializeError, SerializeError>,
+    SS: Store3<Bytes, Infallible, Infallible>,
 {
     client_options:
         <<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
@@ -337,12 +363,14 @@ where
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
             SqlServiceHandler,
         > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+    snapshot_store: SS,
     stream: S,
 }
 
-impl<S> StreamedSqlStore3<S>
+impl<S, SS> StreamedSqlStore3<S, SS>
 where
     S: Stream3<Request, DeserializeError, SerializeError>,
+    SS: Store3<Bytes, Infallible, Infallible>,
 {
     /// Creates a new `StreamedSqlStore` with the specified options.
     pub const fn new(
@@ -361,27 +389,31 @@ where
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
         SqlServiceHandler,
     > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+        snapshot_store: SS,
     ) -> Self {
         Self {
             client_options,
             service_options,
+            snapshot_store,
             stream,
         }
     }
 }
 
 #[async_trait]
-impl<S> SqlStore3 for StreamedSqlStore3<S>
+impl<S, SS> SqlStore3 for StreamedSqlStore3<S, SS>
 where
     Self: Clone + Send + Sync + 'static,
     S: Stream3<Request, DeserializeError, SerializeError>,
+    SS: Store3<Bytes, Infallible, Infallible>,
 {
-    type Scoped = StreamedSqlStore2<S::Scoped>;
+    type Scoped = StreamedSqlStore2<S::Scoped, SS::Scoped>;
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
         StreamedSqlStore2 {
             client_options: self.client_options.clone(),
             service_options: self.service_options.clone(),
+            snapshot_store: self.snapshot_store.scope(scope.clone().into()),
             stream: self.stream.scope(scope.into()),
         }
     }
@@ -398,6 +430,7 @@ mod tests {
         stream::{MemoryStream, MemoryStreamOptions},
     };
     use proven_sql::{SqlConnection, SqlParam};
+    use proven_store_memory::MemoryStore;
     use tokio::time::{timeout, Duration};
 
     #[tokio::test]
@@ -405,8 +438,14 @@ mod tests {
         let result = timeout(Duration::from_secs(5), async {
             let stream = MemoryStream::new("test_sql_store", MemoryStreamOptions);
 
-            let sql_store =
-                StreamedSqlStore::new(stream, MemoryServiceOptions, MemoryClientOptions);
+            let snapshot_store = MemoryStore::new();
+
+            let sql_store = StreamedSqlStore::new(
+                stream,
+                MemoryServiceOptions,
+                MemoryClientOptions,
+                snapshot_store,
+            );
 
             let connection = sql_store
                 .connect(vec![
@@ -457,8 +496,14 @@ mod tests {
         let result = timeout(Duration::from_secs(5), async {
             let stream = MemoryStream::new("test_invalid_sql_migration", MemoryStreamOptions);
 
-            let sql_store =
-                StreamedSqlStore::new(stream, MemoryServiceOptions, MemoryClientOptions);
+            let snapshot_store = MemoryStore::new();
+
+            let sql_store = StreamedSqlStore::new(
+                stream,
+                MemoryServiceOptions,
+                MemoryClientOptions,
+                snapshot_store,
+            );
 
             let connection_result = sql_store.connect(vec!["INVALID SQL STATEMENT"]).await;
 

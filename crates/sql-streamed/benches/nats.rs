@@ -10,6 +10,7 @@ use proven_messaging_nats::{
     stream::{NatsStream, NatsStreamOptions},
 };
 use proven_sql::{SqlConnection, SqlParam, SqlStore};
+use proven_store_memory::MemoryStore;
 use tokio::runtime::Runtime;
 
 async fn setup(
@@ -39,6 +40,7 @@ async fn setup(
         NatsClientOptions {
             client: client.clone(),
         },
+        MemoryStore::new(),
     )
     .connect(vec![
         "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT)",
