@@ -338,7 +338,6 @@ where
         name: String,
         stream: Self::StreamType,
         options: Self::Options,
-        _handler: X,
     ) -> Result<Self, Self::Error> {
         let client_id = Uuid::new_v4().to_string();
         let response_map = Arc::new(Mutex::new(HashMap::new()));
@@ -585,12 +584,11 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client(
+            .client::<_, TestHandler>(
                 "test_client_request_response",
                 NatsClientOptions {
                     client: client.clone(),
                 },
-                TestHandler,
             )
             .await
             .expect("Failed to create client");
@@ -640,12 +638,11 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client(
+            .client::<_, TestHandler>(
                 "test_client",
                 NatsClientOptions {
                     client: client.clone(),
                 },
-                TestHandler,
             )
             .await
             .expect("Failed to create client");
@@ -697,12 +694,11 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client(
+            .client::<_, StreamingTestHandler>(
                 "test_client_stream_response",
                 NatsClientOptions {
                     client: client.clone(),
                 },
-                StreamingTestHandler,
             )
             .await
             .expect("Failed to create client");

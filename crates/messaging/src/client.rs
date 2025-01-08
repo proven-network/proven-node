@@ -71,7 +71,6 @@ where
         name: String,
         stream: Self::StreamType,
         options: Self::Options,
-        handler: X,
     ) -> Result<Self, Self::Error>;
 
     /// Sends a request to the service and returns a response.

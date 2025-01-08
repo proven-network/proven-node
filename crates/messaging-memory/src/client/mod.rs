@@ -209,7 +209,6 @@ where
         name: String,
         stream: Self::StreamType,
         _options: Self::Options,
-        _handler: X,
     ) -> Result<Self, Self::Error> {
         let client_id = Uuid::new_v4().to_string();
         let (sender, receiver) = broadcast::channel(100);
@@ -362,7 +361,7 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client("test_service", MemoryClientOptions {}, TestHandler)
+            .client::<_, TestHandler>("test_service", MemoryClientOptions {})
             .await
             .expect("Failed to create client");
 
@@ -393,7 +392,7 @@ mod tests {
 
         // Create client
         let client = initialized_stream
-            .client("test_client_timeout", MemoryClientOptions {}, TestHandler)
+            .client::<_, TestHandler>("test_client_timeout", MemoryClientOptions {})
             .await
             .expect("Failed to create client");
 

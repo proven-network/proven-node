@@ -112,47 +112,53 @@ where
 
         let applied_migrations = Arc::new(Mutex::new(Vec::new()));
 
-        // TODO: Actually use snapshots
-        let _existing_snapshots = self.snapshot_store.keys().await.unwrap();
-
-        let db_path = NamedTempFile::new()
-            .map_err(|e| Error::TempFile(e))?
-            .into_temp_path()
-            .to_path_buf();
-
-        let handler = SqlServiceHandler::new(
-            applied_migrations.clone(),
-            caught_up_tx,
-            Database::connect(db_path).await?,
-        );
-
         let stream = self.stream.init().await.unwrap();
 
-        let _service = stream
-            .start_service("SQL_SERVICE", self.service_options.clone(), handler.clone())
-            .await
-            .map_err(Error::Service)?;
-
         let client = stream
-            .client("SQL_SERVICE", self.client_options.clone(), handler)
+            .client::<_, SqlServiceHandler>("SQL_SERVICE", self.client_options.clone())
             .await
             .unwrap();
 
-        // Wait for the stream to catch up before applying migrations
-        caught_up_rx
-            .await
-            .map_err(|_| Error::CaughtUpChannelClosed)?;
+        // TODO: Use distributed locks to decide if this machine should run the service
+        // Just assume single-node operation for now
+        let run_service = true;
 
-        let applied_migrations = applied_migrations.lock().await.clone();
-        for migration in migrations {
-            let migration_sql = migration.into();
-            if !applied_migrations.contains(&migration_sql) {
-                let request = Request::Migrate(migration_sql);
+        if run_service {
+            // TODO: Actually use snapshots
+            let _existing_snapshots = self.snapshot_store.keys().await.unwrap();
 
-                if let ClientResponseType::Response(Response::Failed(error)) =
-                    client.request(request).await.map_err(Error::Client)?
-                {
-                    return Err(Error::Libsql(error));
+            let db_path = NamedTempFile::new()
+                .map_err(|e| Error::TempFile(e))?
+                .into_temp_path()
+                .to_path_buf();
+
+            let handler = SqlServiceHandler::new(
+                applied_migrations.clone(),
+                caught_up_tx,
+                Database::connect(db_path).await?,
+            );
+
+            let _service = stream
+                .start_service("SQL_SERVICE", self.service_options.clone(), handler.clone())
+                .await
+                .map_err(Error::Service)?;
+
+            // Wait for the stream to catch up before applying migrations
+            caught_up_rx
+                .await
+                .map_err(|_| Error::CaughtUpChannelClosed)?;
+
+            let applied_migrations = applied_migrations.lock().await.clone();
+            for migration in migrations {
+                let migration_sql = migration.into();
+                if !applied_migrations.contains(&migration_sql) {
+                    let request = Request::Migrate(migration_sql);
+
+                    if let ClientResponseType::Response(Response::Failed(error)) =
+                        client.request(request).await.map_err(Error::Client)?
+                    {
+                        return Err(Error::Libsql(error));
+                    }
                 }
             }
         }
