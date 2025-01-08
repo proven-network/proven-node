@@ -262,4 +262,8 @@ where
 
         MemoryUsedServiceResponder
     }
+
+    fn stream_sequence(&self) -> u64 {
+        self.stream_sequence
+    }
 }

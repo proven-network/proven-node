@@ -56,4 +56,7 @@ where
     async fn stream_and_delete_request<W>(self, stream: W) -> Self::UsedResponder
     where
         W: Stream<Item = R> + Send + Unpin;
+
+    /// Returns the stream sequence number of the request.
+    fn stream_sequence(&self) -> u64;
 }

@@ -301,4 +301,8 @@ where
 
         used_responder
     }
+
+    fn stream_sequence(&self) -> u64 {
+        self.stream_sequence
+    }
 }
