@@ -14,6 +14,7 @@ proven-sql = { workspace = true }
 proven-messaging = { workspace = true }
 proven-messaging-memory = { workspace = true }
 serde = { workspace = true }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 

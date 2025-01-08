@@ -95,6 +95,10 @@ pub enum LibSqlError {
 /// Errors that can occur in this crate.
 #[derive(Clone, Debug, Deserialize, Error, Serialize)]
 pub enum Error {
+    /// Backup in progress.
+    #[error("Backup in progress")]
+    BackupInProgress,
+
     /// Incorrect SQL type for request.
     #[error("Incorrect SQL type. Expected {0}, got {1}")]
     IncorrectSqlType(StatementType, StatementType),
@@ -106,6 +110,10 @@ pub enum Error {
     /// Libsql error.
     #[error(transparent)]
     Libsql(LibSqlError),
+
+    /// Must use file to be compatible with backup.
+    #[error("Must use file")]
+    MustUseFile,
 
     /// Used reserved table prefix.
     #[error("Cannot use reserved table prefix")]

@@ -28,6 +28,7 @@ use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stream3};
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use service_handler::SqlServiceHandler;
+use tempfile::NamedTempFile;
 use tokio::sync::{oneshot, Mutex};
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
@@ -103,10 +104,15 @@ where
 
         let applied_migrations = Arc::new(Mutex::new(Vec::new()));
 
+        let db_path = NamedTempFile::new()
+            .map_err(|e| Error::TempFile(e))?
+            .into_temp_path()
+            .to_path_buf();
+
         let handler = SqlServiceHandler::new(
             applied_migrations.clone(),
             caught_up_tx,
-            Database::connect(":memory:").await?,
+            Database::connect(db_path).await?,
         );
 
         let stream = self.stream.init().await.unwrap();

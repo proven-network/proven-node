@@ -1,5 +1,5 @@
 //! Wrapper around [libsql](https://github.com/tursodatabase/libsql) which
-//! provides additional functionality like migrations
+//! provides additional functionality like migrations and backup.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -9,6 +9,8 @@ mod error;
 mod statement_type;
 
 use std::fmt::Debug;
+use std::future::Future;
+use std::path::PathBuf;
 
 pub use error::Error;
 use statement_type::StatementType;
@@ -26,12 +28,16 @@ static INSERT_MIGRATION_SQL: &str = include_str!("../sql/insert_migration.sql");
 /// A libsql database wrapper.
 #[derive(Clone)]
 pub struct Database {
-    connection: Connection,
+    connection: Option<Connection>,
+    path: PathBuf,
 }
 
 impl Debug for Database {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Database").finish()
+        f.debug_struct("Database")
+            .field("connection", &self.connection.is_some())
+            .field("path", &self.path)
+            .finish()
     }
 }
 
@@ -40,15 +46,56 @@ impl Database {
     ///
     /// # Errors
     ///
-    /// This function will return an error if the connection to the database fails.
+    /// This function will return an error if the connection to the database fails
+    /// or if the path is `":memory:"`.
     pub async fn connect(path: impl AsRef<std::path::Path> + Send) -> Result<Self, Error> {
-        let connection = Builder::new_local(path).build().await?.connect()?;
+        let path = path.as_ref().to_path_buf();
+
+        if path.to_str() == Some(":memory:") {
+            return Err(Error::MustUseFile);
+        }
+
+        let connection = Builder::new_local(&path).build().await?.connect()?;
 
         connection
             .execute(CREATE_MIGRATIONS_TABLE_SQL, Self::convert_params(vec![]))
             .await?;
 
-        Ok(Self { connection })
+        Ok(Self {
+            connection: Some(connection),
+            path,
+        })
+    }
+
+    /// Temporarily disconnects from the database and runs the given backup function.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if a backup is already in progress
+    /// or if there is an issue restarting the connection.
+    pub async fn backup<E, F, Fut>(&mut self, backup_fn: F) -> Result<Result<(), E>, Error>
+    where
+        E: std::error::Error + Send + 'static,
+        F: FnOnce(std::path::PathBuf) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), E>> + Send + 'static,
+    {
+        let connection = self.connection.take().ok_or(Error::BackupInProgress)?;
+
+        drop(connection);
+        let result = backup_fn(self.path.clone()).await;
+
+        self.connection = Some(Builder::new_local(&self.path).build().await?.connect()?);
+
+        Ok(result)
+    }
+
+    /// Gets the connection to the database.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if a backup is in process.
+    fn get_connection(&self) -> Result<&Connection, Error> {
+        self.connection.as_ref().ok_or(Error::BackupInProgress)
     }
 
     /// Executes a mutation SQL query with the given parameters.
@@ -69,7 +116,7 @@ impl Database {
             )),
             StatementType::Mutation => {
                 let libsql_params = Self::convert_params(params);
-                self.connection
+                self.get_connection()?
                     .execute(query, libsql_params)
                     .await
                     .map_err(Error::from)
@@ -114,7 +161,7 @@ impl Database {
                 let mut total: u64 = 0;
 
                 for params in libsql_params {
-                    total += self.connection.execute(query, params).await?;
+                    total += self.get_connection()?.execute(query, params).await?;
                 }
 
                 Ok(total)
@@ -163,7 +210,7 @@ impl Database {
 
                 // first check if the migration has already been run
                 let mut rows = self
-                    .connection
+                    .get_connection()?
                     .query(
                         "SELECT COUNT(*) FROM __proven_migrations WHERE query_hash = ?1",
                         Self::convert_params(vec![SqlParam::Text(hash.to_string())]),
@@ -178,7 +225,7 @@ impl Database {
                     }
                 }
 
-                let transation = self.connection.transaction().await?;
+                let transation = self.get_connection()?.transaction().await?;
 
                 transation
                     .execute(query, Self::convert_params(vec![]))
@@ -242,7 +289,7 @@ impl Database {
                 let libsql_params = Self::convert_params(params);
 
                 let libsql_rows = self
-                    .connection
+                    .get_connection()?
                     .query(query, libsql_params)
                     .await
                     .map_err(Error::from)?;
@@ -317,13 +364,27 @@ impl Database {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    use std::convert::Infallible;
+
+    use tempfile::NamedTempFile;
     use tokio::pin;
 
-    use super::*;
+    fn get_temp_db_path() -> PathBuf {
+        NamedTempFile::new().unwrap().into_temp_path().to_path_buf()
+    }
+
+    #[tokio::test]
+    async fn test_connect_file_only() {
+        let result = Database::connect(":memory:").await;
+        assert!(matches!(result, Err(Error::MustUseFile)));
+    }
 
     #[tokio::test]
     async fn test_execute() {
-        let db = Database::connect(":memory:").await.unwrap();
+        let db_path = get_temp_db_path();
+        let db = Database::connect(db_path).await.unwrap();
         let result = db
             .execute(
                 "INSERT INTO users (email) VALUES ('test@example.com')",
@@ -335,7 +396,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_basics() {
-        let db = Database::connect(":memory:").await.unwrap();
+        let db_path = get_temp_db_path();
+        let db = Database::connect(db_path).await.unwrap();
 
         db.migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
             .await
@@ -375,7 +437,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_table_can_only_change_via_migration() {
-        let db = Database::connect(":memory:").await.unwrap();
+        let db_path = get_temp_db_path();
+        let db = Database::connect(db_path).await.unwrap();
 
         let result = db
             .execute(
@@ -395,7 +458,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_schema_names_not_allowed_in_migrations() {
-        let db = Database::connect(":memory:").await.unwrap();
+        let db_path = get_temp_db_path();
+        let db = Database::connect(db_path).await.unwrap();
 
         let result = db
             .migrate("CREATE TABLE main.users (id INTEGER, email TEXT)")
@@ -413,7 +477,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_vector_search() {
-        let db = Database::connect(":memory:").await.unwrap();
+        let db_path = get_temp_db_path();
+        let db = Database::connect(db_path).await.unwrap();
 
         db.migrate(
             "CREATE TABLE movies (
@@ -506,6 +571,79 @@ mod tests {
                 }
                 _ => panic!("Too many rows returned"),
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_backup() {
+        let db_path = get_temp_db_path();
+        let mut db = Database::connect(db_path.clone()).await.unwrap();
+
+        db.migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
+            .await
+            .unwrap();
+
+        db.execute(
+            "INSERT INTO users (id, email) VALUES (?1, ?2)",
+            vec![
+                SqlParam::Integer(1),
+                SqlParam::Text("alice@example.com".to_string()),
+            ],
+        )
+        .await
+        .unwrap();
+
+        let backup_fn = |path: PathBuf| async move {
+            // Simulate a successful backup operation
+            assert_eq!(path, db_path);
+            Ok(())
+        };
+
+        let result = db.backup::<Infallible, _, _>(backup_fn).await.unwrap();
+        assert!(result.is_ok());
+
+        // Verify the data is still there after the backup
+        let rows = db
+            .query("SELECT id, email FROM users", vec![])
+            .await
+            .unwrap();
+
+        pin!(rows);
+
+        if let Some(row) = rows.next().await {
+            assert_eq!(
+                row,
+                vec![
+                    SqlParam::Integer(1),
+                    SqlParam::Text("alice@example.com".to_string())
+                ]
+            );
+        } else {
+            panic!("No rows returned");
+        }
+
+        assert!(rows.next().await.is_none(), "Too many rows returned");
+    }
+
+    #[tokio::test]
+    async fn test_backup_failed_callback() {
+        let db_path = get_temp_db_path();
+        let mut db = Database::connect(db_path.clone()).await.unwrap();
+
+        let backup_fn = |path: PathBuf| async move {
+            // Simulate a failed backup operation
+            assert_eq!(path, db_path);
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Backup failed",
+            ))
+        };
+
+        let result = db.backup(backup_fn).await.unwrap();
+        assert!(result.is_err());
+
+        if let Err(e) = result {
+            assert_eq!(e.to_string(), "Backup failed");
         }
     }
 }
