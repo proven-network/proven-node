@@ -64,8 +64,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     client_id: String,
-    nats_client: AsyncNatsClient,
-    nats_jetstream_context: Context,
+    jetstream_context: Context,
     reply_stream_name: String,
     request_id_counter: Arc<AtomicUsize>,
     response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
@@ -89,8 +88,7 @@ where
     fn clone(&self) -> Self {
         Self {
             client_id: self.client_id.clone(),
-            nats_client: self.nats_client.clone(),
-            nats_jetstream_context: self.nats_jetstream_context.clone(),
+            jetstream_context: self.jetstream_context.clone(),
             reply_stream_name: self.reply_stream_name.clone(),
             request_id_counter: self.request_id_counter.clone(),
             response_map: self.response_map.clone(),
@@ -115,7 +113,7 @@ where
 {
     fn drop(&mut self) {
         let reply_stream_name = self.reply_stream_name.clone();
-        let jetstream_context = self.nats_jetstream_context.clone();
+        let jetstream_context = self.jetstream_context.clone();
         tokio::spawn(async move {
             let _ = jetstream_context.delete_stream(&reply_stream_name).await;
         });
@@ -379,8 +377,7 @@ where
 
         Ok(Self {
             client_id,
-            nats_client: options.client,
-            nats_jetstream_context: jetstream_context,
+            jetstream_context,
             reply_stream_name,
             request_id_counter: Arc::new(AtomicUsize::new(0)),
             response_map,
@@ -413,9 +410,10 @@ where
         // Used for routing response back to client
         headers.insert("Reply-Stream", self.reply_stream_name.clone().as_str());
 
+        // TODO: handle serialization error
         let bytes: Bytes = request.try_into().unwrap();
 
-        self.nats_client
+        self.jetstream_context
             .publish_with_headers(self.stream_name.clone(), headers, bytes)
             .await
             .unwrap();
