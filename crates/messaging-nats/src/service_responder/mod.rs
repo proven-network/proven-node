@@ -182,6 +182,10 @@ where
 
     type UsedResponder = NatsUsedServiceResponder;
 
+    async fn no_reply(self) -> Self::UsedResponder {
+        NatsUsedServiceResponder
+    }
+
     async fn reply(self, response: R) -> Self::UsedResponder {
         // No need to reply if service still catching up with stream
         if !self.caught_up {

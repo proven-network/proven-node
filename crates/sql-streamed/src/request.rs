@@ -16,6 +16,9 @@ pub enum Request {
 
     /// Executes a SQL query.
     Query(String, Vec<SqlParam>),
+
+    /// Marks a snapshot with key for lookup.
+    Snapshot(String),
 }
 
 impl TryFrom<Bytes> for Request {

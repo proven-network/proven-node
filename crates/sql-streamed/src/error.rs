@@ -77,10 +77,6 @@ pub enum Error<
     #[error(transparent)]
     Stream(<P::Initialized as InitializedStream<T, D, S>>::Error),
 
-    /// An error occurred while creating a temporary file.
-    #[error(transparent)]
-    TempFile(std::io::Error),
-
     #[doc(hidden)]
     #[error("Unreachable")]
     _Phantom(PhantomData<SS>),

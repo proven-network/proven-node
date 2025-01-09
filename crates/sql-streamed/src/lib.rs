@@ -23,14 +23,12 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_libsql::Database;
 use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stream3};
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
 use service_handler::SqlServiceHandler;
-use tempfile::NamedTempFile;
 use tokio::sync::{oneshot, Mutex};
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
@@ -137,18 +135,9 @@ where
         let run_service = true;
 
         if run_service {
-            // TODO: Actually use snapshots
-            let _existing_snapshots = self.snapshot_store.keys().await.unwrap();
-
-            let db_path = NamedTempFile::new()
-                .map_err(|e| Error::TempFile(e))?
-                .into_temp_path()
-                .to_path_buf();
-
             let handler = SqlServiceHandler::new(
                 applied_migrations.clone(),
                 caught_up_tx,
-                Database::connect(db_path).await?,
                 self.snapshot_store.clone(),
                 stream.clone(),
             );

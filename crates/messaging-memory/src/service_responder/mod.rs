@@ -120,6 +120,10 @@ where
 
     type UsedResponder = MemoryUsedServiceResponder;
 
+    async fn no_reply(self) -> Self::UsedResponder {
+        MemoryUsedServiceResponder
+    }
+
     async fn reply(self, response: R) -> Self::UsedResponder {
         let mut state = GLOBAL_STATE.lock().await;
         if !state.has::<GlobalState<R>>() {

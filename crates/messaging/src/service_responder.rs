@@ -41,6 +41,9 @@ where
     /// Corrosponding used type.
     type UsedResponder: UsedServiceResponder;
 
+    /// Does not reply to the request.
+    async fn no_reply(self) -> Self::UsedResponder;
+
     /// Replies to the request with the given response.
     async fn reply(self, response: R) -> Self::UsedResponder;
 
