@@ -1,16 +1,15 @@
 use super::RpcHandler;
 
-use axum::extract::ws::CloseFrame;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
 use axum::extract::Query;
 use axum::routing::get;
 use axum::Router;
+use bytes::Bytes;
 use futures::{sink::SinkExt, stream::StreamExt};
 use proven_applications::ApplicationManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 use serde::Deserialize;
-use std::borrow::Cow;
 use tracing::{error, info};
 
 #[derive(Debug, Deserialize)]
@@ -48,13 +47,16 @@ where
                             Err(e) => {
                                 error!("Error creating RpcHandler: {:?}", e);
                                 ws.on_upgrade(move |socket| {
-                                    handle_socket_error(socket, Cow::from("Unrecoverable error."))
+                                    handle_socket_error(
+                                        socket,
+                                        Utf8Bytes::from("Unrecoverable error."),
+                                    )
                                 })
                             }
                         }
                     }
                     _ => ws.on_upgrade(move |socket| {
-                        handle_socket_error(socket, Cow::from("Session not valid."))
+                        handle_socket_error(socket, Utf8Bytes::from("Session not valid."))
                     }),
                 }
             },
@@ -62,7 +64,7 @@ where
     )
 }
 
-async fn handle_socket_error(mut socket: WebSocket, reason: Cow<'static, str>) {
+async fn handle_socket_error(mut socket: WebSocket, reason: Utf8Bytes) {
     socket
         .send(Message::Close(Some(CloseFrame {
             code: axum::extract::ws::close_code::ERROR,
@@ -78,7 +80,7 @@ async fn handle_socket<AM: ApplicationManagement, RM: RuntimePoolManagement>(
 ) {
     let (mut sender, mut receiver) = socket.split();
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Bytes>(100);
     let mut send_task = tokio::spawn(async move {
         while let Some(message) = rx.recv().await {
             match sender.send(Message::Binary(message)).await {

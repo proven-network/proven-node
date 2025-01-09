@@ -1,6 +1,7 @@
 pub mod http;
 pub mod ws;
 
+use bytes::Bytes;
 use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
@@ -124,7 +125,7 @@ where
         })
     }
 
-    pub async fn handle_rpc(&mut self, bytes: Vec<u8>) -> Result<Vec<u8>, RpcHandlerError> {
+    pub async fn handle_rpc(&mut self, bytes: Bytes) -> Result<Bytes, RpcHandlerError> {
         let sign1 = coset::CoseSign1::from_slice(&bytes).map_err(|_| RpcHandlerError::Sign1)?;
 
         let payload = sign1.payload.as_ref().ok_or(RpcHandlerError::Sign1)?;
@@ -229,6 +230,9 @@ where
             .create_signature(&self.aad, |pt| self.signing_key.sign(pt).to_vec())
             .build();
 
-        resp_sign1.to_vec().map_err(|_| RpcHandlerError::Sign1)
+        resp_sign1
+            .to_vec()
+            .map_err(|_| RpcHandlerError::Sign1)
+            .map(Bytes::from)
     }
 }

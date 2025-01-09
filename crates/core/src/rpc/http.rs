@@ -35,10 +35,9 @@ where
             {
                 Ok(Some(session)) => {
                     match RpcHandler::new(application_manager, runtime_pool_manager, session) {
-                        Ok(mut rpc_handler) => match rpc_handler.handle_rpc(body.to_vec()).await {
+                        Ok(mut rpc_handler) => match rpc_handler.handle_rpc(body).await {
                             Ok(response) => {
-                                let bytes = bytes::Bytes::from(response);
-                                let body = http_body_util::Full::new(bytes);
+                                let body = http_body_util::Full::new(response);
                                 Response::builder().body(body).unwrap()
                             }
                             Err(e) => {
