@@ -2,46 +2,68 @@ mod error;
 
 use crate::request::Request;
 use crate::response::Response;
+use crate::{DeserializeError, SerializeError};
 pub use error::Error;
 
+use std::convert::Infallible;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use futures::StreamExt;
 use proven_libsql::Database;
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::service_responder::ServiceResponder;
+use proven_messaging::stream::InitializedStream;
+use proven_store::Store;
 use tokio::sync::{oneshot, Mutex};
 
 /// A stream handler that executes SQL queries and migrations.
 #[derive(Clone, Debug)]
-pub struct SqlServiceHandler {
+pub struct SqlServiceHandler<S, SS>
+where
+    S: InitializedStream<Request, DeserializeError, SerializeError>,
+    SS: Store<Bytes, Infallible, Infallible>,
+{
     applied_migrations: Arc<Mutex<Vec<String>>>,
     caught_up_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     database: Database,
+    _snapshot_store: SS,
+    _stream: S,
 }
 
-impl SqlServiceHandler {
+impl<S, SS> SqlServiceHandler<S, SS>
+where
+    S: InitializedStream<Request, DeserializeError, SerializeError>,
+    SS: Store<Bytes, Infallible, Infallible>,
+{
     pub(crate) fn new(
         applied_migrations: Arc<Mutex<Vec<String>>>,
         caught_up_tx: oneshot::Sender<()>,
         database: Database,
+        snapshot_store: SS,
+        stream: S,
     ) -> Self {
         Self {
             applied_migrations,
             caught_up_tx: Arc::new(Mutex::new(Some(caught_up_tx))),
             database,
+            _snapshot_store: snapshot_store,
+            _stream: stream,
         }
     }
 }
 
 #[async_trait]
-impl
+impl<S, SS>
     ServiceHandler<
         Request,
         ciborium::de::Error<std::io::Error>,
         ciborium::ser::Error<std::io::Error>,
-    > for SqlServiceHandler
+    > for SqlServiceHandler<S, SS>
+where
+    S: InitializedStream<Request, DeserializeError, SerializeError>,
+    SS: Store<Bytes, Infallible, Infallible>,
 {
     type Error = Error;
     type ResponseType = Response;

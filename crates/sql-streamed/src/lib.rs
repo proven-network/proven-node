@@ -45,12 +45,22 @@ where
 {
     client_options:
         <<S::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-            SqlServiceHandler,
-        > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler<S::Initialized, SS>,
+        > as Client<
+            SqlServiceHandler<S::Initialized, SS>,
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Options,
     service_options:
         <<S::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-            SqlServiceHandler,
-        > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler<S::Initialized, SS>,
+        > as Service<
+            SqlServiceHandler<S::Initialized, SS>,
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Options,
     snapshot_store: SS,
     stream: S,
 }
@@ -67,8 +77,8 @@ where
             Request,
             DeserializeError,
             SerializeError,
-        >>::Service<SqlServiceHandler> as Service<
-            SqlServiceHandler,
+        >>::Service<SqlServiceHandler<S::Initialized, SS>> as Service<
+            SqlServiceHandler<S::Initialized, SS>,
             Request,
             DeserializeError,
             SerializeError,
@@ -77,8 +87,8 @@ where
             Request,
             DeserializeError,
             SerializeError,
-        >>::Client<SqlServiceHandler> as Client<
-            SqlServiceHandler,
+        >>::Client<SqlServiceHandler<S::Initialized, SS>> as Client<
+            SqlServiceHandler<S::Initialized, SS>,
             Request,
             DeserializeError,
             SerializeError,
@@ -100,9 +110,9 @@ where
     S: Stream<Request, DeserializeError, SerializeError>,
     SS: Store<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<S>;
+    type Error = Error<S, SS>;
 
-    type Connection = Connection<S>;
+    type Connection = Connection<S, SS>;
 
     async fn connect<Q: Clone + Into<String> + Send>(
         &self,
@@ -115,7 +125,10 @@ where
         let stream = self.stream.init().await.unwrap();
 
         let client = stream
-            .client::<_, SqlServiceHandler>("SQL_SERVICE", self.client_options.clone())
+            .client::<_, SqlServiceHandler<S::Initialized, SS>>(
+                "SQL_SERVICE",
+                self.client_options.clone(),
+            )
             .await
             .unwrap();
 
@@ -136,6 +149,8 @@ where
                 applied_migrations.clone(),
                 caught_up_tx,
                 Database::connect(db_path).await?,
+                self.snapshot_store.clone(),
+                stream.clone(),
             );
 
             let _service = stream
@@ -182,9 +197,13 @@ where
         Request,
         DeserializeError,
         SerializeError,
-    >>::Client<SqlServiceHandler> as Client<
+    >>::Client<SqlServiceHandler<<S::Scoped as Stream<Request,
+    DeserializeError,
+    SerializeError>>::Initialized, SS::Scoped>> as Client<
 
-        SqlServiceHandler,
+        SqlServiceHandler<<S::Scoped as Stream<Request,
+        DeserializeError,
+        SerializeError>>::Initialized, SS::Scoped>,
         Request,
         DeserializeError,
         SerializeError,
@@ -195,8 +214,12 @@ where
         Request,
         DeserializeError,
         SerializeError,
-    >>::Service<SqlServiceHandler> as Service<
-        SqlServiceHandler,
+    >>::Service<SqlServiceHandler<<S::Scoped as Stream<Request,
+    DeserializeError,
+    SerializeError>>::Initialized, SS::Scoped>> as Service<
+    SqlServiceHandler<<S::Scoped as Stream<Request,
+    DeserializeError,
+    SerializeError>>::Initialized, SS::Scoped>,
         Request,
         DeserializeError,
         SerializeError,
@@ -219,8 +242,12 @@ where
             Request,
             DeserializeError,
             SerializeError,
-        >>::Service<SqlServiceHandler> as Service<
-            SqlServiceHandler,
+        >>::Service<SqlServiceHandler<<S::Scoped as Stream<Request,
+        DeserializeError,
+        SerializeError>>::Initialized, SS::Scoped>> as Service<
+        SqlServiceHandler<<S::Scoped as Stream<Request,
+        DeserializeError,
+        SerializeError>>::Initialized, SS::Scoped>,
             Request,
             DeserializeError,
             SerializeError,
@@ -231,8 +258,12 @@ where
             Request,
             DeserializeError,
             SerializeError,
-        >>::Client<SqlServiceHandler> as Client<
-            SqlServiceHandler,
+        >>::Client<SqlServiceHandler<<S::Scoped as Stream<Request,
+        DeserializeError,
+        SerializeError>>::Initialized, SS::Scoped>> as Client<
+        SqlServiceHandler<<S::Scoped as Stream<Request,
+        DeserializeError,
+        SerializeError>>::Initialized, SS::Scoped>,
             Request,
             DeserializeError,
             SerializeError,
@@ -280,16 +311,32 @@ where
             DeserializeError,
             SerializeError,
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-            SqlServiceHandler,
-        > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Initialized, <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>,
+        > as Client<SqlServiceHandler<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Initialized, <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>, Request, DeserializeError, SerializeError>>::Options,
     service_options:
         <<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
             Request,
             DeserializeError,
             SerializeError,
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-            SqlServiceHandler,
-        > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+        SqlServiceHandler<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Initialized, <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>,
+        > as Service<SqlServiceHandler<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Initialized, <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>, Request, DeserializeError, SerializeError>>::Options,
     snapshot_store: SS,
     stream: S,
 }
@@ -307,15 +354,31 @@ where
         DeserializeError,
         SerializeError,
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-        SqlServiceHandler,
-    > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+    SqlServiceHandler<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+    Request,
+    DeserializeError,
+    SerializeError,
+>>::Initialized, <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>,
+    > as Service<SqlServiceHandler<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+    Request,
+    DeserializeError,
+    SerializeError,
+>>::Initialized, <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>, Request, DeserializeError, SerializeError>>::Options,
         client_options: <<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
         Request,
         DeserializeError,
         SerializeError,
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-        SqlServiceHandler,
-    > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+    SqlServiceHandler<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+    Request,
+    DeserializeError,
+    SerializeError,
+>>::Initialized, <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>,
+    > as Client<SqlServiceHandler<<<S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+    Request,
+    DeserializeError,
+    SerializeError,
+>>::Initialized, <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>, Request, DeserializeError, SerializeError>>::Options,
         snapshot_store: SS,
     ) -> Self {
         Self {
@@ -359,16 +422,32 @@ where
             DeserializeError,
             SerializeError,
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-            SqlServiceHandler,
-        > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+            SqlServiceHandler<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Initialized, <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>,
+        > as Client<SqlServiceHandler<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Initialized, <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>, Request, DeserializeError, SerializeError>>::Options,
     service_options:
         <<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
             Request,
             DeserializeError,
             SerializeError,
         >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-            SqlServiceHandler,
-        > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+        SqlServiceHandler<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Initialized, <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>,
+        > as Service<SqlServiceHandler<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Initialized, <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>, Request, DeserializeError, SerializeError>>::Options,
     snapshot_store: SS,
     stream: S,
 }
@@ -386,15 +465,31 @@ where
         DeserializeError,
         SerializeError,
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
-        SqlServiceHandler,
-    > as Service<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+    SqlServiceHandler<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+    Request,
+    DeserializeError,
+    SerializeError,
+>>::Initialized, <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>,
+    > as Service<SqlServiceHandler<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+    Request,
+    DeserializeError,
+    SerializeError,
+>>::Initialized, <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>, Request, DeserializeError, SerializeError>>::Options,
         client_options: <<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
         Request,
         DeserializeError,
         SerializeError,
     >>::Initialized as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-        SqlServiceHandler,
-    > as Client<SqlServiceHandler, Request, DeserializeError, SerializeError>>::Options,
+    SqlServiceHandler<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+    Request,
+    DeserializeError,
+    SerializeError,
+>>::Initialized, <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>,
+    > as Client<SqlServiceHandler<<<<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped as Stream<
+    Request,
+    DeserializeError,
+    SerializeError,
+>>::Initialized, <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped>, Request, DeserializeError, SerializeError>>::Options,
         snapshot_store: SS,
     ) -> Self {
         Self {

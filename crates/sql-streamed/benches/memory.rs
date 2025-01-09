@@ -1,7 +1,9 @@
+use std::convert::Infallible;
 use std::time::Duration;
 
 use proven_sql_streamed::{Connection, Request, StreamedSqlStore};
 
+use bytes::Bytes;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use proven_messaging::stream::Stream;
 use proven_messaging_memory::{
@@ -21,6 +23,7 @@ async fn setup(
         ciborium::de::Error<std::io::Error>,
         ciborium::ser::Error<std::io::Error>,
     >,
+    MemoryStore<Bytes, Infallible, Infallible>,
 > {
     let stream = MemoryStream::new(stream_name, MemoryStreamOptions);
 

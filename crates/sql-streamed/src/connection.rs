@@ -3,39 +3,48 @@ use crate::{
     SqlServiceHandler as X,
 };
 
+use std::convert::Infallible;
+
 use async_trait::async_trait;
+use bytes::Bytes;
 use futures::StreamExt;
 use proven_messaging::{
     client::{Client, ClientResponseType},
     stream::{InitializedStream, Stream},
 };
 use proven_sql::{SqlConnection, SqlParam};
+use proven_store::Store;
 
 /// A connection to a streamed SQL store.
 #[derive(Clone)]
-pub struct Connection<P>
+pub struct Connection<P, SS>
 where
     P: Stream<T, D, S>,
+    SS: Store<Bytes, Infallible, Infallible>,
 {
-    client: <P::Initialized as InitializedStream<T, D, S>>::Client<X>,
+    client: <P::Initialized as InitializedStream<T, D, S>>::Client<X<P::Initialized, SS>>,
 }
 
-impl<P> Connection<P>
+impl<P, SS> Connection<P, SS>
 where
     P: Stream<T, D, S>,
+    SS: Store<Bytes, Infallible, Infallible>,
 {
     /// Creates a new `Connection` with the specified client.
-    pub const fn new(client: <P::Initialized as InitializedStream<T, D, S>>::Client<X>) -> Self {
+    pub const fn new(
+        client: <P::Initialized as InitializedStream<T, D, S>>::Client<X<P::Initialized, SS>>,
+    ) -> Self {
         Self { client }
     }
 }
 
 #[async_trait]
-impl<P> SqlConnection for Connection<P>
+impl<P, SS> SqlConnection for Connection<P, SS>
 where
     P: Stream<T, D, S>,
+    SS: Store<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<P>;
+    type Error = Error<P, SS>;
 
     async fn execute<Q: Clone + Into<String> + Send>(
         &self,

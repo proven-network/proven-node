@@ -6,6 +6,7 @@
 
 use std::convert::Infallible;
 use std::error::Error;
+use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -17,7 +18,7 @@ pub trait StoreError: Error + Send + Sync + 'static {}
 #[async_trait]
 pub trait Store<T, DE, SE>
 where
-    Self: Clone + Send + Sync + 'static,
+    Self: Clone + Debug + Send + Sync + 'static,
     DE: Error + Send + Sync + 'static,
     SE: Error + Send + Sync + 'static,
     T: Clone + Send + Sync + 'static,
@@ -51,7 +52,7 @@ macro_rules! define_scoped_store {
             #[doc = $doc]
             pub trait [< Store $index >]<T = Bytes, DE = Infallible, SE = Infallible>
             where
-                Self: Clone + Send + Sync + 'static,
+                Self: Clone + Debug + Send + Sync + 'static,
                 DE: Error + Send + Sync + 'static,
                 SE: Error + Send + Sync + 'static,
                 T: Clone + Send + Sync + 'static,

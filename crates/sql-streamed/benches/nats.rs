@@ -1,7 +1,9 @@
+use std::convert::Infallible;
 use std::time::Duration;
 
 use proven_sql_streamed::{Connection, Request, StreamedSqlStore};
 
+use bytes::Bytes;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use proven_messaging::stream::Stream;
 use proven_messaging_nats::{
@@ -17,6 +19,7 @@ async fn setup(
     stream_name: &str,
 ) -> Connection<
     NatsStream<Request, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    MemoryStore<Bytes, Infallible, Infallible>,
 > {
     let client = async_nats::connect("localhost:4222").await.unwrap();
     let jetstream_context = async_nats::jetstream::new(client.clone());
