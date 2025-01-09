@@ -521,20 +521,18 @@ mod tests {
     };
     use proven_sql::{SqlConnection, SqlParam};
     use proven_store_memory::MemoryStore;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{sleep, timeout, Duration};
 
     #[tokio::test]
     async fn test_sql_store() {
         let result = timeout(Duration::from_secs(5), async {
             let stream = MemoryStream::new("test_sql_store", MemoryStreamOptions);
 
-            let snapshot_store = MemoryStore::new();
-
             let sql_store = StreamedSqlStore::new(
                 stream,
                 MemoryServiceOptions,
                 MemoryClientOptions,
-                snapshot_store,
+                MemoryStore::new(),
             );
 
             let connection = sql_store
@@ -586,13 +584,11 @@ mod tests {
         let result = timeout(Duration::from_secs(5), async {
             let stream = MemoryStream::new("test_invalid_sql_migration", MemoryStreamOptions);
 
-            let snapshot_store = MemoryStore::new();
-
             let sql_store = StreamedSqlStore::new(
                 stream,
                 MemoryServiceOptions,
                 MemoryClientOptions,
-                snapshot_store,
+                MemoryStore::new(),
             );
 
             let connection_result = sql_store.connect(vec!["INVALID SQL STATEMENT"]).await;
@@ -601,6 +597,54 @@ mod tests {
                 connection_result.is_err(),
                 "Expected an error due to invalid SQL"
             );
+        })
+        .await;
+
+        assert!(result.is_ok(), "Test timed out");
+    }
+
+    // A more complete snapshot test (verifying rollup) is in the nats.rs test file.
+    #[tokio::test]
+    async fn test_snapshotting() {
+        let result = timeout(Duration::from_secs(5), async {
+            let stream = MemoryStream::new("test_snapshotting", MemoryStreamOptions);
+
+            let snapshot_store = MemoryStore::new();
+
+            let sql_store = StreamedSqlStore::new(
+                stream,
+                MemoryServiceOptions,
+                MemoryClientOptions,
+                snapshot_store.clone(),
+            );
+
+            let connection = sql_store
+                .connect(vec![
+                    "CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)",
+                ])
+                .await
+                .unwrap();
+
+            // Execute 1000 inserts
+            for i in 0..1000 {
+                connection
+                    .execute(
+                        "INSERT INTO users (id, email) VALUES (?1, ?2)".to_string(),
+                        vec![
+                            SqlParam::Integer(i),
+                            SqlParam::Text("alice@example.com".to_string()),
+                        ],
+                    )
+                    .await
+                    .unwrap();
+            }
+
+            // Wait for 3 seconds to allow snapshotting
+            sleep(Duration::from_secs(3)).await;
+
+            // Check that the snapshot store has one key
+            let keys = snapshot_store.keys().await.unwrap();
+            assert_eq!(keys.len(), 1);
         })
         .await;
 

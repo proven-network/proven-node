@@ -8,7 +8,10 @@ use crate::{DeserializeError, SerializeError};
 pub use error::Error;
 
 use std::convert::Infallible;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -21,6 +24,9 @@ use proven_store::Store;
 use tempfile::NamedTempFile;
 use tokio::sync::{oneshot, Mutex, MutexGuard};
 
+static SNAPSHOT_INTERVAL: u64 = 1000;
+static SNAPSHOT_MIN_INTERVAL_SECS: u64 = 30;
+
 /// A stream handler that executes SQL queries and migrations.
 #[derive(Clone, Debug)]
 pub struct SqlServiceHandler<S, SS>
@@ -31,8 +37,10 @@ where
     applied_migrations: Arc<Mutex<Vec<String>>>,
     caught_up_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     database: Arc<Mutex<Option<Database>>>,
+    last_snapshot_attempt: Arc<Mutex<Instant>>,
+    mutations_since_last_snapshot: Arc<AtomicU64>,
     snapshot_store: SS,
-    _stream: S,
+    stream: S,
 }
 
 impl<S, SS> SqlServiceHandler<S, SS>
@@ -50,12 +58,18 @@ where
             applied_migrations,
             caught_up_tx: Arc::new(Mutex::new(Some(caught_up_tx))),
             database: Arc::new(Mutex::new(None)),
+            last_snapshot_attempt: Arc::new(Mutex::new(
+                Instant::now()
+                    .checked_sub(Duration::from_secs(SNAPSHOT_MIN_INTERVAL_SECS))
+                    .unwrap(),
+            )),
+            mutations_since_last_snapshot: Arc::new(AtomicU64::new(0)),
             snapshot_store,
-            _stream: stream,
+            stream,
         }
     }
 
-    async fn get_database(&self) -> Result<MutexGuard<'_, Option<Database>>, Error<SS>> {
+    async fn get_database(&self) -> Result<MutexGuard<'_, Option<Database>>, Error<S, SS>> {
         let mut db_guard = self.database.lock().await;
         if db_guard.is_none() {
             let db_path = NamedTempFile::new()
@@ -65,12 +79,72 @@ where
 
             let database = Database::connect(&db_path)
                 .await
-                .map_err(Error::<SS>::Libsql)
+                .map_err(Error::<S, SS>::Libsql)
                 .unwrap();
             *db_guard = Some(database);
         }
 
         Ok(db_guard)
+    }
+
+    async fn is_caught_up(&self) -> bool {
+        self.caught_up_tx.lock().await.is_none()
+    }
+
+    async fn save_snapshot(&self, current_seq: u64) -> Result<(), Error<S, SS>> {
+        // Limit the frequency of snapshot attempts to prevent thundering herd.
+        // (Rolling up a stream will fail if new requests coming in during backup.)
+        let mut last_snapshot_time = self.last_snapshot_attempt.lock().await;
+        if last_snapshot_time.elapsed() < Duration::from_secs(SNAPSHOT_MIN_INTERVAL_SECS) {
+            return Ok(());
+        }
+        *last_snapshot_time = Instant::now();
+        drop(last_snapshot_time);
+
+        let snapshot_store = self.snapshot_store.clone();
+        let stream = self.stream.clone();
+
+        let mut db_guard = self.database.lock().await;
+
+        if db_guard.is_none() {
+            return Ok(());
+        }
+
+        // Take database temporarily to allow backup.
+        let mut database = db_guard.take().unwrap();
+
+        let backup_result = database
+            .backup(move |path: PathBuf| async move {
+                let db_bytes = tokio::fs::read(path)
+                    .await
+                    .map_err(Error::<S, SS>::TempFile)?;
+                let store_key = current_seq.to_string();
+
+                snapshot_store
+                    .put(store_key.clone(), Bytes::from(db_bytes))
+                    .await
+                    .map_err(Error::<S, SS>::SnapshotStore)?;
+
+                stream
+                    .rollup(Request::Snapshot(store_key), current_seq)
+                    .await
+                    .map_err(Error::<S, SS>::Stream)?;
+
+                Ok::<(), Error<S, SS>>(())
+            })
+            .await?;
+
+        // Always put database back (as long as backup reconnects) - even if rollup fails.
+        *db_guard = Some(database);
+        drop(db_guard);
+
+        // Reset mutations since last snapshot if backup was successful.
+        if backup_result.is_ok() {
+            self.mutations_since_last_snapshot
+                .store(0, Ordering::SeqCst);
+        }
+
+        backup_result
     }
 }
 
@@ -85,7 +159,7 @@ where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
     SS: Store<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<SS>;
+    type Error = Error<S, SS>;
     type ResponseType = Response;
     type ResponseDeserializationError = ciborium::de::Error<std::io::Error>;
     type ResponseSerializationError = ciborium::ser::Error<std::io::Error>;
@@ -116,7 +190,25 @@ where
                     .execute(&sql, params)
                     .await
                 {
-                    Ok(affected_rows) => responder.reply(Response::Execute(affected_rows)).await,
+                    Ok(affected_rows) => {
+                        if self.is_caught_up().await {
+                            self.mutations_since_last_snapshot
+                                .fetch_add(1, Ordering::SeqCst);
+
+                            if self.mutations_since_last_snapshot.load(Ordering::SeqCst)
+                                >= SNAPSHOT_INTERVAL
+                            {
+                                let current_seq = responder.stream_sequence();
+                                let self_clone = self.clone();
+
+                                tokio::spawn(async move {
+                                    let _ = self_clone.save_snapshot(current_seq).await;
+                                });
+                            }
+                        }
+
+                        responder.reply(Response::Execute(affected_rows)).await
+                    }
                     Err(e) => {
                         responder
                             .reply_and_delete_request(Response::Failed(e))
@@ -134,6 +226,22 @@ where
                     .await
                 {
                     Ok(affected_rows) => {
+                        if self.is_caught_up().await {
+                            self.mutations_since_last_snapshot
+                                .fetch_add(1, Ordering::SeqCst);
+
+                            if self.mutations_since_last_snapshot.load(Ordering::SeqCst)
+                                >= SNAPSHOT_INTERVAL
+                            {
+                                let current_seq = responder.stream_sequence();
+                                let self_clone = self.clone();
+
+                                tokio::spawn(async move {
+                                    let _ = self_clone.save_snapshot(current_seq).await;
+                                });
+                            }
+                        }
+
                         responder.reply(Response::ExecuteBatch(affected_rows)).await
                     }
                     Err(e) => {
@@ -209,7 +317,7 @@ where
 
                 let database = Database::connect(&db_path)
                     .await
-                    .map_err(Error::<SS>::Libsql)
+                    .map_err(Error::<S, SS>::Libsql)
                     .unwrap();
 
                 self.database.lock().await.replace(database);
