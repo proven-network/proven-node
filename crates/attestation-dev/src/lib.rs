@@ -36,7 +36,7 @@ impl Attestor for DevAttestor {
     async fn attest(&self, params: AttestationParams) -> Result<Bytes> {
         // use zerod pcrs in dev mode
         let mut pcrs: BTreeMap<u8, Bytes> = BTreeMap::new();
-        for i in 0..4 {
+        for i in 0..=4 {
             pcrs.insert(i, Bytes::from(vec![0; 32]));
         }
         pcrs.insert(8, Bytes::from(vec![0; 32]));
