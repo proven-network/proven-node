@@ -110,9 +110,9 @@ where
 
         let https_app = Router::new()
             .route("/", get(|| async { redirect_response }))
-            .nest("/", session_router)
-            .nest("/", http_rpc_router)
-            .nest("/", websocket_router);
+            .merge(session_router)
+            .merge(http_rpc_router)
+            .merge(websocket_router);
 
         let shutdown_token = self.shutdown_token.clone();
         let handle = self.task_tracker.spawn(async move {
