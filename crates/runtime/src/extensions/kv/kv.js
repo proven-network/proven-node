@@ -58,7 +58,7 @@ function setNftString (store_name, nft_id, key, value) {
   return op_set_nft_string(store_name, nft_id, key, value)
 }
 
-class ApplicationStingStore {
+class ApplicationStringStore {
   constructor (storeName) {
     this.storeName = storeName
   }
@@ -95,7 +95,7 @@ export const getApplicationStore = (storeName) => {
     storeName = 'DEFAULT'
   }
 
-  return new ApplicationStingStore(storeName)
+  return new ApplicationStringStore(storeName)
 }
 
 export const getApplicationBytesStore = (storeName) => {
@@ -110,7 +110,7 @@ export const getApplicationBytesStore = (storeName) => {
   return new ApplicationBytesStore(storeName)
 }
 
-class PersonalStingStore {
+class PersonalStringStore {
   constructor (storeName) {
     this.storeName = storeName
   }
@@ -147,7 +147,7 @@ export const getPersonalStore = (storeName) => {
     storeName = 'DEFAULT'
   }
 
-  return new PersonalStingStore(storeName)
+  return new PersonalStringStore(storeName)
 }
 
 export const getPersonalBytesStore = (storeName) => {
@@ -162,7 +162,7 @@ export const getPersonalBytesStore = (storeName) => {
   return new PersonalBytesStore(storeName)
 }
 
-class NftStingStore {
+class NftStringStore {
   constructor (storeName, nftId) {
     this.storeName = storeName
     this.nftId = nftId
@@ -201,7 +201,7 @@ export const getNftStore = (storeName, nftId) => {
     storeName = 'DEFAULT'
   }
 
-  return new NftStingStore(storeName, nftId)
+  return new NftStringStore(storeName, nftId)
 }
 
 export const getNftBytesStore = (storeName, nftId) => {
