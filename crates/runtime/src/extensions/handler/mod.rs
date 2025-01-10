@@ -88,21 +88,21 @@ pub fn op_set_timeout_option(
 }
 
 extension!(
-    run_options_parser_ext,
+    handler_options_parser_ext,
     ops = [
         op_add_allowed_origin,
         op_set_memory_option,
         op_set_path_option,
         op_set_timeout_option
     ],
-    esm_entry_point = "proven:run",
-    esm = [ dir "src/extensions/run", "proven:run" = "run-options-parser.js" ],
+    esm_entry_point = "proven:handler",
+    esm = [ dir "src/extensions/handler", "proven:handler" = "handler-options-parser.js" ],
     docs = "Functions for defining how exports should be run"
 );
 
 extension!(
-    run_runtime_ext,
-    esm_entry_point = "proven:run",
-    esm = [ dir "src/extensions/run", "proven:run" = "run-runtime.js" ],
+    handler_runtime_ext,
+    esm_entry_point = "proven:handler",
+    esm = [ dir "src/extensions/handler", "proven:handler" = "handler-runtime.js" ],
     docs = "Functions for defining how exports should be run"
 );

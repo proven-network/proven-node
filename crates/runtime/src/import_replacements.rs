@@ -12,14 +12,17 @@ static IMPORT_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
         "proven:crypto".to_string(),
     );
 
+    map.insert(
+        "@proven-network/handler".to_string(),
+        "proven:handler".to_string(),
+    );
+
     map.insert("@proven-network/kv".to_string(), "proven:kv".to_string());
 
     map.insert(
         "@proven-network/session".to_string(),
         "proven:session".to_string(),
     );
-
-    map.insert("@proven-network/run".to_string(), "proven:run".to_string());
 
     map.insert("@proven-network/sql".to_string(), "proven:sql".to_string());
 

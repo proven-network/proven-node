@@ -2,15 +2,15 @@ use deno_core::extension;
 
 mod console;
 mod gateway_api_sdk;
+mod handler;
 mod kv;
-mod run;
 mod sessions;
 mod sql;
 
 pub use console::*;
 pub use gateway_api_sdk::*;
+pub use handler::*;
 pub use kv::*;
-pub use run::*;
 pub use sessions::*;
 pub use sql::*;
 

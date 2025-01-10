@@ -1,7 +1,7 @@
 use crate::extensions::{
-    console_ext, kv_application_ext, kv_ext, kv_nft_ext, kv_personal_ext, openai_ext,
-    radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, run_runtime_ext,
-    sessions_ext, sql_application_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
+    console_ext, handler_runtime_ext, kv_application_ext, kv_ext, kv_nft_ext, kv_personal_ext,
+    openai_ext, radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, sessions_ext,
+    sql_application_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
     ApplicationSqlConnectionManager, ApplicationSqlParamListManager, ConsoleState,
     GatewayDetailsState, NftSqlConnectionManager, PersonalSqlConnectionManager,
     PersonalSqlParamListManager, SessionsState,
@@ -216,7 +216,7 @@ where
             max_heap_size: Some(max_heap_mbs as usize * 1024 * 1024),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
-                run_runtime_ext::init_ops_and_esm(),
+                handler_runtime_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
@@ -694,7 +694,7 @@ mod tests {
             // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
             let options = create_runtime_options(
                 r#"
-                import { runWithOptions } from "@proven-network/run";
+                import { runWithOptions } from "@proven-network/handler";
 
                 export const test = runWithOptions(async () => {
                     return new Promise((resolve) => {
@@ -718,7 +718,7 @@ mod tests {
             // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
             let options = create_runtime_options(
                 r#"
-                import { runWithOptions } from "@proven-network/run";
+                import { runWithOptions } from "@proven-network/handler";
 
                 export const test = runWithOptions(() => {
                     const largeArray = new Array(40 * 1024 * 1024).fill('a');
@@ -740,7 +740,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { runWithOptions } from "@proven-network/run";
+                import { runWithOptions } from "@proven-network/handler";
 
                 export const test = runWithOptions(async () => {
                     const response = await fetch("https://example.com/");
@@ -762,7 +762,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { runWithOptions } from "@proven-network/run";
+                import { runWithOptions } from "@proven-network/handler";
 
                 export const test = runWithOptions(async () => {
                     const response = await fetch("https://example.com/");

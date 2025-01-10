@@ -1,7 +1,7 @@
 use crate::extensions::{
-    console_ext, kv_ext, openai_ext, radixdlt_babylon_gateway_api_ext,
-    radixdlt_radix_engine_toolkit_ext, run_options_parser_ext, sessions_ext, sql_migrations_ext,
-    sql_options_parser_ext, uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
+    console_ext, handler_options_parser_ext, kv_ext, openai_ext, radixdlt_babylon_gateway_api_ext,
+    radixdlt_radix_engine_toolkit_ext, sessions_ext, sql_migrations_ext, sql_options_parser_ext,
+    uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
 };
 use crate::import_replacements::replace_esm_imports;
 use crate::options::{ModuleHandlerOptions, ModuleOptions, SqlMigrations};
@@ -26,7 +26,7 @@ impl OptionsParser {
             timeout: Duration::from_millis(5000),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
-                run_options_parser_ext::init_ops_and_esm(),
+                handler_options_parser_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
                 sessions_ext::init_ops_and_esm(),
                 kv_ext::init_ops_and_esm(),
@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn test_parse_module_handler_options() {
         let module_source = r"
-            import { runOnHttp, runWithOptions } from '@proven-network/run';
+            import { runOnHttp, runWithOptions } from '@proven-network/handler';
             import { getApplicationDb, sql } from '@proven-network/sql';
 
             const DB = getApplicationDb('main');
