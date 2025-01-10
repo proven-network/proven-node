@@ -1,10 +1,10 @@
 use crate::extensions::{
     console_ext, handler_runtime_ext, kv_application_ext, kv_ext, kv_nft_ext, kv_personal_ext,
-    openai_ext, radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, sessions_ext,
+    openai_ext, radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, session_ext,
     sql_application_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
     ApplicationSqlConnectionManager, ApplicationSqlParamListManager, ConsoleState,
     GatewayDetailsState, NftSqlConnectionManager, PersonalSqlConnectionManager,
-    PersonalSqlParamListManager, SessionsState,
+    PersonalSqlParamListManager, SessionState,
 };
 use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
@@ -218,7 +218,7 @@ where
             extensions: vec![
                 handler_runtime_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
-                sessions_ext::init_ops_and_esm(),
+                session_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
                 kv_application_ext::init_ops::<AS::Scoped>(),
                 kv_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
@@ -355,7 +355,7 @@ where
         ))?;
 
         // Set the context for the session extension
-        self.runtime.put(SessionsState { identity, accounts })?;
+        self.runtime.put(SessionState { identity, accounts })?;
 
         let output: Value = match self.handler_name {
             Some(ref handler_name) => {
@@ -634,7 +634,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { getCurrentIdentity } from "@proven-network/sessions";
+                import { getCurrentIdentity } from "@proven-network/session";
 
                 export const test = () => {
                     const identity = getCurrentIdentity();
@@ -659,7 +659,7 @@ mod tests {
         run_in_thread(|| {
             let options = create_runtime_options(
                 r#"
-                import { getCurrentAccounts } from "@proven-network/sessions";
+                import { getCurrentAccounts } from "@proven-network/session";
 
                 export const test = () => {
                     const accounts = getCurrentAccounts();

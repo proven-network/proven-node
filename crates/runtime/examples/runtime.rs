@@ -8,7 +8,7 @@ use tempfile::tempdir;
 
 fn main() -> Result<(), Error> {
     let user_module = r#"
-        import { getCurrentAccounts, getCurrentIdentity } from "proven:sessions";
+        import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
         import { runWithOptions } from "proven:handler";
 
         export const handler = runWithOptions(async (a, b) => {

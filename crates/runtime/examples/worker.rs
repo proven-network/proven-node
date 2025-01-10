@@ -17,7 +17,7 @@ static EXECUTIONS: usize = 100;
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let module = r#"
-        import { getCurrentAccounts, getCurrentIdentity } from "proven:sessions";
+        import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
 
         export const handler = async (a, b) => {
             const userId = getCurrentIdentity();

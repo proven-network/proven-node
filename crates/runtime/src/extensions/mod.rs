@@ -4,14 +4,14 @@ mod console;
 mod gateway_api_sdk;
 mod handler;
 mod kv;
-mod sessions;
+mod session;
 mod sql;
 
 pub use console::*;
 pub use gateway_api_sdk::*;
 pub use handler::*;
 pub use kv::*;
-pub use sessions::*;
+pub use session::*;
 pub use sql::*;
 
 extension!(

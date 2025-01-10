@@ -31,7 +31,7 @@ async fn main() -> Result<(), Error> {
     let durations = Arc::new(Mutex::new(vec![]));
 
     let base_script = r#"
-        import { getCurrentAccounts, getCurrentIdentity } from "proven:sessions";
+        import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
 
         export const handler = async (a, b) => {
             const userId = getCurrentIdentity();

@@ -1,6 +1,6 @@
 use crate::extensions::{
     console_ext, handler_options_parser_ext, kv_ext, openai_ext, radixdlt_babylon_gateway_api_ext,
-    radixdlt_radix_engine_toolkit_ext, sessions_ext, sql_migrations_ext, sql_options_parser_ext,
+    radixdlt_radix_engine_toolkit_ext, session_ext, sql_migrations_ext, sql_options_parser_ext,
     uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
 };
 use crate::import_replacements::replace_esm_imports;
@@ -28,7 +28,7 @@ impl OptionsParser {
             extensions: vec![
                 handler_options_parser_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
-                sessions_ext::init_ops_and_esm(),
+                session_ext::init_ops_and_esm(),
                 kv_ext::init_ops_and_esm(),
                 sql_options_parser_ext::init_ops_and_esm(),
                 sql_migrations_ext::init_ops(),
