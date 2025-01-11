@@ -1,10 +1,11 @@
 use crate::extensions::{
-    console_ext, handler_runtime_ext, kv_application_ext, kv_ext, kv_nft_ext, kv_personal_ext,
-    openai_ext, radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, session_ext,
-    sql_application_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
-    ApplicationSqlConnectionManager, ApplicationSqlParamListManager, ConsoleState,
-    GatewayDetailsState, NftSqlConnectionManager, PersonalSqlConnectionManager,
-    PersonalSqlParamListManager, SessionState,
+    console_ext, crypto_ext, handler_runtime_ext, kv_application_ext, kv_ext, kv_nft_ext,
+    kv_personal_ext, openai_ext, radixdlt_babylon_gateway_api_ext,
+    radixdlt_radix_engine_toolkit_ext, session_ext, sql_application_ext, sql_personal_ext,
+    sql_runtime_ext, uuid_ext, zod_ext, ApplicationSqlConnectionManager,
+    ApplicationSqlParamListManager, ConsoleState, CryptoState, GatewayDetailsState,
+    NftSqlConnectionManager, PersonalSqlConnectionManager, PersonalSqlParamListManager,
+    SessionState,
 };
 use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
@@ -218,6 +219,7 @@ where
             extensions: vec![
                 handler_runtime_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
+                crypto_ext::init_ops_and_esm(),
                 session_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
                 kv_application_ext::init_ops::<AS::Scoped>(),
@@ -304,6 +306,9 @@ where
 
         // Reset the console state before each execution
         self.runtime.put(ConsoleState::default())?;
+
+        // Reset the crypto key cache before each execution
+        self.runtime.put(CryptoState::default())?;
 
         // Set the kv stores for the storage extension
         self.runtime.put(
@@ -428,6 +433,7 @@ where
 mod tests {
     use super::*;
 
+    use ed25519_dalek::Verifier;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
     use serde_json::json;
@@ -810,6 +816,52 @@ mod tests {
 
             assert!(result.is_ok());
             assert_eq!(result.unwrap().output, "alice@example.com");
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_basic_ed25519_signing() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                r#"
+                import { generateEd25519Key } from "@proven-network/crypto";
+
+                export const test = async () => {
+                    const key = generateEd25519Key();
+
+                    return [
+                        key.publicKey().toString(),
+                        key.sign("Hello, world!").toString()
+                    ];
+                }
+            "#,
+                Some("test".to_string()),
+            );
+
+            let request = create_execution_request();
+            let result = Runtime::new(options).unwrap().execute(request);
+
+            assert!(result.is_ok());
+
+            // Check that the signature is valid
+            let result = result.unwrap();
+            let output = result.output.as_array().unwrap();
+            let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
+                &hex::decode(output[0].as_str().unwrap())
+                    .unwrap()
+                    .try_into()
+                    .expect("slice with incorrect length"),
+            )
+            .unwrap();
+            let signature = ed25519_dalek::Signature::from_bytes(
+                &hex::decode(output[1].as_str().unwrap())
+                    .unwrap()
+                    .try_into()
+                    .expect("slice with incorrect length"),
+            );
+
+            let message = "Hello, world!";
+            assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
         });
     }
 }

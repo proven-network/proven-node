@@ -9,11 +9,13 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 deno_core = { workspace = true }
 deno_permissions = { workspace = true }
+ed25519-dalek = { workspace = true }
 futures = { workspace = true }
 proven-locks = { workspace = true }
 proven-sql = { workspace = true }
 proven-store = { workspace = true }
 radix-common = { workspace = true }
+rand = { workspace = true }
 regex = { workspace = true }
 rustyscript = { workspace = true }
 serde = { workspace = true }
@@ -24,6 +26,7 @@ tokio = { workspace = true }
 
 [dev-dependencies]
 futures = { workspace = true }
+hex = { workspace = true }
 proven-locks-memory = { workspace = true }
 proven-sql-direct = { workspace = true }
 proven-store-memory = { workspace = true }

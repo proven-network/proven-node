@@ -1,6 +1,7 @@
 use deno_core::extension;
 
 mod console;
+mod crypto;
 mod gateway_api_sdk;
 mod handler;
 mod kv;
@@ -8,6 +9,7 @@ mod session;
 mod sql;
 
 pub use console::*;
+pub use crypto::*;
 pub use gateway_api_sdk::*;
 pub use handler::*;
 pub use kv::*;
