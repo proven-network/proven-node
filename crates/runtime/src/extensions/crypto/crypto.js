@@ -28,7 +28,7 @@ class Signature {
   toString = this.hexString;
 }
 
-class SigningKey {
+export class SigningKey {
   constructor(keyId) {
     this.keyId = keyId;
   }

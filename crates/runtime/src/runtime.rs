@@ -864,4 +864,95 @@ mod tests {
             assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
         });
     }
+
+    #[tokio::test]
+    async fn test_runtime_execute_ed25519_storage() {
+        run_in_thread(|| {
+            let application_store = MemoryStore2::new();
+
+            let options = RuntimeOptions {
+                application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
+                application_store: application_store.clone(),
+                handler_name: Some("test".to_string()),
+                module: r#"
+                import { generateEd25519Key } from "@proven-network/crypto";
+                import { getApplicationKeyStore } from "@proven-network/kv";
+
+                const KEY_STORE = getApplicationKeyStore("keys");
+
+                export const test = async () => {
+                    const key = generateEd25519Key();
+
+                    await KEY_STORE.set("key", key);
+
+                    return key.publicKey().toString();
+                }
+            "#
+                .to_string(),
+                nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+                nft_store: MemoryStore3::new(),
+                personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+                personal_store: MemoryStore3::new(),
+                radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+                radix_network_definition: NetworkDefinition::stokenet(),
+            };
+
+            let request = create_execution_request();
+            let result = Runtime::new(options).unwrap().execute(request);
+
+            assert!(result.is_ok());
+
+            let binding = result.unwrap();
+            let public_key = binding.output.as_str().unwrap();
+
+            let options = RuntimeOptions {
+                application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
+                application_store,
+                handler_name: Some("test".to_string()),
+                module: r#"
+                import { getApplicationKeyStore } from "@proven-network/kv";
+
+                const KEY_STORE = getApplicationKeyStore("keys");
+
+                export const test = async () => {
+                    const key = await KEY_STORE.get("key");
+
+                    return key.sign("Hello, world!").toString();
+                }
+            "#
+                .to_string(),
+                nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+                nft_store: MemoryStore3::new(),
+                personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+                personal_store: MemoryStore3::new(),
+                radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+                radix_network_definition: NetworkDefinition::stokenet(),
+            };
+
+            let request = create_execution_request();
+            let result = Runtime::new(options).unwrap().execute(request);
+
+            assert!(result.is_ok());
+            let binding = result.unwrap();
+            let signature = binding.output.as_str().unwrap();
+
+            // Check that the signature is valid
+            let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
+                &hex::decode(public_key)
+                    .unwrap()
+                    .try_into()
+                    .expect("slice with incorrect length"),
+            )
+            .unwrap();
+            let signature = ed25519_dalek::Signature::from_bytes(
+                &hex::decode(signature)
+                    .unwrap()
+                    .try_into()
+                    .expect("slice with incorrect length"),
+            );
+
+            let message = "Hello, world!";
+            assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
+        });
+    }
 }

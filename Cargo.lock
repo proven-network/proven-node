@@ -7087,6 +7087,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "ciborium",
  "deno_core",
  "deno_permissions",
  "ed25519-dalek",

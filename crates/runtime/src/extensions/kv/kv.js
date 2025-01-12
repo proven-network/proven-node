@@ -1,3 +1,5 @@
+import { SigningKey } from "proven:crypto";
+
 function getApplicationBytes (store_name, key) {
   const { op_get_application_bytes } = globalThis.Deno.core.ops;
   return op_get_application_bytes(store_name, key)
@@ -6,6 +8,16 @@ function getApplicationBytes (store_name, key) {
 function setApplicationBytes (store_name, key, value) {
   const { op_set_application_bytes } = globalThis.Deno.core.ops;
   return op_set_application_bytes(store_name, key, value)
+}
+
+function getApplicationKey (store_name, key) {
+  const { op_get_application_key } = globalThis.Deno.core.ops;
+  return op_get_application_key(store_name, key)
+}
+
+function setApplicationKey (store_name, key, value) {
+  const { op_set_application_key } = globalThis.Deno.core.ops;
+  return op_set_application_key(store_name, key, value)
 }
 
 function getApplicationString (store_name, key) {
@@ -63,12 +75,26 @@ class ApplicationStringStore {
     this.storeName = storeName
   }
 
-  get (key) {
-    return getApplicationString(this.storeName, key)
+  async get (key) {
+    return await getApplicationString(this.storeName, key)
   }
 
-  set (key, value) {
-    return setApplicationString(this.storeName, key, value)
+  async set (key, value) {
+    return await setApplicationString(this.storeName, key, value)
+  }
+}
+
+class ApplicationKeyStore {
+  constructor (storeName) {
+    this.storeName = storeName
+  }
+
+  async get (key) {
+    return new SigningKey(await getApplicationKey(this.storeName, key))
+  }
+
+  async set (key, value) {
+    return await setApplicationKey(this.storeName, key, value.keyId)
   }
 }
 
@@ -77,12 +103,12 @@ class ApplicationBytesStore {
     this.storeName = storeName
   }
 
-  get (key) {
-    return getApplicationBytes(this.storeName, key)
+  async get (key) {
+    return await getApplicationBytes(this.storeName, key)
   }
 
-  set (key, value) {
-    return setApplicationBytes(this.storeName, key, value)
+  async set (key, value) {
+    return await setApplicationBytes(this.storeName, key, value)
   }
 }
 
@@ -96,6 +122,18 @@ export const getApplicationStore = (storeName) => {
   }
 
   return new ApplicationStringStore(storeName)
+}
+
+export const getApplicationKeyStore = (storeName) => {
+  if (storeName === 'DEFAULT') {
+    throw new Error('DEFAULT store name is reserved for system use')
+  }
+
+  if (!storeName) {
+    storeName = 'DEFAULT'
+  }
+
+  return new ApplicationKeyStore(storeName)
 }
 
 export const getApplicationBytesStore = (storeName) => {
@@ -115,12 +153,12 @@ class PersonalStringStore {
     this.storeName = storeName
   }
 
-  get (key) {
-    return getPersonalString(this.storeName, key)
+  async get (key) {
+    return await getPersonalString(this.storeName, key)
   }
 
-  set (key, value) {
-    return setPersonalString(this.storeName, key, value)
+  async set (key, value) {
+    return await setPersonalString(this.storeName, key, value)
   }
 }
 
@@ -129,12 +167,12 @@ class PersonalBytesStore {
     this.storeName = storeName
   }
 
-  get (key) {
-    return getPersonalBytes(this.storeName, key)
+  async get (key) {
+    return await getPersonalBytes(this.storeName, key)
   }
 
-  set (key, value) {
-    return setPersonalBytes(this.storeName, key, value)
+  async set (key, value) {
+    return await setPersonalBytes(this.storeName, key, value)
   }
 }
 
@@ -168,12 +206,12 @@ class NftStringStore {
     this.nftId = nftId
   }
 
-  get (key) {
-    return getNftString(this.storeName, this.nftId, key)
+  async get (key) {
+    return await getNftString(this.storeName, this.nftId, key)
   }
 
-  set (key, value) {
-    return setNftString(this.storeName, this.nftId, key, value)
+  async set (key, value) {
+    return await setNftString(this.storeName, this.nftId, key, value)
   }
 }
 
@@ -183,12 +221,12 @@ class NftBytesStore {
     this.nftId = nftId
   }
 
-  get (key) {
-    return getNftBytes(this.storeName, this.nftId, key)
+  async get (key) {
+    return await getNftBytes(this.storeName, this.nftId, key)
   }
 
-  set (key, value) {
-    return setNftBytes(this.storeName, this.nftId, key, value)
+  async set (key, value) {
+    return await setNftBytes(this.storeName, this.nftId, key, value)
   }
 }
 

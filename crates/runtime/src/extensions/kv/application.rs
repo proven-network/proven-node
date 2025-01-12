@@ -2,12 +2,20 @@
 #![allow(clippy::significant_drop_tightening)]
 #![allow(clippy::future_not_send)]
 
+use super::super::{CryptoState, Key};
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use bytes::{Bytes, BytesMut};
 use deno_core::{extension, op2, OpDecl, OpState};
 use proven_store::{Store, Store1};
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Serialize)]
+enum StoredKey {
+    Ed25519(Vec<u8>),
+}
 
 #[op2(async)]
 #[buffer]
@@ -74,6 +82,109 @@ pub async fn op_set_application_bytes<AS: Store1>(
     let result = application_store
         .scope(format!("{store_name}:bytes"))
         .put(key, value)
+        .await
+        .is_ok();
+
+    state.borrow_mut().put(application_store);
+
+    result
+}
+
+#[op2(async)]
+pub async fn op_get_application_key<AS: Store1>(
+    state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
+    #[string] key: String,
+) -> Option<u32> {
+    let application_store = {
+        loop {
+            let application_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<AS>()
+            };
+
+            match application_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    };
+
+    let result = match application_store
+        .scope(format!("{store_name}:key"))
+        .get(key)
+        .await
+    {
+        Ok(Some(bytes)) => {
+            let stored_key: StoredKey = match ciborium::de::from_reader(&*bytes) {
+                Ok(key) => key,
+                Err(_) => return None,
+            };
+
+            let key_id = state
+                .borrow_mut()
+                .borrow_mut::<CryptoState>()
+                .load_existing_key(match stored_key {
+                    StoredKey::Ed25519(signing_key_bytes) => {
+                        Key::Ed25519(ed25519_dalek::SigningKey::from_bytes(
+                            &signing_key_bytes.as_slice().try_into().unwrap(),
+                        ))
+                    }
+                });
+
+            Some(key_id)
+        }
+        _ => None,
+    };
+
+    state.borrow_mut().put(application_store);
+
+    result
+}
+
+#[op2(async)]
+pub async fn op_set_application_key<AS: Store1>(
+    state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
+    #[string] key: String,
+    key_id: u32,
+) -> bool {
+    let crypto_key_bytes = {
+        let crypto_state_binding = state.borrow();
+        let crypto_key = crypto_state_binding.borrow::<CryptoState>().get_key(key_id);
+        match crypto_key {
+            Key::Ed25519(signing_key) => {
+                let stored_key = StoredKey::Ed25519(signing_key.to_bytes().to_vec());
+                let mut bytes = Vec::new();
+                ciborium::ser::into_writer(&stored_key, &mut bytes).unwrap();
+                BytesMut::from(&bytes[..])
+            }
+        }
+    };
+
+    let application_store = {
+        loop {
+            let application_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<AS>()
+            };
+
+            match application_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    };
+
+    let result = application_store
+        .scope(format!("{store_name}:key"))
+        .put(key.clone(), crypto_key_bytes.into())
         .await
         .is_ok();
 
@@ -164,12 +275,16 @@ extension!(
 fn get_ops<AS: Store1>() -> Vec<OpDecl> {
     let get_application_bytes = op_get_application_bytes::<AS>();
     let set_application_bytes = op_set_application_bytes::<AS>();
+    let get_application_key = op_get_application_key::<AS>();
+    let set_application_key = op_set_application_key::<AS>();
     let get_application_string = op_get_application_string::<AS>();
     let set_application_string = op_set_application_string::<AS>();
 
     vec![
         get_application_bytes,
         set_application_bytes,
+        get_application_key,
+        set_application_key,
         get_application_string,
         set_application_string,
     ]

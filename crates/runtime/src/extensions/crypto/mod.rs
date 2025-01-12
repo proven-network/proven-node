@@ -22,6 +22,10 @@ impl CryptoState {
         (self.keys.len() - 1).try_into().unwrap()
     }
 
+    pub fn get_key(&self, key_id: u32) -> &Key {
+        &self.keys[key_id as usize]
+    }
+
     #[allow(dead_code)]
     pub fn load_existing_key(&mut self, key: Key) -> u32 {
         self.keys.push(key);

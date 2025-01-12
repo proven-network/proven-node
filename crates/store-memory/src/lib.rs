@@ -4,6 +4,8 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
+#![allow(clippy::type_complexity)]
+#![allow(clippy::option_if_let_else)]
 
 mod error;
 
@@ -12,12 +14,16 @@ pub use error::Error;
 use std::convert::Infallible;
 use std::error::Error as StdError;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::{collections::HashMap, fmt::Debug};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
-use tokio::sync::Mutex;
+
+static GLOBAL_MAPS: OnceLock<Mutex<HashMap<String, Arc<Mutex<HashMap<String, Bytes>>>>>> =
+    OnceLock::new();
 
 /// In-memory key-value store.
 #[derive(Debug, Default)]
@@ -33,9 +39,9 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    map: Arc<Mutex<HashMap<String, T>>>,
+    map: Arc<Mutex<HashMap<String, Bytes>>>,
     prefix: Option<String>,
-    _marker: std::marker::PhantomData<(D, S)>,
+    _marker: std::marker::PhantomData<(T, D, S)>,
 }
 
 impl<T, D, S> Clone for MemoryStore<T, D, S>
@@ -82,8 +88,21 @@ where
     }
 
     fn with_scope(prefix: String) -> Self {
+        // Removed async
+        let global_maps = GLOBAL_MAPS.get_or_init(|| Mutex::new(HashMap::new()));
+        let mut global_maps = global_maps.lock().unwrap();
+
+        let map = if let Some(existing_map) = global_maps.get(&prefix) {
+            existing_map.clone()
+        } else {
+            let new_map = Arc::new(Mutex::new(HashMap::new()));
+            global_maps.insert(prefix.clone(), new_map.clone());
+            new_map
+        };
+        drop(global_maps);
+
         Self {
-            map: Arc::new(Mutex::new(HashMap::new())),
+            map,
             prefix: Some(prefix),
             _marker: std::marker::PhantomData,
         }
@@ -110,20 +129,27 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = Error;
+    type Error = Error<D, S>;
 
     async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
-        self.map.lock().await.remove(&self.get_key(key));
+        self.map.lock().unwrap().remove(&self.get_key(key)); // Changed from .await
         Ok(())
     }
 
     async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
-        let map = self.map.lock().await;
-        Ok(map.get(&self.get_key(key)).cloned())
+        let map = self.map.lock().unwrap(); // Changed from .await
+
+        match map.get(&self.get_key(key)).cloned() {
+            Some(value) => {
+                let value = T::try_from(value).map_err(Error::Deserialize)?;
+                Ok(Some(value))
+            }
+            None => Ok(None),
+        }
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
-        let map = self.map.lock().await;
+        let map = self.map.lock().unwrap(); // Changed from .await
         Ok(map
             .keys()
             .filter(|&key| {
@@ -140,7 +166,12 @@ where
         key: K,
         value: T,
     ) -> Result<(), Self::Error> {
-        self.map.lock().await.insert(self.get_key(key), value);
+        self.map.lock().unwrap().insert(
+            // Changed from .await
+            self.get_key(key),
+            value.try_into().map_err(Error::Serialize)?,
+        );
+
         Ok(())
     }
 }
@@ -229,7 +260,7 @@ macro_rules! impl_scoped_store {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
-                type Error = Error;
+                type Error = Error<D, S>;
                 type Scoped = $parent<T, D, S>;
 
                 fn scope<K>(&self, scope: K) -> $parent<T, D, S>
@@ -294,11 +325,13 @@ mod tests {
     async fn test_scope() {
         let store = MemoryStore1::new();
         let scoped_store = store.scope("scope");
-
         let key = "test_key".to_string();
         let value = Bytes::from_static(b"test_value");
 
         scoped_store.put(key.clone(), value.clone()).await.unwrap();
+
+        let store = MemoryStore1::new();
+        let scoped_store = store.scope("scope");
         let result = scoped_store.get(key.clone()).await.unwrap();
 
         assert_eq!(result, Some(value));

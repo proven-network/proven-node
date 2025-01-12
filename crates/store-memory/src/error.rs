@@ -1,9 +1,27 @@
+use std::convert::Infallible;
+
 use proven_store::StoreError;
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
-#[derive(Clone, Debug, Error)]
-#[error("Store error")]
-pub struct Error;
+#[derive(Debug, Error)]
+pub enum Error<DE = Infallible, SE = Infallible>
+where
+    DE: std::error::Error + Send + Sync + 'static,
+    SE: std::error::Error + Send + Sync + 'static,
+{
+    /// Deserialization error.
+    #[error(transparent)]
+    Deserialize(DE),
 
-impl StoreError for Error {}
+    /// Serialization error.
+    #[error(transparent)]
+    Serialize(SE),
+}
+
+impl<DE, SE> StoreError for Error<DE, SE>
+where
+    DE: std::error::Error + Send + Sync + 'static,
+    SE: std::error::Error + Send + Sync + 'static,
+{
+}
