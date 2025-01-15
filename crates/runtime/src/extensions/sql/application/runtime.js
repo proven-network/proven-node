@@ -110,22 +110,54 @@ class ApplicationSqlStore {
       throw new TypeError('Expected `sql` to be a string or Sql object')
     }
 
-    // TODO: Reworks rows code to use generators
+    const columnNames = []
+
+    // First row also contains column names
+    const firstRow = {}
+    for (let i = 0; i < rows[0].length; i++) {
+      if (rows[0][i].IntegerWithName) {
+        const [ name, value ] = rows[0][i].IntegerWithName
+        columnNames.push(name)
+        firstRow[name] = value
+      } else if (rows[0][i].RealWithName) {
+        const [ name, value ] = row[0][i].RealWithName
+        columnNames.push(name)
+        firstRow[name] = value
+      } else if (rows[0][i].TextWithName) {
+        const [ name, value ] = rows[0][i].TextWithName
+        columnNames.push(name)
+        firstRow[name] = value
+      } else if (rows[0][i].BlobWithName) {
+        const [ name, value ] = rows[0][i].BlobWithName
+        columnNames.push(name)
+        firstRow[name] = value
+      } else if (rows[0][i].NullWithName) {
+        const name = rows[0][i].NullWithName
+        columnNames.push(name)
+        firstRow[name] = null
+      } else {
+        throw new TypeError('Expected first row to contain column names')
+      }
+    }
+
     const results = []
+    results.push(firstRow)
+
+    // TODO: Reworks rows code to use generators
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]
-      const result = []
+      const result = {}
       for (let j = 0; j < row.length; j++) {
         if (row[j].Integer) {
-          result.push(row[j].Integer)
+          result[columnNames[j]] = row[j].Integer
         } else if (row[j].Real) {
-          result.push(row[j].Real)
+          result[columnNames[j]] = row[j].Real
         } else if (row[j].Text) {
-          result.push(row[j].Text)
+          result[columnNames[j]] = row[j].Text
         } else if (row[j].Blob) {
-          result.push(row[j].Blob)
+          result[columnNames[j]] = row[j].Blob
         } else if (row[j].Null) {
-          result.push(null)
+          result[columnNames[j]] = null
         }
       }
       results.push(result)

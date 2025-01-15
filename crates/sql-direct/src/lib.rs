@@ -144,8 +144,8 @@ mod tests {
         assert_eq!(
             row,
             vec![
-                SqlParam::Integer(1),
-                SqlParam::Text("alice@example.com".to_string())
+                SqlParam::IntegerWithName("id".to_string(), 1),
+                SqlParam::TextWithName("email".to_string(), "alice@example.com".to_string()),
             ]
         );
     }

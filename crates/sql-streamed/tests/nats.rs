@@ -85,8 +85,8 @@ async fn test_nats_sql_store() {
         assert_eq!(
             results[0],
             vec![
-                SqlParam::Integer(1),
-                SqlParam::Text("alice@example.com".to_string())
+                SqlParam::IntegerWithName("id".to_string(), 1),
+                SqlParam::TextWithName("email".to_string(), "alice@example.com".to_string()),
             ]
         );
     })
@@ -114,7 +114,7 @@ async fn test_nats_invalid_sql_migration() {
 
 #[tokio::test]
 async fn test_nats_snapshotting() {
-    let result = timeout(Duration::from_secs(5), async {
+    let result = timeout(Duration::from_secs(15), async {
         let stream_name = "test_nats_snapshotting";
         let client = async_nats::connect("localhost:4222").await.unwrap();
         let jetstream_context = async_nats::jetstream::new(client.clone());

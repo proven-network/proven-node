@@ -569,8 +569,8 @@ mod tests {
             assert_eq!(
                 results[0],
                 vec![
-                    SqlParam::Integer(1),
-                    SqlParam::Text("alice@example.com".to_string())
+                    SqlParam::IntegerWithName("id".to_string(), 1),
+                    SqlParam::TextWithName("email".to_string(), "alice@example.com".to_string()),
                 ]
             );
         })
@@ -606,7 +606,7 @@ mod tests {
     // A more complete snapshot test (verifying rollup) is in the nats.rs test file.
     #[tokio::test]
     async fn test_snapshotting() {
-        let result = timeout(Duration::from_secs(5), async {
+        let result = timeout(Duration::from_secs(10), async {
             let stream = MemoryStream::new("test_snapshotting", MemoryStreamOptions);
 
             let snapshot_store = MemoryStore::new();

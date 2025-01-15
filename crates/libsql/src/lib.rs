@@ -296,22 +296,62 @@ impl Database {
 
                 let column_count = libsql_rows.column_count();
 
+                let column_names = (0..column_count)
+                    .map(|i| libsql_rows.column_name(i).unwrap_or_default().to_string())
+                    .collect::<Vec<String>>();
+
+                let mut sent_column_names = false;
+
                 Ok(Box::new(Box::pin(libsql_rows.into_stream().map(
                     move |r| {
+                        let column_names = &column_names;
                         r.map_or_else(
                             |_| Vec::new(),
                             |row| {
-                                (0..column_count)
-                                    .filter_map(move |i| {
-                                        row.get_value(i).ok().map(|value| match value {
-                                            Value::Null => SqlParam::Null,
-                                            Value::Integer(i) => SqlParam::Integer(i),
-                                            Value::Real(r) => SqlParam::Real(r),
-                                            Value::Text(s) => SqlParam::Text(s),
-                                            Value::Blob(b) => SqlParam::Blob(Bytes::from(b)),
+                                if sent_column_names {
+                                    (0..column_count)
+                                        .filter_map(move |i| {
+                                            row.get_value(i).ok().map(|value| match value {
+                                                Value::Blob(b) => SqlParam::Blob(Bytes::from(b)),
+                                                Value::Integer(n) => SqlParam::Integer(n),
+                                                Value::Null => SqlParam::Null,
+                                                Value::Real(r) => SqlParam::Real(r),
+                                                Value::Text(s) => SqlParam::Text(s),
+                                            })
                                         })
-                                    })
-                                    .collect::<Vec<SqlParam>>()
+                                        .collect::<Vec<SqlParam>>()
+                                } else {
+                                    let row_with_column_names = (0..column_count)
+                                        .filter_map(move |i| {
+                                            #[allow(clippy::cast_sign_loss)]
+                                            row.get_value(i).ok().map(|value| match value {
+                                                Value::Blob(b) => SqlParam::BlobWithName(
+                                                    column_names[i as usize].clone(),
+                                                    Bytes::from(b),
+                                                ),
+                                                Value::Integer(n) => SqlParam::IntegerWithName(
+                                                    column_names[i as usize].clone(),
+                                                    n,
+                                                ),
+                                                Value::Null => SqlParam::NullWithName(
+                                                    column_names[i as usize].clone(),
+                                                ),
+                                                Value::Real(r) => SqlParam::RealWithName(
+                                                    column_names[i as usize].clone(),
+                                                    r,
+                                                ),
+                                                Value::Text(s) => SqlParam::TextWithName(
+                                                    column_names[i as usize].clone(),
+                                                    s,
+                                                ),
+                                            })
+                                        })
+                                        .collect::<Vec<SqlParam>>();
+
+                                    sent_column_names = true;
+
+                                    row_with_column_names
+                                }
                             },
                         )
                     },
@@ -328,11 +368,11 @@ impl Database {
         params
             .into_iter()
             .map(|p| match p {
-                SqlParam::Null => Value::Null,
-                SqlParam::Integer(i) => Value::Integer(i),
-                SqlParam::Real(r) => Value::Real(r),
-                SqlParam::Text(s) => Value::Text(s),
-                SqlParam::Blob(b) => Value::Blob(b.to_vec()),
+                SqlParam::Blob(b) | SqlParam::BlobWithName(_, b) => Value::Blob(b.to_vec()),
+                SqlParam::Integer(i) | SqlParam::IntegerWithName(_, i) => Value::Integer(i),
+                SqlParam::Null | SqlParam::NullWithName(_) => Value::Null,
+                SqlParam::Real(r) | SqlParam::RealWithName(_, r) => Value::Real(r),
+                SqlParam::Text(s) | SqlParam::TextWithName(_, s) => Value::Text(s),
             })
             .collect()
     }
@@ -424,8 +464,8 @@ mod tests {
             assert_eq!(
                 row,
                 vec![
-                    SqlParam::Integer(1),
-                    SqlParam::Text("alice@example.com".to_string())
+                    SqlParam::IntegerWithName("id".to_string(), 1),
+                    SqlParam::TextWithName("email".to_string(), "alice@example.com".to_string())
                 ]
             );
         } else {
@@ -533,9 +573,15 @@ mod tests {
                     assert_eq!(
                         row,
                         vec![
-                            SqlParam::Text("Napoleon".to_string()),
-                            SqlParam::Text("[1,2,3]".to_string()),
-                            SqlParam::Real(0.031_670_335_680_246_35)
+                            SqlParam::TextWithName("title".to_string(), "Napoleon".to_string()),
+                            SqlParam::TextWithName(
+                                "vector_extract(embedding)".to_string(),
+                                "[1,2,3]".to_string()
+                            ),
+                            SqlParam::RealWithName(
+                                "vector_distance_cos(embedding, '[5,6,7]')".to_string(),
+                                0.031_670_335_680_246_35
+                            )
                         ]
                     );
                 }
@@ -614,8 +660,8 @@ mod tests {
             assert_eq!(
                 row,
                 vec![
-                    SqlParam::Integer(1),
-                    SqlParam::Text("alice@example.com".to_string())
+                    SqlParam::IntegerWithName("id".to_string(), 1),
+                    SqlParam::TextWithName("email".to_string(), "alice@example.com".to_string())
                 ]
             );
         } else {
