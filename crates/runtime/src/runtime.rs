@@ -866,6 +866,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_runtime_execute_manifest_ed25519_signing() {
+        run_in_thread(|| {
+            let options = create_runtime_options(
+                include_str!("../esm/test_runtime_execute_manifest_ed25519_signing.ts"),
+                Some("test".to_string()),
+            );
+
+            let request = create_execution_request();
+            let result = Runtime::new(options).unwrap().execute(request);
+
+            assert!(result.is_ok());
+
+            let result = result.unwrap();
+            let output = result.output.as_array().unwrap();
+
+            // First element is compiled notorized transaction in hex
+            assert!(output[0].is_string());
+
+            // Second element is notary public key in hex
+            assert!(output[1].is_string());
+
+            // Third element is signer public key in hex
+            assert!(output[2].is_string());
+
+            // TODO: Add more output checks
+        });
+    }
+
+    #[tokio::test]
     async fn test_runtime_execute_ed25519_storage() {
         run_in_thread(|| {
             let application_store = MemoryStore2::new();

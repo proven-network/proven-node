@@ -1,4 +1,4 @@
-import { SigningKey } from "proven:crypto";
+import { PrivateKey } from "proven:crypto";
 
 function getApplicationBytes (store_name, key) {
   const { op_get_application_bytes } = globalThis.Deno.core.ops;
@@ -90,7 +90,7 @@ class ApplicationKeyStore {
   }
 
   async get (key) {
-    return new SigningKey(await getApplicationKey(this.storeName, key))
+    return new PrivateKey(await getApplicationKey(this.storeName, key))
   }
 
   async set (key, value) {

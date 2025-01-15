@@ -167,6 +167,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
 
 [[package]]
+name = "annotate-snippets"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d9b665789884a7e8fb06c84b295e923b03ca51edbb7d08f91a6a50322ecbfe6"
+dependencies = [
+ "anstyle",
+ "unicode-width 0.1.14",
+]
+
+[[package]]
 name = "anstream"
 version = "0.6.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6632,7 +6642,7 @@ dependencies = [
  "proven-sessions",
  "proven-sql",
  "proven-store",
- "radix-common",
+ "radix-common 1.3.0",
  "rand",
  "ring",
  "serde",
@@ -6697,7 +6707,7 @@ dependencies = [
  "proven-vsock-proxy",
  "proven-vsock-rpc",
  "proven-vsock-tracing",
- "radix-common",
+ "radix-common 1.3.0",
  "rand",
  "rlimit",
  "rtnetlink",
@@ -6872,7 +6882,7 @@ dependencies = [
  "proven-store",
  "proven-store-fs",
  "proven-store-memory",
- "radix-common",
+ "radix-common 1.3.0",
  "thiserror 2.0.10",
  "tokio",
  "tracing",
@@ -7034,7 +7044,7 @@ version = "0.1.0"
 dependencies = [
  "httpclient",
  "nix 0.27.1",
- "radix-common",
+ "radix-common 1.3.0",
  "regex",
  "strip-ansi-escapes",
  "thiserror 2.0.10",
@@ -7051,7 +7061,7 @@ dependencies = [
  "futures",
  "hex",
  "proven-radix-gateway-sdk",
- "radix-common",
+ "radix-common 1.3.0",
  "reqwest",
  "serde",
  "thiserror 2.0.10",
@@ -7070,7 +7080,7 @@ dependencies = [
  "proven-messaging",
  "proven-messaging-memory",
  "proven-radix-gateway-sdk",
- "radix-common",
+ "radix-common 1.3.0",
  "reqwest",
  "serde",
  "serde_json",
@@ -7099,7 +7109,8 @@ dependencies = [
  "proven-sql-direct",
  "proven-store",
  "proven-store-memory",
- "radix-common",
+ "radix-common 1.3.0",
+ "radix-transactions",
  "rand",
  "regex",
  "rustyscript",
@@ -7123,7 +7134,7 @@ dependencies = [
  "proven-attestation",
  "proven-radix-rola",
  "proven-store",
- "radix-common",
+ "radix-common 1.3.0",
  "rand",
  "serde",
  "thiserror 2.0.10",
@@ -7428,6 +7439,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
+name = "radix-blueprint-schema-init"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "bitflags 1.3.2",
+ "radix-common 1.4.0-dev",
+ "sbor 1.4.0-dev",
+ "serde",
+]
+
+[[package]]
 name = "radix-common"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7444,14 +7466,72 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
- "radix-rust",
- "radix-sbor-derive",
- "sbor",
+ "radix-rust 1.3.0",
+ "radix-sbor-derive 1.3.0",
+ "sbor 1.3.0",
  "secp256k1",
  "serde",
  "sha3",
  "strum 0.24.1",
  "zeroize",
+]
+
+[[package]]
+name = "radix-common"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "bech32 0.9.1",
+ "blake2",
+ "blst",
+ "bnum",
+ "ed25519-dalek",
+ "hex",
+ "lazy_static",
+ "num-bigint",
+ "num-integer",
+ "num-traits",
+ "paste",
+ "radix-rust 1.4.0-dev",
+ "radix-sbor-derive 1.4.0-dev",
+ "sbor 1.4.0-dev",
+ "secp256k1",
+ "sha3",
+ "strum 0.24.1",
+ "zeroize",
+]
+
+[[package]]
+name = "radix-common-derive"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "paste",
+ "proc-macro2",
+ "quote",
+ "radix-common 1.4.0-dev",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "radix-engine-interface"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "bitflags 1.3.2",
+ "const-sha1",
+ "hex",
+ "lazy_static",
+ "paste",
+ "radix-blueprint-schema-init",
+ "radix-common 1.4.0-dev",
+ "radix-common-derive",
+ "radix-rust 1.4.0-dev",
+ "regex",
+ "sbor 1.4.0-dev",
+ "serde",
+ "serde_json",
+ "strum 0.24.1",
 ]
 
 [[package]]
@@ -7465,6 +7545,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "radix-rust"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "indexmap 2.7.0",
+]
+
+[[package]]
 name = "radix-sbor-derive"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7472,8 +7560,49 @@ checksum = "630e3ca88f047a962671fb82e63cf79df18a5d580779da2919e4ee771c463e0e"
 dependencies = [
  "proc-macro2",
  "quote",
- "sbor-derive-common",
+ "sbor-derive-common 1.3.0",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "radix-sbor-derive"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "sbor-derive-common 1.4.0-dev",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "radix-substate-store-interface"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "hex",
+ "itertools 0.10.5",
+ "radix-common 1.4.0-dev",
+ "radix-rust 1.4.0-dev",
+ "sbor 1.4.0-dev",
+]
+
+[[package]]
+name = "radix-transactions"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "annotate-snippets",
+ "bech32 0.9.1",
+ "hex",
+ "lazy_static",
+ "paste",
+ "radix-common 1.4.0-dev",
+ "radix-engine-interface",
+ "radix-rust 1.4.0-dev",
+ "radix-substate-store-interface",
+ "sbor 1.4.0-dev",
+ "strum 0.24.1",
 ]
 
 [[package]]
@@ -8212,8 +8341,22 @@ dependencies = [
  "hex",
  "lazy_static",
  "paste",
- "radix-rust",
- "sbor-derive",
+ "radix-rust 1.3.0",
+ "sbor-derive 1.3.0",
+ "serde",
+]
+
+[[package]]
+name = "sbor"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "const-sha1",
+ "hex",
+ "lazy_static",
+ "paste",
+ "radix-rust 1.4.0-dev",
+ "sbor-derive 1.4.0-dev",
  "serde",
 ]
 
@@ -8224,7 +8367,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "128b2eb133960eda474fca36a8d7fd5d844204d2635340ac65834577308ad6f4"
 dependencies = [
  "proc-macro2",
- "sbor-derive-common",
+ "sbor-derive-common 1.3.0",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "sbor-derive"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
+dependencies = [
+ "proc-macro2",
+ "sbor-derive-common 1.4.0-dev",
  "syn 1.0.109",
 ]
 
@@ -8233,6 +8386,19 @@ name = "sbor-derive-common"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c2bd84926c8c4ed4232a6b225f41bc11f8b9f23f6a63eff5b43d46f11bc7e50"
+dependencies = [
+ "const-sha1",
+ "indexmap 2.7.0",
+ "itertools 0.10.5",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "sbor-derive-common"
+version = "1.4.0-dev"
+source = "git+https://github.com/radixdlt/radixdlt-scrypto?branch=develop#2520f05f88b495f59dbd3e8721c073ae898a8a0a"
 dependencies = [
  "const-sha1",
  "indexmap 2.7.0",

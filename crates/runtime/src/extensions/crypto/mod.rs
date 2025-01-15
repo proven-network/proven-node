@@ -39,6 +39,14 @@ pub fn op_generate_ed25519(#[state] state: &mut CryptoState) -> u32 {
 }
 
 #[op2]
+#[string]
+pub fn op_get_curve_name(#[state] state: &CryptoState, key_id: u32) -> String {
+    match &state.keys[key_id as usize] {
+        Key::Ed25519(_) => "Ed25519".to_string(),
+    }
+}
+
+#[op2]
 #[buffer]
 pub fn op_get_public_key(#[state] state: &CryptoState, key_id: u32) -> Vec<u8> {
     match &state.keys[key_id as usize] {
@@ -79,7 +87,13 @@ pub fn op_sign_string(
 
 extension!(
     crypto_ext,
-    ops = [op_generate_ed25519, op_get_public_key, op_sign_bytes, op_sign_string],
+    ops = [
+        op_generate_ed25519,
+        op_get_curve_name,
+        op_get_public_key,
+        op_sign_bytes,
+        op_sign_string
+    ],
     esm_entry_point = "proven:crypto",
     esm = [ dir "src/extensions/crypto", "proven:crypto" = "crypto.js" ],
     docs = "Functions for key management and signing"
