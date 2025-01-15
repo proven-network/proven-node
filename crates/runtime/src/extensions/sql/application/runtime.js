@@ -70,7 +70,9 @@ class ApplicationSqlStore {
   }
 
   async execute (sql) {
-    if (sql instanceof Sql) {
+    if (typeof sql === 'string') {
+      return await executeApplicationSql(this.sqlStoreName, sql)
+    } else if (sql instanceof Sql) {
       let affectedRows
       if (sql.values.length === 0) {
         affectedRows = await executeApplicationSql(this.sqlStoreName, sql.statement)
@@ -92,8 +94,11 @@ class ApplicationSqlStore {
   }
 
   async query (sql) {
-    if (sql instanceof Sql) {
-      let rows
+    let rows
+
+    if (typeof sql === 'string') {
+      rows = await queryApplicationSql(this.sqlStoreName, sql)
+    } else if (sql instanceof Sql) {
       if (sql.values.length === 0) {
         rows = await queryApplicationSql(this.sqlStoreName, sql.statement)
       } else {
@@ -101,32 +106,32 @@ class ApplicationSqlStore {
 
         rows = await queryApplicationSql(this.sqlStoreName, sql.statement, paramListId)
       }
-
-      // TODO: Reworks rows code to use generators
-      const results = []
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i]
-        const result = []
-        for (let j = 0; j < row.length; j++) {
-          if (row[j].Integer) {
-            result.push(row[j].Integer)
-          } else if (row[j].Real) {
-            result.push(row[j].Real)
-          } else if (row[j].Text) {
-            result.push(row[j].Text)
-          } else if (row[j].Blob) {
-            result.push(row[j].Blob)
-          } else if (row[j].Null) {
-            result.push(null)
-          }
-        }
-        results.push(result)
-      }
-
-      return results
     } else {
       throw new TypeError('Expected `sql` to be a string or Sql object')
     }
+
+    // TODO: Reworks rows code to use generators
+    const results = []
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      const result = []
+      for (let j = 0; j < row.length; j++) {
+        if (row[j].Integer) {
+          result.push(row[j].Integer)
+        } else if (row[j].Real) {
+          result.push(row[j].Real)
+        } else if (row[j].Text) {
+          result.push(row[j].Text)
+        } else if (row[j].Blob) {
+          result.push(row[j].Blob)
+        } else if (row[j].Null) {
+          result.push(null)
+        }
+      }
+      results.push(result)
+    }
+
+    return results
   }
 }
 

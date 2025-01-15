@@ -15,7 +15,11 @@ class ApplicationSqlStore {
   }
 
   migrate (sql) {
-    if (sql instanceof Sql) {
+    if (typeof sql === 'string') {
+      migrateApplicationSqlStore(this.sqlStoreName, sql)
+
+      return this
+    } else if (sql instanceof Sql) {
       migrateApplicationSqlStore(this.sqlStoreName, sql.sql)
 
       return this

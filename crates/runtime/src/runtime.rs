@@ -445,8 +445,8 @@ mod tests {
     }
 
     fn create_runtime_options(
-        script: &str,
-        handler_name: Option<String>,
+        script_name: &str,
+        handler_name: &str,
     ) -> RuntimeOptions<
         MemoryStore2,
         MemoryStore3,
@@ -455,11 +455,12 @@ mod tests {
         DirectSqlStore3,
         DirectSqlStore3,
     > {
+        let module = std::fs::read_to_string(format!("./test_esm/{script_name}.ts")).unwrap();
         RuntimeOptions {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
-            handler_name,
-            module: script.to_string(),
+            handler_name: Some(handler_name.to_string()),
+            module,
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
@@ -479,24 +480,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_new() {
-        run_in_thread(|| {
-            let options = create_runtime_options(
-                "export const test = () => { console.log('Hello, world!'); }",
-                Some("test".to_string()),
-            );
-
-            assert!(Runtime::new(options).is_ok());
-        });
-    }
-
-    #[tokio::test]
     async fn test_runtime_execute() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                "export const test = () => { console.log('Hello, world!'); }",
-                Some("test".to_string()),
-            );
+            let options = create_runtime_options("test_runtime_execute", "test");
 
             let request = create_execution_request();
             let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
@@ -509,10 +495,9 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_with_default_export() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                "export default () => { console.log('Hello, world!'); }",
-                None,
-            );
+            let mut options =
+                create_runtime_options("test_runtime_execute_with_default_export", "remove");
+            options.handler_name = None;
 
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
@@ -524,16 +509,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_gateway_api_sdk() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { RadixNetwork } from "@radixdlt/babylon-gateway-api-sdk";
-
-                export const test = () => {
-                    return RadixNetwork.Mainnet;
-                }
-            "#,
-                Some("test".to_string()),
-            );
+            let options = create_runtime_options("test_runtime_execute_gateway_api_sdk", "test");
 
             let request = create_execution_request();
             let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
@@ -546,16 +522,8 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_radix_engine_toolkit() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { RadixEngineToolkit } from "@radixdlt/radix-engine-toolkit";
-
-                export const test = async () => {
-                    return JSON.stringify(await RadixEngineToolkit.Build.information());
-                }
-            "#,
-                Some("test".to_string()),
-            );
+            let options =
+                create_runtime_options("test_runtime_execute_radix_engine_toolkit", "test");
 
             let request = create_execution_request();
             let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
@@ -571,16 +539,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_uuid() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { v4 as uuidv4 } from "uuid";
-
-                export const test = () => {
-                    return uuidv4();
-                }
-            "#,
-                Some("test".to_string()),
-            );
+            let options = create_runtime_options("test_runtime_execute_uuid", "test");
 
             let request = create_execution_request();
             let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
@@ -593,21 +552,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_zod() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { z } from "zod";
-
-                export const test = () => {
-                    const schema = z.object({
-                        name: z.string(),
-                        age: z.number(),
-                    });
-
-                    return schema.parse({ name: "Alice", age: 30 });
-                }
-            "#,
-                Some("test".to_string()),
-            );
+            let options = create_runtime_options("test_runtime_execute_zod", "test");
 
             let request = create_execution_request();
             let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
@@ -638,17 +583,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_with_identity() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { getCurrentIdentity } from "@proven-network/session";
-
-                export const test = () => {
-                    const identity = getCurrentIdentity();
-                    return identity;
-                }
-            "#,
-                Some("test".to_string()),
-            );
+            let options = create_runtime_options("test_runtime_execute_with_identity", "test");
 
             let mut request = create_execution_request();
             request.identity = Some("test_identity".to_string());
@@ -663,17 +598,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_with_accounts() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { getCurrentAccounts } from "@proven-network/session";
-
-                export const test = () => {
-                    const accounts = getCurrentAccounts();
-                    return accounts;
-                }
-            "#,
-                Some("test".to_string()),
-            );
+            let options = create_runtime_options("test_runtime_execute_with_accounts", "test");
 
             let mut request = create_execution_request();
             request.accounts = Some(vec!["account1".to_string(), "account2".to_string()]);
@@ -695,21 +620,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_sets_timeout() {
+    async fn test_runtime_execute_sets_timeout() {
         run_in_thread(|| {
             // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
-            let options = create_runtime_options(
-                r#"
-                import { runWithOptions } from "@proven-network/handler";
-
-                export const test = runWithOptions(async () => {
-                    return new Promise((resolve) => {
-                        setTimeout(() => resolve(), 1500);
-                    });
-                }, { timeout: 2000 });
-            "#,
-                Some("test".to_string()),
-            );
+            let options = create_runtime_options("test_runtime_execute_sets_timeout", "test");
 
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
@@ -719,20 +633,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_default_max_heap_size() {
+    async fn test_runtime_execute_default_max_heap_size() {
         run_in_thread(|| {
             // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
-            let options = create_runtime_options(
-                r#"
-                import { runWithOptions } from "@proven-network/handler";
-
-                export const test = runWithOptions(() => {
-                    const largeArray = new Array(40 * 1024 * 1024).fill('a');
-                    return largeArray;
-                }, { timeout: 30000 });
-            "#,
-                Some("test".to_string()),
-            );
+            let options =
+                create_runtime_options("test_runtime_execute_default_max_heap_size", "test");
 
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
@@ -744,17 +649,8 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_with_disallowed_origins() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { runWithOptions } from "@proven-network/handler";
-
-                export const test = runWithOptions(async () => {
-                    const response = await fetch("https://example.com/");
-                    return response;
-                }, { timeout: 10000 });
-            "#,
-                Some("test".to_string()),
-            );
+            let options =
+                create_runtime_options("test_runtime_execute_with_disallowed_origins", "test");
 
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
@@ -766,17 +662,8 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_with_allowed_origins() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { runWithOptions } from "@proven-network/handler";
-
-                export const test = runWithOptions(async () => {
-                    const response = await fetch("https://example.com/");
-                    return response.status;
-                }, { allowedOrigins: ["https://example.com"], timeout: 10000 });
-            "#,
-                Some("test".to_string()),
-            );
+            let options =
+                create_runtime_options("test_runtime_execute_with_allowed_origins", "test");
 
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
@@ -789,26 +676,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_with_sql() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { getApplicationDb, sql } from "@proven-network/sql";
-
-                const DB = getApplicationDb("main");
-
-                DB.migrate(sql`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`);
-
-                export const test = async () => {
-                    const email = "alice@example.com";
-
-                    await DB.execute(sql`INSERT INTO users (email) VALUES (${email})`);
-
-                    const results = await DB.query(sql`SELECT id, email FROM users`);
-
-                    return results[0][1];
-                };
-            "#,
-                Some("test".to_string()),
-            );
+            let options = create_runtime_options("test_runtime_execute_with_sql", "test");
 
             let mut request = create_execution_request();
             request.identity = Some("test_identity".to_string());
@@ -822,21 +690,8 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_basic_ed25519_signing() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                r#"
-                import { generateEd25519Key } from "@proven-network/crypto";
-
-                export const test = async () => {
-                    const key = generateEd25519Key();
-
-                    return [
-                        key.publicKey().toString(),
-                        key.sign("Hello, world!").toString()
-                    ];
-                }
-            "#,
-                Some("test".to_string()),
-            );
+            let options =
+                create_runtime_options("test_runtime_execute_basic_ed25519_signing", "test");
 
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
@@ -868,10 +723,8 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_manifest_ed25519_signing() {
         run_in_thread(|| {
-            let options = create_runtime_options(
-                include_str!("../esm/test_runtime_execute_manifest_ed25519_signing.ts"),
-                Some("test".to_string()),
-            );
+            let options =
+                create_runtime_options("test_runtime_execute_manifest_ed25519_signing", "test");
 
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
@@ -897,66 +750,19 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_ed25519_storage() {
         run_in_thread(|| {
-            let application_store = MemoryStore2::new();
-
-            let options = RuntimeOptions {
-                application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
-                application_store: application_store.clone(),
-                handler_name: Some("test".to_string()),
-                module: r#"
-                import { generateEd25519Key } from "@proven-network/crypto";
-                import { getApplicationKeyStore } from "@proven-network/kv";
-
-                const KEY_STORE = getApplicationKeyStore("keys");
-
-                export const test = async () => {
-                    const key = generateEd25519Key();
-
-                    await KEY_STORE.set("key", key);
-
-                    return key.publicKey().toString();
-                }
-            "#
-                .to_string(),
-                nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
-                nft_store: MemoryStore3::new(),
-                personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
-                personal_store: MemoryStore3::new(),
-                radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
-                radix_network_definition: NetworkDefinition::stokenet(),
-            };
+            let mut options =
+                create_runtime_options("test_runtime_execute_ed25519_storage", "save");
 
             let request = create_execution_request();
-            let result = Runtime::new(options).unwrap().execute(request);
+            let result = Runtime::new(options.clone()).unwrap().execute(request);
 
             assert!(result.is_ok());
 
             let binding = result.unwrap();
             let public_key = binding.output.as_str().unwrap();
 
-            let options = RuntimeOptions {
-                application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
-                application_store,
-                handler_name: Some("test".to_string()),
-                module: r#"
-                import { getApplicationKeyStore } from "@proven-network/kv";
-
-                const KEY_STORE = getApplicationKeyStore("keys");
-
-                export const test = async () => {
-                    const key = await KEY_STORE.get("key");
-
-                    return key.sign("Hello, world!").toString();
-                }
-            "#
-                .to_string(),
-                nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
-                nft_store: MemoryStore3::new(),
-                personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
-                personal_store: MemoryStore3::new(),
-                radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
-                radix_network_definition: NetworkDefinition::stokenet(),
-            };
+            // Reuse options to ensure the same application kv store is used. Just change the handler name.
+            options.handler_name = Some("load".to_string());
 
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
