@@ -93,6 +93,8 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [radix-aggregator](crates/radix-aggregator): Configures and runs Radix Gateway's data aggregator. Also manages migration process as part of boot.
 - [radix-gateway](crates/radix-gateway): Configures and runs a local Radix Gateway.
 - [radix-gateway-sdk](crates/radix-gateway-sdk): Rust port of the Radix Gateway SDK.
+- [radix-nft-verifier](crates/radix-nft-verifier): Verifies NFTs on Radix DLT.
+- [radix-nft-verifier-mock](crates/radix-nft-verifier-mock): Mock implementation of NFT verifier for testing.
 - [radix-node](crates/radix-node): Configures and runs a local Radix Babylon Node.
 - [radix-rola](crates/radix-rola): Rust port of the Radix ROLA example code.
 - [radix-stream](crates/radix-stream): Handles processing transactions and events from Radix DLT.

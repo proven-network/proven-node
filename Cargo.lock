@@ -7111,6 +7111,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-radix-nft-verifier"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+]
+
+[[package]]
+name = "proven-radix-nft-verifier-mock"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "proven-radix-nft-verifier",
+ "tokio",
+]
+
+[[package]]
 name = "proven-radix-node"
 version = "0.1.0"
 dependencies = [

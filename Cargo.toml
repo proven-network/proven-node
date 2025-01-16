@@ -36,6 +36,8 @@ members = [
     "crates/radix-aggregator",
     "crates/radix-gateway",
     "crates/radix-gateway-sdk",
+    "crates/radix-nft-verifier",
+    "crates/radix-nft-verifier-mock",
     "crates/radix-node",
     "crates/radix-rola",
     "crates/radix-stream",
@@ -237,6 +239,8 @@ proven-postgres = { path = "crates/postgres" }
 proven-radix-aggregator = { path = "crates/radix-aggregator" }
 proven-radix-gateway = { path = "crates/radix-gateway" }
 proven-radix-gateway-sdk = { path = "crates/radix-gateway-sdk" }
+proven-radix-nft-verifier = { path = "crates/radix-nft-verifier" }
+proven-radix-nft-verifier-mock = { path = "crates/radix-nft-verifier-mock" }
 proven-radix-node = { path = "crates/radix-node" }
 proven-radix-rola = { path = "crates/radix-rola" }
 proven-radix-stream = { path = "crates/radix-stream" }

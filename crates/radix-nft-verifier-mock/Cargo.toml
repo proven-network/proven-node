@@ -1,0 +1,9 @@
+[package]
+name = "proven-radix-nft-verifier-mock"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+proven-radix-nft-verifier = { workspace = true }
+tokio = { workspace = true }
