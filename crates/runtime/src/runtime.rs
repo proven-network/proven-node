@@ -436,6 +436,7 @@ mod tests {
     use ed25519_dalek::Verifier;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
+    use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
     use serde_json::json;
     use tempfile::tempdir;
 
@@ -736,6 +737,13 @@ mod tests {
 
             // First element is compiled notorized transaction in hex
             assert!(output[0].is_string());
+            let raw_transaction: RawNotarizedTransaction =
+                hex::decode(output[0].as_str().unwrap()).unwrap().into();
+
+            let parse_result =
+                radix_transactions::model::NotarizedTransactionV1::from_raw(&raw_transaction);
+
+            assert!(parse_result.is_ok());
 
             // Second element is notary public key in hex
             assert!(output[1].is_string());
@@ -743,7 +751,7 @@ mod tests {
             // Third element is signer public key in hex
             assert!(output[2].is_string());
 
-            // TODO: Add more output checks
+            // TODO: Check signatures
         });
     }
 
