@@ -187,6 +187,7 @@ where
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn spawn_response_handler(
         consumer: NatsConsumerType<NatsConsumerConfig>,
         response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
@@ -202,10 +203,11 @@ where
                         h.get("Reply-Msg-Id"),
                         h.get("Reply-Seq"),
                         h.get("Reply-Seq-End"),
+                        h.get("Reply-Empty"),
                     )
                 }) {
                     // Single response
-                    Some((Some(request_id), None, None)) => {
+                    Some((Some(request_id), None, None, None)) => {
                         let request_id: usize = request_id.to_string().parse().unwrap();
 
                         let response: X::ResponseType = msg.payload.clone().try_into().unwrap();
@@ -215,8 +217,19 @@ where
                             let _ = sender.send(ClientResponseType::Response(response));
                         }
                     }
+                    // Source stream is empty if Reply-Empty header is present - just early return empty stream
+                    Some((Some(request_id), None, None, Some(_))) => {
+                        let request_id: usize = request_id.to_string().parse().unwrap();
+
+                        let mut response_map = response_map.lock().await;
+                        if let Some(sender) = response_map.remove(&request_id) {
+                            let _ = sender.send(ClientResponseType::Stream(Box::new(
+                                futures::stream::empty(),
+                            )));
+                        }
+                    }
                     // Final streamed response has the total expected - if that many are received the stream can close
-                    Some((Some(request_id), Some(stream_id), Some(total_expected))) => {
+                    Some((Some(request_id), Some(stream_id), Some(total_expected), None)) => {
                         let request_id: usize = request_id.to_string().parse().unwrap();
                         let stream_id: usize = stream_id.to_string().parse().unwrap();
                         let total_expected: usize = total_expected.to_string().parse().unwrap();
@@ -271,7 +284,7 @@ where
                         drop(stream_map);
                     }
                     // A streamed response but not the final one
-                    Some((Some(request_id), Some(stream_id), None)) => {
+                    Some((Some(request_id), Some(stream_id), None, None)) => {
                         let request_id: usize = request_id.to_string().parse().unwrap();
                         let stream_id: usize = stream_id.to_string().parse().unwrap();
 
@@ -546,6 +559,37 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Debug)]
+    struct EmptyStreamTestHandler;
+
+    #[async_trait]
+    impl ServiceHandler<TestMessage, serde_json::Error, serde_json::Error> for EmptyStreamTestHandler {
+        type Error = serde_json::Error;
+        type ResponseType = TestMessage;
+        type ResponseDeserializationError = serde_json::Error;
+        type ResponseSerializationError = serde_json::Error;
+
+        async fn handle<R>(
+            &self,
+            _msg: TestMessage,
+            responder: R,
+        ) -> Result<R::UsedResponder, Self::Error>
+        where
+            R: ServiceResponder<
+                TestMessage,
+                serde_json::Error,
+                serde_json::Error,
+                Self::ResponseType,
+                Self::ResponseDeserializationError,
+                Self::ResponseSerializationError,
+            >,
+        {
+            use futures::stream;
+
+            Ok(responder.stream(stream::empty()).await)
+        }
+    }
+
     #[tokio::test]
     async fn test_client_request_response() {
         // Connect to NATS
@@ -734,6 +778,75 @@ mod tests {
                     },
                 ]
             );
+        } else {
+            panic!("Expected stream response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_client_empty_stream_response() {
+        // Connect to NATS
+        let client = ConnectOptions::default()
+            .connection_timeout(Duration::from_secs(5))
+            .connect("localhost:4222")
+            .await
+            .expect("Failed to connect to NATS");
+
+        cleanup_stream(&client, "test_client_empty_stream_response").await;
+
+        // Create stream
+        let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
+            "test_client_empty_stream_response",
+            NatsStreamOptions {
+                client: client.clone(),
+            },
+        );
+
+        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
+
+        // Start service with streaming handler
+        let _service = initialized_stream
+            .clone()
+            .start_service(
+                "test_client_stream_response",
+                NatsServiceOptions {
+                    client: client.clone(),
+                    durable_name: None,
+                    jetstream_context: async_nats::jetstream::new(client.clone()),
+                },
+                EmptyStreamTestHandler,
+            )
+            .await
+            .expect("Failed to start service");
+
+        // Create client
+        let client = initialized_stream
+            .client::<_, EmptyStreamTestHandler>(
+                "test_client_stream_response",
+                NatsClientOptions {
+                    client: client.clone(),
+                },
+            )
+            .await
+            .expect("Failed to create client");
+
+        // Send request and collect stream responses
+        let request = TestMessage {
+            content: "hello".to_string(),
+        };
+
+        if let ClientResponseType::Stream(mut stream) =
+            timeout(Duration::from_secs(5), client.request(request))
+                .await
+                .expect("Request timed out")
+                .expect("Failed to send request")
+        {
+            let mut responses = Vec::new();
+            while let Some(response) = stream.next().await {
+                responses.push(response);
+            }
+
+            assert_eq!(responses.len(), 0);
         } else {
             panic!("Expected stream response");
         }

@@ -241,6 +241,22 @@ where
                 pinned_stream.as_mut().next().await,
                 pinned_stream.as_mut().peek().await,
             ) {
+                (None, _) => {
+                    let mut empty_headers = HeaderMap::new();
+                    empty_headers.insert(
+                        "Nats-Msg-Id",
+                        format!("reply:{}:{}", self.request_id.clone(), stream_id),
+                    );
+                    empty_headers.insert("Reply-Msg-Id", self.request_id.clone());
+                    empty_headers.insert("Reply-Empty", "true");
+
+                    self.nats_client
+                        .publish_with_headers(self.reply_stream_name, empty_headers, Bytes::new())
+                        .await
+                        .unwrap();
+
+                    break;
+                }
                 (Some(batched_bytes), Some(_)) => {
                     stream_id += 1;
 
@@ -280,7 +296,6 @@ where
 
                     break;
                 }
-                (None, Some(_) | None) => unreachable!(),
             }
         }
 

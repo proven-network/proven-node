@@ -54,19 +54,21 @@ impl SqlConnection for Connection {
         Ok(self.database.lock().await.migrate(&query.into()).await?)
     }
 
+    #[allow(clippy::significant_drop_in_scrutinee)]
     async fn query<Q: Clone + Into<String> + Send>(
         &self,
         query: Q,
         params: Vec<SqlParam>,
     ) -> Result<Box<dyn futures::Stream<Item = Vec<SqlParam>> + Send + Unpin>, Self::Error> {
-        let query_stream = Box::new(
-            self.database
-                .lock()
-                .await
-                .query(&query.into(), params)
-                .await?,
-        );
-
-        Ok(query_stream)
+        match self
+            .database
+            .lock()
+            .await
+            .query(&query.into(), params)
+            .await
+        {
+            Ok(query_stream) => Ok(Box::new(query_stream)),
+            Err(e) => Err(e.into()),
+        }
     }
 }

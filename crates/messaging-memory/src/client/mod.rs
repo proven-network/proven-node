@@ -5,7 +5,7 @@ use crate::{ClientRequest, GlobalState, ServiceResponse, GLOBAL_STATE};
 pub use error::Error;
 use proven_messaging::stream::InitializedStream;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -20,15 +20,7 @@ use tokio::sync::{broadcast, oneshot, Mutex};
 use uuid::Uuid;
 
 type ResponseMap<R> = HashMap<String, oneshot::Sender<ClientResponseType<R>>>;
-type StreamMap<R> = HashMap<String, StreamState<R>>;
-
-/// The state of a streaming response.
-#[derive(Debug)]
-struct StreamState<R> {
-    sender: Sender<R>,
-    received_messages: HashSet<usize>,
-    total_expected: Option<usize>,
-}
+type StreamMap<R> = HashMap<String, Sender<R>>;
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -103,76 +95,55 @@ where
     ) {
         tokio::spawn(async move {
             while let Ok(response) = receiver.recv().await {
-                match (response.stream_id, response.stream_end) {
+                match response {
                     // Single response
-                    (None, None) => {
+                    ServiceResponse::Single(request_id, payload) => {
                         let mut map = response_map.lock().await;
-                        if let Some(sender) = map.remove(&response.request_id) {
-                            let _ = sender.send(ClientResponseType::Response(response.payload));
+                        if let Some(sender) = map.remove(&request_id) {
+                            let _ = sender.send(ClientResponseType::Response(payload));
+                        }
+                    }
+                    // Empty stream response
+                    ServiceResponse::StreamEmpty(request_id) => {
+                        let mut map = response_map.lock().await;
+                        if let Some(sender) = map.remove(&request_id) {
+                            let _ = sender.send(ClientResponseType::Stream(Box::new(
+                                futures::stream::empty(),
+                            )));
                         }
                     }
                     // Stream response with end marker
-                    (Some(stream_id), Some(total_expected)) => {
-                        if total_expected == 1 {
+                    ServiceResponse::StreamEnd(request_id, payload) => {
+                        let mut stream_map = stream_map.lock().await;
+                        if let Some(sender) = stream_map.get_mut(&request_id) {
+                            let _ = sender.try_send(payload);
+                            sender.close_channel();
+                            stream_map.remove(&request_id);
+                        } else {
                             let mut response_map = response_map.lock().await;
-                            if let Some(sender) = response_map.remove(&response.request_id) {
+                            if let Some(sender) = response_map.remove(&request_id) {
                                 let _ = sender.send(ClientResponseType::Stream(Box::new(
-                                    futures::stream::iter(vec![response.payload]),
+                                    futures::stream::iter(vec![payload]),
                                 )));
                             }
                             drop(response_map);
-                            continue;
-                        }
-
-                        let mut stream_map = stream_map.lock().await;
-                        if let Some(state) = stream_map.get_mut(&response.request_id) {
-                            state.received_messages.insert(stream_id);
-                            state.total_expected = Some(total_expected);
-                            let _ = state.sender.try_send(response.payload);
-
-                            if state.received_messages.len() == total_expected {
-                                state.sender.close_channel();
-                                stream_map.remove(&response.request_id);
-                            }
-                        } else {
-                            let (tx, rx) = mpsc::channel(32);
-                            let mut state = StreamState {
-                                sender: tx,
-                                received_messages: HashSet::new(),
-                                total_expected: Some(total_expected),
-                            };
-                            state.received_messages.insert(stream_id);
-                            let _ = state.sender.try_send(response.payload);
-                            stream_map.insert(response.request_id.clone(), state);
-
-                            let mut response_map = response_map.lock().await;
-                            if let Some(sender) = response_map.remove(&response.request_id) {
-                                let stream = Box::new(rx);
-                                let _ = sender.send(ClientResponseType::Stream(stream));
-                            }
                         }
 
                         drop(stream_map);
                     }
                     // Stream response without end marker
-                    (Some(stream_id), None) => {
+                    ServiceResponse::StreamItem(request_id, payload) => {
                         let mut stream_map = stream_map.lock().await;
-                        if let Some(state) = stream_map.get_mut(&response.request_id) {
-                            state.received_messages.insert(stream_id);
-                            let _ = state.sender.try_send(response.payload);
+                        if let Some(sender) = stream_map.get_mut(&request_id) {
+                            let _ = sender.try_send(payload);
                         } else {
-                            let (tx, rx) = mpsc::channel(32);
-                            let mut state = StreamState {
-                                sender: tx,
-                                received_messages: HashSet::new(),
-                                total_expected: None,
-                            };
-                            state.received_messages.insert(stream_id);
-                            let _ = state.sender.try_send(response.payload);
-                            stream_map.insert(response.request_id.clone(), state);
+                            let (mut tx, rx) = mpsc::channel(32);
+
+                            let _ = tx.try_send(payload);
+                            stream_map.insert(request_id.clone(), tx);
 
                             let mut response_map = response_map.lock().await;
-                            if let Some(sender) = response_map.remove(&response.request_id) {
+                            if let Some(sender) = response_map.remove(&request_id) {
                                 let stream = Box::new(rx);
                                 let _ = sender.send(ClientResponseType::Stream(stream));
                             }
@@ -180,7 +151,6 @@ where
 
                         drop(stream_map);
                     }
-                    _ => unreachable!(),
                 }
             }
         });

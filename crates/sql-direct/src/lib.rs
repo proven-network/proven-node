@@ -110,7 +110,7 @@ mod tests {
     #[tokio::test]
     async fn test_sql_store() {
         let mut dir = tempdir().unwrap().into_path();
-        dir.push("test.db");
+        dir.push("test_sql_store.db");
 
         let store = DirectSqlStore::new(dir);
 
@@ -134,19 +134,50 @@ mod tests {
 
         assert_eq!(response, 1);
 
-        let mut stream = connection
+        let mut rows = connection
             .query("SELECT id, email FROM users", vec![])
             .await
             .unwrap();
 
-        let row = stream.next().await.unwrap();
+        let mut results = Vec::new();
+        while let Some(row) = rows.next().await {
+            results.push(row);
+        }
 
+        assert_eq!(results.len(), 1);
         assert_eq!(
-            row,
+            results[0],
             vec![
                 SqlParam::IntegerWithName("id".to_string(), 1),
                 SqlParam::TextWithName("email".to_string(), "alice@example.com".to_string()),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn test_no_results() {
+        let mut dir = tempdir().unwrap().into_path();
+        dir.push("test_no_results.db");
+
+        let store = DirectSqlStore::new(dir);
+
+        let connection = store
+            .connect(vec![
+                "CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)",
+            ])
+            .await
+            .unwrap();
+
+        let mut rows = connection
+            .query("SELECT id, email FROM users", vec![])
+            .await
+            .unwrap();
+
+        let mut results = Vec::new();
+        while let Some(row) = rows.next().await {
+            results.push(row);
+        }
+
+        assert_eq!(results.len(), 0);
     }
 }

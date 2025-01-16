@@ -580,6 +580,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_no_results() {
+        let result = timeout(Duration::from_secs(5), async {
+            let stream = MemoryStream::new("test_no_results", MemoryStreamOptions);
+
+            let sql_store = StreamedSqlStore::new(
+                stream,
+                MemoryServiceOptions,
+                MemoryClientOptions,
+                MemoryStore::new(),
+            );
+
+            let connection = sql_store
+                .connect(vec![
+                    "CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)",
+                ])
+                .await
+                .unwrap();
+
+            let mut rows = connection
+                .query("SELECT id, email FROM users".to_string(), vec![])
+                .await
+                .unwrap();
+
+            let mut results = Vec::new();
+            while let Some(row) = rows.next().await {
+                results.push(row);
+            }
+
+            assert_eq!(results.len(), 0);
+        })
+        .await;
+
+        assert!(result.is_ok(), "Test timed out");
+    }
+
+    #[tokio::test]
     async fn test_invalid_sql_migration() {
         let result = timeout(Duration::from_secs(5), async {
             let stream = MemoryStream::new("test_invalid_sql_migration", MemoryStreamOptions);

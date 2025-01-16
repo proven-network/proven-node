@@ -288,27 +288,44 @@ impl Database {
             StatementType::Query => {
                 let libsql_params = Self::convert_params(params);
 
-                let libsql_rows = self
+                let mut libsql_rows = self
                     .get_connection()?
                     .query(query, libsql_params)
                     .await
                     .map_err(Error::from)?;
 
+                let libsql_first_row_opt = libsql_rows.next().await?;
+
+                // Early return empty stream if no results
+                if libsql_first_row_opt.is_none() {
+                    return Ok(Box::new(futures::stream::empty()));
+                }
+
+                let libsql_first_row = libsql_first_row_opt.unwrap();
+
                 let column_count = libsql_rows.column_count();
 
-                let column_names = (0..column_count)
-                    .map(|i| libsql_rows.column_name(i).unwrap_or_default().to_string())
-                    .collect::<Vec<String>>();
+                let first_row_with_names = (0..column_count)
+                    .filter_map(|i| {
+                        let column_name =
+                            libsql_rows.column_name(i).unwrap_or_default().to_string();
+                        libsql_first_row.get_value(i).ok().map(|value| match value {
+                            Value::Blob(b) => SqlParam::BlobWithName(column_name, Bytes::from(b)),
+                            Value::Integer(n) => SqlParam::IntegerWithName(column_name, n),
+                            Value::Null => SqlParam::NullWithName(column_name),
+                            Value::Real(r) => SqlParam::RealWithName(column_name, r),
+                            Value::Text(s) => SqlParam::TextWithName(column_name, s),
+                        })
+                    })
+                    .collect::<Vec<SqlParam>>();
 
-                let mut sent_column_names = false;
-
-                Ok(Box::new(Box::pin(libsql_rows.into_stream().map(
-                    move |r| {
-                        let column_names = &column_names;
-                        r.map_or_else(
-                            |_| Vec::new(),
-                            |row| {
-                                if sent_column_names {
+                Ok(Box::new(Box::pin(
+                    // Reinclude the first row since it was consumed to peek for empty results
+                    futures::stream::once(async { first_row_with_names }).chain(
+                        libsql_rows.into_stream().map(move |r| {
+                            r.map_or_else(
+                                |_| Vec::new(),
+                                |row| {
                                     (0..column_count)
                                         .filter_map(move |i| {
                                             row.get_value(i).ok().map(|value| match value {
@@ -320,42 +337,11 @@ impl Database {
                                             })
                                         })
                                         .collect::<Vec<SqlParam>>()
-                                } else {
-                                    let row_with_column_names = (0..column_count)
-                                        .filter_map(move |i| {
-                                            #[allow(clippy::cast_sign_loss)]
-                                            row.get_value(i).ok().map(|value| match value {
-                                                Value::Blob(b) => SqlParam::BlobWithName(
-                                                    column_names[i as usize].clone(),
-                                                    Bytes::from(b),
-                                                ),
-                                                Value::Integer(n) => SqlParam::IntegerWithName(
-                                                    column_names[i as usize].clone(),
-                                                    n,
-                                                ),
-                                                Value::Null => SqlParam::NullWithName(
-                                                    column_names[i as usize].clone(),
-                                                ),
-                                                Value::Real(r) => SqlParam::RealWithName(
-                                                    column_names[i as usize].clone(),
-                                                    r,
-                                                ),
-                                                Value::Text(s) => SqlParam::TextWithName(
-                                                    column_names[i as usize].clone(),
-                                                    s,
-                                                ),
-                                            })
-                                        })
-                                        .collect::<Vec<SqlParam>>();
-
-                                    sent_column_names = true;
-
-                                    row_with_column_names
-                                }
-                            },
-                        )
-                    },
-                ))))
+                                },
+                            )
+                        }),
+                    ),
+                )))
             }
             StatementType::Unknown => Err(Error::IncorrectSqlType(
                 StatementType::Query,
@@ -473,6 +459,24 @@ mod tests {
         }
 
         assert!(rows.next().await.is_none(), "Too many rows returned");
+    }
+
+    #[tokio::test]
+    async fn test_no_results() {
+        let db_path = get_temp_db_path();
+        let db = Database::connect(db_path).await.unwrap();
+
+        db.migrate("CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)")
+            .await
+            .unwrap();
+
+        let result = db.query("SELECT id, email FROM users", vec![]).await;
+
+        assert!(result.is_ok());
+
+        let result = result.unwrap().next().await;
+
+        assert!(result.is_none());
     }
 
     #[tokio::test]

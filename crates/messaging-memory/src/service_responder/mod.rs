@@ -135,12 +135,7 @@ where
         // Format key as "{service_name}:{client_id}"
         let response_key = format!("{}:{}", self.service_name, self.client_id);
         if let Some(sender) = service_responses.get(&response_key) {
-            let response = ServiceResponse {
-                request_id: self.request_id,
-                stream_id: None,
-                stream_end: None,
-                payload: response,
-            };
+            let response = ServiceResponse::Single(self.request_id, response);
             let _ = sender.send(response);
         }
 
@@ -151,54 +146,50 @@ where
     }
 
     async fn reply_and_delete_request(self, response: R) -> MemoryUsedServiceResponder {
-        let mut state = GLOBAL_STATE.lock().await;
-        if !state.has::<GlobalState<R>>() {
-            state.put(GlobalState::<R>::default());
-        }
-        let subject_state = state.borrow::<GlobalState<R>>();
-        let service_responses = subject_state.service_responses.lock().await;
+        let stream_sequence = self.stream_sequence;
+        let stream = self.stream.clone();
 
-        // Format key as "{service_name}:{client_id}"
-        let response_key = format!("{}:{}", self.service_name, self.client_id);
-        if let Some(sender) = service_responses.get(&response_key) {
-            let response = ServiceResponse {
-                request_id: self.request_id,
-                stream_id: None,
-                stream_end: None,
-                payload: response,
-            };
-            let _ = sender.send(response);
-        }
+        let used_responder = Self::reply(self, response).await;
 
-        drop(service_responses);
-        drop(state);
+        stream.delete(stream_sequence).await.unwrap();
 
-        let _ = self.stream.delete(self.stream_sequence).await;
-
-        MemoryUsedServiceResponder
+        used_responder
     }
 
-    async fn stream<W>(self, stream: W) -> Self::UsedResponder
+    async fn stream<W>(self, response_stream: W) -> Self::UsedResponder
     where
         W: Stream<Item = R> + Send + Unpin,
     {
-        let mut stream_id = 0;
-        let peekable = stream.peekable();
+        let peekable = response_stream.peekable();
 
         tokio::pin!(peekable);
 
-        while let Some(response) = peekable.as_mut().next().await {
-            stream_id += 1;
+        if peekable.as_mut().peek().await.is_none() {
+            let service_response = ServiceResponse::<R>::StreamEmpty(self.request_id.clone());
 
-            let service_response = ServiceResponse {
-                request_id: self.request_id.clone(),
-                stream_id: Some(stream_id),
-                stream_end: if peekable.as_mut().peek().await.is_none() {
-                    Some(stream_id)
-                } else {
-                    None
-                },
-                payload: response,
+            let mut state = GLOBAL_STATE.lock().await;
+            if !state.has::<GlobalState<R>>() {
+                state.put(GlobalState::<R>::default());
+            }
+            let global_state = state.borrow::<GlobalState<R>>();
+            let service_responses = global_state.service_responses.lock().await;
+
+            let response_key = format!("{}:{}", self.service_name, self.client_id);
+            if let Some(sender) = service_responses.get(&response_key) {
+                let _ = sender.send(service_response);
+            }
+
+            drop(service_responses);
+            drop(state);
+
+            return MemoryUsedServiceResponder;
+        }
+
+        while let Some(response) = peekable.as_mut().next().await {
+            let service_response = if peekable.as_mut().peek().await.is_none() {
+                ServiceResponse::StreamEnd(self.request_id.clone(), response)
+            } else {
+                ServiceResponse::StreamItem(self.request_id.clone(), response)
             };
 
             let mut state = GLOBAL_STATE.lock().await;
@@ -208,9 +199,7 @@ where
             let global_state = state.borrow::<GlobalState<R>>();
             let service_responses = global_state.service_responses.lock().await;
 
-            // Format key as "{service_name}:{client_id}"
             let response_key = format!("{}:{}", self.service_name, self.client_id);
-
             if let Some(sender) = service_responses.get(&response_key) {
                 let _ = sender.send(service_response);
             }
@@ -222,49 +211,18 @@ where
         MemoryUsedServiceResponder
     }
 
-    async fn stream_and_delete_request<W>(self, stream: W) -> MemoryUsedServiceResponder
+    async fn stream_and_delete_request<W>(self, response_stream: W) -> MemoryUsedServiceResponder
     where
         W: Stream<Item = R> + Send + Unpin,
     {
-        let mut stream_id = 0;
-        let peekable = stream.peekable();
+        let stream_sequence = self.stream_sequence;
+        let stream = self.stream.clone();
 
-        tokio::pin!(peekable);
+        let used_responder = Self::stream(self, response_stream).await;
 
-        while let Some(response) = peekable.as_mut().next().await {
-            stream_id += 1;
+        stream.delete(stream_sequence).await.unwrap();
 
-            let service_response = ServiceResponse {
-                request_id: self.request_id.clone(),
-                stream_id: Some(stream_id),
-                stream_end: if peekable.as_mut().peek().await.is_none() {
-                    Some(stream_id)
-                } else {
-                    None
-                },
-                payload: response,
-            };
-
-            let mut state = GLOBAL_STATE.lock().await;
-            if !state.has::<GlobalState<R>>() {
-                state.put(GlobalState::<R>::default());
-            }
-            let global_state = state.borrow::<GlobalState<R>>();
-            let service_responses = global_state.service_responses.lock().await;
-
-            // Format key as "{service_name}:{client_id}"
-            let response_key = format!("{}:{}", self.service_name, self.client_id);
-            if let Some(sender) = service_responses.get(&response_key) {
-                let _ = sender.send(service_response);
-            }
-
-            drop(service_responses);
-            drop(state);
-        }
-
-        self.stream.delete(self.stream_sequence).await.unwrap();
-
-        MemoryUsedServiceResponder
+        used_responder
     }
 
     fn stream_sequence(&self) -> u64 {

@@ -50,11 +50,11 @@ struct ClientRequest<T> {
 }
 
 #[derive(Clone, Debug)]
-struct ServiceResponse<R> {
-    request_id: String,
-    stream_id: Option<usize>,
-    stream_end: Option<usize>,
-    payload: R,
+enum ServiceResponse<R> {
+    Single(String, R),
+    StreamItem(String, R),
+    StreamEmpty(String),
+    StreamEnd(String, R),
 }
 
 #[derive(Clone, Debug)]
