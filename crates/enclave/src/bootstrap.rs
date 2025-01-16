@@ -29,6 +29,7 @@ use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
+use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
@@ -945,6 +946,9 @@ impl Bootstrap {
             .await,
         );
 
+        // TODO: Replace with gateway-based version when written
+        let radix_nft_verifier = RadixNftVerifierMock::new();
+
         let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
             application_sql_store,
             application_store,
@@ -955,6 +959,7 @@ impl Bootstrap {
             personal_store,
             radix_gateway_origin: GATEWAY_URL.to_string(),
             radix_network_definition: self.network_definition.clone(),
+            radix_nft_verifier,
         })
         .await;
 

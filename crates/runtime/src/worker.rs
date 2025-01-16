@@ -3,6 +3,7 @@ use crate::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 use std::marker::PhantomData;
 use std::thread;
 
+use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use tokio::sync::mpsc;
@@ -17,6 +18,7 @@ use tokio::sync::oneshot;
 ///
 /// # Example
 /// ```rust
+/// use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions, Worker,
 /// };
@@ -39,6 +41,7 @@ use tokio::sync::oneshot;
 ///         personal_store: MemoryStore3::new(),
 ///         radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         radix_network_definition: NetworkDefinition::stokenet(),
+///         radix_nft_verifier: RadixNftVerifierMock::new(),
 ///     })
 ///     .await
 ///     .expect("Failed to create worker");
@@ -53,7 +56,7 @@ use tokio::sync::oneshot;
 ///         .await;
 /// }
 /// ```
-pub struct Worker<AS, PS, NS, ASS, PSS, NSS>
+pub struct Worker<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -61,9 +64,10 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     sender: mpsc::Sender<WorkerRequest>,
-    _marker: PhantomData<(AS, PS, NS, ASS, PSS, NSS)>,
+    _marker: PhantomData<(AS, PS, NS, ASS, PSS, NSS, RNV)>,
 }
 
 type WorkerRequest = (
@@ -71,7 +75,7 @@ type WorkerRequest = (
     oneshot::Sender<Result<ExecutionResult, Error>>,
 );
 
-impl<AS, PS, NS, ASS, PSS, NSS> Worker<AS, PS, NS, ASS, PSS, NSS>
+impl<AS, PS, NS, ASS, PSS, NSS, RNV> Worker<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -79,6 +83,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     /// Creates a new `Worker` with the given runtime options.
     ///
@@ -88,7 +93,7 @@ where
     /// # Panics
     /// This function will panic if it fails to send or receive messages through the channels.
     pub async fn new(
-        runtime_options: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS>,
+        runtime_options: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Result<Self, Error> {
         let (sender, mut receiver) = mpsc::channel::<WorkerRequest>(1);
 
@@ -152,6 +157,7 @@ where
 mod tests {
     use super::*;
 
+    use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
     use radix_common::network::NetworkDefinition;
@@ -168,6 +174,7 @@ mod tests {
         DirectSqlStore2,
         DirectSqlStore3,
         DirectSqlStore3,
+        RadixNftVerifierMock,
     > {
         let mut temp_application_sql = tempdir().unwrap().into_path();
         temp_application_sql.push("application.db");
@@ -187,6 +194,7 @@ mod tests {
             personal_store: MemoryStore3::new(),
             radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
+            radix_nft_verifier: RadixNftVerifierMock::new(),
         }
     }
 

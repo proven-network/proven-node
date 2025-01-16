@@ -15,10 +15,12 @@ use crate::schema::SCHEMA_WHLIST;
 use crate::{ExecutionLogs, ExecutionRequest, ExecutionResult, Result};
 
 use std::convert::Infallible;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
+use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use radix_common::network::NetworkDefinition;
@@ -32,7 +34,7 @@ static DEFAULT_TIMEOUT_MILLIS: u32 = 5000;
 
 /// Options for creating a new `Runtime`.
 #[derive(Clone)]
-pub struct RuntimeOptions<AS, PS, NS, ASS, PSS, NSS>
+pub struct RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -40,6 +42,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
     pub application_sql_store: ASS,
@@ -70,6 +73,9 @@ where
 
     /// Network definition for Radix Network.
     pub radix_network_definition: NetworkDefinition,
+
+    /// Verifier for checking NFT ownership on the Radix Network.
+    pub radix_nft_verifier: RNV,
 }
 
 /// Executes ESM modules in a single-threaded environment. Cannot use in tokio without spawning in dedicated thread.
@@ -84,6 +90,7 @@ where
 ///
 /// # Example
 /// ```rust
+/// use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
 /// use proven_runtime::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -102,6 +109,7 @@ where
 ///     personal_store: MemoryStore3::new(),
 ///     radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///     radix_network_definition: NetworkDefinition::stokenet(),
+///     radix_nft_verifier: RadixNftVerifierMock::new(),
 /// })
 /// .expect("Failed to create runtime");
 ///
@@ -112,7 +120,7 @@ where
 ///     identity: None,
 /// });
 /// ```
-pub struct Runtime<AS, PS, NS, ASS, PSS, NSS>
+pub struct Runtime<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2<Bytes, Infallible, Infallible>,
     PS: Store3<Bytes, Infallible, Infallible>,
@@ -120,6 +128,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
     application_store: AS,
@@ -131,9 +140,10 @@ where
     personal_store: PS,
     runtime: rustyscript::Runtime,
     sql_migrations: SqlMigrations,
+    _marker: PhantomData<RNV>,
 }
 
-impl<AS, PS, NS, ASS, PSS, NSS> Runtime<AS, PS, NS, ASS, PSS, NSS>
+impl<AS, PS, NS, ASS, PSS, NSS, RNV> Runtime<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -141,6 +151,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     /// Creates a new runtime with the given runtime options and stores.
     ///
@@ -164,7 +175,8 @@ where
             personal_store,
             radix_gateway_origin: gateway_origin,
             radix_network_definition,
-        }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS>,
+            radix_nft_verifier,
+        }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Result<Self> {
         let module_options = OptionsParser::new()?.parse(module.as_str())?;
         #[allow(clippy::or_fun_call)]
@@ -222,11 +234,13 @@ where
                 crypto_ext::init_ops_and_esm(),
                 session_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
+                // TODO: The above is no longer the case - combine these again at some point
                 kv_application_ext::init_ops::<AS::Scoped>(),
                 kv_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
-                kv_nft_ext::init_ops_and_esm::<NS::Scoped>(),
+                kv_nft_ext::init_ops_and_esm::<NS::Scoped, RNV>(),
                 kv_ext::init_ops_and_esm(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
+                // TODO: The above is no longer the case - combine these again at some point
                 sql_runtime_ext::init_ops_and_esm(),
                 sql_application_ext::init_ops::<ASS::Scoped>(),
                 sql_personal_ext::init_ops::<<<PSS as SqlStore3>::Scoped as SqlStore2>::Scoped>(),
@@ -257,6 +271,9 @@ where
             network_id: radix_network_definition.id,
         })?;
 
+        // Set the Radix NFT verifier for storage extensions
+        runtime.put(radix_nft_verifier)?;
+
         // In case there are any top-level console.* calls in the module
         runtime.put(ConsoleState::default())?;
 
@@ -277,6 +294,7 @@ where
             personal_store,
             runtime,
             sql_migrations: module_options.sql_migrations,
+            _marker: PhantomData,
         })
     }
 
@@ -434,6 +452,7 @@ mod tests {
     use super::*;
 
     use ed25519_dalek::Verifier;
+    use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
     use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
@@ -455,6 +474,7 @@ mod tests {
         DirectSqlStore2,
         DirectSqlStore3,
         DirectSqlStore3,
+        RadixNftVerifierMock,
     > {
         let module = std::fs::read_to_string(format!("./test_esm/{script_name}.ts")).unwrap();
         RuntimeOptions {
@@ -468,6 +488,7 @@ mod tests {
             personal_store: MemoryStore3::new(),
             radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
+            radix_nft_verifier: RadixNftVerifierMock::new(),
         }
     }
 

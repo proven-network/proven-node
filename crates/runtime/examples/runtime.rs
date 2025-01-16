@@ -1,5 +1,5 @@
+use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
 use proven_runtime::{Error, ExecutionRequest, Runtime, RuntimeOptions};
-
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore2, MemoryStore3};
 use radix_common::network::NetworkDefinition;
@@ -54,6 +54,7 @@ fn main() -> Result<(), Error> {
         personal_store: MemoryStore3::new(),
         radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
         radix_network_definition: NetworkDefinition::stokenet(),
+        radix_nft_verifier: RadixNftVerifierMock::new(),
     })?;
 
     let request = ExecutionRequest {

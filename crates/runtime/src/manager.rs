@@ -5,12 +5,13 @@ use crate::{ExecutionRequest, ExecutionResult, Pool, PoolOptions, PoolRuntimeOpt
 use super::Result;
 
 use async_trait::async_trait;
+use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use radix_common::network::NetworkDefinition;
 
 /// Options for configuring a `RuntimePoolManager`.
-pub struct RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS>
+pub struct RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -18,6 +19,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
     pub application_sql_store: ASS,
@@ -45,6 +47,9 @@ where
 
     /// Network definition for Radix Network.
     pub radix_network_definition: NetworkDefinition,
+
+    /// Verifier for checking NFT ownership on the Radix Network.
+    pub radix_nft_verifier: RNV,
 }
 
 /// Trait for managing a pool.
@@ -71,6 +76,9 @@ where
     /// Persona-scoped KV store.
     type PersonalStore: Store3;
 
+    /// Radix NFT verifier.
+    type RadixNftVerifier: RadixNftVerifier;
+
     /// Create a new pool manager.
     async fn new(
         applications_store: RuntimePoolManagerOptions<
@@ -80,6 +88,7 @@ where
             Self::ApplicationSqlStore,
             Self::PersonalSqlStore,
             Self::NftSqlStore,
+            Self::RadixNftVerifier,
         >,
     ) -> Self;
 
@@ -100,7 +109,7 @@ where
 
 /// Manages database of all currently deployed applications.
 #[derive(Clone)]
-pub struct RuntimePoolManager<AS, PS, NS, ASS, PSS, NSS>
+pub struct RuntimePoolManager<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -108,13 +117,14 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
-    pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS>>,
+    pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS, RNV>>,
 }
 
 #[async_trait]
-impl<AS, PS, NS, ASS, PSS, NSS> RuntimePoolManagement
-    for RuntimePoolManager<AS, PS, NS, ASS, PSS, NSS>
+impl<AS, PS, NS, ASS, PSS, NSS, RNV> RuntimePoolManagement
+    for RuntimePoolManager<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -122,6 +132,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     type ApplicationSqlStore = ASS;
     type ApplicationStore = AS;
@@ -129,6 +140,7 @@ where
     type NftStore = NS;
     type PersonalSqlStore = PSS;
     type PersonalStore = PS;
+    type RadixNftVerifier = RNV;
 
     async fn new(
         RuntimePoolManagerOptions {
@@ -141,7 +153,8 @@ where
             personal_store,
             radix_gateway_origin,
             radix_network_definition,
-        }: RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS>,
+            radix_nft_verifier,
+        }: RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Self {
         let pool = Pool::new(PoolOptions {
             application_sql_store,
@@ -153,6 +166,7 @@ where
             personal_store,
             radix_gateway_origin,
             radix_network_definition,
+            radix_nft_verifier,
         })
         .await;
 

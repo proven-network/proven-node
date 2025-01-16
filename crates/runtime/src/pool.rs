@@ -5,6 +5,7 @@ use std::fmt::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
+use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use radix_common::network::NetworkDefinition;
@@ -12,8 +13,10 @@ use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
 
-type WorkerMap<AS, PS, NS, ASS, PSS, NSS> = HashMap<String, Vec<Worker<AS, PS, NS, ASS, PSS, NSS>>>;
-type SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS> = Arc<Mutex<WorkerMap<AS, PS, NS, ASS, PSS, NSS>>>;
+type WorkerMap<AS, PS, NS, ASS, PSS, NSS, RNV> =
+    HashMap<String, Vec<Worker<AS, PS, NS, ASS, PSS, NSS, RNV>>>;
+type SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS, RNV> =
+    Arc<Mutex<WorkerMap<AS, PS, NS, ASS, PSS, NSS, RNV>>>;
 type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 
 type SendChannel = oneshot::Sender<Result<ExecutionResult>>;
@@ -23,7 +26,7 @@ type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
 
 /// Options for a new `Pool`.
-pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS>
+pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -31,6 +34,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
     pub application_sql_store: ASS,
@@ -58,6 +62,9 @@ where
 
     /// Network definition for Radix Network.
     pub radix_network_definition: NetworkDefinition,
+
+    /// Verifier for checking NFT ownership on the Radix Network.
+    pub radix_nft_verifier: RNV,
 }
 
 /// Runtime options to instantiate a runtime in the pool.
@@ -85,6 +92,7 @@ pub struct PoolRuntimeOptions {
 /// # Example
 ///
 /// ```rust
+/// use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, Pool, PoolOptions, PoolRuntimeOptions,
 /// };
@@ -106,6 +114,7 @@ pub struct PoolRuntimeOptions {
 ///         personal_store: MemoryStore3::new(),
 ///         radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         radix_network_definition: NetworkDefinition::stokenet(),
+///         radix_nft_verifier: RadixNftVerifierMock::new(),
 ///     })
 ///     .await;
 ///
@@ -125,7 +134,7 @@ pub struct PoolRuntimeOptions {
 ///     assert!(result.is_ok());
 /// }
 /// ```
-pub struct Pool<AS, PS, NS, ASS, PSS, NSS>
+pub struct Pool<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -133,6 +142,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
     application_store: AS,
@@ -148,14 +158,15 @@ where
     personal_store: PS,
     radix_gateway_origin: String,
     radix_network_definition: NetworkDefinition,
+    radix_nft_verifier: RNV,
     queue_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     queue_sender: QueueSender,
     total_workers: AtomicU32,
     try_kill_interval: Duration,
-    workers: SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS>,
+    workers: SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS, RNV>,
 }
 
-impl<AS, PS, NS, ASS, PSS, NSS> Pool<AS, PS, NS, ASS, PSS, NSS>
+impl<AS, PS, NS, ASS, PSS, NSS, RNV> Pool<AS, PS, NS, ASS, PSS, NSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -163,6 +174,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    RNV: RadixNftVerifier,
 {
     /// Creates a new `Pool`.
     pub async fn new(
@@ -176,7 +188,8 @@ where
             personal_store,
             radix_gateway_origin,
             radix_network_definition,
-        }: PoolOptions<AS, PS, NS, ASS, PSS, NSS>,
+            radix_nft_verifier,
+        }: PoolOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Arc<Self> {
         rustyscript::init_platform(max_workers, true);
 
@@ -199,6 +212,7 @@ where
             queue_sender,
             radix_gateway_origin,
             radix_network_definition,
+            radix_nft_verifier,
             total_workers: AtomicU32::new(0),
             try_kill_interval: Duration::from_millis(20),
             workers: Arc::new(Mutex::new(HashMap::new())),
@@ -250,7 +264,7 @@ where
                 {
                     pool.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    match Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
+                    match Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                         application_sql_store: pool.application_sql_store.clone(),
                         application_store: pool.application_store.clone(),
                         handler_name: runtime_options.handler_name.clone(),
@@ -261,6 +275,7 @@ where
                         personal_store: pool.personal_store.clone(),
                         radix_gateway_origin: pool.radix_gateway_origin.clone(),
                         radix_network_definition: pool.radix_network_definition.clone(),
+                        radix_nft_verifier: pool.radix_nft_verifier.clone(),
                     })
                     .await
                     {
@@ -386,7 +401,7 @@ where
         {
             self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-            let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
+            let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                 application_sql_store: self.application_sql_store.clone(),
                 application_store: self.application_store.clone(),
                 handler_name: runtime_options.handler_name.clone(),
@@ -397,6 +412,7 @@ where
                 personal_store: self.personal_store.clone(),
                 radix_gateway_origin: self.radix_gateway_origin.clone(),
                 radix_network_definition: self.radix_network_definition.clone(),
+                radix_nft_verifier: self.radix_nft_verifier.clone(),
             })
             .await?;
             let result = worker.execute(request).await;
@@ -493,7 +509,7 @@ where
             {
                 self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS>::new(RuntimeOptions {
+                let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                     application_sql_store: self.application_sql_store.clone(),
                     application_store: self.application_store.clone(),
                     handler_name: runtime_options.handler_name.clone(),
@@ -504,6 +520,7 @@ where
                     personal_store: self.personal_store.clone(),
                     radix_gateway_origin: self.radix_gateway_origin.clone(),
                     radix_network_definition: self.radix_network_definition.clone(),
+                    radix_nft_verifier: self.radix_nft_verifier.clone(),
                 })
                 .await?;
                 let result = worker.execute(request).await;
@@ -659,6 +676,7 @@ pub fn hash_options(options: &PoolRuntimeOptions) -> Result<String> {
 mod tests {
     use super::*;
 
+    use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
     use serde_json::json;
@@ -671,6 +689,7 @@ mod tests {
         DirectSqlStore2,
         DirectSqlStore3,
         DirectSqlStore3,
+        RadixNftVerifierMock,
     > {
         let mut temp_application_sql = tempdir().unwrap().into_path();
         temp_application_sql.push("application.db");
@@ -689,6 +708,7 @@ mod tests {
             personal_store: MemoryStore3::new(),
             radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
+            radix_nft_verifier: RadixNftVerifierMock::new(),
         }
     }
 

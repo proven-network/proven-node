@@ -6,12 +6,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use bytes::{Bytes, BytesMut};
-use deno_core::{extension, op2, OpDecl, OpState};
+use deno_core::{extension, op2, OpState};
+use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_store::{Store, Store1, Store2};
 
 #[op2(async)]
 #[buffer]
-pub async fn op_get_nft_bytes<NS: Store2>(
+pub async fn op_get_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] nft_id: String,
@@ -52,7 +53,7 @@ pub async fn op_get_nft_bytes<NS: Store2>(
 }
 
 #[op2(async)]
-pub async fn op_set_nft_bytes<NS: Store2>(
+pub async fn op_set_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] nft_id: String,
@@ -94,7 +95,7 @@ pub async fn op_set_nft_bytes<NS: Store2>(
 
 #[op2(async)]
 #[string]
-pub async fn op_get_nft_string<NS: Store2>(
+pub async fn op_get_nft_string<NS: Store2, RNV: RadixNftVerifier>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] nft_id: String,
@@ -137,7 +138,7 @@ pub async fn op_get_nft_string<NS: Store2>(
 }
 
 #[op2(async)]
-pub async fn op_set_nft_string<NS: Store2>(
+pub async fn op_set_nft_string<NS: Store2, RNV: RadixNftVerifier>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] nft_id: String,
@@ -179,15 +180,11 @@ pub async fn op_set_nft_string<NS: Store2>(
 
 extension!(
     kv_nft_ext,
-    parameters = [ NS: Store2 ],
-    ops_fn = get_ops<NS>,
+    parameters = [ NS: Store2, RNV: RadixNftVerifier ],
+    ops = [
+        op_get_nft_bytes<NS, RNV>,
+        op_set_nft_bytes<NS, RNV>,
+        op_get_nft_string<NS, RNV>,
+        op_set_nft_string<NS, RNV>,
+    ],
 );
-
-fn get_ops<NS: Store2>() -> Vec<OpDecl> {
-    let get_nft_bytes = op_get_nft_bytes::<NS>();
-    let set_nft_bytes = op_set_nft_bytes::<NS>();
-    let get_nft_string = op_get_nft_string::<NS>();
-    let set_nft_string = op_set_nft_string::<NS>();
-
-    vec![get_nft_bytes, set_nft_bytes, get_nft_string, set_nft_string]
-}

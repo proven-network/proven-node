@@ -13,6 +13,7 @@ deno_permissions = { workspace = true }
 ed25519-dalek = { workspace = true }
 futures = { workspace = true }
 proven-locks = { workspace = true }
+proven-radix-nft-verifier = { workspace = true }
 proven-sql = { workspace = true }
 proven-store = { workspace = true }
 radix-common = { workspace = true }
@@ -29,6 +30,7 @@ tokio = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 proven-locks-memory = { workspace = true }
+proven-radix-nft-verifier-mock = { workspace = true }
 proven-sql-direct = { workspace = true }
 proven-store-memory = { workspace = true }
 radix-transactions = { workspace = true }

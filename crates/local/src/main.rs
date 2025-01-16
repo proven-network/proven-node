@@ -8,6 +8,7 @@
 mod error;
 
 use error::Result;
+
 use std::net::{Ipv4Addr, SocketAddr};
 
 use clap::Parser;
@@ -15,6 +16,7 @@ use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
 use proven_core::{Core, CoreOptions};
 use proven_http_insecure::InsecureHttpServer;
+use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_direct::{DirectSqlStore, DirectSqlStore2, DirectSqlStore3};
@@ -66,6 +68,9 @@ async fn main() -> Result<()> {
     let personal_sql_store = DirectSqlStore3::new("/tmp/proven/sql/personal");
     let nft_sql_store = DirectSqlStore3::new("/tmp/proven/sql/nft");
 
+    // TODO: Replace with gateway-based version when written
+    let radix_nft_verifier = RadixNftVerifierMock::new();
+
     let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
         application_sql_store,
         application_store,
@@ -76,6 +81,7 @@ async fn main() -> Result<()> {
         personal_store,
         radix_gateway_origin,
         radix_network_definition,
+        radix_nft_verifier,
     })
     .await;
 
