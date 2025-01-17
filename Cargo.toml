@@ -84,6 +84,7 @@ boxed_error = "0.2.3"
 brotli = "6.0.0"
 bytes = { version = "1.9.0", features = ["serde"] }
 cache_control = "=0.2.0"
+capacity_builder = "0.5.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
 chrono = { version = "0.4.26", features = ["serde"] }
 ciborium = "0.2"
@@ -101,11 +102,12 @@ deno_bench_util = { path = "vendor/deno/bench_util" }
 deno_broadcast_channel = { path = "vendor/deno/ext/broadcast_channel" }
 deno_cache = { path = "vendor/deno/ext/cache" }
 deno_canvas = { path = "vendor/deno/ext/canvas" }
-deno_config = { version = "0.40.0", features = ["workspace", "sync"] }
+deno_config = { version = "0.42.0", features = ["workspace", "sync"] }
 deno_console = { path = "vendor/deno/ext/console" }
-deno_core = { version = "0.325.0" }
+deno_core = "0.327.0"
 deno_cron = { path = "vendor/deno/ext/cron" }
 deno_crypto = { path = "vendor/deno/ext/crypto" }
+deno_error = "0.5.2"
 deno_fetch = { path = "vendor/deno/ext/fetch" }
 deno_ffi = { path = "vendor/deno/ext/ffi" }
 deno_fs = { path = "vendor/deno/ext/fs" }
@@ -116,12 +118,12 @@ deno_media_type = { version = "0.2.2", features = ["module_specifier"] }
 deno_napi = { path = "vendor/deno/ext/napi" }
 deno_net = { path = "vendor/deno/ext/net" }
 deno_node = { path = "vendor/deno/ext/node" }
-deno_package_json = { version = "0.2.1", default-features = false }
-deno_path_util = "0.2.2"
+deno_package_json = { version = "0.4.0", default-features = false }
+deno_path_util = "0.3.0"
 deno_permissions = { path = "vendor/deno/runtime/permissions" }
 deno_resolver = { path = "vendor/deno/resolvers/deno" }
 deno_runtime = { path = "vendor/deno/runtime" }
-deno_semver = "0.6.0"
+deno_semver = "0.7.1"
 deno_telemetry = { path = "vendor/deno/ext/telemetry" }
 deno_terminal = "0.2.0"
 deno_tls = { path = "vendor/deno/ext/tls" }
@@ -292,6 +294,7 @@ socket2 = { version = "0.5.8", features = ["all"] }
 spki = "0.7.3"
 strip-ansi-escapes = "0.2.1"
 syn = { version = "2.0.96", features = ["full", "extra-traits"] }
+sys_traits = "=0.1.1"
 systemctl = "0.4.0"
 tar = "0.4.43"
 tempfile = "3.15.0"
@@ -307,7 +310,7 @@ tokio-stream = "0.1.17"
 tokio-tun = "0.13.0"
 tokio-util = { version = "0.7.13", features = ["rt"] }
 tokio-vsock = "0.7.0"
-tower = { version = "0.5.2", default-features = false, features = ["util"] }
+tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }
 tower-http = { version = "0.6.2", features = ["decompression-br", "decompression-gzip", "cors"] }
 tower-service = "0.3.2"
 tracing = "0.1.41"
