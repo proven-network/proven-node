@@ -260,3 +260,57 @@ pub async fn op_set_application_string<AS: Store1>(
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::create_runtime_options;
+    use crate::{ExecutionRequest, Worker};
+
+    #[tokio::test]
+    async fn test_application_bytes_store() {
+        let runtime_options = create_runtime_options("kv/test_application_bytes_store", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_application_key_store() {
+        let runtime_options = create_runtime_options("kv/test_application_key_store", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_application_string_store() {
+        let runtime_options = create_runtime_options("kv/test_application_string_store", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+    }
+}
