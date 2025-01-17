@@ -157,53 +157,13 @@ where
 mod tests {
     use super::*;
 
-    use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
-    use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
-    use proven_store_memory::{MemoryStore2, MemoryStore3};
-    use radix_common::network::NetworkDefinition;
+    use crate::test_utils::create_runtime_options;
+
     use serde_json::json;
-    use tempfile::tempdir;
-
-    fn create_runtime_options(
-        script: &str,
-        handler_name: Option<String>,
-    ) -> RuntimeOptions<
-        MemoryStore2,
-        MemoryStore3,
-        MemoryStore3,
-        DirectSqlStore2,
-        DirectSqlStore3,
-        DirectSqlStore3,
-        RadixNftVerifierMock,
-    > {
-        let mut temp_application_sql = tempdir().unwrap().into_path();
-        temp_application_sql.push("application.db");
-        let mut temp_nft_sql = tempdir().unwrap().into_path();
-        temp_nft_sql.push("nft.db");
-        let mut temp_personal_sql = tempdir().unwrap().into_path();
-        temp_personal_sql.push("personal.db");
-
-        RuntimeOptions {
-            application_sql_store: DirectSqlStore2::new(temp_application_sql),
-            application_store: MemoryStore2::new(),
-            handler_name,
-            module: script.to_string(),
-            nft_sql_store: DirectSqlStore3::new(temp_nft_sql),
-            nft_store: MemoryStore3::new(),
-            personal_sql_store: DirectSqlStore3::new(temp_personal_sql),
-            personal_store: MemoryStore3::new(),
-            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
-            radix_network_definition: NetworkDefinition::stokenet(),
-            radix_nft_verifier: RadixNftVerifierMock::new(),
-        }
-    }
 
     #[tokio::test]
     async fn test_worker_execute_in_tokio() {
-        let runtime_options = create_runtime_options(
-            "export const test = (a, b) => a + b;",
-            Some("test".to_string()),
-        );
+        let runtime_options = create_runtime_options("test_runtime_execute", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest {

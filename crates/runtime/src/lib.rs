@@ -14,6 +14,8 @@ mod permissions;
 mod pool;
 mod runtime;
 mod schema;
+#[cfg(test)]
+mod test_utils;
 mod worker;
 
 pub use error::*;
