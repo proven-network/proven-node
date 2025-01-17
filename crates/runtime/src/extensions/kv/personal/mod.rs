@@ -11,14 +11,28 @@ use std::rc::Rc;
 use bytes::{Bytes, BytesMut};
 use deno_core::{op2, OpState};
 use proven_store::{Store, Store1};
+use serde::Serialize;
+
+#[derive(Serialize)]
+enum PersonalStoreGetResponse<T> {
+    NoPersonalContext,
+    None,
+    Ok(T),
+}
+
+#[derive(Serialize)]
+enum PersonalStoreSetResponse {
+    NoPersonalContext,
+    Ok,
+}
 
 #[op2(async)]
-#[buffer]
+#[serde]
 pub async fn op_get_personal_bytes<PS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-) -> Option<BytesMut> {
+) -> Result<PersonalStoreGetResponse<Bytes>, PS::Error> {
     let personal_store = {
         loop {
             let personal_store = {
@@ -36,30 +50,31 @@ pub async fn op_get_personal_bytes<PS: Store1>(
         }
     };
 
-    // TODO: should probably err instead of returning None
-    let result = if let Some(store) = personal_store.as_ref() {
-        store
-            .scope(format!("{store_name}:bytes"))
-            .get(key)
-            .await
-            .map(|bytes| bytes.map(BytesMut::from))
-            .unwrap_or_default()
+    if let Some(store) = personal_store.as_ref() {
+        let result = store.scope(format!("{store_name}:bytes")).get(key).await;
+
+        state.borrow_mut().put(personal_store);
+
+        match result {
+            Ok(Some(bytes)) => Ok(PersonalStoreGetResponse::Ok(bytes)),
+            Ok(None) => Ok(PersonalStoreGetResponse::None),
+            Err(e) => Err(e),
+        }
     } else {
-        None
-    };
+        state.borrow_mut().put(personal_store);
 
-    state.borrow_mut().put(personal_store);
-
-    result
+        Ok(PersonalStoreGetResponse::NoPersonalContext)
+    }
 }
 
 #[op2(async)]
+#[serde]
 pub async fn op_set_personal_bytes<PS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
     #[buffer(copy)] value: Bytes,
-) -> bool {
+) -> Result<PersonalStoreSetResponse, PS::Error> {
     let personal_store = {
         loop {
             let personal_store = {
@@ -82,9 +97,9 @@ pub async fn op_set_personal_bytes<PS: Store1>(
             .scope(format!("{store_name}:bytes"))
             .put(key, value)
             .await
-            .is_ok()
+            .map(|()| PersonalStoreSetResponse::Ok)
     } else {
-        false
+        Ok(PersonalStoreSetResponse::NoPersonalContext)
     };
 
     state.borrow_mut().put(personal_store);
@@ -93,11 +108,12 @@ pub async fn op_set_personal_bytes<PS: Store1>(
 }
 
 #[op2(async)]
+#[serde]
 pub async fn op_get_personal_key<PS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-) -> Option<u32> {
+) -> Result<PersonalStoreGetResponse<u32>, PS::Error> {
     let personal_store = {
         loop {
             let personal_store = {
@@ -115,13 +131,12 @@ pub async fn op_get_personal_key<PS: Store1>(
         }
     };
 
-    // TODO: should probably err instead of returning None
-    let result = if let Some(store) = personal_store.as_ref() {
-        match store.scope(format!("{store_name}:key")).get(key).await {
+    if let Some(store) = personal_store.as_ref() {
+        let result = match store.scope(format!("{store_name}:key")).get(key).await {
             Ok(Some(bytes)) => {
                 let stored_key: StoredKey = match ciborium::de::from_reader(&*bytes) {
                     Ok(key) => key,
-                    Err(_) => return None,
+                    Err(_) => return Ok(PersonalStoreGetResponse::None),
                 };
 
                 let key_id = state
@@ -135,26 +150,29 @@ pub async fn op_get_personal_key<PS: Store1>(
                         }
                     });
 
-                Some(key_id)
+                PersonalStoreGetResponse::Ok(key_id)
             }
-            _ => None,
-        }
+            _ => PersonalStoreGetResponse::None,
+        };
+
+        state.borrow_mut().put(personal_store);
+
+        Ok(result)
     } else {
-        None
-    };
+        state.borrow_mut().put(personal_store);
 
-    state.borrow_mut().put(personal_store);
-
-    result
+        Ok(PersonalStoreGetResponse::NoPersonalContext)
+    }
 }
 
 #[op2(async)]
+#[serde]
 pub async fn op_set_personal_key<PS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
     key_id: u32,
-) -> bool {
+) -> Result<PersonalStoreSetResponse, PS::Error> {
     let crypto_key_bytes = {
         let crypto_state_binding = state.borrow();
         let crypto_key = crypto_state_binding.borrow::<CryptoState>().get_key(key_id);
@@ -166,7 +184,8 @@ pub async fn op_set_personal_key<PS: Store1>(
                 BytesMut::from(&bytes[..])
             }
         }
-    };
+    }
+    .freeze();
 
     let personal_store = {
         loop {
@@ -188,11 +207,11 @@ pub async fn op_set_personal_key<PS: Store1>(
     let result = if let Some(store) = personal_store.as_ref() {
         store
             .scope(format!("{store_name}:key"))
-            .put(key, crypto_key_bytes.into())
+            .put(key, crypto_key_bytes)
             .await
-            .is_ok()
+            .map(|()| PersonalStoreSetResponse::Ok)
     } else {
-        false
+        Ok(PersonalStoreSetResponse::NoPersonalContext)
     };
 
     state.borrow_mut().put(personal_store);
@@ -201,12 +220,12 @@ pub async fn op_set_personal_key<PS: Store1>(
 }
 
 #[op2(async)]
-#[string]
+#[serde]
 pub async fn op_get_personal_string<PS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-) -> Option<String> {
+) -> Result<PersonalStoreGetResponse<String>, PS::Error> {
     let personal_store = {
         loop {
             let personal_store = {
@@ -224,27 +243,33 @@ pub async fn op_get_personal_string<PS: Store1>(
         }
     };
 
-    let result = if let Some(store) = personal_store.as_ref() {
-        match store.scope(format!("{store_name}:string")).get(key).await {
-            Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
-            _ => None,
+    if let Some(store) = personal_store.as_ref() {
+        let result = store.scope(format!("{store_name}:string")).get(key).await;
+
+        state.borrow_mut().put(personal_store);
+
+        match result {
+            Ok(Some(bytes)) => Ok(PersonalStoreGetResponse::Ok(
+                String::from_utf8_lossy(&bytes).to_string(),
+            )),
+            Ok(None) => Ok(PersonalStoreGetResponse::None),
+            Err(e) => Err(e),
         }
     } else {
-        None
-    };
+        state.borrow_mut().put(personal_store);
 
-    state.borrow_mut().put(personal_store);
-
-    result
+        Ok(PersonalStoreGetResponse::NoPersonalContext)
+    }
 }
 
 #[op2(async)]
+#[serde]
 pub async fn op_set_personal_string<PS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
     #[string] value: String,
-) -> bool {
+) -> Result<PersonalStoreSetResponse, PS::Error> {
     let personal_store = {
         loop {
             let personal_store = {
@@ -267,12 +292,114 @@ pub async fn op_set_personal_string<PS: Store1>(
             .scope(format!("{store_name}:string"))
             .put(key, Bytes::from(value))
             .await
-            .is_ok()
+            .map(|()| PersonalStoreSetResponse::Ok)
     } else {
-        false
+        Ok(PersonalStoreSetResponse::NoPersonalContext)
     };
 
     state.borrow_mut().put(personal_store);
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::create_runtime_options;
+    use crate::{ExecutionRequest, Worker};
+
+    #[tokio::test]
+    async fn test_personal_bytes_store() {
+        let runtime_options = create_runtime_options("kv/test_personal_bytes_store", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: Some("identity_123".to_string()),
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_personal_bytes_store_no_context() {
+        let runtime_options = create_runtime_options("kv/test_personal_bytes_store", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_personal_key_store() {
+        let runtime_options = create_runtime_options("kv/test_personal_key_store", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: Some("identity_123".to_string()),
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_personal_string_key_no_context() {
+        let runtime_options = create_runtime_options("kv/test_personal_key_store", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_personal_string_store() {
+        let runtime_options = create_runtime_options("kv/test_personal_string_store", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: Some("identity_123".to_string()),
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_personal_string_store_no_context() {
+        let runtime_options = create_runtime_options("kv/test_personal_string_store", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+        let result = worker.execute(request).await;
+
+        assert!(result.is_err());
+    }
 }

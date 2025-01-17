@@ -36,11 +36,25 @@ class PersonalStringStore {
   }
 
   async get (key) {
-    return await getPersonalString(this.storeName, key)
+    const result = await getPersonalString(this.storeName, key);
+
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    } else if (result === "None") {
+      return undefined;
+    } else {
+      return result.Ok;
+    }
   }
 
   async set (key, value) {
-    return await setPersonalString(this.storeName, key, value)
+    const result = await setPersonalString(this.storeName, key, value);
+
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    } else {
+      return true;
+    }
   }
 }
 
@@ -50,11 +64,25 @@ class PersonalBytesStore {
   }
 
   async get (key) {
-    return await getPersonalBytes(this.storeName, key)
+    const result = await getPersonalBytes(this.storeName, key);
+
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    } else if (result === "None") {
+      return undefined;
+    } else {
+      return result.Ok;
+    }
   }
 
   async set (key, value) {
-    return await setPersonalBytes(this.storeName, key, value)
+    const result = await setPersonalBytes(this.storeName, key, value);
+
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    } else {
+      return true;
+    }
   }
 }
 
@@ -64,7 +92,17 @@ class PersonalKeyStore {
   }
 
   async get (key) {
-    const keyId = await getPersonalKey(this.storeName, key)
+    let keyId;
+
+    const result = await getPersonalKey(this.storeName, key);
+
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    } else if (result === "None") {
+      return undefined;
+    } else {
+      keyId = result.Ok;
+    }
 
     if (typeof keyId === 'number') {
       const privateKey = new PrivateKey(keyId);
@@ -75,7 +113,13 @@ class PersonalKeyStore {
   }
 
   async set (key, value) {
-    return await setPersonalKey(this.storeName, key, value)
+    const result = await setPersonalKey(this.storeName, key, value.keyId);
+
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    } else {
+      return true;
+    }
   }
 }
 
