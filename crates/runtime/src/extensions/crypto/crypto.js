@@ -133,5 +133,8 @@ export function generateEd25519Key() {
   const { op_generate_ed25519 } = Deno.core.ops;
   const keyId = op_generate_ed25519();
 
-  return new PrivateKey(keyId);
+  const privateKey = new PrivateKey(keyId);
+  Object.freeze(privateKey);
+
+  return privateKey;
 }

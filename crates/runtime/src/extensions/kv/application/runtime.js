@@ -53,7 +53,10 @@ class ApplicationKeyStore {
     const keyId = await getApplicationKey(this.storeName, key)
 
     if (typeof keyId === 'number') {
-      return new PrivateKey(keyId)
+      const privateKey = new PrivateKey(keyId);
+      Object.freeze(privateKey);
+
+      return privateKey;
     }
   }
 

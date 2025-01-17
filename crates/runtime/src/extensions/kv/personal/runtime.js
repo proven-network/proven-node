@@ -67,7 +67,10 @@ class PersonalKeyStore {
     const keyId = await getPersonalKey(this.storeName, key)
 
     if (typeof keyId === 'number') {
-      return new PrivateKey(keyId)
+      const privateKey = new PrivateKey(keyId);
+      Object.freeze(privateKey);
+
+      return privateKey;
     }
   }
 
