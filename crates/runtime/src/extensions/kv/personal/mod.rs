@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use bytes::{Bytes, BytesMut};
-use deno_core::{extension, op2, OpDecl, OpState};
+use deno_core::{op2, OpState};
 use proven_store::{Store, Store1};
 
 #[op2(async)]
@@ -164,24 +164,4 @@ pub async fn op_set_personal_string<PS: Store1>(
     state.borrow_mut().put(personal_store);
 
     result
-}
-
-extension!(
-    kv_personal_ext,
-    parameters = [ PS: Store1 ],
-    ops_fn = get_ops<PS>,
-);
-
-fn get_ops<PS: Store1>() -> Vec<OpDecl> {
-    let get_personal_bytes = op_get_personal_bytes::<PS>();
-    let set_personal_bytes = op_set_personal_bytes::<PS>();
-    let get_personal_string = op_get_personal_string::<PS>();
-    let set_personal_string = op_set_personal_string::<PS>();
-
-    vec![
-        get_personal_bytes,
-        set_personal_bytes,
-        get_personal_string,
-        set_personal_string,
-    ]
 }

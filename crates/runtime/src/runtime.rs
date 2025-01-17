@@ -1,11 +1,10 @@
 use crate::extensions::{
-    console_ext, crypto_ext, handler_runtime_ext, kv_application_ext, kv_ext, kv_nft_ext,
-    kv_personal_ext, openai_ext, radixdlt_babylon_gateway_api_ext,
-    radixdlt_radix_engine_toolkit_ext, session_ext, sql_application_ext, sql_personal_ext,
-    sql_runtime_ext, uuid_ext, zod_ext, ApplicationSqlConnectionManager,
-    ApplicationSqlParamListManager, ConsoleState, CryptoState, GatewayDetailsState,
-    NftSqlConnectionManager, PersonalSqlConnectionManager, PersonalSqlParamListManager,
-    SessionState,
+    console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext, openai_ext,
+    radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, session_ext,
+    sql_application_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
+    ApplicationSqlConnectionManager, ApplicationSqlParamListManager, ConsoleState, CryptoState,
+    GatewayDetailsState, NftSqlConnectionManager, PersonalSqlConnectionManager,
+    PersonalSqlParamListManager, SessionState,
 };
 use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
@@ -163,6 +162,7 @@ where
     ///
     /// # Errors
     /// This function will return an error if the options parsing or runtime creation fails.
+    #[allow(clippy::too_many_lines)]
     pub fn new(
         RuntimeOptions {
             application_sql_store,
@@ -233,12 +233,12 @@ where
                 console_ext::init_ops_and_esm(),
                 crypto_ext::init_ops_and_esm(),
                 session_ext::init_ops_and_esm(),
-                // Split into seperate extensions to avoid issue with macro supporting only 1 generic
-                // TODO: The above is no longer the case - combine these again at some point
-                kv_application_ext::init_ops::<AS::Scoped>(),
-                kv_personal_ext::init_ops::<<<PS as Store3>::Scoped as Store2>::Scoped>(),
-                kv_nft_ext::init_ops_and_esm::<NS::Scoped, RNV>(),
-                kv_ext::init_ops_and_esm(),
+                kv_runtime_ext::init_ops_and_esm::<
+                    AS::Scoped,
+                    <<PS as Store3>::Scoped as Store2>::Scoped,
+                    NS::Scoped,
+                    RNV,
+                >(),
                 // Split into seperate extensions to avoid issue with macro supporting only 1 generic
                 // TODO: The above is no longer the case - combine these again at some point
                 sql_runtime_ext::init_ops_and_esm(),

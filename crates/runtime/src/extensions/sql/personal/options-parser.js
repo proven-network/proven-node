@@ -1,8 +1,8 @@
 import { Sql } from "proven:sql-template-tag"
 
-function migratePersonalSqlStore (store_name, sql) {
+function migratePersonalSqlStore (storeName, sql) {
   const { op_migrate_personal_sql } = globalThis.Deno.core.ops;
-  return op_migrate_personal_sql(store_name, sql)
+  return op_migrate_personal_sql(storeName, sql)
 }
 
 class PersonalSqlStore {

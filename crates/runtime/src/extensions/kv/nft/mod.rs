@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use bytes::{Bytes, BytesMut};
-use deno_core::{extension, op2, OpState};
+use deno_core::{op2, OpState};
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_store::{Store, Store1, Store2};
 
@@ -177,14 +177,3 @@ pub async fn op_set_nft_string<NS: Store2, RNV: RadixNftVerifier>(
 
     result
 }
-
-extension!(
-    kv_nft_ext,
-    parameters = [ NS: Store2, RNV: RadixNftVerifier ],
-    ops = [
-        op_get_nft_bytes<NS, RNV>,
-        op_set_nft_bytes<NS, RNV>,
-        op_get_nft_string<NS, RNV>,
-        op_set_nft_string<NS, RNV>,
-    ],
-);

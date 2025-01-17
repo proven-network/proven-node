@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use bytes::{Bytes, BytesMut};
-use deno_core::{extension, op2, OpDecl, OpState};
+use deno_core::{op2, OpState};
 use proven_store::{Store, Store1};
 use serde::{Deserialize, Serialize};
 
@@ -264,28 +264,4 @@ pub async fn op_set_application_string<AS: Store1>(
     state.borrow_mut().put(application_store);
 
     result
-}
-
-extension!(
-    kv_application_ext,
-    parameters = [ AS: Store1 ],
-    ops_fn = get_ops<AS>,
-);
-
-fn get_ops<AS: Store1>() -> Vec<OpDecl> {
-    let get_application_bytes = op_get_application_bytes::<AS>();
-    let set_application_bytes = op_set_application_bytes::<AS>();
-    let get_application_key = op_get_application_key::<AS>();
-    let set_application_key = op_set_application_key::<AS>();
-    let get_application_string = op_get_application_string::<AS>();
-    let set_application_string = op_set_application_string::<AS>();
-
-    vec![
-        get_application_bytes,
-        set_application_bytes,
-        get_application_key,
-        set_application_key,
-        get_application_string,
-        set_application_string,
-    ]
 }
