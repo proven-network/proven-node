@@ -3,6 +3,7 @@
 #![allow(clippy::future_not_send)]
 
 use super::super::{CryptoState, Key};
+use super::StoredKey;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -10,12 +11,6 @@ use std::rc::Rc;
 use bytes::{Bytes, BytesMut};
 use deno_core::{op2, OpState};
 use proven_store::{Store, Store1};
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize, Serialize)]
-enum StoredKey {
-    Ed25519(Vec<u8>),
-}
 
 #[op2(async)]
 #[buffer]

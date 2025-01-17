@@ -8,12 +8,19 @@ pub use application::{
 };
 pub use nft::{op_get_nft_bytes, op_get_nft_string, op_set_nft_bytes, op_set_nft_string};
 pub use personal::{
-    op_get_personal_bytes, op_get_personal_string, op_set_personal_bytes, op_set_personal_string,
+    op_get_personal_bytes, op_get_personal_key, op_get_personal_string, op_set_personal_bytes,
+    op_set_personal_key, op_set_personal_string,
 };
 
 use deno_core::extension;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_store::{Store1, Store2};
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Serialize)]
+enum StoredKey {
+    Ed25519(Vec<u8>),
+}
 
 extension!(
     kv_options_parser_ext,
@@ -44,6 +51,8 @@ extension!(
         op_set_nft_string<NS, RNV>,
         op_get_personal_bytes<PS>,
         op_set_personal_bytes<PS>,
+        op_get_personal_key<PS>,
+        op_set_personal_key<PS>,
         op_get_personal_string<PS>,
         op_set_personal_string<PS>,
     ],
