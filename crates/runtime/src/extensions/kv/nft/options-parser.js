@@ -36,7 +36,7 @@ class NftBytesStore {
   }
 
   async set (key, value) {
-    return await setNftBytes(this.storeName, key, value)
+    throw new Error('`set` must be run inside a handler function')
   }
 }
 

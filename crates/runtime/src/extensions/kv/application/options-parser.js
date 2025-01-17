@@ -36,7 +36,7 @@ class ApplicationBytesStore {
   }
 
   async set (key, value) {
-    return await setApplicationBytes(this.storeName, key, value)
+    throw new Error('`set` must be run inside a handler function')
   }
 }
 
