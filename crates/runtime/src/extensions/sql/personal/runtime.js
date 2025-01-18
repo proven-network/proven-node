@@ -82,13 +82,20 @@ class PersonalSqlStore {
       throw new TypeError('Expected `sql` to be a string or Sql object');
     }
 
-    let affectedRows;
+    let result;
     if (sqlValues.length === 0) {
-      affectedRows = await executePersonalSql(this.sqlStoreName, sqlStatement);
+      result = await executePersonalSql(this.sqlStoreName, sqlStatement);
     } else {
       const paramListId = preparePersonalParamList(sqlValues);
 
-      affectedRows = await executePersonalSql(this.sqlStoreName, sqlStatement, paramListId);
+      result = await executePersonalSql(this.sqlStoreName, sqlStatement, paramListId);
+    }
+
+    let affectedRows;
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    } else {
+      affectedRows = result.Ok;
     }
 
     return affectedRows;

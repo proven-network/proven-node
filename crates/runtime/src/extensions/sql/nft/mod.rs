@@ -82,6 +82,7 @@ fn op_add_nft_text_param(
 
 #[op2(async)]
 #[serde]
+#[allow(clippy::cast_possible_truncation)]
 pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
@@ -89,7 +90,7 @@ pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] query: String,
     #[bigint] param_list_id_opt: Option<u64>,
-) -> Result<NftDbResponse<u64>, Error<NSS::Error, RNV::Error>> {
+) -> Result<NftDbResponse<u32>, Error<NSS::Error, RNV::Error>> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftDbResponse::NoAccountsInContext),
@@ -166,12 +167,14 @@ pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
         connection
             .execute(query, params)
             .await
+            .map(|i| i as u32)
             .map(NftDbResponse::Ok)
             .map_err(Error::SqlStore)
     } else {
         connection
             .execute(query, vec![])
             .await
+            .map(|i| i as u32)
             .map(NftDbResponse::Ok)
             .map_err(Error::SqlStore)
     }

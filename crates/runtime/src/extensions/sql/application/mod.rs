@@ -69,13 +69,13 @@ fn op_add_application_text_param(
 }
 
 #[op2(async)]
-#[bigint]
+#[allow(clippy::cast_possible_truncation)]
 async fn op_execute_application_sql<ASS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] query: String,
     #[bigint] param_list_id_opt: Option<u64>,
-) -> Result<u64, ASS::Error> {
+) -> Result<u32, ASS::Error> {
     let connection_manager = {
         loop {
             let connection_manager = {
@@ -119,9 +119,9 @@ async fn op_execute_application_sql<ASS: SqlStore1>(
 
         state.borrow_mut().put(params_lists);
 
-        connection.execute(query, params).await
+        connection.execute(query, params).await.map(|i| i as u32)
     } else {
-        connection.execute(query, vec![]).await
+        connection.execute(query, vec![]).await.map(|i| i as u32)
     }
 }
 

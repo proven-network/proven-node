@@ -75,12 +75,13 @@ fn op_add_personal_text_param(
 
 #[op2(async)]
 #[serde]
+#[allow(clippy::cast_possible_truncation)]
 pub async fn op_execute_personal_sql<PSS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] query: String,
     #[bigint] param_list_id_opt: Option<u64>,
-) -> Result<PersonalDbResponse<u64>, PSS::Error> {
+) -> Result<PersonalDbResponse<u32>, PSS::Error> {
     let connection_manager_opt = {
         loop {
             let connection_manager_opt = {
@@ -135,11 +136,13 @@ pub async fn op_execute_personal_sql<PSS: SqlStore1>(
         connection
             .execute(query, params)
             .await
+            .map(|i| i as u32)
             .map(PersonalDbResponse::Ok)
     } else {
         connection
             .execute(query, vec![])
             .await
+            .map(|i| i as u32)
             .map(PersonalDbResponse::Ok)
     }
 }

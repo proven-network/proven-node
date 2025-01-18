@@ -7,7 +7,11 @@ export const test = async () => {
   const email = "alice@example.com";
   const nftId = 420;
 
-  await NFT_DB.execute(RESOURCE_ADDR, nftId, sql`INSERT INTO users (email) VALUES (${email})`);
+  const affectedRows = await NFT_DB.execute(RESOURCE_ADDR, nftId, sql`INSERT INTO users (email) VALUES (${email})`);
+
+  if (affectedRows !== 1) {
+    throw new Error("Unexpected number of affected rows");
+  }
 
   const results = await NFT_DB.query(RESOURCE_ADDR, nftId, "SELECT * FROM users");
 

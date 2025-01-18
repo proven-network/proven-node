@@ -5,9 +5,13 @@ const PERSONAL_DB = getPersonalDb("myAppDb").migrate(`CREATE TABLE users (id INT
 export const test = async () => {
   const email = "alice@example.com";
 
-      await PERSONAL_DB.execute(sql`INSERT INTO users (email) VALUES (${email})`);
+  const affectedRows = await PERSONAL_DB.execute(sql`INSERT INTO users (email) VALUES (${email})`);
 
-      const results = await PERSONAL_DB.query("SELECT * FROM users");
+  if (affectedRows !== 1) {
+    throw new Error("Unexpected number of affected rows");
+  }
 
-      return results[0].email;
+  const results = await PERSONAL_DB.query("SELECT * FROM users");
+
+  return results[0].email;
 }
