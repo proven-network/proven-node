@@ -18,7 +18,7 @@ pub async fn op_get_application_bytes<AS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-) -> Option<BytesMut> {
+) -> Result<Option<BytesMut>, AS::Error> {
     let application_store = {
         loop {
             let application_store = {
@@ -41,8 +41,9 @@ pub async fn op_get_application_bytes<AS: Store1>(
         .get(key)
         .await
     {
-        Ok(Some(bytes)) => Some(BytesMut::from(bytes)),
-        _ => None,
+        Ok(Some(bytes)) => Ok(Some(BytesMut::from(bytes))),
+        Ok(None) => Ok(None),
+        Err(e) => Err(e),
     };
 
     state.borrow_mut().put(application_store);
@@ -56,7 +57,7 @@ pub async fn op_set_application_bytes<AS: Store1>(
     #[string] store_name: String,
     #[string] key: String,
     #[buffer(copy)] value: Bytes,
-) -> bool {
+) -> Result<(), AS::Error> {
     let application_store = {
         loop {
             let application_store = {
@@ -77,8 +78,7 @@ pub async fn op_set_application_bytes<AS: Store1>(
     let result = application_store
         .scope(format!("{store_name}:bytes"))
         .put(key, value)
-        .await
-        .is_ok();
+        .await;
 
     state.borrow_mut().put(application_store);
 
@@ -90,7 +90,7 @@ pub async fn op_get_application_key<AS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-) -> Option<u32> {
+) -> Result<Option<u32>, AS::Error> {
     let application_store = {
         loop {
             let application_store = {
@@ -116,7 +116,7 @@ pub async fn op_get_application_key<AS: Store1>(
         Ok(Some(bytes)) => {
             let stored_key: StoredKey = match ciborium::de::from_reader(&*bytes) {
                 Ok(key) => key,
-                Err(_) => return None,
+                Err(_) => return Ok(None),
             };
 
             let key_id = state
@@ -130,9 +130,10 @@ pub async fn op_get_application_key<AS: Store1>(
                     }
                 });
 
-            Some(key_id)
+            Ok(Some(key_id))
         }
-        _ => None,
+        Ok(None) => Ok(None),
+        Err(e) => Err(e),
     };
 
     state.borrow_mut().put(application_store);
@@ -146,7 +147,7 @@ pub async fn op_set_application_key<AS: Store1>(
     #[string] store_name: String,
     #[string] key: String,
     key_id: u32,
-) -> bool {
+) -> Result<(), AS::Error> {
     let crypto_key_bytes = {
         let crypto_state_binding = state.borrow();
         let crypto_key = crypto_state_binding.borrow::<CryptoState>().get_key(key_id);
@@ -180,8 +181,7 @@ pub async fn op_set_application_key<AS: Store1>(
     let result = application_store
         .scope(format!("{store_name}:key"))
         .put(key.clone(), crypto_key_bytes.into())
-        .await
-        .is_ok();
+        .await;
 
     state.borrow_mut().put(application_store);
 
@@ -194,7 +194,7 @@ pub async fn op_get_application_string<AS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
     #[string] key: String,
-) -> Option<String> {
+) -> Result<Option<String>, AS::Error> {
     let application_store = {
         loop {
             let application_store = {
@@ -217,8 +217,9 @@ pub async fn op_get_application_string<AS: Store1>(
         .get(key)
         .await
     {
-        Ok(Some(bytes)) => Some(String::from_utf8_lossy(&bytes).to_string()),
-        _ => None,
+        Ok(Some(bytes)) => Ok(Some(String::from_utf8_lossy(&bytes).to_string())),
+        Ok(None) => Ok(None),
+        Err(e) => Err(e),
     };
 
     state.borrow_mut().put(application_store);
@@ -232,7 +233,7 @@ pub async fn op_set_application_string<AS: Store1>(
     #[string] store_name: String,
     #[string] key: String,
     #[string] value: String,
-) -> bool {
+) -> Result<(), AS::Error> {
     let application_store = {
         loop {
             let application_store = {
@@ -253,8 +254,7 @@ pub async fn op_set_application_string<AS: Store1>(
     let result = application_store
         .scope(format!("{store_name}:string"))
         .put(key, Bytes::from(value))
-        .await
-        .is_ok();
+        .await;
 
     state.borrow_mut().put(application_store);
 
