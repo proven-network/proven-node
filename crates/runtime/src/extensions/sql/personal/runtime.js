@@ -70,20 +70,28 @@ class PersonalSqlStore {
   }
 
   async execute (sql) {
-    if (sql instanceof Sql) {
-      let affectedRows
-      if (sql.values.length === 0) {
-        affectedRows = await executePersonalSql(this.sqlStoreName, sql.statement)
-      } else {
-        const paramListId = preparePersonalParamList(sql.values);
+    let sqlStatement;
+    let sqlValues = [];
 
-        affectedRows = await executePersonalSql(this.sqlStoreName, sql.statement, paramListId)
-      }
-
-      return affectedRows
+    if (typeof sql === 'string') {
+      sqlStatement = sql;
+    } else if (sql instanceof Sql) {
+      sqlStatement = sql.statement;
+      sqlValues = sql.values;
     } else {
-      throw new TypeError('Expected `sql` to be a string or Sql object')
+      throw new TypeError('Expected `sql` to be a string or Sql object');
     }
+
+    let affectedRows;
+    if (sqlValues.length === 0) {
+      affectedRows = await executePersonalSql(this.sqlStoreName, sqlStatement);
+    } else {
+      const paramListId = preparePersonalParamList(sqlValues);
+
+      affectedRows = await executePersonalSql(this.sqlStoreName, sqlStatement, paramListId);
+    }
+
+    return affectedRows;
   }
 
   migrate (sql) {
@@ -92,41 +100,94 @@ class PersonalSqlStore {
   }
 
   async query (sql) {
-    if (sql instanceof Sql) {
-      let rows
-      if (sql.values.length === 0) {
-        rows = await queryPersonalSql(this.sqlStoreName, sql.statement)
-      } else {
-        const paramListId = preparePersonalParamList(sql.values);
+    let sqlStatement;
+    let sqlValues = [];
 
-        rows = await queryPersonalSql(this.sqlStoreName, sql.statement, paramListId)
-      }
-
-      // TODO: Reworks rows code to use generators
-      const results = []
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i]
-        const result = []
-        for (let j = 0; j < row.length; j++) {
-          if (row[j].Integer) {
-            result.push(row[j].Integer)
-          } else if (row[j].Real) {
-            result.push(row[j].Real)
-          } else if (row[j].Text) {
-            result.push(row[j].Text)
-          } else if (row[j].Blob) {
-            result.push(row[j].Blob)
-          } else if (row[j].Null) {
-            result.push(null)
-          }
-        }
-        results.push(result)
-      }
-
-      return results
+    if (typeof sql === 'string') {
+      sqlStatement = sql;
+    } else if (sql instanceof Sql) {
+      sqlStatement = sql.statement;
+      sqlValues = sql.values;
     } else {
       throw new TypeError('Expected `sql` to be a string or Sql object')
     }
+
+    let rows;
+
+    if (sqlValues.length === 0) {
+      const result = await queryPersonalSql(this.sqlStoreName, sqlStatement)
+
+      if (result === "NoPersonalContext") {
+        throw new Error('No personal context');
+      } else {
+        rows = result.Ok;
+      }
+    } else {
+      const paramListId = preparePersonalParamList(sqlValues);
+
+      const result = await queryPersonalSql(this.sqlStoreName, sqlStatement, paramListId)
+
+      if (result === "NoPersonalContext") {
+        throw new Error('No personal context');
+      } else {
+        rows = result.Ok
+      }
+    }
+
+    const columnNames = []
+
+    // First row also contains column names
+    const firstRow = {}
+    for (let i = 0; i < rows[0].length; i++) {
+      if (rows[0][i].IntegerWithName) {
+        const [ name, value ] = rows[0][i].IntegerWithName
+        columnNames.push(name)
+        firstRow[name] = value
+      } else if (rows[0][i].RealWithName) {
+        const [ name, value ] = row[0][i].RealWithName
+        columnNames.push(name)
+        firstRow[name] = value
+      } else if (rows[0][i].TextWithName) {
+        const [ name, value ] = rows[0][i].TextWithName
+        columnNames.push(name)
+        firstRow[name] = value
+      } else if (rows[0][i].BlobWithName) {
+        const [ name, value ] = rows[0][i].BlobWithName
+        columnNames.push(name)
+        firstRow[name] = value
+      } else if (rows[0][i].NullWithName) {
+        const name = rows[0][i].NullWithName
+        columnNames.push(name)
+        firstRow[name] = null
+      } else {
+        throw new TypeError('Expected first row to contain column names')
+      }
+    }
+
+    const results = []
+    results.push(firstRow)
+
+    // TODO: Reworks rows code to use generators
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      const result = {}
+      for (let j = 0; j < row.length; j++) {
+        if (row[j].Integer) {
+          result[columnNames[j]] = row[j].Integer
+        } else if (row[j].Real) {
+          result[columnNames[j]] = row[j].Real
+        } else if (row[j].Text) {
+          result[columnNames[j]] = row[j].Text
+        } else if (row[j].Blob) {
+          result[columnNames[j]] = row[j].Blob
+        } else if (row[j].Null) {
+          result[columnNames[j]] = null
+        }
+      }
+      results.push(result)
+    }
+
+    return results
   }
 }
 

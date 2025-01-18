@@ -15,6 +15,13 @@ use bytes::Bytes;
 use deno_core::{extension, op2, OpDecl, OpState};
 use futures::StreamExt;
 use proven_sql::{SqlConnection, SqlParam, SqlStore1};
+use serde::Serialize;
+
+#[derive(Serialize)]
+enum PersonalDbResponse<T> {
+    NoPersonalContext,
+    Ok(T),
+}
 
 #[op2(fast)]
 #[bigint]
@@ -67,13 +74,13 @@ fn op_add_personal_text_param(
 }
 
 #[op2(async)]
-#[bigint]
+#[serde]
 pub async fn op_execute_personal_sql<PSS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] query: String,
     #[bigint] param_list_id_opt: Option<u64>,
-) -> u64 {
+) -> Result<PersonalDbResponse<u64>, PSS::Error> {
     let connection_manager_opt = {
         loop {
             let connection_manager_opt = {
@@ -91,13 +98,17 @@ pub async fn op_execute_personal_sql<PSS: SqlStore1>(
         }
     };
 
-    // TODO: should probably err instead of returning None
-    let connection_opt = if let Some(connection_manager) = connection_manager_opt.as_ref() {
-        Some(connection_manager.connect(db_name).await.unwrap())
+    let connection = if let Some(connection_manager) = connection_manager_opt.as_ref() {
+        let result = connection_manager.connect(db_name).await;
+
+        state.borrow_mut().put(connection_manager_opt);
+
+        result
     } else {
-        None
-    };
-    state.borrow_mut().put(connection_manager_opt);
+        state.borrow_mut().put(connection_manager_opt);
+
+        return Ok(PersonalDbResponse::NoPersonalContext);
+    }?;
 
     if let Some(param_list_id) = param_list_id_opt {
         let mut params_lists = {
@@ -121,17 +132,15 @@ pub async fn op_execute_personal_sql<PSS: SqlStore1>(
 
         state.borrow_mut().put(params_lists);
 
-        connection_opt
-            .unwrap()
+        connection
             .execute(query, params)
             .await
-            .unwrap()
+            .map(PersonalDbResponse::Ok)
     } else {
-        connection_opt
-            .unwrap()
+        connection
             .execute(query, vec![])
             .await
-            .unwrap()
+            .map(PersonalDbResponse::Ok)
     }
 }
 
@@ -142,7 +151,7 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
     #[string] db_name: String,
     #[string] query: String,
     #[bigint] param_list_id_opt: Option<u64>,
-) -> Vec<Vec<SqlParam>> {
+) -> Result<PersonalDbResponse<Vec<Vec<SqlParam>>>, PSS::Error> {
     let connection_manager_opt = {
         loop {
             let connection_manager_opt = {
@@ -160,15 +169,19 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
         }
     };
 
-    // TODO: should probably err instead of returning None
-    let connection_opt = if let Some(connection_manager) = connection_manager_opt.as_ref() {
-        Some(connection_manager.connect(db_name).await.unwrap())
-    } else {
-        None
-    };
-    state.borrow_mut().put(connection_manager_opt);
+    let connection = if let Some(connection_manager) = connection_manager_opt.as_ref() {
+        let result = connection_manager.connect(db_name).await;
 
-    let stream = if let Some(param_list_id) = param_list_id_opt {
+        state.borrow_mut().put(connection_manager_opt);
+
+        result
+    } else {
+        state.borrow_mut().put(connection_manager_opt);
+
+        return Ok(PersonalDbResponse::NoPersonalContext);
+    }?;
+
+    if let Some(param_list_id) = param_list_id_opt {
         let mut params_lists = {
             loop {
                 let params_lists = {
@@ -190,12 +203,14 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
 
         state.borrow_mut().put(params_lists);
 
-        connection_opt.unwrap().query(query, params).await.unwrap()
+        let result = connection.query(query, params).await?;
+        let collected = result.collect::<Vec<Vec<SqlParam>>>().await;
+        Ok(PersonalDbResponse::Ok(collected))
     } else {
-        connection_opt.unwrap().query(query, vec![]).await.unwrap()
-    };
-
-    stream.collect().await
+        let result = connection.query(query, vec![]).await?;
+        let collected = result.collect::<Vec<Vec<SqlParam>>>().await;
+        Ok(PersonalDbResponse::Ok(collected))
+    }
 }
 
 fn get_ops<PSS: SqlStore1>() -> Vec<OpDecl> {
@@ -216,3 +231,44 @@ extension!(
     parameters = [ PSS: SqlStore1 ],
     ops_fn = get_ops<PSS>,
 );
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::create_runtime_options;
+    use crate::{ExecutionRequest, Worker};
+
+    #[tokio::test]
+    async fn test_personal_db() {
+        let runtime_options = create_runtime_options("sql/test_personal_db", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: Some("identity_123".to_string()),
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().output, "alice@example.com");
+    }
+
+    #[tokio::test]
+    async fn test_personal_db_no_context() {
+        let runtime_options = create_runtime_options("sql/test_personal_db", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_err());
+    }
+}
