@@ -17,7 +17,7 @@
     "@proven-network/handler": "^0.0.1",
     "@proven-network/kv": "0.0.6",
     "@proven-network/session": "^0.0.1",
-    "@proven-network/sql": "^0.0.2",
+    "@proven-network/sql": "^0.0.4",
     "@rollup/plugin-node-resolve": "16.0.0",
     "rollup": "4.30.1"
   }

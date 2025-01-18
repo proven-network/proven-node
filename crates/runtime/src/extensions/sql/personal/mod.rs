@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use bytes::Bytes;
-use deno_core::{extension, op2, OpDecl, OpState};
+use deno_core::{extension, op2, OpState};
 use futures::StreamExt;
 use proven_sql::{SqlConnection, SqlParam, SqlStore1};
 use serde::Serialize;
@@ -213,23 +213,19 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
     }
 }
 
-fn get_ops<PSS: SqlStore1>() -> Vec<OpDecl> {
-    vec![
-        op_add_personal_blob_param(),
-        op_add_personal_integer_param(),
-        op_add_personal_null_param(),
-        op_add_personal_real_param(),
-        op_add_personal_text_param(),
-        op_create_personal_params_list(),
-        op_execute_personal_sql::<PSS>(),
-        op_query_personal_sql::<PSS>(),
-    ]
-}
-
 extension!(
     sql_personal_ext,
     parameters = [ PSS: SqlStore1 ],
-    ops_fn = get_ops<PSS>,
+    ops = [
+        op_add_personal_blob_param,
+        op_add_personal_integer_param,
+        op_add_personal_null_param,
+        op_add_personal_real_param,
+        op_add_personal_text_param,
+        op_create_personal_params_list,
+        op_execute_personal_sql<PSS>,
+        op_query_personal_sql<PSS>,
+    ]
 );
 
 #[cfg(test)]

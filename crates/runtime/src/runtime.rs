@@ -1,10 +1,10 @@
 use crate::extensions::{
     console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext, openai_ext,
     radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, session_ext,
-    sql_application_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
+    sql_application_ext, sql_nft_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
     ApplicationSqlConnectionManager, ApplicationSqlParamListManager, ConsoleState, CryptoState,
-    GatewayDetailsState, NftSqlConnectionManager, PersonalSqlConnectionManager,
-    PersonalSqlParamListManager, SessionState,
+    GatewayDetailsState, NftSqlConnectionManager, NftSqlParamListManager,
+    PersonalSqlConnectionManager, PersonalSqlParamListManager, SessionState,
 };
 use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
@@ -244,6 +244,7 @@ where
                 sql_runtime_ext::init_ops_and_esm(),
                 sql_application_ext::init_ops::<ASS::Scoped>(),
                 sql_personal_ext::init_ops::<<<PSS as SqlStore3>::Scoped as SqlStore2>::Scoped>(),
+                sql_nft_ext::init_ops::<NSS::Scoped, RNV>(),
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),
                 radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
@@ -375,10 +376,14 @@ where
             None => None,
         })?;
 
-        self.runtime.put(NftSqlConnectionManager::new(
-            self.nft_sql_store.clone().scope(dapp_definition_address),
-            self.sql_migrations.nft.clone(),
-        ))?;
+        self.runtime.put(NftSqlParamListManager::new())?;
+        self.runtime.put(match accounts.as_ref() {
+            Some(_) => Some(NftSqlConnectionManager::new(
+                self.nft_sql_store.clone().scope(dapp_definition_address),
+                self.sql_migrations.personal.clone(),
+            )),
+            None => None,
+        })?;
 
         // Set the context for the session extension
         self.runtime.put(SessionState { identity, accounts })?;

@@ -22,7 +22,7 @@ impl<PSS: SqlStore1> PersonalSqlConnectionManager<PSS> {
     pub async fn connect(
         &self,
         db_name: String,
-    ) -> Result<<PSS::Scoped as SqlStore>::Connection, <PSS::Scoped as SqlStore>::Error> {
+    ) -> Result<<PSS::Scoped as SqlStore>::Connection, PSS::Error> {
         let mut connections = self.connections.lock().await;
 
         if let Some(connection) = connections.get(&db_name) {

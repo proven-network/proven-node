@@ -24,12 +24,10 @@ impl<NSS: SqlStore2> NftSqlConnectionManager<NSS> {
     pub async fn connect(
         &self,
         db_name: String,
+        resource_address: String,
         nft_id: String,
-    ) -> Result<
-        <<NSS::Scoped as SqlStore1>::Scoped as SqlStore>::Connection,
-        <<NSS::Scoped as SqlStore1>::Scoped as SqlStore>::Error,
-    > {
-        let connection_key = format!("{db_name}-{nft_id}");
+    ) -> Result<<<NSS::Scoped as SqlStore1>::Scoped as SqlStore>::Connection, NSS::Error> {
+        let connection_key = format!("{db_name}-{resource_address}:{nft_id}");
         let mut connections = self.connections.lock().await;
 
         if let Some(connection) = connections.get(&connection_key) {
@@ -48,7 +46,7 @@ impl<NSS: SqlStore2> NftSqlConnectionManager<NSS> {
             .lock()
             .await
             .scope(db_name.clone())
-            .scope(nft_id.clone())
+            .scope(format!("{resource_address}:{nft_id}"))
             .connect(migrations)
             .await?;
 

@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use bytes::Bytes;
-use deno_core::{extension, op2, OpDecl, OpState};
+use deno_core::{extension, op2, OpState};
 use futures::StreamExt;
 use proven_sql::{SqlConnection, SqlParam, SqlStore1};
 
@@ -184,23 +184,19 @@ async fn op_query_application_sql<ASS: SqlStore1>(
     Ok(stream.collect().await)
 }
 
-fn get_ops<ASS: SqlStore1>() -> Vec<OpDecl> {
-    vec![
-        op_add_application_blob_param(),
-        op_add_application_integer_param(),
-        op_add_application_null_param(),
-        op_add_application_real_param(),
-        op_add_application_text_param(),
-        op_create_application_params_list(),
-        op_execute_application_sql::<ASS>(),
-        op_query_application_sql::<ASS>(),
-    ]
-}
-
 extension!(
     sql_application_ext,
     parameters = [ ASS: SqlStore1 ],
-    ops_fn = get_ops<ASS>,
+    ops = [
+        op_add_application_blob_param,
+        op_add_application_integer_param,
+        op_add_application_null_param,
+        op_add_application_real_param,
+        op_add_application_text_param,
+        op_create_application_params_list,
+        op_execute_application_sql<ASS>,
+        op_query_application_sql<ASS>,
+    ]
 );
 
 #[cfg(test)]
