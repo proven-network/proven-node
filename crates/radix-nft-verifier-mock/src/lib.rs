@@ -30,11 +30,16 @@ impl RadixNftVerifierMock {
     }
 
     /// Inserts a record of NFT ownership into the mock verifier.
-    pub async fn insert_ownership(&mut self, account: String, resource_id: String, nft_id: String) {
-        self.ownership_map
-            .lock()
-            .await
-            .insert(format!("{resource_id}:{nft_id}"), account);
+    pub async fn insert_ownership<A, R, N>(&mut self, account: A, resource_address: R, nft_id: N)
+    where
+        A: Clone + Into<String> + Send + Sync,
+        R: Clone + Into<String> + Send + Sync,
+        N: Clone + Into<String> + Send + Sync,
+    {
+        self.ownership_map.lock().await.insert(
+            format!("{}:{}", resource_address.into(), nft_id.into()),
+            account.into(),
+        );
     }
 }
 
@@ -45,7 +50,7 @@ impl RadixNftVerifier for RadixNftVerifierMock {
     async fn verify_ownership<A, R, N>(
         &self,
         accounts: &[A],
-        resource_id: R,
+        resource_address: R,
         nft_id: N,
     ) -> Result<RadixNftVerificationResult, Self::Error>
     where
@@ -57,7 +62,7 @@ impl RadixNftVerifier for RadixNftVerifierMock {
             .ownership_map
             .lock()
             .await
-            .get(&format!("{}:{}", resource_id.into(), nft_id.into()))
+            .get(&format!("{}:{}", resource_address.into(), nft_id.into()))
             .cloned();
 
         current_owner.map_or(

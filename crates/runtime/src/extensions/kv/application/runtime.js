@@ -15,9 +15,9 @@ function getApplicationKey (storeName, key) {
   return op_get_application_key(storeName, key)
 }
 
-function setApplicationKey (storeName, key, value) {
+function setApplicationKey (storeName, key, keyId) {
   const { op_set_application_key } = globalThis.Deno.core.ops;
-  return op_set_application_key(storeName, key, value)
+  return op_set_application_key(storeName, key, keyId)
 }
 
 function getApplicationString (storeName, key) {

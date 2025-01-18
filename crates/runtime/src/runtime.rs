@@ -345,11 +345,14 @@ where
             None => None,
         })?;
 
-        self.runtime.put(
-            self.nft_store
-                .clone()
-                .scope(dapp_definition_address.clone()),
-        )?;
+        self.runtime.put(match accounts.as_ref() {
+            Some(accounts) if !accounts.is_empty() => Some(
+                self.nft_store
+                    .clone()
+                    .scope(dapp_definition_address.clone()),
+            ),
+            Some(_) | None => None,
+        })?;
 
         // Set the sql stores for the storage extension
         self.runtime.put(ApplicationSqlParamListManager::new())?;

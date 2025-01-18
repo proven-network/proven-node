@@ -6,7 +6,10 @@ pub use application::{
     op_get_application_bytes, op_get_application_key, op_get_application_string,
     op_set_application_bytes, op_set_application_key, op_set_application_string,
 };
-pub use nft::{op_get_nft_bytes, op_get_nft_string, op_set_nft_bytes, op_set_nft_string};
+pub use nft::{
+    op_get_nft_bytes, op_get_nft_key, op_get_nft_string, op_set_nft_bytes, op_set_nft_key,
+    op_set_nft_string,
+};
 pub use personal::{
     op_get_personal_bytes, op_get_personal_key, op_get_personal_string, op_set_personal_bytes,
     op_set_personal_key, op_set_personal_string,
@@ -47,6 +50,8 @@ extension!(
         op_set_application_string<AS>,
         op_get_nft_bytes<NS, RNV>,
         op_set_nft_bytes<NS, RNV>,
+        op_get_nft_key<NS, RNV>,
+        op_set_nft_key<NS, RNV>,
         op_get_nft_string<NS, RNV>,
         op_set_nft_string<NS, RNV>,
         op_get_personal_bytes<PS>,

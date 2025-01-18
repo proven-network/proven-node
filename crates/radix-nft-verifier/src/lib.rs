@@ -36,7 +36,7 @@ where
     async fn verify_ownership<A, R, N>(
         &self,
         accounts: &[A],
-        resource_id: R,
+        resource_address: R,
         nft_id: N,
     ) -> Result<RadixNftVerificationResult, Self::Error>
     where

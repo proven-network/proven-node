@@ -15,9 +15,9 @@ function getPersonalKey (storeName, key) {
   return op_get_personal_key(storeName, key)
 }
 
-function setPersonalKey (storeName, key, value) {
+function setPersonalKey (storeName, key, keyId) {
   const { op_set_personal_key } = globalThis.Deno.core.ops;
-  return op_set_personal_key(storeName, key, value)
+  return op_set_personal_key(storeName, key, keyId)
 }
 
 function getPersonalString (storeName, key) {
@@ -43,7 +43,7 @@ class PersonalStringStore {
     } else if (result === "None") {
       return undefined;
     } else {
-      return result.Ok;
+      return result.Some;
     }
   }
 
@@ -71,7 +71,7 @@ class PersonalBytesStore {
     } else if (result === "None") {
       return undefined;
     } else {
-      return result.Ok;
+      return result.Some;
     }
   }
 
@@ -101,7 +101,7 @@ class PersonalKeyStore {
     } else if (result === "None") {
       return undefined;
     } else {
-      keyId = result.Ok;
+      keyId = result.Some;
     }
 
     if (typeof keyId === 'number') {

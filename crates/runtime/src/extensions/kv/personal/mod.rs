@@ -2,8 +2,8 @@
 #![allow(clippy::significant_drop_tightening)]
 #![allow(clippy::future_not_send)]
 
-use super::super::{CryptoState, Key};
 use super::StoredKey;
+use crate::extensions::{CryptoState, Key};
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -17,7 +17,7 @@ use serde::Serialize;
 enum PersonalStoreGetResponse<T> {
     NoPersonalContext,
     None,
-    Ok(T),
+    Some(T),
 }
 
 #[derive(Serialize)]
@@ -56,7 +56,7 @@ pub async fn op_get_personal_bytes<PS: Store1>(
         state.borrow_mut().put(personal_store);
 
         match result {
-            Ok(Some(bytes)) => Ok(PersonalStoreGetResponse::Ok(bytes)),
+            Ok(Some(bytes)) => Ok(PersonalStoreGetResponse::Some(bytes)),
             Ok(None) => Ok(PersonalStoreGetResponse::None),
             Err(e) => Err(e),
         }
@@ -150,14 +150,15 @@ pub async fn op_get_personal_key<PS: Store1>(
                         }
                     });
 
-                PersonalStoreGetResponse::Ok(key_id)
+                Ok(PersonalStoreGetResponse::Some(key_id))
             }
-            _ => PersonalStoreGetResponse::None,
+            Ok(None) => Ok(PersonalStoreGetResponse::None),
+            Err(e) => Err(e),
         };
 
         state.borrow_mut().put(personal_store);
 
-        Ok(result)
+        result
     } else {
         state.borrow_mut().put(personal_store);
 
@@ -249,7 +250,7 @@ pub async fn op_get_personal_string<PS: Store1>(
         state.borrow_mut().put(personal_store);
 
         match result {
-            Ok(Some(bytes)) => Ok(PersonalStoreGetResponse::Ok(
+            Ok(Some(bytes)) => Ok(PersonalStoreGetResponse::Some(
                 String::from_utf8_lossy(&bytes).to_string(),
             )),
             Ok(None) => Ok(PersonalStoreGetResponse::None),
