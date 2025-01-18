@@ -89,7 +89,11 @@ export class PrivateKey {
 
   publicKey() {
     const { op_get_public_key } = Deno.core.ops;
-    return new PublicKey(op_get_public_key(this.keyId), this.curve);
+    const publicKey = new PublicKey(op_get_public_key(this.keyId), this.curve);
+
+    Object.freeze(publicKey);
+
+    return publicKey;
   }
 
   publicKeyBytes() {
@@ -107,25 +111,37 @@ export class PrivateKey {
   signToSignature(data) {
     const { op_sign_bytes, op_sign_string } = Deno.core.ops;
 
+    let signature;
+
     if (typeof data === "string") {
-      return new Signature(op_sign_string(this.keyId, data), this.curve);
+      signature = new Signature(op_sign_string(this.keyId, data), this.curve);
     } else if (data instanceof Uint8Array) {
-      return new Signature(op_sign_bytes(this.keyId, data), this.curve);
+      signature = new Signature(op_sign_bytes(this.keyId, data), this.curve);
     } else {
       throw new Error("Invalid type for signing");
     }
+
+    Object.freeze(signature);
+
+    return signature;
   }
 
   signToSignatureWithPublicKey(data) {
     const { op_sign_bytes, op_sign_string } = Deno.core.ops;
 
+    let signatureWithPublicKey;
+
     if (typeof data === "string") {
-      return new SignatureWithPublicKey(op_sign_string(this.keyId, data), this.curve, this.publicKeyBytes());
+      signatureWithPublicKey = new SignatureWithPublicKey(op_sign_string(this.keyId, data), this.curve, this.publicKeyBytes());
     } else if (data instanceof Uint8Array) {
-      return new SignatureWithPublicKey(op_sign_bytes(this.keyId, data), this.curve, this.publicKeyBytes());
+      signatureWithPublicKey =  new SignatureWithPublicKey(op_sign_bytes(this.keyId, data), this.curve, this.publicKeyBytes());
     } else {
       throw new Error("Invalid type for signing");
     }
+
+    Object.freeze(signatureWithPublicKey);
+
+    return signatureWithPublicKey;
   }
 }
 
