@@ -75,7 +75,7 @@ async fn op_execute_application_sql<ASS: SqlStore1>(
     #[string] db_name: String,
     #[string] query: String,
     #[bigint] param_list_id_opt: Option<u64>,
-) -> u64 {
+) -> Result<u64, ASS::Error> {
     let connection_manager = {
         loop {
             let connection_manager = {
@@ -93,9 +93,9 @@ async fn op_execute_application_sql<ASS: SqlStore1>(
         }
     };
 
-    // TODO: handle errors properly
-    let connection = connection_manager.connect(db_name).await.unwrap();
+    let connection_result = connection_manager.connect(db_name).await;
     state.borrow_mut().put(connection_manager);
+    let connection = connection_result?;
 
     if let Some(param_list_id) = param_list_id_opt {
         let mut params_lists = {
@@ -119,9 +119,9 @@ async fn op_execute_application_sql<ASS: SqlStore1>(
 
         state.borrow_mut().put(params_lists);
 
-        connection.execute(query, params).await.unwrap()
+        connection.execute(query, params).await
     } else {
-        connection.execute(query, vec![]).await.unwrap()
+        connection.execute(query, vec![]).await
     }
 }
 
@@ -132,7 +132,7 @@ async fn op_query_application_sql<ASS: SqlStore1>(
     #[string] db_name: String,
     #[string] query: String,
     #[bigint] param_list_id_opt: Option<u64>,
-) -> Vec<Vec<SqlParam>> {
+) -> Result<Vec<Vec<SqlParam>>, ASS::Error> {
     let connection_manager = {
         loop {
             let connection_manager = {
@@ -150,9 +150,9 @@ async fn op_query_application_sql<ASS: SqlStore1>(
         }
     };
 
-    // TODO: handle errors properly
-    let connection = connection_manager.connect(db_name).await.unwrap();
+    let connection_result = connection_manager.connect(db_name).await;
     state.borrow_mut().put(connection_manager);
+    let connection = connection_result?;
 
     let stream = if let Some(param_list_id) = param_list_id_opt {
         let mut params_lists = {
@@ -176,12 +176,12 @@ async fn op_query_application_sql<ASS: SqlStore1>(
 
         state.borrow_mut().put(params_lists);
 
-        connection.query(query, params).await.unwrap()
+        connection.query(query, params).await?
     } else {
-        connection.query(query, vec![]).await.unwrap()
+        connection.query(query, vec![]).await?
     };
 
-    stream.collect().await
+    Ok(stream.collect().await)
 }
 
 fn get_ops<ASS: SqlStore1>() -> Vec<OpDecl> {
