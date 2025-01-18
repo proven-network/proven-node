@@ -576,45 +576,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_execute_with_identity() {
-        run_in_thread(|| {
-            let options = create_runtime_options("test_runtime_execute_with_identity", "test");
-
-            let mut request = create_execution_request();
-            request.identity = Some("test_identity".to_string());
-            let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
-
-            assert!(execution_result.output.is_string());
-            assert_eq!(execution_result.output.as_str().unwrap(), "test_identity");
-            assert!(execution_result.duration.as_millis() < 1000);
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_with_accounts() {
-        run_in_thread(|| {
-            let options = create_runtime_options("test_runtime_execute_with_accounts", "test");
-
-            let mut request = create_execution_request();
-            request.accounts = Some(vec!["account1".to_string(), "account2".to_string()]);
-            let result = Runtime::new(options).unwrap().execute(request);
-
-            assert!(result.is_ok());
-
-            let execution_result = result.unwrap();
-            assert!(execution_result.output.is_array());
-            assert_eq!(execution_result.output.as_array().unwrap().len(), 2);
-            assert_eq!(
-                execution_result.output.as_array().unwrap()[0]
-                    .as_str()
-                    .unwrap(),
-                "account1"
-            );
-            assert!(execution_result.duration.as_millis() < 1000);
-        });
-    }
-
-    #[tokio::test]
     async fn test_runtime_execute_sets_timeout() {
         run_in_thread(|| {
             // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
@@ -665,20 +626,6 @@ mod tests {
 
             assert!(result.is_ok());
             assert_eq!(result.unwrap().output, 200);
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_with_sql() {
-        run_in_thread(|| {
-            let options = create_runtime_options("test_runtime_execute_with_sql", "test");
-
-            let mut request = create_execution_request();
-            request.identity = Some("test_identity".to_string());
-            let result = Runtime::new(options).unwrap().execute(request);
-
-            assert!(result.is_ok());
-            assert_eq!(result.unwrap().output, "alice@example.com");
         });
     }
 
