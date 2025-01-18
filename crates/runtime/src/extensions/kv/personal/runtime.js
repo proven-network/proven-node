@@ -52,8 +52,6 @@ class PersonalStringStore {
 
     if (result === "NoPersonalContext") {
       throw new Error('No personal context');
-    } else {
-      return true;
     }
   }
 }
@@ -80,8 +78,6 @@ class PersonalBytesStore {
 
     if (result === "NoPersonalContext") {
       throw new Error('No personal context');
-    } else {
-      return true;
     }
   }
 }
@@ -117,8 +113,6 @@ class PersonalKeyStore {
 
     if (result === "NoPersonalContext") {
       throw new Error('No personal context');
-    } else {
-      return true;
     }
   }
 }
