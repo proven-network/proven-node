@@ -12,7 +12,7 @@ use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
-use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
+use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_runtime::RuntimePoolManager;
 use proven_sessions::{Session, SessionManager};
 use proven_sql_streamed::{
@@ -73,7 +73,7 @@ pub type EnclaveCore = Core<
             >,
             S3Store3<Bytes, Infallible, Infallible>,
         >,
-        RadixNftVerifierMock,
+        MockRadixNftVerifier,
     >,
     SessionManager<
         NsmAttestor,

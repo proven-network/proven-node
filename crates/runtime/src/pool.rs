@@ -92,7 +92,7 @@ pub struct PoolRuntimeOptions {
 /// # Example
 ///
 /// ```rust
-/// use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
+/// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, Pool, PoolOptions, PoolRuntimeOptions,
 /// };
@@ -114,7 +114,7 @@ pub struct PoolRuntimeOptions {
 ///         personal_store: MemoryStore3::new(),
 ///         radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         radix_network_definition: NetworkDefinition::stokenet(),
-///         radix_nft_verifier: RadixNftVerifierMock::new(),
+///         radix_nft_verifier: MockRadixNftVerifier::new(),
 ///     })
 ///     .await;
 ///
@@ -676,7 +676,7 @@ pub fn hash_options(options: &PoolRuntimeOptions) -> Result<String> {
 mod tests {
     use super::*;
 
-    use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
+    use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
     use serde_json::json;
@@ -689,7 +689,7 @@ mod tests {
         DirectSqlStore2,
         DirectSqlStore3,
         DirectSqlStore3,
-        RadixNftVerifierMock,
+        MockRadixNftVerifier,
     > {
         let mut temp_application_sql = tempdir().unwrap().into_path();
         temp_application_sql.push("application.db");
@@ -708,7 +708,7 @@ mod tests {
             personal_store: MemoryStore3::new(),
             radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
-            radix_nft_verifier: RadixNftVerifierMock::new(),
+            radix_nft_verifier: MockRadixNftVerifier::new(),
         }
     }
 

@@ -3,7 +3,7 @@ use proven_runtime::{ExecutionRequest, RuntimeOptions, Worker};
 use std::sync::Arc;
 
 use futures::future::join_all;
-use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
+use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore2, MemoryStore3};
 use radix_common::network::NetworkDefinition;
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Error> {
             personal_store: MemoryStore3::new(),
             radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
-            radix_nft_verifier: RadixNftVerifierMock::new(),
+            radix_nft_verifier: MockRadixNftVerifier::new(),
         })
         .await
         .unwrap(),

@@ -16,7 +16,7 @@ use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
 use proven_core::{Core, CoreOptions};
 use proven_http_insecure::InsecureHttpServer;
-use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
+use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_direct::{DirectSqlStore, DirectSqlStore2, DirectSqlStore3};
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
     let nft_sql_store = DirectSqlStore3::new("/tmp/proven/sql/nft");
 
     // TODO: Replace with gateway-based version when written
-    let radix_nft_verifier = RadixNftVerifierMock::new();
+    let radix_nft_verifier = MockRadixNftVerifier::new();
 
     let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
         application_sql_store,

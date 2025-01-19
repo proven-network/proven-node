@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 ///
 /// # Example
 /// ```rust
-/// use proven_radix_nft_verifier_mock::RadixNftVerifierMock;
+/// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions, Worker,
 /// };
@@ -41,7 +41,7 @@ use tokio::sync::oneshot;
 ///         personal_store: MemoryStore3::new(),
 ///         radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
 ///         radix_network_definition: NetworkDefinition::stokenet(),
-///         radix_nft_verifier: RadixNftVerifierMock::new(),
+///         radix_nft_verifier: MockRadixNftVerifier::new(),
 ///     })
 ///     .await
 ///     .expect("Failed to create worker");

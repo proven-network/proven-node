@@ -12,15 +12,15 @@ use proven_radix_nft_verifier::{RadixNftVerificationResult, RadixNftVerifier};
 use tokio::sync::Mutex;
 
 mod error;
-pub use error::RadixNftVerifierErrorMock;
+pub use error::Error;
 
 /// A mock implementation of the `RadixNftVerifier` trait. Used for testing.
 #[derive(Clone, Debug, Default)]
-pub struct RadixNftVerifierMock {
+pub struct MockRadixNftVerifier {
     ownership_map: Arc<Mutex<HashMap<String, String>>>,
 }
 
-impl RadixNftVerifierMock {
+impl MockRadixNftVerifier {
     /// Creates a new instance of `RadixNftVerifierMock`.
     #[must_use]
     pub fn new() -> Self {
@@ -44,8 +44,8 @@ impl RadixNftVerifierMock {
 }
 
 #[async_trait]
-impl RadixNftVerifier for RadixNftVerifierMock {
-    type Error = RadixNftVerifierErrorMock;
+impl RadixNftVerifier for MockRadixNftVerifier {
+    type Error = Error;
 
     async fn verify_ownership<A, R, N>(
         &self,
@@ -87,7 +87,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_verify_ownership_when_owned() {
-        let mut verifier = RadixNftVerifierMock::new();
+        let mut verifier = MockRadixNftVerifier::new();
         verifier
             .insert_ownership(
                 "account123".to_string(),
@@ -109,7 +109,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_verify_ownership_when_not_owned() {
-        let mut verifier = RadixNftVerifierMock::new();
+        let mut verifier = MockRadixNftVerifier::new();
         verifier
             .insert_ownership(
                 "account123".to_string(),
@@ -131,7 +131,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_verify_ownership_when_nft_does_not_exist() {
-        let verifier = RadixNftVerifierMock::new();
+        let verifier = MockRadixNftVerifier::new();
 
         let result = verifier
             .verify_ownership(&["account123"], "resource456", "nft789")
