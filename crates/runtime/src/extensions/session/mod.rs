@@ -3,8 +3,6 @@
 
 use deno_core::{extension, op2};
 
-static NULL_IDENTITY: &str = "<NONE>";
-
 #[derive(Default)]
 pub struct SessionState {
     pub identity: Option<String>,
@@ -13,17 +11,14 @@ pub struct SessionState {
 
 #[op2]
 #[string]
-pub fn op_get_current_identity(#[state] state: &SessionState) -> String {
-    state
-        .identity
-        .clone()
-        .unwrap_or_else(|| NULL_IDENTITY.to_string())
+pub fn op_get_current_identity(#[state] state: &SessionState) -> Option<String> {
+    state.identity.clone()
 }
 
 #[op2]
-#[string]
-pub fn op_get_current_accounts(#[state] state: &SessionState) -> String {
-    state.accounts.clone().unwrap_or_default().join(",")
+#[serde]
+pub fn op_get_current_accounts(#[state] state: &SessionState) -> Vec<String> {
+    state.accounts.clone().unwrap_or_default()
 }
 
 extension!(
