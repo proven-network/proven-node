@@ -31,6 +31,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Request for a runtime execution.
+#[derive(Clone)]
 pub struct ExecutionRequest {
     /// The accounts of the executing user.
     pub accounts: Option<Vec<String>>,

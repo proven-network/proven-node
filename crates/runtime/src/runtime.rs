@@ -461,7 +461,6 @@ mod tests {
 
     use crate::test_utils::create_runtime_options;
 
-    use ed25519_dalek::Verifier;
     use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
     use serde_json::json;
 
@@ -635,39 +634,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_execute_basic_ed25519_signing() {
-        run_in_thread(|| {
-            let options =
-                create_runtime_options("test_runtime_execute_basic_ed25519_signing", "test");
-
-            let request = create_execution_request();
-            let result = Runtime::new(options).unwrap().execute(request);
-
-            assert!(result.is_ok());
-
-            // Check that the signature is valid
-            let result = result.unwrap();
-            let output = result.output.as_array().unwrap();
-            let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
-                &hex::decode(output[0].as_str().unwrap())
-                    .unwrap()
-                    .try_into()
-                    .expect("slice with incorrect length"),
-            )
-            .unwrap();
-            let signature = ed25519_dalek::Signature::from_bytes(
-                &hex::decode(output[1].as_str().unwrap())
-                    .unwrap()
-                    .try_into()
-                    .expect("slice with incorrect length"),
-            );
-
-            let message = "Hello, world!";
-            assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
-        });
-    }
-
-    #[tokio::test]
     async fn test_runtime_execute_manifest_ed25519_signing() {
         run_in_thread(|| {
             let options =
@@ -698,50 +664,6 @@ mod tests {
             assert!(output[2].is_string());
 
             // TODO: Check signatures
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_ed25519_storage() {
-        run_in_thread(|| {
-            let mut options =
-                create_runtime_options("test_runtime_execute_ed25519_storage", "save");
-
-            let request = create_execution_request();
-            let result = Runtime::new(options.clone()).unwrap().execute(request);
-
-            assert!(result.is_ok());
-
-            let binding = result.unwrap();
-            let public_key = binding.output.as_str().unwrap();
-
-            // Reuse options to ensure the same application kv store is used. Just change the handler name.
-            options.handler_name = Some("load".to_string());
-
-            let request = create_execution_request();
-            let result = Runtime::new(options).unwrap().execute(request);
-
-            assert!(result.is_ok());
-            let binding = result.unwrap();
-            let signature = binding.output.as_str().unwrap();
-
-            // Check that the signature is valid
-            let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
-                &hex::decode(public_key)
-                    .unwrap()
-                    .try_into()
-                    .expect("slice with incorrect length"),
-            )
-            .unwrap();
-            let signature = ed25519_dalek::Signature::from_bytes(
-                &hex::decode(signature)
-                    .unwrap()
-                    .try_into()
-                    .expect("slice with incorrect length"),
-            );
-
-            let message = "Hello, world!";
-            assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
         });
     }
 }

@@ -98,3 +98,92 @@ extension!(
     esm = [ dir "src/extensions/crypto", "proven:crypto" = "crypto.js" ],
     docs = "Functions for key management and signing"
 );
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::create_runtime_options;
+    use crate::{ExecutionRequest, Worker};
+
+    use ed25519_dalek::Verifier;
+
+    #[tokio::test]
+    async fn test_ed25519_signing() {
+        let runtime_options = create_runtime_options("crypto/test_ed25519_signing", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        // Check that the signature is valid
+        let execution_result = result.unwrap();
+        let output = execution_result.output.as_array().unwrap();
+        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
+            &hex::decode(output[0].as_str().unwrap())
+                .unwrap()
+                .try_into()
+                .expect("slice with incorrect length"),
+        )
+        .unwrap();
+        let signature = ed25519_dalek::Signature::from_bytes(
+            &hex::decode(output[1].as_str().unwrap())
+                .unwrap()
+                .try_into()
+                .expect("slice with incorrect length"),
+        );
+
+        let message = "Hello, world!";
+        assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ed25519_storage() {
+        let mut runtime_options = create_runtime_options("crypto/test_ed25519_storage", "save");
+        let mut worker = Worker::new(runtime_options.clone()).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request.clone()).await;
+
+        assert!(result.is_ok());
+
+        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
+            &hex::decode(result.unwrap().output.as_str().unwrap())
+                .unwrap()
+                .try_into()
+                .expect("slice with incorrect length"),
+        )
+        .unwrap();
+
+        // Reuse options to ensure the same application kv store is used. Just change the handler name.
+        runtime_options.handler_name = Some("load".to_string());
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        // Check that the signature is valid
+        let signature = ed25519_dalek::Signature::from_bytes(
+            &hex::decode(result.unwrap().output.as_str().unwrap())
+                .unwrap()
+                .try_into()
+                .expect("slice with incorrect length"),
+        );
+
+        let message = "Hello, world!";
+        assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
+    }
+}
