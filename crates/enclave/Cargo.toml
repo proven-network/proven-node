@@ -27,7 +27,7 @@ proven-nats-server = { workspace = true }
 proven-postgres = { workspace = true }
 proven-radix-aggregator = { workspace = true }
 proven-radix-gateway = { workspace = true }
-proven-radix-nft-verifier-mock = { workspace = true }
+proven-radix-nft-verifier-gateway = { workspace = true }
 proven-radix-node = { workspace = true }
 proven-runtime = { workspace = true }
 proven-sessions = { workspace = true }

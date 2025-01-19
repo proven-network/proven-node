@@ -161,13 +161,12 @@ where
                 LedgerStateSelector(None)
             };
 
-            let body: proven_radix_gateway_sdk::types::builder::StreamTransactionsRequest =
-                StreamTransactionsRequest::builder()
-                    .kind_filter(StreamTransactionsRequestKindFilter::User)
-                    .opt_ins(GATEWAY_OPT_INS.clone())
-                    .from_ledger_state(ledger_state_version_selector)
-                    .limit_per_page(100)
-                    .order(StreamTransactionsRequestOrder::Asc);
+            let body = StreamTransactionsRequest::builder()
+                .kind_filter(StreamTransactionsRequestKindFilter::User)
+                .opt_ins(GATEWAY_OPT_INS.clone())
+                .from_ledger_state(ledger_state_version_selector)
+                .limit_per_page(100)
+                .order(StreamTransactionsRequestOrder::Asc);
 
             match client.stream_transactions().body(body).send().await {
                 Ok(response) => {

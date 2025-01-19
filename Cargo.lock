@@ -6767,7 +6767,7 @@ dependencies = [
  "proven-postgres",
  "proven-radix-aggregator",
  "proven-radix-gateway",
- "proven-radix-nft-verifier-mock",
+ "proven-radix-nft-verifier-gateway",
  "proven-radix-node",
  "proven-runtime",
  "proven-sessions",
@@ -6949,7 +6949,7 @@ dependencies = [
  "proven-attestation-dev",
  "proven-core",
  "proven-http-insecure",
- "proven-radix-nft-verifier-mock",
+ "proven-radix-nft-verifier-gateway",
  "proven-runtime",
  "proven-sessions",
  "proven-sql-direct",
@@ -7117,6 +7117,16 @@ name = "proven-radix-nft-verifier"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+]
+
+[[package]]
+name = "proven-radix-nft-verifier-gateway"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "proven-radix-gateway-sdk",
+ "proven-radix-nft-verifier",
+ "thiserror 2.0.11",
 ]
 
 [[package]]

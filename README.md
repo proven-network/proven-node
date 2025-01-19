@@ -94,6 +94,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [radix-gateway](crates/radix-gateway): Configures and runs a local Radix Gateway.
 - [radix-gateway-sdk](crates/radix-gateway-sdk): Rust port of the Radix Gateway SDK.
 - [radix-nft-verifier](crates/radix-nft-verifier): Verifies NFTs on Radix DLT.
+- [radix-nft-verifier-gateway](crates/radix-nft-verifier-gateway): An implementation of the NFT verifier which uses the Radix Gateway.
 - [radix-nft-verifier-mock](crates/radix-nft-verifier-mock): Mock implementation of NFT verifier for testing.
 - [radix-node](crates/radix-node): Configures and runs a local Radix Babylon Node.
 - [radix-rola](crates/radix-rola): Rust port of the Radix ROLA example code.
