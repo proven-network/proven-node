@@ -4,6 +4,13 @@
 use crate::options::{HandlerOptions, HttpHandlerOptions, ModuleHandlerOptions, RpcHandlerOptions};
 
 use deno_core::{extension, op2};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct HandlerOutput {
+    pub output: Option<serde_json::Value>,
+    pub paths_to_uint8_arrays: Vec<String>,
+}
 
 #[op2(fast)]
 pub fn op_add_allowed_origin(

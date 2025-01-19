@@ -5,6 +5,7 @@ mod crypto;
 mod gateway_api_sdk;
 mod handler;
 mod kv;
+mod preprocess;
 mod session;
 mod sql;
 
@@ -13,6 +14,7 @@ pub use crypto::*;
 pub use gateway_api_sdk::*;
 pub use handler::*;
 pub use kv::*;
+pub use preprocess::*;
 pub use session::*;
 pub use sql::*;
 

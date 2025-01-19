@@ -13,6 +13,7 @@ mod options;
 mod options_parser;
 mod permissions;
 mod pool;
+mod preprocessor;
 mod runtime;
 mod schema;
 #[cfg(test)]
@@ -67,4 +68,7 @@ pub struct ExecutionResult {
 
     /// The output of the execution.
     pub output: Value,
+
+    /// `JSONPath` locations of any `Uint8Array` elements in the output.
+    pub paths_to_uint8_arrays: Vec<String>,
 }

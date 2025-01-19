@@ -1,3 +1,4 @@
+import commonjs from '@rollup/plugin-commonjs';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 
 export default [
@@ -17,5 +18,13 @@ export default [
       format: 'esm'
     },
     plugins: [nodeResolve()]
+  },
+  {
+    input: 'node_modules/typescript/lib/typescript.js',
+    output: {
+      file: 'vendor/typescript/index.mjs',
+      format: 'esm'
+    },
+    plugins: [commonjs(), nodeResolve()]
   },
 ];

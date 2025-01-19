@@ -2,21 +2,17 @@ use std::fs::{self, create_dir_all};
 use std::path::Path;
 use std::process::Command;
 
-use regex::Regex;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct PackageJson {
+    main: Option<String>,
     module: Option<String>,
 }
 
 fn strip_comments(content: &str) -> String {
-    // Handle multiline comments first
-    let multi_line = Regex::new(r"/\*[\s\S]*?\*/").unwrap();
-    let without_multi = multi_line.replace_all(content, "");
-
     // Process single line comments line by line
-    without_multi
+    content
         .lines()
         .map(|line| {
             if line.trim().starts_with("//") {
@@ -30,18 +26,23 @@ fn strip_comments(content: &str) -> String {
         .join("\n")
 }
 
+fn retain_ascii(content: &str) -> String {
+    content.chars().filter(|c| c.is_ascii()).collect()
+}
+
 fn copy_and_clean_package(package_name: &str) -> std::io::Result<()> {
     // Read package.json
     let package_json_path = format!("node_modules/{}/package.json", package_name);
     let package_json_content = fs::read_to_string(package_json_path)?;
     let package_json: PackageJson = serde_json::from_str(&package_json_content)?;
 
-    // Get source path from module field, fallback to lib/index.mjs
+    // Get source path from module field, fallback to main field, then fallback to lib/index.mjs
     let source_path = format!(
         "node_modules/{}/{}",
         package_name,
         package_json
             .module
+            .or(package_json.main)
             .unwrap_or_else(|| "lib/index.mjs".to_string())
     );
 
@@ -51,10 +52,11 @@ fn copy_and_clean_package(package_name: &str) -> std::io::Result<()> {
     // Create vendor/<package> directory
     create_dir_all(&target_dir)?;
 
-    // Read, clean and write
+    // Clean comments and remove non-acsii characters
     let content = fs::read_to_string(source_path)?;
-    let cleaned = strip_comments(&content);
-    fs::write(target_path, cleaned)?;
+    let content = strip_comments(&content);
+    let content = retain_ascii(&content);
+    fs::write(target_path, content)?;
 
     Ok(())
 }
@@ -62,52 +64,63 @@ fn copy_and_clean_package(package_name: &str) -> std::io::Result<()> {
 fn clean_vendor_file(package_name: &str) -> std::io::Result<()> {
     let file_path = format!("vendor/{}/index.mjs", package_name);
 
-    // Read the rolled up content
-    let content = fs::read_to_string(&file_path)?;
-
-    // Clean comments and remove non-acsii characters
-    let cleaned = strip_comments(&content).replace("…", "...");
+    // Remove imports, clean comments and remove non-acsii characters
+    let content = fs::read_to_string(&file_path)?
+        .lines()
+        .map(|line| {
+            if line.trim().starts_with("import ") {
+                ""
+            } else {
+                line
+            }
+        })
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<&str>>()
+        .join("\n");
+    let content = strip_comments(&content);
+    let content = retain_ascii(&content);
 
     // Write back
-    fs::write(file_path, cleaned)?;
+    fs::write(file_path, content)?;
 
     Ok(())
 }
 
 fn main() {
     // Run npm install
-    let npm_status = Command::new("npm")
+    let npm_install_status = Command::new("npm")
         .arg("install")
         .status()
         .expect("Failed to run npm install");
 
-    if !npm_status.success() {
+    if !npm_install_status.success() {
         panic!("npm install failed");
     }
 
-    // Rollup uuid
-    let uuid_rollup_status = Command::new("npm")
+    // Run npm build
+    let npm_install_status = Command::new("npm")
         .arg("run")
-        .arg("bundle:uuid")
+        .arg("build")
         .status()
-        .expect("Failed to run rollup for uuid");
+        .expect("Failed to run npm run build");
 
-    if !uuid_rollup_status.success() {
-        panic!("rollup bundling of uuid failed");
+    if !npm_install_status.success() {
+        panic!("npm run build failed");
     }
-    clean_vendor_file("uuid").expect("Failed to clean uuid bundle");
 
-    // Rollup openai
-    let openai_rollup_status = Command::new("npm")
+    // Rollup deps
+    let rollup_status = Command::new("npm")
         .arg("run")
-        .arg("bundle:openai")
+        .arg("bundle")
         .status()
-        .expect("Failed to run rollup for openai");
+        .expect("Failed to run rollup");
 
-    if !openai_rollup_status.success() {
-        panic!("rollup bundling of openai failed");
+    if !rollup_status.success() {
+        panic!("rollup bundling failed");
     }
     clean_vendor_file("openai").expect("Failed to clean openai bundle");
+    clean_vendor_file("typescript").expect("Failed to clean typescript bundle");
+    clean_vendor_file("uuid").expect("Failed to clean uuid bundle");
 
     // Copy and clean other packages
     copy_and_clean_package("zod").expect("Failed to process zod files");

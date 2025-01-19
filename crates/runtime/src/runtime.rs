@@ -3,13 +3,14 @@ use crate::extensions::{
     radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, session_ext,
     sql_application_ext, sql_nft_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
     ApplicationSqlConnectionManager, ApplicationSqlParamListManager, ConsoleState, CryptoState,
-    GatewayDetailsState, NftSqlConnectionManager, NftSqlParamListManager,
+    GatewayDetailsState, HandlerOutput, NftSqlConnectionManager, NftSqlParamListManager,
     PersonalSqlConnectionManager, PersonalSqlParamListManager, SessionState,
 };
 use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
 use crate::options_parser::OptionsParser;
 use crate::permissions::OriginAllowlistWebPermissions;
+use crate::preprocessor::Preprocessor;
 use crate::schema::SCHEMA_WHLIST;
 use crate::{ExecutionLogs, ExecutionRequest, ExecutionResult, Result};
 
@@ -178,6 +179,7 @@ where
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Result<Self> {
+        // TODO: Combine options parser and preprocessor
         let module_options = OptionsParser::new()?.parse(module.as_str())?;
         #[allow(clippy::or_fun_call)]
         let handler_options = module_options
@@ -281,7 +283,11 @@ where
         let async_module = Self::ensure_exported_functions_are_async(module.as_str())?;
         let async_module = replace_esm_imports(&async_module);
 
-        let module = Module::new("module.ts", async_module.as_str());
+        let mut preprocessor = Preprocessor::new()?;
+        let preprocessed_module = preprocessor.process(async_module)?;
+        drop(preprocessor);
+
+        let module = Module::new("module.ts", preprocessed_module.as_str());
         let module_handle = runtime.load_module(&module)?;
 
         Ok(Self {
@@ -396,7 +402,7 @@ where
             None => self.runtime.call_entrypoint(&self.module_handle, &args)?,
         };
 
-        let output: rustyscript::serde_json::Value = output.try_into(&mut self.runtime)?;
+        let handler_output: HandlerOutput = output.try_into(&mut self.runtime)?;
 
         let console_state: ConsoleState = self.runtime.take().unwrap_or_default();
         let duration = start.elapsed();
@@ -420,7 +426,8 @@ where
         Ok(ExecutionResult {
             duration,
             logs,
-            output,
+            output: handler_output.output.unwrap_or_default(),
+            paths_to_uint8_arrays: handler_output.paths_to_uint8_arrays,
         })
     }
 
@@ -502,6 +509,20 @@ mod tests {
             let result = Runtime::new(options).unwrap().execute(request);
 
             assert!(result.is_ok());
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_return_bytes() {
+        run_in_thread(|| {
+            let options = create_runtime_options("test_runtime_execute_return_bytes", "test");
+
+            let request = create_execution_request();
+            let result = Runtime::new(options).unwrap().execute(request);
+
+            assert!(result.is_ok());
+
+            // TODO: Validate bytes
         });
     }
 
