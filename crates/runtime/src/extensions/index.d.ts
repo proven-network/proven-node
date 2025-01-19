@@ -1,6 +1,9 @@
 declare namespace Deno {
   namespace core {
     const ops: {
+      // console
+      op_console_log: (level: string, args: any[]) => void;
+
       // crypto
       op_generate_ed25519: () => number;
       op_get_curve_name: (keyId: number) => "Ed25519";
