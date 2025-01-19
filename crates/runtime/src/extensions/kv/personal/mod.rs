@@ -28,6 +28,47 @@ enum PersonalStoreSetResponse {
 
 #[op2(async)]
 #[serde]
+pub async fn op_personal_keys<PS: Store1>(
+    state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
+    #[string] store_type: String,
+) -> Result<PersonalStoreGetResponse<Vec<String>>, PS::Error> {
+    let personal_store = {
+        loop {
+            let personal_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<Option<PS>>()
+            };
+
+            match personal_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    };
+
+    if let Some(store) = personal_store.as_ref() {
+        let result = store
+            .scope(format!("{store_name}:{store_type}"))
+            .keys()
+            .await
+            .map(PersonalStoreGetResponse::Some);
+
+        state.borrow_mut().put(personal_store);
+
+        result
+    } else {
+        state.borrow_mut().put(personal_store);
+
+        Ok(PersonalStoreGetResponse::NoPersonalContext)
+    }
+}
+
+#[op2(async)]
+#[serde]
 pub async fn op_get_personal_bytes<PS: Store1>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,

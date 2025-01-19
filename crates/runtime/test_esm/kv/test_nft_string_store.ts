@@ -16,4 +16,14 @@ export const test = async () => {
   if (restored !== "myValue") {
     throw new Error(`Value mismatch: got ${restored}, expected myValue`);
   }
+
+  const keys = await NFT_STORE.keys(RESOURCE_ADDR, nftId);
+
+  if (keys.length !== 1) {
+    throw new Error("Expected one key");
+  }
+
+  if (keys[0] !== "key") {
+    throw new Error("Unexpected key");
+  }
 }

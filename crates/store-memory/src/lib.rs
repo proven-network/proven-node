@@ -157,7 +157,12 @@ where
                     .as_ref()
                     .map_or(true, |prefix| key.starts_with(prefix))
             })
-            .cloned()
+            .map(|key| {
+                key.replace(self.prefix.as_ref().unwrap_or(&String::new()), "")
+                    .strip_prefix(":")
+                    .unwrap()
+                    .to_string()
+            })
             .collect())
     }
 

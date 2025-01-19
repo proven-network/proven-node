@@ -13,6 +13,40 @@ use deno_core::{op2, OpState};
 use proven_store::{Store, Store1};
 
 #[op2(async)]
+#[serde]
+pub async fn op_application_keys<AS: Store1>(
+    state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
+    #[string] store_type: String,
+) -> Result<Vec<String>, AS::Error> {
+    let application_store = {
+        loop {
+            let application_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<AS>()
+            };
+
+            match application_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    };
+
+    let result = application_store
+        .scope(format!("{store_name}:{store_type}"))
+        .keys()
+        .await;
+
+    state.borrow_mut().put(application_store);
+
+    result
+}
+
+#[op2(async)]
 #[buffer]
 pub async fn op_get_application_bytes<AS: Store1>(
     state: Rc<RefCell<OpState>>,

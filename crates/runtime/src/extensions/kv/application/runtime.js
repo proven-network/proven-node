@@ -1,5 +1,10 @@
 import { PrivateKey } from "proven:crypto";
 
+function applicationKeys(storeName, storeType) {
+  const { op_application_keys } = globalThis.Deno.core.ops;
+  return op_application_keys(storeName, storeType);
+}
+
 function getApplicationBytes (storeName, key) {
   const { op_get_application_bytes } = globalThis.Deno.core.ops;
   return op_get_application_bytes(storeName, key)
@@ -39,6 +44,10 @@ class ApplicationStringStore {
     return await getApplicationString(this.storeName, key)
   }
 
+  async keys () {
+    return await applicationKeys(this.storeName, 'string')
+  }
+
   async set (key, value) {
     return await setApplicationString(this.storeName, key, value)
   }
@@ -60,6 +69,10 @@ class ApplicationKeyStore {
     }
   }
 
+  async keys () {
+    return await applicationKeys(this.storeName, 'key')
+  }
+
   async set (key, value) {
     return await setApplicationKey(this.storeName, key, value.keyId)
   }
@@ -72,6 +85,10 @@ class ApplicationBytesStore {
 
   async get (key) {
     return await getApplicationBytes(this.storeName, key)
+  }
+
+  async keys () {
+    return await applicationKeys(this.storeName, 'bytes')
   }
 
   async set (key, value) {

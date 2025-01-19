@@ -1,5 +1,10 @@
 import { PrivateKey } from "proven:crypto";
 
+function personalKeys(storeName, storeType) {
+  const { op_personal_keys } = globalThis.Deno.core.ops;
+  return op_personal_keys(storeName, storeType);
+}
+
 function getPersonalBytes (storeName, key) {
   const { op_get_personal_bytes } = globalThis.Deno.core.ops;
   return op_get_personal_bytes(storeName, key)
@@ -47,6 +52,16 @@ class PersonalStringStore {
     }
   }
 
+  async keys () {
+    const result = await personalKeys(this.storeName, 'string');
+
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    }
+
+    return result.Some;
+  }
+
   async set (key, value) {
     const result = await setPersonalString(this.storeName, key, value);
 
@@ -71,6 +86,16 @@ class PersonalBytesStore {
     } else {
       return result.Some;
     }
+  }
+
+  async keys () {
+    const result = await personalKeys(this.storeName, 'bytes');
+
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    }
+
+    return result.Some;
   }
 
   async set (key, value) {
@@ -106,6 +131,16 @@ class PersonalKeyStore {
 
       return privateKey;
     }
+  }
+
+  async keys () {
+    const result = await personalKeys(this.storeName, 'key');
+
+    if (result === "NoPersonalContext") {
+      throw new Error('No personal context');
+    }
+
+    return result.Some;
   }
 
   async set (key, value) {

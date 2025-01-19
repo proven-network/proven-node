@@ -22,6 +22,11 @@ function prepareNftId (nftId) {
   }
 }
 
+function nftKeys(storeName, storeType, resourceAddress, nftId) {
+  const { op_nft_keys } = globalThis.Deno.core.ops;
+  return op_nft_keys(storeName, storeType, resourceAddress, nftId);
+}
+
 function getNftBytes (storeName, resourceAddress, nftId, key) {
   const { op_get_nft_bytes } = globalThis.Deno.core.ops;
   return op_get_nft_bytes(storeName, resourceAddress, nftId, key)
@@ -68,9 +73,23 @@ class NftStringStore {
       throw new Error(`NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`);
     } else if (result === "None") {
       return undefined;
-    } else {
-      return result.Some;
     }
+
+    return result.Some;
+  }
+
+  async keys (resourceAddress, nftId) {
+    const result = await nftKeys(this.storeName, "string", resourceAddress, prepareNftId(nftId));
+
+    if (result === "NftDoesNotExist") {
+      throw new Error('NFT does not exist');
+    } else if (result === "NoAccountsInContext") {
+      throw new Error('No accounts in context');
+    } else if (result.OwnershipInvalid) {
+      throw new Error(`NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`);
+    }
+
+    return result.Some;
   }
 
   async set (resourceAddress, nftId, key, value) {
@@ -105,6 +124,20 @@ class NftBytesStore {
     } else {
       return result.Some;
     }
+  }
+
+  async keys (resourceAddress, nftId) {
+    const result = await nftKeys(this.storeName, "bytes", resourceAddress, prepareNftId(nftId));
+
+    if (result === "NftDoesNotExist") {
+      throw new Error('NFT does not exist');
+    } else if (result === "NoAccountsInContext") {
+      throw new Error('No accounts in context');
+    } else if (result.OwnershipInvalid) {
+      throw new Error(`NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`);
+    }
+
+    return result.Some;
   }
 
   async set (resourceAddress, nftId, key, value) {
@@ -148,6 +181,20 @@ class NftKeyStore {
 
       return privateKey;
     }
+  }
+
+  async keys (resourceAddress, nftId) {
+    const result = await nftKeys(this.storeName, "key", resourceAddress, prepareNftId(nftId));
+
+    if (result === "NftDoesNotExist") {
+      throw new Error('NFT does not exist');
+    } else if (result === "NoAccountsInContext") {
+      throw new Error('No accounts in context');
+    } else if (result.OwnershipInvalid) {
+      throw new Error(`NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`);
+    }
+
+    return result.Some;
   }
 
   async set (resourceAddress, nftId, key, value) {

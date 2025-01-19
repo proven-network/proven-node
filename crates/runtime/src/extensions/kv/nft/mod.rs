@@ -36,6 +36,70 @@ enum NftStoreSetResponse {
 
 #[op2(async)]
 #[serde]
+pub async fn op_nft_keys<NS: Store2, RNV: RadixNftVerifier>(
+    state: Rc<RefCell<OpState>>,
+    #[string] store_name: String,
+    #[string] store_type: String,
+    #[string] resource_address: String,
+    #[string] nft_id: String,
+) -> Result<NftStoreGetResponse<Vec<String>>, Error<NS::Error, RNV::Error>> {
+    let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
+        Some(accounts) if !accounts.is_empty() => accounts,
+        Some(_) | None => return Ok(NftStoreGetResponse::NoAccountsInContext),
+    };
+
+    let verifier = { state.borrow().borrow::<RNV>().clone() };
+    let verification = verifier
+        .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
+        .await
+        .map_err(Error::Verification)?;
+
+    if let RadixNftVerificationResult::NotOwned(account) = verification {
+        return Ok(NftStoreGetResponse::OwnershipInvalid(account));
+    }
+
+    if matches!(verification, RadixNftVerificationResult::NftDoesNotExist) {
+        return Ok(NftStoreGetResponse::NftDoesNotExist);
+    }
+
+    let nft_store = {
+        loop {
+            let nft_store = {
+                let mut borrowed_state = state.borrow_mut();
+
+                borrowed_state.try_take::<Option<NS>>()
+            };
+
+            match nft_store {
+                Some(store) => break store,
+                None => {
+                    tokio::task::yield_now().await;
+                }
+            }
+        }
+    };
+
+    if let Some(store) = nft_store.as_ref() {
+        let result = store
+            .scope(format!("{store_name}:{store_type}"))
+            .scope(format!("{resource_address}:{nft_id}"))
+            .keys()
+            .await
+            .map(NftStoreGetResponse::Some)
+            .map_err(Error::Store);
+
+        state.borrow_mut().put(nft_store);
+
+        result
+    } else {
+        state.borrow_mut().put(nft_store);
+
+        Ok(NftStoreGetResponse::NoAccountsInContext)
+    }
+}
+
+#[op2(async)]
+#[serde]
 pub async fn op_get_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
     state: Rc<RefCell<OpState>>,
     #[string] store_name: String,
