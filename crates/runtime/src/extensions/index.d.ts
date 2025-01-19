@@ -11,6 +11,10 @@ declare namespace Deno {
       op_sign_bytes: (keyId: number, data: Uint8Array) => Uint8Array;
       op_sign_string: (keyId: number, data: string) => Uint8Array;
 
+      // gateway-api-sdk
+      op_get_gateway_network_id: () => number;
+      op_get_gateway_origin: () => string;
+
       // session
       op_get_current_accounts: () => string[];
       op_get_current_identity: () => string | undefined;
