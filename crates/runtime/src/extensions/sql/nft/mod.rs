@@ -30,15 +30,14 @@ enum NftDbResponse<T> {
 }
 
 #[op2(fast)]
-#[bigint]
-fn op_create_nft_params_list(#[state] param_lists: &mut SqlParamListManager) -> u64 {
+fn op_create_nft_params_list(#[state] param_lists: &mut SqlParamListManager) -> u32 {
     param_lists.create_param_list()
 }
 
 #[op2(fast)]
 fn op_add_nft_blob_param(
     #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
+    param_list_id: u32,
     #[buffer(copy)] value: Bytes,
 ) {
     param_lists.push_blob_param(param_list_id, value);
@@ -47,24 +46,21 @@ fn op_add_nft_blob_param(
 #[op2(fast)]
 fn op_add_nft_integer_param(
     #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
+    param_list_id: u32,
     #[bigint] value: i64,
 ) {
     param_lists.push_integer_param(param_list_id, value);
 }
 
 #[op2(fast)]
-fn op_add_nft_null_param(
-    #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
-) {
+fn op_add_nft_null_param(#[state] param_lists: &mut SqlParamListManager, param_list_id: u32) {
     param_lists.push_null_param(param_list_id);
 }
 
 #[op2(fast)]
 fn op_add_nft_real_param(
     #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
+    param_list_id: u32,
     value: f64,
 ) {
     param_lists.push_real_param(param_list_id, value);
@@ -73,7 +69,7 @@ fn op_add_nft_real_param(
 #[op2(fast)]
 fn op_add_nft_text_param(
     #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
+    param_list_id: u32,
     #[string] value: String,
 ) {
     param_lists.push_text_param(param_list_id, value);
@@ -88,7 +84,7 @@ pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     #[string] resource_address: String,
     #[string] nft_id: String,
     #[string] query: String,
-    #[bigint] param_list_id_opt: Option<u64>,
+    param_list_id_opt: Option<u32>,
 ) -> Result<NftDbResponse<u32>, Error<NSS::Error, RNV::Error>> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
@@ -187,7 +183,7 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     #[string] resource_address: String,
     #[string] nft_id: String,
     #[string] query: String,
-    #[bigint] param_list_id_opt: Option<u64>,
+    param_list_id_opt: Option<u32>,
 ) -> Result<NftDbResponse<Vec<Vec<SqlParam>>>, Error<NSS::Error, RNV::Error>> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,

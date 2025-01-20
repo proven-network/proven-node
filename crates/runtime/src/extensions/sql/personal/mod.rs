@@ -23,15 +23,14 @@ enum PersonalDbResponse<T> {
 }
 
 #[op2(fast)]
-#[bigint]
-fn op_create_personal_params_list(#[state] param_lists: &mut SqlParamListManager) -> u64 {
+fn op_create_personal_params_list(#[state] param_lists: &mut SqlParamListManager) -> u32 {
     param_lists.create_param_list()
 }
 
 #[op2(fast)]
 fn op_add_personal_blob_param(
     #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
+    param_list_id: u32,
     #[buffer(copy)] value: Bytes,
 ) {
     param_lists.push_blob_param(param_list_id, value);
@@ -40,24 +39,21 @@ fn op_add_personal_blob_param(
 #[op2(fast)]
 fn op_add_personal_integer_param(
     #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
+    param_list_id: u32,
     #[bigint] value: i64,
 ) {
     param_lists.push_integer_param(param_list_id, value);
 }
 
 #[op2(fast)]
-fn op_add_personal_null_param(
-    #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
-) {
+fn op_add_personal_null_param(#[state] param_lists: &mut SqlParamListManager, param_list_id: u32) {
     param_lists.push_null_param(param_list_id);
 }
 
 #[op2(fast)]
 fn op_add_personal_real_param(
     #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
+    param_list_id: u32,
     value: f64,
 ) {
     param_lists.push_real_param(param_list_id, value);
@@ -66,7 +62,7 @@ fn op_add_personal_real_param(
 #[op2(fast)]
 fn op_add_personal_text_param(
     #[state] param_lists: &mut SqlParamListManager,
-    #[bigint] param_list_id: u64,
+    param_list_id: u32,
     #[string] value: String,
 ) {
     param_lists.push_text_param(param_list_id, value);
@@ -79,7 +75,7 @@ pub async fn op_execute_personal_sql<PSS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] query: String,
-    #[bigint] param_list_id_opt: Option<u64>,
+    param_list_id_opt: Option<u32>,
 ) -> Result<PersonalDbResponse<u32>, PSS::Error> {
     let connection_manager_opt = {
         loop {
@@ -152,7 +148,7 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] query: String,
-    #[bigint] param_list_id_opt: Option<u64>,
+    param_list_id_opt: Option<u32>,
 ) -> Result<PersonalDbResponse<Vec<Vec<SqlParam>>>, PSS::Error> {
     let connection_manager_opt = {
         loop {
