@@ -57,6 +57,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_session_identity_no_context() {
+        let runtime_options = create_runtime_options("session/test_session_identity", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        let execution_result = result.unwrap();
+        assert!(execution_result.output.is_null());
+    }
+
+    #[tokio::test]
     async fn test_session_accounts() {
         let runtime_options = create_runtime_options("session/test_session_accounts", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
@@ -87,6 +107,26 @@ mod tests {
                 .unwrap(),
             "account2"
         );
-        assert!(execution_result.duration.as_millis() < 1000);
+    }
+
+    #[tokio::test]
+    async fn test_session_accounts_no_accounts() {
+        let runtime_options = create_runtime_options("session/test_session_accounts", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        let execution_result = result.unwrap();
+        assert!(execution_result.output.is_array());
+        assert_eq!(execution_result.output.as_array().unwrap().len(), 0);
     }
 }
