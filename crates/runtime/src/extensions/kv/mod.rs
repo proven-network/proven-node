@@ -31,10 +31,7 @@ extension!(
     esm_entry_point = "proven:kv",
     esm = [
         dir "src/extensions/kv",
-        "proven:kv" = "kv.js",
-        "proven:kv-application" = "application/options-parser.js",
-        "proven:kv-nft" = "nft/options-parser.js",
-        "proven:kv-personal" = "personal/options-parser.js",
+        "proven:kv" = "kv-options-parser.js",
     ],
     docs = "Functions for accessing secure storage"
 );
@@ -68,10 +65,7 @@ extension!(
     esm_entry_point = "proven:kv",
     esm = [
         dir "src/extensions/kv",
-        "proven:kv" = "kv.js",
-        "proven:kv-application" = "application/runtime.js",
-        "proven:kv-nft" = "nft/runtime.js",
-        "proven:kv-personal" = "personal/runtime.js",
+        "proven:kv" = "kv-runtime.js",
     ],
     docs = "Functions for accessing secure storage"
 );

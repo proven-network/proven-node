@@ -111,18 +111,22 @@ fn main() {
     }
 
     // Do ESM replacements on extensions
-    ["src/extensions/gateway_api_sdk/gateway-api-sdk.js"]
-        .iter()
-        .for_each(|path| {
-            let content = fs::read_to_string(path).expect("Failed to read file");
-            // Do this replacement first to avoid cycle
-            let intermediate = content.replace(
-                "@radixdlt/babylon-gateway-api-sdk",
-                "proven:raw_radixdlt_babylon_gateway_api",
-            );
-            let replaced = replace_esm_imports(&intermediate);
-            fs::write(path, replaced).expect("Failed to write file");
-        });
+    [
+        "src/extensions/gateway_api_sdk/gateway-api-sdk.js",
+        "src/extensions/kv/kv-options-parser.js",
+        "src/extensions/kv/kv-runtime.js",
+    ]
+    .iter()
+    .for_each(|path| {
+        let content = fs::read_to_string(path).expect("Failed to read file");
+        // Do this replacement first to avoid cycle
+        let intermediate = content.replace(
+            "@radixdlt/babylon-gateway-api-sdk",
+            "proven:raw_radixdlt_babylon_gateway_api",
+        );
+        let replaced = replace_esm_imports(&intermediate);
+        fs::write(path, replaced).expect("Failed to write file");
+    });
 
     // Rollup deps
     let rollup_status = Command::new("npm")
