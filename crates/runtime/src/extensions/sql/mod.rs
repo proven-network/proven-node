@@ -1,11 +1,13 @@
 mod application;
 mod migrations;
 mod nft;
+mod param_list_manager;
 mod personal;
 
 pub use application::*;
 pub use migrations::sql_migrations_ext;
 pub use nft::*;
+pub use param_list_manager::SqlParamListManager;
 pub use personal::*;
 
 use deno_core::extension;

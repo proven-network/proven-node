@@ -2,9 +2,8 @@ use crate::extensions::{
     console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext, openai_ext,
     radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, session_ext,
     sql_application_ext, sql_nft_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
-    ApplicationSqlConnectionManager, ApplicationSqlParamListManager, ConsoleState, CryptoState,
-    GatewayDetailsState, HandlerOutput, NftSqlConnectionManager, NftSqlParamListManager,
-    PersonalSqlConnectionManager, PersonalSqlParamListManager, SessionState,
+    ApplicationSqlConnectionManager, ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput,
+    NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
 };
 use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
@@ -362,7 +361,8 @@ where
         })?;
 
         // Set the sql stores for the storage extension
-        self.runtime.put(ApplicationSqlParamListManager::new())?;
+        self.runtime.put(SqlParamListManager::new())?;
+
         self.runtime.put(ApplicationSqlConnectionManager::new(
             self.application_sql_store
                 .clone()
@@ -370,7 +370,6 @@ where
             self.sql_migrations.application.clone(),
         ))?;
 
-        self.runtime.put(PersonalSqlParamListManager::new())?;
         self.runtime.put(match identity.as_ref() {
             Some(current_identity) => Some(PersonalSqlConnectionManager::new(
                 self.personal_sql_store
@@ -382,7 +381,6 @@ where
             None => None,
         })?;
 
-        self.runtime.put(NftSqlParamListManager::new())?;
         self.runtime.put(match accounts.as_ref() {
             Some(_) => Some(NftSqlConnectionManager::new(
                 self.nft_sql_store.clone().scope(dapp_definition_address),

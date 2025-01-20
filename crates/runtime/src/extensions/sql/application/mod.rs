@@ -3,10 +3,9 @@
 #![allow(clippy::future_not_send)]
 
 mod connection_manager;
-mod param_list_manager;
 
+use super::SqlParamListManager;
 pub use connection_manager::ApplicationSqlConnectionManager;
-pub use param_list_manager::ApplicationSqlParamListManager;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -18,15 +17,13 @@ use proven_sql::{SqlConnection, SqlParam, SqlStore1};
 
 #[op2(fast)]
 #[bigint]
-fn op_create_application_params_list(
-    #[state] param_lists: &mut ApplicationSqlParamListManager,
-) -> u64 {
+fn op_create_application_params_list(#[state] param_lists: &mut SqlParamListManager) -> u64 {
     param_lists.create_param_list()
 }
 
 #[op2(fast)]
 fn op_add_application_blob_param(
-    #[state] param_lists: &mut ApplicationSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
     #[buffer(copy)] value: Bytes,
 ) {
@@ -35,7 +32,7 @@ fn op_add_application_blob_param(
 
 #[op2(fast)]
 fn op_add_application_integer_param(
-    #[state] param_lists: &mut ApplicationSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
     #[bigint] value: i64,
 ) {
@@ -44,7 +41,7 @@ fn op_add_application_integer_param(
 
 #[op2(fast)]
 fn op_add_application_null_param(
-    #[state] param_lists: &mut ApplicationSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
 ) {
     param_lists.push_null_param(param_list_id);
@@ -52,7 +49,7 @@ fn op_add_application_null_param(
 
 #[op2(fast)]
 fn op_add_application_real_param(
-    #[state] param_lists: &mut ApplicationSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
     value: f64,
 ) {
@@ -61,7 +58,7 @@ fn op_add_application_real_param(
 
 #[op2(fast)]
 fn op_add_application_text_param(
-    #[state] param_lists: &mut ApplicationSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
     #[string] value: String,
 ) {
@@ -103,7 +100,7 @@ async fn op_execute_application_sql<ASS: SqlStore1>(
                 let params_lists = {
                     let mut borrowed_state = state.borrow_mut();
 
-                    borrowed_state.try_take::<ApplicationSqlParamListManager>()
+                    borrowed_state.try_take::<SqlParamListManager>()
                 };
 
                 match params_lists {
@@ -160,7 +157,7 @@ async fn op_query_application_sql<ASS: SqlStore1>(
                 let params_lists = {
                     let mut borrowed_state = state.borrow_mut();
 
-                    borrowed_state.try_take::<ApplicationSqlParamListManager>()
+                    borrowed_state.try_take::<SqlParamListManager>()
                 };
 
                 match params_lists {

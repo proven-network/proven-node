@@ -4,11 +4,10 @@
 
 mod connection_manager;
 mod error;
-mod param_list_manager;
 
+use super::SqlParamListManager;
 pub use connection_manager::NftSqlConnectionManager;
 use error::Error;
-pub use param_list_manager::NftSqlParamListManager;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -32,13 +31,13 @@ enum NftDbResponse<T> {
 
 #[op2(fast)]
 #[bigint]
-fn op_create_nft_params_list(#[state] param_lists: &mut NftSqlParamListManager) -> u64 {
+fn op_create_nft_params_list(#[state] param_lists: &mut SqlParamListManager) -> u64 {
     param_lists.create_param_list()
 }
 
 #[op2(fast)]
 fn op_add_nft_blob_param(
-    #[state] param_lists: &mut NftSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
     #[buffer(copy)] value: Bytes,
 ) {
@@ -47,7 +46,7 @@ fn op_add_nft_blob_param(
 
 #[op2(fast)]
 fn op_add_nft_integer_param(
-    #[state] param_lists: &mut NftSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
     #[bigint] value: i64,
 ) {
@@ -56,7 +55,7 @@ fn op_add_nft_integer_param(
 
 #[op2(fast)]
 fn op_add_nft_null_param(
-    #[state] param_lists: &mut NftSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
 ) {
     param_lists.push_null_param(param_list_id);
@@ -64,7 +63,7 @@ fn op_add_nft_null_param(
 
 #[op2(fast)]
 fn op_add_nft_real_param(
-    #[state] param_lists: &mut NftSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
     value: f64,
 ) {
@@ -73,7 +72,7 @@ fn op_add_nft_real_param(
 
 #[op2(fast)]
 fn op_add_nft_text_param(
-    #[state] param_lists: &mut NftSqlParamListManager,
+    #[state] param_lists: &mut SqlParamListManager,
     #[bigint] param_list_id: u64,
     #[string] value: String,
 ) {
@@ -148,7 +147,7 @@ pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
                 let params_lists = {
                     let mut borrowed_state = state.borrow_mut();
 
-                    borrowed_state.try_take::<NftSqlParamListManager>()
+                    borrowed_state.try_take::<SqlParamListManager>()
                 };
 
                 match params_lists {
@@ -247,7 +246,7 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
                 let params_lists = {
                     let mut borrowed_state = state.borrow_mut();
 
-                    borrowed_state.try_take::<NftSqlParamListManager>()
+                    borrowed_state.try_take::<SqlParamListManager>()
                 };
 
                 match params_lists {
