@@ -12,7 +12,6 @@ use error::Error;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use bytes::Bytes;
 use deno_core::{extension, op2, OpState};
 use futures::StreamExt;
 use proven_radix_nft_verifier::{RadixNftVerificationResult, RadixNftVerifier};
@@ -27,52 +26,6 @@ enum NftDbResponse<T> {
     NoAccountsInContext,
     Ok(T),
     OwnershipInvalid(String),
-}
-
-#[op2(fast)]
-fn op_create_nft_params_list(#[state] param_lists: &mut SqlParamListManager) -> u32 {
-    param_lists.create_param_list()
-}
-
-#[op2(fast)]
-fn op_add_nft_blob_param(
-    #[state] param_lists: &mut SqlParamListManager,
-    param_list_id: u32,
-    #[buffer(copy)] value: Bytes,
-) {
-    param_lists.push_blob_param(param_list_id, value);
-}
-
-#[op2(fast)]
-fn op_add_nft_integer_param(
-    #[state] param_lists: &mut SqlParamListManager,
-    param_list_id: u32,
-    #[bigint] value: i64,
-) {
-    param_lists.push_integer_param(param_list_id, value);
-}
-
-#[op2(fast)]
-fn op_add_nft_null_param(#[state] param_lists: &mut SqlParamListManager, param_list_id: u32) {
-    param_lists.push_null_param(param_list_id);
-}
-
-#[op2(fast)]
-fn op_add_nft_real_param(
-    #[state] param_lists: &mut SqlParamListManager,
-    param_list_id: u32,
-    value: f64,
-) {
-    param_lists.push_real_param(param_list_id, value);
-}
-
-#[op2(fast)]
-fn op_add_nft_text_param(
-    #[state] param_lists: &mut SqlParamListManager,
-    param_list_id: u32,
-    #[string] value: String,
-) {
-    param_lists.push_text_param(param_list_id, value);
 }
 
 #[op2(async)]
@@ -278,12 +231,6 @@ extension!(
     sql_nft_ext,
     parameters = [ NSS: SqlStore2, RNV: RadixNftVerifier ],
     ops = [
-        op_add_nft_blob_param,
-        op_add_nft_integer_param,
-        op_add_nft_null_param,
-        op_add_nft_real_param,
-        op_add_nft_text_param,
-        op_create_nft_params_list,
         op_execute_nft_sql<NSS, RNV>,
         op_query_nft_sql<NSS, RNV>,
     ]

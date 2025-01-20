@@ -190,24 +190,12 @@ declare namespace Deno {
       op_get_current_identity: () => string | undefined;
 
       // sql
-      op_create_application_params_list: () => number;
-      op_add_application_blob_param: (
-        paramListId: number,
-        value: Uint8Array
-      ) => void;
-      op_add_application_integer_param: (
-        paramListId: number,
-        value: number
-      ) => void;
-      op_add_application_null_param: (paramListId: number) => void;
-      op_add_application_real_param: (
-        paramListId: number,
-        value: number
-      ) => void;
-      op_add_application_text_param: (
-        paramListId: number,
-        value: string
-      ) => void;
+      op_create_params_list: () => number;
+      op_add_blob_param: (paramListId: number, value: Uint8Array) => void;
+      op_add_integer_param: (paramListId: number, value: number) => void;
+      op_add_null_param: (paramListId: number) => void;
+      op_add_real_param: (paramListId: number, value: number) => void;
+      op_add_text_param: (paramListId: number, value: string) => void;
       op_execute_application_sql: (
         storeName: string,
         query: string,
@@ -218,12 +206,6 @@ declare namespace Deno {
         query: string,
         paramListId?: number
       ) => Promise<SqlValue[][]>;
-      op_create_nft_params_list: () => number;
-      op_add_nft_blob_param: (paramListId: number, value: Uint8Array) => void;
-      op_add_nft_integer_param: (paramListId: number, value: number) => void;
-      op_add_nft_null_param: (paramListId: number) => void;
-      op_add_nft_real_param: (paramListId: number, value: number) => void;
-      op_add_nft_text_param: (paramListId: number, value: string) => void;
       op_execute_nft_sql: (
         storeName: string,
         resourceAddress: string,
@@ -238,18 +220,6 @@ declare namespace Deno {
         query: string,
         paramListId?: number
       ) => Promise<NftDbResponse<SqlValue[][]>>;
-      op_create_personal_params_list: () => number;
-      op_add_personal_blob_param: (
-        paramListId: number,
-        value: Uint8Array
-      ) => void;
-      op_add_personal_integer_param: (
-        paramListId: number,
-        value: number
-      ) => void;
-      op_add_personal_null_param: (paramListId: number) => void;
-      op_add_personal_real_param: (paramListId: number, value: number) => void;
-      op_add_personal_text_param: (paramListId: number, value: string) => void;
       op_execute_personal_sql: (
         storeName: string,
         query: string,

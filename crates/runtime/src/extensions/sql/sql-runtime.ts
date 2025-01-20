@@ -11,28 +11,16 @@ type IPersonalDb = ReturnType<typeof _getPersonalDb>;
 type ISql = ReturnType<typeof _sql>;
 
 const {
-  op_create_application_params_list,
-  op_add_application_blob_param,
-  op_add_application_integer_param,
-  op_add_application_null_param,
-  op_add_application_real_param,
-  op_add_application_text_param,
+  op_create_params_list,
+  op_add_blob_param,
+  op_add_integer_param,
+  op_add_null_param,
+  op_add_real_param,
+  op_add_text_param,
   op_execute_application_sql,
   op_query_application_sql,
-  op_create_nft_params_list,
-  op_add_nft_blob_param,
-  op_add_nft_integer_param,
-  op_add_nft_null_param,
-  op_add_nft_real_param,
-  op_add_nft_text_param,
   op_execute_nft_sql,
   op_query_nft_sql,
-  op_create_personal_params_list,
-  op_add_personal_blob_param,
-  op_add_personal_integer_param,
-  op_add_personal_null_param,
-  op_add_personal_real_param,
-  op_add_personal_text_param,
   op_execute_personal_sql,
   op_query_personal_sql,
 } = globalThis.Deno.core.ops;
@@ -54,22 +42,22 @@ export const sql = (statement: string, params?: Record<string, any>) => {
   return new Sql(statement, params);
 };
 
-function prepareApplicationParamList(values: any[]) {
-  const paramListId = op_create_application_params_list();
+function prepareParamList(values: any[]) {
+  const paramListId = op_create_params_list();
 
   for (const value of values) {
     if (typeof value === "number") {
       if (Number.isInteger(value)) {
-        op_add_application_integer_param(paramListId, value);
+        op_add_integer_param(paramListId, value);
       } else {
-        op_add_application_real_param(paramListId, value);
+        op_add_real_param(paramListId, value);
       }
     } else if (typeof value === "string") {
-      op_add_application_text_param(paramListId, value);
+      op_add_text_param(paramListId, value);
     } else if (value === null) {
-      op_add_application_null_param(paramListId);
+      op_add_null_param(paramListId);
     } else if (typeof value === "object" && value instanceof Uint8Array) {
-      op_add_application_blob_param(paramListId, value);
+      op_add_blob_param(paramListId, value);
     } else {
       throw new TypeError(
         "Expected all values to be null, numbers, strings, or blobs"
@@ -114,7 +102,7 @@ class ApplicationSqlStore implements IApplicationDb {
           );
         }
 
-        const paramListId = prepareApplicationParamList(
+        const paramListId = prepareParamList(
           paramKeys.map((key) => sql.params[key])
         );
 
@@ -161,7 +149,7 @@ class ApplicationSqlStore implements IApplicationDb {
           );
         }
 
-        const paramListId = prepareApplicationParamList(
+        const paramListId = prepareParamList(
           paramKeys.map((key) => sql.params[key])
         );
 
@@ -270,32 +258,6 @@ function prepareNftId(nftId: number | string | Uint8Array) {
   }
 }
 
-function prepareNftParamList(values: any[]) {
-  const paramListId = op_create_nft_params_list();
-
-  for (const value of values) {
-    if (typeof value === "number") {
-      if (Number.isInteger(value)) {
-        op_add_nft_integer_param(paramListId, value);
-      } else {
-        op_add_nft_real_param(paramListId, value);
-      }
-    } else if (typeof value === "string") {
-      op_add_nft_text_param(paramListId, value);
-    } else if (value === null) {
-      op_add_nft_null_param(paramListId);
-    } else if (typeof value === "object" && value instanceof Uint8Array) {
-      op_add_nft_blob_param(paramListId, value);
-    } else {
-      throw new TypeError(
-        "Expected all values to be null, numbers, strings, or blobs"
-      );
-    }
-  }
-
-  return paramListId;
-}
-
 class NftSqlStore implements INftDb {
   name: string;
 
@@ -342,7 +304,7 @@ class NftSqlStore implements INftDb {
           );
         }
 
-        const paramListId = prepareNftParamList(
+        const paramListId = prepareParamList(
           paramKeys.map((key) => sql.params[key])
         );
 
@@ -415,7 +377,7 @@ class NftSqlStore implements INftDb {
           );
         }
 
-        const paramListId = prepareNftParamList(
+        const paramListId = prepareParamList(
           paramKeys.map((key) => sql.params[key])
         );
 
@@ -517,32 +479,6 @@ export const getNftDb = (name: string) => {
   return new NftSqlStore(name);
 };
 
-function preparePersonalParamList(values: any[]) {
-  const paramListId = op_create_personal_params_list();
-
-  for (const value of values) {
-    if (typeof value === "number") {
-      if (Number.isInteger(value)) {
-        op_add_personal_integer_param(paramListId, value);
-      } else {
-        op_add_personal_real_param(paramListId, value);
-      }
-    } else if (typeof value === "string") {
-      op_add_personal_text_param(paramListId, value);
-    } else if (value === null) {
-      op_add_personal_null_param(paramListId);
-    } else if (typeof value === "object" && value instanceof Uint8Array) {
-      op_add_personal_blob_param(paramListId, value);
-    } else {
-      throw new TypeError(
-        "Expected all values to be null, numbers, strings, or blobs"
-      );
-    }
-  }
-
-  return paramListId;
-}
-
 class PersonalSqlStore implements IPersonalDb {
   name: string;
 
@@ -575,7 +511,7 @@ class PersonalSqlStore implements IPersonalDb {
           );
         }
 
-        const paramListId = preparePersonalParamList(
+        const paramListId = prepareParamList(
           paramKeys.map((key) => sql.params[key])
         );
 
@@ -626,7 +562,7 @@ class PersonalSqlStore implements IPersonalDb {
           );
         }
 
-        const paramListId = preparePersonalParamList(
+        const paramListId = prepareParamList(
           paramKeys.map((key) => sql.params[key])
         );
 
