@@ -21,4 +21,8 @@ pub enum Error {
     /// Rustyscript error.
     #[error(transparent)]
     RustyScript(#[from] rustyscript::Error),
+
+    /// Serde JSON error.
+    #[error(transparent)]
+    SerdeJson(#[from] serde_json::Error),
 }

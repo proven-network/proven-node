@@ -513,20 +513,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_execute_return_bytes() {
-        run_in_thread(|| {
-            let options = create_runtime_options("test_runtime_execute_return_bytes", "test");
-
-            let request = create_execution_request();
-            let result = Runtime::new(options).unwrap().execute(request);
-
-            assert!(result.is_ok());
-
-            // TODO: Validate bytes
-        });
-    }
-
-    #[tokio::test]
     async fn test_runtime_execute_gateway_api_sdk() {
         run_in_thread(|| {
             let options = create_runtime_options("test_runtime_execute_gateway_api_sdk", "test");

@@ -113,3 +113,68 @@ extension!(
     esm = [ dir "src/extensions/handler", "proven:handler" = "handler-runtime.js" ],
     docs = "Functions for defining how exports should be run"
 );
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::create_runtime_options;
+    use crate::{ExecutionRequest, Worker};
+
+    use bytes::Bytes;
+    use serde::Deserialize;
+
+    #[tokio::test]
+    async fn test_return_bytes() {
+        let runtime_options = create_runtime_options("handler/test_return_bytes", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        let execution_result = result.unwrap();
+        let output = execution_result.deserialize_output::<Bytes>().unwrap();
+
+        assert_eq!(output, Bytes::from_static(b"Hello, world!"));
+
+        // Should have correct JSONPath
+        assert_eq!(execution_result.paths_to_uint8_arrays, vec!["$"]);
+    }
+
+    #[tokio::test]
+    async fn test_return_nested_bytes() {
+        #[derive(Deserialize)]
+        struct Nested {
+            nested: Bytes,
+        }
+
+        let runtime_options = create_runtime_options("handler/test_return_bytes", "testNested");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        let execution_result = result.unwrap();
+
+        let output = execution_result.deserialize_output::<Nested>().unwrap();
+
+        assert_eq!(output.nested, Bytes::from_static(b"Hello, world!"));
+
+        // Should have correct JSONPath
+        assert_eq!(execution_result.paths_to_uint8_arrays, vec!["$.nested"]);
+    }
+}

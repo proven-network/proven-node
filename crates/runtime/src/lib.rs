@@ -72,3 +72,17 @@ pub struct ExecutionResult {
     /// `JSONPath` locations of any `Uint8Array` elements in the output.
     pub paths_to_uint8_arrays: Vec<String>,
 }
+
+impl ExecutionResult {
+    /// Deserializes the output into the specified type.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the output cannot be deserialized into the specified type.
+    pub fn deserialize_output<T>(&self) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        serde_json::from_value(self.output.clone()).map_err(Into::into)
+    }
+}
