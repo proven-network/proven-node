@@ -1,3 +1,5 @@
+type HandlerType = "http" | "rpc";
+
 type NftStoreGetResponse<T> =
   | "NftDoesNotExist"
   | "NoAccountsInContext"
@@ -51,6 +53,28 @@ declare namespace Deno {
       // gateway-api-sdk
       op_get_gateway_network_id: () => number;
       op_get_gateway_origin: () => string;
+
+      // handler
+      op_add_allowed_origin: (
+        handlerType: HandlerType,
+        handlerName: string,
+        origin: string
+      ) => void;
+      op_set_memory_option: (
+        handlerType: HandlerType,
+        handlerName: string,
+        memory: number
+      ) => void;
+      op_set_path_option: (
+        handlerType: "http",
+        handlerName: string,
+        path: string
+      ) => void;
+      op_set_timeout_option: (
+        handlerType: HandlerType,
+        handlerName: string,
+        timeout: number
+      ) => void;
 
       // kv
       op_application_keys: (
