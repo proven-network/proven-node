@@ -7,9 +7,11 @@ use deno_core::{extension, op2};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HandlerOutput {
     pub output: Option<serde_json::Value>,
-    pub paths_to_uint8_arrays: Vec<String>,
+
+    pub uint8_array_json_paths: Vec<String>,
 }
 
 #[op2(fast)]

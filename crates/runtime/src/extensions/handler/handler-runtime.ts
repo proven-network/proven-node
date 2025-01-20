@@ -53,14 +53,14 @@ function encodeUint8ArrayInObject(
 export const runWithOptions = (fn: (..._args: Input[]) => Promise<Output>) => {
   return async (...args: Input[]) => {
     return fn(...args).then((handlerOutput) => {
-      const paths_to_uint8_arrays: string[] = [];
+      const uint8ArrayJsonPaths: string[] = [];
       const output = encodeUint8ArrayInObject(
         handlerOutput,
         "$",
-        paths_to_uint8_arrays
+        uint8ArrayJsonPaths
       );
 
-      return { output, paths_to_uint8_arrays };
+      return { output, uint8ArrayJsonPaths };
     });
   };
 };
@@ -68,14 +68,14 @@ export const runWithOptions = (fn: (..._args: Input[]) => Promise<Output>) => {
 export const runOnHttp = (fn: (request: HttpRequest) => Promise<Output>) => {
   return async (request: HttpRequest) => {
     return fn(request).then((handlerOutput) => {
-      const paths_to_uint8_arrays: string[] = [];
+      const uint8ArrayJsonPaths: string[] = [];
       const output = encodeUint8ArrayInObject(
         handlerOutput,
         "$",
-        paths_to_uint8_arrays
+        uint8ArrayJsonPaths
       );
 
-      return { output, paths_to_uint8_arrays };
+      return { output, uint8ArrayJsonPaths };
     });
   };
 };

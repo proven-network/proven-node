@@ -427,7 +427,7 @@ where
             duration,
             logs,
             output: handler_output.output.unwrap_or_default(),
-            paths_to_uint8_arrays: handler_output.paths_to_uint8_arrays,
+            paths_to_uint8_arrays: handler_output.uint8_array_json_paths,
         })
     }
 
