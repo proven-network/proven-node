@@ -122,19 +122,20 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Check that the signature is valid
         let execution_result = result.unwrap();
-        let output = execution_result.output.as_array().unwrap();
+        assert!(execution_result.output.is_array());
+        let (verifying_key_bytes, signature_bytes): (Vec<u8>, Vec<u8>) =
+            execution_result.deserialize_output().unwrap();
+
+        // Check that the signature is valid
         let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
-            &hex::decode(output[0].as_str().unwrap())
-                .unwrap()
+            &verifying_key_bytes
                 .try_into()
                 .expect("slice with incorrect length"),
         )
         .unwrap();
         let signature = ed25519_dalek::Signature::from_bytes(
-            &hex::decode(output[1].as_str().unwrap())
-                .unwrap()
+            &signature_bytes
                 .try_into()
                 .expect("slice with incorrect length"),
         );
@@ -158,14 +159,12 @@ mod tests {
         let result = worker.execute(request.clone()).await;
 
         assert!(result.is_ok());
+        let execution_result = result.unwrap();
+        let bytes_vec: Vec<u8> = execution_result.deserialize_output().unwrap();
 
-        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
-            &hex::decode(result.unwrap().output.as_str().unwrap())
-                .unwrap()
-                .try_into()
-                .expect("slice with incorrect length"),
-        )
-        .unwrap();
+        let verifying_key =
+            ed25519_dalek::VerifyingKey::from_bytes(bytes_vec.as_slice().try_into().unwrap())
+                .unwrap();
 
         // Reuse options to ensure the same application kv store is used. Just change the handler name.
         runtime_options.handler_name = Some("load".to_string());
@@ -176,12 +175,10 @@ mod tests {
         assert!(result.is_ok());
 
         // Check that the signature is valid
-        let signature = ed25519_dalek::Signature::from_bytes(
-            &hex::decode(result.unwrap().output.as_str().unwrap())
-                .unwrap()
-                .try_into()
-                .expect("slice with incorrect length"),
-        );
+        let execution_result = result.unwrap();
+        let bytes_vec: Vec<u8> = execution_result.deserialize_output().unwrap();
+        let signature =
+            ed25519_dalek::Signature::from_bytes(bytes_vec.as_slice().try_into().unwrap());
 
         let message = "Hello, world!";
         assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
