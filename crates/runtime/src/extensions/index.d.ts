@@ -11,9 +11,29 @@ type NftStoreSetResponse =
   | "Ok"
   | { OwnershipInvalid: string };
 
+type NftDbResponse<T> =
+  | "NftDoesNotExist"
+  | "NoAccountsInContext"
+  | { Ok: T }
+  | { OwnershipInvalid: string };
+
 type PersonalStoreGetResponse<T> = "NoPersonalContext" | "None" | { Some: T };
 
 type PersonalStoreSetResponse = "NoPersonalContext" | "Ok";
+
+type PersonalDbResponse<T> = "NoPersonalContext" | { Ok: T };
+
+type SqlValue =
+  | { BlobWithName: [string, Uint8Array] }
+  | { IntegerWithName: [string, number] }
+  | { NullWithName: string }
+  | { RealWithName: [string, number] }
+  | { TextWithName: [string, string] }
+  | { Blob: Uint8Array }
+  | { Integer: number }
+  | "Null"
+  | { Real: number }
+  | { Text: string };
 
 declare namespace Deno {
   namespace core {
@@ -144,6 +164,87 @@ declare namespace Deno {
       // session
       op_get_current_accounts: () => string[];
       op_get_current_identity: () => string | undefined;
+
+      // sql
+      op_create_application_params_list: () => number;
+      op_add_application_blob_param: (
+        paramListId: number,
+        value: Uint8Array
+      ) => void;
+      op_add_application_integer_param: (
+        paramListId: number,
+        value: number
+      ) => void;
+      op_add_application_null_param: (paramListId: number) => void;
+      op_add_application_real_param: (
+        paramListId: number,
+        value: number
+      ) => void;
+      op_add_application_text_param: (
+        paramListId: number,
+        value: string
+      ) => void;
+      op_execute_application_sql: (
+        storeName: string,
+        query: string,
+        paramListId?: number
+      ) => Promise<number>;
+      op_query_application_sql: (
+        storeName: string,
+        query: string,
+        paramListId?: number
+      ) => Promise<SqlValue[][]>;
+      op_create_nft_params_list: () => number;
+      op_add_nft_blob_param: (paramListId: number, value: Uint8Array) => void;
+      op_add_nft_integer_param: (paramListId: number, value: number) => void;
+      op_add_nft_null_param: (paramListId: number) => void;
+      op_add_nft_real_param: (paramListId: number, value: number) => void;
+      op_add_nft_text_param: (paramListId: number, value: string) => void;
+      op_execute_nft_sql: (
+        storeName: string,
+        resourceAddress: string,
+        nftId: string,
+        query: string,
+        paramListId?: number
+      ) => Promise<NftDbResponse<number>>;
+      op_query_nft_sql: (
+        storeName: string,
+        resourceAddress: string,
+        nftId: string,
+        query: string,
+        paramListId?: number
+      ) => Promise<NftDbResponse<SqlValue[][]>>;
+      op_create_personal_params_list: () => number;
+      op_add_personal_blob_param: (
+        paramListId: number,
+        value: Uint8Array
+      ) => void;
+      op_add_personal_integer_param: (
+        paramListId: number,
+        value: number
+      ) => void;
+      op_add_personal_null_param: (paramListId: number) => void;
+      op_add_personal_real_param: (paramListId: number, value: number) => void;
+      op_add_personal_text_param: (paramListId: number, value: string) => void;
+      op_execute_personal_sql: (
+        storeName: string,
+        query: string,
+        paramListId?: number
+      ) => Promise<PersonalDbResponse<number>>;
+      op_query_personal_sql: (
+        storeName: string,
+        query: string,
+        paramListId?: number
+      ) => Promise<PersonalDbResponse<SqlValue[][]>>;
+      op_migrate_application_sql: (
+        storeName: string,
+        query: string
+      ) => Promise<void>;
+      op_migrate_nft_sql: (storeName: string, query: string) => Promise<void>;
+      op_migrate_personal_sql: (
+        storeName: string,
+        query: string
+      ) => Promise<void>;
     };
   }
 }

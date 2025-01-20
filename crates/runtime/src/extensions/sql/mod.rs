@@ -15,11 +15,7 @@ extension!(
     esm_entry_point = "proven:sql",
     esm = [
         dir "src/extensions/sql",
-        "proven:sql" = "sql.js",
-        "proven:sql-application" = "application/options-parser.js",
-        "proven:sql-nft" = "nft/options-parser.js",
-        "proven:sql-personal" = "personal/options-parser.js",
-        "proven:sql-template-tag" = "template-tag.js",
+        "proven:sql" = "sql-options-parser.js",
     ],
     docs = "Functions for accessing sqlite"
 );
@@ -29,11 +25,7 @@ extension!(
     esm_entry_point = "proven:sql",
     esm = [
         dir "src/extensions/sql",
-        "proven:sql" = "sql.js",
-        "proven:sql-application" = "application/runtime.js",
-        "proven:sql-nft" = "nft/runtime.js",
-        "proven:sql-personal" = "personal/runtime.js",
-        "proven:sql-template-tag" = "template-tag.js",
+        "proven:sql" = "sql-runtime.js",
     ],
     docs = "Functions for accessing sqlite"
 );

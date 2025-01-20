@@ -386,7 +386,7 @@ where
         self.runtime.put(match accounts.as_ref() {
             Some(_) => Some(NftSqlConnectionManager::new(
                 self.nft_sql_store.clone().scope(dapp_definition_address),
-                self.sql_migrations.personal.clone(),
+                self.sql_migrations.nft.clone(),
             )),
             None => None,
         })?;

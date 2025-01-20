@@ -157,7 +157,7 @@ mod tests {
             import { getApplicationDb, sql } from '@proven-network/sql';
 
             const DB = getApplicationDb('main');
-            DB.migrate(sql`CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY);`);
+            DB.migrate('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY);');
 
             export const handler = runOnHttp((x,y) => {
                 console.log(x, y);
