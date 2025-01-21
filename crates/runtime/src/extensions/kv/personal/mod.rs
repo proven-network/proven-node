@@ -354,15 +354,17 @@ mod tests {
         let runtime_options = create_runtime_options("kv/test_personal_bytes_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Http {
+            accounts: Some(vec![]),
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: Some("identity_123".to_string()),
+            identity: Some("my_identity".to_string()),
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
     }
 
     #[tokio::test]
@@ -370,7 +372,7 @@ mod tests {
         let runtime_options = create_runtime_options("kv/test_personal_bytes_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
+        let request = ExecutionRequest::Http {
             accounts: None,
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -386,15 +388,17 @@ mod tests {
         let runtime_options = create_runtime_options("kv/test_personal_key_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Http {
+            accounts: Some(vec![]),
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: Some("identity_123".to_string()),
+            identity: Some("my_identity".to_string()),
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
     }
 
     #[tokio::test]
@@ -402,7 +406,7 @@ mod tests {
         let runtime_options = create_runtime_options("kv/test_personal_key_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
+        let request = ExecutionRequest::Http {
             accounts: None,
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -418,15 +422,17 @@ mod tests {
         let runtime_options = create_runtime_options("kv/test_personal_string_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Http {
+            accounts: Some(vec![]),
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: Some("identity_123".to_string()),
+            identity: Some("my_identity".to_string()),
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
     }
 
     #[tokio::test]
@@ -434,7 +440,7 @@ mod tests {
         let runtime_options = create_runtime_options("kv/test_personal_string_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
+        let request = ExecutionRequest::Http {
             accounts: None,
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),

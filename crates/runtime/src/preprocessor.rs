@@ -21,7 +21,7 @@ impl Preprocessor {
             "preprocessor.ts",
             std::fs::read_to_string("src/extensions/preprocess/preprocess.ts")
                 .unwrap()
-                .replace("'typescript'", "'proven:typescript'"),
+                .replace("\"typescript\"", "'proven:typescript'"),
         );
 
         let module_handle = runtime.load_module(&module)?;

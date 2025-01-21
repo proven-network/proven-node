@@ -162,11 +162,11 @@ where
                 }
             }
             Request::Execute(module, handler_name, args) => {
-                let request = ExecutionRequest {
+                let request = ExecutionRequest::Rpc {
                     args,
-                    accounts: Some(self.account_addresses.clone()),
+                    accounts: self.account_addresses.clone(),
                     dapp_definition_address: self.dapp_definition_address.clone(),
-                    identity: Some(self.identity_address.clone()),
+                    identity: self.identity_address.clone(),
                 };
 
                 match self
@@ -185,11 +185,11 @@ where
                 }
             }
             Request::ExecuteHash(options_hash, args) => {
-                let request = ExecutionRequest {
-                    accounts: Some(self.account_addresses.clone()),
+                let request = ExecutionRequest::Rpc {
+                    accounts: self.account_addresses.clone(),
                     args,
                     dapp_definition_address: self.dapp_definition_address.clone(),
-                    identity: Some(self.identity_address.clone()),
+                    identity: self.identity_address.clone(),
                 };
 
                 match self

@@ -144,7 +144,11 @@ mod tests {
             }
         "#;
         let result = OptionsParser::new().unwrap().parse(module_source);
-        assert!(result.is_ok());
+
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
+
         let options = result.unwrap();
         assert_eq!(options.module_source, module_source);
     }
@@ -172,7 +176,9 @@ mod tests {
             });
         ";
         let result = OptionsParser::new().unwrap().parse(module_source);
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let options = result.unwrap();
         assert_eq!(options.module_source, module_source);

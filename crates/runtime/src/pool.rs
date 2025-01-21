@@ -123,15 +123,14 @@ pub struct PoolRuntimeOptions {
 ///         module: "export const handler = (a, b) => a + b;".to_string(),
 ///     };
 ///
-///     let request = ExecutionRequest {
-///         accounts: None,
+///     let request = ExecutionRequest::Rpc {
+///         accounts: vec![],
 ///         args: vec![json!(10), json!(20)],
 ///         dapp_definition_address: "dapp_definition_address".to_string(),
-///         identity: None,
+///         identity: "my_identity".to_string(),
 ///     };
 ///
-///     let result = pool.execute(runtime_options, request).await;
-///     assert!(result.is_ok());
+///     pool.execute(runtime_options, request).await;
 /// }
 /// ```
 pub struct Pool<AS, PS, NS, ASS, PSS, NSS, RNV>
@@ -729,15 +728,17 @@ mod tests {
             module: "export const test = (a, b) => a + b;".to_string(),
         };
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = pool.execute(runtime_options, request).await;
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
     }
 
     #[tokio::test]
@@ -755,15 +756,17 @@ mod tests {
             .await
             .insert(options_hash.clone(), runtime_options.clone());
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = pool.execute_prehashed(options_hash, request).await;
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
     }
 
     #[tokio::test]
@@ -775,11 +778,11 @@ mod tests {
             module: "export const test = (a, b) => a + b;".to_string(),
         };
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
         let (tx, rx) = oneshot::channel();
 
@@ -797,11 +800,11 @@ mod tests {
             module: "export const test = (a, b) => a + b;".to_string(),
         };
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let pool_clone = Arc::clone(&pool);

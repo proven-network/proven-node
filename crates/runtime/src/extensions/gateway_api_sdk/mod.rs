@@ -25,8 +25,7 @@ extension!(
     ops = [op_get_gateway_network_id, op_get_gateway_origin],
     esm_entry_point = "proven:babylon_gateway_api",
     esm = [
-        "proven:raw_babylon_gateway_api" =
-            "vendor/@radixdlt/babylon-gateway-api-sdk/index.mjs",
+        "proven:raw_babylon_gateway_api" = "vendor/@radixdlt/babylon-gateway-api-sdk/index.mjs",
         "proven:babylon_gateway_api" = "src/extensions/gateway_api_sdk/gateway-api-sdk.js",
     ],
 );
@@ -42,16 +41,18 @@ mod tests {
             create_runtime_options("gateway_api_sdk/test_gateway_api_sdk", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: Some("test_identity".to_string()),
+            identity: "my_identity".to_string(),
         };
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let execution_result = result.unwrap();
 

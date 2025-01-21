@@ -141,16 +141,18 @@ mod tests {
             create_runtime_options("handler/test_fetch_with_allowed_origins", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
     }
 
     #[tokio::test]
@@ -159,11 +161,11 @@ mod tests {
             create_runtime_options("handler/test_fetch_with_disallowed_origins", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = worker.execute(request).await;
@@ -176,16 +178,18 @@ mod tests {
         let runtime_options = create_runtime_options("handler/test_return_bytes", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let execution_result = result.unwrap();
         let output = execution_result.deserialize_output::<Bytes>().unwrap();
@@ -206,16 +210,18 @@ mod tests {
         let runtime_options = create_runtime_options("handler/test_return_bytes", "testNested");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let execution_result = result.unwrap();
 

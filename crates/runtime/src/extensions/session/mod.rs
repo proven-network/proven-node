@@ -39,20 +39,22 @@ mod tests {
         let runtime_options = create_runtime_options("session/test_session_identity", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Http {
+            accounts: Some(vec![]),
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: Some("test_identity".to_string()),
+            identity: Some("my_identity".to_string()),
         };
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let execution_result = result.unwrap();
         assert!(execution_result.output.is_string());
-        assert_eq!(execution_result.output.as_str().unwrap(), "test_identity");
+        assert_eq!(execution_result.output.as_str().unwrap(), "my_identity");
         assert!(execution_result.duration.as_millis() < 1000);
     }
 
@@ -61,7 +63,7 @@ mod tests {
         let runtime_options = create_runtime_options("session/test_session_identity", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
+        let request = ExecutionRequest::Http {
             accounts: None,
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -70,7 +72,9 @@ mod tests {
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let execution_result = result.unwrap();
         assert!(execution_result.output.is_null());
@@ -81,16 +85,18 @@ mod tests {
         let runtime_options = create_runtime_options("session/test_session_accounts", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
+        let request = ExecutionRequest::Http {
+            accounts: Some(vec!["my_account_1".to_string(), "my_account_2".to_string()]),
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: Some("my_identity".to_string()),
         };
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let execution_result = result.unwrap();
         assert!(execution_result.output.is_array());
@@ -99,13 +105,13 @@ mod tests {
             execution_result.output.as_array().unwrap()[0]
                 .as_str()
                 .unwrap(),
-            "account1"
+            "my_account_1"
         );
         assert_eq!(
             execution_result.output.as_array().unwrap()[1]
                 .as_str()
                 .unwrap(),
-            "account2"
+            "my_account_2"
         );
     }
 
@@ -114,7 +120,7 @@ mod tests {
         let runtime_options = create_runtime_options("session/test_session_accounts", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
+        let request = ExecutionRequest::Http {
             accounts: None,
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -123,7 +129,9 @@ mod tests {
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let execution_result = result.unwrap();
         assert!(execution_result.output.is_array());

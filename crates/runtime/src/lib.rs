@@ -33,18 +33,41 @@ use serde_json::Value;
 
 /// Request for a runtime execution.
 #[derive(Clone)]
-pub struct ExecutionRequest {
-    /// The accounts of the executing user.
-    pub accounts: Option<Vec<String>>,
+pub enum ExecutionRequest {
+    /// A request received from an HTTP endpoint.
+    Http {
+        /// The accounts of the executing user.
+        accounts: Option<Vec<String>>,
 
-    /// The arguments to the handler.
-    pub args: Vec<Value>,
+        /// The arguments to the handler.
+        args: Vec<Value>,
 
-    /// The address of the dApp definition.
-    pub dapp_definition_address: String,
+        /// The address of the dApp definition.
+        dapp_definition_address: String,
 
-    /// The identity of the executing user.
-    pub identity: Option<String>,
+        /// The identity of the executing user.
+        identity: Option<String>,
+    },
+    /// A request created to respond to an event from the Radix network.
+    RadixEvent {
+        /// The address of the dApp definition.
+        dapp_definition_address: String,
+        // TODO: should have Radix transaction data
+    },
+    /// A request received over a RPC session.
+    Rpc {
+        /// The accounts of the executing user.
+        accounts: Vec<String>,
+
+        /// The arguments to the handler.
+        args: Vec<Value>,
+
+        /// The address of the dApp definition.
+        dapp_definition_address: String,
+
+        /// The identity of the executing user.
+        identity: String,
+    },
 }
 
 /// Logs from a runtime execution.

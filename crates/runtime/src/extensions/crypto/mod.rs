@@ -112,16 +112,18 @@ mod tests {
         let runtime_options = create_runtime_options("crypto/test_ed25519_signing", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let execution_result = result.unwrap();
         assert!(execution_result.output.is_array());
@@ -151,16 +153,18 @@ mod tests {
             create_runtime_options("crypto/test_ed25519_signing_radix_transaction", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         let result = result.unwrap();
         let output = result.output.as_array().unwrap();
@@ -189,16 +193,18 @@ mod tests {
         let mut runtime_options = create_runtime_options("crypto/test_ed25519_storage", "save");
         let mut worker = Worker::new(runtime_options.clone()).await.unwrap();
 
-        let request = ExecutionRequest {
-            accounts: None,
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = worker.execute(request.clone()).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
         let execution_result = result.unwrap();
         let bytes_vec: Vec<u8> = execution_result.deserialize_output().unwrap();
 
@@ -212,7 +218,9 @@ mod tests {
 
         let result = worker.execute(request).await;
 
-        assert!(result.is_ok());
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
 
         // Check that the signature is valid
         let execution_result = result.unwrap();

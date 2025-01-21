@@ -11,25 +11,33 @@ use crate::options_parser::OptionsParser;
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::preprocessor::Preprocessor;
 use crate::schema::SCHEMA_WHLIST;
-use crate::{ExecutionLogs, ExecutionRequest, ExecutionResult, Result};
+use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult, Result};
 
 use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
+use std::vec;
 
 use bytes::Bytes;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use radix_common::network::NetworkDefinition;
-use regex::Regex;
 use rustyscript::js_value::Value;
 use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
 use tokio::time::Instant;
 
 static DEFAULT_HEAP_SIZE: u16 = 32;
 static DEFAULT_TIMEOUT_MILLIS: u32 = 5000;
+
+/// The type of request this `Runtime` should be handling.
+#[derive(Debug)]
+enum HandlerType {
+    Http,
+    RadixEvent,
+    Rpc,
+}
 
 /// Options for creating a new `Runtime`.
 #[derive(Clone)]
@@ -112,11 +120,11 @@ where
 /// })
 /// .expect("Failed to create runtime");
 ///
-/// runtime.execute(ExecutionRequest {
-///     accounts: None,
+/// runtime.execute(ExecutionRequest::Rpc {
+///     accounts: vec![],
 ///     args: vec![json!(10), json!(20)],
 ///     dapp_definition_address: "dapp_definition_address".to_string(),
-///     identity: None,
+///     identity: "my_identity".to_string(),
 /// });
 /// ```
 pub struct Runtime<AS, PS, NS, ASS, PSS, NSS, RNV>
@@ -132,6 +140,7 @@ where
     application_sql_store: ASS,
     application_store: AS,
     handler_name: Option<String>,
+    handler_type: HandlerType,
     module_handle: ModuleHandle,
     nft_sql_store: NSS,
     nft_store: NS,
@@ -184,6 +193,12 @@ where
         let handler_options = module_options
             .handler_options
             .get(handler_name.as_ref().unwrap_or(&"__default__".to_string()));
+
+        let handler_type = match handler_options {
+            Some(HandlerOptions::Http(_)) => HandlerType::Http,
+            Some(HandlerOptions::RadixEvent(_)) => HandlerType::RadixEvent,
+            Some(HandlerOptions::Rpc(_)) | None => HandlerType::Rpc,
+        };
 
         let timeout_millis =
             handler_options.map_or(
@@ -278,11 +293,10 @@ where
         // In case there are any top-level console.* calls in the module
         runtime.put(ConsoleState::default())?;
 
-        let async_module = Self::ensure_exported_functions_are_async(module.as_str())?;
-        let async_module = replace_esm_imports(&async_module);
+        let import_replaced_module = replace_esm_imports(&module);
 
         let mut preprocessor = Preprocessor::new()?;
-        let preprocessed_module = preprocessor.process(async_module)?;
+        let preprocessed_module = preprocessor.process(import_replaced_module)?;
         drop(preprocessor);
 
         let module = Module::new("module.ts", preprocessed_module.as_str());
@@ -292,6 +306,7 @@ where
             application_sql_store,
             application_store,
             handler_name,
+            handler_type,
             module_handle,
             nft_sql_store,
             nft_store,
@@ -316,16 +331,48 @@ where
     ///
     /// # Panics
     /// This function may panic if the runtime encounters an unrecoverable error.
-    pub fn execute(
-        &mut self,
-        ExecutionRequest {
-            accounts,
-            args,
-            dapp_definition_address,
-            identity,
-        }: ExecutionRequest,
-    ) -> Result<ExecutionResult> {
+    #[allow(clippy::too_many_lines)]
+    pub fn execute(&mut self, execution_request: ExecutionRequest) -> Result<ExecutionResult> {
         let start = Instant::now();
+
+        let (accounts, args, dapp_definition_address, identity) =
+            match (&self.handler_type, execution_request) {
+                (
+                    HandlerType::Http,
+                    ExecutionRequest::Http {
+                        accounts,
+                        args,
+                        dapp_definition_address,
+                        identity,
+                    },
+                ) => (accounts, args, dapp_definition_address, identity),
+                (
+                    HandlerType::RadixEvent,
+                    ExecutionRequest::RadixEvent {
+                        dapp_definition_address,
+                    },
+                ) => (
+                    None,
+                    vec![], // TODO: Should use transaction data
+                    dapp_definition_address,
+                    None,
+                ),
+                (
+                    HandlerType::Rpc,
+                    ExecutionRequest::Rpc {
+                        accounts,
+                        args,
+                        dapp_definition_address,
+                        identity,
+                    },
+                ) => (
+                    Some(accounts),
+                    args,
+                    dapp_definition_address,
+                    Some(identity),
+                ),
+                _ => return Err(Error::MismatchedExecutionRequest),
+            };
 
         // Reset the console state before each execution
         self.runtime.put(ConsoleState::default())?;
@@ -428,36 +475,6 @@ where
             paths_to_uint8_arrays: handler_output.uint8_array_json_paths,
         })
     }
-
-    fn ensure_exported_functions_are_async(module: &str) -> Result<String> {
-        // Find matches like `export const test = function () { console.log('Hello, world!'); }`
-        let re_fn = Regex::new(r"(?m)^\s*export\s+(const|let)\s+(\w+)\s*=\s*function\s*\(")?;
-
-        let result = re_fn.replace_all(module, |caps: &regex::Captures| {
-            format!("export {} {} = async function (", &caps[1], &caps[2])
-        });
-
-        // Find matches like `export const test = () => { console.log('Hello, world!'); }`
-        let re_arrow = Regex::new(r"(?m)^\s*export\s+(const|let)\s+(\w+)\s*=\s*\(")?;
-
-        let result = re_arrow.replace_all(result.as_ref(), |caps: &regex::Captures| {
-            format!("export {} {} = async (", &caps[1], &caps[2])
-        });
-
-        // Find matches like `export const test = runWithOptions(() => { console.log('Hello, world!'); }, {})`
-        let re_run = Regex::new(
-            r"(?m)^\s*export\s+(const|let)\s+(\w+)\s*=\s*(runWithOptions|runOnSchedule|runOnRadixEvent|runOnProvenEvent)\s*\(",
-        )?;
-
-        let result = re_run.replace_all(result.as_ref(), |caps: &regex::Captures| {
-            format!("export {} {} = {}(async ", &caps[1], &caps[2], &caps[3])
-        });
-
-        let re_duplicate_async = Regex::new(r"async\s*\r?\n?\s*async")?;
-        let result = re_duplicate_async.replace_all(&result, "async");
-
-        Ok(result.to_string())
-    }
 }
 
 #[cfg(test)]
@@ -474,11 +491,11 @@ mod tests {
     }
 
     fn create_execution_request() -> ExecutionRequest {
-        ExecutionRequest {
-            accounts: None,
+        ExecutionRequest::Rpc {
+            accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            identity: "my_identity".to_string(),
         }
     }
 
@@ -505,7 +522,9 @@ mod tests {
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
 
-            assert!(result.is_ok());
+            if let Err(err) = result {
+                panic!("Error: {err:?}");
+            }
         });
     }
 
@@ -518,7 +537,9 @@ mod tests {
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
 
-            assert!(result.is_ok());
+            if let Err(err) = result {
+                panic!("Error: {err:?}");
+            }
         });
     }
 

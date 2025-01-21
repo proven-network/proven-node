@@ -56,11 +56,11 @@ async fn main() -> Result<(), Error> {
     Arc::clone(&pool)
         .execute(
             runtime_options,
-            ExecutionRequest {
-                accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
+            ExecutionRequest::Rpc {
+                accounts: vec!["my_account_1".to_string(), "my_account_2".to_string()],
                 args: vec![json!(10), json!(20)],
                 dapp_definition_address: "dapp_definition_address".to_string(),
-                identity: Some("identity".to_string()),
+                identity: "my_identity".to_string(),
             },
         )
         .await
@@ -71,11 +71,11 @@ async fn main() -> Result<(), Error> {
         let durations = Arc::clone(&durations);
         let options_hash = options_hash.clone();
         let handle = tokio::spawn(async move {
-            let request = ExecutionRequest {
-                accounts: Some(vec!["account1".to_string(), "account2".to_string()]),
+            let request = ExecutionRequest::Rpc {
+                accounts: vec!["my_account_1".to_string(), "my_account_2".to_string()],
                 args: vec![json!(10), json!(20)],
                 dapp_definition_address: "dapp_definition_address".to_string(),
-                identity: Some("identity".to_string()),
+                identity: "my_identity".to_string(),
             };
 
             let start = Instant::now();
