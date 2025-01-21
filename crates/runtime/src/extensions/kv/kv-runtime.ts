@@ -1,26 +1,12 @@
-import {
-  getApplicationStore as _getApplicationStore,
-  getApplicationBytesStore as _getApplicationBytesStore,
-  getApplicationKeyStore as _getApplicationKeyStore,
-  getNftStore as _getNftStore,
-  getNftBytesStore as _getNftBytesStore,
-  getNftKeyStore as _getNftKeyStore,
-  getPersonalStore as _getPersonalStore,
-  getPersonalBytesStore as _getPersonalBytesStore,
-  getPersonalKeyStore as _getPersonalKeyStore,
-} from "@proven-network/kv";
-
 import { PrivateKey } from "@proven-network/crypto";
-
-type IApplicationBytesStore = ReturnType<typeof _getApplicationBytesStore>;
-type IApplicationKeyStore = ReturnType<typeof _getApplicationKeyStore>;
-type IApplicationStringStore = ReturnType<typeof _getApplicationStore>;
-type INftBytesStore = ReturnType<typeof _getNftBytesStore>;
-type INftKeyStore = ReturnType<typeof _getNftKeyStore>;
-type INftStringStore = ReturnType<typeof _getNftStore>;
-type IPersonalBytesStore = ReturnType<typeof _getPersonalBytesStore>;
-type IPersonalKeyStore = ReturnType<typeof _getPersonalKeyStore>;
-type IPersonalStringStore = ReturnType<typeof _getPersonalStore>;
+import {
+  BytesStore,
+  KeyStore,
+  StringStore,
+  NftScopedBytesStore,
+  NftScopedKeyStore,
+  NftScopedStringStore,
+} from "@proven-network/kv";
 
 const {
   op_application_keys,
@@ -46,7 +32,7 @@ const {
   op_set_personal_string,
 } = globalThis.Deno.core.ops;
 
-class ApplicationBytesStore implements IApplicationBytesStore {
+class ApplicationBytesStore implements BytesStore {
   storeName: string;
 
   constructor(storeName: string) {
@@ -66,7 +52,7 @@ class ApplicationBytesStore implements IApplicationBytesStore {
   }
 }
 
-class ApplicationKeyStore implements IApplicationKeyStore {
+class ApplicationKeyStore implements KeyStore {
   storeName: string;
 
   constructor(storeName: string) {
@@ -95,7 +81,7 @@ class ApplicationKeyStore implements IApplicationKeyStore {
   }
 }
 
-class ApplicationStringStore implements IApplicationStringStore {
+class ApplicationStringStore implements StringStore {
   storeName: string;
 
   constructor(storeName: string) {
@@ -162,7 +148,7 @@ function prepareNftId(nftId: number | string | Uint8Array) {
   }
 }
 
-class NftBytesStore implements INftBytesStore {
+class NftBytesStore implements NftScopedBytesStore {
   storeName: string;
 
   constructor(storeName: string) {
@@ -248,7 +234,7 @@ class NftBytesStore implements INftBytesStore {
   }
 }
 
-class NftKeyStore implements INftKeyStore {
+class NftKeyStore implements NftScopedKeyStore {
   storeName: string;
 
   constructor(storeName: string) {
@@ -341,7 +327,7 @@ class NftKeyStore implements INftKeyStore {
   }
 }
 
-class NftStringStore implements INftStringStore {
+class NftStringStore implements NftScopedStringStore {
   storeName: string;
 
   constructor(storeName: string) {
@@ -451,7 +437,7 @@ export const getNftStore = (storeName: string) => {
   return new NftStringStore(storeName);
 };
 
-class PersonalBytesStore implements IPersonalBytesStore {
+class PersonalBytesStore implements BytesStore {
   storeName: string;
 
   constructor(storeName: string) {
@@ -491,7 +477,7 @@ class PersonalBytesStore implements IPersonalBytesStore {
   }
 }
 
-class PersonalKeyStore implements IPersonalKeyStore {
+class PersonalKeyStore implements KeyStore {
   storeName: string;
 
   constructor(storeName: string) {
@@ -538,7 +524,7 @@ class PersonalKeyStore implements IPersonalKeyStore {
   }
 }
 
-class PersonalStringStore implements IPersonalStringStore {
+class PersonalStringStore implements StringStore {
   storeName: string;
 
   constructor(storeName: string) {
