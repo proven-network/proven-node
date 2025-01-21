@@ -189,33 +189,32 @@ where
             handler_options.map_or(
                 DEFAULT_TIMEOUT_MILLIS,
                 |handler_options| match handler_options {
-                    HandlerOptions::Http(http_handler_options) => http_handler_options
-                        .timeout_millis
-                        .unwrap_or(DEFAULT_TIMEOUT_MILLIS),
-                    HandlerOptions::Rpc(rpc_handler_options) => rpc_handler_options
-                        .timeout_millis
-                        .unwrap_or(DEFAULT_TIMEOUT_MILLIS),
+                    HandlerOptions::Http(options) => {
+                        options.timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS)
+                    }
+                    HandlerOptions::RadixEvent(options) => {
+                        options.timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS)
+                    }
+                    HandlerOptions::Rpc(options) => {
+                        options.timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS)
+                    }
                 },
             );
 
         let max_heap_mbs =
             handler_options.map_or(DEFAULT_HEAP_SIZE, |handler_options| match handler_options {
-                HandlerOptions::Http(http_handler_options) => http_handler_options
-                    .max_heap_mbs
-                    .unwrap_or(DEFAULT_HEAP_SIZE),
-                HandlerOptions::Rpc(rpc_handler_options) => rpc_handler_options
-                    .max_heap_mbs
-                    .unwrap_or(DEFAULT_HEAP_SIZE),
+                HandlerOptions::Http(options) => options.max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
+                HandlerOptions::RadixEvent(options) => {
+                    options.max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE)
+                }
+                HandlerOptions::Rpc(options) => options.max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
             });
 
         let allowed_web_origins = handler_options
             .map(|handler_options| match handler_options {
-                HandlerOptions::Http(http_handler_options) => {
-                    http_handler_options.allowed_web_origins.clone()
-                }
-                HandlerOptions::Rpc(rpc_handler_options) => {
-                    rpc_handler_options.allowed_web_origins.clone()
-                }
+                HandlerOptions::Http(options) => options.allowed_web_origins.clone(),
+                HandlerOptions::RadixEvent(options) => options.allowed_web_origins.clone(),
+                HandlerOptions::Rpc(options) => options.allowed_web_origins.clone(),
             })
             .unwrap_or_default();
 
@@ -535,33 +534,6 @@ mod tests {
             let result = Runtime::new(options).unwrap().execute(request);
 
             assert!(result.is_err());
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_with_disallowed_origins() {
-        run_in_thread(|| {
-            let options =
-                create_runtime_options("test_runtime_execute_with_disallowed_origins", "test");
-
-            let request = create_execution_request();
-            let result = Runtime::new(options).unwrap().execute(request);
-
-            assert!(result.is_err());
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_with_allowed_origins() {
-        run_in_thread(|| {
-            let options =
-                create_runtime_options("test_runtime_execute_with_allowed_origins", "test");
-
-            let request = create_execution_request();
-            let result = Runtime::new(options).unwrap().execute(request);
-
-            assert!(result.is_ok());
-            assert_eq!(result.unwrap().output, 200);
         });
     }
 

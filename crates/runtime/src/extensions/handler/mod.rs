@@ -1,7 +1,10 @@
 #![allow(clippy::inline_always)]
 #![allow(clippy::significant_drop_tightening)]
 
-use crate::options::{HandlerOptions, HttpHandlerOptions, ModuleHandlerOptions, RpcHandlerOptions};
+use crate::options::{
+    HandlerOptions, HttpHandlerOptions, ModuleHandlerOptions, RadixEventHandlerOptions,
+    RpcHandlerOptions,
+};
 
 use deno_core::{extension, op2};
 use serde::Deserialize;
@@ -23,12 +26,16 @@ pub fn op_add_allowed_origin(
 ) {
     let options = state.entry(handler_name).or_insert(match handler_type {
         "http" => HandlerOptions::Http(HttpHandlerOptions::default()),
+        "radix_event" => HandlerOptions::RadixEvent(RadixEventHandlerOptions::default()),
         "rpc" => HandlerOptions::Rpc(RpcHandlerOptions::default()),
         _ => unreachable!(),
     });
 
     match options {
         HandlerOptions::Http(options) => options
+            .allowed_web_origins
+            .insert(origin.to_ascii_lowercase()),
+        HandlerOptions::RadixEvent(options) => options
             .allowed_web_origins
             .insert(origin.to_ascii_lowercase()),
         HandlerOptions::Rpc(options) => options
@@ -48,12 +55,14 @@ pub fn op_set_memory_option(
 
     let options = state.entry(handler_name).or_insert(match handler_type {
         "http" => HandlerOptions::Http(HttpHandlerOptions::default()),
+        "radix_event" => HandlerOptions::RadixEvent(RadixEventHandlerOptions::default()),
         "rpc" => HandlerOptions::Rpc(RpcHandlerOptions::default()),
         _ => unreachable!(),
     });
 
     match options {
         HandlerOptions::Http(options) => options.max_heap_mbs.replace(value),
+        HandlerOptions::RadixEvent(options) => options.max_heap_mbs.replace(value),
         HandlerOptions::Rpc(options) => options.max_heap_mbs.replace(value),
     };
 }
@@ -73,7 +82,7 @@ pub fn op_set_path_option(
 
     match options {
         HandlerOptions::Http(options) => options.path.replace(value),
-        HandlerOptions::Rpc(_) => unreachable!(),
+        _ => unreachable!(),
     };
 }
 
@@ -86,12 +95,14 @@ pub fn op_set_timeout_option(
 ) {
     let options = state.entry(handler_name).or_insert(match handler_type {
         "http" => HandlerOptions::Http(HttpHandlerOptions::default()),
+        "radix_event" => HandlerOptions::RadixEvent(RadixEventHandlerOptions::default()),
         "rpc" => HandlerOptions::Rpc(RpcHandlerOptions::default()),
         _ => unreachable!(),
     });
 
     match options {
         HandlerOptions::Http(options) => options.timeout_millis.replace(value),
+        HandlerOptions::RadixEvent(options) => options.timeout_millis.replace(value),
         HandlerOptions::Rpc(options) => options.timeout_millis.replace(value),
     };
 }
@@ -123,6 +134,42 @@ mod tests {
 
     use bytes::Bytes;
     use serde::Deserialize;
+
+    #[tokio::test]
+    async fn test_fetch_with_allowed_origins() {
+        let runtime_options =
+            create_runtime_options("handler/test_fetch_with_allowed_origins", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_with_disallowed_origins() {
+        let runtime_options =
+            create_runtime_options("handler/test_fetch_with_disallowed_origins", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_err());
+    }
 
     #[tokio::test]
     async fn test_return_bytes() {

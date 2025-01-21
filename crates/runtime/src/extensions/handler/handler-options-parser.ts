@@ -1,24 +1,18 @@
+import {
+  HttpHandlerOptions,
+  RpcHandlerOptions,
+  RadixEventHandlerOptions,
+} from "@proven-network/handler";
+import { CommittedTransactionInfo } from "@radixdlt/babylon-gateway-api-sdk";
+
 type Output =
-  | string
-  | number
   | boolean
+  | number
   | null
+  | string
   | Uint8Array
   | Output[]
   | { [key: string]: Output };
-
-interface RpcOptions {
-  allowedOrigins?: string[];
-  memory?: number;
-  timeout?: number;
-}
-
-interface HttpOptions {
-  allowedOrigins?: string[];
-  memory?: number;
-  path: string;
-  timeout?: number;
-}
 
 const {
   op_add_allowed_origin,
@@ -28,11 +22,11 @@ const {
 } = globalThis.Deno.core.ops;
 
 // Handler name is dynamically inserted and should not be part of exported types.
-export const runWithOptions = (
+export function runWithOptions(
   handlerName: string,
   fn: (...args: any[]) => Promise<Output>,
-  options: RpcOptions = {}
-): typeof fn => {
+  options: RpcHandlerOptions = {}
+): typeof fn {
   if (typeof handlerName !== "string") {
     throw new Error(
       "runWithOptions must be used in conjunction with the export keyword"
@@ -74,14 +68,14 @@ export const runWithOptions = (
   }
 
   return fn;
-};
+}
 
 // Handler name is dynamically inserted and should not be part of exported types.
-export const runOnHttp = (
+export function runOnHttp<P extends string>(
   handlerName: string,
   fn: (...args: any[]) => Promise<Output>,
-  options: HttpOptions
-): typeof fn => {
+  options: HttpHandlerOptions<P>
+): typeof fn {
   if (typeof handlerName !== "string") {
     throw new Error(
       "runOnHttp must be used in conjunction with the export keyword"
@@ -132,9 +126,59 @@ export const runOnHttp = (
         throw new Error("allowedOrigins must be an array of strings");
       }
 
-      op_add_allowed_origin("rpc", handlerName, origin);
+      op_add_allowed_origin("http", handlerName, origin);
     }
   }
 
   return fn;
-};
+}
+
+export function runOnRadixEvent(
+  handlerName: string,
+  fn: (transaction: CommittedTransactionInfo) => void,
+  options: RadixEventHandlerOptions
+): void {
+  if (typeof handlerName !== "string") {
+    throw new Error(
+      "runOnHttp must be used in conjunction with the export keyword"
+    );
+  }
+
+  if (typeof fn !== "function") {
+    throw new Error("No function passed to runOnRadixEvent");
+  }
+
+  if (!options || typeof options !== "object") {
+    throw new Error("Options must be provided");
+  }
+
+  if (options.memory) {
+    if (typeof options.memory !== "number") {
+      throw new Error("Memory must be a number");
+    }
+
+    op_set_memory_option("radix_event", handlerName, options.memory);
+  }
+
+  if (options.timeout) {
+    if (typeof options.timeout !== "number") {
+      throw new Error("Timeout must be a number");
+    }
+
+    op_set_timeout_option("radix_event", handlerName, options.timeout);
+  }
+
+  if (options.allowedOrigins) {
+    if (!Array.isArray(options.allowedOrigins)) {
+      throw new Error("allowedOrigins must be an array");
+    }
+
+    for (const origin of options.allowedOrigins) {
+      if (typeof origin !== "string") {
+        throw new Error("allowedOrigins must be an array of strings");
+      }
+
+      op_add_allowed_origin("radix_event", handlerName, origin);
+    }
+  }
+}

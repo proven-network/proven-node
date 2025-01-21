@@ -1,4 +1,4 @@
-type HandlerType = "http" | "rpc";
+type HandlerType = "http" | "radix_event" | "rpc";
 
 type NftStoreGetResponse<T> =
   | "NftDoesNotExist"

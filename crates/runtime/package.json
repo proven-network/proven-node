@@ -8,7 +8,7 @@
   "dependencies": {
     "@radixdlt/babylon-gateway-api-sdk": "1.9.2",
     "@radixdlt/radix-engine-toolkit": "1.0.5",
-    "openai": "4.79.1",
+    "openai": "4.79.3",
     "uuid": "11.0.5",
     "zod": "3.24.1"
   },
@@ -16,10 +16,10 @@
     "@babel/preset-env": "7.26.0",
     "@babel/preset-typescript": "7.26.0",
     "@proven-network/crypto": "0.0.4",
-    "@proven-network/handler": "0.0.1",
+    "@proven-network/handler": "0.0.5",
     "@proven-network/kv": "0.0.7",
     "@proven-network/session": "^0.0.1",
-    "@proven-network/sql": "0.0.14",
+    "@proven-network/sql": "0.0.15",
     "@rollup/plugin-commonjs": "^28.0.2",
     "@rollup/plugin-node-resolve": "16.0.0",
     "@types/jest": "^29.5.14",

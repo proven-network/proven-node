@@ -8,6 +8,22 @@ pub struct HttpHandlerOptions {
     pub timeout_millis: Option<u32>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[allow(dead_code)] // TODO: Remove this once used
+pub enum EventBinding {
+    Emitter(String),
+    Event(String),
+    EventFromEmitter(String, String),
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RadixEventHandlerOptions {
+    pub allowed_web_origins: HashSet<String>,
+    pub event_binding: Option<EventBinding>,
+    pub max_heap_mbs: Option<u16>,
+    pub timeout_millis: Option<u32>,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RpcHandlerOptions {
     pub allowed_web_origins: HashSet<String>,
@@ -18,6 +34,7 @@ pub struct RpcHandlerOptions {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HandlerOptions {
     Http(HttpHandlerOptions),
+    RadixEvent(RadixEventHandlerOptions),
     Rpc(RpcHandlerOptions),
 }
 
