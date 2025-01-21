@@ -26,35 +26,40 @@ function encodeUint8Array(data: Uint8Array): EncodedUint8Array {
   return Array.from(data);
 }
 
-function encodeUint8ArrayInObject(
+async function encodeUint8ArrayInObject(
   obj: Output,
   path: string,
   paths: string[]
-): Output {
-  if (obj instanceof Uint8Array) {
+): Promise<Output> {
+  if (typeof obj === "object" && obj !== null && "allRows" in (obj as any)) {
+    return (await (obj as any).allRows) as Output;
+  } else if (obj instanceof Uint8Array) {
     paths.push(path);
     return encodeUint8Array(obj);
   } else if (Array.isArray(obj)) {
-    return obj.map((item, index) =>
-      encodeUint8ArrayInObject(item, `${path}[${index}]`, paths)
+    const results = await Promise.all(
+      obj.map((item, index) =>
+        encodeUint8ArrayInObject(item, `${path}[${index}]`, paths)
+      )
     );
+    return results;
   } else if (obj !== null && typeof obj === "object") {
-    return Object.keys(obj).reduce(
-      (acc, key) => {
-        acc[key] = encodeUint8ArrayInObject(obj[key], `${path}.${key}`, paths);
-        return acc;
-      },
-      {} as { [key: string]: Output }
+    const entries = await Promise.all(
+      Object.entries(obj).map(async ([key, value]) => [
+        key,
+        await encodeUint8ArrayInObject(value, `${path}.${key}`, paths),
+      ])
     );
+    return Object.fromEntries(entries);
   }
   return obj;
 }
 
 export const runWithOptions = (fn: (..._args: Input[]) => Promise<Output>) => {
   return async (...args: Input[]) => {
-    return fn(...args).then((handlerOutput) => {
+    return fn(...args).then(async (handlerOutput) => {
       const uint8ArrayJsonPaths: string[] = [];
-      const output = encodeUint8ArrayInObject(
+      const output = await encodeUint8ArrayInObject(
         handlerOutput,
         "$",
         uint8ArrayJsonPaths
@@ -67,9 +72,9 @@ export const runWithOptions = (fn: (..._args: Input[]) => Promise<Output>) => {
 
 export const runOnHttp = (fn: (request: HttpRequest) => Promise<Output>) => {
   return async (request: HttpRequest) => {
-    return fn(request).then((handlerOutput) => {
+    return fn(request).then(async (handlerOutput) => {
       const uint8ArrayJsonPaths: string[] = [];
-      const output = encodeUint8ArrayInObject(
+      const output = await encodeUint8ArrayInObject(
         handlerOutput,
         "$",
         uint8ArrayJsonPaths

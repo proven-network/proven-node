@@ -5,10 +5,13 @@ import {
   sql as _sql,
 } from "@proven-network/sql";
 
+type UnwrapPromise<T> = T extends Promise<infer U> ? U : T;
+
 type IApplicationDb = ReturnType<typeof _getApplicationDb>;
 type INftDb = ReturnType<typeof _getNftDb>;
 type IPersonalDb = ReturnType<typeof _getPersonalDb>;
 type ISql = ReturnType<typeof _sql>;
+type IRows = UnwrapPromise<ReturnType<IApplicationDb["query"]>>;
 
 const {
   op_create_params_list,
@@ -17,6 +20,7 @@ const {
   op_add_null_param,
   op_add_real_param,
   op_add_text_param,
+  op_get_row_batch,
   op_execute_application_sql,
   op_query_application_sql,
   op_execute_nft_sql,
@@ -41,6 +45,132 @@ class Sql implements ISql {
 export const sql = (statement: string, params?: Record<string, any>) => {
   return new Sql(statement, params);
 };
+
+class Rows implements IRows {
+  [key: number]: never;
+  columnNames: Readonly<string[]>;
+  rows: never[];
+  rowStreamId: number;
+  private loadedAll: boolean = false;
+
+  get allRows(): Promise<never[]> {
+    return this.ensureAllRowsLoaded().then(() => {
+      return this.rows;
+    });
+  }
+
+  get length(): Promise<number> {
+    return this.ensureAllRowsLoaded().then(() => {
+      return this.rows.length;
+    });
+  }
+
+  constructor(firstRow: SqlValue[], rowStreamId: number) {
+    this.rowStreamId = rowStreamId;
+    const columnNames: string[] = [];
+    this.rows = [];
+
+    // First row also contains column names
+    const processedFirstRow: Record<
+      string,
+      null | number | string | Uint8Array
+    > = {};
+    for (let i = 0; i < firstRow.length; i++) {
+      const sqlValue = firstRow[i];
+      if (typeof sqlValue === "object" && "IntegerWithName" in sqlValue) {
+        const [name, value] = sqlValue.IntegerWithName;
+        columnNames.push(name);
+        processedFirstRow[name] = value;
+      } else if (typeof sqlValue === "object" && "RealWithName" in sqlValue) {
+        const [name, value] = sqlValue.RealWithName;
+        columnNames.push(name);
+        processedFirstRow[name] = value;
+      } else if (typeof sqlValue === "object" && "TextWithName" in sqlValue) {
+        const [name, value] = sqlValue.TextWithName;
+        columnNames.push(name);
+        processedFirstRow[name] = value;
+      } else if (typeof sqlValue === "object" && "BlobWithName" in sqlValue) {
+        const [name, value] = sqlValue.BlobWithName;
+        columnNames.push(name);
+        processedFirstRow[name] = value;
+      } else if (typeof sqlValue === "object" && "NullWithName" in sqlValue) {
+        const name = sqlValue.NullWithName;
+        columnNames.push(name);
+        processedFirstRow[name] = null;
+      } else {
+        throw new TypeError("Expected first row to contain column names");
+      }
+    }
+
+    const finalColumnNames = Object.freeze(columnNames);
+    this.columnNames = finalColumnNames;
+
+    this.rows.push(processedFirstRow as never);
+  }
+
+  [Symbol.iterator](): Iterator<never> {
+    return this.rows[Symbol.iterator]() as Iterator<never>;
+  }
+
+  getAtIndex(index: number): never {
+    return this.rows[index];
+  }
+
+  map<U>(callbackfn: (value: never, index: number, array: never[]) => U): U[] {
+    return this.rows.map(callbackfn);
+  }
+
+  filter(
+    predicate: (value: never, index: number, array: never[]) => boolean
+  ): never[] {
+    return this.rows.filter(predicate);
+  }
+
+  forEach(
+    callbackfn: (value: never, index: number, array: never[]) => void
+  ): void {
+    this.rows.forEach(callbackfn);
+  }
+
+  private async ensureAllRowsLoaded() {
+    while (!this.loadedAll) {
+      await this.loadMoreRows();
+    }
+  }
+
+  private async loadMoreRows() {
+    const rows = await op_get_row_batch(this.rowStreamId);
+
+    if (rows.length === 0) {
+      this.loadedAll = true;
+    }
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const result: Record<string, null | number | string | Uint8Array> = {};
+      for (let j = 0; j < row.length; j++) {
+        const sqlValue = row[j];
+
+        if (typeof sqlValue === "object" && "Integer" in sqlValue) {
+          result[this.columnNames[j]] = sqlValue.Integer;
+        } else if (typeof sqlValue === "object" && "Real" in sqlValue) {
+          result[this.columnNames[j]] = sqlValue.Real;
+        } else if (typeof sqlValue === "object" && "Text" in sqlValue) {
+          result[this.columnNames[j]] = sqlValue.Text;
+        } else if (typeof sqlValue === "object" && "Blob" in sqlValue) {
+          result[this.columnNames[j]] = sqlValue.Blob;
+        } else if (sqlValue === "Null") {
+          result[this.columnNames[j]] = null;
+        } else {
+          throw new TypeError(
+            "Only expected Integer, Real, Text, Blob, or Null"
+          );
+        }
+      }
+      this.rows.push(result as never);
+    }
+  }
+}
 
 function prepareParamList(values: any[]) {
   const paramListId = op_create_params_list();
@@ -124,14 +254,14 @@ class ApplicationSqlStore implements IApplicationDb {
     return this as unknown as IApplicationDb;
   }
 
-  async query(sql: string | Sql): ReturnType<IApplicationDb["query"]> {
-    let rows;
+  async query(sql: string | Sql): Promise<Rows> {
+    let result;
 
     if (typeof sql === "string") {
-      rows = await op_query_application_sql(this.name, sql);
+      result = await op_query_application_sql(this.name, sql);
     } else if (sql instanceof Sql) {
       if (Object.keys(sql.params).length === 0) {
-        rows = await op_query_application_sql(this.name, sql.statement);
+        result = await op_query_application_sql(this.name, sql.statement);
       } else {
         // Sort the keys by length in descending order to avoid partial matches
         const paramKeys = Object.keys(sql.params)
@@ -153,7 +283,7 @@ class ApplicationSqlStore implements IApplicationDb {
           paramKeys.map((key) => sql.params[key])
         );
 
-        rows = await op_query_application_sql(
+        result = await op_query_application_sql(
           this.name,
           preparedStatement,
           paramListId
@@ -163,67 +293,92 @@ class ApplicationSqlStore implements IApplicationDb {
       throw new TypeError("Expected `sql` to be a string or Sql object");
     }
 
+    if (!result) {
+      throw new Error("TODO: This shouldn't error... fix later");
+    }
+
+    const [firstRow, _rowStreamId] = result;
+
     const columnNames: string[] = [];
 
     // First row also contains column names
-    const firstRow: Record<string, null | number | string | Uint8Array> = {};
-    for (let i = 0; i < rows[0].length; i++) {
-      const sqlValue = rows[0][i];
+    const processedFirstRow: Record<
+      string,
+      null | number | string | Uint8Array
+    > = {};
+    for (let i = 0; i < firstRow.length; i++) {
+      const sqlValue = firstRow[i];
       if (typeof sqlValue === "object" && "IntegerWithName" in sqlValue) {
         const [name, value] = sqlValue.IntegerWithName;
         columnNames.push(name);
-        firstRow[name] = value;
+        processedFirstRow[name] = value;
       } else if (typeof sqlValue === "object" && "RealWithName" in sqlValue) {
         const [name, value] = sqlValue.RealWithName;
         columnNames.push(name);
-        firstRow[name] = value;
+        processedFirstRow[name] = value;
       } else if (typeof sqlValue === "object" && "TextWithName" in sqlValue) {
         const [name, value] = sqlValue.TextWithName;
         columnNames.push(name);
-        firstRow[name] = value;
+        processedFirstRow[name] = value;
       } else if (typeof sqlValue === "object" && "BlobWithName" in sqlValue) {
         const [name, value] = sqlValue.BlobWithName;
         columnNames.push(name);
-        firstRow[name] = value;
+        processedFirstRow[name] = value;
       } else if (typeof sqlValue === "object" && "NullWithName" in sqlValue) {
         const name = sqlValue.NullWithName;
         columnNames.push(name);
-        firstRow[name] = null;
+        processedFirstRow[name] = null;
       } else {
         throw new TypeError("Expected first row to contain column names");
       }
     }
 
     const results: Record<string, null | number | string | Uint8Array>[] = [];
-    results.push(firstRow);
+    results.push(processedFirstRow);
 
-    // TODO: Reworks rows code to use generators
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const result: Record<string, null | number | string | Uint8Array> = {};
-      for (let j = 0; j < row.length; j++) {
-        const sqlValue = row[j];
+    // // TODO: Reworks rows code to use generators
+    // for (let i = 1; i < rows.length; i++) {
+    //   const row = rows[i];
+    //   const result: Record<string, null | number | string | Uint8Array> = {};
+    //   for (let j = 0; j < row.length; j++) {
+    //     const sqlValue = row[j];
 
-        if (typeof sqlValue === "object" && "Integer" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Integer;
-        } else if (typeof sqlValue === "object" && "Real" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Real;
-        } else if (typeof sqlValue === "object" && "Text" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Text;
-        } else if (typeof sqlValue === "object" && "Blob" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Blob;
-        } else if (sqlValue === "Null") {
-          result[columnNames[j]] = null;
-        } else {
-          throw new TypeError(
-            "Only expected Integer, Real, Text, Blob, or Null"
-          );
+    //     if (typeof sqlValue === "object" && "Integer" in sqlValue) {
+    //       result[columnNames[j]] = sqlValue.Integer;
+    //     } else if (typeof sqlValue === "object" && "Real" in sqlValue) {
+    //       result[columnNames[j]] = sqlValue.Real;
+    //     } else if (typeof sqlValue === "object" && "Text" in sqlValue) {
+    //       result[columnNames[j]] = sqlValue.Text;
+    //     } else if (typeof sqlValue === "object" && "Blob" in sqlValue) {
+    //       result[columnNames[j]] = sqlValue.Blob;
+    //     } else if (sqlValue === "Null") {
+    //       result[columnNames[j]] = null;
+    //     } else {
+    //       throw new TypeError(
+    //         "Only expected Integer, Real, Text, Blob, or Null"
+    //       );
+    //     }
+    //   }
+    //   results.push(result);
+    // }
+
+    let rows = new Rows(firstRow, _rowStreamId);
+
+    let rowsProxy = new Proxy(rows, {
+      get: (target, prop) => {
+        if (typeof prop === "string") {
+          const index = parseInt(prop);
+
+          if (!isNaN(index)) {
+            return rows.getAtIndex(index);
+          }
         }
-      }
-      results.push(result);
-    }
 
-    return results as never;
+        return Reflect.get(target, prop);
+      },
+    });
+
+    return rowsProxy;
   }
 }
 

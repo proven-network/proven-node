@@ -3,12 +3,14 @@ mod migrations;
 mod nft;
 mod param_list_manager;
 mod personal;
+mod query_results_manager;
 
 pub use application::*;
 pub use migrations::sql_migrations_ext;
 pub use nft::*;
 pub use param_list_manager::*;
 pub use personal::*;
+pub use query_results_manager::*;
 
 use deno_core::extension;
 
@@ -31,6 +33,7 @@ extension!(
         op_add_real_param,
         op_add_text_param,
         op_create_params_list,
+        op_get_row_batch,
     ],
     esm_entry_point = "proven:sql",
     esm = [

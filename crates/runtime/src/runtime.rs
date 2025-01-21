@@ -4,6 +4,7 @@ use crate::extensions::{
     sql_application_ext, sql_nft_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
     ApplicationSqlConnectionManager, ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput,
     NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
+    SqlQueryResultsManager,
 };
 use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
@@ -362,6 +363,7 @@ where
 
         // Set the sql stores for the storage extension
         self.runtime.put(SqlParamListManager::new())?;
+        self.runtime.put(SqlQueryResultsManager::new())?;
 
         self.runtime.put(ApplicationSqlConnectionManager::new(
             self.application_sql_store

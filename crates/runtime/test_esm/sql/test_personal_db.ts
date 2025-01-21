@@ -16,6 +16,11 @@ export const test = async () => {
   }
 
   const results = await PERSONAL_DB.query("SELECT * FROM users");
+  const result = results[0];
 
-  return results[0].email;
+  if (!result) {
+    throw new Error("Expected row not found");
+  }
+
+  return result.email;
 };

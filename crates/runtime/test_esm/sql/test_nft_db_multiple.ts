@@ -6,13 +6,26 @@ const NFT_DB = getNftDb("myAppDb").migrate(
 const RESOURCE_ADDR = "resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi";
 
 export const test = async () => {
-  const email = "alice@example.com";
   const nftId = 420;
 
-  const affectedRows = await NFT_DB.execute(
+  let affectedRows = await NFT_DB.execute(
     RESOURCE_ADDR,
     nftId,
-    sql("INSERT INTO users (email) VALUES (:email)", { email })
+    sql("INSERT INTO users (email) VALUES (:email)", {
+      email: "alice@example.com",
+    })
+  );
+
+  if (affectedRows !== 1) {
+    throw new Error("Unexpected number of affected rows");
+  }
+
+  affectedRows = await NFT_DB.execute(
+    RESOURCE_ADDR,
+    nftId,
+    sql("INSERT INTO users (email) VALUES (:email)", {
+      email: "bob@example.com",
+    })
   );
 
   if (affectedRows !== 1) {
@@ -24,11 +37,10 @@ export const test = async () => {
     nftId,
     "SELECT * FROM users"
   );
-  const result = results[0];
 
-  if (!result) {
-    throw new Error("Expected row not found");
+  if ((await results.length) !== 2) {
+    throw new Error("Unexpected number of rows");
   }
 
-  return result.email;
+  return results;
 };

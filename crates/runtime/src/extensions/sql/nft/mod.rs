@@ -270,6 +270,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_nft_db_multiple() {
+        let mut runtime_options = create_runtime_options("sql/test_nft_db_multiple", "test");
+
+        runtime_options
+            .radix_nft_verifier
+            .insert_ownership(
+                "account_123",
+                "resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi",
+                "#420#",
+            )
+            .await;
+
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: Some(vec!["account_123".to_string()]),
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        let execution_result = result.unwrap();
+        assert!(execution_result.output.is_array());
+        assert_eq!(execution_result.output.as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
     async fn test_nft_db_nft_doesnt_exist() {
         let runtime_options = create_runtime_options("sql/test_nft_db", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();

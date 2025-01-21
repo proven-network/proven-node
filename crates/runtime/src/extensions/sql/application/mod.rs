@@ -4,7 +4,7 @@
 
 mod connection_manager;
 
-use super::SqlParamListManager;
+use super::{SqlParamListManager, SqlQueryResultsManager};
 pub use connection_manager::ApplicationSqlConnectionManager;
 
 use std::cell::RefCell;
@@ -78,7 +78,7 @@ async fn op_query_application_sql<ASS: SqlStore1>(
     #[string] db_name: String,
     #[string] query: String,
     param_list_id_opt: Option<u32>,
-) -> Result<Vec<Vec<SqlParam>>, ASS::Error> {
+) -> Result<Option<(Vec<SqlParam>, u32)>, ASS::Error> {
     let connection_manager = {
         loop {
             let connection_manager = {
@@ -100,7 +100,7 @@ async fn op_query_application_sql<ASS: SqlStore1>(
     state.borrow_mut().put(connection_manager);
     let connection = connection_result?;
 
-    let stream = if let Some(param_list_id) = param_list_id_opt {
+    let mut stream = if let Some(param_list_id) = param_list_id_opt {
         let mut params_lists = {
             loop {
                 let params_lists = {
@@ -127,7 +127,32 @@ async fn op_query_application_sql<ASS: SqlStore1>(
         connection.query(query, vec![]).await?
     };
 
-    Ok(stream.collect().await)
+    if let Some(first_row) = stream.next().await {
+        let mut query_results_manager = {
+            loop {
+                let query_results_manager = {
+                    let mut borrowed_state = state.borrow_mut();
+
+                    borrowed_state.try_take::<SqlQueryResultsManager>()
+                };
+
+                match query_results_manager {
+                    Some(store) => break store,
+                    None => {
+                        tokio::task::yield_now().await;
+                    }
+                }
+            }
+        };
+
+        let row_stream_id = query_results_manager.save_stream(stream);
+
+        state.borrow_mut().put(query_results_manager);
+
+        Ok(Some((first_row, row_stream_id)))
+    } else {
+        Ok(None)
+    }
 }
 
 extension!(
@@ -160,5 +185,26 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().output, "alice@example.com");
+    }
+
+    #[tokio::test]
+    async fn test_application_db_multiple() {
+        let runtime_options = create_runtime_options("sql/test_application_db_multiple", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        let execution_result = result.unwrap();
+        assert!(execution_result.output.is_array());
+        assert_eq!(execution_result.output.as_array().unwrap().len(), 2);
     }
 }

@@ -196,6 +196,7 @@ declare namespace Deno {
       op_add_null_param: (paramListId: number) => void;
       op_add_real_param: (paramListId: number, value: number) => void;
       op_add_text_param: (paramListId: number, value: string) => void;
+      op_get_row_batch: (rowStreamId: number) => Promise<SqlValue[][]>;
       op_execute_application_sql: (
         storeName: string,
         query: string,
@@ -205,7 +206,7 @@ declare namespace Deno {
         storeName: string,
         query: string,
         paramListId?: number
-      ) => Promise<SqlValue[][]>;
+      ) => Promise<[SqlValue[], number]>;
       op_execute_nft_sql: (
         storeName: string,
         resourceAddress: string,
