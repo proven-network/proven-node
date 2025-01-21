@@ -466,7 +466,6 @@ mod tests {
 
     use crate::test_utils::create_runtime_options;
 
-    use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
     use serde_json::json;
 
     // spawn in std::thread to avoid rustyscript panic
@@ -534,40 +533,6 @@ mod tests {
             let result = Runtime::new(options).unwrap().execute(request);
 
             assert!(result.is_err());
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_manifest_ed25519_signing() {
-        run_in_thread(|| {
-            let options =
-                create_runtime_options("test_runtime_execute_manifest_ed25519_signing", "test");
-
-            let request = create_execution_request();
-            let result = Runtime::new(options).unwrap().execute(request);
-
-            assert!(result.is_ok());
-
-            let result = result.unwrap();
-            let output = result.output.as_array().unwrap();
-
-            // First element is compiled notorized transaction in hex
-            assert!(output[0].is_string());
-            let raw_transaction: RawNotarizedTransaction =
-                hex::decode(output[0].as_str().unwrap()).unwrap().into();
-
-            let parse_result =
-                radix_transactions::model::NotarizedTransactionV1::from_raw(&raw_transaction);
-
-            assert!(parse_result.is_ok());
-
-            // Second element is notary public key in hex
-            assert!(output[1].is_string());
-
-            // Third element is signer public key in hex
-            assert!(output[2].is_string());
-
-            // TODO: Check signatures
         });
     }
 }

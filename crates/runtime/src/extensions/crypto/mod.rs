@@ -105,6 +105,7 @@ mod tests {
     use crate::{ExecutionRequest, Worker};
 
     use ed25519_dalek::Verifier;
+    use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
 
     #[tokio::test]
     async fn test_ed25519_signing() {
@@ -142,6 +143,45 @@ mod tests {
 
         let message = "Hello, world!";
         assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_ed25519_signing_radix_transaction() {
+        let runtime_options =
+            create_runtime_options("crypto/test_ed25519_signing_radix_transaction", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: None,
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        let result = result.unwrap();
+        let output = result.output.as_array().unwrap();
+
+        // First element is compiled notorized transaction in hex
+        assert!(output[0].is_string());
+        let raw_transaction: RawNotarizedTransaction =
+            hex::decode(output[0].as_str().unwrap()).unwrap().into();
+
+        let parse_result =
+            radix_transactions::model::NotarizedTransactionV1::from_raw(&raw_transaction);
+
+        assert!(parse_result.is_ok());
+
+        // Second element is notary public key in hex
+        assert!(output[1].is_string());
+
+        // Third element is signer public key in hex
+        assert!(output[2].is_string());
+
+        // TODO: Check signatures
     }
 
     #[tokio::test]
