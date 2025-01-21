@@ -19,7 +19,7 @@
     "@proven-network/handler": "0.0.6",
     "@proven-network/kv": "0.0.7",
     "@proven-network/session": "^0.0.1",
-    "@proven-network/sql": "0.0.15",
+    "@proven-network/sql": "0.0.16",
     "@rollup/plugin-commonjs": "^28.0.2",
     "@rollup/plugin-node-resolve": "16.0.0",
     "@types/jest": "^29.5.14",

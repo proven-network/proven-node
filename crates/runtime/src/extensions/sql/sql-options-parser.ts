@@ -1,14 +1,9 @@
 import {
-  getApplicationDb as _getApplicationDb,
-  getNftDb as _getNftDb,
-  getPersonalDb as _getPersonalDb,
-  sql as _sql,
+  SqlRows,
+  SqlDatabase,
+  SqlNftDatabase,
+  SqlStatement,
 } from "@proven-network/sql";
-
-type IApplicationDb = ReturnType<typeof _getApplicationDb>;
-type INftDb = ReturnType<typeof _getNftDb>;
-type IPersonalDb = ReturnType<typeof _getPersonalDb>;
-type ISql = ReturnType<typeof _sql>;
 
 const {
   op_migrate_application_sql,
@@ -16,7 +11,7 @@ const {
   op_migrate_personal_sql,
 } = globalThis.Deno.core.ops;
 
-class Sql implements ISql {
+class Sql implements SqlStatement<any> {
   readonly statement: string;
   readonly params: Record<string, null | number | string | Uint8Array>;
 
@@ -36,18 +31,18 @@ export const sql = (
   return new Sql(statement, params);
 };
 
-class ApplicationSqlStore implements IApplicationDb {
+class ApplicationSqlStore implements SqlDatabase {
   name: string;
 
   constructor(name: string) {
     this.name = name;
   }
 
-  execute(): ReturnType<IApplicationDb["execute"]> {
+  execute(): Promise<number> {
     throw new Error("`execute` must be run inside a handler function");
   }
 
-  migrate(sql: string): IApplicationDb {
+  migrate(sql: string) {
     if (typeof sql === "string") {
       op_migrate_application_sql(this.name, sql);
 
@@ -57,7 +52,7 @@ class ApplicationSqlStore implements IApplicationDb {
     }
   }
 
-  query(): ReturnType<IApplicationDb["query"]> {
+  query(): Promise<SqlRows<any>> {
     throw new Error("`query` must be run inside a handler function");
   }
 }
@@ -70,7 +65,7 @@ export const getApplicationDb = (name: string) => {
   return new ApplicationSqlStore(name);
 };
 
-class NftSqlStore implements INftDb {
+class NftSqlStore implements SqlNftDatabase {
   name: string;
 
   constructor(name: string) {
@@ -81,11 +76,11 @@ class NftSqlStore implements INftDb {
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
     _sql: string | Sql
-  ): ReturnType<INftDb["execute"]> {
+  ): Promise<number> {
     throw new Error("`execute` must be run inside a handler function");
   }
 
-  migrate(sql: string): INftDb {
+  migrate(sql: string) {
     if (typeof sql === "string") {
       op_migrate_nft_sql(this.name, sql);
 
@@ -99,7 +94,7 @@ class NftSqlStore implements INftDb {
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
     _sql: string | Sql
-  ): ReturnType<INftDb["query"]> {
+  ): Promise<SqlRows<any>> {
     throw new Error("`query` must be run inside a handler function");
   }
 }
@@ -112,18 +107,18 @@ export const getNftDb = (name: string) => {
   return new NftSqlStore(name);
 };
 
-class PersonalSqlStore implements IPersonalDb {
+class PersonalSqlStore implements SqlDatabase {
   name: string;
 
   constructor(name: string) {
     this.name = name;
   }
 
-  execute(_sql: string | Sql): ReturnType<IPersonalDb["execute"]> {
+  execute(_sql: string | Sql): Promise<number> {
     throw new Error("`execute` must be run inside a handler function");
   }
 
-  migrate(sql: string): IPersonalDb {
+  migrate(sql: string) {
     if (typeof sql === "string") {
       op_migrate_personal_sql(this.name, sql);
 
@@ -133,7 +128,7 @@ class PersonalSqlStore implements IPersonalDb {
     }
   }
 
-  query(_sql: string | Sql): ReturnType<IPersonalDb["query"]> {
+  query(_sql: string | Sql): Promise<SqlRows<any>> {
     throw new Error("`query` must be run inside a handler function");
   }
 }

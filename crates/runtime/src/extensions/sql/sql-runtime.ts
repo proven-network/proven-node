@@ -1,17 +1,9 @@
 import {
-  getApplicationDb as _getApplicationDb,
-  getNftDb as _getNftDb,
-  getPersonalDb as _getPersonalDb,
-  sql as _sql,
+  SqlRows,
+  SqlDatabase,
+  SqlNftDatabase,
+  SqlStatement,
 } from "@proven-network/sql";
-
-type UnwrapPromise<T> = T extends Promise<infer U> ? U : T;
-
-type IApplicationDb = ReturnType<typeof _getApplicationDb>;
-type INftDb = ReturnType<typeof _getNftDb>;
-type IPersonalDb = ReturnType<typeof _getPersonalDb>;
-type ISql = ReturnType<typeof _sql>;
-type IRows = UnwrapPromise<ReturnType<IApplicationDb["query"]>>;
 
 const {
   op_create_params_list,
@@ -29,7 +21,7 @@ const {
   op_query_personal_sql,
 } = globalThis.Deno.core.ops;
 
-class Sql implements ISql {
+class Statement implements SqlStatement<any> {
   readonly statement: string;
   readonly params: Record<string, null | number | string | Uint8Array>;
 
@@ -43,10 +35,12 @@ class Sql implements ISql {
 }
 
 export const sql = (statement: string, params?: Record<string, any>) => {
-  return new Sql(statement, params);
+  return new Statement(statement, params);
 };
 
-class Rows implements IRows {
+class Rows
+  implements SqlRows<Record<string, null | number | string | Uint8Array>>
+{
   [key: number]: never;
   columnNames: Readonly<string[]>;
   rows: never[];
@@ -198,17 +192,17 @@ function prepareParamList(values: any[]) {
   return paramListId;
 }
 
-class ApplicationSqlStore implements IApplicationDb {
+class ApplicationSqlStore implements SqlDatabase {
   name: string;
 
   constructor(name: string) {
     this.name = name;
   }
 
-  async execute(sql: string | Sql): ReturnType<IApplicationDb["execute"]> {
+  async execute(sql: string | Statement) {
     if (typeof sql === "string") {
       return await op_execute_application_sql(this.name, sql);
-    } else if (sql instanceof Sql) {
+    } else if (sql instanceof Statement) {
       let affectedRows;
       if (Object.keys(sql.params).length === 0) {
         affectedRows = await op_execute_application_sql(
@@ -249,17 +243,17 @@ class ApplicationSqlStore implements IApplicationDb {
     }
   }
 
-  migrate(_sql: string): IApplicationDb {
+  migrate(_sql: string) {
     // No-op at runtime (migrations are collated at options-parse time)
-    return this as unknown as IApplicationDb;
+    return this;
   }
 
-  async query(sql: string | Sql): Promise<Rows> {
+  async query(sql: string | Statement): Promise<Rows> {
     let result;
 
     if (typeof sql === "string") {
       result = await op_query_application_sql(this.name, sql);
-    } else if (sql instanceof Sql) {
+    } else if (sql instanceof Statement) {
       if (Object.keys(sql.params).length === 0) {
         result = await op_query_application_sql(this.name, sql.statement);
       } else {
@@ -350,7 +344,7 @@ function prepareNftId(nftId: number | string | Uint8Array) {
   }
 }
 
-class NftSqlStore implements INftDb {
+class NftSqlStore implements SqlNftDatabase {
   name: string;
 
   constructor(name: string) {
@@ -360,8 +354,8 @@ class NftSqlStore implements INftDb {
   async execute(
     resourceAddress: string,
     nftId: number | string | Uint8Array,
-    sql: string | Sql
-  ): ReturnType<INftDb["execute"]> {
+    sql: string | Statement
+  ) {
     let result;
 
     if (typeof sql === "string") {
@@ -371,7 +365,7 @@ class NftSqlStore implements INftDb {
         prepareNftId(nftId),
         sql
       );
-    } else if (sql instanceof Sql) {
+    } else if (sql instanceof Statement) {
       if (Object.keys(sql.params).length === 0) {
         result = await op_execute_nft_sql(
           this.name,
@@ -425,7 +419,7 @@ class NftSqlStore implements INftDb {
     return result.Ok;
   }
 
-  migrate(_sql: string): INftDb {
+  migrate(_sql: string) {
     // No-op at runtime (migrations are collated at options-parse time)
     return this;
   }
@@ -433,7 +427,7 @@ class NftSqlStore implements INftDb {
   async query(
     resourceAddress: string,
     nftId: number | string | Uint8Array,
-    sql: string | Sql
+    sql: string | Statement
   ): Promise<Rows> {
     let result;
 
@@ -444,7 +438,7 @@ class NftSqlStore implements INftDb {
         prepareNftId(nftId),
         sql
       );
-    } else if (sql instanceof Sql) {
+    } else if (sql instanceof Statement) {
       if (Object.keys(sql.params).length === 0) {
         result = await op_query_nft_sql(
           this.name,
@@ -529,19 +523,19 @@ export const getNftDb = (name: string) => {
   return new NftSqlStore(name);
 };
 
-class PersonalSqlStore implements IPersonalDb {
+class PersonalSqlStore implements SqlDatabase {
   name: string;
 
   constructor(name: string) {
     this.name = name;
   }
 
-  async execute(sql: string | Sql): ReturnType<IApplicationDb["execute"]> {
+  async execute(sql: string | Statement) {
     let result;
 
     if (typeof sql === "string") {
       result = await op_execute_personal_sql(this.name, sql);
-    } else if (sql instanceof Sql) {
+    } else if (sql instanceof Statement) {
       if (Object.keys(sql.params).length === 0) {
         result = await op_execute_personal_sql(this.name, sql.statement);
       } else {
@@ -582,17 +576,17 @@ class PersonalSqlStore implements IPersonalDb {
     return result.Ok;
   }
 
-  migrate(_sql: string): IPersonalDb {
+  migrate(_sql: string) {
     // No-op at runtime (migrations are collated at options-parse time)
-    return this as unknown as IPersonalDb;
+    return this;
   }
 
-  async query(sql: string | Sql): Promise<Rows> {
+  async query(sql: string | Statement): Promise<Rows> {
     let result;
 
     if (typeof sql === "string") {
       result = await op_query_personal_sql(this.name, sql);
-    } else if (sql instanceof Sql) {
+    } else if (sql instanceof Statement) {
       if (Object.keys(sql.params).length === 0) {
         result = await op_query_personal_sql(this.name, sql.statement);
       } else {
