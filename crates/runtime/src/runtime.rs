@@ -1,10 +1,9 @@
 use crate::extensions::{
-    console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext, openai_ext,
-    radixdlt_babylon_gateway_api_ext, radixdlt_radix_engine_toolkit_ext, session_ext,
-    sql_application_ext, sql_nft_ext, sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext,
-    ApplicationSqlConnectionManager, ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput,
-    NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
-    SqlQueryResultsManager,
+    babylon_gateway_api_ext, console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext,
+    openai_ext, radix_engine_toolkit_ext, session_ext, sql_application_ext, sql_nft_ext,
+    sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext, ApplicationSqlConnectionManager,
+    ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput, NftSqlConnectionManager,
+    PersonalSqlConnectionManager, SessionState, SqlParamListManager, SqlQueryResultsManager,
 };
 use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
@@ -249,8 +248,8 @@ where
                 sql_nft_ext::init_ops::<NSS::Scoped, RNV>(),
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),
-                radixdlt_babylon_gateway_api_ext::init_ops_and_esm(),
-                radixdlt_radix_engine_toolkit_ext::init_ops_and_esm(),
+                babylon_gateway_api_ext::init_ops_and_esm(),
+                radix_engine_toolkit_ext::init_ops_and_esm(),
                 uuid_ext::init_ops_and_esm(),
                 zod_ext::init_ops_and_esm(),
             ],
@@ -509,80 +508,6 @@ mod tests {
             let result = Runtime::new(options).unwrap().execute(request);
 
             assert!(result.is_ok());
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_gateway_api_sdk() {
-        run_in_thread(|| {
-            let options = create_runtime_options("test_runtime_execute_gateway_api_sdk", "test");
-
-            let request = create_execution_request();
-            let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
-
-            // RadixNetwork.Mainnet should be 1
-            assert_eq!(execution_result.output, 1);
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_radix_engine_toolkit() {
-        run_in_thread(|| {
-            let options =
-                create_runtime_options("test_runtime_execute_radix_engine_toolkit", "test");
-
-            let request = create_execution_request();
-            let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
-
-            assert!(execution_result.output.is_string());
-            assert_eq!(
-                execution_result.output,
-                r#"{"version":"2.1.0-dev1","scryptoDependency":{"kind":"Version","value":"1.2.0"}}"#
-            );
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_uuid() {
-        run_in_thread(|| {
-            let options = create_runtime_options("test_runtime_execute_uuid", "test");
-
-            let request = create_execution_request();
-            let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
-
-            assert!(execution_result.output.is_string());
-            assert_eq!(execution_result.output.as_str().unwrap().len(), 36);
-        });
-    }
-
-    #[tokio::test]
-    async fn test_runtime_execute_zod() {
-        run_in_thread(|| {
-            let options = create_runtime_options("test_runtime_execute_zod", "test");
-
-            let request = create_execution_request();
-            let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
-
-            assert!(execution_result.output.is_object());
-            assert_eq!(execution_result.output.as_object().unwrap().len(), 2);
-            assert_eq!(
-                execution_result
-                    .output
-                    .as_object()
-                    .unwrap()
-                    .get("name")
-                    .unwrap(),
-                "Alice"
-            );
-            assert_eq!(
-                execution_result
-                    .output
-                    .as_object()
-                    .unwrap()
-                    .get("age")
-                    .unwrap(),
-                30
-            );
         });
     }
 

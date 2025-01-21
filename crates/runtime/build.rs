@@ -122,7 +122,7 @@ fn main() {
         // Do this replacement first to avoid cycle
         let intermediate = content.replace(
             "@radixdlt/babylon-gateway-api-sdk",
-            "proven:raw_radixdlt_babylon_gateway_api",
+            "proven:raw_babylon_gateway_api",
         );
         let replaced = replace_esm_imports(&intermediate);
         fs::write(path, replaced).expect("Failed to write file");

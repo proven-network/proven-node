@@ -21,12 +21,41 @@ pub fn op_get_gateway_origin(#[state] state: &GatewayDetailsState) -> String {
 }
 
 extension!(
-    radixdlt_babylon_gateway_api_ext,
+    babylon_gateway_api_ext,
     ops = [op_get_gateway_network_id, op_get_gateway_origin],
-    esm_entry_point = "proven:radixdlt_babylon_gateway_api",
+    esm_entry_point = "proven:babylon_gateway_api",
     esm = [
-        "proven:raw_radixdlt_babylon_gateway_api" =
+        "proven:raw_babylon_gateway_api" =
             "vendor/@radixdlt/babylon-gateway-api-sdk/index.mjs",
-        "proven:radixdlt_babylon_gateway_api" = "src/extensions/gateway_api_sdk/gateway-api-sdk.js",
+        "proven:babylon_gateway_api" = "src/extensions/gateway_api_sdk/gateway-api-sdk.js",
     ],
 );
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::create_runtime_options;
+    use crate::{ExecutionRequest, Worker};
+
+    #[tokio::test]
+    async fn test_gateway_api_sdk() {
+        let runtime_options =
+            create_runtime_options("gateway_api_sdk/test_gateway_api_sdk", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest {
+            accounts: None,
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            identity: Some("test_identity".to_string()),
+        };
+
+        let result = worker.execute(request).await;
+
+        assert!(result.is_ok());
+
+        let execution_result = result.unwrap();
+
+        // RadixNetwork.Mainnet should be 1
+        assert_eq!(execution_result.output, 1);
+    }
+}

@@ -30,12 +30,12 @@ static IMPORT_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
 
     map.insert(
         "@radixdlt/babylon-gateway-api-sdk".to_string(),
-        "proven:radixdlt_babylon_gateway_api".to_string(),
+        "proven:babylon_gateway_api".to_string(),
     );
 
     map.insert(
         "@radixdlt/radix-engine-toolkit".to_string(),
-        "proven:radixdlt_radix_engine_toolkit".to_string(),
+        "proven:radix_engine_toolkit".to_string(),
     );
 
     map.insert("openai".to_string(), "proven:openai".to_string());
@@ -88,7 +88,7 @@ mod tests {
         let output = replace_esm_imports(input);
 
         assert!(output.contains(r#"from "proven:uuid""#));
-        assert!(output.contains(r#"from "proven:radixdlt_babylon_gateway_api""#));
+        assert!(output.contains(r#"from "proven:babylon_gateway_api""#));
         assert!(output.contains(r#"const uuid = "uuid""#)); // Unchanged
         assert!(output.contains(r#"from "proven:uuid/v4""#));
     }
