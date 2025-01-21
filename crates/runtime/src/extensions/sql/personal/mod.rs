@@ -4,7 +4,7 @@
 
 mod connection_manager;
 
-use super::SqlParamListManager;
+use super::{SqlParamListManager, SqlQueryResultsManager};
 pub use connection_manager::PersonalSqlConnectionManager;
 
 use std::cell::RefCell;
@@ -102,7 +102,7 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
     #[string] db_name: String,
     #[string] query: String,
     param_list_id_opt: Option<u32>,
-) -> Result<PersonalDbResponse<Vec<Vec<SqlParam>>>, PSS::Error> {
+) -> Result<PersonalDbResponse<Option<(Vec<SqlParam>, u32)>>, PSS::Error> {
     let connection_manager_opt = {
         loop {
             let connection_manager_opt = {
@@ -132,12 +132,11 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
         return Ok(PersonalDbResponse::NoPersonalContext);
     }?;
 
-    if let Some(param_list_id) = param_list_id_opt {
+    let mut stream = if let Some(param_list_id) = param_list_id_opt {
         let mut params_lists = {
             loop {
                 let params_lists = {
                     let mut borrowed_state = state.borrow_mut();
-
                     borrowed_state.try_take::<SqlParamListManager>()
                 };
 
@@ -151,16 +150,36 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
         };
 
         let params = params_lists.finialize_param_list(param_list_id);
-
         state.borrow_mut().put(params_lists);
 
-        let result = connection.query(query, params).await?;
-        let collected = result.collect::<Vec<Vec<SqlParam>>>().await;
-        Ok(PersonalDbResponse::Ok(collected))
+        connection.query(query, params).await?
     } else {
-        let result = connection.query(query, vec![]).await?;
-        let collected = result.collect::<Vec<Vec<SqlParam>>>().await;
-        Ok(PersonalDbResponse::Ok(collected))
+        connection.query(query, vec![]).await?
+    };
+
+    if let Some(first_row) = stream.next().await {
+        let mut query_results_manager = {
+            loop {
+                let query_results_manager = {
+                    let mut borrowed_state = state.borrow_mut();
+                    borrowed_state.try_take::<SqlQueryResultsManager>()
+                };
+
+                match query_results_manager {
+                    Some(store) => break store,
+                    None => {
+                        tokio::task::yield_now().await;
+                    }
+                }
+            }
+        };
+
+        let row_stream_id = query_results_manager.save_stream(stream);
+        state.borrow_mut().put(query_results_manager);
+
+        Ok(PersonalDbResponse::Ok(Some((first_row, row_stream_id))))
+    } else {
+        Ok(PersonalDbResponse::Ok(None))
     }
 }
 

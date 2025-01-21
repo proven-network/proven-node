@@ -230,7 +230,7 @@ declare namespace Deno {
         storeName: string,
         query: string,
         paramListId?: number
-      ) => Promise<PersonalDbResponse<SqlValue[][]>>;
+      ) => Promise<PersonalDbResponse<[SqlValue[], number]>>;
       op_migrate_application_sql: (
         storeName: string,
         query: string

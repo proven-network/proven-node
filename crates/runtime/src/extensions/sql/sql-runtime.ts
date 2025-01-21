@@ -587,7 +587,7 @@ class PersonalSqlStore implements IPersonalDb {
     return this as unknown as IPersonalDb;
   }
 
-  async query(sql: string | Sql): ReturnType<IApplicationDb["query"]> {
+  async query(sql: string | Sql): Promise<Rows> {
     let result;
 
     if (typeof sql === "string") {
@@ -626,75 +626,33 @@ class PersonalSqlStore implements IPersonalDb {
       throw new TypeError("Expected `sql` to be a string or Sql object");
     }
 
-    let rows;
-
     if (result === "NoPersonalContext") {
       throw new Error("No personal context");
-    } else {
-      rows = result.Ok;
     }
 
-    const columnNames: string[] = [];
-
-    // First row also contains column names
-    const firstRow: Record<string, null | number | string | Uint8Array> = {};
-    for (let i = 0; i < rows[0].length; i++) {
-      const sqlValue = rows[0][i];
-      if (typeof sqlValue === "object" && "IntegerWithName" in sqlValue) {
-        const [name, value] = sqlValue.IntegerWithName;
-        columnNames.push(name);
-        firstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "RealWithName" in sqlValue) {
-        const [name, value] = sqlValue.RealWithName;
-        columnNames.push(name);
-        firstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "TextWithName" in sqlValue) {
-        const [name, value] = sqlValue.TextWithName;
-        columnNames.push(name);
-        firstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "BlobWithName" in sqlValue) {
-        const [name, value] = sqlValue.BlobWithName;
-        columnNames.push(name);
-        firstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "NullWithName" in sqlValue) {
-        const name = sqlValue.NullWithName;
-        columnNames.push(name);
-        firstRow[name] = null;
-      } else {
-        throw new TypeError("Expected first row to contain column names");
-      }
+    if (!result.Ok) {
+      throw new Error("No results returned");
     }
 
-    const results: Record<string, null | number | string | Uint8Array>[] = [];
-    results.push(firstRow);
+    const [firstRow, rowStreamId] = result.Ok;
 
-    // TODO: Reworks rows code to use generators
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const result: Record<string, null | number | string | Uint8Array> = {};
-      for (let j = 0; j < row.length; j++) {
-        const sqlValue = row[j];
+    let rows = new Rows(firstRow, rowStreamId);
 
-        if (typeof sqlValue === "object" && "Integer" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Integer;
-        } else if (typeof sqlValue === "object" && "Real" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Real;
-        } else if (typeof sqlValue === "object" && "Text" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Text;
-        } else if (typeof sqlValue === "object" && "Blob" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Blob;
-        } else if (sqlValue === "Null") {
-          result[columnNames[j]] = null;
-        } else {
-          throw new TypeError(
-            "Only expected Integer, Real, Text, Blob, or Null"
-          );
+    let rowsProxy = new Proxy(rows, {
+      get: (target, prop) => {
+        if (typeof prop === "string") {
+          const index = parseInt(prop);
+
+          if (!isNaN(index)) {
+            return rows.getAtIndex(index);
+          }
         }
-      }
-      results.push(result);
-    }
 
-    return results as never;
+        return Reflect.get(target, prop);
+      },
+    });
+
+    return rowsProxy;
   }
 }
 
