@@ -297,72 +297,9 @@ class ApplicationSqlStore implements IApplicationDb {
       throw new Error("TODO: This shouldn't error... fix later");
     }
 
-    const [firstRow, _rowStreamId] = result;
+    const [firstRow, rowStreamId] = result;
 
-    const columnNames: string[] = [];
-
-    // First row also contains column names
-    const processedFirstRow: Record<
-      string,
-      null | number | string | Uint8Array
-    > = {};
-    for (let i = 0; i < firstRow.length; i++) {
-      const sqlValue = firstRow[i];
-      if (typeof sqlValue === "object" && "IntegerWithName" in sqlValue) {
-        const [name, value] = sqlValue.IntegerWithName;
-        columnNames.push(name);
-        processedFirstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "RealWithName" in sqlValue) {
-        const [name, value] = sqlValue.RealWithName;
-        columnNames.push(name);
-        processedFirstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "TextWithName" in sqlValue) {
-        const [name, value] = sqlValue.TextWithName;
-        columnNames.push(name);
-        processedFirstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "BlobWithName" in sqlValue) {
-        const [name, value] = sqlValue.BlobWithName;
-        columnNames.push(name);
-        processedFirstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "NullWithName" in sqlValue) {
-        const name = sqlValue.NullWithName;
-        columnNames.push(name);
-        processedFirstRow[name] = null;
-      } else {
-        throw new TypeError("Expected first row to contain column names");
-      }
-    }
-
-    const results: Record<string, null | number | string | Uint8Array>[] = [];
-    results.push(processedFirstRow);
-
-    // // TODO: Reworks rows code to use generators
-    // for (let i = 1; i < rows.length; i++) {
-    //   const row = rows[i];
-    //   const result: Record<string, null | number | string | Uint8Array> = {};
-    //   for (let j = 0; j < row.length; j++) {
-    //     const sqlValue = row[j];
-
-    //     if (typeof sqlValue === "object" && "Integer" in sqlValue) {
-    //       result[columnNames[j]] = sqlValue.Integer;
-    //     } else if (typeof sqlValue === "object" && "Real" in sqlValue) {
-    //       result[columnNames[j]] = sqlValue.Real;
-    //     } else if (typeof sqlValue === "object" && "Text" in sqlValue) {
-    //       result[columnNames[j]] = sqlValue.Text;
-    //     } else if (typeof sqlValue === "object" && "Blob" in sqlValue) {
-    //       result[columnNames[j]] = sqlValue.Blob;
-    //     } else if (sqlValue === "Null") {
-    //       result[columnNames[j]] = null;
-    //     } else {
-    //       throw new TypeError(
-    //         "Only expected Integer, Real, Text, Blob, or Null"
-    //       );
-    //     }
-    //   }
-    //   results.push(result);
-    // }
-
-    let rows = new Rows(firstRow, _rowStreamId);
+    let rows = new Rows(firstRow, rowStreamId);
 
     let rowsProxy = new Proxy(rows, {
       get: (target, prop) => {
@@ -497,7 +434,7 @@ class NftSqlStore implements INftDb {
     resourceAddress: string,
     nftId: number | string | Uint8Array,
     sql: string | Sql
-  ): ReturnType<INftDb["query"]> {
+  ): Promise<Rows> {
     let result;
 
     if (typeof sql === "string") {
@@ -548,8 +485,6 @@ class NftSqlStore implements INftDb {
       throw new TypeError("Expected `sql` to be a string or Sql object");
     }
 
-    let rows;
-
     if (result === "NftDoesNotExist") {
       throw new Error("NFT does not exist");
     } else if (result === "NoAccountsInContext") {
@@ -558,71 +493,31 @@ class NftSqlStore implements INftDb {
       throw new Error(
         `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
       );
-    } else {
-      rows = result.Ok;
     }
 
-    const columnNames: string[] = [];
-
-    // First row also contains column names
-    const firstRow: Record<string, null | number | string | Uint8Array> = {};
-    for (let i = 0; i < rows[0].length; i++) {
-      const sqlValue = rows[0][i];
-      if (typeof sqlValue === "object" && "IntegerWithName" in sqlValue) {
-        const [name, value] = sqlValue.IntegerWithName;
-        columnNames.push(name);
-        firstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "RealWithName" in sqlValue) {
-        const [name, value] = sqlValue.RealWithName;
-        columnNames.push(name);
-        firstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "TextWithName" in sqlValue) {
-        const [name, value] = sqlValue.TextWithName;
-        columnNames.push(name);
-        firstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "BlobWithName" in sqlValue) {
-        const [name, value] = sqlValue.BlobWithName;
-        columnNames.push(name);
-        firstRow[name] = value;
-      } else if (typeof sqlValue === "object" && "NullWithName" in sqlValue) {
-        const name = sqlValue.NullWithName;
-        columnNames.push(name);
-        firstRow[name] = null;
-      } else {
-        throw new TypeError("Expected first row to contain column names");
-      }
+    if (!result.Ok) {
+      throw new Error("TODO: This shouldn't error... fix later");
     }
 
-    const results: Record<string, null | number | string | Uint8Array>[] = [];
-    results.push(firstRow);
+    const [firstRow, rowStreamId] = result.Ok;
 
-    // TODO: Reworks rows code to use generators
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const result: Record<string, null | number | string | Uint8Array> = {};
-      for (let j = 0; j < row.length; j++) {
-        const sqlValue = row[j];
+    let rows = new Rows(firstRow, rowStreamId);
 
-        if (typeof sqlValue === "object" && "Integer" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Integer;
-        } else if (typeof sqlValue === "object" && "Real" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Real;
-        } else if (typeof sqlValue === "object" && "Text" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Text;
-        } else if (typeof sqlValue === "object" && "Blob" in sqlValue) {
-          result[columnNames[j]] = sqlValue.Blob;
-        } else if (sqlValue === "Null") {
-          result[columnNames[j]] = null;
-        } else {
-          throw new TypeError(
-            "Only expected Integer, Real, Text, Blob, or Null"
-          );
+    let rowsProxy = new Proxy(rows, {
+      get: (target, prop) => {
+        if (typeof prop === "string") {
+          const index = parseInt(prop);
+
+          if (!isNaN(index)) {
+            return rows.getAtIndex(index);
+          }
         }
-      }
-      results.push(result);
-    }
 
-    return results as never;
+        return Reflect.get(target, prop);
+      },
+    });
+
+    return rowsProxy;
   }
 }
 

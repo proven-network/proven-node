@@ -5,7 +5,7 @@
 mod connection_manager;
 mod error;
 
-use super::SqlParamListManager;
+use super::{SqlParamListManager, SqlQueryResultsManager};
 pub use connection_manager::NftSqlConnectionManager;
 use error::Error;
 
@@ -137,7 +137,7 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] query: String,
     param_list_id_opt: Option<u32>,
-) -> Result<NftDbResponse<Vec<Vec<SqlParam>>>, Error<NSS::Error, RNV::Error>> {
+) -> Result<NftDbResponse<Option<(Vec<SqlParam>, u32)>>, Error<NSS::Error, RNV::Error>> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftDbResponse::NoAccountsInContext),
@@ -189,12 +189,11 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
         return Ok(NftDbResponse::NoAccountsInContext);
     }?;
 
-    if let Some(param_list_id) = param_list_id_opt {
+    let mut stream = if let Some(param_list_id) = param_list_id_opt {
         let mut params_lists = {
             loop {
                 let params_lists = {
                     let mut borrowed_state = state.borrow_mut();
-
                     borrowed_state.try_take::<SqlParamListManager>()
                 };
 
@@ -208,22 +207,42 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
         };
 
         let params = params_lists.finialize_param_list(param_list_id);
-
         state.borrow_mut().put(params_lists);
 
-        let result = connection
+        connection
             .query(query, params)
             .await
-            .map_err(Error::SqlStore)?;
-        let collected = result.collect::<Vec<Vec<SqlParam>>>().await;
-        Ok(NftDbResponse::Ok(collected))
+            .map_err(Error::SqlStore)?
     } else {
-        let result = connection
+        connection
             .query(query, vec![])
             .await
-            .map_err(Error::SqlStore)?;
-        let collected = result.collect::<Vec<Vec<SqlParam>>>().await;
-        Ok(NftDbResponse::Ok(collected))
+            .map_err(Error::SqlStore)?
+    };
+
+    if let Some(first_row) = stream.next().await {
+        let mut query_results_manager = {
+            loop {
+                let query_results_manager = {
+                    let mut borrowed_state = state.borrow_mut();
+                    borrowed_state.try_take::<SqlQueryResultsManager>()
+                };
+
+                match query_results_manager {
+                    Some(store) => break store,
+                    None => {
+                        tokio::task::yield_now().await;
+                    }
+                }
+            }
+        };
+
+        let row_stream_id = query_results_manager.save_stream(stream);
+        state.borrow_mut().put(query_results_manager);
+
+        Ok(NftDbResponse::Ok(Some((first_row, row_stream_id))))
+    } else {
+        Ok(NftDbResponse::Ok(None))
     }
 }
 

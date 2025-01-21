@@ -220,7 +220,7 @@ declare namespace Deno {
         nftId: string,
         query: string,
         paramListId?: number
-      ) => Promise<NftDbResponse<SqlValue[][]>>;
+      ) => Promise<NftDbResponse<[SqlValue[], number]>>;
       op_execute_personal_sql: (
         storeName: string,
         query: string,
