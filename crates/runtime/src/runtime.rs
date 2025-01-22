@@ -26,6 +26,7 @@ use proven_store::{Store2, Store3};
 use radix_common::network::NetworkDefinition;
 use rustyscript::js_value::Value;
 use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
+use serde_json::json;
 use tokio::time::Instant;
 
 static DEFAULT_HEAP_SIZE: u16 = 32;
@@ -341,26 +342,50 @@ where
                 (
                     HandlerType::Http,
                     ExecutionRequest::Http {
-                        body: _,
+                        body,
                         dapp_definition_address,
-                        method: _,
+                        method,
+                        path,
                     },
-                ) => (None, vec![], dapp_definition_address, None),
+                ) => {
+                    let mut args = vec![];
+
+                    args.push(json!(method.as_str()));
+                    args.push(json!(path));
+
+                    if let Some(body) = body {
+                        args.push(json!(body));
+                    }
+
+                    (None, args, dapp_definition_address, None)
+                }
                 (
                     HandlerType::Http,
                     ExecutionRequest::HttpWithUserContext {
                         accounts,
-                        body: _,
+                        body,
                         dapp_definition_address,
                         identity,
-                        method: _,
+                        method,
+                        path,
                     },
-                ) => (
-                    Some(accounts),
-                    vec![],
-                    dapp_definition_address,
-                    Some(identity),
-                ),
+                ) => {
+                    let mut args = vec![];
+
+                    args.push(json!(method.as_str()));
+                    args.push(json!(path));
+
+                    if let Some(body) = body {
+                        args.push(json!(body));
+                    }
+
+                    (
+                        Some(accounts),
+                        args,
+                        dapp_definition_address,
+                        Some(identity),
+                    )
+                }
                 (
                     HandlerType::RadixEvent,
                     ExecutionRequest::RadixEvent {

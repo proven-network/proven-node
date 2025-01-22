@@ -19,6 +19,9 @@ type Output =
 type EncodedUint8Array = number[];
 
 type HttpRequest = {
+  body?: Uint8Array;
+  method: string;
+  path: string;
   pathVariables: Record<string, string>;
 };
 
@@ -70,8 +73,31 @@ export const runWithOptions = (fn: (..._args: Input[]) => Promise<Output>) => {
   };
 };
 
-export const runOnHttp = (fn: (request: HttpRequest) => Promise<Output>) => {
-  return async (request: HttpRequest) => {
+export const runOnHttp = (
+  fn: (request: HttpRequest) => Promise<Output>,
+  options: { path: string }
+) => {
+  return async (method: string, currentPath: string, body?: Uint8Array) => {
+    const optionsPath = options.path;
+
+    // Extract path variables
+    const pathVariables: Record<string, string> = {};
+    const templateSegments = optionsPath.split("/").filter(Boolean);
+    const currentSegments = currentPath.split("/").filter(Boolean);
+    templateSegments.forEach((template, index) => {
+      if (template.startsWith(":")) {
+        const varName = template.slice(1);
+        pathVariables[varName] = currentSegments[index];
+      }
+    });
+
+    const request: HttpRequest = {
+      body: body ? new Uint8Array(body) : undefined,
+      method,
+      path: currentPath,
+      pathVariables,
+    };
+
     return fn(request).then(async (handlerOutput) => {
       const uint8ArrayJsonPaths: string[] = [];
       const output = await encodeUint8ArrayInObject(

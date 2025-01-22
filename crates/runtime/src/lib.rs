@@ -46,6 +46,9 @@ pub enum ExecutionRequest {
 
         /// The HTTP method.
         method: Method,
+
+        /// The path of the HTTP request.
+        path: String,
     },
     /// A request received from an HTTP endpoint with authenticated user context.
     HttpWithUserContext {
@@ -63,6 +66,9 @@ pub enum ExecutionRequest {
 
         /// The HTTP method.
         method: Method,
+
+        /// The path of the HTTP request.
+        path: String,
     },
     /// A request created to respond to an event from the Radix network.
     RadixEvent {

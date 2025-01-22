@@ -174,6 +174,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_http_handler() {
+        let runtime_options = create_runtime_options("handler/test_http_handler", "test");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest::Http {
+            body: Some(Bytes::from_static(b"Hello, world!")),
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            method: http::Method::GET,
+            path: "/test/420".to_string(),
+        };
+
+        let result = worker.execute(request).await;
+
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
+
+        let execution_result = result.unwrap();
+
+        assert_eq!(execution_result.output, "420");
+    }
+
+    #[tokio::test]
     async fn test_return_bytes() {
         let runtime_options = create_runtime_options("handler/test_return_bytes", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
