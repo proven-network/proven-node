@@ -335,17 +335,32 @@ where
     pub fn execute(&mut self, execution_request: ExecutionRequest) -> Result<ExecutionResult> {
         let start = Instant::now();
 
+        #[allow(clippy::match_same_arms)]
         let (accounts, args, dapp_definition_address, identity) =
             match (&self.handler_type, execution_request) {
                 (
                     HandlerType::Http,
                     ExecutionRequest::Http {
+                        body: _,
+                        dapp_definition_address,
+                        method: _,
+                    },
+                ) => (None, vec![], dapp_definition_address, None),
+                (
+                    HandlerType::Http,
+                    ExecutionRequest::HttpWithUserContext {
                         accounts,
-                        args,
+                        body: _,
                         dapp_definition_address,
                         identity,
+                        method: _,
                     },
-                ) => (accounts, args, dapp_definition_address, identity),
+                ) => (
+                    Some(accounts),
+                    vec![],
+                    dapp_definition_address,
+                    Some(identity),
+                ),
                 (
                     HandlerType::RadixEvent,
                     ExecutionRequest::RadixEvent {

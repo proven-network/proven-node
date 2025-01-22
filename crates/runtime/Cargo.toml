@@ -12,6 +12,7 @@ deno_core = { workspace = true }
 deno_permissions = { workspace = true }
 ed25519-dalek = { workspace = true }
 futures = { workspace = true }
+http = { workspace = true }
 proven-locks = { workspace = true }
 proven-radix-nft-verifier = { workspace = true }
 proven-sql = { workspace = true }

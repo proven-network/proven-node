@@ -7225,6 +7225,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "hex",
+ "http 1.2.0",
  "proven-locks",
  "proven-locks-memory",
  "proven-radix-nft-verifier",

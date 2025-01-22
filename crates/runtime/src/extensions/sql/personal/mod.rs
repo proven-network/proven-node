@@ -202,11 +202,12 @@ mod tests {
         let runtime_options = create_runtime_options("sql/test_personal_db", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Http {
-            accounts: Some(vec![]),
-            args: vec![],
+        let request = ExecutionRequest::HttpWithUserContext {
+            accounts: vec![],
+            body: None,
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: Some("my_identity".to_string()),
+            identity: "my_identity".to_string(),
+            method: http::Method::GET,
         };
 
         let result = worker.execute(request).await;
@@ -223,10 +224,9 @@ mod tests {
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
-            accounts: None,
-            args: vec![],
+            body: None,
             dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: None,
+            method: http::Method::GET,
         };
 
         let result = worker.execute(request).await;

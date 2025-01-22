@@ -28,6 +28,8 @@ pub use worker::*;
 
 use std::time::Duration;
 
+use bytes::Bytes;
+use http::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -36,17 +38,31 @@ use serde_json::Value;
 pub enum ExecutionRequest {
     /// A request received from an HTTP endpoint.
     Http {
-        /// The accounts of the executing user.
-        accounts: Option<Vec<String>>,
-
-        /// The arguments to the handler.
-        args: Vec<Value>,
+        /// The body of the HTTP if there was one.
+        body: Option<Bytes>,
 
         /// The address of the dApp definition.
         dapp_definition_address: String,
 
-        /// The identity of the executing user.
-        identity: Option<String>,
+        /// The HTTP method.
+        method: Method,
+    },
+    /// A request received from an HTTP endpoint with authenticated user context.
+    HttpWithUserContext {
+        /// The accounts of the authenticated user.
+        accounts: Vec<String>,
+
+        /// The body of the HTTP if there was one.
+        body: Option<Bytes>,
+
+        /// The address of the dApp definition.
+        dapp_definition_address: String,
+
+        /// The identity of the authenticated user.
+        identity: String,
+
+        /// The HTTP method.
+        method: Method,
     },
     /// A request created to respond to an event from the Radix network.
     RadixEvent {
