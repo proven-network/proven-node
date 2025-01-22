@@ -19,8 +19,7 @@ impl Preprocessor {
 
         let module = Module::new(
             "preprocessor.ts",
-            std::fs::read_to_string("src/extensions/preprocess/preprocess.ts")
-                .unwrap()
+            include_str!("extensions/preprocess/preprocess.ts")
                 .replace("\"typescript\"", "'proven:typescript'"),
         );
 

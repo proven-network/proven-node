@@ -4,10 +4,12 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 
+mod application_http;
 mod error;
 mod rpc;
 mod sessions;
 
+use application_http::create_application_http_router;
 pub use error::{Error, Result};
 use sessions::create_session_router;
 
@@ -122,14 +124,17 @@ where
             .merge(http_rpc_router)
             .merge(websocket_router);
 
-        // TODO: this should handle application requests
-        let fallback_router = Router::new();
+        let application_http_router = create_application_http_router(
+            self.application_manager.clone(),
+            self.runtime_pool_manager.clone(),
+            self.session_manager.clone(),
+        );
 
         let primary_hostnames = self.primary_hostnames.clone();
         let shutdown_token = self.shutdown_token.clone();
         let handle = self.task_tracker.spawn(async move {
             let https_handle = http_server
-                .start(primary_hostnames, primary_router, fallback_router)
+                .start(primary_hostnames, primary_router, application_http_router)
                 .await?;
 
             tokio::select! {

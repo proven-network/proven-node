@@ -46,6 +46,7 @@ mod tests {
             identity: "my_identity".to_string(),
             method: http::Method::GET,
             path: "/test".to_string(),
+            query: None,
         };
 
         let result = worker.execute(request).await;
@@ -70,6 +71,7 @@ mod tests {
             dapp_definition_address: "dapp_definition_address".to_string(),
             method: http::Method::GET,
             path: "/test".to_string(),
+            query: None,
         };
 
         let result = worker.execute(request).await;
@@ -94,6 +96,7 @@ mod tests {
             identity: "my_identity".to_string(),
             method: http::Method::GET,
             path: "/test".to_string(),
+            query: None,
         };
 
         let result = worker.execute(request).await;
@@ -129,6 +132,7 @@ mod tests {
             dapp_definition_address: "dapp_definition_address".to_string(),
             method: http::Method::GET,
             path: "/test".to_string(),
+            query: None,
         };
 
         let result = worker.execute(request).await;

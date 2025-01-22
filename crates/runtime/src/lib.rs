@@ -49,6 +49,9 @@ pub enum ExecutionRequest {
 
         /// The path of the HTTP request.
         path: String,
+
+        /// The query string of the HTTP request.
+        query: Option<String>,
     },
     /// A request received from an HTTP endpoint with authenticated user context.
     HttpWithUserContext {
@@ -69,6 +72,9 @@ pub enum ExecutionRequest {
 
         /// The path of the HTTP request.
         path: String,
+
+        /// The query string of the HTTP request.
+        query: Option<String>,
     },
     /// A request created to respond to an event from the Radix network.
     RadixEvent {

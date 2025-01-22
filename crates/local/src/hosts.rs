@@ -1,17 +1,17 @@
 use std::fs::read_to_string;
 use std::path::Path;
 
-pub fn check_hosts_file() -> bool {
+pub fn check_hosts_file(hostname: &str) -> bool {
     #[cfg(target_family = "unix")]
     {
         let hosts_path = Path::new("/etc/hosts");
-        check_host_entry(hosts_path, "proven.local")
+        check_host_entry(hosts_path, hostname)
     }
 
     #[cfg(target_family = "windows")]
     {
         let hosts_path = Path::new(r"C:\Windows\System32\drivers\etc\hosts");
-        check_host_entry(hosts_path, "proven.local")
+        check_host_entry(hosts_path, hostname)
     }
 }
 

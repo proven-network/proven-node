@@ -44,7 +44,8 @@ async fn main() -> Result<()> {
             .finish(),
     )?;
 
-    if !check_hosts_file() {
+    // Check /etc/hosts to ensure proven.local is mapped to 127.0.0.1
+    if !check_hosts_file("proven.local") {
         error!("proven.local is not configured in hosts file");
         #[cfg(target_family = "unix")]
         error!(
@@ -104,11 +105,9 @@ async fn main() -> Result<()> {
     })
     .await;
 
-    // Check /etc/hosts to ensure proven.local is mapped to 127.0.0.1
-
     let core = Core::new(CoreOptions {
         application_manager,
-        primary_hostnames: vec!["http://proven.local".to_string()]
+        primary_hostnames: vec![format!("proven.local:{}", args.port)]
             .into_iter()
             .collect(),
         runtime_pool_manager,
@@ -120,7 +119,7 @@ async fn main() -> Result<()> {
 
     let core_handle = core.start(http_server)?;
 
-    info!("listening on http://{http_sock_addr}");
+    info!("listening on http://proven.local:{}", args.port);
 
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {

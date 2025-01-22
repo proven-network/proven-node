@@ -183,6 +183,7 @@ mod tests {
             dapp_definition_address: "dapp_definition_address".to_string(),
             method: http::Method::GET,
             path: "/test/420".to_string(),
+            query: None,
         };
 
         let result = worker.execute(request).await;

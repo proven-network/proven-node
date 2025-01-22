@@ -346,12 +346,19 @@ where
                         dapp_definition_address,
                         method,
                         path,
+                        query,
                     },
                 ) => {
                     let mut args = vec![];
 
                     args.push(json!(method.as_str()));
                     args.push(json!(path));
+
+                    if let Some(query) = query {
+                        args.push(json!(query));
+                    } else {
+                        args.push(json!(null));
+                    }
 
                     if let Some(body) = body {
                         args.push(json!(body));
@@ -368,12 +375,19 @@ where
                         identity,
                         method,
                         path,
+                        query,
                     },
                 ) => {
                     let mut args = vec![];
 
                     args.push(json!(method.as_str()));
                     args.push(json!(path));
+
+                    if let Some(query) = query {
+                        args.push(json!(query));
+                    } else {
+                        args.push(json!(null));
+                    }
 
                     if let Some(body) = body {
                         args.push(json!(body));

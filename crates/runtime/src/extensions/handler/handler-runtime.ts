@@ -23,6 +23,7 @@ type HttpRequest = {
   method: string;
   path: string;
   pathVariables: Record<string, string>;
+  queryVariables: Record<string, string>;
 };
 
 function encodeUint8Array(data: Uint8Array): EncodedUint8Array {
@@ -77,7 +78,12 @@ export const runOnHttp = (
   fn: (request: HttpRequest) => Promise<Output>,
   options: { path: string }
 ) => {
-  return async (method: string, currentPath: string, body?: Uint8Array) => {
+  return async (
+    method: string,
+    currentPath: string,
+    query?: string,
+    body?: Uint8Array
+  ) => {
     const optionsPath = options.path;
 
     // Extract path variables
@@ -91,11 +97,19 @@ export const runOnHttp = (
       }
     });
 
+    // Extract query parameters
+    const queryParams = new URLSearchParams(query);
+    const queryVariables: Record<string, string> = {};
+    queryParams.forEach((value, key) => {
+      queryVariables[key] = value;
+    });
+
     const request: HttpRequest = {
       body: body ? new Uint8Array(body) : undefined,
       method,
       path: currentPath,
       pathVariables,
+      queryVariables,
     };
 
     return fn(request).then(async (handlerOutput) => {
