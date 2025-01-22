@@ -13,6 +13,7 @@ use crate::preprocessor::Preprocessor;
 use crate::schema::SCHEMA_WHLIST;
 use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult, Result};
 
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -195,44 +196,48 @@ where
             .handler_options
             .get(handler_name.as_ref().unwrap_or(&"__default__".to_string()));
 
-        let handler_type = match handler_options {
-            Some(HandlerOptions::Http(_)) => HandlerType::Http,
-            Some(HandlerOptions::RadixEvent(_)) => HandlerType::RadixEvent,
-            Some(HandlerOptions::Rpc(_)) | None => HandlerType::Rpc,
-        };
-
-        let timeout_millis =
-            handler_options.map_or(
-                DEFAULT_TIMEOUT_MILLIS,
-                |handler_options| match handler_options {
-                    HandlerOptions::Http(options) => {
-                        options.timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS)
-                    }
-                    HandlerOptions::RadixEvent(options) => {
-                        options.timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS)
-                    }
-                    HandlerOptions::Rpc(options) => {
-                        options.timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS)
-                    }
-                },
-            );
-
-        let max_heap_mbs =
-            handler_options.map_or(DEFAULT_HEAP_SIZE, |handler_options| match handler_options {
-                HandlerOptions::Http(options) => options.max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
-                HandlerOptions::RadixEvent(options) => {
-                    options.max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE)
-                }
-                HandlerOptions::Rpc(options) => options.max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
-            });
-
-        let allowed_web_origins = handler_options
-            .map(|handler_options| match handler_options {
-                HandlerOptions::Http(options) => options.allowed_web_origins.clone(),
-                HandlerOptions::RadixEvent(options) => options.allowed_web_origins.clone(),
-                HandlerOptions::Rpc(options) => options.allowed_web_origins.clone(),
-            })
-            .unwrap_or_default();
+        let (allowed_web_origins, handler_type, max_heap_mbs, timeout_millis) =
+            match handler_options {
+                Some(HandlerOptions::Http {
+                    allowed_web_origins,
+                    max_heap_mbs,
+                    timeout_millis,
+                    ..
+                }) => (
+                    allowed_web_origins.clone(),
+                    HandlerType::Http,
+                    max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
+                    timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS),
+                ),
+                Some(HandlerOptions::RadixEvent {
+                    allowed_web_origins,
+                    max_heap_mbs,
+                    timeout_millis,
+                    ..
+                }) => (
+                    allowed_web_origins.clone(),
+                    HandlerType::RadixEvent,
+                    max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
+                    timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS),
+                ),
+                Some(HandlerOptions::Rpc {
+                    allowed_web_origins,
+                    max_heap_mbs,
+                    timeout_millis,
+                    ..
+                }) => (
+                    allowed_web_origins.clone(),
+                    HandlerType::Rpc,
+                    max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
+                    timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS),
+                ),
+                None => (
+                    HashSet::new(),
+                    HandlerType::Rpc,
+                    DEFAULT_HEAP_SIZE,
+                    DEFAULT_TIMEOUT_MILLIS,
+                ),
+            };
 
         let allowlist_web_permissions = OriginAllowlistWebPermissions::new();
         allowlist_web_permissions.allow_origin(&gateway_origin); // Always allow Radix gateway origin

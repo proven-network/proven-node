@@ -129,7 +129,9 @@ impl OptionsParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::options::{HandlerOptions, HttpHandlerOptions, RpcHandlerOptions};
+    use crate::options::HandlerOptions;
+
+    use std::collections::HashSet;
 
     #[test]
     fn test_new_options_parser() {
@@ -195,19 +197,21 @@ mod tests {
 
         assert_eq!(
             options.handler_options.get("handler").unwrap(),
-            &HandlerOptions::Http(HttpHandlerOptions {
+            &HandlerOptions::Http {
+                allowed_web_origins: HashSet::new(),
                 path: Some("/hello".to_string()),
+                max_heap_mbs: None,
                 timeout_millis: Some(5000),
-                ..Default::default()
-            })
+            }
         );
 
         assert_eq!(
             options.handler_options.get("__default__").unwrap(),
-            &HandlerOptions::Rpc(RpcHandlerOptions {
+            &HandlerOptions::Rpc {
+                allowed_web_origins: HashSet::new(),
+                max_heap_mbs: None,
                 timeout_millis: Some(2000),
-                ..Default::default()
-            })
+            }
         );
     }
 

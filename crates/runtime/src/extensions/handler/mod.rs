@@ -1,10 +1,9 @@
 #![allow(clippy::inline_always)]
 #![allow(clippy::significant_drop_tightening)]
 
-use crate::options::{
-    HandlerOptions, HttpHandlerOptions, ModuleHandlerOptions, RadixEventHandlerOptions,
-    RpcHandlerOptions,
-};
+use crate::options::{HandlerOptions, ModuleHandlerOptions};
+
+use std::collections::HashSet;
 
 use deno_core::{extension, op2};
 use serde::Deserialize;
@@ -17,6 +16,29 @@ pub struct HandlerOutput {
     pub uint8_array_json_paths: Vec<String>,
 }
 
+fn create_new_handler_options(handler_type: &str) -> HandlerOptions {
+    match handler_type {
+        "http" => HandlerOptions::Http {
+            allowed_web_origins: HashSet::new(),
+            max_heap_mbs: None,
+            path: None,
+            timeout_millis: None,
+        },
+        "radix_event" => HandlerOptions::RadixEvent {
+            allowed_web_origins: HashSet::new(),
+            event_binding: None,
+            max_heap_mbs: None,
+            timeout_millis: None,
+        },
+        "rpc" => HandlerOptions::Rpc {
+            allowed_web_origins: HashSet::new(),
+            max_heap_mbs: None,
+            timeout_millis: None,
+        },
+        _ => unreachable!(),
+    }
+}
+
 #[op2(fast)]
 pub fn op_add_allowed_origin(
     #[state] state: &mut ModuleHandlerOptions,
@@ -24,23 +46,23 @@ pub fn op_add_allowed_origin(
     #[string] handler_name: String,
     #[string] origin: &str,
 ) {
-    let options = state.entry(handler_name).or_insert(match handler_type {
-        "http" => HandlerOptions::Http(HttpHandlerOptions::default()),
-        "radix_event" => HandlerOptions::RadixEvent(RadixEventHandlerOptions::default()),
-        "rpc" => HandlerOptions::Rpc(RpcHandlerOptions::default()),
-        _ => unreachable!(),
-    });
+    let options = state
+        .entry(handler_name)
+        .or_insert_with(|| create_new_handler_options(handler_type));
 
     match options {
-        HandlerOptions::Http(options) => options
-            .allowed_web_origins
-            .insert(origin.to_ascii_lowercase()),
-        HandlerOptions::RadixEvent(options) => options
-            .allowed_web_origins
-            .insert(origin.to_ascii_lowercase()),
-        HandlerOptions::Rpc(options) => options
-            .allowed_web_origins
-            .insert(origin.to_ascii_lowercase()),
+        HandlerOptions::Http {
+            allowed_web_origins,
+            ..
+        }
+        | HandlerOptions::RadixEvent {
+            allowed_web_origins,
+            ..
+        }
+        | HandlerOptions::Rpc {
+            allowed_web_origins,
+            ..
+        } => allowed_web_origins.insert(origin.to_ascii_lowercase()),
     };
 }
 
@@ -53,17 +75,14 @@ pub fn op_set_memory_option(
 ) {
     let value = std::cmp::max(value, 32); // 32 MB is the minimum heap size
 
-    let options = state.entry(handler_name).or_insert(match handler_type {
-        "http" => HandlerOptions::Http(HttpHandlerOptions::default()),
-        "radix_event" => HandlerOptions::RadixEvent(RadixEventHandlerOptions::default()),
-        "rpc" => HandlerOptions::Rpc(RpcHandlerOptions::default()),
-        _ => unreachable!(),
-    });
+    let options = state
+        .entry(handler_name)
+        .or_insert_with(|| create_new_handler_options(handler_type));
 
     match options {
-        HandlerOptions::Http(options) => options.max_heap_mbs.replace(value),
-        HandlerOptions::RadixEvent(options) => options.max_heap_mbs.replace(value),
-        HandlerOptions::Rpc(options) => options.max_heap_mbs.replace(value),
+        HandlerOptions::Http { max_heap_mbs, .. }
+        | HandlerOptions::RadixEvent { max_heap_mbs, .. }
+        | HandlerOptions::Rpc { max_heap_mbs, .. } => max_heap_mbs.replace(value),
     };
 }
 
@@ -78,10 +97,10 @@ pub fn op_set_path_option(
 
     let options = state
         .entry(handler_name)
-        .or_insert(HandlerOptions::Http(HttpHandlerOptions::default()));
+        .or_insert_with(|| create_new_handler_options(handler_type));
 
     match options {
-        HandlerOptions::Http(options) => options.path.replace(value),
+        HandlerOptions::Http { path, .. } => path.replace(value),
         _ => unreachable!(),
     };
 }
@@ -93,17 +112,14 @@ pub fn op_set_timeout_option(
     #[string] handler_name: String,
     value: u32,
 ) {
-    let options = state.entry(handler_name).or_insert(match handler_type {
-        "http" => HandlerOptions::Http(HttpHandlerOptions::default()),
-        "radix_event" => HandlerOptions::RadixEvent(RadixEventHandlerOptions::default()),
-        "rpc" => HandlerOptions::Rpc(RpcHandlerOptions::default()),
-        _ => unreachable!(),
-    });
+    let options = state
+        .entry(handler_name)
+        .or_insert_with(|| create_new_handler_options(handler_type));
 
     match options {
-        HandlerOptions::Http(options) => options.timeout_millis.replace(value),
-        HandlerOptions::RadixEvent(options) => options.timeout_millis.replace(value),
-        HandlerOptions::Rpc(options) => options.timeout_millis.replace(value),
+        HandlerOptions::Http { timeout_millis, .. }
+        | HandlerOptions::RadixEvent { timeout_millis, .. }
+        | HandlerOptions::Rpc { timeout_millis, .. } => timeout_millis.replace(value),
     };
 }
 

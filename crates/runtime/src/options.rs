@@ -1,13 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct HttpHandlerOptions {
-    pub allowed_web_origins: HashSet<String>,
-    pub max_heap_mbs: Option<u16>,
-    pub path: Option<String>,
-    pub timeout_millis: Option<u32>,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code)] // TODO: Remove this once used
 pub enum EventBinding {
@@ -16,26 +8,25 @@ pub enum EventBinding {
     EventFromEmitter(String, String),
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct RadixEventHandlerOptions {
-    pub allowed_web_origins: HashSet<String>,
-    pub event_binding: Option<EventBinding>,
-    pub max_heap_mbs: Option<u16>,
-    pub timeout_millis: Option<u32>,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct RpcHandlerOptions {
-    pub allowed_web_origins: HashSet<String>,
-    pub max_heap_mbs: Option<u16>,
-    pub timeout_millis: Option<u32>,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HandlerOptions {
-    Http(HttpHandlerOptions),
-    RadixEvent(RadixEventHandlerOptions),
-    Rpc(RpcHandlerOptions),
+    Http {
+        allowed_web_origins: HashSet<String>,
+        max_heap_mbs: Option<u16>,
+        path: Option<String>,
+        timeout_millis: Option<u32>,
+    },
+    RadixEvent {
+        allowed_web_origins: HashSet<String>,
+        event_binding: Option<EventBinding>,
+        max_heap_mbs: Option<u16>,
+        timeout_millis: Option<u32>,
+    },
+    Rpc {
+        allowed_web_origins: HashSet<String>,
+        max_heap_mbs: Option<u16>,
+        timeout_millis: Option<u32>,
+    },
 }
 
 // Maps each invokable export to its options.
