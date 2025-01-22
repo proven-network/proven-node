@@ -71,6 +71,8 @@ macro_rules! impl_scoped_sql_store {
             impl [< SqlStore $index >] for [< DirectSqlStore $index >] {
                 type Error = Error;
 
+                type Connection = Connection;
+
                 type Scoped = $parent;
 
                 fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped {

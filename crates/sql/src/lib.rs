@@ -81,6 +81,9 @@ macro_rules! define_scoped_sql_store {
                 /// The error type for the store.
                 type Error: SqlStoreError;
 
+                /// The connection type for the store.
+                type Connection: SqlConnection<Error = Self::Error>;
+
                 /// The scoped version of the store.
                 type Scoped: $parent<Error = Self::Error> + Clone + Send + Sync + 'static;
 

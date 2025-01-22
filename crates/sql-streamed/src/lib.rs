@@ -277,6 +277,8 @@ where
 {
     type Error = Error<S::Scoped, SS::Scoped>;
 
+    type Connection = Connection<S::Scoped, SS::Scoped>;
+
     type Scoped = StreamedSqlStore<S::Scoped, SS::Scoped>;
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
@@ -392,6 +394,12 @@ where
         <S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped,
         <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped,
     >;
+
+    type Connection = Connection<
+        <S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped,
+        <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped,
+    >;
+
     type Scoped = StreamedSqlStore1<S::Scoped, SS::Scoped>;
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
@@ -515,6 +523,20 @@ where
             Infallible,
         >>::Scoped,
     >;
+
+    type Connection = Connection<
+        <<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<
+            Request,
+            DeserializeError,
+            SerializeError,
+        >>::Scoped,
+        <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<
+            Bytes,
+            Infallible,
+            Infallible,
+        >>::Scoped,
+    >;
+
     type Scoped = StreamedSqlStore2<S::Scoped, SS::Scoped>;
 
     fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {

@@ -12,7 +12,7 @@ pub use error::Error;
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use proven_sql::{SqlConnection, SqlParam, SqlStore};
+use proven_sql::{SqlConnection, SqlParam, SqlStore, SqlStore1};
 use uuid::Uuid;
 
 static CREATE_APPLICATIONS_SQL: &str = include_str!("../sql/create_applications.sql");
@@ -35,7 +35,7 @@ where
     Self::SqlStore: SqlStore,
 {
     /// The SQL store type.
-    type SqlStore: SqlStore;
+    type SqlStore: SqlStore1;
 
     /// Create a new application manager.
     async fn new(
@@ -60,14 +60,17 @@ where
 
 /// Manages database of all currently deployed applications.
 #[derive(Clone)]
-pub struct ApplicationManager<AS: SqlStore> {
+pub struct ApplicationManager<AS>
+where
+    AS: SqlStore1,
+{
     connection: AS::Connection,
 }
 
 #[async_trait]
 impl<S> ApplicationManagement for ApplicationManager<S>
 where
-    S: SqlStore,
+    S: SqlStore1,
 {
     type SqlStore = S;
 
@@ -123,7 +126,7 @@ where
     async fn get_application(
         &self,
         application_id: String,
-    ) -> Result<Option<Application>, <S::Connection as SqlConnection>::Error> {
+    ) -> Result<Option<Application>, S::Error> {
         let mut rows = self
             .connection
             .query(
