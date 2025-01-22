@@ -800,7 +800,7 @@ impl Bootstrap {
         let http_server = LetsEncryptHttpServer::new(LetsEncryptHttpServerOptions {
             cert_store,
             cname_domain: self.args.fqdn.clone(),
-            domains,
+            domains: domains.clone(),
             emails: self.args.email.clone(),
             listen_addr: http_sock_addr,
         });
@@ -964,6 +964,10 @@ impl Bootstrap {
 
         let core = Core::new(CoreOptions {
             application_manager,
+            primary_hostnames: domains
+                .iter()
+                .map(|domain| format!("https://{domain}"))
+                .collect(),
             runtime_pool_manager,
             session_manager,
         });

@@ -1822,6 +1822,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 
 [[package]]
+name = "console"
+version = "0.15.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea3c6ecd8059b57859df5c69830340ed3c41d30e3da0c1cbed90a96ac853041b"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "once_cell",
+ "unicode-width 0.2.0",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "console_static_text"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3521,6 +3534,12 @@ dependencies = [
  "subtle",
  "zeroize",
 ]
+
+[[package]]
+name = "encode_unicode"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
 name = "encoding_rs"
@@ -6850,6 +6869,7 @@ dependencies = [
  "thiserror 2.0.11",
  "tokio",
  "tokio-util",
+ "tower 0.5.2",
  "tower-http",
  "tracing",
 ]
@@ -6876,6 +6896,7 @@ dependencies = [
  "tokio-rustls-acme",
  "tokio-stream",
  "tokio-util",
+ "tower 0.5.2",
  "tower-http",
  "tracing",
 ]
@@ -6944,6 +6965,7 @@ name = "proven-local"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "console",
  "proven-applications",
  "proven-attestation",
  "proven-attestation-dev",

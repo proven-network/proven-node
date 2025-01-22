@@ -6,12 +6,15 @@
 #![allow(clippy::redundant_pub_crate)]
 
 mod error;
+mod hosts;
 
 use error::Result;
+use hosts::check_hosts_file;
 
 use std::net::{Ipv4Addr, SocketAddr};
 
 use clap::Parser;
+use console::style;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
 use proven_core::{Core, CoreOptions};
@@ -40,6 +43,23 @@ async fn main() -> Result<()> {
             .with_max_level(Level::TRACE)
             .finish(),
     )?;
+
+    if !check_hosts_file() {
+        error!("proven.local is not configured in hosts file");
+        #[cfg(target_family = "unix")]
+        error!(
+            "Please add {} to {}",
+            style("127.0.0.1 proven.local").cyan(),
+            style("/etc/hosts").blue(),
+        );
+        #[cfg(target_family = "windows")]
+        error!(
+            "Please add {} to {}",
+            style("127.0.0.1 proven.local").cyan(),
+            style(r"C:\Windows\System32\drivers\etc\hosts").blue()
+        );
+        std::process::exit(1);
+    }
 
     let args = Args::parse();
     let challenge_store = MemoryStore1::new();
@@ -84,8 +104,13 @@ async fn main() -> Result<()> {
     })
     .await;
 
+    // Check /etc/hosts to ensure proven.local is mapped to 127.0.0.1
+
     let core = Core::new(CoreOptions {
         application_manager,
+        primary_hostnames: vec!["http://proven.local".to_string()]
+            .into_iter()
+            .collect(),
         runtime_pool_manager,
         session_manager,
     });

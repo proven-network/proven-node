@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 clap = { workspace = true }
+console = { workspace = true }
 proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-dev = { workspace = true }

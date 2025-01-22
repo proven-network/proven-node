@@ -9,6 +9,7 @@ mod error;
 
 pub use error::Error;
 
+use std::collections::HashSet;
 use std::future::IntoFuture;
 use std::net::SocketAddr;
 
@@ -19,6 +20,7 @@ use proven_http::HttpServer;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tower::Service;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
@@ -45,7 +47,12 @@ impl InsecureHttpServer {
 impl HttpServer for InsecureHttpServer {
     type Error = Error;
 
-    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::Error> {
+    async fn start(
+        &self,
+        primary_hostnames: HashSet<String>,
+        primary_router: Router,
+        fallback_router: Router,
+    ) -> Result<JoinHandle<()>, Self::Error> {
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();
 
@@ -57,6 +64,29 @@ impl HttpServer for InsecureHttpServer {
             .allow_methods([Method::GET, Method::POST])
             .allow_origin(Any);
 
+        // Create a router that switches based on hostname
+        let router = Router::new().fallback_service(tower::service_fn(
+            move |req: axum::http::Request<_>| {
+                let mut primary = primary_router.clone();
+                let mut fallback = fallback_router.clone();
+                let primary_hostnames = primary_hostnames.clone();
+
+                async move {
+                    let host = req
+                        .headers()
+                        .get(axum::http::header::HOST)
+                        .and_then(|h| h.to_str().ok())
+                        .unwrap_or("");
+
+                    if primary_hostnames.contains(host) {
+                        primary.call(req).await
+                    } else {
+                        fallback.call(req).await
+                    }
+                }
+            },
+        ));
+
         let router = router.layer(cors);
 
         let listener = tokio::net::TcpListener::bind(listen_addr)
@@ -65,10 +95,10 @@ impl HttpServer for InsecureHttpServer {
 
         let handle = self.task_tracker.spawn(async move {
             tokio::select! {
-              e = axum::serve(listener, router.into_make_service()).into_future() => {
-                info!("http server exited {:?}", e);
-              }
-              () = shutdown_token.cancelled() => {}
+                e = axum::serve(listener, router.into_make_service()).into_future() => {
+                    info!("http server exited {:?}", e);
+                }
+                () = shutdown_token.cancelled() => {}
             };
         });
 

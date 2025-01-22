@@ -4,6 +4,7 @@ use crate::nitro::NitroCli;
 use crate::systemctl;
 use crate::StartArgs;
 
+use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::sync::Arc;
@@ -78,7 +79,10 @@ pub async fn start(args: StartArgs) -> Result<()> {
             }
         }),
     );
-    let http_server_handle = http_server.start(http_redirector).await?;
+    let http_server_handle = http_server
+        // Always use fallback_router for all requests
+        .start(HashSet::new(), Router::new(), http_redirector)
+        .await?;
 
     // Tasks that must be running for the host to function
     let critical_tasks = tokio::spawn(async move {

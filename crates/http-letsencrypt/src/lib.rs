@@ -16,6 +16,7 @@ use cert_cache::CertCache;
 pub use error::Error;
 use multi_resolver::MultiResolver;
 
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::future::IntoFuture;
 use std::net::SocketAddr;
@@ -36,6 +37,7 @@ use tokio_rustls_acme::AcmeConfig;
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tower::Service;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 
@@ -188,7 +190,12 @@ where
 {
     type Error = Error<S::Error>;
 
-    async fn start(&self, router: Router) -> Result<JoinHandle<()>, Self::Error> {
+    async fn start(
+        &self,
+        primary_hostnames: HashSet<String>,
+        primary_router: Router,
+        fallback_router: Router,
+    ) -> Result<JoinHandle<()>, Self::Error> {
         let acceptor = self.acceptor.clone();
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();
@@ -200,6 +207,29 @@ where
         let cors = CorsLayer::new()
             .allow_methods([Method::GET, Method::POST])
             .allow_origin(Any);
+
+        // Create a router that switches based on hostname
+        let router = Router::new().fallback_service(tower::service_fn(
+            move |req: axum::http::Request<_>| {
+                let mut primary = primary_router.clone();
+                let mut fallback = fallback_router.clone();
+                let primary_hostnames = primary_hostnames.clone();
+
+                async move {
+                    let host = req
+                        .headers()
+                        .get(axum::http::header::HOST)
+                        .and_then(|h| h.to_str().ok())
+                        .unwrap_or("");
+
+                    if primary_hostnames.contains(host) {
+                        primary.call(req).await
+                    } else {
+                        fallback.call(req).await
+                    }
+                }
+            },
+        ));
 
         let router = router.layer(cors);
 
