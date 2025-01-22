@@ -3,28 +3,28 @@
 use std::{convert::Infallible, net::SocketAddrV4};
 
 use bytes::Bytes;
-use proven_applications::ApplicationManager;
+use proven_applications::{Application, ApplicationManager};
 use proven_attestation_nsm::NsmAttestor;
 use proven_core::Core;
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
-use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
+use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_runtime::RuntimePoolManager;
 use proven_sessions::{Session, SessionManager};
 use proven_sql_streamed::{
-    Request as SqlRequest, StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3,
+    Request as SqlRequest, StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3,
 };
-use proven_store_nats::{NatsStore1, NatsStore2, NatsStore3};
+use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
 // use proven_nats_monitor::NatsMonitor;
 use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
 use proven_radix_gateway::RadixGateway;
 use proven_radix_node::RadixNode;
-use proven_store_s3::{S3Store, S3Store2, S3Store3};
+use proven_store_s3::{S3Store1, S3Store2, S3Store3};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{AddPeerRequest, AddPeerResponse};
 use radix_common::network::NetworkDefinition;
@@ -36,13 +36,18 @@ use tracing::{error, info};
 
 pub type EnclaveCore = Core<
     ApplicationManager<
-        StreamedSqlStore<
-            NatsStream<
+        NatsStore<
+            Application,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
+        StreamedSqlStore1<
+            NatsStream1<
                 SqlRequest,
                 ciborium::de::Error<std::io::Error>,
                 ciborium::ser::Error<std::io::Error>,
             >,
-            S3Store<Bytes, Infallible, Infallible>,
+            S3Store1<Bytes, Infallible, Infallible>,
         >,
     >,
     RuntimePoolManager<

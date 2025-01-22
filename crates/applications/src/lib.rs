@@ -13,6 +13,7 @@ pub use error::Error;
 use async_trait::async_trait;
 use futures::StreamExt;
 use proven_sql::{SqlConnection, SqlParam, SqlStore, SqlStore1};
+use proven_store::Store;
 use uuid::Uuid;
 
 static CREATE_APPLICATIONS_SQL: &str = include_str!("../sql/create_applications.sql");
@@ -32,21 +33,35 @@ pub struct CreateApplicationOptions {
 pub trait ApplicationManagement
 where
     Self: Clone + Send + Sync + 'static,
-    Self::SqlStore: SqlStore,
 {
+    /// The store type.
+    type Store: Store<
+        Application,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >;
+
     /// The SQL store type.
     type SqlStore: SqlStore1;
 
     /// Create a new application manager.
-    async fn new(
-        applications_store: Self::SqlStore,
-    ) -> Result<Self, <Self::SqlStore as SqlStore>::Error>;
+    fn new(store: Self::Store, sql_store: Self::SqlStore) -> Self;
 
     /// Create a new application.
     async fn create_application(
         &self,
         options: CreateApplicationOptions,
-    ) -> Result<Application, <<Self::SqlStore as SqlStore>::Connection as SqlConnection>::Error>;
+    ) -> Result<
+        Application,
+        Error<
+            <Self::Store as Store<
+                Application,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >>::Error,
+            <Self::SqlStore as SqlStore1>::Error,
+        >,
+    >;
 
     /// Get an application by its ID.
     async fn get_application(
@@ -54,32 +69,48 @@ where
         application_id: String,
     ) -> Result<
         Option<Application>,
-        <<Self::SqlStore as SqlStore>::Connection as SqlConnection>::Error,
+        Error<
+            <Self::Store as Store<
+                Application,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >>::Error,
+            <Self::SqlStore as SqlStore1>::Error,
+        >,
     >;
 }
 
 /// Manages database of all currently deployed applications.
 #[derive(Clone)]
-pub struct ApplicationManager<AS>
+pub struct ApplicationManager<S, SS>
 where
-    AS: SqlStore1,
+    S: Store<
+        Application,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
+    SS: SqlStore1,
 {
-    connection: AS::Connection,
+    store: S,
+    sql_store: SS,
 }
 
 #[async_trait]
-impl<S> ApplicationManagement for ApplicationManager<S>
+impl<S, SS> ApplicationManagement for ApplicationManager<S, SS>
 where
-    S: SqlStore1,
+    S: Store<
+        Application,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
+    SS: SqlStore1,
 {
-    type SqlStore = S;
+    type Store = S;
 
-    async fn new(applications_store: Self::SqlStore) -> Result<Self, S::Error> {
-        let connection = applications_store
-            .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
-            .await?;
+    type SqlStore = SS;
 
-        Ok(Self { connection })
+    fn new(store: Self::Store, sql_store: Self::SqlStore) -> Self {
+        Self { store, sql_store }
     }
 
     async fn create_application(
@@ -88,10 +119,17 @@ where
             owner_identity_address,
             dapp_definition_addresses,
         }: CreateApplicationOptions,
-    ) -> Result<Application, <S::Connection as SqlConnection>::Error> {
+    ) -> Result<Application, Error<S::Error, SS::Error>> {
         let application_id = Uuid::new_v4().to_string();
 
-        self.connection
+        let connection = self
+            .sql_store
+            .scope(application_id.clone())
+            .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
+            .await
+            .map_err(Error::SqlStore)?;
+
+        connection
             .execute(
                 "INSERT INTO applications (id, owner_identity) VALUES (?1, ?2)",
                 vec![
@@ -99,9 +137,10 @@ where
                     SqlParam::Text(owner_identity_address.clone()),
                 ],
             )
-            .await?;
+            .await
+            .map_err(Error::SqlStore)?;
 
-        self.connection
+        connection
             .execute_batch(
                 "INSERT INTO dapps (application_id, dapp_definition_address) VALUES (?1, ?2)",
                 dapp_definition_addresses
@@ -114,7 +153,8 @@ where
                     })
                     .collect(),
             )
-            .await?;
+            .await
+            .map_err(Error::SqlStore)?;
 
         Ok(Application {
             id: application_id,
@@ -126,9 +166,24 @@ where
     async fn get_application(
         &self,
         application_id: String,
-    ) -> Result<Option<Application>, S::Error> {
-        let mut rows = self
-            .connection
+    ) -> Result<Option<Application>, Error<S::Error, SS::Error>> {
+        if let Some(application) = self
+            .store
+            .get(application_id.clone())
+            .await
+            .map_err(Error::Store)?
+        {
+            return Ok(Some(application));
+        }
+
+        let connection = self
+            .sql_store
+            .scope(application_id.clone())
+            .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
+            .await
+            .map_err(Error::SqlStore)?;
+
+        let mut rows = connection
             .query(
                 r"
                     SELECT owner_identity, dapps.dapp_definition_address FROM applications
@@ -138,7 +193,8 @@ where
                 .trim(),
                 vec![SqlParam::Text(application_id.clone())],
             )
-            .await?;
+            .await
+            .map_err(Error::SqlStore)?;
 
         // Early return if no rows found
         let Some(first_row) = rows.next().await else {

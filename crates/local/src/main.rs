@@ -22,9 +22,9 @@ use proven_http_insecure::InsecureHttpServer;
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
-use proven_sql_direct::{DirectSqlStore, DirectSqlStore2, DirectSqlStore3};
+use proven_sql_direct::{DirectSqlStore1, DirectSqlStore2, DirectSqlStore3};
 use proven_store_fs::{FsStore1, FsStore2, FsStore3};
-use proven_store_memory::MemoryStore1;
+use proven_store_memory::{MemoryStore, MemoryStore1};
 use radix_common::network::NetworkDefinition;
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -78,8 +78,10 @@ async fn main() -> Result<()> {
         radix_network_definition: radix_network_definition.clone(),
     });
 
-    let application_manager_sql_store = DirectSqlStore::new("/tmp/proven/application_manager.db");
-    let application_manager = ApplicationManager::new(application_manager_sql_store).await?;
+    let application_manager = ApplicationManager::new(
+        MemoryStore::new(),
+        DirectSqlStore1::new("/tmp/proven/application_manager.db"),
+    );
 
     let application_store = FsStore2::new("/tmp/proven/kv/application");
     let personal_store = FsStore3::new("/tmp/proven/kv/personal");

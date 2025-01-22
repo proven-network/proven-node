@@ -16,10 +16,6 @@ pub enum Error {
     #[error(transparent)]
     AddrParse(#[from] std::net::AddrParseError),
 
-    /// Application manager error.
-    #[error("TODO: Fix this error")]
-    ApplicationManager,
-
     /// AWS Secrets Manager error.
     #[error(transparent)]
     AsmStore(#[from] proven_store_asm::Error),

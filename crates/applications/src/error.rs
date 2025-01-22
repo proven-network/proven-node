@@ -1,13 +1,19 @@
 use proven_sql::SqlStoreError;
+use proven_store::StoreError;
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
-pub enum Error<SE>
+pub enum Error<SE, SSE>
 where
-    SE: SqlStoreError,
+    SE: StoreError,
+    SSE: SqlStoreError,
 {
     /// Errors passed through from underlying SQL store.
     #[error(transparent)]
-    SqlStore(SE),
+    SqlStore(SSE),
+
+    /// Errors passed through from underlying SQL store.
+    #[error(transparent)]
+    Store(SE),
 }

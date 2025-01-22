@@ -6,8 +6,10 @@ edition = "2021"
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
+ciborium = { workspace = true }
 futures = { workspace = true }
 proven-sql = { workspace = true }
+proven-store = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }

@@ -20,11 +20,10 @@ use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOption
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::Kms;
-use proven_messaging::stream::Stream;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
-use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
+use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
@@ -33,11 +32,11 @@ use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
-use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
+use proven_sql_streamed::{StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
-use proven_store_nats::{NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
-use proven_store_s3::{S3Store, S3Store2, S3Store3, S3StoreOptions};
+use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
+use proven_store_s3::{S3Store, S3Store1, S3Store2, S3Store3, S3StoreOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
 use radix_common::network::NetworkDefinition;
@@ -805,38 +804,42 @@ impl Bootstrap {
             listen_addr: http_sock_addr,
         });
 
-        let application_manager_sql_store = StreamedSqlStore::new(
-            NatsStream::new(
-                "APPLICATION_MANAGER_SQL",
-                NatsStreamOptions {
+        let application_manager = ApplicationManager::new(
+            NatsStore::new(NatsStoreOptions {
+                bucket: "APPLICATION_MANAGER_KV".to_string(),
+                client: nats_client.clone(),
+                max_age: Duration::ZERO,
+                persist: true,
+            }),
+            StreamedSqlStore1::new(
+                NatsStream1::new(
+                    "APPLICATION_MANAGER_SQL",
+                    NatsStreamOptions {
+                        client: nats_client.clone(),
+                    },
+                ),
+                NatsServiceOptions {
+                    client: nats_client.clone(),
+                    durable_name: None,
+                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+                },
+                NatsClientOptions {
                     client: nats_client.clone(),
                 },
+                S3Store1::new(S3StoreOptions {
+                    bucket: self.args.certificates_bucket.clone(),
+                    prefix: Some("application_manager".to_string()),
+                    region: id.region.clone(),
+                    secret_key: get_or_init_encrypted_key(
+                        id.region.clone(),
+                        self.args.kms_key_id.clone(),
+                        "APPLICATION_MANAGER_SNAPSHOTS_KEY".to_string(),
+                    )
+                    .await?,
+                })
+                .await,
             ),
-            NatsServiceOptions {
-                client: nats_client.clone(),
-                durable_name: None,
-                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-            },
-            NatsClientOptions {
-                client: nats_client.clone(),
-            },
-            S3Store::new(S3StoreOptions {
-                bucket: self.args.certificates_bucket.clone(),
-                prefix: Some("application_manager".to_string()),
-                region: id.region.clone(),
-                secret_key: get_or_init_encrypted_key(
-                    id.region.clone(),
-                    self.args.kms_key_id.clone(),
-                    "APPLICATION_MANAGER_SNAPSHOTS_KEY".to_string(),
-                )
-                .await?,
-            })
-            .await,
         );
-
-        let application_manager = ApplicationManager::new(application_manager_sql_store)
-            .await
-            .map_err(|_| Error::ApplicationManager)?;
 
         let application_store = NatsStore2::new(NatsStoreOptions {
             bucket: "APPLICATION_KV".to_string(),
