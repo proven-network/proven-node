@@ -194,12 +194,12 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::create_runtime_options;
+    use crate::test_utils::create_test_runtime_options;
     use crate::{ExecutionRequest, Worker};
 
     #[tokio::test]
     async fn test_personal_db() {
-        let runtime_options = create_runtime_options("sql/test_personal_db", "test");
+        let runtime_options = create_test_runtime_options("sql/test_personal_db", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::HttpWithUserContext {
@@ -222,7 +222,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_personal_db_no_context() {
-        let runtime_options = create_runtime_options("sql/test_personal_db", "test");
+        let runtime_options = create_test_runtime_options("sql/test_personal_db", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {

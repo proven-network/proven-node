@@ -5,7 +5,9 @@ use axum::routing::any;
 use axum::Router;
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
-use proven_runtime::{ExecutionRequest, PoolRuntimeOptions, RuntimePoolManagement};
+use proven_runtime::{
+    create_module_graph, ExecutionRequest, PoolRuntimeOptions, RuntimePoolManagement,
+};
 use proven_sessions::SessionManagement;
 
 pub fn create_application_http_router<AM, RM, SM>(
@@ -32,23 +34,27 @@ where
             query: query.map(String::from),
         };
 
+        let (module_root, module_graph) = create_module_graph(
+            r#"
+            import { runOnHttp } from "@proven-network/handler";
+
+            export const test = runOnHttp(
+                async (request) => {
+                    return `Hello ${request.queryVariables.name || 'World'} from runtime!`;
+                },
+                {
+                    path: "/",
+                }
+            );
+        "#,
+        );
+
         let result = runtime_pool_manager
             .execute(
                 PoolRuntimeOptions {
                     handler_name: Some("test".to_string()),
-                    module: r#"
-                        import { runOnHttp } from "@proven-network/handler";
-
-                        export const test = runOnHttp(
-                            async (request) => {
-                                return `Hello ${request.queryVariables.name || 'World'} from runtime!`;
-                            },
-                            {
-                                path: "/",
-                            }
-                        );
-                    "#
-                    .to_string(),
+                    module_graph,
+                    module_root,
                 },
                 execution_request,
             )

@@ -1,4 +1,6 @@
-use proven_runtime::{Error, ExecutionRequest, Pool, PoolOptions, PoolRuntimeOptions};
+use proven_runtime::{
+    create_module_graph, Error, ExecutionRequest, Pool, PoolOptions, PoolRuntimeOptions,
+};
 
 use std::sync::Arc;
 
@@ -43,16 +45,17 @@ async fn main() -> Result<(), Error> {
 
             return a + b;
         }
-    "#;
+    "#
+    .to_string();
 
     for i in 0..EXECUTIONS {
         // Add the invocation number to every 2nd script to make it unique
         // This tests a mix of unique and duplicate scripts
-        let module = if i % 2 == 0 {
+        let (module_root, module_graph) = create_module_graph(if i % 2 == 0 {
             format!("// Invocation: {}\n{}", i, base_script)
         } else {
-            base_script.to_string()
-        };
+            base_script.clone()
+        });
 
         let pool = Arc::clone(&pool);
         let durations = Arc::clone(&durations);
@@ -69,7 +72,8 @@ async fn main() -> Result<(), Error> {
                 .execute(
                     PoolRuntimeOptions {
                         handler_name: Some("handler".to_string()),
-                        module,
+                        module_graph,
+                        module_root,
                     },
                     request,
                 )

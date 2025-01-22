@@ -5,6 +5,8 @@ use std::fmt::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
+use deno_core::url::Url;
+use deno_graph::ModuleGraph;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
@@ -73,8 +75,11 @@ pub struct PoolRuntimeOptions {
     /// Name of the handler function.
     pub handler_name: Option<String>,
 
-    /// Source code of the module.
-    pub module: String,
+    /// The graph of modules to load.
+    pub module_graph: ModuleGraph,
+
+    /// The root module to look for the handler in.
+    pub module_root: Url,
 }
 
 /// A pool of workers that can execute tasks concurrently.
@@ -94,7 +99,8 @@ pub struct PoolRuntimeOptions {
 /// ```rust
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     Error, ExecutionRequest, ExecutionResult, Pool, PoolOptions, PoolRuntimeOptions,
+///     create_module_graph, Error, ExecutionRequest, ExecutionResult, Pool, PoolOptions,
+///     PoolRuntimeOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -118,9 +124,13 @@ pub struct PoolRuntimeOptions {
 ///     })
 ///     .await;
 ///
+///     let (module_root, module_graph) =
+///         create_module_graph("export const handler = (a, b) => a + b;");
+///
 ///     let runtime_options = PoolRuntimeOptions {
 ///         handler_name: Some("handler".to_string()),
-///         module: "export const handler = (a, b) => a + b;".to_string(),
+///         module_graph,
+///         module_root,
 ///     };
 ///
 ///     let request = ExecutionRequest::Rpc {
@@ -267,7 +277,8 @@ where
                         application_sql_store: pool.application_sql_store.clone(),
                         application_store: pool.application_store.clone(),
                         handler_name: runtime_options.handler_name.clone(),
-                        module: runtime_options.module.clone(),
+                        module_graph: runtime_options.module_graph.clone(),
+                        module_root: runtime_options.module_root.clone(),
                         nft_sql_store: pool.nft_sql_store.clone(),
                         nft_store: pool.nft_store.clone(),
                         personal_sql_store: pool.personal_sql_store.clone(),
@@ -404,7 +415,8 @@ where
                 application_sql_store: self.application_sql_store.clone(),
                 application_store: self.application_store.clone(),
                 handler_name: runtime_options.handler_name.clone(),
-                module: runtime_options.module.clone(),
+                module_graph: runtime_options.module_graph.clone(),
+                module_root: runtime_options.module_root.clone(),
                 nft_sql_store: self.nft_sql_store.clone(),
                 nft_store: self.nft_store.clone(),
                 personal_sql_store: self.personal_sql_store.clone(),
@@ -512,7 +524,8 @@ where
                     application_sql_store: self.application_sql_store.clone(),
                     application_store: self.application_store.clone(),
                     handler_name: runtime_options.handler_name.clone(),
-                    module: runtime_options.module.clone(),
+                    module_graph: runtime_options.module_graph.clone(),
+                    module_root: runtime_options.module_root.clone(),
                     nft_sql_store: self.nft_sql_store.clone(),
                     nft_store: self.nft_store.clone(),
                     personal_sql_store: self.personal_sql_store.clone(),
@@ -651,7 +664,8 @@ pub fn hash_options(options: &PoolRuntimeOptions) -> Result<String> {
     let mut hasher = Sha256::new();
 
     // Concatenate module and handler_name - newline separated
-    let mut data = format!("{}\n", options.module);
+    // TODO: Need to go back to hashing content. Quick fix for graph update.
+    let mut data = format!("{}\n", options.module_root.as_str());
     write!(
         &mut data,
         "{}",
@@ -675,6 +689,8 @@ pub fn hash_options(options: &PoolRuntimeOptions) -> Result<String> {
 mod tests {
     use super::*;
 
+    use crate::test_utils::create_test_module_graph;
+
     use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -690,20 +706,13 @@ mod tests {
         DirectSqlStore3,
         MockRadixNftVerifier,
     > {
-        let mut temp_application_sql = tempdir().unwrap().into_path();
-        temp_application_sql.push("application.db");
-        let mut temp_nft_sql = tempdir().unwrap().into_path();
-        temp_nft_sql.push("nft.db");
-        let mut temp_personal_sql = tempdir().unwrap().into_path();
-        temp_personal_sql.push("personal.db");
-
         PoolOptions {
-            application_sql_store: DirectSqlStore2::new(temp_application_sql),
+            application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
             max_workers: 10,
-            nft_sql_store: DirectSqlStore3::new(temp_nft_sql),
+            nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
-            personal_sql_store: DirectSqlStore3::new(temp_personal_sql),
+            personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore3::new(),
             radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
@@ -723,9 +732,12 @@ mod tests {
     async fn test_execute() {
         let pool = Pool::new(create_pool_options()).await;
 
+        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute");
+
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
-            module: "export const test = (a, b) => a + b;".to_string(),
+            module_graph,
+            module_root,
         };
 
         let request = ExecutionRequest::Rpc {
@@ -745,9 +757,12 @@ mod tests {
     async fn test_execute_prehashed() {
         let pool = Pool::new(create_pool_options()).await;
 
+        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute");
+
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
-            module: "export const test = (a, b) => a + b;".to_string(),
+            module_graph,
+            module_root,
         };
 
         let options_hash = hash_options(&runtime_options).unwrap();
@@ -773,9 +788,12 @@ mod tests {
     async fn test_queue_request() {
         let pool = Pool::new(create_pool_options()).await;
 
+        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute");
+
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
-            module: "export const test = (a, b) => a + b;".to_string(),
+            module_graph,
+            module_root,
         };
 
         let request = ExecutionRequest::Rpc {
@@ -795,9 +813,12 @@ mod tests {
     async fn test_kill_idle_worker() {
         let pool = Pool::new(create_pool_options()).await;
 
+        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute");
+
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
-            module: "export const test = (a, b) => a + b;".to_string(),
+            module_graph,
+            module_root,
         };
 
         let request = ExecutionRequest::Rpc {

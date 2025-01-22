@@ -10,12 +10,12 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::create_runtime_options;
+    use crate::test_utils::create_test_runtime_options;
     use crate::{ExecutionRequest, Worker};
 
     #[tokio::test]
     async fn test_uuid() {
-        let runtime_options = create_runtime_options("uuid/test_uuid", "test");
+        let runtime_options = create_test_runtime_options("uuid/test_uuid", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {

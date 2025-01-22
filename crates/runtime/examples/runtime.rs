@@ -1,5 +1,6 @@
+use proven_runtime::{create_module_graph, Error, ExecutionRequest, Runtime, RuntimeOptions};
+
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
-use proven_runtime::{Error, ExecutionRequest, Runtime, RuntimeOptions};
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore2, MemoryStore3};
 use radix_common::network::NetworkDefinition;
@@ -7,7 +8,8 @@ use serde_json::json;
 use tempfile::tempdir;
 
 fn main() -> Result<(), Error> {
-    let user_module = r#"
+    let (module_root, module_graph) = create_module_graph(
+        r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
         import { runWithOptions } from "proven:handler";
 
@@ -41,13 +43,15 @@ fn main() -> Result<(), Error> {
 
             return a + b;
         }, { timeout: 3 });
-    "#;
+    "#,
+    );
 
     let mut runtime = Runtime::new(RuntimeOptions {
         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
         application_store: MemoryStore2::new(),
         handler_name: Some("handler".to_string()),
-        module: user_module.to_string(),
+        module_graph,
+        module_root,
         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
         nft_store: MemoryStore3::new(),
         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),

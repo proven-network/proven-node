@@ -111,6 +111,7 @@ deno_crypto = { path = "vendor/deno/ext/crypto" }
 deno_fetch = { path = "vendor/deno/ext/fetch" }
 deno_ffi = { path = "vendor/deno/ext/ffi" }
 deno_fs = { path = "vendor/deno/ext/fs" }
+deno_graph = "0.87.0"
 deno_http = { path = "vendor/deno/ext/http" }
 deno_io = { path = "vendor/deno/ext/io" }
 deno_kv = { path = "vendor/deno/ext/kv" }

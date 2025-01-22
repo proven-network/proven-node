@@ -257,12 +257,12 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::create_runtime_options;
+    use crate::test_utils::create_test_runtime_options;
     use crate::{ExecutionRequest, Worker};
 
     #[tokio::test]
     async fn test_nft_db() {
-        let mut runtime_options = create_runtime_options("sql/test_nft_db", "test");
+        let mut runtime_options = create_test_runtime_options("sql/test_nft_db", "test");
 
         runtime_options
             .radix_nft_verifier
@@ -292,7 +292,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_db_multiple() {
-        let mut runtime_options = create_runtime_options("sql/test_nft_db_multiple", "test");
+        let mut runtime_options = create_test_runtime_options("sql/test_nft_db_multiple", "test");
 
         runtime_options
             .radix_nft_verifier
@@ -325,7 +325,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_db_nft_doesnt_exist() {
-        let runtime_options = create_runtime_options("sql/test_nft_db", "test");
+        let runtime_options = create_test_runtime_options("sql/test_nft_db", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
@@ -342,7 +342,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_db_nft_not_owned() {
-        let mut runtime_options = create_runtime_options("sql/test_nft_db", "test");
+        let mut runtime_options = create_test_runtime_options("sql/test_nft_db", "test");
 
         runtime_options
             .radix_nft_verifier
@@ -369,7 +369,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_db_no_accounts() {
-        let runtime_options = create_runtime_options("sql/test_nft_db", "test");
+        let runtime_options = create_test_runtime_options("sql/test_nft_db", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {

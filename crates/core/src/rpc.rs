@@ -7,7 +7,8 @@ use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_applications::{Application, ApplicationManagement, CreateApplicationOptions};
 use proven_runtime::{
-    ExecutionRequest, ExecutionResult, PoolRuntimeOptions, RuntimePoolManagement,
+    create_module_graph, ExecutionRequest, ExecutionResult, PoolRuntimeOptions,
+    RuntimePoolManagement,
 };
 use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
@@ -125,6 +126,7 @@ where
         })
     }
 
+    #[allow(clippy::too_many_lines)]
     pub async fn handle_rpc(&mut self, bytes: Bytes) -> Result<Bytes, RpcHandlerError> {
         let sign1 = coset::CoseSign1::from_slice(&bytes).map_err(|_| RpcHandlerError::Sign1)?;
 
@@ -169,12 +171,15 @@ where
                     identity: self.identity_address.clone(),
                 };
 
+                let (module_root, module_graph) = create_module_graph(&module);
+
                 match self
                     .runtime_pool_manager
                     .execute(
                         PoolRuntimeOptions {
                             handler_name: Some(handler_name.clone()),
-                            module,
+                            module_graph,
+                            module_root,
                         },
                         request,
                     )

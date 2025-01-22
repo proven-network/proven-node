@@ -5,7 +5,6 @@ use crate::extensions::{
     ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput, NftSqlConnectionManager,
     PersonalSqlConnectionManager, SessionState, SqlParamListManager, SqlQueryResultsManager,
 };
-use crate::import_replacements::replace_esm_imports;
 use crate::options::{HandlerOptions, SqlMigrations};
 use crate::options_parser::OptionsParser;
 use crate::permissions::OriginAllowlistWebPermissions;
@@ -21,6 +20,8 @@ use std::time::Duration;
 use std::vec;
 
 use bytes::Bytes;
+use deno_core::url::Url;
+use deno_graph::ModuleGraph;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
@@ -68,8 +69,11 @@ where
     /// NFT-scoped KV store.
     pub nft_store: NS,
 
-    /// Source code of the module.
-    pub module: String,
+    /// The graph of modules to load.
+    pub module_graph: ModuleGraph,
+
+    /// The root module to look for the handler in.
+    pub module_root: Url,
 
     /// Persona-scoped SQL store.
     pub personal_sql_store: PSS,
@@ -100,18 +104,24 @@ where
 /// # Example
 /// ```rust
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
-/// use proven_runtime::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
+/// use proven_runtime::{
+///     create_module_graph, Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions,
+/// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore2, MemoryStore3};
 /// use radix_common::network::NetworkDefinition;
 /// use serde_json::json;
 /// use tempfile::tempdir;
 ///
+/// let (module_root, module_graph) =
+///     create_module_graph("export const handler = (a, b) => a + b;");
+///
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
 ///     application_store: MemoryStore2::new(),
 ///     handler_name: Some("handler".to_string()),
-///     module: "export const handler = (a, b) => a + b;".to_string(),
+///     module_graph,
+///     module_root,
 ///     nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///     nft_store: MemoryStore3::new(),
 ///     personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
@@ -179,7 +189,8 @@ where
             application_sql_store,
             application_store,
             handler_name,
-            module,
+            module_graph,
+            module_root,
             nft_sql_store,
             nft_store,
             personal_sql_store,
@@ -189,8 +200,21 @@ where
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Result<Self> {
+        #[allow(clippy::significant_drop_in_scrutinee)]
+        let js_module = if let Some(module) = module_graph
+            .try_get(&module_root)
+            .map_err(|err| Error::ModuleGraph(err.clone()))?
+        {
+            match module.clone() {
+                deno_graph::Module::Js(js_module) => js_module,
+                _ => return Err(Error::RootNotFoundInGraph),
+            }
+        } else {
+            return Err(Error::RootNotFoundInGraph);
+        };
+
         // TODO: Combine options parser and preprocessor
-        let module_options = OptionsParser::new()?.parse(module.as_str())?;
+        let module_options = OptionsParser::new()?.parse(js_module.source.to_string())?;
         #[allow(clippy::or_fun_call)]
         let handler_options = module_options
             .handler_options
@@ -299,10 +323,8 @@ where
         // In case there are any top-level console.* calls in the module
         runtime.put(ConsoleState::default())?;
 
-        let import_replaced_module = replace_esm_imports(&module);
-
         let mut preprocessor = Preprocessor::new()?;
-        let preprocessed_module = preprocessor.process(import_replaced_module)?;
+        let preprocessed_module = preprocessor.process(js_module.source.to_string())?;
         drop(preprocessor);
 
         let module = Module::new("module.ts", preprocessed_module.as_str());
@@ -540,7 +562,7 @@ where
 mod tests {
     use super::*;
 
-    use crate::test_utils::create_runtime_options;
+    use crate::test_utils::create_test_runtime_options;
 
     use serde_json::json;
 
@@ -560,9 +582,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_execute() {
-        run_in_thread(|| {
-            let options = create_runtime_options("test_runtime_execute", "test");
+        let options = create_test_runtime_options("test_runtime_execute", "test");
 
+        run_in_thread(|| {
             let request = create_execution_request();
             let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
 
@@ -573,11 +595,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_execute_with_default_export() {
-        run_in_thread(|| {
-            let mut options =
-                create_runtime_options("test_runtime_execute_with_default_export", "remove");
-            options.handler_name = None;
+        let mut options =
+            create_test_runtime_options("test_runtime_execute_with_default_export", "remove");
+        options.handler_name = None;
 
+        run_in_thread(|| {
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
 
@@ -589,10 +611,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_execute_sets_timeout() {
-        run_in_thread(|| {
-            // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
-            let options = create_runtime_options("test_runtime_execute_sets_timeout", "test");
+        // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
+        let options = create_test_runtime_options("test_runtime_execute_sets_timeout", "test");
 
+        run_in_thread(|| {
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
 
@@ -604,11 +626,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_execute_default_max_heap_size() {
-        run_in_thread(|| {
-            // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
-            let options =
-                create_runtime_options("test_runtime_execute_default_max_heap_size", "test");
+        // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
+        let options =
+            create_test_runtime_options("test_runtime_execute_default_max_heap_size", "test");
 
+        run_in_thread(|| {
             let request = create_execution_request();
             let result = Runtime::new(options).unwrap().execute(request);
 

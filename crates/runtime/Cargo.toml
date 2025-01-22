@@ -9,6 +9,7 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 ciborium = { workspace = true }
 deno_core = { workspace = true }
+deno_graph = { workspace = true }
 deno_permissions = { workspace = true }
 ed25519-dalek = { workspace = true }
 futures = { workspace = true }

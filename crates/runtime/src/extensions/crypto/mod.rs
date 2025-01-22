@@ -101,7 +101,7 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::create_runtime_options;
+    use crate::test_utils::create_test_runtime_options;
     use crate::{ExecutionRequest, Worker};
 
     use ed25519_dalek::Verifier;
@@ -109,7 +109,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ed25519_signing() {
-        let runtime_options = create_runtime_options("crypto/test_ed25519_signing", "test");
+        let runtime_options = create_test_runtime_options("crypto/test_ed25519_signing", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
@@ -150,7 +150,7 @@ mod tests {
     #[tokio::test]
     async fn test_ed25519_signing_radix_transaction() {
         let runtime_options =
-            create_runtime_options("crypto/test_ed25519_signing_radix_transaction", "test");
+            create_test_runtime_options("crypto/test_ed25519_signing_radix_transaction", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
@@ -190,7 +190,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ed25519_storage() {
-        let mut runtime_options = create_runtime_options("crypto/test_ed25519_storage", "save");
+        let mut runtime_options = create_test_runtime_options("crypto/test_ed25519_storage", "save");
         let mut worker = Worker::new(runtime_options.clone()).await.unwrap();
 
         let request = ExecutionRequest::Rpc {

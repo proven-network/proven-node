@@ -9,6 +9,7 @@ mod error;
 mod extensions;
 mod import_replacements;
 mod manager;
+mod module_graph;
 mod options;
 mod options_parser;
 mod permissions;
@@ -22,6 +23,7 @@ mod worker;
 
 pub use error::*;
 pub use manager::*;
+pub use module_graph::create_module_graph;
 pub use pool::*;
 pub use runtime::*;
 pub use worker::*;

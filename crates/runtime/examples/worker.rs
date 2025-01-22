@@ -1,4 +1,4 @@
-use proven_runtime::{ExecutionRequest, RuntimeOptions, Worker};
+use proven_runtime::{create_module_graph, ExecutionRequest, RuntimeOptions, Worker};
 
 use std::sync::Arc;
 
@@ -17,7 +17,8 @@ static EXECUTIONS: usize = 100;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let module = r#"
+    let (module_root, module_graph) = create_module_graph(
+        r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
 
         export const handler = async (a, b) => {
@@ -28,15 +29,16 @@ async fn main() -> Result<(), Error> {
 
             return a + b;
         }
-    "#
-    .to_string();
+    "#,
+    );
 
     let worker = Arc::new(Mutex::new(
         Worker::new(RuntimeOptions {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
             handler_name: Some("handler".to_string()),
-            module,
+            module_graph,
+            module_root,
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
