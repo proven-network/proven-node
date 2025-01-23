@@ -1,16 +1,13 @@
-use proven_radix_nft_verifier::RadixNftVerifierError;
-use proven_store::StoreError;
+use deno_error::JsError;
 use thiserror::Error;
 
-#[derive(Clone, Debug, Error)]
-pub enum Error<SE, VE>
-where
-    SE: StoreError,
-    VE: RadixNftVerifierError,
-{
-    #[error(transparent)]
-    Store(SE),
+#[derive(Clone, Debug, Error, JsError)]
+pub enum Error {
+    #[class(generic)]
+    #[error("store error: {0}")]
+    Store(String),
 
-    #[error(transparent)]
-    Verification(VE),
+    #[class(generic)]
+    #[error("verifier error: {0}")]
+    Verification(String),
 }

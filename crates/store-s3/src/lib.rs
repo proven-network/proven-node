@@ -144,7 +144,7 @@ where
         + TryInto<Bytes, Error = S>
         + 'static,
 {
-    type Error = Error<D, S>;
+    type Error = Error;
 
     async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let key = self.get_key(key);
@@ -204,7 +204,8 @@ where
 
                 let value: T = Bytes::from(buf)
                     .try_into()
-                    .map_err(|e| Error::Deserialize(e))?;
+                    .map_err(|e: D| Error::Deserialize(e.to_string()))?;
+
                 Ok(Some(value))
             }
         }
@@ -264,7 +265,10 @@ where
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
-        let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
+        let bytes: Bytes = value
+            .try_into()
+            .map_err(|e| Error::Serialize(e.to_string()))?;
+
         let resp = self
             .client
             .put_object()
@@ -402,7 +406,7 @@ macro_rules! impl_scoped_store {
                     + TryInto<Bytes, Error = S>
                     + 'static,
             {
-                type Error = Error<D, S>;
+                type Error = Error;
                 type Scoped = $parent<T, D, S>;
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped

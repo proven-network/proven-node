@@ -1,27 +1,19 @@
-use std::convert::Infallible;
-
+use deno_error::JsError;
 use proven_store::StoreError;
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
-#[derive(Debug, Error)]
-pub enum Error<DE = Infallible, SE = Infallible>
-where
-    DE: std::error::Error + Send + Sync + 'static,
-    SE: std::error::Error + Send + Sync + 'static,
-{
+#[derive(Debug, Error, JsError)]
+pub enum Error {
     /// Deserialization error.
-    #[error(transparent)]
-    Deserialize(DE),
+    #[class(generic)]
+    #[error("deserialization error: {0}")]
+    Deserialize(String),
 
     /// Serialization error.
-    #[error(transparent)]
-    Serialize(SE),
+    #[class(generic)]
+    #[error("serialization error: {0}")]
+    Serialize(String),
 }
 
-impl<DE, SE> StoreError for Error<DE, SE>
-where
-    DE: std::error::Error + Send + Sync + 'static,
-    SE: std::error::Error + Send + Sync + 'static,
-{
-}
+impl StoreError for Error {}

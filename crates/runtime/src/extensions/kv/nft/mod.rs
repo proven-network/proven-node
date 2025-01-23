@@ -42,7 +42,7 @@ pub async fn op_nft_keys<NS: Store2, RNV: RadixNftVerifier>(
     #[string] store_type: String,
     #[string] resource_address: String,
     #[string] nft_id: String,
-) -> Result<NftStoreGetResponse<Vec<String>>, Error<NS::Error, RNV::Error>> {
+) -> Result<NftStoreGetResponse<Vec<String>>, Error> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftStoreGetResponse::NoAccountsInContext),
@@ -52,7 +52,7 @@ pub async fn op_nft_keys<NS: Store2, RNV: RadixNftVerifier>(
     let verification = verifier
         .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
         .await
-        .map_err(Error::Verification)?;
+        .map_err(|e| Error::Verification(e.to_string()))?;
 
     if let RadixNftVerificationResult::NotOwned(account) = verification {
         return Ok(NftStoreGetResponse::OwnershipInvalid(account));
@@ -86,7 +86,7 @@ pub async fn op_nft_keys<NS: Store2, RNV: RadixNftVerifier>(
             .keys()
             .await
             .map(NftStoreGetResponse::Some)
-            .map_err(Error::Store);
+            .map_err(|e| Error::Store(e.to_string()));
 
         state.borrow_mut().put(nft_store);
 
@@ -106,7 +106,7 @@ pub async fn op_get_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
     #[string] resource_address: String,
     #[string] nft_id: String,
     #[string] key: String,
-) -> Result<NftStoreGetResponse<Bytes>, Error<NS::Error, RNV::Error>> {
+) -> Result<NftStoreGetResponse<Bytes>, Error> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftStoreGetResponse::NoAccountsInContext),
@@ -116,7 +116,7 @@ pub async fn op_get_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
     let verification = verifier
         .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
         .await
-        .map_err(Error::Verification)?;
+        .map_err(|e| Error::Verification(e.to_string()))?;
 
     if let RadixNftVerificationResult::NotOwned(account) = verification {
         return Ok(NftStoreGetResponse::OwnershipInvalid(account));
@@ -155,7 +155,7 @@ pub async fn op_get_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
         match result {
             Ok(Some(bytes)) => Ok(NftStoreGetResponse::Some(bytes)),
             Ok(None) => Ok(NftStoreGetResponse::None),
-            Err(e) => Err(Error::Store(e)),
+            Err(e) => Err(Error::Store(e.to_string())),
         }
     } else {
         state.borrow_mut().put(nft_store);
@@ -173,7 +173,7 @@ pub async fn op_set_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] key: String,
     #[buffer(copy)] value: Bytes,
-) -> Result<NftStoreSetResponse, Error<NS::Error, RNV::Error>> {
+) -> Result<NftStoreSetResponse, Error> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftStoreSetResponse::NoAccountsInContext),
@@ -183,7 +183,7 @@ pub async fn op_set_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
     let verification = verifier
         .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
         .await
-        .map_err(Error::Verification)?;
+        .map_err(|e| Error::Verification(e.to_string()))?;
 
     if let RadixNftVerificationResult::NotOwned(account) = verification {
         return Ok(NftStoreSetResponse::OwnershipInvalid(account));
@@ -217,7 +217,7 @@ pub async fn op_set_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
             .put(key, value)
             .await
             .map(|()| NftStoreSetResponse::Ok)
-            .map_err(Error::Store)
+            .map_err(|e| Error::Store(e.to_string()))
     } else {
         Ok(NftStoreSetResponse::NoAccountsInContext)
     };
@@ -235,7 +235,7 @@ pub async fn op_get_nft_key<NS: Store2, RNV: RadixNftVerifier>(
     #[string] resource_address: String,
     #[string] nft_id: String,
     #[string] key: String,
-) -> Result<NftStoreGetResponse<u32>, Error<NS::Error, RNV::Error>> {
+) -> Result<NftStoreGetResponse<u32>, Error> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftStoreGetResponse::NoAccountsInContext),
@@ -245,7 +245,7 @@ pub async fn op_get_nft_key<NS: Store2, RNV: RadixNftVerifier>(
     let verification = verifier
         .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
         .await
-        .map_err(Error::Verification)?;
+        .map_err(|e| Error::Verification(e.to_string()))?;
 
     if let RadixNftVerificationResult::NotOwned(account) = verification {
         return Ok(NftStoreGetResponse::OwnershipInvalid(account));
@@ -299,7 +299,7 @@ pub async fn op_get_nft_key<NS: Store2, RNV: RadixNftVerifier>(
                 Ok(NftStoreGetResponse::Some(key_id))
             }
             Ok(None) => Ok(NftStoreGetResponse::None),
-            Err(e) => Err(Error::Store(e)),
+            Err(e) => Err(Error::Store(e.to_string())),
         };
 
         state.borrow_mut().put(nft_store);
@@ -321,7 +321,7 @@ pub async fn op_set_nft_key<NS: Store2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] key: String,
     key_id: u32,
-) -> Result<NftStoreSetResponse, Error<NS::Error, RNV::Error>> {
+) -> Result<NftStoreSetResponse, Error> {
     let crypto_key_bytes = {
         let crypto_state_binding = state.borrow();
         let crypto_key = crypto_state_binding.borrow::<CryptoState>().get_key(key_id);
@@ -345,7 +345,7 @@ pub async fn op_set_nft_key<NS: Store2, RNV: RadixNftVerifier>(
     let verification = verifier
         .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
         .await
-        .map_err(Error::Verification)?;
+        .map_err(|e| Error::Verification(e.to_string()))?;
 
     if let RadixNftVerificationResult::NotOwned(account) = verification {
         return Ok(NftStoreSetResponse::OwnershipInvalid(account));
@@ -379,7 +379,7 @@ pub async fn op_set_nft_key<NS: Store2, RNV: RadixNftVerifier>(
             .put(key, crypto_key_bytes)
             .await
             .map(|()| NftStoreSetResponse::Ok)
-            .map_err(Error::Store)
+            .map_err(|e| Error::Store(e.to_string()))
     } else {
         Ok(NftStoreSetResponse::NoAccountsInContext)
     };
@@ -397,7 +397,7 @@ pub async fn op_get_nft_string<NS: Store2, RNV: RadixNftVerifier>(
     #[string] resource_address: String,
     #[string] nft_id: String,
     #[string] key: String,
-) -> Result<NftStoreGetResponse<String>, Error<NS::Error, RNV::Error>> {
+) -> Result<NftStoreGetResponse<String>, Error> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftStoreGetResponse::NoAccountsInContext),
@@ -407,7 +407,7 @@ pub async fn op_get_nft_string<NS: Store2, RNV: RadixNftVerifier>(
     let verification = verifier
         .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
         .await
-        .map_err(Error::Verification)?;
+        .map_err(|e| Error::Verification(e.to_string()))?;
 
     if let RadixNftVerificationResult::NotOwned(account) = verification {
         return Ok(NftStoreGetResponse::OwnershipInvalid(account));
@@ -448,7 +448,7 @@ pub async fn op_get_nft_string<NS: Store2, RNV: RadixNftVerifier>(
                 String::from_utf8_lossy(&bytes).to_string(),
             )),
             Ok(None) => Ok(NftStoreGetResponse::None),
-            Err(e) => Err(Error::Store(e)),
+            Err(e) => Err(Error::Store(e.to_string())),
         }
     } else {
         state.borrow_mut().put(nft_store);
@@ -466,7 +466,7 @@ pub async fn op_set_nft_string<NS: Store2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] key: String,
     #[string] value: String,
-) -> Result<NftStoreSetResponse, Error<NS::Error, RNV::Error>> {
+) -> Result<NftStoreSetResponse, Error> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftStoreSetResponse::NoAccountsInContext),
@@ -476,7 +476,7 @@ pub async fn op_set_nft_string<NS: Store2, RNV: RadixNftVerifier>(
     let verification = verifier
         .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
         .await
-        .map_err(Error::Verification)?;
+        .map_err(|e| Error::Verification(e.to_string()))?;
 
     if let RadixNftVerificationResult::NotOwned(account) = verification {
         return Ok(NftStoreSetResponse::OwnershipInvalid(account));
@@ -512,7 +512,7 @@ pub async fn op_set_nft_string<NS: Store2, RNV: RadixNftVerifier>(
             .put(key, Bytes::from(value))
             .await
             .map(|()| NftStoreSetResponse::Ok)
-            .map_err(Error::Store)
+            .map_err(|e| Error::Store(e.to_string()))
     } else {
         Ok(NftStoreSetResponse::NoAccountsInContext)
     };

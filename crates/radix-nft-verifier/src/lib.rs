@@ -7,9 +7,10 @@ use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use deno_error::JsErrorClass;
 
 /// Marker trait for NFT verifier errors.
-pub trait RadixNftVerifierError: Error + Send + Sync + 'static {}
+pub trait RadixNftVerifierError: Error + JsErrorClass + Send + Sync + 'static {}
 
 /// Verification result.
 pub enum RadixNftVerificationResult {

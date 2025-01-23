@@ -108,7 +108,7 @@ where
     S: Stream<Request, DeserializeError, SerializeError>,
     SS: Store<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<S, SS>;
+    type Error = Error;
 
     type Connection = Connection<S, SS>;
 
@@ -145,7 +145,7 @@ where
             let _service = stream
                 .start_service("SQL_SERVICE", self.service_options.clone(), handler.clone())
                 .await
-                .map_err(Error::Service)?;
+                .map_err(|e| Error::Service(e.to_string()))?;
 
             // Wait for the stream to catch up before applying migrations
             caught_up_rx
@@ -158,8 +158,10 @@ where
                 if !applied_migrations.contains(&migration_sql) {
                     let request = Request::Migrate(migration_sql);
 
-                    if let ClientResponseType::Response(Response::Failed(error)) =
-                        client.request(request).await.map_err(Error::Client)?
+                    if let ClientResponseType::Response(Response::Failed(error)) = client
+                        .request(request)
+                        .await
+                        .map_err(|e| Error::Client(e.to_string()))?
                     {
                         return Err(Error::Libsql(error));
                     }
@@ -275,7 +277,7 @@ where
     S: Stream1<Request, DeserializeError, SerializeError>,
     SS: Store1<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<S::Scoped, SS::Scoped>;
+    type Error = Error;
 
     type Connection = Connection<S::Scoped, SS::Scoped>;
 
@@ -390,10 +392,7 @@ where
     S: Stream2<Request, DeserializeError, SerializeError>,
     SS: Store2<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<
-        <S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped,
-        <SS::Scoped as Store1<Bytes, Infallible, Infallible>>::Scoped,
-    >;
+    type Error = Error;
 
     type Connection = Connection<
         <S::Scoped as Stream1<Request, DeserializeError, SerializeError>>::Scoped,
@@ -511,18 +510,7 @@ where
     S: Stream3<Request, DeserializeError, SerializeError>,
     SS: Store3<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<
-        <<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<
-            Request,
-            DeserializeError,
-            SerializeError,
-        >>::Scoped,
-        <<SS::Scoped as Store2<Bytes, Infallible, Infallible>>::Scoped as Store1<
-            Bytes,
-            Infallible,
-            Infallible,
-        >>::Scoped,
-    >;
+    type Error = Error;
 
     type Connection = Connection<
         <<S::Scoped as Stream2<Request, DeserializeError, SerializeError>>::Scoped as Stream1<

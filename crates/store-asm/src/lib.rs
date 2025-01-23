@@ -33,7 +33,7 @@ pub struct AsmStoreOptions {
 }
 
 /// KV store using AWS Secrets Manager.
-pub struct AsmStore<T = Bytes, DE = Infallible, SE = Infallible>
+pub struct AsmStore<T = Bytes, D = Infallible, S = Infallible>
 where
     Self: Clone + Debug + Send + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
@@ -41,13 +41,13 @@ where
     client: aws_sdk_secretsmanager::Client,
     prefix: Option<String>,
     secret_name: String,
-    _marker: PhantomData<(T, DE, SE)>,
+    _marker: PhantomData<(T, D, S)>,
 }
 
-impl<T, DE, SE> Clone for AsmStore<T, DE, SE>
+impl<T, D, S> Clone for AsmStore<T, D, S>
 where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     fn clone(&self) -> Self {
@@ -60,10 +60,10 @@ where
     }
 }
 
-impl<T, DE, SE> Debug for AsmStore<T, DE, SE>
+impl<T, D, S> Debug for AsmStore<T, D, S>
 where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
     T: Clone + Debug + Send + Sync + 'static,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -75,17 +75,17 @@ where
     }
 }
 
-impl<T, DE, SE> AsmStore<T, DE, SE>
+impl<T, D, S> AsmStore<T, D, S>
 where
     Self: Clone + Debug + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
     T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
         + 'static,
 {
     /// Creates a new `AsmStore` with the specified options.
@@ -128,7 +128,7 @@ where
         )
     }
 
-    async fn get_secret_map(&self) -> Result<HashMap<String, Bytes>, Error<DE, SE>> {
+    async fn get_secret_map(&self) -> Result<HashMap<String, Bytes>, Error> {
         let resp = self
             .client
             .get_secret_value()
@@ -145,10 +145,7 @@ where
         }
     }
 
-    async fn update_secret_map(
-        &self,
-        secret_map: HashMap<String, Bytes>,
-    ) -> Result<(), Error<DE, SE>> {
+    async fn update_secret_map(&self, secret_map: HashMap<String, Bytes>) -> Result<(), Error> {
         let updated_secret_string = serde_json::to_string(&secret_map).unwrap();
         let update_resp = self
             .client
@@ -166,20 +163,20 @@ where
 }
 
 #[async_trait]
-impl<T, DE, SE> Store<T, DE, SE> for AsmStore<T, DE, SE>
+impl<T, D, S> Store<T, D, S> for AsmStore<T, D, S>
 where
     Self: Clone + Send + Sync + 'static,
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
+    D: Send + StdError + Sync + 'static,
+    S: Send + StdError + Sync + 'static,
     T: Clone
         + Debug
         + Send
         + Sync
-        + TryFrom<Bytes, Error = DE>
-        + TryInto<Bytes, Error = SE>
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
         + 'static,
 {
-    type Error = Error<DE, SE>;
+    type Error = Error;
 
     async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
@@ -197,7 +194,7 @@ where
                 let value: T = bytes
                     .clone()
                     .try_into()
-                    .map_err(|e| Error::Deserialize(e))?;
+                    .map_err(|e: D| Error::Deserialize(e.to_string()))?;
                 Ok(Some(value))
             }
             None => Ok(None),
@@ -216,7 +213,9 @@ where
     ) -> Result<(), Self::Error> {
         let mut secret_map = self.get_secret_map().await?;
 
-        let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
+        let bytes: Bytes = value
+            .try_into()
+            .map_err(|e| Error::Serialize(e.to_string()))?;
         secret_map.insert(key.into(), bytes);
 
         self.update_secret_map(secret_map).await
@@ -227,35 +226,35 @@ macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            pub struct [< AsmStore $index >]<T = Bytes, DE = Infallible, SE = Infallible>
+            pub struct [< AsmStore $index >]<T = Bytes, D = Infallible, S = Infallible>
             where
             Self: Debug + Send + Sync + 'static,
-            DE: Send + StdError + Sync + 'static,
-            SE: Send + StdError + Sync + 'static,
+            D: Send + StdError + Sync + 'static,
+            S: Send + StdError + Sync + 'static,
             T: Clone
                 + Debug
                 + Send
                 + Sync
-                + TryFrom<Bytes, Error = DE>
-                + TryInto<Bytes, Error = SE>
+                + TryFrom<Bytes, Error = D>
+                + TryInto<Bytes, Error = S>
                 + 'static,
             {
                 client: aws_sdk_secretsmanager::Client,
                 prefix: Option<String>,
                 secret_name: String,
-                _marker: PhantomData<(T, DE, SE)>,
+                _marker: PhantomData<(T, D, S)>,
             }
 
-            impl<T, DE, SE> Clone for [< AsmStore $index >]<T, DE, SE>
+            impl<T, D, S> Clone for [< AsmStore $index >]<T, D, S>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
             {
                 fn clone(&self) -> Self {
@@ -268,16 +267,16 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> Debug for [< AsmStore $index >]<T, DE, SE>
+            impl<T, D, S> Debug for [< AsmStore $index >]<T, D, S>
             where
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
             {
                 fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
@@ -289,17 +288,17 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, DE, SE> [< AsmStore $index >]<T, DE, SE>
+            impl<T, D, S> [< AsmStore $index >]<T, D, S>
             where
                 Self: Debug + Send + Sync + 'static,
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
             {
                 /// Creates a new `[< AsmStore $index >]` with the specified options.
@@ -319,23 +318,23 @@ macro_rules! impl_scoped_store {
             }
 
             #[async_trait]
-            impl<T, DE, SE> [< Store $index >]<T, DE, SE> for [< AsmStore $index >]<T, DE, SE>
+            impl<T, D, S> [< Store $index >]<T, D, S> for [< AsmStore $index >]<T, D, S>
             where
                 Self: Clone + Debug + Send + Sync + 'static,
-                DE: Send + StdError + Sync + 'static,
-                SE: Send + StdError + Sync + 'static,
+                D: Send + StdError + Sync + 'static,
+                S: Send + StdError + Sync + 'static,
                 T: Clone
                     + Debug
                     + Send
                     + Sync
-                    + TryFrom<Bytes, Error = DE>
-                    + TryInto<Bytes, Error = SE>
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
                     + 'static,
             {
-                type Error = Error<DE, SE>;
-                type Scoped = $parent<T, DE, SE>;
+                type Error = Error;
+                type Scoped = $parent<T, D, S>;
 
-                fn scope<S: Clone + Into<String> + Send>(&self, scope: S) -> Self::Scoped {
+                fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
                     let new_scope = match &self.prefix {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
                         None => scope.into(),

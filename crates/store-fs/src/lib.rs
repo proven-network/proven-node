@@ -94,7 +94,7 @@ where
         + TryInto<Bytes, Error = S>
         + 'static,
 {
-    type Error = Error<D, S>;
+    type Error = Error;
 
     async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let path = self.get_file_path(&key.into());
@@ -109,7 +109,9 @@ where
         match fs::read(path).await {
             Ok(data) => {
                 let bytes: Bytes = data.into();
-                let value: T = bytes.try_into().map_err(|e| Error::Deserialize(e))?;
+                let value: T = bytes
+                    .try_into()
+                    .map_err(|e: D| Error::Deserialize(e.to_string()))?;
 
                 Ok(Some(value))
             }
@@ -153,7 +155,9 @@ where
         let mut file = fs::File::create(path)
             .await
             .map_err(|e| Error::Io("error creating file", e))?;
-        let value: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
+        let value: Bytes = value
+            .try_into()
+            .map_err(|e| Error::Serialize(e.to_string()))?;
         file.write_all(&value)
             .await
             .map_err(|e| Error::Io("error writing file", e))?;
@@ -255,7 +259,7 @@ macro_rules! impl_scoped_store {
                 D: Send + StdError + Sync + 'static,
                 S: Send + StdError + Sync + 'static,
             {
-                type Error = Error<D, S>;
+                type Error = Error;
                 type Scoped = $parent<T, D, S>;
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped

@@ -44,7 +44,7 @@ where
     P: Stream<T, D, S>,
     SS: Store<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<P, SS>;
+    type Error = Error;
 
     async fn execute<Q: Clone + Into<String> + Send>(
         &self,
@@ -53,7 +53,12 @@ where
     ) -> Result<u64, Self::Error> {
         let request = Request::Execute(query.into(), params);
 
-        match self.client.request(request).await.map_err(Error::Client)? {
+        match self
+            .client
+            .request(request)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
             ClientResponseType::Response(Response::Execute(affected_rows)) => Ok(affected_rows),
             ClientResponseType::Response(Response::Failed(error)) => Err(Error::Libsql(error)),
             _ => unreachable!(),
@@ -67,7 +72,12 @@ where
     ) -> Result<u64, Self::Error> {
         let request = Request::ExecuteBatch(query.into(), params);
 
-        match self.client.request(request).await.map_err(Error::Client)? {
+        match self
+            .client
+            .request(request)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
             ClientResponseType::Response(Response::ExecuteBatch(affected_rows)) => {
                 Ok(affected_rows)
             }
@@ -79,7 +89,12 @@ where
     async fn migrate<Q: Clone + Into<String> + Send>(&self, query: Q) -> Result<bool, Self::Error> {
         let request = Request::Migrate(query.into());
 
-        match self.client.request(request).await.map_err(Error::Client)? {
+        match self
+            .client
+            .request(request)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
             ClientResponseType::Response(Response::Migrate(needed_migration)) => {
                 Ok(needed_migration)
             }
@@ -95,7 +110,12 @@ where
     ) -> Result<Box<dyn futures::Stream<Item = Vec<SqlParam>> + Send + Unpin>, Self::Error> {
         let request = Request::Query(query.into(), params);
 
-        match self.client.request(request).await.map_err(Error::Client)? {
+        match self
+            .client
+            .request(request)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
             ClientResponseType::Stream(stream) => Ok(Box::new(stream.map(|item| match item {
                 Response::Row(row) => row,
                 _ => unreachable!(),

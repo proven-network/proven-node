@@ -10,9 +10,10 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use deno_error::JsErrorClass;
 
 /// Marker trait for store errors
-pub trait StoreError: Error + Send + Sync + 'static {}
+pub trait StoreError: Error + JsErrorClass + Send + Sync + 'static {}
 
 /// A trait representing a key-value store with asynchronous operations.
 #[async_trait]

@@ -11,11 +11,11 @@ use proven_store_memory::{MemoryStore2, MemoryStore3};
 use radix_common::network::NetworkDefinition;
 use tempfile::tempdir;
 
-pub fn create_test_module_graph(script_name: &str) -> (Url, ModuleGraph) {
+pub fn create_test_module_graph(script_name: &str, handler_name: &str) -> (Url, ModuleGraph) {
     let module = std::fs::read_to_string(format!("./test_esm/{script_name}.ts")).unwrap();
     let import_replaced_module = replace_esm_imports(&module);
 
-    let specifier = format!("file:///{script_name}.ts");
+    let specifier = format!("file:///{script_name}.ts#{handler_name}");
 
     let loader = MemoryLoader::new(
         vec![
@@ -78,7 +78,7 @@ pub fn create_test_runtime_options(
     DirectSqlStore3,
     MockRadixNftVerifier,
 > {
-    let (module_root, module_graph) = create_test_module_graph(script_name);
+    let (module_root, module_graph) = create_test_module_graph(script_name, handler_name);
 
     RuntimeOptions {
         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),

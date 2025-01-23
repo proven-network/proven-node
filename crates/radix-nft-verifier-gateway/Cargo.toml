@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 async-trait = { workspace = true }
+deno_error = { workspace = true }
 proven-radix-gateway-sdk = { workspace = true }
 proven-radix-nft-verifier = { workspace = true }
 thiserror = { workspace = true }

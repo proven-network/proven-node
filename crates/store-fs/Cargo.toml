@@ -7,6 +7,7 @@ edition = "2021"
 async-trait = { workspace = true }
 bytes = { workspace = true }
 ciborium = { workspace = true }
+deno_error = { workspace = true }
 paste = { workspace = true }
 proven-store = { workspace = true }
 thiserror = { workspace = true }

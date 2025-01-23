@@ -8,6 +8,7 @@ async-nats = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 ciborium = { workspace = true }
+deno_error = { workspace = true }
 futures = { workspace = true }
 paste = { workspace = true }
 proven-store = { workspace = true }

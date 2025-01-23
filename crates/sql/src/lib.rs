@@ -13,9 +13,10 @@ use std::error::Error;
 use std::fmt::Debug;
 
 use async_trait::async_trait;
+use deno_error::JsErrorClass;
 
 /// Marker trait for `SQLStore` errors
-pub trait SqlStoreError: Debug + Error + Send + Sync {}
+pub trait SqlStoreError: Debug + Error + JsErrorClass + Send + Sync {}
 
 /// A trait representing an active connection to a SQL DB.
 #[async_trait]

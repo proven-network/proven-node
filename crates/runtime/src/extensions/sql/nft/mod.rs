@@ -38,7 +38,7 @@ pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] query: String,
     param_list_id_opt: Option<u32>,
-) -> Result<NftDbResponse<u32>, Error<NSS::Error, RNV::Error>> {
+) -> Result<NftDbResponse<u32>, Error> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftDbResponse::NoAccountsInContext),
@@ -48,7 +48,7 @@ pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     let verification = verifier
         .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
         .await
-        .map_err(Error::Verification)?;
+        .map_err(|e| Error::Verification(e.to_string()))?;
 
     if let RadixNftVerificationResult::NotOwned(account) = verification {
         return Ok(NftDbResponse::OwnershipInvalid(account));
@@ -79,7 +79,7 @@ pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
         let result = connection_manager
             .connect(db_name, resource_address, nft_id)
             .await
-            .map_err(Error::SqlStore);
+            .map_err(|e| Error::SqlStore(e.to_string()));
 
         state.borrow_mut().put(connection_manager_opt);
 
@@ -117,14 +117,14 @@ pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
             .await
             .map(|i| i as u32)
             .map(NftDbResponse::Ok)
-            .map_err(Error::SqlStore)
+            .map_err(|e| Error::SqlStore(e.to_string()))
     } else {
         connection
             .execute(query, vec![])
             .await
             .map(|i| i as u32)
             .map(NftDbResponse::Ok)
-            .map_err(Error::SqlStore)
+            .map_err(|e| Error::SqlStore(e.to_string()))
     }
 }
 
@@ -137,7 +137,7 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] query: String,
     param_list_id_opt: Option<u32>,
-) -> Result<NftDbResponse<Option<(Vec<SqlParam>, u32)>>, Error<NSS::Error, RNV::Error>> {
+) -> Result<NftDbResponse<Option<(Vec<SqlParam>, u32)>>, Error> {
     let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
         Some(accounts) if !accounts.is_empty() => accounts,
         Some(_) | None => return Ok(NftDbResponse::NoAccountsInContext),
@@ -147,7 +147,7 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     let verification = verifier
         .verify_ownership(&accounts, resource_address.clone(), nft_id.clone())
         .await
-        .map_err(Error::Verification)?;
+        .map_err(|e| Error::Verification(e.to_string()))?;
 
     if let RadixNftVerificationResult::NotOwned(account) = verification {
         return Ok(NftDbResponse::OwnershipInvalid(account));
@@ -178,7 +178,7 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
         let result = connection_manager
             .connect(db_name, resource_address, nft_id)
             .await
-            .map_err(Error::SqlStore);
+            .map_err(|e| Error::SqlStore(e.to_string()));
 
         state.borrow_mut().put(connection_manager_opt);
 
@@ -212,12 +212,12 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
         connection
             .query(query, params)
             .await
-            .map_err(Error::SqlStore)?
+            .map_err(|e| Error::SqlStore(e.to_string()))?
     } else {
         connection
             .query(query, vec![])
             .await
-            .map_err(Error::SqlStore)?
+            .map_err(|e| Error::SqlStore(e.to_string()))?
     };
 
     if let Some(first_row) = stream.next().await {

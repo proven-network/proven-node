@@ -119,7 +119,7 @@ where
         }
     }
 
-    async fn get_kv_store(&self) -> Result<KvStore, Error<D, S>> {
+    async fn get_kv_store(&self) -> Result<KvStore, Error> {
         let config = Config {
             bucket: self.bucket.clone(),
             max_age: self.max_age,
@@ -151,7 +151,7 @@ where
     D: Send + StdError + Sync + 'static,
     S: Send + StdError + Sync + 'static,
 {
-    type Error = Error<D, S>;
+    type Error = Error;
 
     async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         self.get_kv_store()
@@ -171,7 +171,9 @@ where
             .await
             .map_err(|e| Error::Entry(e.kind()))?
         {
-            let value: T = bytes.try_into().map_err(|e| Error::Deserialize(e))?;
+            let value: T = bytes
+                .try_into()
+                .map_err(|e: D| Error::Deserialize(e.to_string()))?;
 
             Ok(Some(value))
         } else {
@@ -196,7 +198,9 @@ where
         key: K,
         value: T,
     ) -> Result<(), Self::Error> {
-        let bytes: Bytes = value.try_into().map_err(|e| Error::Serialize(e))?;
+        let bytes: Bytes = value
+            .try_into()
+            .map_err(|e| Error::Serialize(e.to_string()))?;
         self.get_kv_store()
             .await?
             .put(key.into(), bytes)
@@ -325,7 +329,7 @@ macro_rules! impl_scoped_store {
                 D: Send + StdError + Sync + 'static,
                 S: Send + StdError + Sync + 'static,
             {
-                type Error = Error<D, S>;
+                type Error = Error;
                 type Scoped = $parent<T, D, S>;
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped

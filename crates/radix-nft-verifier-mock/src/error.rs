@@ -1,16 +1,11 @@
-use std::fmt;
-
+use deno_error::JsError;
 use proven_radix_nft_verifier::RadixNftVerifierError;
+use thiserror::Error;
 
 /// Error type for the mock NFT verifier.
-#[derive(Debug)]
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error("mock verifier error")]
 pub struct Error;
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "mock verifier error")
-    }
-}
-
-impl std::error::Error for Error {}
 impl RadixNftVerifierError for Error {}

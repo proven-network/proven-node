@@ -129,7 +129,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = Error<D, S>;
+    type Error = Error;
 
     async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         self.map.lock().unwrap().remove(&self.get_key(key)); // Changed from .await
@@ -141,7 +141,7 @@ where
 
         match map.get(&self.get_key(key)).cloned() {
             Some(value) => {
-                let value = T::try_from(value).map_err(Error::Deserialize)?;
+                let value = T::try_from(value).map_err(|e| Error::Deserialize(e.to_string()))?;
                 Ok(Some(value))
             }
             None => Ok(None),
@@ -174,7 +174,9 @@ where
         self.map.lock().unwrap().insert(
             // Changed from .await
             self.get_key(key),
-            value.try_into().map_err(Error::Serialize)?,
+            value
+                .try_into()
+                .map_err(|e| Error::Deserialize(e.to_string()))?,
         );
 
         Ok(())
@@ -265,7 +267,7 @@ macro_rules! impl_scoped_store {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
-                type Error = Error<D, S>;
+                type Error = Error;
                 type Scoped = $parent<T, D, S>;
 
                 fn scope<K>(&self, scope: K) -> $parent<T, D, S>

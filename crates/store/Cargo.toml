@@ -6,4 +6,5 @@ edition = "2021"
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
+deno_error = { workspace = true }
 paste = { workspace = true }

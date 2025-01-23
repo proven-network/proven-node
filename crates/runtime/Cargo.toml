@@ -5,13 +5,16 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
+anyhow = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 ciborium = { workspace = true }
 deno_core = { workspace = true }
+deno_error = { workspace = true }
 deno_graph = { workspace = true }
 deno_permissions = { workspace = true }
 ed25519-dalek = { workspace = true }
+eszip = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 proven-locks = { workspace = true }

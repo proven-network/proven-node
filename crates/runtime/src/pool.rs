@@ -732,7 +732,7 @@ mod tests {
     async fn test_execute() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute");
+        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute", "test");
 
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
@@ -757,7 +757,7 @@ mod tests {
     async fn test_execute_prehashed() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute");
+        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute", "test");
 
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
@@ -788,7 +788,7 @@ mod tests {
     async fn test_queue_request() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute");
+        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute", "test");
 
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
@@ -813,7 +813,7 @@ mod tests {
     async fn test_kill_idle_worker() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute");
+        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute", "test");
 
         let runtime_options = PoolRuntimeOptions {
             handler_name: Some("test".to_string()),
