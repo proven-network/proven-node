@@ -529,7 +529,7 @@ dependencies = [
 [[package]]
 name = "aws-nitro-enclaves-nsm-api"
 version = "0.4.0"
-source = "git+https://github.com/flightofthefox/aws-nitro-enclaves-nsm-api?branch=main#c382e73a99c9f539fdd6818ad1dc1d97bb36ca7e"
+source = "git+https://github.com/proven-network/aws-nitro-enclaves-nsm-api?branch=main#c382e73a99c9f539fdd6818ad1dc1d97bb36ca7e"
 dependencies = [
  "ciborium",
  "libc",
@@ -567,9 +567,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-ec2"
-version = "1.104.0"
+version = "1.105.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adc49f53bf7e2f3fc23c1f37dca224d4e94b295f87eacb90a1874d56074655df"
+checksum = "3f12ff8d43df4f1a4b7d37a358ad0391f9aa4e766027d53d2360c9966d64e990"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -591,9 +591,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-kms"
-version = "1.56.0"
+version = "1.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7218138dd6145308b7ace41dac1b25fcbc1861f1496a6ac3e57aa69943251c3b"
+checksum = "f7b2cd8354dcccf1ae003100a41c7b862837cfd7af14a42b1e3ed98a8c3e487b"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",

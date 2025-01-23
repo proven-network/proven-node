@@ -65,9 +65,9 @@ asn1-rs = "0.7.0"
 async-nats = "0.38.0"
 async-trait = "0.1.85"
 aws-config = { version = "1.5.14", features = ["behavior-version-latest"] }
-aws-nitro-enclaves-nsm-api = { git = "https://github.com/flightofthefox/aws-nitro-enclaves-nsm-api", branch = "main" }
-aws-sdk-ec2 = "1.104.0"
-aws-sdk-kms = "1.56.0"
+aws-nitro-enclaves-nsm-api = { git = "https://github.com/proven-network/aws-nitro-enclaves-nsm-api", branch = "main" }
+aws-sdk-ec2 = "1.105.0"
+aws-sdk-kms = "1.57.0"
 aws-sdk-route53resolver = "1.60.0"
 aws-sdk-s3 = "1.70.0"
 aws-sdk-secretsmanager = "1.59.0"
