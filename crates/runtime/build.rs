@@ -89,6 +89,10 @@ fn clean_vendor_file(package_name: &str) -> std::io::Result<()> {
 }
 
 fn main() {
+    // Tell Cargo when to rerun
+    println!("cargo:rerun-if-changed=package.json");
+    println!("cargo:rerun-if-changed=rollup.config.js");
+
     // Run npm install
     let npm_install_status = Command::new("npm")
         .arg("install")
@@ -148,8 +152,4 @@ fn main() {
         .expect("Failed to process @radixdlt/babylon-gateway-api-sdk files");
     copy_and_clean_package("@radixdlt/radix-engine-toolkit")
         .expect("Failed to process @radixdlt/radix-engine-toolkit files");
-
-    // Tell Cargo when to rerun
-    println!("cargo:rerun-if-changed=package.json");
-    println!("cargo:rerun-if-changed=rollup.config.js");
 }

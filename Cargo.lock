@@ -7578,6 +7578,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "ciborium",
+ "deno_ast",
  "deno_core",
  "deno_error",
  "deno_graph",

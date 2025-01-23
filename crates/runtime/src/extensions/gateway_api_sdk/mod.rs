@@ -32,13 +32,12 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::create_test_runtime_options;
-    use crate::{ExecutionRequest, Worker};
+    use crate::{ExecutionRequest, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_gateway_api_sdk() {
         let runtime_options =
-            create_test_runtime_options("gateway_api_sdk/test_gateway_api_sdk", "test");
+            RuntimeOptions::for_test_code("gateway_api_sdk/test_gateway_api_sdk", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {

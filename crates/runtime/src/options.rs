@@ -40,10 +40,7 @@ pub struct SqlMigrations {
 }
 
 #[derive(Clone, Debug, Default)]
-#[allow(dead_code)] // TODO: Remove this once used
 pub struct ModuleOptions {
     pub handler_options: ModuleHandlerOptions,
-    pub module_hash: String,
-    pub module_source: String,
     pub sql_migrations: SqlMigrations,
 }

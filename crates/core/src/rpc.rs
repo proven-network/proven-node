@@ -7,7 +7,7 @@ use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_applications::{Application, ApplicationManagement, CreateApplicationOptions};
 use proven_runtime::{
-    create_module_graph, ExecutionRequest, ExecutionResult, PoolRuntimeOptions,
+    CodePackage, ExecutionRequest, ExecutionResult, ModuleSpecifier, PoolRuntimeOptions,
     RuntimePoolManagement,
 };
 use proven_sessions::Session;
@@ -171,15 +171,15 @@ where
                     identity: self.identity_address.clone(),
                 };
 
-                let (module_root, module_graph) = create_module_graph(&module);
+                let code_package = CodePackage::from_str(&module).unwrap();
 
                 match self
                     .runtime_pool_manager
                     .execute(
                         PoolRuntimeOptions {
+                            code_package,
                             handler_name: Some(handler_name.clone()),
-                            module_graph,
-                            module_root,
+                            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
                         },
                         request,
                     )

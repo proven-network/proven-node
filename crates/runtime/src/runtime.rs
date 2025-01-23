@@ -1,3 +1,4 @@
+use crate::code_package::{CodePackage, ProcessingMode};
 use crate::extensions::{
     babylon_gateway_api_ext, console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext,
     openai_ext, radix_engine_toolkit_ext, session_ext, sql_application_ext, sql_nft_ext,
@@ -6,9 +7,7 @@ use crate::extensions::{
     PersonalSqlConnectionManager, SessionState, SqlParamListManager, SqlQueryResultsManager,
 };
 use crate::options::{HandlerOptions, SqlMigrations};
-use crate::options_parser::OptionsParser;
 use crate::permissions::OriginAllowlistWebPermissions;
-use crate::preprocessor::Preprocessor;
 use crate::schema::SCHEMA_WHLIST;
 use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult, Result};
 
@@ -21,13 +20,12 @@ use std::vec;
 
 use bytes::Bytes;
 use deno_core::url::Url;
-use deno_graph::ModuleGraph;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use radix_common::network::NetworkDefinition;
 use rustyscript::js_value::Value;
-use rustyscript::{ExtensionOptions, Module, ModuleHandle, WebOptions};
+use rustyscript::{ExtensionOptions, ModuleHandle, WebOptions};
 use serde_json::json;
 use tokio::time::Instant;
 
@@ -60,20 +58,20 @@ where
     /// Application-scoped KV store.
     pub application_store: AS,
 
-    /// Name of the handler function.
+    /// The code package to use during execution.
+    pub code_package: CodePackage,
+
+    /// The export of the entrypoint module to run.
     pub handler_name: Option<String>,
+
+    /// Specifier of the entrypoint module.
+    pub module_specifier: Url,
 
     /// NFT-scoped SQL store.
     pub nft_sql_store: NSS,
 
     /// NFT-scoped KV store.
     pub nft_store: NS,
-
-    /// The graph of modules to load.
-    pub module_graph: ModuleGraph,
-
-    /// The root module to look for the handler in.
-    pub module_root: Url,
 
     /// Persona-scoped SQL store.
     pub personal_sql_store: PSS,
@@ -91,6 +89,57 @@ where
     pub radix_nft_verifier: RNV,
 }
 
+#[cfg(test)]
+impl
+    RuntimeOptions<
+        proven_store_memory::MemoryStore2,
+        proven_store_memory::MemoryStore3,
+        proven_store_memory::MemoryStore3,
+        proven_sql_direct::DirectSqlStore2,
+        proven_sql_direct::DirectSqlStore3,
+        proven_sql_direct::DirectSqlStore3,
+        proven_radix_nft_verifier_mock::MockRadixNftVerifier,
+    >
+{
+    #[must_use]
+    /// Creates a new `RuntimeOptions` instance for testing purposes.
+    ///
+    /// # Parameters
+    /// - `script_name`: The name of the script to use.
+    /// - `handler_name`: The name of the handler to use.
+    ///
+    /// # Returns
+    /// A new `RuntimeOptions` instance.
+    ///
+    /// # Panics
+    /// This function will panic if creating a temporary directory fails.
+    pub fn for_test_code(script_name: &str, handler_name: &str) -> Self {
+        use deno_core::ModuleSpecifier;
+        use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
+        use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
+        use proven_store_memory::{MemoryStore2, MemoryStore3};
+        use radix_common::network::NetworkDefinition;
+        use tempfile::tempdir;
+
+        let code_package = CodePackage::from_test_code(script_name);
+
+        Self {
+            application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
+            application_store: MemoryStore2::new(),
+            code_package,
+            handler_name: Some(handler_name.to_string()),
+            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
+            nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+            nft_store: MemoryStore3::new(),
+            personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+            personal_store: MemoryStore3::new(),
+            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+            radix_network_definition: NetworkDefinition::stokenet(),
+            radix_nft_verifier: MockRadixNftVerifier::new(),
+        }
+    }
+}
+
 /// Executes ESM modules in a single-threaded environment. Cannot use in tokio without spawning in dedicated thread.
 ///
 /// # Type Parameters
@@ -105,7 +154,8 @@ where
 /// ```rust
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     create_module_graph, Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions,
+///     CodePackage, Error, ExecutionRequest, ExecutionResult, ModuleSpecifier, Runtime,
+///     RuntimeOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -113,15 +163,14 @@ where
 /// use serde_json::json;
 /// use tempfile::tempdir;
 ///
-/// let (module_root, module_graph) =
-///     create_module_graph("export const handler = (a, b) => a + b;");
+/// let code_package = CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
 ///
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
 ///     application_store: MemoryStore2::new(),
+///     code_package,
 ///     handler_name: Some("handler".to_string()),
-///     module_graph,
-///     module_root,
+///     module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
 ///     nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///     nft_store: MemoryStore3::new(),
 ///     personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
@@ -188,9 +237,9 @@ where
         RuntimeOptions {
             application_sql_store,
             application_store,
+            code_package,
             handler_name,
-            module_graph,
-            module_root,
+            module_specifier,
             nft_sql_store,
             nft_store,
             personal_sql_store,
@@ -200,25 +249,18 @@ where
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Result<Self> {
-        #[allow(clippy::significant_drop_in_scrutinee)]
-        let js_module = if let Some(module) = module_graph
-            .try_get(&module_root)
-            .map_err(|err| Error::ModuleGraph(err.clone()))?
-        {
-            match module.clone() {
-                deno_graph::Module::Js(js_module) => js_module,
-                _ => return Err(Error::RootNotFoundInGraph),
-            }
-        } else {
-            return Err(Error::RootNotFoundInGraph);
+        let Some(module) = code_package.get_module(&module_specifier, &ProcessingMode::Runtime)
+        else {
+            return Err(Error::SpecifierNotFoundInCodePackage);
         };
 
-        // TODO: Combine options parser and preprocessor
-        let module_options = OptionsParser::new()?.parse(js_module.source.to_string())?;
-        #[allow(clippy::or_fun_call)]
+        let Ok(module_options) = code_package.get_module_options(&module_specifier) else {
+            return Err(Error::SpecifierNotFoundInCodePackage);
+        };
+
         let handler_options = module_options
             .handler_options
-            .get(handler_name.as_ref().unwrap_or(&"__default__".to_string()));
+            .get(handler_name.as_deref().unwrap_or("__default__"));
 
         let (allowed_web_origins, handler_type, max_heap_mbs, timeout_millis) =
             match handler_options {
@@ -270,6 +312,9 @@ where
         }
 
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
+            import_provider: Some(Box::new(
+                code_package.import_provider(ProcessingMode::Runtime),
+            )),
             timeout: Duration::from_millis(timeout_millis.into()),
             max_heap_size: Some(max_heap_mbs as usize * 1024 * 1024),
             schema_whlist: SCHEMA_WHLIST.clone(),
@@ -323,11 +368,6 @@ where
         // In case there are any top-level console.* calls in the module
         runtime.put(ConsoleState::default())?;
 
-        let mut preprocessor = Preprocessor::new()?;
-        let preprocessed_module = preprocessor.process(js_module.source.to_string())?;
-        drop(preprocessor);
-
-        let module = Module::new("module.ts", preprocessed_module.as_str());
         let module_handle = runtime.load_module(&module)?;
 
         Ok(Self {
@@ -562,8 +602,6 @@ where
 mod tests {
     use super::*;
 
-    use crate::test_utils::create_test_runtime_options;
-
     use serde_json::json;
 
     // spawn in std::thread to avoid rustyscript panic
@@ -582,7 +620,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_execute() {
-        let options = create_test_runtime_options("test_runtime_execute", "test");
+        let options = RuntimeOptions::for_test_code("test_runtime_execute", "test");
 
         run_in_thread(|| {
             let request = create_execution_request();
@@ -596,7 +634,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_with_default_export() {
         let mut options =
-            create_test_runtime_options("test_runtime_execute_with_default_export", "remove");
+            RuntimeOptions::for_test_code("test_runtime_execute_with_default_export", "remove");
         options.handler_name = None;
 
         run_in_thread(|| {
@@ -612,7 +650,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_sets_timeout() {
         // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
-        let options = create_test_runtime_options("test_runtime_execute_sets_timeout", "test");
+        let options = RuntimeOptions::for_test_code("test_runtime_execute_sets_timeout", "test");
 
         run_in_thread(|| {
             let request = create_execution_request();
@@ -628,7 +666,7 @@ mod tests {
     async fn test_runtime_execute_default_max_heap_size() {
         // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
         let options =
-            create_test_runtime_options("test_runtime_execute_default_max_heap_size", "test");
+            RuntimeOptions::for_test_code("test_runtime_execute_default_max_heap_size", "test");
 
         run_in_thread(|| {
             let request = create_execution_request();

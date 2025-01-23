@@ -20,8 +20,8 @@ use tokio::sync::oneshot;
 /// ```rust
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     create_module_graph, Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions,
-///     Worker,
+///     CodePackage, Error, ExecutionRequest, ExecutionResult, ModuleSpecifier, Runtime,
+///     RuntimeOptions, Worker,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -31,15 +31,15 @@ use tokio::sync::oneshot;
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let (module_root, module_graph) =
-///         create_module_graph("export const handler = (a, b) => a + b;");
+///     let code_package =
+///         CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
 ///
 ///     let mut worker = Worker::new(RuntimeOptions {
 ///         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
 ///         application_store: MemoryStore2::new(),
+///         code_package,
 ///         handler_name: Some("handler".to_string()),
-///         module_graph,
-///         module_root,
+///         module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
 ///         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///         nft_store: MemoryStore3::new(),
 ///         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
@@ -162,13 +162,11 @@ where
 mod tests {
     use super::*;
 
-    use crate::test_utils::create_test_runtime_options;
-
     use serde_json::json;
 
     #[tokio::test]
     async fn test_worker_execute_in_tokio() {
-        let runtime_options = create_test_runtime_options("test_runtime_execute", "test");
+        let runtime_options = RuntimeOptions::for_test_code("test_runtime_execute", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {

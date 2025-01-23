@@ -6,6 +6,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Error from eszip.
+    #[error("failure handling eszip")]
+    CodePackage(String),
+
     /// Fmt error.
     #[error(transparent)]
     Fmt(#[from] std::fmt::Error),
@@ -28,7 +32,7 @@ pub enum Error {
 
     /// Root not found in graph.
     #[error("root not found in graph")]
-    RootNotFoundInGraph,
+    SpecifierNotFoundInCodePackage,
 
     /// Rustyscript error.
     #[error(transparent)]

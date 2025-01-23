@@ -1,6 +1,5 @@
 use proven_runtime::{
-    create_module_graph, hash_options, Error, ExecutionRequest, Pool, PoolOptions,
-    PoolRuntimeOptions,
+    CodePackage, Error, ExecutionRequest, ModuleSpecifier, Pool, PoolOptions, PoolRuntimeOptions,
 };
 
 use std::sync::Arc;
@@ -34,7 +33,7 @@ async fn main() -> Result<(), Error> {
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 
-    let (module_root, module_graph) = create_module_graph(
+    let code_package = CodePackage::from_str(
         r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
 
@@ -47,14 +46,15 @@ async fn main() -> Result<(), Error> {
             return a + b;
         }
     "#,
-    );
+    )
+    .unwrap();
 
+    let options_hash = code_package.hash.clone();
     let runtime_options = PoolRuntimeOptions {
+        code_package,
         handler_name: Some("handler".to_string()),
-        module_graph,
-        module_root,
+        module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
     };
-    let options_hash = hash_options(&runtime_options)?;
 
     // Warm up pool with a full execution
     Arc::clone(&pool)

@@ -1,4 +1,6 @@
-use proven_runtime::{create_module_graph, Error, ExecutionRequest, Runtime, RuntimeOptions};
+use proven_runtime::{
+    CodePackage, Error, ExecutionRequest, ModuleSpecifier, Runtime, RuntimeOptions,
+};
 
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
@@ -8,50 +10,28 @@ use serde_json::json;
 use tempfile::tempdir;
 
 fn main() -> Result<(), Error> {
-    let (module_root, module_graph) = create_module_graph(
+    let code_package = CodePackage::from_str(
         r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
-        import { runWithOptions } from "proven:handler";
 
-        export const handler = runWithOptions(async (a, b) => {
+        export const handler = async (a, b) => {
             const userId = getCurrentIdentity();
             const accounts = getCurrentAccounts();
             console.info("Current identity: " + userId);
             console.log("Current accounts: " + accounts);
 
             return a + b;
-        }, { timeout: 2000 });
-
-        export const handler2 = runWithOptions(async (a, b) => {
-            const userId = getCurrentIdentity();
-            const accounts = getCurrentAccounts();
-            console.info("Current identity: " + userId);
-            console.log("Current accounts: " + accounts);
-
-            return a + b;
-        }, { timeout: 2 });
-
-        export const something = 69;
-        export default 42;
-        export const nothing = 0;
-
-        export const handler3 = runWithOptions(async function (a, b) {
-            const userId = getCurrentIdentity();
-            const accounts = getCurrentAccounts();
-            console.info("Current identity: " + userId);
-            console.log("Current accounts: " + accounts);
-
-            return a + b;
-        }, { timeout: 3 });
+        }
     "#,
-    );
+    )
+    .unwrap();
 
     let mut runtime = Runtime::new(RuntimeOptions {
         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
         application_store: MemoryStore2::new(),
+        code_package,
         handler_name: Some("handler".to_string()),
-        module_graph,
-        module_root,
+        module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
         nft_store: MemoryStore3::new(),
         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),

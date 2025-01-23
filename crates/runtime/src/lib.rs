@@ -5,11 +5,11 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
+mod code_package;
 mod error;
 mod extensions;
 mod import_replacements;
 mod manager;
-mod module_graph;
 mod options;
 mod options_parser;
 mod permissions;
@@ -17,13 +17,13 @@ mod pool;
 mod preprocessor;
 mod runtime;
 mod schema;
-#[cfg(test)]
-mod test_utils;
+mod util;
 mod worker;
 
+pub use code_package::CodePackage;
+pub use deno_core::ModuleSpecifier;
 pub use error::*;
 pub use manager::*;
-pub use module_graph::create_module_graph;
 pub use pool::*;
 pub use runtime::*;
 pub use worker::*;

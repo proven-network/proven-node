@@ -1,5 +1,5 @@
 use proven_runtime::{
-    create_module_graph, Error, ExecutionRequest, Pool, PoolOptions, PoolRuntimeOptions,
+    CodePackage, Error, ExecutionRequest, ModuleSpecifier, Pool, PoolOptions, PoolRuntimeOptions,
 };
 
 use std::sync::Arc;
@@ -45,17 +45,16 @@ async fn main() -> Result<(), Error> {
 
             return a + b;
         }
-    "#
-    .to_string();
+    "#;
 
     for i in 0..EXECUTIONS {
         // Add the invocation number to every 2nd script to make it unique
         // This tests a mix of unique and duplicate scripts
-        let (module_root, module_graph) = create_module_graph(if i % 2 == 0 {
-            format!("// Invocation: {}\n{}", i, base_script)
+        let code_package = if i % 2 == 0 {
+            CodePackage::from_str(&format!("// Invocation: {}\n{}", i, base_script)).unwrap()
         } else {
-            base_script.clone()
-        });
+            CodePackage::from_str(base_script).unwrap()
+        };
 
         let pool = Arc::clone(&pool);
         let durations = Arc::clone(&durations);
@@ -71,9 +70,9 @@ async fn main() -> Result<(), Error> {
             let result = pool
                 .execute(
                     PoolRuntimeOptions {
+                        code_package,
                         handler_name: Some("handler".to_string()),
-                        module_graph,
-                        module_root,
+                        module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
                     },
                     request,
                 )

@@ -145,8 +145,7 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::create_test_runtime_options;
-    use crate::{ExecutionRequest, Worker};
+    use crate::{ExecutionRequest, RuntimeOptions, Worker};
 
     use bytes::Bytes;
     use serde::Deserialize;
@@ -154,7 +153,7 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_with_allowed_origins() {
         let runtime_options =
-            create_test_runtime_options("handler/test_fetch_with_allowed_origins", "test");
+            RuntimeOptions::for_test_code("handler/test_fetch_with_allowed_origins", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
@@ -174,7 +173,7 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_with_disallowed_origins() {
         let runtime_options =
-            create_test_runtime_options("handler/test_fetch_with_disallowed_origins", "test");
+            RuntimeOptions::for_test_code("handler/test_fetch_with_disallowed_origins", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
@@ -191,7 +190,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_http_handler() {
-        let runtime_options = create_test_runtime_options("handler/test_http_handler", "test");
+        let runtime_options = RuntimeOptions::for_test_code("handler/test_http_handler", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
@@ -215,7 +214,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_return_bytes() {
-        let runtime_options = create_test_runtime_options("handler/test_return_bytes", "test");
+        let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
@@ -247,7 +246,8 @@ mod tests {
             nested: Bytes,
         }
 
-        let runtime_options = create_test_runtime_options("handler/test_return_bytes", "testNested");
+        let runtime_options =
+            RuntimeOptions::for_test_code("handler/test_return_bytes", "testNested");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {

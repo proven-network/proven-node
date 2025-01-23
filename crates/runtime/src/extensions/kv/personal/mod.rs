@@ -346,12 +346,11 @@ pub async fn op_set_personal_string<PS: Store1>(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::create_test_runtime_options;
-    use crate::{ExecutionRequest, Worker};
+    use crate::{ExecutionRequest, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_personal_bytes_store() {
-        let runtime_options = create_test_runtime_options("kv/test_personal_bytes_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_personal_bytes_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::HttpWithUserContext {
@@ -372,7 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_personal_bytes_store_no_context() {
-        let runtime_options = create_test_runtime_options("kv/test_personal_bytes_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_personal_bytes_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
@@ -389,7 +388,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_personal_key_store() {
-        let runtime_options = create_test_runtime_options("kv/test_personal_key_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_personal_key_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::HttpWithUserContext {
@@ -410,7 +409,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_personal_string_key_no_context() {
-        let runtime_options = create_test_runtime_options("kv/test_personal_key_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_personal_key_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
@@ -427,7 +426,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_personal_string_store() {
-        let runtime_options = create_test_runtime_options("kv/test_personal_string_store", "test");
+        let runtime_options =
+            RuntimeOptions::for_test_code("kv/test_personal_string_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::HttpWithUserContext {
@@ -448,7 +448,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_personal_string_store_no_context() {
-        let runtime_options = create_test_runtime_options("kv/test_personal_string_store", "test");
+        let runtime_options =
+            RuntimeOptions::for_test_code("kv/test_personal_string_store", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {

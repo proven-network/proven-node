@@ -10,12 +10,11 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::create_test_runtime_options;
-    use crate::{ExecutionRequest, Worker};
+    use crate::{ExecutionRequest, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_zod() {
-        let runtime_options = create_test_runtime_options("zod/test_zod", "test");
+        let runtime_options = RuntimeOptions::for_test_code("zod/test_zod", "test");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {

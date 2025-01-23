@@ -1,17 +1,15 @@
+use crate::code_package::CodePackage;
 use crate::{Error, ExecutionRequest, ExecutionResult, Result, RuntimeOptions, Worker};
 
 use std::collections::{HashMap, VecDeque};
-use std::fmt::Write;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use deno_core::url::Url;
-use deno_graph::ModuleGraph;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
 use radix_common::network::NetworkDefinition;
-use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
 
@@ -72,14 +70,14 @@ where
 /// Runtime options to instantiate a runtime in the pool.
 #[derive(Clone)]
 pub struct PoolRuntimeOptions {
-    /// Name of the handler function.
+    /// The graph of modules to load.
+    pub code_package: CodePackage,
+
+    /// The export of the entrypoint module to run.
     pub handler_name: Option<String>,
 
-    /// The graph of modules to load.
-    pub module_graph: ModuleGraph,
-
-    /// The root module to look for the handler in.
-    pub module_root: Url,
+    /// Specifier of the entrypoint module.
+    pub module_specifier: Url,
 }
 
 /// A pool of workers that can execute tasks concurrently.
@@ -99,7 +97,7 @@ pub struct PoolRuntimeOptions {
 /// ```rust
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     create_module_graph, Error, ExecutionRequest, ExecutionResult, Pool, PoolOptions,
+///     CodePackage, Error, ExecutionRequest, ExecutionResult, ModuleSpecifier, Pool, PoolOptions,
 ///     PoolRuntimeOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
@@ -124,13 +122,13 @@ pub struct PoolRuntimeOptions {
 ///     })
 ///     .await;
 ///
-///     let (module_root, module_graph) =
-///         create_module_graph("export const handler = (a, b) => a + b;");
+///     let code_package =
+///         CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
 ///
 ///     let runtime_options = PoolRuntimeOptions {
+///         code_package,
 ///         handler_name: Some("handler".to_string()),
-///         module_graph,
-///         module_root,
+///         module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
 ///     };
 ///
 ///     let request = ExecutionRequest::Rpc {
@@ -240,7 +238,7 @@ where
         let handle = tokio::spawn(async move {
             'outer: while let Some((runtime_options, request, sender)) = queue_receiver.recv().await
             {
-                let options_hash = hash_options(&runtime_options).unwrap();
+                let options_hash = runtime_options.code_package.hash.clone();
                 let mut worker_map = pool.workers.lock().await;
 
                 if let Some(workers) = worker_map.get_mut(&options_hash) {
@@ -276,9 +274,9 @@ where
                     match Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                         application_sql_store: pool.application_sql_store.clone(),
                         application_store: pool.application_store.clone(),
+                        code_package: runtime_options.code_package.clone(),
                         handler_name: runtime_options.handler_name.clone(),
-                        module_graph: runtime_options.module_graph.clone(),
-                        module_root: runtime_options.module_root.clone(),
+                        module_specifier: runtime_options.module_specifier.clone(),
                         nft_sql_store: pool.nft_sql_store.clone(),
                         nft_store: pool.nft_store.clone(),
                         personal_sql_store: pool.personal_sql_store.clone(),
@@ -377,7 +375,7 @@ where
         runtime_options: PoolRuntimeOptions,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult> {
-        let options_hash = hash_options(&runtime_options)?;
+        let options_hash = runtime_options.code_package.hash.clone();
         let (sender, reciever) = oneshot::channel();
 
         let mut worker_map = self.workers.lock().await;
@@ -414,9 +412,9 @@ where
             let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                 application_sql_store: self.application_sql_store.clone(),
                 application_store: self.application_store.clone(),
+                code_package: runtime_options.code_package.clone(),
                 handler_name: runtime_options.handler_name.clone(),
-                module_graph: runtime_options.module_graph.clone(),
-                module_root: runtime_options.module_root.clone(),
+                module_specifier: runtime_options.module_specifier.clone(),
                 nft_sql_store: self.nft_sql_store.clone(),
                 nft_store: self.nft_store.clone(),
                 personal_sql_store: self.personal_sql_store.clone(),
@@ -523,9 +521,9 @@ where
                 let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                     application_sql_store: self.application_sql_store.clone(),
                     application_store: self.application_store.clone(),
+                    code_package: runtime_options.code_package.clone(),
                     handler_name: runtime_options.handler_name.clone(),
-                    module_graph: runtime_options.module_graph.clone(),
-                    module_root: runtime_options.module_root.clone(),
+                    module_specifier: runtime_options.module_specifier.clone(),
                     nft_sql_store: self.nft_sql_store.clone(),
                     nft_store: self.nft_store.clone(),
                     personal_sql_store: self.personal_sql_store.clone(),
@@ -647,50 +645,11 @@ where
     }
 }
 
-/// Computes a hash for the given runtime options.
-///
-/// # Arguments
-///
-/// * `options` - The runtime options to hash.
-///
-/// # Returns
-///
-/// A `Result` containing the hash string or an error.
-///
-/// # Errors
-///
-/// This function will return an error if the options cannot be hashed.
-pub fn hash_options(options: &PoolRuntimeOptions) -> Result<String> {
-    let mut hasher = Sha256::new();
-
-    // Concatenate module and handler_name - newline separated
-    // TODO: Need to go back to hashing content. Quick fix for graph update.
-    let mut data = format!("{}\n", options.module_root.as_str());
-    write!(
-        &mut data,
-        "{}",
-        options
-            .handler_name
-            .clone()
-            .unwrap_or_else(|| "<DEFAULT>".to_string())
-    )?;
-
-    // Hash the concatenated string
-    hasher.update(data);
-    let result = hasher.finalize();
-
-    // Convert the hash result to a hexadecimal string
-    let hash_string = format!("{result:x}");
-
-    Ok(hash_string)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    use crate::test_utils::create_test_module_graph;
-
+    use deno_core::ModuleSpecifier;
     use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -732,12 +691,12 @@ mod tests {
     async fn test_execute() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute", "test");
+        let code_package = CodePackage::from_test_code("test_runtime_execute");
 
         let runtime_options = PoolRuntimeOptions {
+            code_package,
             handler_name: Some("test".to_string()),
-            module_graph,
-            module_root,
+            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         };
 
         let request = ExecutionRequest::Rpc {
@@ -757,15 +716,15 @@ mod tests {
     async fn test_execute_prehashed() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute", "test");
+        let code_package = CodePackage::from_test_code("test_runtime_execute");
 
         let runtime_options = PoolRuntimeOptions {
+            code_package,
             handler_name: Some("test".to_string()),
-            module_graph,
-            module_root,
+            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         };
 
-        let options_hash = hash_options(&runtime_options).unwrap();
+        let options_hash = runtime_options.code_package.hash.clone();
         pool.known_hashes
             .lock()
             .await
@@ -788,12 +747,12 @@ mod tests {
     async fn test_queue_request() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute", "test");
+        let code_package = CodePackage::from_test_code("test_runtime_execute");
 
         let runtime_options = PoolRuntimeOptions {
+            code_package,
             handler_name: Some("test".to_string()),
-            module_graph,
-            module_root,
+            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         };
 
         let request = ExecutionRequest::Rpc {
@@ -813,12 +772,12 @@ mod tests {
     async fn test_kill_idle_worker() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let (module_root, module_graph) = create_test_module_graph("test_runtime_execute", "test");
+        let code_package = CodePackage::from_test_code("test_runtime_execute");
 
         let runtime_options = PoolRuntimeOptions {
+            code_package,
             handler_name: Some("test".to_string()),
-            module_graph,
-            module_root,
+            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         };
 
         let request = ExecutionRequest::Rpc {

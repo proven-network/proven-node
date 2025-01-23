@@ -6,7 +6,7 @@ use axum::Router;
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
 use proven_runtime::{
-    create_module_graph, ExecutionRequest, PoolRuntimeOptions, RuntimePoolManagement,
+    CodePackage, ExecutionRequest, ModuleSpecifier, PoolRuntimeOptions, RuntimePoolManagement,
 };
 use proven_sessions::SessionManagement;
 
@@ -34,7 +34,7 @@ where
             query: query.map(String::from),
         };
 
-        let (module_root, module_graph) = create_module_graph(
+        let code_package = CodePackage::from_str(
             r#"
             import { runOnHttp } from "@proven-network/handler";
 
@@ -47,14 +47,15 @@ where
                 }
             );
         "#,
-        );
+        )
+        .unwrap();
 
         let result = runtime_pool_manager
             .execute(
                 PoolRuntimeOptions {
+                    code_package,
                     handler_name: Some("test".to_string()),
-                    module_graph,
-                    module_root,
+                    module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
                 },
                 execution_request,
             )
