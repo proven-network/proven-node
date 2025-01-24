@@ -6,26 +6,23 @@ const PERSONAL_DB = getPersonalDb("myAppDb").migrate(
 );
 
 // Use HTTP so we can test with and without a session
-export const test = runOnHttp(
-  async () => {
-    const email = "alice@example.com";
+export const test = runOnHttp({ path: "/test" }, async () => {
+  const email = "alice@example.com";
 
-    const affectedRows = await PERSONAL_DB.execute(
-      sql("INSERT INTO users (email) VALUES (:email)", { email })
-    );
+  const affectedRows = await PERSONAL_DB.execute(
+    sql("INSERT INTO users (email) VALUES (:email)", { email })
+  );
 
-    if (affectedRows !== 1) {
-      throw new Error("Unexpected number of affected rows");
-    }
+  if (affectedRows !== 1) {
+    throw new Error("Unexpected number of affected rows");
+  }
 
-    const results = await PERSONAL_DB.query("SELECT * FROM users");
-    const result = results[0];
+  const results = await PERSONAL_DB.query("SELECT * FROM users");
+  const result = results[0];
 
-    if (!result) {
-      throw new Error("Expected row not found");
-    }
+  if (!result) {
+    throw new Error("Expected row not found");
+  }
 
-    return result.email;
-  },
-  { path: "/test" }
-);
+  return result.email;
+});

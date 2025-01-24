@@ -1,5 +1,7 @@
+import { run } from "@proven-network/handler";
+
 import { RadixNetwork } from "@radixdlt/babylon-gateway-api-sdk";
 
-export const test = () => {
-    return RadixNetwork.Mainnet;
-}
+export const test = run(() => {
+  return RadixNetwork.Mainnet;
+});

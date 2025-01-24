@@ -37,12 +37,8 @@ where
             r#"
             import { runOnHttp } from "@proven-network/handler";
 
-            export const test = runOnHttp(
-                async (request) => {
+            export const test = runOnHttp({ path: "/" }, (request) => {
                     return `Hello ${request.queryVariables.name || 'World'} from runtime!`;
-                },
-                {
-                    path: "/",
                 }
             );
         "#,

@@ -1,7 +1,6 @@
 use crate::import_replacements::replace_esm_imports;
 use crate::options::ModuleOptions;
 use crate::options_parser::OptionsParser;
-use crate::preprocessor::Preprocessor;
 use crate::util::run_in_thread;
 use crate::Error;
 
@@ -95,15 +94,7 @@ impl ModuleLoader {
 
                     rewrite_run_functions(&module_source)
                 }
-                ProcessingMode::Runtime => {
-                    let import_replaced_module = replace_esm_imports(&module_source);
-
-                    run_in_thread(move || {
-                        let mut preprocessor = Preprocessor::new()?;
-                        preprocessor.process(import_replaced_module)
-                    })
-                    .unwrap()
-                }
+                ProcessingMode::Runtime => replace_esm_imports(&module_source),
             })
     }
 
@@ -226,7 +217,7 @@ fn name_default_export(module_source: &str) -> String {
 
 fn rewrite_run_functions(module_source: &str) -> String {
     // Define the regex to match `export const/let` declarations with the specified functions
-    let re = Regex::new(r"(?m)^(\s*)export\s+(const|let)\s+(\w+)\s*=\s*(runOnHttp|runOnProvenEvent|runOnRadixEvent|runOnSchedule|runWithOptions)\(").unwrap();
+    let re = Regex::new(r"(?m)^(\s*)export\s+(const|let)\s+(\w+)\s*=\s*(runOnHttp|runOnProvenEvent|runOnRadixEvent|runOnSchedule|runWithOptions|run)\(").unwrap();
 
     // Replace the matched string with the modified version
     let result = re.replace_all(module_source, |caps: &regex::Captures| {
@@ -260,20 +251,14 @@ mod tests {
             import { runOnHttp, runWithOptions } from '@proven-network/handler';
             import { getApplicationDb, sql } from '@proven-network/sql';
 
-            const DB = getApplicationDb('main');
-            DB.migrate('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY);');
+            const DB = getApplicationDb('main').migrate('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY);');
 
-            export const handler = runOnHttp((x,y) => {
+            export const handler = runOnHttp({ path: '/hello', timeout: 5000 }, (x,y) => {
                 console.log(x, y);
-            }, {
-                path: '/hello',
-                timeout: 5000
             });
 
-            export default runWithOptions((x,y) => {
+            export default runWithOptions({ timeout: 2000 }, (x,y) => {
                 console.log(x, y);
-            }, {
-                timeout: 2000
             });
         ",
             )

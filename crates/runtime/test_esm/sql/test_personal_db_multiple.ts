@@ -6,35 +6,32 @@ const PERSONAL_DB = getPersonalDb("myAppDb").migrate(
 );
 
 // Use HTTP so we can test with and without a session
-export const test = runOnHttp(
-  async () => {
-    let affectedRows = await PERSONAL_DB.execute(
-      sql("INSERT INTO users (email) VALUES (:email)", {
-        email: "alice@example.com",
-      })
-    );
+export const test = runOnHttp({ path: "/test" }, async () => {
+  let affectedRows = await PERSONAL_DB.execute(
+    sql("INSERT INTO users (email) VALUES (:email)", {
+      email: "alice@example.com",
+    })
+  );
 
-    if (affectedRows !== 1) {
-      throw new Error("Unexpected number of affected rows");
-    }
+  if (affectedRows !== 1) {
+    throw new Error("Unexpected number of affected rows");
+  }
 
-    affectedRows = await PERSONAL_DB.execute(
-      sql("INSERT INTO users (email) VALUES (:email)", {
-        email: "bob@example.com",
-      })
-    );
+  affectedRows = await PERSONAL_DB.execute(
+    sql("INSERT INTO users (email) VALUES (:email)", {
+      email: "bob@example.com",
+    })
+  );
 
-    if (affectedRows !== 1) {
-      throw new Error("Unexpected number of affected rows");
-    }
+  if (affectedRows !== 1) {
+    throw new Error("Unexpected number of affected rows");
+  }
 
-    const results = await PERSONAL_DB.query("SELECT * FROM users");
+  const results = await PERSONAL_DB.query("SELECT * FROM users");
 
-    if ((await results.length) !== 2) {
-      throw new Error("Unexpected number of rows");
-    }
+  if ((await results.length) !== 2) {
+    throw new Error("Unexpected number of rows");
+  }
 
-    return results;
-  },
-  { path: "/test" }
-);
+  return results;
+});

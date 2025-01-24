@@ -150,10 +150,10 @@ impl
 ///
 /// # Example
 /// ```rust
+/// use proven_code_package::{CodePackage, ModuleSpecifier};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     CodePackage, Error, ExecutionRequest, ExecutionResult, ModuleSpecifier, Runtime,
-///     RuntimeOptions,
+///     Error, ExecutionRequest, ExecutionResult, ModuleLoader, Runtime, RuntimeOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -166,8 +166,8 @@ impl
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
 ///     application_store: MemoryStore2::new(),
-///     code_package,
 ///     handler_name: Some("handler".to_string()),
+///     module_loader: ModuleLoader::new(code_package),
 ///     module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
 ///     nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///     nft_store: MemoryStore3::new(),

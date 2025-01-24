@@ -1,8 +1,9 @@
+import { run } from "@proven-network/handler";
 import { getApplicationStore } from "@proven-network/kv";
 
 const APP_STORE = getApplicationStore("myStore");
 
-export const test = async () => {
+export const test = run(async () => {
   await APP_STORE.set("key", "myValue");
 
   const restored = await APP_STORE.get("key");
@@ -24,4 +25,4 @@ export const test = async () => {
   if (keys[0] !== "key") {
     throw new Error("Unexpected key");
   }
-}
+});

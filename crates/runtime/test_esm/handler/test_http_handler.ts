@@ -1,6 +1,9 @@
 import { runOnHttp } from "@proven-network/handler";
 
 export const test = runOnHttp(
+  {
+    path: "/test/:id",
+  },
   async (request) => {
     if (request.path !== "/test/420") {
       throw new Error("Expected path to be /test/420");
@@ -21,8 +24,5 @@ export const test = runOnHttp(
 
     // Check path variable extraction works
     return request.pathVariables.id;
-  },
-  {
-    path: "/test/:id",
   }
 );

@@ -1,10 +1,11 @@
+import { run } from "@proven-network/handler";
 import { generateEd25519Key } from "@proven-network/crypto";
 import { getNftKeyStore } from "@proven-network/kv";
 
 const NFT_KEY_STORE = getNftKeyStore("myKeyStore");
 const RESOURCE_ADDR = "resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi";
 
-export const test = async () => {
+export const test = run(async () => {
   const nftId = 420;
   const toSave = generateEd25519Key();
 
@@ -18,7 +19,11 @@ export const test = async () => {
 
   // Just compare public keys since private key bytes are not exposed
   const comparison = toSave.publicKeyBytes();
-  if (!restored.publicKeyBytes().every((byte, index) => byte === comparison[index])) {
+  if (
+    !restored
+      .publicKeyBytes()
+      .every((byte, index) => byte === comparison[index])
+  ) {
     throw new Error("Value mismatch");
   }
 
@@ -31,4 +36,4 @@ export const test = async () => {
   if (keys[0] !== "key") {
     throw new Error("Unexpected key");
   }
-}
+});

@@ -1,10 +1,11 @@
+import { run } from "@proven-network/handler";
 import { getApplicationDb, sql } from "@proven-network/sql";
 
 const APP_DB = getApplicationDb("myAppDb").migrate(
   `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`
 );
 
-export const test = async () => {
+export const test = run(async () => {
   const email = "alice@example.com";
 
   const affectedRows = await APP_DB.execute(
@@ -23,4 +24,4 @@ export const test = async () => {
   }
 
   return result.email;
-};
+});

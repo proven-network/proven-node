@@ -1,9 +1,10 @@
 import { generateEd25519Key } from "@proven-network/crypto";
+import { run } from "@proven-network/handler";
 import { getApplicationKeyStore } from "@proven-network/kv";
 
 const APP_KEY_STORE = getApplicationKeyStore("myKeyStore");
 
-export const test = async () => {
+export const test = run(async () => {
   const toSave = generateEd25519Key();
 
   await APP_KEY_STORE.set("key", toSave);
@@ -16,7 +17,11 @@ export const test = async () => {
 
   // Just compare public keys since private key bytes are not exposed
   const comparison = toSave.publicKeyBytes();
-  if (!restored.publicKeyBytes().every((byte, index) => byte === comparison[index])) {
+  if (
+    !restored
+      .publicKeyBytes()
+      .every((byte, index) => byte === comparison[index])
+  ) {
     throw new Error("Value mismatch");
   }
 
@@ -29,4 +34,4 @@ export const test = async () => {
   if (keys[0] !== "key") {
     throw new Error("Unexpected key");
   }
-}
+});

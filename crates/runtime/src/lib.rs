@@ -14,7 +14,6 @@ mod options;
 mod options_parser;
 mod permissions;
 mod pool;
-mod preprocessor;
 mod runtime;
 mod schema;
 mod util;

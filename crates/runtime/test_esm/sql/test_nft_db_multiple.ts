@@ -1,3 +1,4 @@
+import { run } from "@proven-network/handler";
 import { getNftDb, sql } from "@proven-network/sql";
 
 const NFT_DB = getNftDb("myAppDb").migrate(
@@ -5,7 +6,7 @@ const NFT_DB = getNftDb("myAppDb").migrate(
 );
 const RESOURCE_ADDR = "resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi";
 
-export const test = async () => {
+export const test = run(async () => {
   const nftId = 420;
 
   let affectedRows = await NFT_DB.execute(
@@ -43,4 +44,4 @@ export const test = async () => {
   }
 
   return results;
-};
+});

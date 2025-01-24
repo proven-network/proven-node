@@ -95,9 +95,10 @@ pub struct PoolRuntimeOptions {
 /// # Example
 ///
 /// ```rust
+/// use proven_code_package::{CodePackage, ModuleSpecifier};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     CodePackage, Error, ExecutionRequest, ExecutionResult, ModuleSpecifier, Pool, PoolOptions,
+///     Error, ExecutionRequest, ExecutionResult, ModuleLoader, Pool, PoolOptions,
 ///     PoolRuntimeOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
@@ -126,8 +127,8 @@ pub struct PoolRuntimeOptions {
 ///         CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
 ///
 ///     let runtime_options = PoolRuntimeOptions {
-///         code_package,
 ///         handler_name: Some("handler".to_string()),
+///         module_loader: ModuleLoader::new(code_package),
 ///         module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
 ///     };
 ///

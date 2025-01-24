@@ -22,10 +22,26 @@ const {
 } = globalThis.Deno.core.ops;
 
 // Handler name is dynamically inserted and should not be part of exported types.
+export function run(
+  handlerName: string,
+  fn: (...args: any[]) => Promise<Output>
+): typeof fn {
+  if (typeof handlerName !== "string") {
+    throw new Error("run must be used in conjunction with the export keyword");
+  }
+
+  if (typeof fn !== "function") {
+    throw new Error("No function passed to runWithOptions");
+  }
+
+  return fn;
+}
+
+// Handler name is dynamically inserted and should not be part of exported types.
 export function runWithOptions(
   handlerName: string,
-  fn: (...args: any[]) => Promise<Output>,
-  options: RpcHandlerOptions = {}
+  options: RpcHandlerOptions,
+  fn: (...args: any[]) => Promise<Output>
 ): typeof fn {
   if (typeof handlerName !== "string") {
     throw new Error(
@@ -73,8 +89,8 @@ export function runWithOptions(
 // Handler name is dynamically inserted and should not be part of exported types.
 export function runOnHttp<P extends string>(
   handlerName: string,
-  fn: (...args: any[]) => Promise<Output>,
-  options: HttpHandlerOptions<P>
+  options: HttpHandlerOptions<P>,
+  fn: (...args: any[]) => Promise<Output>
 ): typeof fn {
   if (typeof handlerName !== "string") {
     throw new Error(
@@ -135,8 +151,8 @@ export function runOnHttp<P extends string>(
 
 export function runOnRadixEvent(
   handlerName: string,
-  fn: (transaction: CommittedTransactionInfo) => void,
-  options: RadixEventHandlerOptions
+  options: RadixEventHandlerOptions,
+  fn: (transaction: CommittedTransactionInfo) => void
 ): void {
   if (typeof handlerName !== "string") {
     throw new Error(

@@ -92,6 +92,7 @@ fn main() {
     // Tell Cargo when to rerun
     println!("cargo:rerun-if-changed=package.json");
     println!("cargo:rerun-if-changed=rollup.config.js");
+    println!("cargo:rerun-if-changed=src/**/*.ts");
 
     // Run npm install
     let npm_install_status = Command::new("npm")
@@ -143,7 +144,6 @@ fn main() {
         panic!("rollup bundling failed");
     }
     clean_vendor_file("openai").expect("Failed to clean openai bundle");
-    clean_vendor_file("typescript").expect("Failed to clean typescript bundle");
     clean_vendor_file("uuid").expect("Failed to clean uuid bundle");
 
     // Copy and clean other packages

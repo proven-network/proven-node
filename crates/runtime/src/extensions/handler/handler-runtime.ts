@@ -1,3 +1,5 @@
+import { HttpHandlerOptions, RpcHandlerOptions } from "@proven-network/handler";
+
 type Input =
   | string
   | number
@@ -59,25 +61,43 @@ async function encodeUint8ArrayInObject(
   return obj;
 }
 
-export const runWithOptions = (fn: (..._args: Input[]) => Promise<Output>) => {
+export const run = (fn: (..._args: Input[]) => Promise<Output>) => {
   return async (...args: Input[]) => {
-    return fn(...args).then(async (handlerOutput) => {
-      const uint8ArrayJsonPaths: string[] = [];
-      const output = await encodeUint8ArrayInObject(
-        handlerOutput,
-        "$",
-        uint8ArrayJsonPaths
-      );
+    const handlerOutput = await fn(...args);
 
-      return { output, uint8ArrayJsonPaths };
-    });
+    const uint8ArrayJsonPaths: string[] = [];
+    const output = await encodeUint8ArrayInObject(
+      handlerOutput,
+      "$",
+      uint8ArrayJsonPaths
+    );
+
+    return { output, uint8ArrayJsonPaths };
   };
 };
 
-export const runOnHttp = (
-  fn: (request: HttpRequest) => Promise<Output>,
-  options: { path: string }
+export const runWithOptions = (
+  _options: RpcHandlerOptions,
+  fn: (..._args: Input[]) => Promise<Output>
 ) => {
+  return async (...args: Input[]) => {
+    const handlerOutput = await fn(...args);
+
+    const uint8ArrayJsonPaths: string[] = [];
+    const output = await encodeUint8ArrayInObject(
+      handlerOutput,
+      "$",
+      uint8ArrayJsonPaths
+    );
+
+    return { output, uint8ArrayJsonPaths };
+  };
+};
+
+export function runOnHttp<P extends string>(
+  options: HttpHandlerOptions<P>,
+  fn: (...args: any[]) => Promise<Output>
+): typeof fn {
   return async (
     method: string,
     currentPath: string,
@@ -112,15 +132,15 @@ export const runOnHttp = (
       queryVariables,
     };
 
-    return fn(request).then(async (handlerOutput) => {
-      const uint8ArrayJsonPaths: string[] = [];
-      const output = await encodeUint8ArrayInObject(
-        handlerOutput,
-        "$",
-        uint8ArrayJsonPaths
-      );
+    const handlerOutput = await fn(request);
 
-      return { output, uint8ArrayJsonPaths };
-    });
+    const uint8ArrayJsonPaths: string[] = [];
+    const output = await encodeUint8ArrayInObject(
+      handlerOutput,
+      "$",
+      uint8ArrayJsonPaths
+    );
+
+    return { output, uint8ArrayJsonPaths };
   };
-};
+}

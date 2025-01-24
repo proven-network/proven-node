@@ -1,3 +1,6 @@
+import { generateEd25519Key } from "@proven-network/crypto";
+import { run } from "@proven-network/handler";
+
 import {
   ManifestBuilder,
   NetworkId,
@@ -12,9 +15,7 @@ import {
   generateRandomNonce,
 } from "@radixdlt/radix-engine-toolkit";
 
-import { generateEd25519Key } from "@proven-network/crypto";
-
-export const test = async () => {
+export const test = run(async () => {
   const notaryPrivateKey = generateEd25519Key();
   const signerPrivateKey = generateEd25519Key();
 
@@ -73,5 +74,5 @@ export const test = async () => {
     compiledTransactionHex,
     notaryPrivateKey.publicKeyHex(),
     signerPrivateKey.publicKeyHex(),
-  ]
-}
+  ];
+});

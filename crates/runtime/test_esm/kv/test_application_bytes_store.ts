@@ -1,8 +1,9 @@
+import { run } from "@proven-network/handler";
 import { getApplicationBytesStore } from "@proven-network/kv";
 
 const APP_BYTES_STORE = getApplicationBytesStore("myBytesStore");
 
-export const test = async () => {
+export const test = run(async () => {
   const toSave = new Uint8Array([1, 2, 3]);
 
   await APP_BYTES_STORE.set("key", new Uint8Array([1, 2, 3]));
@@ -26,4 +27,4 @@ export const test = async () => {
   if (keys[0] !== "key") {
     throw new Error("Unexpected key");
   }
-}
+});

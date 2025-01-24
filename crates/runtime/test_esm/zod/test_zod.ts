@@ -1,10 +1,11 @@
+import { run } from "@proven-network/handler";
 import { z } from "zod";
 
-export const test = () => {
-    const schema = z.object({
-        name: z.string(),
-        age: z.number(),
-    });
+export const test = run(() => {
+  const schema = z.object({
+    name: z.string(),
+    age: z.number(),
+  });
 
-    return schema.parse({ name: "Alice", age: 30 });
-}
+  return schema.parse({ name: "Alice", age: 30 });
+});
