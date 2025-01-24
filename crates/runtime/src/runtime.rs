@@ -238,7 +238,7 @@ where
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_gateway_origin: gateway_origin,
+            radix_gateway_origin,
             radix_network_definition,
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
@@ -305,7 +305,7 @@ where
             };
 
         let allowlist_web_permissions = OriginAllowlistWebPermissions::new();
-        allowlist_web_permissions.allow_origin(&gateway_origin); // Always allow Radix gateway origin
+        allowlist_web_permissions.allow_origin(&radix_gateway_origin); // Always allow Radix gateway origin
         for origin in &allowed_web_origins {
             allowlist_web_permissions.allow_origin(origin);
         }
@@ -357,7 +357,7 @@ where
 
         // Set the gateway origin and id for the gateway API SDK extension
         runtime.put(GatewayDetailsState {
-            gateway_origin,
+            gateway_origin: radix_gateway_origin,
             network_id: radix_network_definition.id,
         })?;
 

@@ -4,10 +4,12 @@ use crate::extensions::{
     sql_options_parser_ext, uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
 };
 use crate::module_loader::{ModuleLoader, ProcessingMode};
-use crate::options::{ModuleHandlerOptions, ModuleOptions, SqlMigrations};
+use crate::options::{
+    HandlerOptions, HttpEndpoint, ModuleHandlerOptions, ModuleOptions, SqlMigrations,
+};
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
-use crate::Error;
+use crate::{Error, HandlerSpecifier};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -72,8 +74,22 @@ impl OptionsParser {
 
         drop(runtime);
 
+        let http_endpoints = handler_options
+            .iter()
+            .filter_map(
+                |(handler_specifier, handler_options)| match handler_options {
+                    HandlerOptions::Http { path, .. } if path.is_some() => Some(HttpEndpoint {
+                        handler_specifier: HandlerSpecifier::parse(handler_specifier).unwrap(),
+                        path: path.clone().unwrap(),
+                    }),
+                    _ => None,
+                },
+            )
+            .collect();
+
         Ok(ModuleOptions {
             handler_options,
+            http_endpoints,
             sql_migrations,
         })
     }

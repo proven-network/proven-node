@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::HandlerSpecifier;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 #[allow(dead_code)] // TODO: Remove this once used
 pub enum EventBinding {
@@ -39,8 +41,15 @@ pub struct SqlMigrations {
     pub personal: HashMap<String, Vec<String>>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct HttpEndpoint {
+    pub handler_specifier: HandlerSpecifier,
+    pub path: String,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ModuleOptions {
     pub handler_options: ModuleHandlerOptions,
+    pub http_endpoints: HashSet<HttpEndpoint>,
     pub sql_migrations: SqlMigrations,
 }
