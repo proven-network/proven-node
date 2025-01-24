@@ -22,6 +22,9 @@ pub struct ModuleLoader {
     /// The code package to import modules from.
     code_package: CodePackage,
 
+    /// Cache for modules.
+    module_cache: Arc<Mutex<HashMap<ModuleSpecifier, Option<Module>>>>,
+
     /// Cache for module options.
     module_options_cache: Arc<Mutex<HashMap<ModuleSpecifier, Option<ModuleOptions>>>>,
 }
@@ -32,6 +35,7 @@ impl ModuleLoader {
     pub fn new(code_package: CodePackage) -> Self {
         Self {
             code_package,
+            module_cache: Arc::new(Mutex::new(HashMap::new())),
             module_options_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -52,15 +56,30 @@ impl ModuleLoader {
     /// # Returns
     ///
     /// An `Option` containing the `Module` if found, otherwise `None`.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the `module_cache` mutex is poisoned.
     #[must_use]
     pub fn get_module(
         &self,
         module_specifer: &ModuleSpecifier,
         processing_mode: &ProcessingMode,
     ) -> Option<Module> {
-        #[allow(clippy::significant_drop_in_scrutinee)]
-        self.get_module_source(module_specifer, processing_mode)
-            .map(|module_source| Module::new(module_specifer.as_str(), module_source))
+        let mut module_cache = self.module_cache.lock().unwrap();
+
+        if let Some(cached_module) = module_cache.get(module_specifer) {
+            return cached_module.clone();
+        }
+
+        let module = self
+            .get_module_source(module_specifer, processing_mode)
+            .map(|module_source| Module::new(module_specifer.as_str(), module_source));
+
+        module_cache.insert(module_specifer.clone(), module.clone());
+        drop(module_cache);
+
+        module
     }
 
     /// Retrieves the source code of a module by its specifier and processing mode.
