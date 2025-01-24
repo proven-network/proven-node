@@ -145,7 +145,7 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
 
     use bytes::Bytes;
     use serde::Deserialize;
@@ -153,13 +153,14 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_with_allowed_origins() {
         let runtime_options =
-            RuntimeOptions::for_test_code("handler/test_fetch_with_allowed_origins", "test");
+            RuntimeOptions::for_test_code("handler/test_fetch_with_allowed_origins");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
 
@@ -173,13 +174,14 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_with_disallowed_origins() {
         let runtime_options =
-            RuntimeOptions::for_test_code("handler/test_fetch_with_disallowed_origins", "test");
+            RuntimeOptions::for_test_code("handler/test_fetch_with_disallowed_origins");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
 
@@ -190,12 +192,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_http_handler() {
-        let runtime_options = RuntimeOptions::for_test_code("handler/test_http_handler", "test");
+        let runtime_options = RuntimeOptions::for_test_code("handler/test_http_handler");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
             body: Some(Bytes::from_static(b"Hello, world!")),
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             method: http::Method::GET,
             path: "/test/420".to_string(),
             query: None,
@@ -214,13 +217,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_return_bytes() {
-        let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes", "test");
+        let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
 
@@ -246,14 +250,14 @@ mod tests {
             nested: Bytes,
         }
 
-        let runtime_options =
-            RuntimeOptions::for_test_code("handler/test_return_bytes", "testNested");
+        let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#testNested").unwrap(),
             identity: "my_identity".to_string(),
         };
 

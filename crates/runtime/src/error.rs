@@ -18,10 +18,6 @@ pub enum Error {
     #[error("hash not known to pool")]
     HashUnknown,
 
-    /// Execution request type doesn't match handler type.
-    #[error("execution request type doesn't match handler type")]
-    MismatchedExecutionRequest,
-
     /// Failed to parse regex pattern.
     #[error(transparent)]
     RegexParse(#[from] regex::Error),

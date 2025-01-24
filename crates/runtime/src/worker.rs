@@ -38,7 +38,6 @@ use tokio::sync::oneshot;
 ///     let mut worker = Worker::new(RuntimeOptions {
 ///         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
 ///         application_store: MemoryStore2::new(),
-///         handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///         module_loader: ModuleLoader::new(code_package),
 ///         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///         nft_store: MemoryStore3::new(),
@@ -56,6 +55,7 @@ use tokio::sync::oneshot;
 ///             accounts: vec![],
 ///             args: vec![json!(10), json!(20)],
 ///             dapp_definition_address: "dapp_definition_address".to_string(),
+///             handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///             identity: "my_identity".to_string(),
 ///         })
 ///         .await;
@@ -162,17 +162,20 @@ where
 mod tests {
     use super::*;
 
+    use crate::HandlerSpecifier;
+
     use serde_json::json;
 
     #[tokio::test]
     async fn test_worker_execute_in_tokio() {
-        let runtime_options = RuntimeOptions::for_test_code("test_runtime_execute", "test");
+        let runtime_options = RuntimeOptions::for_test_code("test_runtime_execute");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;

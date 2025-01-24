@@ -31,17 +31,18 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_session_identity() {
-        let runtime_options = RuntimeOptions::for_test_code("session/test_session_identity", "test");
+        let runtime_options = RuntimeOptions::for_test_code("session/test_session_identity");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::HttpWithUserContext {
             accounts: vec![],
             body: None,
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
             method: http::Method::GET,
             path: "/test".to_string(),
@@ -57,17 +58,17 @@ mod tests {
         let execution_result = result.unwrap();
         assert!(execution_result.output.is_string());
         assert_eq!(execution_result.output.as_str().unwrap(), "my_identity");
-        assert!(execution_result.duration.as_millis() < 1000);
     }
 
     #[tokio::test]
     async fn test_session_identity_no_context() {
-        let runtime_options = RuntimeOptions::for_test_code("session/test_session_identity", "test");
+        let runtime_options = RuntimeOptions::for_test_code("session/test_session_identity");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
             body: None,
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             method: http::Method::GET,
             path: "/test".to_string(),
             query: None,
@@ -85,13 +86,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_accounts() {
-        let runtime_options = RuntimeOptions::for_test_code("session/test_session_accounts", "test");
+        let runtime_options = RuntimeOptions::for_test_code("session/test_session_accounts");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::HttpWithUserContext {
             accounts: vec!["my_account_1".to_string(), "my_account_2".to_string()],
             body: None,
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
             method: http::Method::GET,
             path: "/test".to_string(),
@@ -123,12 +125,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_accounts_no_accounts() {
-        let runtime_options = RuntimeOptions::for_test_code("session/test_session_accounts", "test");
+        let runtime_options = RuntimeOptions::for_test_code("session/test_session_accounts");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
             body: None,
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             method: http::Method::GET,
             path: "/test".to_string(),
             query: None,

@@ -297,18 +297,18 @@ pub async fn op_set_application_string<AS: Store1>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_application_bytes_store() {
-        let runtime_options =
-            RuntimeOptions::for_test_code("kv/test_application_bytes_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_application_bytes_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -320,14 +320,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_application_key_store() {
-        let runtime_options =
-            RuntimeOptions::for_test_code("kv/test_application_key_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_application_key_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -339,14 +339,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_application_string_store() {
-        let runtime_options =
-            RuntimeOptions::for_test_code("kv/test_application_string_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_application_string_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;

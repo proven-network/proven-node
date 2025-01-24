@@ -1,6 +1,4 @@
-use proven_runtime::{
-    Error, ExecutionRequest, HandlerSpecifier, ModuleLoader, Pool, PoolOptions, PoolRuntimeOptions,
-};
+use proven_runtime::{Error, ExecutionRequest, HandlerSpecifier, ModuleLoader, Pool, PoolOptions};
 
 use std::sync::Arc;
 
@@ -52,20 +50,17 @@ async fn main() -> Result<(), Error> {
         .unwrap(),
     );
 
-    let options_hash = module_loader.code_package_hash();
-    let runtime_options = PoolRuntimeOptions {
-        handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-        module_loader,
-    };
+    let code_package_hash = module_loader.code_package_hash();
 
     // Warm up pool with a full execution
     Arc::clone(&pool)
         .execute(
-            runtime_options,
+            module_loader,
             ExecutionRequest::Rpc {
                 accounts: vec!["my_account_1".to_string(), "my_account_2".to_string()],
                 args: vec![json!(10), json!(20)],
                 dapp_definition_address: "dapp_definition_address".to_string(),
+                handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
                 identity: "my_identity".to_string(),
             },
         )
@@ -75,17 +70,18 @@ async fn main() -> Result<(), Error> {
     for _ in 0..EXECUTIONS {
         let pool = Arc::clone(&pool);
         let durations = Arc::clone(&durations);
-        let options_hash = options_hash.clone();
+        let code_package_hash = code_package_hash.clone();
         let handle = tokio::spawn(async move {
             let request = ExecutionRequest::Rpc {
                 accounts: vec!["my_account_1".to_string(), "my_account_2".to_string()],
                 args: vec![json!(10), json!(20)],
                 dapp_definition_address: "dapp_definition_address".to_string(),
+                handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
                 identity: "my_identity".to_string(),
             };
 
             let start = Instant::now();
-            let result = pool.execute_prehashed(options_hash, request).await;
+            let result = pool.execute_prehashed(code_package_hash, request).await;
             let duration = start.elapsed();
             durations.lock().await.push(duration);
 

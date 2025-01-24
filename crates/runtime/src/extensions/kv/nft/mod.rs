@@ -524,11 +524,11 @@ pub async fn op_set_nft_string<NS: Store2, RNV: RadixNftVerifier>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_nft_bytes_store() {
-        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store", "test");
+        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store");
 
         runtime_options
             .radix_nft_verifier
@@ -545,6 +545,7 @@ mod tests {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -556,13 +557,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_bytes_store_nft_doesnt_exist() {
-        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -572,7 +574,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_bytes_store_nft_not_owned() {
-        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store", "test");
+        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store");
 
         runtime_options
             .radix_nft_verifier
@@ -589,6 +591,7 @@ mod tests {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -598,13 +601,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_bytes_store_no_accounts() {
-        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -614,7 +618,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_key_store() {
-        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store", "test");
+        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store");
 
         runtime_options
             .radix_nft_verifier
@@ -631,6 +635,7 @@ mod tests {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -642,13 +647,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_key_store_nft_doesnt_exist() {
-        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -658,7 +664,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_key_store_nft_not_owned() {
-        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store", "test");
+        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store");
 
         runtime_options
             .radix_nft_verifier
@@ -675,6 +681,7 @@ mod tests {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -684,13 +691,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_key_store_no_accounts() {
-        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -700,7 +708,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_string_store() {
-        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store", "test");
+        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store");
 
         runtime_options
             .radix_nft_verifier
@@ -717,6 +725,7 @@ mod tests {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -728,13 +737,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_string_store_nft_doesnt_exist() {
-        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -744,7 +754,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_string_store_nft_not_owned() {
-        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store", "test");
+        let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store");
 
         runtime_options
             .radix_nft_verifier
@@ -761,6 +771,7 @@ mod tests {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;
@@ -770,13 +781,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_nft_string_store_no_accounts() {
-        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store", "test");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let result = worker.execute(request).await;

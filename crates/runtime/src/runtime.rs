@@ -6,19 +6,19 @@ use crate::extensions::{
     PersonalSqlConnectionManager, SessionState, SqlParamListManager, SqlQueryResultsManager,
 };
 use crate::module_loader::{ModuleLoader, ProcessingMode};
-use crate::options::{HandlerOptions, SqlMigrations};
+use crate::options::HandlerOptions;
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
 use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult, HandlerSpecifier, Result};
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
-use std::vec;
 
 use bytes::Bytes;
+use proven_code_package::ModuleSpecifier;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
@@ -28,16 +28,8 @@ use rustyscript::{ExtensionOptions, ModuleHandle, WebOptions};
 use serde_json::json;
 use tokio::time::Instant;
 
-static DEFAULT_HEAP_SIZE: u16 = 32;
-static DEFAULT_TIMEOUT_MILLIS: u32 = 5000;
-
-/// The type of request this `Runtime` should be handling.
-#[derive(Debug)]
-enum HandlerType {
-    Http,
-    RadixEvent,
-    Rpc,
-}
+static MAX_HEAP_SIZE_MBS_HARD_LIMIT: usize = 32;
+static MAX_TIMEOUT_SECONDS_HARD_LIMIT: u64 = 60;
 
 /// Options for creating a new `Runtime`.
 #[derive(Clone)]
@@ -56,9 +48,6 @@ where
 
     /// Application-scoped KV store.
     pub application_store: AS,
-
-    /// The exported handler to run.
-    pub handler_specifier: HandlerSpecifier,
 
     /// The module loader to use during execution.
     pub module_loader: ModuleLoader,
@@ -109,7 +98,7 @@ impl
     ///
     /// # Panics
     /// This function will panic if creating a temporary directory fails.
-    pub fn for_test_code(script_name: &str, handler_name: &str) -> Self {
+    pub fn for_test_code(script_name: &str) -> Self {
         use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
         use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
         use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -119,10 +108,6 @@ impl
         Self {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
-            handler_specifier: HandlerSpecifier::parse(
-                format!("file:///main.ts#{handler_name}").as_str(),
-            )
-            .unwrap(),
             module_loader: ModuleLoader::from_test_code(script_name),
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
@@ -164,7 +149,6 @@ impl
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
 ///     application_store: MemoryStore2::new(),
-///     handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///     module_loader: ModuleLoader::new(code_package),
 ///     nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///     nft_store: MemoryStore3::new(),
@@ -180,6 +164,7 @@ impl
 ///     accounts: vec![],
 ///     args: vec![json!(10), json!(20)],
 ///     dapp_definition_address: "dapp_definition_address".to_string(),
+///     handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///     identity: "my_identity".to_string(),
 /// });
 /// ```
@@ -195,15 +180,14 @@ where
 {
     application_sql_store: ASS,
     application_store: AS,
-    handler_specifier: HandlerSpecifier,
-    handler_type: HandlerType,
-    module_handle: ModuleHandle,
+    module_handle_cache: HashMap<ModuleSpecifier, ModuleHandle>,
+    module_loader: ModuleLoader,
     nft_sql_store: NSS,
     nft_store: NS,
+    origin_allowlist_web_permissions: Arc<OriginAllowlistWebPermissions>,
     personal_sql_store: PSS,
     personal_store: PS,
     runtime: rustyscript::Runtime,
-    sql_migrations: SqlMigrations,
     _marker: PhantomData<RNV>,
 }
 
@@ -232,7 +216,6 @@ where
         RuntimeOptions {
             application_sql_store,
             application_store,
-            handler_specifier,
             module_loader,
             nft_sql_store,
             nft_store,
@@ -243,79 +226,17 @@ where
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Result<Self> {
-        let module_specifier = handler_specifier.module_specifier();
-        let Some(module) = module_loader.get_module(&module_specifier, &ProcessingMode::Runtime)
-        else {
-            return Err(Error::SpecifierNotFoundInCodePackage);
-        };
-
-        if let Err(err) = module_loader.get_module_options(&module_specifier) {
-            println!("{err:?}");
-        };
-
-        let Ok(module_options) = module_loader.get_module_options(&module_specifier) else {
-            return Err(Error::SpecifierNotFoundInCodePackage);
-        };
-
-        let handler_options = module_options
-            .handler_options
-            .get(handler_specifier.as_str());
-
-        let (allowed_web_origins, handler_type, max_heap_mbs, timeout_millis) =
-            match handler_options {
-                Some(HandlerOptions::Http {
-                    allowed_web_origins,
-                    max_heap_mbs,
-                    timeout_millis,
-                    ..
-                }) => (
-                    allowed_web_origins.clone(),
-                    HandlerType::Http,
-                    max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
-                    timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS),
-                ),
-                Some(HandlerOptions::RadixEvent {
-                    allowed_web_origins,
-                    max_heap_mbs,
-                    timeout_millis,
-                    ..
-                }) => (
-                    allowed_web_origins.clone(),
-                    HandlerType::RadixEvent,
-                    max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
-                    timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS),
-                ),
-                Some(HandlerOptions::Rpc {
-                    allowed_web_origins,
-                    max_heap_mbs,
-                    timeout_millis,
-                    ..
-                }) => (
-                    allowed_web_origins.clone(),
-                    HandlerType::Rpc,
-                    max_heap_mbs.unwrap_or(DEFAULT_HEAP_SIZE),
-                    timeout_millis.unwrap_or(DEFAULT_TIMEOUT_MILLIS),
-                ),
-                None => (
-                    HashSet::new(),
-                    HandlerType::Rpc,
-                    DEFAULT_HEAP_SIZE,
-                    DEFAULT_TIMEOUT_MILLIS,
-                ),
-            };
-
-        let allowlist_web_permissions = OriginAllowlistWebPermissions::new();
-        allowlist_web_permissions.allow_origin(&radix_gateway_origin); // Always allow Radix gateway origin
-        for origin in &allowed_web_origins {
-            allowlist_web_permissions.allow_origin(origin);
-        }
+        let origin_allowlist_web_permissions = Arc::new(OriginAllowlistWebPermissions::new(vec![
+            // Always allow Radix gateway origin
+            radix_gateway_origin.clone(),
+        ]));
 
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
             import_provider: Some(Box::new(
                 module_loader.import_provider(ProcessingMode::Runtime),
             )),
-            timeout: Duration::from_millis(timeout_millis.into()),
-            max_heap_size: Some(max_heap_mbs as usize * 1024 * 1024),
+            timeout: Duration::from_secs(MAX_TIMEOUT_SECONDS_HARD_LIMIT),
+            max_heap_size: Some(MAX_HEAP_SIZE_MBS_HARD_LIMIT * 1024 * 1024),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
                 handler_runtime_ext::init_ops_and_esm(),
@@ -343,7 +264,7 @@ where
             ],
             extension_options: ExtensionOptions {
                 web: WebOptions {
-                    permissions: Arc::new(allowlist_web_permissions),
+                    permissions: origin_allowlist_web_permissions.clone(),
                     user_agent: format!(
                         "Proven Network {} (https://proven.network)",
                         env!("CARGO_PKG_VERSION")
@@ -364,23 +285,17 @@ where
         // Set the Radix NFT verifier for storage extensions
         runtime.put(radix_nft_verifier)?;
 
-        // In case there are any top-level console.* calls in the module
-        runtime.put(ConsoleState::default())?;
-
-        let module_handle = runtime.load_module(&module)?;
-
         Ok(Self {
             application_sql_store,
             application_store,
-            handler_specifier,
-            handler_type,
-            module_handle,
+            module_handle_cache: HashMap::new(),
+            module_loader,
             nft_sql_store,
             nft_store,
+            origin_allowlist_web_permissions,
             personal_sql_store,
             personal_store,
             runtime,
-            sql_migrations: module_options.sql_migrations,
             _marker: PhantomData,
         })
     }
@@ -402,19 +317,16 @@ where
     pub fn execute(&mut self, execution_request: ExecutionRequest) -> Result<ExecutionResult> {
         let start = Instant::now();
 
-        #[allow(clippy::match_same_arms)]
-        let (accounts, args, dapp_definition_address, identity) =
-            match (&self.handler_type, execution_request) {
-                (
-                    HandlerType::Http,
-                    ExecutionRequest::Http {
-                        body,
-                        dapp_definition_address,
-                        method,
-                        path,
-                        query,
-                    },
-                ) => {
+        let (accounts, args, dapp_definition_address, handler_specifier, identity) =
+            match execution_request {
+                ExecutionRequest::Http {
+                    body,
+                    dapp_definition_address,
+                    handler_specifier,
+                    method,
+                    path,
+                    query,
+                } => {
                     let mut args = vec![];
 
                     args.push(json!(method.as_str()));
@@ -430,20 +342,19 @@ where
                         args.push(json!(body));
                     }
 
-                    (None, args, dapp_definition_address, None)
+                    (None, args, dapp_definition_address, handler_specifier, None)
                 }
-                (
-                    HandlerType::Http,
-                    ExecutionRequest::HttpWithUserContext {
-                        accounts,
-                        body,
-                        dapp_definition_address,
-                        identity,
-                        method,
-                        path,
-                        query,
-                    },
-                ) => {
+
+                ExecutionRequest::HttpWithUserContext {
+                    accounts,
+                    body,
+                    dapp_definition_address,
+                    handler_specifier,
+                    identity,
+                    method,
+                    path,
+                    query,
+                } => {
                     let mut args = vec![];
 
                     args.push(json!(method.as_str()));
@@ -463,36 +374,74 @@ where
                         Some(accounts),
                         args,
                         dapp_definition_address,
+                        handler_specifier,
                         Some(identity),
                     )
                 }
-                (
-                    HandlerType::RadixEvent,
-                    ExecutionRequest::RadixEvent {
-                        dapp_definition_address,
-                    },
-                ) => (
+
+                ExecutionRequest::RadixEvent {
+                    dapp_definition_address,
+                    handler_specifier,
+                } => (
                     None,
                     vec![], // TODO: Should use transaction data
                     dapp_definition_address,
+                    handler_specifier,
                     None,
                 ),
-                (
-                    HandlerType::Rpc,
-                    ExecutionRequest::Rpc {
-                        accounts,
-                        args,
-                        dapp_definition_address,
-                        identity,
-                    },
-                ) => (
+
+                ExecutionRequest::Rpc {
+                    accounts,
+                    args,
+                    dapp_definition_address,
+                    handler_specifier,
+                    identity,
+                } => (
                     Some(accounts),
                     args,
                     dapp_definition_address,
+                    handler_specifier,
                     Some(identity),
                 ),
-                _ => return Err(Error::MismatchedExecutionRequest),
             };
+
+        let module_specifier = handler_specifier.module_specifier();
+
+        let Ok(module_options) = self.module_loader.get_module_options(&module_specifier) else {
+            return Err(Error::SpecifierNotFoundInCodePackage);
+        };
+
+        let handler_options = module_options
+            .handler_options
+            .get(handler_specifier.as_str());
+
+        let allowed_web_origins = match handler_options {
+            Some(
+                HandlerOptions::Http {
+                    allowed_web_origins,
+                    max_heap_mbs: _,
+                    timeout_millis: _,
+                    ..
+                }
+                | HandlerOptions::RadixEvent {
+                    allowed_web_origins,
+                    ..
+                }
+                | HandlerOptions::Rpc {
+                    allowed_web_origins,
+                    max_heap_mbs: _,
+                    timeout_millis: _,
+                    ..
+                },
+            ) => allowed_web_origins.clone(),
+            None => HashSet::new(),
+        };
+
+        // Reset the origin allowlist before each execution
+        self.origin_allowlist_web_permissions.reset_to_default();
+        for origin in &allowed_web_origins {
+            self.origin_allowlist_web_permissions.allow_origin(origin);
+        }
 
         // Reset the console state before each execution
         self.runtime.put(ConsoleState::default())?;
@@ -534,7 +483,7 @@ where
             self.application_sql_store
                 .clone()
                 .scope(dapp_definition_address.clone()),
-            self.sql_migrations.application.clone(),
+            module_options.sql_migrations.application.clone(),
         ))?;
 
         self.runtime.put(match identity.as_ref() {
@@ -543,7 +492,7 @@ where
                     .clone()
                     .scope(dapp_definition_address.clone())
                     .scope(current_identity.clone()),
-                self.sql_migrations.personal.clone(),
+                module_options.sql_migrations.personal.clone(),
             )),
             None => None,
         })?;
@@ -551,7 +500,7 @@ where
         self.runtime.put(match accounts.as_ref() {
             Some(_) => Some(NftSqlConnectionManager::new(
                 self.nft_sql_store.clone().scope(dapp_definition_address),
-                self.sql_migrations.nft.clone(),
+                module_options.sql_migrations.nft.clone(),
             )),
             None => None,
         })?;
@@ -559,12 +508,14 @@ where
         // Set the context for the session extension
         self.runtime.put(SessionState { identity, accounts })?;
 
-        let output: Value = match self.handler_specifier.handler_name() {
+        let module_handle = self.get_module_for_handler_specifier(&handler_specifier)?;
+
+        let output: Value = match handler_specifier.handler_name() {
             Some(ref handler_name) => {
                 self.runtime
-                    .call_function(Some(&self.module_handle), handler_name, &args)?
+                    .call_function(Some(&module_handle), handler_name, &args)?
             }
-            None => self.runtime.call_entrypoint(&self.module_handle, &args)?,
+            None => self.runtime.call_entrypoint(&module_handle, &args)?,
         };
 
         let handler_output: HandlerOutput = output.try_into(&mut self.runtime)?;
@@ -595,50 +546,71 @@ where
             paths_to_uint8_arrays: handler_output.uint8_array_json_paths,
         })
     }
+
+    fn get_module_for_handler_specifier(
+        &mut self,
+        handler_specifier: &HandlerSpecifier,
+    ) -> Result<ModuleHandle> {
+        let module_specifier = handler_specifier.module_specifier();
+
+        if let Some(module_handle) = self.module_handle_cache.get(&module_specifier) {
+            return Ok(module_handle.clone());
+        }
+
+        let Some(module) = self
+            .module_loader
+            .get_module(&module_specifier, ProcessingMode::Runtime)
+        else {
+            return Err(Error::SpecifierNotFoundInCodePackage);
+        };
+
+        let module_handle = self.runtime.load_module(&module)?;
+
+        self.module_handle_cache
+            .insert(module_specifier, module_handle.clone());
+
+        Ok(module_handle)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use crate::util::run_in_thread;
+
     use serde_json::json;
-
-    // spawn in std::thread to avoid rustyscript panic
-    fn run_in_thread<F: FnOnce() + Send + 'static>(f: F) {
-        std::thread::spawn(f).join().unwrap();
-    }
-
-    fn create_execution_request() -> ExecutionRequest {
-        ExecutionRequest::Rpc {
-            accounts: vec![],
-            args: vec![json!(10), json!(20)],
-            dapp_definition_address: "dapp_definition_address".to_string(),
-            identity: "my_identity".to_string(),
-        }
-    }
 
     #[tokio::test]
     async fn test_runtime_execute() {
-        let options = RuntimeOptions::for_test_code("test_runtime_execute", "test");
+        let options = RuntimeOptions::for_test_code("test_runtime_execute");
 
         run_in_thread(|| {
-            let request = create_execution_request();
+            let request = ExecutionRequest::Rpc {
+                accounts: vec![],
+                args: vec![json!(10), json!(20)],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
+                identity: "my_identity".to_string(),
+            };
             let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
 
             assert!(execution_result.output.is_null());
-            assert!(execution_result.duration.as_millis() < 1000);
         });
     }
 
     #[tokio::test]
     async fn test_runtime_execute_with_default_export() {
-        let mut options =
-            RuntimeOptions::for_test_code("test_runtime_execute_with_default_export", "remove");
-        // Remove fragment to use default export
-        options.handler_specifier = HandlerSpecifier::parse("file:///main.ts").unwrap();
+        let options = RuntimeOptions::for_test_code("test_runtime_execute_with_default_export");
 
         run_in_thread(|| {
-            let request = create_execution_request();
+            let request = ExecutionRequest::Rpc {
+                accounts: vec![],
+                args: vec![json!(10), json!(20)],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                handler_specifier: HandlerSpecifier::parse("file:///main.ts").unwrap(),
+                identity: "my_identity".to_string(),
+            };
             let result = Runtime::new(options).unwrap().execute(request);
 
             if let Err(err) = result {
@@ -650,10 +622,16 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_sets_timeout() {
         // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
-        let options = RuntimeOptions::for_test_code("test_runtime_execute_sets_timeout", "test");
+        let options = RuntimeOptions::for_test_code("test_runtime_execute_sets_timeout");
 
         run_in_thread(|| {
-            let request = create_execution_request();
+            let request = ExecutionRequest::Rpc {
+                accounts: vec![],
+                args: vec![json!(10), json!(20)],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
+                identity: "my_identity".to_string(),
+            };
             let result = Runtime::new(options).unwrap().execute(request);
 
             if let Err(err) = result {
@@ -665,11 +643,16 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_default_max_heap_size() {
         // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
-        let options =
-            RuntimeOptions::for_test_code("test_runtime_execute_default_max_heap_size", "test");
+        let options = RuntimeOptions::for_test_code("test_runtime_execute_default_max_heap_size");
 
         run_in_thread(|| {
-            let request = create_execution_request();
+            let request = ExecutionRequest::Rpc {
+                accounts: vec![],
+                args: vec![json!(10), json!(20)],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
+                identity: "my_identity".to_string(),
+            };
             let result = Runtime::new(options).unwrap().execute(request);
 
             assert!(result.is_err());

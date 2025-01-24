@@ -108,13 +108,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_ed25519_signing() {
-        let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_signing", "test");
+        let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_signing");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
 
@@ -149,13 +150,14 @@ mod tests {
     #[tokio::test]
     async fn test_ed25519_signing_radix_transaction() {
         let runtime_options =
-            RuntimeOptions::for_test_code("crypto/test_ed25519_signing_radix_transaction", "test");
+            RuntimeOptions::for_test_code("crypto/test_ed25519_signing_radix_transaction");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
 
@@ -189,14 +191,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_ed25519_storage() {
-        let mut runtime_options =
-            RuntimeOptions::for_test_code("crypto/test_ed25519_storage", "save");
+        let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_storage");
         let mut worker = Worker::new(runtime_options.clone()).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#save").unwrap(),
             identity: "my_identity".to_string(),
         };
 
@@ -212,10 +214,13 @@ mod tests {
             ed25519_dalek::VerifyingKey::from_bytes(bytes_vec.as_slice().try_into().unwrap())
                 .unwrap();
 
-        // Reuse options to ensure the same application kv store is used. Just change the handler name.
-        runtime_options.handler_specifier =
-            HandlerSpecifier::parse("file:///main.ts#load").unwrap();
-        let mut worker = Worker::new(runtime_options).await.unwrap();
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#load").unwrap(),
+            identity: "my_identity".to_string(),
+        };
 
         let result = worker.execute(request).await;
 

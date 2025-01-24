@@ -10,6 +10,7 @@ use rustyscript::{PermissionDenied, SystemsPermissionKind, WebPermissions};
 #[allow(clippy::struct_excessive_bools)]
 struct OriginAllowlistWebPermissionsSet {
     pub origins: HashSet<String>,
+    default_origins: HashSet<String>,
 }
 
 /// Permissions manager for the web related extensions
@@ -18,12 +19,14 @@ struct OriginAllowlistWebPermissionsSet {
 #[derive(Clone, Default, Debug)]
 pub struct OriginAllowlistWebPermissions(Arc<RwLock<OriginAllowlistWebPermissionsSet>>);
 impl OriginAllowlistWebPermissions {
-    /// Create a new instance with nothing allowed by default
+    /// Create a new instance with the specified default origins
     #[must_use]
-    pub fn new() -> Self {
-        Self(Arc::new(RwLock::new(
-            OriginAllowlistWebPermissionsSet::default(),
-        )))
+    pub fn new(default_origins: impl IntoIterator<Item = String>) -> Self {
+        let default_set: HashSet<String> = default_origins.into_iter().collect();
+        Self(Arc::new(RwLock::new(OriginAllowlistWebPermissionsSet {
+            origins: default_set.clone(),
+            default_origins: default_set,
+        })))
     }
 
     fn borrow(&self) -> std::sync::RwLockReadGuard<OriginAllowlistWebPermissionsSet> {
@@ -34,9 +37,16 @@ impl OriginAllowlistWebPermissions {
         self.0.write().expect("Could not lock permissions")
     }
 
-    /// Whitelist an origin
+    /// Add an origin to the allowlist
     pub fn allow_origin(&self, origin: &str) {
         self.borrow_mut().origins.insert(origin.to_string());
+    }
+
+    /// Reset the origins list back to the default set
+    #[allow(clippy::assigning_clones)]
+    pub fn reset_to_default(&self) {
+        let mut guard = self.borrow_mut();
+        guard.origins = guard.default_origins.clone();
     }
 }
 impl WebPermissions for OriginAllowlistWebPermissions {

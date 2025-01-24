@@ -11,6 +11,7 @@ use proven_code_package::{CodePackage, ModuleSpecifier};
 use regex::Regex;
 use rustyscript::Module;
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum ProcessingMode {
     Options,
     Runtime,
@@ -18,12 +19,13 @@ pub enum ProcessingMode {
 
 /// Loads modules and options from a code package.
 #[derive(Clone, Debug)]
+#[allow(clippy::type_complexity)]
 pub struct ModuleLoader {
     /// The code package to import modules from.
     code_package: CodePackage,
 
     /// Cache for modules.
-    module_cache: Arc<Mutex<HashMap<ModuleSpecifier, Option<Module>>>>,
+    module_cache: Arc<Mutex<HashMap<(ModuleSpecifier, ProcessingMode), Option<Module>>>>,
 
     /// Cache for module options.
     module_options_cache: Arc<Mutex<HashMap<ModuleSpecifier, Option<ModuleOptions>>>>,
@@ -64,11 +66,11 @@ impl ModuleLoader {
     pub fn get_module(
         &self,
         module_specifer: &ModuleSpecifier,
-        processing_mode: &ProcessingMode,
+        processing_mode: ProcessingMode,
     ) -> Option<Module> {
         let mut module_cache = self.module_cache.lock().unwrap();
 
-        if let Some(cached_module) = module_cache.get(module_specifer) {
+        if let Some(cached_module) = module_cache.get(&(module_specifer.clone(), processing_mode)) {
             return cached_module.clone();
         }
 
@@ -76,7 +78,7 @@ impl ModuleLoader {
             .get_module_source(module_specifer, processing_mode)
             .map(|module_source| Module::new(module_specifer.as_str(), module_source));
 
-        module_cache.insert(module_specifer.clone(), module.clone());
+        module_cache.insert((module_specifer.clone(), processing_mode), module.clone());
         drop(module_cache);
 
         module
@@ -100,7 +102,7 @@ impl ModuleLoader {
     pub fn get_module_source(
         &self,
         module_specifer: &ModuleSpecifier,
-        processing_mode: &ProcessingMode,
+        processing_mode: ProcessingMode,
     ) -> Option<String> {
         #[allow(clippy::significant_drop_in_scrutinee)]
         self.code_package
@@ -226,7 +228,7 @@ impl rustyscript::module_loader::ImportProvider for ImportProvider {
         }
 
         self.module_loader
-            .get_module_source(specifier, &self.processing_mode)
+            .get_module_source(specifier, self.processing_mode)
             .map(Ok)
     }
 }

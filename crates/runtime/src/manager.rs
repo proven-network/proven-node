@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{ExecutionRequest, ExecutionResult, Pool, PoolOptions, PoolRuntimeOptions};
+use crate::{ExecutionRequest, ExecutionResult, ModuleLoader, Pool, PoolOptions};
 
 use super::Result;
 
@@ -95,14 +95,14 @@ where
     /// Execute a request.
     async fn execute(
         &self,
-        runtime_options: PoolRuntimeOptions,
+        module_loader: ModuleLoader,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult>;
 
     /// Execute a prehashed request.
     async fn execute_prehashed(
         &self,
-        options_hash: String,
+        code_package_hash: String,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult>;
 }
@@ -175,20 +175,20 @@ where
 
     async fn execute(
         &self,
-        runtime_options: PoolRuntimeOptions,
+        module_loader: ModuleLoader,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult> {
-        self.pool.clone().execute(runtime_options, request).await
+        self.pool.clone().execute(module_loader, request).await
     }
 
     async fn execute_prehashed(
         &self,
-        options_hash: String,
+        code_package_hash: String,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult> {
         self.pool
             .clone()
-            .execute_prehashed(options_hash, request)
+            .execute_prehashed(code_package_hash, request)
             .await
     }
 }

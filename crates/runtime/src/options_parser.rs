@@ -48,7 +48,7 @@ impl OptionsParser {
             extension_options: ExtensionOptions {
                 web: WebOptions {
                     // No access to web during option extraction
-                    permissions: Arc::new(OriginAllowlistWebPermissions::new()),
+                    permissions: Arc::new(OriginAllowlistWebPermissions::new(vec![])),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -62,7 +62,7 @@ impl OptionsParser {
         runtime.put(ModuleHandlerOptions::default())?;
         runtime.put(SqlMigrations::default())?;
 
-        let Some(module) = module_loader.get_module(module_specifier, &ProcessingMode::Options)
+        let Some(module) = module_loader.get_module(module_specifier, ProcessingMode::Options)
         else {
             return Err(Error::SpecifierNotFoundInCodePackage);
         };

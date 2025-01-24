@@ -6,9 +6,7 @@ use axum::Router;
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
 use proven_code_package::CodePackage;
-use proven_runtime::{
-    ExecutionRequest, HandlerSpecifier, ModuleLoader, PoolRuntimeOptions, RuntimePoolManagement,
-};
+use proven_runtime::{ExecutionRequest, HandlerSpecifier, ModuleLoader, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
 
 pub fn create_application_http_router<AM, RM, SM>(
@@ -30,6 +28,7 @@ where
         let execution_request = ExecutionRequest::Http {
             body,
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             method,
             path: path.to_string(),
             query: query.map(String::from),
@@ -48,13 +47,7 @@ where
         .unwrap();
 
         let result = runtime_pool_manager
-            .execute(
-                PoolRuntimeOptions {
-                    handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                    module_loader: ModuleLoader::new(code_package),
-                },
-                execution_request,
-            )
+            .execute(ModuleLoader::new(code_package), execution_request)
             .await;
 
         if let Err(err) = result {

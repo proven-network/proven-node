@@ -194,17 +194,18 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_personal_db() {
-        let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db", "test");
+        let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::HttpWithUserContext {
             accounts: vec![],
             body: None,
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
             method: http::Method::GET,
             path: "/test".to_string(),
@@ -221,12 +222,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_personal_db_no_context() {
-        let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db", "test");
+        let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
             body: None,
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             method: http::Method::GET,
             path: "/test".to_string(),
             query: None,

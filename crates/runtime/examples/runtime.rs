@@ -32,7 +32,6 @@ fn main() -> Result<(), Error> {
     let mut runtime = Runtime::new(RuntimeOptions {
         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
         application_store: MemoryStore2::new(),
-        handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
         module_loader,
         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
         nft_store: MemoryStore3::new(),
@@ -47,6 +46,7 @@ fn main() -> Result<(), Error> {
         accounts: vec!["my_account_1".to_string(), "my_account_2".to_string()],
         args: vec![json!(10), json!(20)],
         dapp_definition_address: "dapp_definition_address".to_string(),
+        handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
         identity: "my_identity".to_string(),
     };
 

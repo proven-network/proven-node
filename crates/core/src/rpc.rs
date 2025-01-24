@@ -8,8 +8,7 @@ use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_applications::{Application, ApplicationManagement, CreateApplicationOptions};
 use proven_code_package::CodePackage;
 use proven_runtime::{
-    ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, PoolRuntimeOptions,
-    RuntimePoolManagement,
+    ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
 };
 use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
@@ -59,15 +58,15 @@ where
 }
 
 type Args = Vec<serde_json::Value>;
-type HandlerName = String;
+type HandlerSpecifierString = String;
 type Module = String;
 type ModuleHash = String;
 #[repr(u8)]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Request {
     CreateApplication,
-    Execute(Module, HandlerName, Args),
-    ExecuteHash(ModuleHash, Args),
+    Execute(Module, HandlerSpecifierString, Args),
+    ExecuteHash(ModuleHash, HandlerSpecifierString, Args),
     Watch(String),
     WhoAmI,
 }
@@ -164,10 +163,11 @@ where
                     Err(e) => Ok(Response::CreateApplicationFailure(e.to_string())),
                 }
             }
-            Request::Execute(module, handler_specifier_url, args) => {
-                let request = ExecutionRequest::Rpc {
+            Request::Execute(module, handler_specifier_string, args) => {
+                let execution_request = ExecutionRequest::Rpc {
                     args,
                     accounts: self.account_addresses.clone(),
+                    handler_specifier: HandlerSpecifier::parse(&handler_specifier_string).unwrap(),
                     dapp_definition_address: self.dapp_definition_address.clone(),
                     identity: self.identity_address.clone(),
                 };
@@ -175,14 +175,8 @@ where
                 match self
                     .runtime_pool_manager
                     .execute(
-                        PoolRuntimeOptions {
-                            handler_specifier: HandlerSpecifier::parse(&handler_specifier_url)
-                                .unwrap(),
-                            module_loader: ModuleLoader::new(
-                                CodePackage::from_str(&module).unwrap(),
-                            ),
-                        },
-                        request,
+                        ModuleLoader::new(CodePackage::from_str(&module).unwrap()),
+                        execution_request,
                     )
                     .await
                 {
@@ -190,17 +184,18 @@ where
                     Err(e) => Ok(Response::ExecuteFailure(format!("{e:?}"))),
                 }
             }
-            Request::ExecuteHash(options_hash, args) => {
-                let request = ExecutionRequest::Rpc {
+            Request::ExecuteHash(code_package_hash, handler_specifier_string, args) => {
+                let execution_request = ExecutionRequest::Rpc {
                     accounts: self.account_addresses.clone(),
                     args,
                     dapp_definition_address: self.dapp_definition_address.clone(),
+                    handler_specifier: HandlerSpecifier::parse(&handler_specifier_string).unwrap(),
                     identity: self.identity_address.clone(),
                 };
 
                 match self
                     .runtime_pool_manager
-                    .execute_prehashed(options_hash, request)
+                    .execute_prehashed(code_package_hash, execution_request)
                     .await
                 {
                     Ok(result) => Ok(Response::ExecuteSuccess(result)),

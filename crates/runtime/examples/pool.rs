@@ -1,6 +1,4 @@
-use proven_runtime::{
-    Error, ExecutionRequest, HandlerSpecifier, ModuleLoader, Pool, PoolOptions, PoolRuntimeOptions,
-};
+use proven_runtime::{Error, ExecutionRequest, HandlerSpecifier, ModuleLoader, Pool, PoolOptions};
 
 use std::sync::Arc;
 
@@ -66,20 +64,12 @@ async fn main() -> Result<(), Error> {
                 accounts: vec!["my_account_1".to_string(), "my_account_2".to_string()],
                 args: vec![json!(10), json!(20)],
                 dapp_definition_address: "dapp_definition_address".to_string(),
+                handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
                 identity: "my_identity".to_string(),
             };
 
             let start = Instant::now();
-            let result = pool
-                .execute(
-                    PoolRuntimeOptions {
-                        handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler")
-                            .unwrap(),
-                        module_loader,
-                    },
-                    request,
-                )
-                .await;
+            let result = pool.execute(module_loader, request).await;
             let duration = start.elapsed();
             durations.lock().await.push(duration);
 

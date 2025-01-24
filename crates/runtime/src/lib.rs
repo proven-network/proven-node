@@ -46,6 +46,9 @@ pub enum ExecutionRequest {
         /// The address of the dApp definition.
         dapp_definition_address: String,
 
+        /// The handler specifier to execute.
+        handler_specifier: HandlerSpecifier,
+
         /// The HTTP method.
         method: Method,
 
@@ -66,6 +69,9 @@ pub enum ExecutionRequest {
         /// The address of the dApp definition.
         dapp_definition_address: String,
 
+        /// The handler specifier to execute.
+        handler_specifier: HandlerSpecifier,
+
         /// The identity of the authenticated user.
         identity: String,
 
@@ -83,6 +89,8 @@ pub enum ExecutionRequest {
         /// The address of the dApp definition.
         dapp_definition_address: String,
         // TODO: should have Radix transaction data
+        /// The handler specifier to execute.
+        handler_specifier: HandlerSpecifier,
     },
     /// A request received over a RPC session.
     Rpc {
@@ -94,6 +102,9 @@ pub enum ExecutionRequest {
 
         /// The address of the dApp definition.
         dapp_definition_address: String,
+
+        /// The handler specifier to execute.
+        handler_specifier: HandlerSpecifier,
 
         /// The identity of the executing user.
         identity: String,

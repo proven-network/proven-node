@@ -1,6 +1,5 @@
-use crate::module_loader::ModuleLoader;
 use crate::{
-    Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, Result, RuntimeOptions, Worker,
+    Error, ExecutionRequest, ExecutionResult, ModuleLoader, Result, RuntimeOptions, Worker,
 };
 
 use std::collections::{HashMap, VecDeque};
@@ -22,7 +21,7 @@ type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 
 type SendChannel = oneshot::Sender<Result<ExecutionResult>>;
 
-type QueueItem = (PoolRuntimeOptions, ExecutionRequest, SendChannel);
+type QueueItem = (ModuleLoader, ExecutionRequest, SendChannel);
 type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
 
@@ -68,16 +67,6 @@ where
     pub radix_nft_verifier: RNV,
 }
 
-/// Runtime options to instantiate a runtime in the pool.
-#[derive(Clone)]
-pub struct PoolRuntimeOptions {
-    /// The export of the entrypoint module to run.
-    pub handler_specifier: HandlerSpecifier,
-
-    /// The module loader to use during execution.
-    pub module_loader: ModuleLoader,
-}
-
 /// A pool of workers that can execute tasks concurrently.
 ///
 /// The `Pool` struct manages a set of workers that can execute tasks concurrently. It maintains
@@ -96,8 +85,7 @@ pub struct PoolRuntimeOptions {
 /// use proven_code_package::CodePackage;
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Pool,
-///     PoolOptions, PoolRuntimeOptions,
+///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Pool, PoolOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -124,19 +112,15 @@ pub struct PoolRuntimeOptions {
 ///     let code_package =
 ///         CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
 ///
-///     let runtime_options = PoolRuntimeOptions {
-///         handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-///         module_loader: ModuleLoader::new(code_package),
-///     };
-///
 ///     let request = ExecutionRequest::Rpc {
 ///         accounts: vec![],
 ///         args: vec![json!(10), json!(20)],
 ///         dapp_definition_address: "dapp_definition_address".to_string(),
+///         handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///         identity: "my_identity".to_string(),
 ///     };
 ///
-///     pool.execute(runtime_options, request).await;
+///     pool.execute(ModuleLoader::new(code_package), request).await;
 /// }
 /// ```
 pub struct Pool<AS, PS, NS, ASS, PSS, NSS, RNV>
@@ -151,7 +135,7 @@ where
 {
     application_sql_store: ASS,
     application_store: AS,
-    known_hashes: Arc<Mutex<HashMap<String, PoolRuntimeOptions>>>,
+    known_hashes: Arc<Mutex<HashMap<String, ModuleLoader>>>,
     last_killed: Arc<Mutex<Option<Instant>>>,
     last_used: LastUsedMap,
     max_workers: u32,
@@ -234,12 +218,11 @@ where
     async fn start_queue_processor(self: Arc<Self>, mut queue_receiver: QueueReceiver) {
         let pool = Arc::clone(&self);
         let handle = tokio::spawn(async move {
-            'outer: while let Some((runtime_options, request, sender)) = queue_receiver.recv().await
-            {
-                let options_hash = runtime_options.module_loader.code_package_hash();
+            'outer: while let Some((module_loader, request, sender)) = queue_receiver.recv().await {
+                let code_package_hash = module_loader.code_package_hash();
                 let mut worker_map = pool.workers.lock().await;
 
-                if let Some(workers) = worker_map.get_mut(&options_hash) {
+                if let Some(workers) = worker_map.get_mut(&code_package_hash) {
                     if let Some(mut worker) = workers.pop() {
                         drop(worker_map); // Unlock the worker map
 
@@ -247,7 +230,7 @@ where
 
                         let mut worker_map = pool.workers.lock().await;
                         worker_map
-                            .entry(options_hash.clone())
+                            .entry(code_package_hash.clone())
                             .or_default()
                             .push(worker);
 
@@ -256,7 +239,7 @@ where
                         pool.last_used
                             .lock()
                             .await
-                            .insert(options_hash, Instant::now());
+                            .insert(code_package_hash, Instant::now());
 
                         sender.send(result).unwrap();
                         continue 'outer;
@@ -272,8 +255,7 @@ where
                     match Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                         application_sql_store: pool.application_sql_store.clone(),
                         application_store: pool.application_store.clone(),
-                        handler_specifier: runtime_options.handler_specifier.clone(),
-                        module_loader: runtime_options.module_loader.clone(),
+                        module_loader: module_loader.clone(),
                         nft_sql_store: pool.nft_sql_store.clone(),
                         nft_store: pool.nft_store.clone(),
                         personal_sql_store: pool.personal_sql_store.clone(),
@@ -297,7 +279,7 @@ where
                                 pool.workers
                                     .lock()
                                     .await
-                                    .entry(options_hash.clone())
+                                    .entry(code_package_hash.clone())
                                     .or_default()
                                     .push(worker);
                             }
@@ -305,12 +287,12 @@ where
                             pool.last_used
                                 .lock()
                                 .await
-                                .insert(options_hash.clone(), Instant::now());
+                                .insert(code_package_hash.clone(), Instant::now());
 
                             pool.known_hashes
                                 .lock()
                                 .await
-                                .insert(options_hash.clone(), runtime_options);
+                                .insert(code_package_hash.clone(), module_loader);
 
                             sender.send(result).unwrap();
                             continue 'outer;
@@ -325,7 +307,7 @@ where
                         }
                     }
                 } else {
-                    pool.queue_request(runtime_options, request, sender, true)
+                    pool.queue_request(module_loader, request, sender, true)
                         .await;
                 }
             }
@@ -369,15 +351,15 @@ where
     /// This function will panic if the receiver is dropped before the result is received.
     pub async fn execute(
         self: Arc<Self>,
-        runtime_options: PoolRuntimeOptions,
+        module_loader: ModuleLoader,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult> {
-        let options_hash = runtime_options.module_loader.code_package_hash();
+        let code_package_hash = module_loader.code_package_hash();
         let (sender, reciever) = oneshot::channel();
 
         let mut worker_map = self.workers.lock().await;
 
-        if let Some(workers) = worker_map.get_mut(&options_hash) {
+        if let Some(workers) = worker_map.get_mut(&code_package_hash) {
             if let Some(mut worker) = workers.pop() {
                 drop(worker_map); // Unlock the worker map
 
@@ -385,7 +367,7 @@ where
 
                 let mut worker_map = self.workers.lock().await;
                 worker_map
-                    .entry(options_hash.clone())
+                    .entry(code_package_hash.clone())
                     .or_default()
                     .push(worker);
 
@@ -394,7 +376,7 @@ where
                 self.last_used
                     .lock()
                     .await
-                    .insert(options_hash.to_string(), Instant::now());
+                    .insert(code_package_hash.to_string(), Instant::now());
 
                 return result;
             }
@@ -409,8 +391,7 @@ where
             let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                 application_sql_store: self.application_sql_store.clone(),
                 application_store: self.application_store.clone(),
-                handler_specifier: runtime_options.handler_specifier.clone(),
-                module_loader: runtime_options.module_loader.clone(),
+                module_loader: module_loader.clone(),
                 nft_sql_store: self.nft_sql_store.clone(),
                 nft_store: self.nft_store.clone(),
                 personal_sql_store: self.personal_sql_store.clone(),
@@ -432,7 +413,7 @@ where
                 self.workers
                     .lock()
                     .await
-                    .entry(options_hash.to_string())
+                    .entry(code_package_hash.to_string())
                     .or_default()
                     .push(worker);
             }
@@ -440,16 +421,16 @@ where
             self.last_used
                 .lock()
                 .await
-                .insert(options_hash.to_string(), Instant::now());
+                .insert(code_package_hash.to_string(), Instant::now());
 
             self.known_hashes
                 .lock()
                 .await
-                .insert(options_hash.clone(), runtime_options);
+                .insert(code_package_hash.clone(), module_loader);
 
             result
         } else {
-            self.queue_request(runtime_options, request, sender, false)
+            self.queue_request(module_loader, request, sender, false)
                 .await;
             reciever.await.unwrap()
         }
@@ -475,17 +456,17 @@ where
     /// This function will panic if the receiver is dropped before the result is received.
     pub async fn execute_prehashed(
         self: Arc<Self>,
-        options_hash: String,
+        code_package_hash: String,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult> {
         let known_hashes = self.known_hashes.lock().await;
-        if let Some(runtime_options) = known_hashes.get(&options_hash) {
-            let runtime_options = runtime_options.clone();
+        if let Some(module_loader) = known_hashes.get(&code_package_hash) {
+            let module_loader = module_loader.clone();
             let (sender, reciever) = oneshot::channel();
 
             let mut worker_map = self.workers.lock().await;
 
-            if let Some(workers) = worker_map.get_mut(&options_hash) {
+            if let Some(workers) = worker_map.get_mut(&code_package_hash) {
                 if let Some(mut worker) = workers.pop() {
                     drop(worker_map); // Unlock the worker map
 
@@ -493,7 +474,7 @@ where
 
                     let mut worker_map = self.workers.lock().await;
                     worker_map
-                        .entry(options_hash.clone())
+                        .entry(code_package_hash.clone())
                         .or_default()
                         .push(worker);
 
@@ -502,7 +483,7 @@ where
                     self.last_used
                         .lock()
                         .await
-                        .insert(options_hash.to_string(), Instant::now());
+                        .insert(code_package_hash.to_string(), Instant::now());
 
                     return result;
                 }
@@ -517,8 +498,7 @@ where
                 let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                     application_sql_store: self.application_sql_store.clone(),
                     application_store: self.application_store.clone(),
-                    handler_specifier: runtime_options.handler_specifier.clone(),
-                    module_loader: runtime_options.module_loader.clone(),
+                    module_loader,
                     nft_sql_store: self.nft_sql_store.clone(),
                     nft_store: self.nft_store.clone(),
                     personal_sql_store: self.personal_sql_store.clone(),
@@ -540,7 +520,7 @@ where
                     self.workers
                         .lock()
                         .await
-                        .entry(options_hash.to_string())
+                        .entry(code_package_hash.to_string())
                         .or_default()
                         .push(worker);
                 }
@@ -548,11 +528,11 @@ where
                 self.last_used
                     .lock()
                     .await
-                    .insert(options_hash.to_string(), Instant::now());
+                    .insert(code_package_hash.to_string(), Instant::now());
 
                 result
             } else {
-                self.queue_request(runtime_options, request, sender, false)
+                self.queue_request(module_loader, request, sender, false)
                     .await;
                 reciever.await.unwrap()
             }
@@ -563,26 +543,26 @@ where
 
     async fn queue_request(
         &self,
-        runtime_options: PoolRuntimeOptions,
+        module_loader: ModuleLoader,
         request: ExecutionRequest,
         tx: SendChannel,
         queue_front: bool,
     ) {
         match self.queue_sender.try_reserve() {
             Ok(permit) => {
-                permit.send((runtime_options, request, tx));
+                permit.send((module_loader, request, tx));
             }
             Err(mpsc::error::TrySendError::Full(())) => {
                 if queue_front {
                     self.overflow_queue
                         .lock()
                         .await
-                        .push_front((runtime_options, request, tx));
+                        .push_front((module_loader, request, tx));
                 } else {
                     self.overflow_queue
                         .lock()
                         .await
-                        .push_back((runtime_options, request, tx));
+                        .push_back((module_loader, request, tx));
                 }
             }
             Err(e) => {
@@ -642,6 +622,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::HandlerSpecifier;
+
     use super::*;
 
     use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
@@ -685,19 +667,20 @@ mod tests {
     async fn test_execute() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let runtime_options = PoolRuntimeOptions {
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            module_loader: ModuleLoader::from_test_code("test_runtime_execute"),
-        };
-
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
 
-        let result = pool.execute(runtime_options, request).await;
+        let result = pool
+            .execute(
+                ModuleLoader::from_test_code("test_runtime_execute"),
+                request,
+            )
+            .await;
         if let Err(err) = result {
             panic!("Error: {err:?}");
         }
@@ -707,25 +690,24 @@ mod tests {
     async fn test_execute_prehashed() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let runtime_options = PoolRuntimeOptions {
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            module_loader: ModuleLoader::from_test_code("test_runtime_execute"),
-        };
+        let module_loader = ModuleLoader::from_test_code("test_runtime_execute");
 
-        let options_hash = runtime_options.module_loader.code_package_hash();
+        let code_package_hash = module_loader.code_package_hash();
+
         pool.known_hashes
             .lock()
             .await
-            .insert(options_hash.clone(), runtime_options.clone());
+            .insert(code_package_hash.clone(), module_loader);
 
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
 
-        let result = pool.execute_prehashed(options_hash, request).await;
+        let result = pool.execute_prehashed(code_package_hash, request).await;
         if let Err(err) = result {
             panic!("Error: {err:?}");
         }
@@ -735,21 +717,22 @@ mod tests {
     async fn test_queue_request() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let runtime_options = PoolRuntimeOptions {
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            module_loader: ModuleLoader::from_test_code("test_runtime_execute"),
-        };
-
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
         let (tx, rx) = oneshot::channel();
 
-        pool.queue_request(runtime_options, request, tx, false)
-            .await;
+        pool.queue_request(
+            ModuleLoader::from_test_code("test_runtime_execute"),
+            request,
+            tx,
+            false,
+        )
+        .await;
         assert!(rx.await.is_ok());
     }
 
@@ -757,20 +740,21 @@ mod tests {
     async fn test_kill_idle_worker() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let runtime_options = PoolRuntimeOptions {
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            module_loader: ModuleLoader::from_test_code("test_runtime_execute"),
-        };
-
         let request = ExecutionRequest::Rpc {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
 
         let pool_clone = Arc::clone(&pool);
-        let _ = pool_clone.execute(runtime_options.clone(), request).await;
+        let _ = pool_clone
+            .execute(
+                ModuleLoader::from_test_code("test_runtime_execute"),
+                request,
+            )
+            .await;
 
         let killed = pool.kill_idle_worker().await;
         assert!(killed);
