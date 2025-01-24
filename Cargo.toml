@@ -12,6 +12,7 @@ members = [
     "crates/attestation",
     "crates/attestation-dev",
     "crates/attestation-nsm",
+    "crates/code-package",
     "crates/core",
     "crates/dnscrypt-proxy",
     "crates/enclave",
@@ -124,6 +125,7 @@ deno_napi = { path = "vendor/deno/ext/napi" }
 deno_net = { path = "vendor/deno/ext/net" }
 deno_node = { path = "vendor/deno/ext/node" }
 deno_npm = "=0.27.2"
+deno_npm_cache = { path = "vendor/deno/resolvers/npm_cache" }
 deno_os = { path = "vendor/deno/ext/os" }
 deno_package_json = { version = "0.4.0", default-features = false }
 deno_path_util = "0.3.0"
@@ -136,6 +138,7 @@ deno_telemetry = { path = "vendor/deno/ext/telemetry" }
 deno_terminal = "0.2.0"
 deno_tls = { path = "vendor/deno/ext/tls" }
 deno_url = { path = "vendor/deno/ext/url" }
+deno_unsync = "0.4.2"
 deno_web = { path = "vendor/deno/ext/web" }
 deno_webgpu = { path = "vendor/deno/ext/webgpu" }
 deno_webidl = { path = "vendor/deno/ext/webidl" }
@@ -227,6 +230,7 @@ proven-applications = { path = "crates/applications" }
 proven-attestation = { path = "crates/attestation" }
 proven-attestation-dev = { path = "crates/attestation-dev" }
 proven-attestation-nsm = { path = "crates/attestation-nsm" }
+proven-code-package = { path = "crates/code-package" }
 proven-core = { path = "crates/core" }
 proven-dnscrypt-proxy = { path = "crates/dnscrypt-proxy" }
 proven-enclave = { path = "crates/enclave" }

@@ -5,9 +5,8 @@ use axum::routing::any;
 use axum::Router;
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
-use proven_runtime::{
-    CodePackage, ExecutionRequest, ModuleSpecifier, PoolRuntimeOptions, RuntimePoolManagement,
-};
+use proven_code_package::{CodePackage, ModuleSpecifier};
+use proven_runtime::{ExecutionRequest, ModuleLoader, PoolRuntimeOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
 
 pub fn create_application_http_router<AM, RM, SM>(
@@ -53,8 +52,8 @@ where
         let result = runtime_pool_manager
             .execute(
                 PoolRuntimeOptions {
-                    code_package,
                     handler_name: Some("test".to_string()),
+                    module_loader: ModuleLoader::new(code_package),
                     module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
                 },
                 execution_request,

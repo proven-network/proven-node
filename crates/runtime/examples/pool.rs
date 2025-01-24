@@ -1,9 +1,10 @@
 use proven_runtime::{
-    CodePackage, Error, ExecutionRequest, ModuleSpecifier, Pool, PoolOptions, PoolRuntimeOptions,
+    Error, ExecutionRequest, ModuleLoader, Pool, PoolOptions, PoolRuntimeOptions,
 };
 
 use std::sync::Arc;
 
+use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -50,10 +51,12 @@ async fn main() -> Result<(), Error> {
     for i in 0..EXECUTIONS {
         // Add the invocation number to every 2nd script to make it unique
         // This tests a mix of unique and duplicate scripts
-        let code_package = if i % 2 == 0 {
-            CodePackage::from_str(&format!("// Invocation: {}\n{}", i, base_script)).unwrap()
+        let module_loader = if i % 2 == 0 {
+            ModuleLoader::new(
+                CodePackage::from_str(&format!("// Invocation: {}\n{}", i, base_script)).unwrap(),
+            )
         } else {
-            CodePackage::from_str(base_script).unwrap()
+            ModuleLoader::new(CodePackage::from_str(base_script).unwrap())
         };
 
         let pool = Arc::clone(&pool);
@@ -70,8 +73,8 @@ async fn main() -> Result<(), Error> {
             let result = pool
                 .execute(
                     PoolRuntimeOptions {
-                        code_package,
                         handler_name: Some("handler".to_string()),
+                        module_loader,
                         module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
                     },
                     request,

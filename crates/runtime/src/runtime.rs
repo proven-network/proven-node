@@ -1,4 +1,3 @@
-use crate::code_package::{CodePackage, ProcessingMode};
 use crate::extensions::{
     babylon_gateway_api_ext, console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext,
     openai_ext, radix_engine_toolkit_ext, session_ext, sql_application_ext, sql_nft_ext,
@@ -6,6 +5,7 @@ use crate::extensions::{
     ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput, NftSqlConnectionManager,
     PersonalSqlConnectionManager, SessionState, SqlParamListManager, SqlQueryResultsManager,
 };
+use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::{HandlerOptions, SqlMigrations};
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
@@ -58,11 +58,11 @@ where
     /// Application-scoped KV store.
     pub application_store: AS,
 
-    /// The code package to use during execution.
-    pub code_package: CodePackage,
-
     /// The export of the entrypoint module to run.
     pub handler_name: Option<String>,
+
+    /// The module loader to use during execution.
+    pub module_loader: ModuleLoader,
 
     /// Specifier of the entrypoint module.
     pub module_specifier: Url,
@@ -121,13 +121,11 @@ impl
         use radix_common::network::NetworkDefinition;
         use tempfile::tempdir;
 
-        let code_package = CodePackage::from_test_code(script_name);
-
         Self {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
-            code_package,
             handler_name: Some(handler_name.to_string()),
+            module_loader: ModuleLoader::from_test_code(script_name),
             module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
@@ -237,8 +235,8 @@ where
         RuntimeOptions {
             application_sql_store,
             application_store,
-            code_package,
             handler_name,
+            module_loader,
             module_specifier,
             nft_sql_store,
             nft_store,
@@ -249,12 +247,12 @@ where
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Result<Self> {
-        let Some(module) = code_package.get_module(&module_specifier, &ProcessingMode::Runtime)
+        let Some(module) = module_loader.get_module(&module_specifier, &ProcessingMode::Runtime)
         else {
             return Err(Error::SpecifierNotFoundInCodePackage);
         };
 
-        let Ok(module_options) = code_package.get_module_options(&module_specifier) else {
+        let Ok(module_options) = module_loader.get_module_options(&module_specifier) else {
             return Err(Error::SpecifierNotFoundInCodePackage);
         };
 
@@ -313,7 +311,7 @@ where
 
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
             import_provider: Some(Box::new(
-                code_package.import_provider(ProcessingMode::Runtime),
+                module_loader.import_provider(ProcessingMode::Runtime),
             )),
             timeout: Duration::from_millis(timeout_millis.into()),
             max_heap_size: Some(max_heap_mbs as usize * 1024 * 1024),

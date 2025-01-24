@@ -1,9 +1,10 @@
 use proven_runtime::{
-    CodePackage, Error, ExecutionRequest, ModuleSpecifier, Pool, PoolOptions, PoolRuntimeOptions,
+    Error, ExecutionRequest, ModuleLoader, Pool, PoolOptions, PoolRuntimeOptions,
 };
 
 use std::sync::Arc;
 
+use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -33,8 +34,9 @@ async fn main() -> Result<(), Error> {
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 
-    let code_package = CodePackage::from_str(
-        r#"
+    let module_loader = ModuleLoader::new(
+        CodePackage::from_str(
+            r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
 
         export const handler = async (a, b) => {
@@ -46,13 +48,14 @@ async fn main() -> Result<(), Error> {
             return a + b;
         }
     "#,
-    )
-    .unwrap();
+        )
+        .unwrap(),
+    );
 
-    let options_hash = code_package.hash.clone();
+    let options_hash = module_loader.code_package_hash();
     let runtime_options = PoolRuntimeOptions {
-        code_package,
         handler_name: Some("handler".to_string()),
+        module_loader,
         module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
     };
 

@@ -9,15 +9,13 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 ciborium = { workspace = true }
-deno_ast = { workspace = true }
 deno_core = { workspace = true }
 deno_error = { workspace = true }
-deno_graph = { workspace = true }
 deno_permissions = { workspace = true }
 ed25519-dalek = { workspace = true }
-eszip = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
+proven-code-package = { workspace = true }
 proven-locks = { workspace = true }
 proven-radix-nft-verifier = { workspace = true }
 proven-sql = { workspace = true }
@@ -28,12 +26,10 @@ regex = { workspace = true }
 rustyscript = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-futures = { workspace = true }
 hex = { workspace = true }
 proven-locks-memory = { workspace = true }
 proven-radix-nft-verifier-mock = { workspace = true }

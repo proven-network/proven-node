@@ -1,9 +1,9 @@
-use crate::code_package::{CodePackage, ProcessingMode};
 use crate::extensions::{
     babylon_gateway_api_ext, console_ext, crypto_ext, handler_options_parser_ext,
     kv_options_parser_ext, openai_ext, radix_engine_toolkit_ext, session_ext, sql_migrations_ext,
     sql_options_parser_ext, uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
 };
+use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::{ModuleHandlerOptions, ModuleOptions, SqlMigrations};
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
@@ -19,12 +19,12 @@ pub struct OptionsParser;
 
 impl OptionsParser {
     pub fn parse(
-        code_package: &CodePackage,
+        module_loader: &ModuleLoader,
         module_specifier: &ModuleSpecifier,
     ) -> Result<ModuleOptions, Error> {
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
             import_provider: Some(Box::new(
-                code_package.import_provider(ProcessingMode::Options),
+                module_loader.import_provider(ProcessingMode::Options),
             )),
             timeout: Duration::from_millis(5000),
             schema_whlist: SCHEMA_WHLIST.clone(),
@@ -60,7 +60,7 @@ impl OptionsParser {
         runtime.put(ModuleHandlerOptions::default())?;
         runtime.put(SqlMigrations::default())?;
 
-        let Some(module) = code_package.get_module(module_specifier, &ProcessingMode::Options)
+        let Some(module) = module_loader.get_module(module_specifier, &ProcessingMode::Options)
         else {
             return Err(Error::SpecifierNotFoundInCodePackage);
         };

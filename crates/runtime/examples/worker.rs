@@ -1,8 +1,9 @@
-use proven_runtime::{CodePackage, ExecutionRequest, ModuleSpecifier, RuntimeOptions, Worker};
+use proven_runtime::{ExecutionRequest, ModuleLoader, RuntimeOptions, Worker};
 
 use std::sync::Arc;
 
 use futures::future::join_all;
+use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -17,8 +18,9 @@ static EXECUTIONS: usize = 100;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let code_package = CodePackage::from_str(
-        r#"
+    let module_loader = ModuleLoader::new(
+        CodePackage::from_str(
+            r#"
         import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
 
         export const handler = async (a, b) => {
@@ -30,15 +32,16 @@ async fn main() -> Result<(), Error> {
             return a + b;
         }
     "#,
-    )
-    .unwrap();
+        )
+        .unwrap(),
+    );
 
     let worker = Arc::new(Mutex::new(
         Worker::new(RuntimeOptions {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
-            code_package,
             handler_name: Some("handler".to_string()),
+            module_loader,
             module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),

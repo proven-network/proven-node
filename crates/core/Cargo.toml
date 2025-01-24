@@ -17,6 +17,7 @@ hex = { workspace = true }
 http-body-util = { workspace = true }
 proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
+proven-code-package = { workspace = true }
 proven-http = { workspace = true }
 proven-radix-rola = { workspace = true }
 proven-runtime = { workspace = true }

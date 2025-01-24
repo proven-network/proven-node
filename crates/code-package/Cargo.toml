@@ -1,0 +1,19 @@
+[package]
+name = "proven-code-package"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+bytes = { workspace = true }
+deno_ast = { workspace = true }
+deno_core = { workspace = true }
+deno_error = { workspace = true }
+deno_graph = { workspace = true }
+deno_npm = { workspace = true }
+deno_semver = { workspace = true }
+deno_permissions = { workspace = true }
+eszip = { workspace = true }
+futures = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }

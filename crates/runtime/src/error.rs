@@ -18,10 +18,6 @@ pub enum Error {
     #[error("hash not known to pool")]
     HashUnknown,
 
-    /// Issue with the module graph.
-    #[error(transparent)]
-    ModuleGraph(#[from] deno_graph::ModuleError),
-
     /// Execution request type doesn't match handler type.
     #[error("execution request type doesn't match handler type")]
     MismatchedExecutionRequest,
