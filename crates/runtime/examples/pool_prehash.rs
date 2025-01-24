@@ -1,10 +1,10 @@
 use proven_runtime::{
-    Error, ExecutionRequest, ModuleLoader, Pool, PoolOptions, PoolRuntimeOptions,
+    Error, ExecutionRequest, HandlerSpecifier, ModuleLoader, Pool, PoolOptions, PoolRuntimeOptions,
 };
 
 use std::sync::Arc;
 
-use proven_code_package::{CodePackage, ModuleSpecifier};
+use proven_code_package::CodePackage;
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -54,9 +54,8 @@ async fn main() -> Result<(), Error> {
 
     let options_hash = module_loader.code_package_hash();
     let runtime_options = PoolRuntimeOptions {
-        handler_name: Some("handler".to_string()),
+        handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
         module_loader,
-        module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
     };
 
     // Warm up pool with a full execution

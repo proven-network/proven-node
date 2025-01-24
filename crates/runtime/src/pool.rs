@@ -1,11 +1,12 @@
 use crate::module_loader::ModuleLoader;
-use crate::{Error, ExecutionRequest, ExecutionResult, Result, RuntimeOptions, Worker};
+use crate::{
+    Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, Result, RuntimeOptions, Worker,
+};
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
-use deno_core::url::Url;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
@@ -71,13 +72,10 @@ where
 #[derive(Clone)]
 pub struct PoolRuntimeOptions {
     /// The export of the entrypoint module to run.
-    pub handler_name: Option<String>,
+    pub handler_specifier: HandlerSpecifier,
 
     /// The module loader to use during execution.
     pub module_loader: ModuleLoader,
-
-    /// Specifier of the entrypoint module.
-    pub module_specifier: Url,
 }
 
 /// A pool of workers that can execute tasks concurrently.
@@ -95,11 +93,11 @@ pub struct PoolRuntimeOptions {
 /// # Example
 ///
 /// ```rust
-/// use proven_code_package::{CodePackage, ModuleSpecifier};
+/// use proven_code_package::CodePackage;
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     Error, ExecutionRequest, ExecutionResult, ModuleLoader, Pool, PoolOptions,
-///     PoolRuntimeOptions,
+///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Pool,
+///     PoolOptions, PoolRuntimeOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -127,9 +125,8 @@ pub struct PoolRuntimeOptions {
 ///         CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
 ///
 ///     let runtime_options = PoolRuntimeOptions {
-///         handler_name: Some("handler".to_string()),
+///         handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///         module_loader: ModuleLoader::new(code_package),
-///         module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
 ///     };
 ///
 ///     let request = ExecutionRequest::Rpc {
@@ -275,9 +272,8 @@ where
                     match Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                         application_sql_store: pool.application_sql_store.clone(),
                         application_store: pool.application_store.clone(),
-                        handler_name: runtime_options.handler_name.clone(),
+                        handler_specifier: runtime_options.handler_specifier.clone(),
                         module_loader: runtime_options.module_loader.clone(),
-                        module_specifier: runtime_options.module_specifier.clone(),
                         nft_sql_store: pool.nft_sql_store.clone(),
                         nft_store: pool.nft_store.clone(),
                         personal_sql_store: pool.personal_sql_store.clone(),
@@ -413,9 +409,8 @@ where
             let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                 application_sql_store: self.application_sql_store.clone(),
                 application_store: self.application_store.clone(),
-                handler_name: runtime_options.handler_name.clone(),
+                handler_specifier: runtime_options.handler_specifier.clone(),
                 module_loader: runtime_options.module_loader.clone(),
-                module_specifier: runtime_options.module_specifier.clone(),
                 nft_sql_store: self.nft_sql_store.clone(),
                 nft_store: self.nft_store.clone(),
                 personal_sql_store: self.personal_sql_store.clone(),
@@ -522,9 +517,8 @@ where
                 let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
                     application_sql_store: self.application_sql_store.clone(),
                     application_store: self.application_store.clone(),
-                    handler_name: runtime_options.handler_name.clone(),
+                    handler_specifier: runtime_options.handler_specifier.clone(),
                     module_loader: runtime_options.module_loader.clone(),
-                    module_specifier: runtime_options.module_specifier.clone(),
                     nft_sql_store: self.nft_sql_store.clone(),
                     nft_store: self.nft_store.clone(),
                     personal_sql_store: self.personal_sql_store.clone(),
@@ -650,7 +644,6 @@ where
 mod tests {
     use super::*;
 
-    use deno_core::ModuleSpecifier;
     use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -693,9 +686,8 @@ mod tests {
         let pool = Pool::new(create_pool_options()).await;
 
         let runtime_options = PoolRuntimeOptions {
-            handler_name: Some("test".to_string()),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             module_loader: ModuleLoader::from_test_code("test_runtime_execute"),
-            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         };
 
         let request = ExecutionRequest::Rpc {
@@ -716,9 +708,8 @@ mod tests {
         let pool = Pool::new(create_pool_options()).await;
 
         let runtime_options = PoolRuntimeOptions {
-            handler_name: Some("test".to_string()),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             module_loader: ModuleLoader::from_test_code("test_runtime_execute"),
-            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         };
 
         let options_hash = runtime_options.module_loader.code_package_hash();
@@ -745,9 +736,8 @@ mod tests {
         let pool = Pool::new(create_pool_options()).await;
 
         let runtime_options = PoolRuntimeOptions {
-            handler_name: Some("test".to_string()),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             module_loader: ModuleLoader::from_test_code("test_runtime_execute"),
-            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         };
 
         let request = ExecutionRequest::Rpc {
@@ -768,9 +758,8 @@ mod tests {
         let pool = Pool::new(create_pool_options()).await;
 
         let runtime_options = PoolRuntimeOptions {
-            handler_name: Some("test".to_string()),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             module_loader: ModuleLoader::from_test_code("test_runtime_execute"),
-            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         };
 
         let request = ExecutionRequest::Rpc {

@@ -1,6 +1,8 @@
-use proven_runtime::{Error, ExecutionRequest, ModuleLoader, Runtime, RuntimeOptions};
+use proven_runtime::{
+    Error, ExecutionRequest, HandlerSpecifier, ModuleLoader, Runtime, RuntimeOptions,
+};
 
-use proven_code_package::{CodePackage, ModuleSpecifier};
+use proven_code_package::CodePackage;
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -30,9 +32,8 @@ fn main() -> Result<(), Error> {
     let mut runtime = Runtime::new(RuntimeOptions {
         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
         application_store: MemoryStore2::new(),
-        handler_name: Some("handler".to_string()),
+        handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
         module_loader,
-        module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
         nft_store: MemoryStore3::new(),
         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),

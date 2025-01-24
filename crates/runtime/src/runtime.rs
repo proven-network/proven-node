@@ -9,7 +9,7 @@ use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::{HandlerOptions, SqlMigrations};
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
-use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult, Result};
+use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult, HandlerSpecifier, Result};
 
 use std::collections::HashSet;
 use std::convert::Infallible;
@@ -19,7 +19,6 @@ use std::time::Duration;
 use std::vec;
 
 use bytes::Bytes;
-use deno_core::url::Url;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store2, Store3};
@@ -58,14 +57,11 @@ where
     /// Application-scoped KV store.
     pub application_store: AS,
 
-    /// The export of the entrypoint module to run.
-    pub handler_name: Option<String>,
+    /// The exported handler to run.
+    pub handler_specifier: HandlerSpecifier,
 
     /// The module loader to use during execution.
     pub module_loader: ModuleLoader,
-
-    /// Specifier of the entrypoint module.
-    pub module_specifier: Url,
 
     /// NFT-scoped SQL store.
     pub nft_sql_store: NSS,
@@ -114,7 +110,6 @@ impl
     /// # Panics
     /// This function will panic if creating a temporary directory fails.
     pub fn for_test_code(script_name: &str, handler_name: &str) -> Self {
-        use deno_core::ModuleSpecifier;
         use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
         use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
         use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -124,9 +119,11 @@ impl
         Self {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
-            handler_name: Some(handler_name.to_string()),
+            handler_specifier: HandlerSpecifier::parse(
+                format!("file:///main.ts#{handler_name}").as_str(),
+            )
+            .unwrap(),
             module_loader: ModuleLoader::from_test_code(script_name),
-            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
@@ -150,10 +147,11 @@ impl
 ///
 /// # Example
 /// ```rust
-/// use proven_code_package::{CodePackage, ModuleSpecifier};
+/// use proven_code_package::CodePackage;
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     Error, ExecutionRequest, ExecutionResult, ModuleLoader, Runtime, RuntimeOptions,
+///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Runtime,
+///     RuntimeOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore2, MemoryStore3};
@@ -166,9 +164,8 @@ impl
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
 ///     application_store: MemoryStore2::new(),
-///     handler_name: Some("handler".to_string()),
+///     handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///     module_loader: ModuleLoader::new(code_package),
-///     module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
 ///     nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///     nft_store: MemoryStore3::new(),
 ///     personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
@@ -198,7 +195,7 @@ where
 {
     application_sql_store: ASS,
     application_store: AS,
-    handler_name: Option<String>,
+    handler_specifier: HandlerSpecifier,
     handler_type: HandlerType,
     module_handle: ModuleHandle,
     nft_sql_store: NSS,
@@ -235,9 +232,8 @@ where
         RuntimeOptions {
             application_sql_store,
             application_store,
-            handler_name,
+            handler_specifier,
             module_loader,
-            module_specifier,
             nft_sql_store,
             nft_store,
             personal_sql_store,
@@ -247,9 +243,14 @@ where
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
     ) -> Result<Self> {
+        let module_specifier = handler_specifier.module_specifier();
         let Some(module) = module_loader.get_module(&module_specifier, &ProcessingMode::Runtime)
         else {
             return Err(Error::SpecifierNotFoundInCodePackage);
+        };
+
+        if let Err(err) = module_loader.get_module_options(&module_specifier) {
+            println!("{err:?}");
         };
 
         let Ok(module_options) = module_loader.get_module_options(&module_specifier) else {
@@ -258,7 +259,7 @@ where
 
         let handler_options = module_options
             .handler_options
-            .get(handler_name.as_deref().unwrap_or("__default__"));
+            .get(handler_specifier.as_str());
 
         let (allowed_web_origins, handler_type, max_heap_mbs, timeout_millis) =
             match handler_options {
@@ -371,7 +372,7 @@ where
         Ok(Self {
             application_sql_store,
             application_store,
-            handler_name,
+            handler_specifier,
             handler_type,
             module_handle,
             nft_sql_store,
@@ -558,7 +559,7 @@ where
         // Set the context for the session extension
         self.runtime.put(SessionState { identity, accounts })?;
 
-        let output: Value = match self.handler_name {
+        let output: Value = match self.handler_specifier.handler_name() {
             Some(ref handler_name) => {
                 self.runtime
                     .call_function(Some(&self.module_handle), handler_name, &args)?
@@ -633,7 +634,8 @@ mod tests {
     async fn test_runtime_execute_with_default_export() {
         let mut options =
             RuntimeOptions::for_test_code("test_runtime_execute_with_default_export", "remove");
-        options.handler_name = None;
+        // Remove fragment to use default export
+        options.handler_specifier = HandlerSpecifier::parse("file:///main.ts").unwrap();
 
         run_in_thread(|| {
             let request = create_execution_request();

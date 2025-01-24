@@ -101,7 +101,7 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
 
     use ed25519_dalek::Verifier;
     use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
@@ -213,7 +213,8 @@ mod tests {
                 .unwrap();
 
         // Reuse options to ensure the same application kv store is used. Just change the handler name.
-        runtime_options.handler_name = Some("load".to_string());
+        runtime_options.handler_specifier =
+            HandlerSpecifier::parse("file:///main.ts#load").unwrap();
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let result = worker.execute(request).await;

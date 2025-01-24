@@ -6,9 +6,10 @@ use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_applications::{Application, ApplicationManagement, CreateApplicationOptions};
-use proven_code_package::{CodePackage, ModuleSpecifier};
+use proven_code_package::CodePackage;
 use proven_runtime::{
-    ExecutionRequest, ExecutionResult, ModuleLoader, PoolRuntimeOptions, RuntimePoolManagement,
+    ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, PoolRuntimeOptions,
+    RuntimePoolManagement,
 };
 use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
@@ -163,7 +164,7 @@ where
                     Err(e) => Ok(Response::CreateApplicationFailure(e.to_string())),
                 }
             }
-            Request::Execute(module, handler_name, args) => {
+            Request::Execute(module, handler_specifier_url, args) => {
                 let request = ExecutionRequest::Rpc {
                     args,
                     accounts: self.account_addresses.clone(),
@@ -175,11 +176,11 @@ where
                     .runtime_pool_manager
                     .execute(
                         PoolRuntimeOptions {
-                            handler_name: Some(handler_name.clone()),
+                            handler_specifier: HandlerSpecifier::parse(&handler_specifier_url)
+                                .unwrap(),
                             module_loader: ModuleLoader::new(
                                 CodePackage::from_str(&module).unwrap(),
                             ),
-                            module_specifier: ModuleSpecifier::parse("file:///main.ts").unwrap(),
                         },
                         request,
                     )

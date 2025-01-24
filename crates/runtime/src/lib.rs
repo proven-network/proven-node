@@ -7,6 +7,7 @@
 
 mod error;
 mod extensions;
+mod handler_specifier;
 mod import_replacements;
 mod manager;
 mod module_loader;
@@ -20,6 +21,7 @@ mod util;
 mod worker;
 
 pub use error::*;
+pub use handler_specifier::HandlerSpecifier;
 pub use manager::*;
 pub use module_loader::ModuleLoader;
 pub use pool::*;

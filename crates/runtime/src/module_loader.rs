@@ -89,10 +89,9 @@ impl ModuleLoader {
             .map(|module_source| match processing_mode {
                 ProcessingMode::Options => {
                     let module_source = replace_esm_imports(&module_source);
-                    let module_source = strip_comments(&module_source);
                     let module_source = name_default_export(&module_source);
 
-                    rewrite_run_functions(&module_source)
+                    rewrite_run_functions(module_specifer.as_str(), &module_source)
                 }
                 ProcessingMode::Runtime => replace_esm_imports(&module_source),
             })
@@ -198,10 +197,12 @@ impl rustyscript::module_loader::ImportProvider for ImportProvider {
     ) -> Option<Result<String, anyhow::Error>> {
         match self.processing_mode {
             ProcessingMode::Options => {
-                println!("options_parser import: {specifier}, {referrer:?}, {is_dyn_import}, {requested_module_type:?}");
+                let referrer = referrer.unwrap();
+                println!("options_parser import: {specifier}, {referrer}, {is_dyn_import}, {requested_module_type:?}");
             }
             ProcessingMode::Runtime => {
-                println!("runtime import: {specifier}, {referrer:?}, {is_dyn_import}, {requested_module_type:?}");
+                let referrer = referrer.unwrap();
+                println!("runtime import: {specifier}, {referrer}, {is_dyn_import}, {requested_module_type:?}");
             }
         }
 
@@ -215,24 +216,19 @@ fn name_default_export(module_source: &str) -> String {
     module_source.replace("export default ", "export const __default__ = ")
 }
 
-fn rewrite_run_functions(module_source: &str) -> String {
+fn rewrite_run_functions(module_specifier: &str, module_source: &str) -> String {
     // Define the regex to match `export const/let` declarations with the specified functions
     let re = Regex::new(r"(?m)^(\s*)export\s+(const|let)\s+(\w+)\s*=\s*(runOnHttp|runOnProvenEvent|runOnRadixEvent|runOnSchedule|runWithOptions|run)\(").unwrap();
 
     // Replace the matched string with the modified version
     let result = re.replace_all(module_source, |caps: &regex::Captures| {
         format!(
-            "{}export {} {} = {}('{}', ",
-            &caps[1], &caps[2], &caps[3], &caps[4], &caps[3]
+            "{}export {} {} = {}('{}', '{}', ",
+            &caps[1], &caps[2], &caps[3], &caps[4], module_specifier, &caps[3]
         )
     });
 
     result.to_string()
-}
-
-fn strip_comments(module_source: &str) -> String {
-    let comment_re = Regex::new(r"(?m)^\s*//.*|/\*[\s\S]*?\*/").unwrap();
-    comment_re.replace_all(module_source, "").to_string()
 }
 
 #[cfg(test)]
@@ -270,8 +266,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(module_options.handler_options.len(), 2);
-        assert!(module_options.handler_options.contains_key("handler"));
-        assert!(module_options.handler_options.contains_key("__default__"));
+        assert!(module_options
+            .handler_options
+            .contains_key("file:///main.ts#handler"));
+        assert!(module_options
+            .handler_options
+            .contains_key("file:///main.ts"));
 
         assert!(module_options
             .sql_migrations
@@ -287,7 +287,10 @@ mod tests {
         );
 
         assert_eq!(
-            module_options.handler_options.get("handler").unwrap(),
+            module_options
+                .handler_options
+                .get("file:///main.ts#handler")
+                .unwrap(),
             &HandlerOptions::Http {
                 allowed_web_origins: HashSet::new(),
                 path: Some("/hello".to_string()),
@@ -297,7 +300,10 @@ mod tests {
         );
 
         assert_eq!(
-            module_options.handler_options.get("__default__").unwrap(),
+            module_options
+                .handler_options
+                .get("file:///main.ts")
+                .unwrap(),
             &HandlerOptions::Rpc {
                 allowed_web_origins: HashSet::new(),
                 max_heap_mbs: None,
@@ -331,26 +337,12 @@ mod tests {
         });
     ";
         let expected = r"
-        export const handler = runWithOptions('handler', (x,y) => {
+        export const handler = runWithOptions('file:///main.ts', 'handler', (x,y) => {
             console.log(x, y);
         }, {
             timeout: 5000
         });
     ";
-        assert_eq!(rewrite_run_functions(source), expected);
-    }
-
-    #[test]
-    fn test_strip_comments() {
-        let source = r"
-        // This is a comment
-        const x = 42;/* This is another comment */
-        /* This is another comment */console.log(x);
-    ";
-        let expected = r"
-        const x = 42;
-        console.log(x);
-    ";
-        assert_eq!(strip_comments(source), expected);
+        assert_eq!(rewrite_run_functions("file:///main.ts", source), expected);
     }
 }

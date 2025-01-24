@@ -21,33 +21,42 @@ const {
   op_set_timeout_option,
 } = globalThis.Deno.core.ops;
 
-// Handler name is dynamically inserted and should not be part of exported types.
+// moduleSpecifier and handlerName is dynamically inserted and should not be part of exported types.
 export function run(
+  moduleSpecifier: string,
   handlerName: string,
   fn: (...args: any[]) => Promise<Output>
 ): typeof fn {
-  if (typeof handlerName !== "string") {
+  if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error("run must be used in conjunction with the export keyword");
   }
 
   if (typeof fn !== "function") {
-    throw new Error("No function passed to runWithOptions");
+    throw new Error("No function passed to run");
   }
 
   return fn;
 }
 
-// Handler name is dynamically inserted and should not be part of exported types.
+// moduleSpecifier and handlerName is dynamically inserted and should not be part of exported types.
 export function runWithOptions(
+  moduleSpecifier: string,
   handlerName: string,
   options: RpcHandlerOptions,
   fn: (...args: any[]) => Promise<Output>
 ): typeof fn {
-  if (typeof handlerName !== "string") {
+  if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error(
       "runWithOptions must be used in conjunction with the export keyword"
     );
   }
+
+  if (!options || typeof options !== "object") {
+    throw new Error("Options must be provided");
+  }
+
+  const handlerSpecifier =
+    moduleSpecifier + (handlerName === "__default__" ? "" : `#${handlerName}`);
 
   if (typeof fn !== "function") {
     throw new Error("No function passed to runWithOptions");
@@ -58,7 +67,7 @@ export function runWithOptions(
       throw new Error("Memory must be a number");
     }
 
-    op_set_memory_option("rpc", handlerName, options.memory);
+    op_set_memory_option("rpc", handlerSpecifier, options.memory);
   }
 
   if (options.timeout) {
@@ -66,7 +75,7 @@ export function runWithOptions(
       throw new Error("Timeout must be a number");
     }
 
-    op_set_timeout_option("rpc", handlerName, options.timeout);
+    op_set_timeout_option("rpc", handlerSpecifier, options.timeout);
   }
 
   if (options.allowedOrigins) {
@@ -79,24 +88,28 @@ export function runWithOptions(
         throw new Error("allowedOrigins must be an array of strings");
       }
 
-      op_add_allowed_origin("rpc", handlerName, origin);
+      op_add_allowed_origin("rpc", handlerSpecifier, origin);
     }
   }
 
   return fn;
 }
 
-// Handler name is dynamically inserted and should not be part of exported types.
+// moduleSpecifier and handlerName is dynamically inserted and should not be part of exported types.
 export function runOnHttp<P extends string>(
+  moduleSpecifier: string,
   handlerName: string,
   options: HttpHandlerOptions<P>,
   fn: (...args: any[]) => Promise<Output>
 ): typeof fn {
-  if (typeof handlerName !== "string") {
+  if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error(
       "runOnHttp must be used in conjunction with the export keyword"
     );
   }
+
+  const handlerSpecifier =
+    moduleSpecifier + (handlerName === "__default__" ? "" : `#${handlerName}`);
 
   if (typeof fn !== "function") {
     throw new Error("No function passed to runOnHttp");
@@ -114,14 +127,14 @@ export function runOnHttp<P extends string>(
     throw new Error("Path must be a string");
   }
 
-  op_set_path_option("http", handlerName, options.path);
+  op_set_path_option("http", handlerSpecifier, options.path);
 
   if (options.memory) {
     if (typeof options.memory !== "number") {
       throw new Error("Memory must be a number");
     }
 
-    op_set_memory_option("http", handlerName, options.memory);
+    op_set_memory_option("http", handlerSpecifier, options.memory);
   }
 
   if (options.timeout) {
@@ -129,7 +142,7 @@ export function runOnHttp<P extends string>(
       throw new Error("Timeout must be a number");
     }
 
-    op_set_timeout_option("http", handlerName, options.timeout);
+    op_set_timeout_option("http", handlerSpecifier, options.timeout);
   }
 
   if (options.allowedOrigins) {
@@ -142,23 +155,28 @@ export function runOnHttp<P extends string>(
         throw new Error("allowedOrigins must be an array of strings");
       }
 
-      op_add_allowed_origin("http", handlerName, origin);
+      op_add_allowed_origin("http", handlerSpecifier, origin);
     }
   }
 
   return fn;
 }
 
+// moduleSpecifier and handlerName is dynamically inserted and should not be part of exported types.
 export function runOnRadixEvent(
+  moduleSpecifier: string,
   handlerName: string,
   options: RadixEventHandlerOptions,
   fn: (transaction: CommittedTransactionInfo) => void
 ): void {
-  if (typeof handlerName !== "string") {
+  if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error(
-      "runOnHttp must be used in conjunction with the export keyword"
+      "runOnRadixEvent must be used in conjunction with the export keyword"
     );
   }
+
+  const handlerSpecifier =
+    moduleSpecifier + (handlerName === "__default__" ? "" : `#${handlerName}`);
 
   if (typeof fn !== "function") {
     throw new Error("No function passed to runOnRadixEvent");
@@ -173,7 +191,7 @@ export function runOnRadixEvent(
       throw new Error("Memory must be a number");
     }
 
-    op_set_memory_option("radix_event", handlerName, options.memory);
+    op_set_memory_option("radix_event", handlerSpecifier, options.memory);
   }
 
   if (options.timeout) {
@@ -181,7 +199,7 @@ export function runOnRadixEvent(
       throw new Error("Timeout must be a number");
     }
 
-    op_set_timeout_option("radix_event", handlerName, options.timeout);
+    op_set_timeout_option("radix_event", handlerSpecifier, options.timeout);
   }
 
   if (options.allowedOrigins) {
@@ -194,7 +212,7 @@ export function runOnRadixEvent(
         throw new Error("allowedOrigins must be an array of strings");
       }
 
-      op_add_allowed_origin("radix_event", handlerName, origin);
+      op_add_allowed_origin("radix_event", handlerSpecifier, origin);
     }
   }
 }
