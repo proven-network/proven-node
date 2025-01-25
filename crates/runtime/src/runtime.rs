@@ -659,7 +659,9 @@ mod tests {
             };
             let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
 
-            assert!(execution_result.output.is_null());
+            assert!(execution_result.output.is_string());
+
+            assert_eq!(execution_result.output.as_str().unwrap(), "Hello, world!");
         });
     }
 
