@@ -1,9 +1,16 @@
+//! A library for creating and working with code packages runnable in the Proven runtime.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 mod npm_resolver;
 
 pub use deno_core::ModuleSpecifier;
 pub use error::Error;
 
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 
@@ -16,11 +23,6 @@ use eszip::{EszipV2, FromGraphOptions};
 use futures::executor::block_on;
 use futures::io::BufReader;
 use sha2::{Digest, Sha256};
-
-pub enum ProcessingMode {
-    Options,
-    Runtime,
-}
 
 /// Represents a package of code that can be executed on a runtime. Can be serialized to and from bytes.
 pub struct CodePackage {
@@ -61,54 +63,59 @@ impl CodePackage {
             })
     }
 
-    #[allow(clippy::should_implement_trait)]
-    /// Creates a `CodePackage` from a string containing module source code.
+    /// Creates a `CodePackage` from a map of module sources and a list of module roots.
+    ///
+    /// # Arguments
+    ///
+    /// * `module_sources` - A map containing the module sources.
+    /// * `module_roots` - A list of module specifiers representing the roots of the modules.
     ///
     /// # Errors
     ///
-    /// This function will return an error if the module source cannot be processed.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if the module root cannot be parsed.
-    pub fn from_str(module_source: &str) -> Result<Self, Error> {
-        let loader = MemoryLoader::new(
-            vec![
+    /// This function will return an error if the module graph cannot be built or if the `EszipV2::from_graph` function fails.
+    pub fn from_map(
+        module_sources: &HashMap<ModuleSpecifier, String>,
+        module_roots: impl IntoIterator<Item = ModuleSpecifier>,
+    ) -> Result<Self, Error> {
+        let mut sources = module_sources
+            .iter()
+            .map(|(k, v)| {
                 (
-                    "file:///main.ts",
+                    k.as_str(),
                     Source::Module {
-                        specifier: "file:///main.ts",
+                        specifier: k.as_str(),
                         maybe_headers: None,
-                        content: module_source,
+                        content: v.as_str(),
                     },
-                ),
-                ("proven:crypto", Source::External("proven:crypto")),
-                ("proven:handler", Source::External("proven:handler")),
-                ("proven:kv", Source::External("proven:kv")),
-                ("proven:session", Source::External("proven:session")),
-                ("proven:sql", Source::External("proven:sql")),
-                // TODO: Use NPM packages for these in future
-                (
-                    "proven:babylon_gateway_api",
-                    Source::External("proven:babylon_gateway_api"),
-                ),
-                (
-                    "proven:radix_engine_toolkit",
-                    Source::External("proven:radix_engine_toolkit"),
-                ),
-                ("proven:zod", Source::External("proven:zod")),
-            ],
-            Vec::new(),
-        );
-        let module_root = ModuleSpecifier::parse("file:///main.ts").unwrap();
-        let roots = vec![module_root];
+                )
+            })
+            .collect::<Vec<_>>();
+
+        sources.extend(vec![
+            ("proven:crypto", Source::External("proven:crypto")),
+            ("proven:handler", Source::External("proven:handler")),
+            ("proven:kv", Source::External("proven:kv")),
+            ("proven:session", Source::External("proven:session")),
+            ("proven:sql", Source::External("proven:sql")),
+            (
+                "proven:babylon_gateway_api",
+                Source::External("proven:babylon_gateway_api"),
+            ),
+            (
+                "proven:radix_engine_toolkit",
+                Source::External("proven:radix_engine_toolkit"),
+            ),
+            ("proven:zod", Source::External("proven:zod")),
+        ]);
+
+        let loader = MemoryLoader::new(sources, Vec::new());
 
         let module_graph_future = async move {
             let mut graph = ModuleGraph::new(GraphKind::All);
 
             graph
                 .build(
-                    roots,
+                    module_roots.into_iter().collect(),
                     &loader,
                     BuildOptions {
                         is_dynamic: true,
@@ -132,6 +139,22 @@ impl CodePackage {
         let module_graph = block_on(module_graph_future);
 
         Self::from_module_graph(module_graph)
+    }
+
+    /// Creates a `CodePackage` from a string containing module source code.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the module source cannot be processed.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the module root cannot be parsed.
+    #[allow(clippy::should_implement_trait)]
+    pub fn from_str(module_source: &str) -> Result<Self, Error> {
+        let module_specifier = ModuleSpecifier::parse("file:///main.ts").unwrap();
+        let module_sources = HashMap::from([(module_specifier.clone(), module_source.to_string())]);
+        Self::from_map(&module_sources, vec![module_specifier])
     }
 
     /// Creates a `CodePackage` from a `ModuleGraph`.

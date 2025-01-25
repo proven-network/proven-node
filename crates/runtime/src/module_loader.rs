@@ -171,17 +171,43 @@ impl ModuleLoader {
         }
     }
 
-    #[cfg(test)]
-    #[must_use]
     /// Creates a `ModuleLoader` from a test code file.
     ///
     /// # Panics
     ///
     /// This function will panic if the file cannot be read.
+    #[cfg(test)]
+    #[must_use]
     pub fn from_test_code(script_name: &str) -> Self {
         let esm = std::fs::read_to_string(format!("./test_esm/{script_name}.ts")).unwrap();
 
         Self::new(CodePackage::from_str(&esm).unwrap())
+    }
+
+    /// Creates a `ModuleLoader` from a map of module sources and module roots.
+    ///
+    /// # Arguments
+    ///
+    /// * `module_sources` - A map of module specifiers to their source code.
+    /// * `module_roots` - An iterator over the module specifiers that are considered roots.
+    ///
+    /// # Panics
+    ///
+    /// This function will panic if the `CodePackage` cannot be created from the provided map.
+    #[cfg(test)]
+    #[must_use]
+    pub fn from_test_code_map(
+        module_sources: &HashMap<ModuleSpecifier, &str>,
+        module_roots: impl IntoIterator<Item = ModuleSpecifier>,
+    ) -> Self {
+        let mut sources = HashMap::new();
+        for (specifier, script_name) in module_sources {
+            let esm = std::fs::read_to_string(format!("./test_esm/{script_name}.ts")).unwrap();
+            sources.insert(specifier.clone(), esm);
+        }
+        let code_package = CodePackage::from_map(&sources, module_roots).unwrap();
+
+        Self::new(code_package)
     }
 }
 
