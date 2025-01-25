@@ -276,10 +276,7 @@ impl TryFrom<Bytes> for CodePackage {
         let hash = format!("{hash_bytes:x}");
 
         let reader = BufReader::new(&bytes[..]);
-        let (eszip, loaded_future) = block_on(async { EszipV2::parse(reader).await }).unwrap();
-
-        // TODO: Handle error
-        block_on(loaded_future).unwrap();
+        let (eszip, _loaded_future) = block_on(async { EszipV2::parse(reader).await }).unwrap();
 
         Ok(Self {
             eszip: Arc::new(Mutex::new(Some(eszip))),
