@@ -60,11 +60,6 @@ declare namespace Deno {
         handlerName: string,
         origin: string
       ) => void;
-      op_set_memory_option: (
-        handlerType: HandlerType,
-        handlerName: string,
-        memory: number
-      ) => void;
       op_set_path_option: (
         handlerType: "http",
         handlerName: string,

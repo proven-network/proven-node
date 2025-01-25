@@ -14,12 +14,8 @@ type Output =
   | Output[]
   | { [key: string]: Output };
 
-const {
-  op_add_allowed_origin,
-  op_set_memory_option,
-  op_set_path_option,
-  op_set_timeout_option,
-} = globalThis.Deno.core.ops;
+const { op_add_allowed_origin, op_set_path_option, op_set_timeout_option } =
+  globalThis.Deno.core.ops;
 
 // moduleSpecifier and handlerName is dynamically inserted and should not be part of exported types.
 export function run(
@@ -60,14 +56,6 @@ export function runWithOptions(
 
   if (typeof fn !== "function") {
     throw new Error("No function passed to runWithOptions");
-  }
-
-  if (options.memory) {
-    if (typeof options.memory !== "number") {
-      throw new Error("Memory must be a number");
-    }
-
-    op_set_memory_option("rpc", handlerSpecifier, options.memory);
   }
 
   if (options.timeout) {
@@ -129,14 +117,6 @@ export function runOnHttp<P extends string>(
 
   op_set_path_option("http", handlerSpecifier, options.path);
 
-  if (options.memory) {
-    if (typeof options.memory !== "number") {
-      throw new Error("Memory must be a number");
-    }
-
-    op_set_memory_option("http", handlerSpecifier, options.memory);
-  }
-
   if (options.timeout) {
     if (typeof options.timeout !== "number") {
       throw new Error("Timeout must be a number");
@@ -184,14 +164,6 @@ export function runOnRadixEvent(
 
   if (!options || typeof options !== "object") {
     throw new Error("Options must be provided");
-  }
-
-  if (options.memory) {
-    if (typeof options.memory !== "number") {
-      throw new Error("Memory must be a number");
-    }
-
-    op_set_memory_option("radix_event", handlerSpecifier, options.memory);
   }
 
   if (options.timeout) {

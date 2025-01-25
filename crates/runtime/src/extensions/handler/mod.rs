@@ -67,26 +67,6 @@ pub fn op_add_allowed_origin(
 }
 
 #[op2(fast)]
-pub fn op_set_memory_option(
-    #[state] state: &mut ModuleHandlerOptions,
-    #[string] handler_type: &str,
-    #[string] handler_name: String,
-    value: u16,
-) {
-    let value = std::cmp::max(value, 32); // 32 MB is the minimum heap size
-
-    let options = state
-        .entry(handler_name)
-        .or_insert_with(|| create_new_handler_options(handler_type));
-
-    match options {
-        HandlerOptions::Http { max_heap_mbs, .. }
-        | HandlerOptions::RadixEvent { max_heap_mbs, .. }
-        | HandlerOptions::Rpc { max_heap_mbs, .. } => max_heap_mbs.replace(value),
-    };
-}
-
-#[op2(fast)]
 pub fn op_set_path_option(
     #[state] state: &mut ModuleHandlerOptions,
     #[string] handler_type: &str,
@@ -127,7 +107,6 @@ extension!(
     handler_options_ext,
     ops = [
         op_add_allowed_origin,
-        op_set_memory_option,
         op_set_path_option,
         op_set_timeout_option
     ],
