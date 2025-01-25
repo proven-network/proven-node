@@ -21,17 +21,18 @@ async fn main() -> Result<(), Error> {
     let module_loader = ModuleLoader::new(
         CodePackage::from_str(
             r#"
-        import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
+            import { run } from "@proven-network/handler";
+            import { getCurrentAccounts, getCurrentIdentity } from "proven:session";
 
-        export const handler = async (a, b) => {
-            const userId = getCurrentIdentity();
-            const accounts = getCurrentAccounts();
-            console.info("Current identity: " + userId);
-            console.log("Current accounts: " + accounts);
+            export const handler = run(async (a, b) => {
+                const userId = getCurrentIdentity();
+                const accounts = getCurrentAccounts();
+                console.info("Current identity: " + userId);
+                console.log("Current accounts: " + accounts);
 
-            return a + b;
-        }
-    "#,
+                return a + b;
+            });
+        "#,
         )
         .unwrap(),
     );
