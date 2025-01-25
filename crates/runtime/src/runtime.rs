@@ -579,8 +579,6 @@ mod tests {
 
     use crate::util::run_in_thread;
 
-    use serde_json::json;
-
     #[tokio::test]
     async fn test_runtime_execute() {
         let options = RuntimeOptions::for_test_code("test_runtime_execute");
@@ -588,7 +586,7 @@ mod tests {
         run_in_thread(|| {
             let request = ExecutionRequest::Rpc {
                 accounts: vec![],
-                args: vec![json!(10), json!(20)],
+                args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
                 identity: "my_identity".to_string(),
@@ -606,7 +604,7 @@ mod tests {
         run_in_thread(|| {
             let request = ExecutionRequest::Rpc {
                 accounts: vec![],
-                args: vec![json!(10), json!(20)],
+                args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts").unwrap(),
                 identity: "my_identity".to_string(),
@@ -627,7 +625,7 @@ mod tests {
         run_in_thread(|| {
             let request = ExecutionRequest::Rpc {
                 accounts: vec![],
-                args: vec![json!(10), json!(20)],
+                args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
                 identity: "my_identity".to_string(),
@@ -641,6 +639,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_runtime_execute_exhausts_timeout() {
+        // The script will sleep for 5 seconds, but the timeout is set to 2 seconds
+        let options = RuntimeOptions::for_test_code("test_runtime_execute_exhausts_timeout");
+
+        run_in_thread(|| {
+            let request = ExecutionRequest::Rpc {
+                accounts: vec![],
+                args: vec![],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
+                identity: "my_identity".to_string(),
+            };
+            let result = Runtime::new(options).unwrap().execute(request);
+
+            if let Ok(execution_result) = result {
+                panic!("Ok: {execution_result:?}");
+            }
+        });
+    }
+
+    #[tokio::test]
     async fn test_runtime_execute_default_max_heap_size() {
         // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
         let options = RuntimeOptions::for_test_code("test_runtime_execute_default_max_heap_size");
@@ -648,7 +667,7 @@ mod tests {
         run_in_thread(|| {
             let request = ExecutionRequest::Rpc {
                 accounts: vec![],
-                args: vec![json!(10), json!(20)],
+                args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
                 identity: "my_identity".to_string(),

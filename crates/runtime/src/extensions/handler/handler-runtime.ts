@@ -77,11 +77,20 @@ export const run = (fn: (..._args: Input[]) => Promise<Output>) => {
 };
 
 export const runWithOptions = (
-  _options: RpcHandlerOptions,
+  options: RpcHandlerOptions,
   fn: (..._args: Input[]) => Promise<Output>
 ) => {
   return async (...args: Input[]) => {
-    const handlerOutput = await fn(...args);
+    const handlerOutput = await (options.timeout
+      ? (Promise.race([
+          Promise.resolve(fn(...args)),
+          new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error("Timed out after " + options.timeout + "ms"));
+            }, options.timeout);
+          }),
+        ]) as Promise<Output>)
+      : fn(...args));
 
     const uint8ArrayJsonPaths: string[] = [];
     const output = await encodeUint8ArrayInObject(
@@ -132,7 +141,16 @@ export function runOnHttp<P extends string>(
       queryVariables,
     };
 
-    const handlerOutput = await fn(request);
+    const handlerOutput = await (options.timeout
+      ? (Promise.race([
+          Promise.resolve(fn(request)),
+          new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error("Timed out after " + options.timeout + "ms"));
+            }, options.timeout);
+          }),
+        ]) as Promise<Output>)
+      : fn(request));
 
     const uint8ArrayJsonPaths: string[] = [];
     const output = await encodeUint8ArrayInObject(
