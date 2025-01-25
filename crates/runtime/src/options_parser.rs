@@ -1,7 +1,7 @@
 use crate::extensions::{
-    babylon_gateway_api_ext, console_ext, crypto_ext, handler_options_parser_ext,
-    kv_options_parser_ext, openai_ext, radix_engine_toolkit_ext, session_ext, sql_migrations_ext,
-    sql_options_parser_ext, uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
+    babylon_gateway_api_ext, console_ext, crypto_ext, handler_options_ext, kv_options_ext,
+    openai_ext, radix_engine_toolkit_ext, session_ext, sql_migrations_ext, sql_options_ext,
+    uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
 };
 use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::{
@@ -31,12 +31,12 @@ impl OptionsParser {
             timeout: Duration::from_millis(5000),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
-                handler_options_parser_ext::init_ops_and_esm(),
+                handler_options_ext::init_ops_and_esm(),
                 console_ext::init_ops_and_esm(),
                 crypto_ext::init_ops_and_esm(),
                 session_ext::init_ops_and_esm(),
-                kv_options_parser_ext::init_ops_and_esm(),
-                sql_options_parser_ext::init_ops_and_esm(),
+                kv_options_ext::init_ops_and_esm(),
+                sql_options_ext::init_ops_and_esm(),
                 sql_migrations_ext::init_ops(),
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),

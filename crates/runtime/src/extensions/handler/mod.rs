@@ -124,7 +124,7 @@ pub fn op_set_timeout_option(
 }
 
 extension!(
-    handler_options_parser_ext,
+    handler_options_ext,
     ops = [
         op_add_allowed_origin,
         op_set_memory_option,
@@ -132,7 +132,7 @@ extension!(
         op_set_timeout_option
     ],
     esm_entry_point = "proven:handler",
-    esm = [ dir "src/extensions/handler", "proven:handler" = "handler-options-parser.js" ],
+    esm = [ dir "src/extensions/handler", "proven:handler" = "handler-options.js" ],
     docs = "Functions for defining how exports should be run"
 );
 

@@ -27,11 +27,11 @@ enum StoredKey {
 }
 
 extension!(
-    kv_options_parser_ext,
+    kv_options_ext,
     esm_entry_point = "proven:kv",
     esm = [
         dir "src/extensions/kv",
-        "proven:kv" = "kv-options-parser.js",
+        "proven:kv" = "kv-options.js",
     ],
     docs = "Functions for accessing secure storage"
 );

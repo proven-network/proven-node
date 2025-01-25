@@ -15,11 +15,11 @@ pub use query_results_manager::*;
 use deno_core::extension;
 
 extension!(
-    sql_options_parser_ext,
+    sql_options_ext,
     esm_entry_point = "proven:sql",
     esm = [
         dir "src/extensions/sql",
-        "proven:sql" = "sql-options-parser.js",
+        "proven:sql" = "sql-options.js",
     ],
     docs = "Functions for accessing sqlite"
 );

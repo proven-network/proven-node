@@ -118,7 +118,7 @@ fn main() {
     // Do ESM replacements on extensions
     [
         "src/extensions/gateway_api_sdk/gateway-api-sdk.js",
-        "src/extensions/kv/kv-options-parser.js",
+        "src/extensions/kv/kv-options.js",
         "src/extensions/kv/kv-runtime.js",
     ]
     .iter()
