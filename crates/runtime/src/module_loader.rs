@@ -193,40 +193,20 @@ pub struct ImportProvider {
 impl rustyscript::module_loader::ImportProvider for ImportProvider {
     fn resolve(
         &mut self,
-        specifier: &ModuleSpecifier,
-        referrer: &str,
-        kind: deno_core::ResolutionKind,
+        _specifier: &ModuleSpecifier,
+        _referrer: &str,
+        _kind: deno_core::ResolutionKind,
     ) -> Option<Result<ModuleSpecifier, anyhow::Error>> {
-        match self.processing_mode {
-            ProcessingMode::Options => {
-                println!("options_parser resolve: {specifier}, {referrer}, {kind:?}");
-            }
-            ProcessingMode::Runtime => {
-                println!("runtime resolve: {specifier}, {referrer}, {kind:?}");
-            }
-        }
-
         None
     }
 
     fn import(
         &mut self,
         specifier: &ModuleSpecifier,
-        referrer: Option<&ModuleSpecifier>,
-        is_dyn_import: bool,
-        requested_module_type: deno_core::RequestedModuleType,
+        _referrer: Option<&ModuleSpecifier>,
+        _is_dyn_import: bool,
+        _requested_module_type: deno_core::RequestedModuleType,
     ) -> Option<Result<String, anyhow::Error>> {
-        match self.processing_mode {
-            ProcessingMode::Options => {
-                let referrer = referrer.unwrap();
-                println!("options_parser import: {specifier}, {referrer}, {is_dyn_import}, {requested_module_type:?}");
-            }
-            ProcessingMode::Runtime => {
-                let referrer = referrer.unwrap();
-                println!("runtime import: {specifier}, {referrer}, {is_dyn_import}, {requested_module_type:?}");
-            }
-        }
-
         self.module_loader
             .get_module_source(specifier, self.processing_mode)
             .map(Ok)
