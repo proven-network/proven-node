@@ -21,6 +21,7 @@ This repo contains code for Proven Network nodes. Proven is a novel TEE-based pl
 ⭐ Best-in-class DevEx for TEE development, tight integration with typical front-end tooling/LSPs, and simple Radix-native settlement for fees.
 
 ## Security Model
+
 The Proven Network operates under a security model which can roughly be classified into three tiers:
 
 **The Hardware Layer**
@@ -32,6 +33,7 @@ Nodes can confirm these PCR measurements to any stakeholder (whether that is an 
 
 Given the node software is fully auditable via the above process - we can now [carefully] build back networked capabilities. Critically, this means, all functionality must start from a baseline of zero-trust in external systems (or even the parties running the infrastructure). All inputs and outputs of the TEE must be encrypted, or otherwise cryptographically verified by trust models rooted in the shipped images. Practically, this means things like:
 <br>
+
 - Nodes can provide an API, but only if TLS termination is contained within the enclave, and with certificates fully provisioned and stored within the enclave only.
 - Nodes can resolve DNS, but only over a tamper-resistent protocols like DoH, and with explicit acknowledgement of the DNS resolver's role in the overall threat model.
 - Nodes can connect to external APIs and systems, but only if the connection is over encrypted channels (like HTTPS or WSS), and using a root of trust which is shipped explicitly as part of the node software.
@@ -44,16 +46,20 @@ Given the node software is fully auditable via the above process - we can now [c
 Finally, we can use this hardware-secured platform, with capabilities enabled by zero-trust networking - to provide a scalable serverless platform for deploying trust-minimised backends. These applications are deployed to the Proven Network as self-describing ESM modules which are fully scrutable to end-users. The upgradability of Proven applications also somewhat mirrors the hardware layer - where new versions are new modules, with new hashes. These new versions may be deployed by developers - but only in accordance with well-described upgrade policies (and with audit logs) transparent to any user.
 
 ## Subdirectories
+
 - [build](build): Build process for bundling all enclave components of the node into an EIF (enclave image format) - including related dependencies described below. The process uses [kaniko](https://github.com/GoogleContainerTools/kaniko) to ensure reproducibility of builds.
 - [crates](crates): All of the proven node components. Described below in more detail.
 - [kernel](kernel): Build process for enclave's Linux micro-kernel; used as part of creating the final EIF.
 - [vendor](vendor): Vendored forks of select other crates. Mostly for the purpose of resolving thorny cargo dependency issues.
 
 ## TEE Base Environment
+
 Presently uses a Debian Bookworm base distro running on a Linux 6.12 micro-kernel. The kernel config generally mirrors the default AWS Nitro Image, packaged with their CLI tooling, except for using a more up-to-date kernel version, and enabling of FUSE and NFSv3 sub-systems.
 
 ## Bundled TEE Dependencies
+
 Updates to these components will generally require a rebuild and upgrade of Proven nodes.
+
 - [babylon-gateway](https:://github.com/radixdlt/babylon-gateway): Radix Babylon Gateway for accessing read data from the Radix DLT.
 - [babylon-node](https://github.com/radixdlt/babylon-node): Radix Babylon Core Node for driving above gateway.
 - [dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy): DNSCrypt Proxy to ensure host cannot tamper with DNS.
@@ -64,10 +70,12 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [postgres](https://www.postgresql.org/): Postgres server for storing gateway data.
 
 ## Crates
+
 - [applications](crates/applications): Manages database of all currently deployed applications.
 - [attestation](crates/attestation): Abstract interface for managing remote attestation and interacting with hardware-based security modules.
 - [attestation-dev](crates/attestation-dev): Noop implementation of attestation for local development.
 - [attestation-nsm](crates/attestation-nsm): Implementation of attestation using the Nitro Security Module.
+- [code-package](crates/code-package): Tools for creating and working with code packages runnable in the Proven runtime.
 - [core](crates/core): Core logic for the Proven node and the entrypoint for all user interactions.
 - [dnscrypt-proxy](crates/dnscrypt-proxy): Configures and runs a DNSCrypt proxy to ensure all DNS runs over tamper-proof HTTPS.
 - [enclave](crates/enclave): Main entrypoint for enclave images. Bootstraps all other components before handing off to core.

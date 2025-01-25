@@ -1,4 +1,4 @@
-//! A library for creating and working with code packages runnable in the Proven runtime.
+//! Tools for creating and working with code packages runnable in the Proven runtime.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
