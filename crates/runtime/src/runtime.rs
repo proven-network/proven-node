@@ -86,18 +86,17 @@ impl
         proven_radix_nft_verifier_mock::MockRadixNftVerifier,
     >
 {
-    #[must_use]
     /// Creates a new `RuntimeOptions` instance for testing purposes.
     ///
     /// # Parameters
     /// - `script_name`: The name of the script to use.
-    /// - `handler_name`: The name of the handler to use.
     ///
     /// # Returns
     /// A new `RuntimeOptions` instance.
     ///
     /// # Panics
     /// This function will panic if creating a temporary directory fails.
+    #[must_use]
     pub fn for_test_code(script_name: &str) -> Self {
         use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
         use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
@@ -109,6 +108,43 @@ impl
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
             module_loader: ModuleLoader::from_test_code(script_name),
+            nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+            nft_store: MemoryStore3::new(),
+            personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+            personal_store: MemoryStore3::new(),
+            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
+            radix_network_definition: NetworkDefinition::stokenet(),
+            radix_nft_verifier: MockRadixNftVerifier::new(),
+        }
+    }
+
+    /// Creates a new `RuntimeOptions` instance for testing purposes.
+    ///
+    /// # Parameters
+    ///
+    /// * `module_sources` - A map of module specifiers to their source code.
+    /// * `module_roots` - An iterator over the module specifiers that are considered roots.
+    ///
+    /// # Returns
+    /// A new `RuntimeOptions` instance.
+    ///
+    /// # Panics
+    /// This function will panic if creating a temporary directory fails.
+    #[must_use]
+    pub fn for_test_code_map(
+        module_sources: &HashMap<ModuleSpecifier, &str>,
+        module_roots: impl IntoIterator<Item = ModuleSpecifier>,
+    ) -> Self {
+        use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
+        use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
+        use proven_store_memory::{MemoryStore2, MemoryStore3};
+        use radix_common::network::NetworkDefinition;
+        use tempfile::tempdir;
+
+        Self {
+            application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
+            application_store: MemoryStore2::new(),
+            module_loader: ModuleLoader::from_test_code_map(module_sources, module_roots),
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
@@ -582,6 +618,36 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute() {
         let options = RuntimeOptions::for_test_code("test_runtime_execute");
+
+        run_in_thread(|| {
+            let request = ExecutionRequest::Rpc {
+                accounts: vec![],
+                args: vec![],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
+                identity: "my_identity".to_string(),
+            };
+            let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
+
+            assert!(execution_result.output.is_null());
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_nested() {
+        let module_sources = HashMap::from([
+            (
+                ModuleSpecifier::parse("file:///main.ts").unwrap(),
+                "test_runtime_nested_base",
+            ),
+            (
+                ModuleSpecifier::parse("file:///test_runtime_nested_loaded.ts").unwrap(),
+                "test_runtime_nested_loaded",
+            ),
+        ]);
+        let module_roots = vec![ModuleSpecifier::parse("file:///main.ts").unwrap()];
+
+        let options = RuntimeOptions::for_test_code_map(&module_sources, module_roots);
 
         run_in_thread(|| {
             let request = ExecutionRequest::Rpc {

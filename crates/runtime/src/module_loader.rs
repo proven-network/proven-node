@@ -233,8 +233,20 @@ impl rustyscript::module_loader::ImportProvider for ImportProvider {
         _is_dyn_import: bool,
         _requested_module_type: deno_core::RequestedModuleType,
     ) -> Option<Result<String, anyhow::Error>> {
+        // TODO: Should possibly be fixed somewhere else
+        let pwd = std::env::current_dir().unwrap();
+        let specifier_without_pwd = specifier
+            .as_str()
+            .strip_prefix(format!("file://{}", pwd.to_str().unwrap()).as_str())
+            .unwrap_or(specifier.as_str())
+            .strip_prefix("/file:")
+            .map_or_else(|| specifier.as_str().to_string(), |s| format!("file://{s}"));
+
         self.module_loader
-            .get_module_source(specifier, self.processing_mode)
+            .get_module_source(
+                &ModuleSpecifier::parse(specifier_without_pwd.as_str()).unwrap(),
+                self.processing_mode,
+            )
             .map(Ok)
     }
 }
