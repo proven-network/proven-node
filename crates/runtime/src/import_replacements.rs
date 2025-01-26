@@ -7,6 +7,7 @@ static IMPORT_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
     let mut map = HashMap::with_capacity(1);
 
     // First-party packages
+
     map.insert(
         "@proven-network/crypto".to_string(),
         "proven:crypto".to_string(),

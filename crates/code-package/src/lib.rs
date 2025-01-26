@@ -6,9 +6,14 @@
 
 mod error;
 mod npm_resolver;
+mod resolver;
+
+use npm_resolver::CodePackageNpmResolver;
 
 pub use deno_core::ModuleSpecifier;
 pub use error::Error;
+
+use resolver::CodePackageResolver;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -101,10 +106,12 @@ impl CodePackage {
                 "proven:babylon_gateway_api",
                 Source::External("proven:babylon_gateway_api"),
             ),
+            ("proven:openai", Source::External("proven:openai")),
             (
                 "proven:radix_engine_toolkit",
                 Source::External("proven:radix_engine_toolkit"),
             ),
+            ("proven:uuid", Source::External("proven:uuid")),
             ("proven:zod", Source::External("proven:zod")),
         ]);
 
@@ -126,9 +133,9 @@ impl CodePackage {
                         jsr_url_provider: Default::default(),
                         passthrough_jsr_specifiers: false,
                         module_analyzer: Default::default(),
-                        npm_resolver: None,
+                        npm_resolver: Some(&CodePackageNpmResolver),
                         reporter: None,
-                        resolver: None,
+                        resolver: Some(&CodePackageResolver),
                     },
                 )
                 .await;

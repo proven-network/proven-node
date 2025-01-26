@@ -4,8 +4,7 @@ use deno_graph::{ModuleSpecifier, NpmResolvePkgReqsResult, Range};
 use deno_semver::package::PackageReq;
 
 #[derive(Debug)]
-#[allow(dead_code)]
-struct CodePackageNpmResolver;
+pub struct CodePackageNpmResolver;
 
 #[async_trait(?Send)]
 impl NpmResolver for CodePackageNpmResolver {
@@ -14,14 +13,12 @@ impl NpmResolver for CodePackageNpmResolver {
         &self,
         _specifier: &ModuleSpecifier,
     ) -> Result<Option<String>, UnknownBuiltInNodeModuleError> {
-        unimplemented!()
+        Ok(None)
     }
 
     /// The callback when a bare specifier is resolved to a builtin node module.
     /// (Note: used for printing warnings to discourage that usage of bare specifiers)
-    fn on_resolve_bare_builtin_node_module(&self, _module_name: &str, _range: &Range) {
-        unimplemented!()
-    }
+    fn on_resolve_bare_builtin_node_module(&self, _module_name: &str, _range: &Range) {}
 
     /// This is an optimization for the implementation to start loading and caching
     /// the npm registry package information ahead of time.
