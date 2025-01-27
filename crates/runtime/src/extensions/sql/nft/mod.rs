@@ -12,7 +12,7 @@ use error::Error;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::{extension, op2, OpState};
+use deno_core::{op2, OpState};
 use futures::StreamExt;
 use proven_radix_nft_verifier::{RadixNftVerificationResult, RadixNftVerifier};
 use proven_sql::{SqlConnection, SqlParam, SqlStore2};
@@ -245,15 +245,6 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
         Ok(NftDbResponse::Ok(None))
     }
 }
-
-extension!(
-    sql_nft_ext,
-    parameters = [ NSS: SqlStore2, RNV: RadixNftVerifier ],
-    ops = [
-        op_execute_nft_sql<NSS, RNV>,
-        op_query_nft_sql<NSS, RNV>,
-    ]
-);
 
 #[cfg(test)]
 mod tests {

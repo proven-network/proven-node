@@ -10,7 +10,7 @@ pub use connection_manager::PersonalSqlConnectionManager;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::{extension, op2, OpState};
+use deno_core::{op2, OpState};
 use futures::StreamExt;
 use proven_sql::{SqlConnection, SqlParam, SqlStore1};
 use serde::Serialize;
@@ -182,15 +182,6 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
         Ok(PersonalDbResponse::Ok(None))
     }
 }
-
-extension!(
-    sql_personal_ext,
-    parameters = [ PSS: SqlStore1 ],
-    ops = [
-        op_execute_personal_sql<PSS>,
-        op_query_personal_sql<PSS>,
-    ]
-);
 
 #[cfg(test)]
 mod tests {

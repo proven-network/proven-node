@@ -1,9 +1,9 @@
 use crate::extensions::{
     babylon_gateway_api_ext, console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext,
-    openai_ext, radix_engine_toolkit_ext, session_ext, sql_application_ext, sql_nft_ext,
-    sql_personal_ext, sql_runtime_ext, uuid_ext, zod_ext, ApplicationSqlConnectionManager,
-    ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput, NftSqlConnectionManager,
-    PersonalSqlConnectionManager, SessionState, SqlParamListManager, SqlQueryResultsManager,
+    openai_ext, radix_engine_toolkit_ext, session_ext, sql_runtime_ext, uuid_ext, zod_ext,
+    ApplicationSqlConnectionManager, ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput,
+    NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
+    SqlQueryResultsManager,
 };
 use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::HandlerOptions;
@@ -285,12 +285,12 @@ where
                     NS::Scoped,
                     RNV,
                 >(),
-                // Split into seperate extensions to avoid issue with macro supporting only 1 generic
-                // TODO: The above is no longer the case - combine these again at some point
-                sql_runtime_ext::init_ops_and_esm(),
-                sql_application_ext::init_ops::<ASS::Scoped>(),
-                sql_personal_ext::init_ops::<<<PSS as SqlStore3>::Scoped as SqlStore2>::Scoped>(),
-                sql_nft_ext::init_ops::<NSS::Scoped, RNV>(),
+                sql_runtime_ext::init_ops_and_esm::<
+                    ASS::Scoped,
+                    <<PSS as SqlStore3>::Scoped as SqlStore2>::Scoped,
+                    NSS::Scoped,
+                    RNV,
+                >(),
                 // Vendered modules
                 openai_ext::init_ops_and_esm(),
                 babylon_gateway_api_ext::init_ops_and_esm(),

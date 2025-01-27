@@ -10,13 +10,13 @@ pub use connection_manager::ApplicationSqlConnectionManager;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::{extension, op2, OpState};
+use deno_core::{op2, OpState};
 use futures::StreamExt;
 use proven_sql::{SqlConnection, SqlParam, SqlStore1};
 
 #[op2(async)]
 #[allow(clippy::cast_possible_truncation)]
-async fn op_execute_application_sql<ASS: SqlStore1>(
+pub async fn op_execute_application_sql<ASS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] query: String,
@@ -73,7 +73,7 @@ async fn op_execute_application_sql<ASS: SqlStore1>(
 
 #[op2(async)]
 #[serde]
-async fn op_query_application_sql<ASS: SqlStore1>(
+pub async fn op_query_application_sql<ASS: SqlStore1>(
     state: Rc<RefCell<OpState>>,
     #[string] db_name: String,
     #[string] query: String,
@@ -154,15 +154,6 @@ async fn op_query_application_sql<ASS: SqlStore1>(
         Ok(None)
     }
 }
-
-extension!(
-    sql_application_ext,
-    parameters = [ ASS: SqlStore1 ],
-    ops = [
-        op_execute_application_sql<ASS>,
-        op_query_application_sql<ASS>,
-    ]
-);
 
 #[cfg(test)]
 mod tests {
