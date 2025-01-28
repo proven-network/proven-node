@@ -7,6 +7,7 @@
 
 mod error;
 mod extensions;
+mod file_system;
 mod handler_specifier;
 mod import_replacements;
 mod manager;

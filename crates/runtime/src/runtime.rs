@@ -5,6 +5,7 @@ use crate::extensions::{
     NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
     SqlQueryResultsManager,
 };
+use crate::file_system::FileSystem;
 use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::HandlerOptions;
 use crate::permissions::OriginAllowlistWebPermissions;
@@ -299,6 +300,7 @@ where
                 zod_ext::init_ops_and_esm(),
             ],
             extension_options: ExtensionOptions {
+                filesystem: Arc::new(FileSystem),
                 web: WebOptions {
                     permissions: origin_allowlist_web_permissions.clone(),
                     user_agent: format!(

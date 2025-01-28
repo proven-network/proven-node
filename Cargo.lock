@@ -7600,6 +7600,8 @@ dependencies = [
  "ciborium",
  "deno_core",
  "deno_error",
+ "deno_fs",
+ "deno_io",
  "deno_permissions",
  "ed25519-dalek",
  "futures",

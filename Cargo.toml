@@ -292,7 +292,7 @@ rustls-pemfile = "2"
 rustls-tokio-stream = "=0.3.0"
 rustls-webpki = "0.102"
 rustyline = "=13.0.0"
-rustyscript = { path = "vendor/rustyscript", features = ["web"]}
+rustyscript = { path = "vendor/rustyscript", features = ["fs", "web"]}
 saffron = "=0.1.0"
 scopeguard = "1.2.0"
 sec1 = "0.7"
