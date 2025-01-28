@@ -5,7 +5,7 @@ use crate::extensions::{
     NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
     SqlQueryResultsManager,
 };
-use crate::file_system::FileSystem;
+use crate::file_system::{Entry, FileSystem};
 use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::HandlerOptions;
 use crate::permissions::OriginAllowlistWebPermissions;
@@ -22,7 +22,7 @@ use bytes::Bytes;
 use proven_code_package::ModuleSpecifier;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
-use proven_store::{Store2, Store3};
+use proven_store::{Store, Store2, Store3};
 use radix_common::network::NetworkDefinition;
 use rustyscript::js_value::Value;
 use rustyscript::{ExtensionOptions, ModuleHandle, WebOptions};
@@ -34,7 +34,7 @@ static MAX_TIMEOUT_SECONDS_HARD_LIMIT: u64 = 60;
 
 /// Options for creating a new `Runtime`.
 #[derive(Clone)]
-pub struct RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>
+pub struct RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -42,6 +42,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -49,6 +50,9 @@ where
 
     /// Application-scoped KV store.
     pub application_store: AS,
+
+    /// Store used for file-system virtualisation.
+    pub file_system_store: FSS,
 
     /// The module loader to use during execution.
     pub module_loader: ModuleLoader,
@@ -84,6 +88,7 @@ impl
         proven_sql_direct::DirectSqlStore2,
         proven_sql_direct::DirectSqlStore3,
         proven_sql_direct::DirectSqlStore3,
+        proven_store_memory::MemoryStore<Entry, serde_json::Error, serde_json::Error>,
         proven_radix_nft_verifier_mock::MockRadixNftVerifier,
     >
 {
@@ -101,13 +106,14 @@ impl
     pub fn for_test_code(script_name: &str) -> Self {
         use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
         use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
-        use proven_store_memory::{MemoryStore2, MemoryStore3};
+        use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
         use radix_common::network::NetworkDefinition;
         use tempfile::tempdir;
 
         Self {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
+            file_system_store: MemoryStore::new(),
             module_loader: ModuleLoader::from_test_code(script_name),
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
@@ -138,13 +144,14 @@ impl
     ) -> Self {
         use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
         use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
-        use proven_store_memory::{MemoryStore2, MemoryStore3};
+        use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
         use radix_common::network::NetworkDefinition;
         use tempfile::tempdir;
 
         Self {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
+            file_system_store: MemoryStore::<Entry, serde_json::Error, serde_json::Error>::new(),
             module_loader: ModuleLoader::from_test_code_map(module_sources, module_roots),
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
@@ -205,7 +212,7 @@ impl
 ///     identity: "my_identity".to_string(),
 /// });
 /// ```
-pub struct Runtime<AS, PS, NS, ASS, PSS, NSS, RNV>
+pub struct Runtime<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2<Bytes, Infallible, Infallible>,
     PS: Store3<Bytes, Infallible, Infallible>,
@@ -213,6 +220,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
@@ -225,10 +233,10 @@ where
     personal_sql_store: PSS,
     personal_store: PS,
     runtime: rustyscript::Runtime,
-    _marker: PhantomData<RNV>,
+    _marker: PhantomData<(FSS, RNV)>,
 }
 
-impl<AS, PS, NS, ASS, PSS, NSS, RNV> Runtime<AS, PS, NS, ASS, PSS, NSS, RNV>
+impl<AS, PS, NS, ASS, PSS, NSS, FSS, RNV> Runtime<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -236,6 +244,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Creates a new runtime with the given runtime options and stores.
@@ -253,6 +262,7 @@ where
         RuntimeOptions {
             application_sql_store,
             application_store,
+            file_system_store,
             module_loader,
             nft_sql_store,
             nft_store,
@@ -261,7 +271,7 @@ where
             radix_gateway_origin,
             radix_network_definition,
             radix_nft_verifier,
-        }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
+        }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Result<Self> {
         let origin_allowlist_web_permissions = Arc::new(OriginAllowlistWebPermissions::new(vec![
             // Always allow Radix gateway origin
@@ -300,7 +310,7 @@ where
                 zod_ext::init_ops_and_esm(),
             ],
             extension_options: ExtensionOptions {
-                filesystem: Arc::new(FileSystem),
+                filesystem: Arc::new(FileSystem::new(file_system_store)),
                 web: WebOptions {
                     permissions: origin_allowlist_web_permissions.clone(),
                     user_agent: format!(
@@ -315,13 +325,16 @@ where
         })?;
 
         // Set the gateway origin and id for the gateway API SDK extension
-        runtime.put(GatewayDetailsState {
-            gateway_origin: radix_gateway_origin,
-            network_id: radix_network_definition.id,
-        })?;
+        rustyscript::Runtime::put(
+            &mut runtime,
+            GatewayDetailsState {
+                gateway_origin: radix_gateway_origin,
+                network_id: radix_network_definition.id,
+            },
+        )?;
 
         // Set the Radix NFT verifier for storage extensions
-        runtime.put(radix_nft_verifier)?;
+        rustyscript::Runtime::put(&mut runtime, radix_nft_verifier)?;
 
         Ok(Self {
             application_sql_store,
@@ -482,69 +495,85 @@ where
         }
 
         // Reset the console state before each execution
-        self.runtime.put(ConsoleState::default())?;
+        rustyscript::Runtime::put(&mut self.runtime, ConsoleState::default())?;
 
         // Reset the crypto key cache before each execution
-        self.runtime.put(CryptoState::default())?;
+        rustyscript::Runtime::put(&mut self.runtime, CryptoState::default())?;
 
         // Set the kv stores for the storage extension
-        self.runtime.put(
+        rustyscript::Runtime::put(
+            &mut self.runtime,
             self.application_store
                 .clone()
                 .scope(dapp_definition_address.clone()),
         )?;
 
-        self.runtime.put(match identity.as_ref() {
-            Some(current_identity) => Some(
-                self.personal_store
-                    .clone()
-                    .scope(dapp_definition_address.clone())
-                    .scope(current_identity.clone()),
-            ),
-            None => None,
-        })?;
+        rustyscript::Runtime::put(
+            &mut self.runtime,
+            match identity.as_ref() {
+                Some(current_identity) => Some(
+                    self.personal_store
+                        .clone()
+                        .scope(dapp_definition_address.clone())
+                        .scope(current_identity.clone()),
+                ),
+                None => None,
+            },
+        )?;
 
-        self.runtime.put(match accounts.as_ref() {
-            Some(accounts) if !accounts.is_empty() => Some(
-                self.nft_store
-                    .clone()
-                    .scope(dapp_definition_address.clone()),
-            ),
-            Some(_) | None => None,
-        })?;
+        rustyscript::Runtime::put(
+            &mut self.runtime,
+            match accounts.as_ref() {
+                Some(accounts) if !accounts.is_empty() => Some(
+                    self.nft_store
+                        .clone()
+                        .scope(dapp_definition_address.clone()),
+                ),
+                Some(_) | None => None,
+            },
+        )?;
 
         // Set the sql stores for the storage extension
-        self.runtime.put(SqlParamListManager::new())?;
-        self.runtime.put(SqlQueryResultsManager::new())?;
+        rustyscript::Runtime::put(&mut self.runtime, SqlParamListManager::new())?;
+        rustyscript::Runtime::put(&mut self.runtime, SqlQueryResultsManager::new())?;
 
-        self.runtime.put(ApplicationSqlConnectionManager::new(
-            self.application_sql_store
-                .clone()
-                .scope(dapp_definition_address.clone()),
-            module_options.sql_migrations.application.clone(),
-        ))?;
-
-        self.runtime.put(match identity.as_ref() {
-            Some(current_identity) => Some(PersonalSqlConnectionManager::new(
-                self.personal_sql_store
+        rustyscript::Runtime::put(
+            &mut self.runtime,
+            ApplicationSqlConnectionManager::new(
+                self.application_sql_store
                     .clone()
-                    .scope(dapp_definition_address.clone())
-                    .scope(current_identity.clone()),
-                module_options.sql_migrations.personal.clone(),
-            )),
-            None => None,
-        })?;
+                    .scope(dapp_definition_address.clone()),
+                module_options.sql_migrations.application.clone(),
+            ),
+        )?;
 
-        self.runtime.put(match accounts.as_ref() {
-            Some(_) => Some(NftSqlConnectionManager::new(
-                self.nft_sql_store.clone().scope(dapp_definition_address),
-                module_options.sql_migrations.nft.clone(),
-            )),
-            None => None,
-        })?;
+        rustyscript::Runtime::put(
+            &mut self.runtime,
+            match identity.as_ref() {
+                Some(current_identity) => Some(PersonalSqlConnectionManager::new(
+                    self.personal_sql_store
+                        .clone()
+                        .scope(dapp_definition_address.clone())
+                        .scope(current_identity.clone()),
+                    module_options.sql_migrations.personal.clone(),
+                )),
+                None => None,
+            },
+        )?;
+
+        rustyscript::Runtime::put(
+            &mut self.runtime,
+            match accounts.as_ref() {
+                Some(_) => Some(NftSqlConnectionManager::new(
+                    self.nft_sql_store.clone().scope(dapp_definition_address),
+                    module_options.sql_migrations.nft.clone(),
+                )),
+                None => None,
+            },
+        )?;
 
         // Set the context for the session extension
-        self.runtime.put(SessionState { identity, accounts })?;
+        rustyscript::Runtime::put(&mut self.runtime, SessionState { identity, accounts })?;
 
         let module_handle = self.get_module_for_handler_specifier(&handler_specifier)?;
 

@@ -19,6 +19,9 @@ pub struct InitializeRequest {
     /// Enclave IP address on virtual network between enclave and host.
     pub enclave_ip: Ipv4Addr,
 
+    /// S3 bucket for file-systems (encrypted/decrypted inside enclave).
+    pub file_systems_bucket: String,
+
     /// Top-level domain for network connectivity. IE proven.network.
     pub fqdn: String,
 

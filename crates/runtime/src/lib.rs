@@ -7,7 +7,8 @@
 
 mod error;
 mod extensions;
-mod file_system;
+/// TODO: Extract to a separate crate.
+pub mod file_system;
 mod handler_specifier;
 mod import_replacements;
 mod manager;

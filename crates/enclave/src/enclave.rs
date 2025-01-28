@@ -24,7 +24,7 @@ use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
 use proven_radix_gateway::RadixGateway;
 use proven_radix_node::RadixNode;
-use proven_store_s3::{S3Store1, S3Store2, S3Store3};
+use proven_store_s3::{S3Store, S3Store1, S3Store2, S3Store3};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{AddPeerRequest, AddPeerResponse};
 use radix_common::network::NetworkDefinition;
@@ -78,6 +78,7 @@ pub type EnclaveCore = Core<
             >,
             S3Store3<Bytes, Infallible, Infallible>,
         >,
+        S3Store<proven_runtime::file_system::Entry, serde_json::Error, serde_json::Error>,
         GatewayRadixNftVerifier,
     >,
     SessionManager<

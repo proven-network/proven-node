@@ -91,11 +91,14 @@ async fn main() -> Result<()> {
     let personal_sql_store = DirectSqlStore3::new("/tmp/proven/sql/personal");
     let nft_sql_store = DirectSqlStore3::new("/tmp/proven/sql/nft");
 
+    let file_system_store = MemoryStore::new();
+
     let radix_nft_verifier = GatewayRadixNftVerifier::new("https://stokenet.radixdlt.com");
 
     let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
         application_sql_store,
         application_store,
+        file_system_store,
         max_workers: 10,
         nft_sql_store,
         nft_store,

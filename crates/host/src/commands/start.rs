@@ -165,6 +165,7 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
             cidr: args.cidr,
             email: args.email.clone(),
             enclave_ip: args.enclave_ip,
+            file_systems_bucket: args.file_systems_bucket.clone(),
             fqdn: args.fqdn.clone(),
             host_dns_resolv,
             host_ip: args.host_ip,

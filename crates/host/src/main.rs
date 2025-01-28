@@ -100,6 +100,9 @@ struct StartArgs {
     #[arg(long, default_value_t = 25000, env = "PROVEN_ENCLAVE_MEMORY")]
     enclave_memory: u32,
 
+    #[clap(long, required = true, env = "PROVEN_FILE_SYSTEMS_BUCKET")]
+    file_systems_bucket: String,
+
     #[clap(long, required = true, env = "PROVEN_FQDN")]
     fqdn: String,
 

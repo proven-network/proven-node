@@ -949,11 +949,25 @@ impl Bootstrap {
             .await,
         );
 
+        let file_system_store = S3Store::new(S3StoreOptions {
+            bucket: self.args.file_systems_bucket.clone(),
+            prefix: None,
+            region: id.region.clone(),
+            secret_key: get_or_init_encrypted_key(
+                id.region.clone(),
+                self.args.kms_key_id.clone(),
+                "FILE_SYSTEMS_KEY".to_string(),
+            )
+            .await?,
+        })
+        .await;
+
         let radix_nft_verifier = GatewayRadixNftVerifier::new(GATEWAY_URL);
 
         let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
             application_sql_store,
             application_store,
+            file_system_store,
             max_workers: self.args.max_runtime_workers,
             nft_sql_store,
             nft_store,

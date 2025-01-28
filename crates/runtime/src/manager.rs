@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::file_system::Entry;
 use crate::{ExecutionRequest, ExecutionResult, ModuleLoader, Pool, PoolOptions};
 
 use super::Result;
@@ -7,11 +8,11 @@ use super::Result;
 use async_trait::async_trait;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
-use proven_store::{Store2, Store3};
+use proven_store::{Store, Store2, Store3};
 use radix_common::network::NetworkDefinition;
 
 /// Options for configuring a `RuntimePoolManager`.
-pub struct RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS, RNV>
+pub struct RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -19,6 +20,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -26,6 +28,9 @@ where
 
     /// Application-scoped KV store.
     pub application_store: AS,
+
+    /// Store used for file-system virtualisation.
+    pub file_system_store: FSS,
 
     /// Max pool workers.
     pub max_workers: u32,
@@ -64,6 +69,9 @@ where
     /// Application-scoped KV store.
     type ApplicationStore: Store2;
 
+    /// Store used for file-system virtualisation.
+    type FileSystemStore: Store<Entry, serde_json::Error, serde_json::Error>;
+
     /// NFT-scoped SQL store.
     type NftSqlStore: SqlStore3;
 
@@ -88,6 +96,7 @@ where
             Self::ApplicationSqlStore,
             Self::PersonalSqlStore,
             Self::NftSqlStore,
+            Self::FileSystemStore,
             Self::RadixNftVerifier,
         >,
     ) -> Self;
@@ -109,7 +118,8 @@ where
 
 /// Manages database of all currently deployed applications.
 #[derive(Clone)]
-pub struct RuntimePoolManager<AS, PS, NS, ASS, PSS, NSS, RNV>
+#[allow(clippy::type_complexity)]
+pub struct RuntimePoolManager<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -117,14 +127,15 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
-    pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS, RNV>>,
+    pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>>,
 }
 
 #[async_trait]
-impl<AS, PS, NS, ASS, PSS, NSS, RNV> RuntimePoolManagement
-    for RuntimePoolManager<AS, PS, NS, ASS, PSS, NSS, RNV>
+impl<AS, PS, NS, ASS, PSS, NSS, FSS, RNV> RuntimePoolManagement
+    for RuntimePoolManager<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -132,10 +143,12 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     type ApplicationSqlStore = ASS;
     type ApplicationStore = AS;
+    type FileSystemStore = FSS;
     type NftSqlStore = NSS;
     type NftStore = NS;
     type PersonalSqlStore = PSS;
@@ -146,6 +159,7 @@ where
         RuntimePoolManagerOptions {
             application_sql_store,
             application_store,
+            file_system_store,
             max_workers,
             nft_sql_store,
             nft_store,
@@ -154,11 +168,12 @@ where
             radix_gateway_origin,
             radix_network_definition,
             radix_nft_verifier,
-        }: RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
+        }: RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Self {
         let pool = Pool::new(PoolOptions {
             application_sql_store,
             application_store,
+            file_system_store,
             max_workers,
             nft_sql_store,
             nft_store,

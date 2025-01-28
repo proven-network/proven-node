@@ -5,7 +5,7 @@ use std::sync::Arc;
 use proven_code_package::CodePackage;
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
-use proven_store_memory::{MemoryStore2, MemoryStore3};
+use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 use radix_common::network::NetworkDefinition;
 use serde_json::json;
 use tempfile::tempdir;
@@ -19,6 +19,7 @@ async fn main() -> Result<(), Error> {
     let pool = Pool::new(PoolOptions {
         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
         application_store: MemoryStore2::new(),
+        file_system_store: MemoryStore::new(),
         max_workers: 100,
         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
         nft_store: MemoryStore3::new(),

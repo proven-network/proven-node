@@ -1,3 +1,4 @@
+use crate::file_system::Entry;
 use crate::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 
 use std::marker::PhantomData;
@@ -5,7 +6,7 @@ use std::thread;
 
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
-use proven_store::{Store2, Store3};
+use proven_store::{Store, Store2, Store3};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -61,7 +62,8 @@ use tokio::sync::oneshot;
 ///         .await;
 /// }
 /// ```
-pub struct Worker<AS, PS, NS, ASS, PSS, NSS, RNV>
+#[allow(clippy::type_complexity)]
+pub struct Worker<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -69,10 +71,11 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     sender: mpsc::Sender<WorkerRequest>,
-    _marker: PhantomData<(AS, PS, NS, ASS, PSS, NSS, RNV)>,
+    _marker: PhantomData<(AS, PS, NS, ASS, PSS, NSS, FSS, RNV)>,
 }
 
 type WorkerRequest = (
@@ -80,7 +83,7 @@ type WorkerRequest = (
     oneshot::Sender<Result<ExecutionResult, Error>>,
 );
 
-impl<AS, PS, NS, ASS, PSS, NSS, RNV> Worker<AS, PS, NS, ASS, PSS, NSS, RNV>
+impl<AS, PS, NS, ASS, PSS, NSS, FSS, RNV> Worker<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -88,6 +91,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Creates a new `Worker` with the given runtime options.
@@ -98,7 +102,7 @@ where
     /// # Panics
     /// This function will panic if it fails to send or receive messages through the channels.
     pub async fn new(
-        runtime_options: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
+        runtime_options: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Result<Self, Error> {
         let (sender, mut receiver) = mpsc::channel::<WorkerRequest>(1);
 

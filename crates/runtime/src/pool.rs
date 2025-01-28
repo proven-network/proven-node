@@ -1,3 +1,4 @@
+use crate::file_system::Entry;
 use crate::{
     Error, ExecutionRequest, ExecutionResult, ModuleLoader, Result, RuntimeOptions, Worker,
 };
@@ -8,15 +9,15 @@ use std::sync::Arc;
 
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
-use proven_store::{Store2, Store3};
+use proven_store::{Store, Store2, Store3};
 use radix_common::network::NetworkDefinition;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio::time::{sleep, Duration, Instant};
 
-type WorkerMap<AS, PS, NS, ASS, PSS, NSS, RNV> =
-    HashMap<String, Vec<Worker<AS, PS, NS, ASS, PSS, NSS, RNV>>>;
-type SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS, RNV> =
-    Arc<Mutex<WorkerMap<AS, PS, NS, ASS, PSS, NSS, RNV>>>;
+type WorkerMap<AS, PS, NS, ASS, PSS, NSS, FSS, RNV> =
+    HashMap<String, Vec<Worker<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>>>;
+type SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS, FSS, RNV> =
+    Arc<Mutex<WorkerMap<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>>>;
 type LastUsedMap = Arc<Mutex<HashMap<String, Instant>>>;
 
 type SendChannel = oneshot::Sender<Result<ExecutionResult>>;
@@ -26,7 +27,7 @@ type QueueSender = mpsc::Sender<QueueItem>;
 type QueueReceiver = mpsc::Receiver<QueueItem>;
 
 /// Options for a new `Pool`.
-pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS, RNV>
+pub struct PoolOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -34,6 +35,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -41,6 +43,9 @@ where
 
     /// Application-scoped KV store.
     pub application_store: AS,
+
+    /// Store used for file-system virtualisation.
+    pub file_system_store: FSS,
 
     /// Max pool workers.
     pub max_workers: u32,
@@ -123,7 +128,7 @@ where
 ///     pool.execute(ModuleLoader::new(code_package), request).await;
 /// }
 /// ```
-pub struct Pool<AS, PS, NS, ASS, PSS, NSS, RNV>
+pub struct Pool<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -131,10 +136,12 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
     application_store: AS,
+    file_system_store: FSS,
     known_hashes: Arc<Mutex<HashMap<String, ModuleLoader>>>,
     last_killed: Arc<Mutex<Option<Instant>>>,
     last_used: LastUsedMap,
@@ -152,10 +159,10 @@ where
     queue_sender: QueueSender,
     total_workers: AtomicU32,
     try_kill_interval: Duration,
-    workers: SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS, RNV>,
+    workers: SharedWorkerMap<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
 }
 
-impl<AS, PS, NS, ASS, PSS, NSS, RNV> Pool<AS, PS, NS, ASS, PSS, NSS, RNV>
+impl<AS, PS, NS, ASS, PSS, NSS, FSS, RNV> Pool<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
     AS: Store2,
     PS: Store3,
@@ -163,6 +170,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
+    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Creates a new `Pool`.
@@ -170,6 +178,7 @@ where
         PoolOptions {
             application_sql_store,
             application_store,
+            file_system_store,
             max_workers,
             nft_sql_store,
             nft_store,
@@ -178,7 +187,7 @@ where
             radix_gateway_origin,
             radix_network_definition,
             radix_nft_verifier,
-        }: PoolOptions<AS, PS, NS, ASS, PSS, NSS, RNV>,
+        }: PoolOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Arc<Self> {
         rustyscript::init_platform(max_workers, true);
 
@@ -187,6 +196,7 @@ where
         let pool = Arc::new(Self {
             application_sql_store,
             application_store,
+            file_system_store,
             known_hashes: Arc::new(Mutex::new(HashMap::new())),
             last_killed: Arc::new(Mutex::new(Some(Instant::now()))),
             last_used: Arc::new(Mutex::new(HashMap::new())),
@@ -252,9 +262,10 @@ where
                 {
                     pool.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    match Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
+                    match Worker::<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>::new(RuntimeOptions {
                         application_sql_store: pool.application_sql_store.clone(),
                         application_store: pool.application_store.clone(),
+                        file_system_store: pool.file_system_store.clone(),
                         module_loader: module_loader.clone(),
                         nft_sql_store: pool.nft_sql_store.clone(),
                         nft_store: pool.nft_store.clone(),
@@ -388,9 +399,10 @@ where
         {
             self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-            let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
+            let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>::new(RuntimeOptions {
                 application_sql_store: self.application_sql_store.clone(),
                 application_store: self.application_store.clone(),
+                file_system_store: self.file_system_store.clone(),
                 module_loader: module_loader.clone(),
                 nft_sql_store: self.nft_sql_store.clone(),
                 nft_store: self.nft_store.clone(),
@@ -495,19 +507,21 @@ where
             {
                 self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, RNV>::new(RuntimeOptions {
-                    application_sql_store: self.application_sql_store.clone(),
-                    application_store: self.application_store.clone(),
-                    module_loader,
-                    nft_sql_store: self.nft_sql_store.clone(),
-                    nft_store: self.nft_store.clone(),
-                    personal_sql_store: self.personal_sql_store.clone(),
-                    personal_store: self.personal_store.clone(),
-                    radix_gateway_origin: self.radix_gateway_origin.clone(),
-                    radix_network_definition: self.radix_network_definition.clone(),
-                    radix_nft_verifier: self.radix_nft_verifier.clone(),
-                })
-                .await?;
+                let mut worker =
+                    Worker::<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>::new(RuntimeOptions {
+                        application_sql_store: self.application_sql_store.clone(),
+                        application_store: self.application_store.clone(),
+                        file_system_store: self.file_system_store.clone(),
+                        module_loader,
+                        nft_sql_store: self.nft_sql_store.clone(),
+                        nft_store: self.nft_store.clone(),
+                        personal_sql_store: self.personal_sql_store.clone(),
+                        personal_store: self.personal_store.clone(),
+                        radix_gateway_origin: self.radix_gateway_origin.clone(),
+                        radix_network_definition: self.radix_network_definition.clone(),
+                        radix_nft_verifier: self.radix_nft_verifier.clone(),
+                    })
+                    .await?;
                 let result = worker.execute(request).await;
 
                 if matches!(
@@ -628,10 +642,11 @@ mod tests {
 
     use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
-    use proven_store_memory::{MemoryStore2, MemoryStore3};
+    use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
     use serde_json::json;
     use tempfile::tempdir;
 
+    #[allow(clippy::type_complexity)]
     fn create_pool_options() -> PoolOptions<
         MemoryStore2,
         MemoryStore3,
@@ -639,11 +654,13 @@ mod tests {
         DirectSqlStore2,
         DirectSqlStore3,
         DirectSqlStore3,
+        MemoryStore<Entry, serde_json::Error, serde_json::Error>,
         MockRadixNftVerifier,
     > {
         PoolOptions {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
+            file_system_store: MemoryStore::new(),
             max_workers: 10,
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
