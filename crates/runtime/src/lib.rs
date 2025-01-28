@@ -7,8 +7,7 @@
 
 mod error;
 mod extensions;
-/// TODO: Extract to a separate crate.
-pub mod file_system;
+mod file_system;
 mod handler_specifier;
 mod import_replacements;
 mod manager;
@@ -23,6 +22,7 @@ mod util;
 mod worker;
 
 pub use error::*;
+pub use file_system::Entry;
 pub use handler_specifier::HandlerSpecifier;
 pub use manager::*;
 pub use module_loader::ModuleLoader;
