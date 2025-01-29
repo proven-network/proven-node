@@ -35,7 +35,7 @@ pub enum StoredEntry {
 
 impl<S> From<Entry<S>> for StoredEntry
 where
-    S: Store<Self, serde_json::Error, serde_json::Error>,
+    S: Store<Self, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     fn from(entry: Entry<S>) -> Self {
         match entry {
@@ -94,17 +94,66 @@ impl StoredEntry {
 }
 
 impl TryFrom<Bytes> for StoredEntry {
-    type Error = serde_json::Error;
+    type Error = ciborium::de::Error<std::io::Error>;
 
     fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
-        serde_json::from_slice(&bytes)
+        ciborium::de::from_reader(bytes.as_ref())
     }
 }
 
 impl TryFrom<StoredEntry> for Bytes {
-    type Error = serde_json::Error;
+    type Error = ciborium::ser::Error<std::io::Error>;
 
     fn try_from(storage_entry: StoredEntry) -> Result<Self, Self::Error> {
-        serde_json::to_vec(&storage_entry).map(Self::from)
+        let mut bytes = Vec::new();
+        ciborium::ser::into_writer(&storage_entry, &mut bytes)?;
+
+        Ok(Self::from(bytes))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stored_entry_serialization() {
+        let entry = StoredEntry::File {
+            content: Bytes::from("test content"),
+            metadata: FsMetadata {
+                mode: 0o644,
+                uid: 1000,
+                gid: 1000,
+                mtime: None,
+                atime: None,
+                birthtime: None,
+                ctime: None,
+            },
+        };
+
+        // Serialize to bytes
+        let bytes: Bytes = entry.clone().try_into().unwrap();
+
+        // Deserialize back
+        let decoded: StoredEntry = bytes.try_into().unwrap();
+
+        match (entry, decoded) {
+            (
+                StoredEntry::File {
+                    content: c1,
+                    metadata: m1,
+                },
+                StoredEntry::File {
+                    content: c2,
+                    metadata: m2,
+                },
+            ) => {
+                assert_eq!(c1, c2);
+                assert_eq!(m1.mode, m2.mode);
+                assert_eq!(m1.uid, m2.uid);
+                assert_eq!(m1.gid, m2.gid);
+            }
+            _ => panic!("Expected File entries"),
+        }
     }
 }

@@ -42,7 +42,11 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    FSS: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -88,7 +92,11 @@ impl
         proven_sql_direct::DirectSqlStore2,
         proven_sql_direct::DirectSqlStore3,
         proven_sql_direct::DirectSqlStore3,
-        proven_store_memory::MemoryStore<StoredEntry, serde_json::Error, serde_json::Error>,
+        proven_store_memory::MemoryStore<
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
         proven_radix_nft_verifier_mock::MockRadixNftVerifier,
     >
 {
@@ -151,8 +159,11 @@ impl
         Self {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
-            file_system_store:
-                MemoryStore::<StoredEntry, serde_json::Error, serde_json::Error>::new(),
+            file_system_store: MemoryStore::<
+                StoredEntry,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >::new(),
             module_loader: ModuleLoader::from_test_code_map(module_sources, module_roots),
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
@@ -221,7 +232,11 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    FSS: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
     RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
@@ -245,7 +260,11 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    FSS: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
     RNV: RadixNftVerifier,
 {
     /// Creates a new runtime with the given runtime options and stores.

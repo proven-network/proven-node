@@ -21,7 +21,11 @@ use proven_store::Store;
 #[derive(Debug)]
 pub struct File<S>
 where
-    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    S: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     inner: RefCell<FileInner<S>>,
 }
@@ -29,7 +33,11 @@ where
 #[derive(Debug)]
 pub struct FileInner<S>
 where
-    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    S: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     content: BytesMut,
     path: PathBuf,
@@ -43,7 +51,7 @@ where
 
 impl<S> From<File<S>> for StoredEntry
 where
-    S: Store<Self, serde_json::Error, serde_json::Error>,
+    S: Store<Self, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     fn from(file: File<S>) -> Self {
         let inner = file.inner.borrow();
@@ -56,7 +64,11 @@ where
 
 impl<S> File<S>
 where
-    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    S: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     pub const fn new(
         content: BytesMut,
@@ -228,7 +240,11 @@ where
 #[async_trait::async_trait(?Send)]
 impl<S> DenoFile for File<S>
 where
-    S: Store<StoredEntry, serde_json::Error, serde_json::Error> + 'static,
+    S: Store<
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        > + 'static,
 {
     fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
         (*self).read_at_position(buf)
@@ -428,7 +444,11 @@ mod tests {
     use std::io::SeekFrom;
 
     fn setup() -> FileSystem<
-        MemoryStore<crate::file_system::StoredEntry, serde_json::Error, serde_json::Error>,
+        MemoryStore<
+            crate::file_system::StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     > {
         FileSystem::new(MemoryStore::new())
     }

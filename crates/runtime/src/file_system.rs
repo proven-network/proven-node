@@ -1,3 +1,5 @@
+#![allow(clippy::cast_possible_truncation)]
+
 mod entry;
 mod file;
 mod metadata;
@@ -21,14 +23,22 @@ use proven_store::Store;
 #[derive(Debug)]
 pub struct FileSystem<S>
 where
-    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    S: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     store: S,
 }
 
 impl<S> FileSystem<S>
 where
-    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    S: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     pub const fn new(store: S) -> Self {
         Self { store }
@@ -199,12 +209,43 @@ where
 
         self.put_entry(path, updated_entry).await
     }
+
+    async fn truncate(&self, path: &Path, len: u64) -> FsResult<()> {
+        let entry = self
+            .get_stored_entry(path)
+            .await?
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Not found"))?;
+
+        match entry {
+            StoredEntry::File {
+                mut content,
+                metadata,
+            } => {
+                let new_len = len as usize;
+                if new_len <= content.len() {
+                    content = content.slice(0..new_len);
+                } else {
+                    let mut new_content = BytesMut::with_capacity(new_len);
+                    new_content.extend_from_slice(&content);
+                    new_content.resize(new_len, 0);
+                    content = new_content.freeze();
+                }
+                self.put_entry(path, StoredEntry::File { content, metadata })
+                    .await
+            }
+            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Not a file").into()),
+        }
+    }
 }
 
 #[async_trait::async_trait(?Send)]
 impl<S> DenoFileSystem for FileSystem<S>
 where
-    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    S: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
 {
     fn cwd(&self) -> FsResult<PathBuf> {
         todo!()
@@ -491,12 +532,12 @@ where
         }
     }
 
-    fn truncate_sync(&self, _path: &Path, _len: u64) -> FsResult<()> {
-        todo!()
+    fn truncate_sync(&self, path: &Path, len: u64) -> FsResult<()> {
+        block_on(self.truncate(path, len))
     }
 
-    async fn truncate_async(&self, _path: PathBuf, _len: u64) -> FsResult<()> {
-        todo!()
+    async fn truncate_async(&self, path: PathBuf, len: u64) -> FsResult<()> {
+        self.truncate(&path, len).await
     }
 
     fn utime_sync(
@@ -577,7 +618,13 @@ mod tests {
         assert_eq!(execution_result.output.as_str().unwrap(), "Hello, world!");
     }
 
-    fn setup() -> FileSystem<MemoryStore<StoredEntry, serde_json::Error, serde_json::Error>> {
+    fn setup() -> FileSystem<
+        MemoryStore<
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
+    > {
         FileSystem::new(MemoryStore::new())
     }
 
@@ -599,16 +646,24 @@ mod tests {
     #[test]
     fn test_path_normalization() {
         assert_eq!(
-            FileSystem::<MemoryStore<StoredEntry, serde_json::Error, serde_json::Error>>::normalize_path(
-                Path::new("/test/path")
-            ),
+            FileSystem::<
+                MemoryStore<
+                    StoredEntry,
+                    ciborium::de::Error<std::io::Error>,
+                    ciborium::ser::Error<std::io::Error>,
+                >,
+            >::normalize_path(Path::new("/test/path")),
             "test/path"
         );
 
         assert_eq!(
-            FileSystem::<MemoryStore<StoredEntry, serde_json::Error, serde_json::Error>>::normalize_path(
-                Path::new("./test/../path")
-            ),
+            FileSystem::<
+                MemoryStore<
+                    StoredEntry,
+                    ciborium::de::Error<std::io::Error>,
+                    ciborium::ser::Error<std::io::Error>,
+                >,
+            >::normalize_path(Path::new("./test/../path")),
             "path"
         );
     }

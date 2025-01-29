@@ -71,7 +71,11 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    FSS: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
     RNV: RadixNftVerifier,
 {
     sender: mpsc::Sender<WorkerRequest>,
@@ -91,7 +95,11 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StoredEntry, serde_json::Error, serde_json::Error>,
+    FSS: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
     RNV: RadixNftVerifier,
 {
     /// Creates a new `Worker` with the given runtime options.

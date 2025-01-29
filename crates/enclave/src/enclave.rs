@@ -78,7 +78,11 @@ pub type EnclaveCore = Core<
             >,
             S3Store3<Bytes, Infallible, Infallible>,
         >,
-        S3Store<proven_runtime::StoredEntry, serde_json::Error, serde_json::Error>,
+        S3Store<
+            proven_runtime::StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
         GatewayRadixNftVerifier,
     >,
     SessionManager<
