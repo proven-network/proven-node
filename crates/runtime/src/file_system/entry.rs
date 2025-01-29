@@ -11,25 +11,44 @@ pub enum Entry {
     Directory {
         /// The metadata of the directory.
         metadata: FsMetadata,
-
-        /// The children of the directory.
-        children: Vec<String>,
     },
     /// Represents a file entry.
     File(File),
+    /// Represents a symbolic link
+    Symlink {
+        /// The metadata of the symlink
+        metadata: FsMetadata,
+        /// The target path this symlink points to
+        target: String,
+    },
 }
 
 #[allow(dead_code)]
 impl Entry {
     pub(crate) const fn metadata(&self) -> &FsMetadata {
         match self {
-            Self::Directory { metadata, .. } | Self::File(File { metadata, .. }) => metadata,
+            Self::Directory { metadata, .. }
+            | Self::File(File { metadata, .. })
+            | Self::Symlink { metadata, .. } => metadata,
         }
     }
 
     pub(crate) const fn metadata_mut(&mut self) -> &mut FsMetadata {
         match self {
-            Self::Directory { metadata, .. } | Self::File(File { metadata, .. }) => metadata,
+            Self::Directory { metadata, .. }
+            | Self::File(File { metadata, .. })
+            | Self::Symlink { metadata, .. } => metadata,
+        }
+    }
+
+    pub(crate) const fn is_symlink(&self) -> bool {
+        matches!(self, Self::Symlink { .. })
+    }
+
+    pub(crate) fn symlink_target(&self) -> Option<&str> {
+        match self {
+            Self::Symlink { target, .. } => Some(target),
+            _ => None,
         }
     }
 }

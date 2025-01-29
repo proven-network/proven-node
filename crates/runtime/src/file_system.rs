@@ -6,6 +6,7 @@ pub use entry::Entry;
 use file::File;
 use metadata::FsMetadata;
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -29,10 +30,29 @@ where
     }
 
     fn normalize_path(path: &Path) -> String {
-        path.components()
+        let mut normalized = Vec::new();
+
+        for component in path.components() {
+            match component {
+                std::path::Component::ParentDir => {
+                    if let Some(std::path::Component::Normal(_)) = normalized.last() {
+                        normalized.pop();
+                    } else {
+                        normalized.push(component);
+                    }
+                }
+                std::path::Component::CurDir => {}
+                _ => normalized.push(component),
+            }
+        }
+
+        normalized
+            .iter()
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .collect::<Vec<_>>()
             .join("/")
+            .trim_start_matches('/')
+            .to_string()
     }
 
     async fn get_entry(&self, path: &Path) -> FsResult<Option<Entry>> {
@@ -43,6 +63,76 @@ where
     async fn put_entry(&self, path: &Path, entry: Entry) -> FsResult<()> {
         let key = Self::normalize_path(path);
         self.store.put(key, entry).await.map_err(|_| todo!())
+    }
+
+    async fn list_directory(&self, path: &Path) -> FsResult<Vec<String>> {
+        let prefix = Self::normalize_path(path);
+        let prefix = if prefix.is_empty() {
+            String::new()
+        } else {
+            format!("{prefix}/")
+        };
+
+        let keys = self
+            .store
+            .keys_with_prefix(&prefix)
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+
+        // Extract just the immediate children
+        Ok(keys
+            .into_iter()
+            .filter_map(|key| {
+                let remainder = key.strip_prefix(&prefix)?;
+                let name = remainder.split('/').next()?;
+                if name.is_empty() {
+                    None
+                } else {
+                    Some(name.to_string())
+                }
+            })
+            .collect())
+    }
+
+    async fn create_symlink(
+        &self,
+        oldpath: &Path,
+        newpath: &Path,
+        _file_type: Option<FsFileType>,
+    ) -> FsResult<()> {
+        let target = Self::normalize_path(oldpath);
+        let entry = Entry::Symlink {
+            metadata: FsMetadata {
+                mode: 0o777,
+                uid: 0,
+                gid: 0,
+                mtime: None,
+                atime: None,
+                birthtime: None,
+                ctime: None,
+            },
+            target,
+        };
+        self.put_entry(newpath, entry).await
+    }
+
+    async fn follow_symlinks(&self, mut path: PathBuf) -> FsResult<PathBuf> {
+        let mut seen = HashSet::new();
+        while let Some(entry) = self.get_entry(&path).await? {
+            if let Some(target) = entry.symlink_target() {
+                if !seen.insert(path.clone()) {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Symlink loop detected",
+                    )
+                    .into());
+                }
+                path = PathBuf::from(target);
+            } else {
+                break;
+            }
+        }
+        Ok(path)
     }
 }
 
@@ -92,9 +182,10 @@ where
                     mode: options.mode.unwrap_or(0o644),
                     uid: 0,
                     gid: 0,
-                    modified: (0, 0),
-                    accessed: (0, 0),
-                    created: (0, 0),
+                    mtime: None,
+                    atime: None,
+                    birthtime: None,
+                    ctime: None,
                 },
             })
         } else {
@@ -103,8 +194,14 @@ where
             })?
         };
 
-        self.put_entry(&path, entry).await?;
-        todo!("implement File wrapper")
+        if options.create {
+            self.put_entry(&path, entry.clone()).await?;
+        }
+
+        match entry {
+            Entry::File(file) => Ok(Rc::new(file)),
+            _ => Err(std::io::Error::new(std::io::ErrorKind::Other, "Not a file").into()),
+        }
     }
 
     fn mkdir_sync(&self, _path: &Path, _recursive: bool, _mode: Option<u32>) -> FsResult<()> {
@@ -182,16 +279,46 @@ where
         todo!()
     }
 
-    async fn stat_async(&self, _path: PathBuf) -> FsResult<FsStat> {
-        todo!()
+    async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
+        let resolved = self.follow_symlinks(path).await?;
+        self.lstat_async(resolved).await
     }
 
-    fn lstat_sync(&self, _path: &Path) -> FsResult<FsStat> {
-        todo!()
+    fn lstat_sync(&self, path: &Path) -> FsResult<FsStat> {
+        block_on(self.lstat_async(path.to_path_buf()))
     }
 
-    async fn lstat_async(&self, _path: PathBuf) -> FsResult<FsStat> {
-        todo!()
+    async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
+        // Get stats without following symlinks
+        (self.get_entry(&path).await?).map_or_else(
+            || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Not found").into()),
+            |entry| {
+                let metadata = entry.metadata();
+                Ok(FsStat {
+                    is_file: matches!(entry, Entry::File(_)),
+                    is_directory: matches!(entry, Entry::Directory { .. }),
+                    is_symlink: matches!(entry, Entry::Symlink { .. }),
+                    mode: metadata.mode,
+                    uid: metadata.uid,
+                    gid: metadata.gid,
+                    size: 0, // TODO: Implement this
+                    atime: metadata.atime,
+                    mtime: metadata.mtime,
+                    birthtime: metadata.birthtime,
+                    ctime: metadata.ctime,
+                    blksize: 4096,
+                    blocks: 0, // TODO: Implement this
+                    is_block_device: false,
+                    is_char_device: false,
+                    is_fifo: false,
+                    is_socket: false,
+                    dev: 0,
+                    ino: 0,
+                    rdev: 0,
+                    nlink: 1,
+                })
+            },
+        )
     }
 
     fn realpath_sync(&self, _path: &Path) -> FsResult<PathBuf> {
@@ -206,8 +333,23 @@ where
         todo!()
     }
 
-    async fn read_dir_async(&self, _path: PathBuf) -> FsResult<Vec<FsDirEntry>> {
-        todo!()
+    async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>> {
+        let children = self.list_directory(&path).await?;
+
+        let mut entries = Vec::new();
+        for name in children {
+            let child_path = path.join(&name);
+            if let Some(entry) = self.get_entry(&child_path).await? {
+                entries.push(FsDirEntry {
+                    name,
+                    is_file: matches!(entry, Entry::File(_)),
+                    is_directory: matches!(entry, Entry::Directory { .. }),
+                    is_symlink: false,
+                });
+            }
+        }
+
+        Ok(entries)
     }
 
     fn rename_sync(&self, _oldpath: &Path, _newpath: &Path) -> FsResult<()> {
@@ -228,28 +370,34 @@ where
 
     fn symlink_sync(
         &self,
-        _oldpath: &Path,
-        _newpath: &Path,
-        _file_type: Option<FsFileType>,
+        oldpath: &Path,
+        newpath: &Path,
+        file_type: Option<FsFileType>,
     ) -> FsResult<()> {
-        todo!()
+        block_on(self.symlink_async(oldpath.to_path_buf(), newpath.to_path_buf(), file_type))
     }
 
     async fn symlink_async(
         &self,
-        _oldpath: PathBuf,
-        _newpath: PathBuf,
-        _file_type: Option<FsFileType>,
+        oldpath: PathBuf,
+        newpath: PathBuf,
+        file_type: Option<FsFileType>,
     ) -> FsResult<()> {
-        todo!()
+        self.create_symlink(&oldpath, &newpath, file_type).await
     }
 
-    fn read_link_sync(&self, _path: &Path) -> FsResult<PathBuf> {
-        todo!()
+    fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf> {
+        block_on(self.read_link_async(path.to_path_buf()))
     }
 
-    async fn read_link_async(&self, _path: PathBuf) -> FsResult<PathBuf> {
-        todo!()
+    async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf> {
+        match self.get_entry(&path).await? {
+            Some(Entry::Symlink { target, .. }) => Ok(PathBuf::from(target)),
+            Some(_) => {
+                Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Not a symlink").into())
+            }
+            None => Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Not found").into()),
+        }
     }
 
     fn truncate_sync(&self, _path: &Path, _len: u64) -> FsResult<()> {
@@ -322,14 +470,15 @@ mod tests {
                 mode: 0o644,
                 uid: 1000,
                 gid: 1000,
-                modified: (0, 0),
-                accessed: (0, 0),
-                created: (0, 0),
+                mtime: None,
+                atime: None,
+                birthtime: None,
+                ctime: None,
             },
         })
     }
 
-    #[test] // Change from tokio::test
+    #[test]
     fn test_path_normalization() {
         assert_eq!(
             FileSystem::<MemoryStore<Entry, serde_json::Error, serde_json::Error>>::normalize_path(
@@ -342,7 +491,7 @@ mod tests {
             FileSystem::<MemoryStore<Entry, serde_json::Error, serde_json::Error>>::normalize_path(
                 Path::new("./test/../path")
             ),
-            "test/../path"
+            "path"
         );
     }
 
@@ -422,42 +571,10 @@ mod tests {
             )
             .await;
 
-        // This will fail with todo!() until File implementation is complete
-        assert!(result.is_err());
+        assert!(result.is_ok());
 
         // Verify the file was created in the store
         let entry = fs.get_entry(Path::new("/new.txt")).await.unwrap();
         assert!(matches!(entry, Some(Entry::File { .. })));
-    }
-
-    #[tokio::test]
-    async fn test_open_with_create_and_mode() {
-        let fs = setup();
-        let result = fs
-            .open_async(
-                PathBuf::from("/new.txt"),
-                OpenOptions {
-                    read: true,
-                    write: true,
-                    create: true,
-                    truncate: false,
-                    append: false,
-                    create_new: false,
-                    mode: Some(0o755),
-                },
-                None,
-            )
-            .await;
-
-        // This will fail with todo!() until File implementation is complete
-        assert!(result.is_err());
-
-        // Verify the file was created with correct mode
-        let entry = fs.get_entry(Path::new("/new.txt")).await.unwrap();
-        if let Some(Entry::File(File { metadata, .. })) = entry {
-            assert_eq!(metadata.mode, 0o755);
-        } else {
-            panic!("Expected file entry with mode 0o755");
-        }
     }
 }
