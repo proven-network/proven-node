@@ -247,7 +247,7 @@ where
         > + 'static,
 {
     fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
-        (*self).read_at_position(buf)
+        self.read_at_position(buf)
     }
 
     async fn read_byob(self: Rc<Self>, _buf: BufMutView) -> FsResult<(usize, BufMutView)> {
@@ -271,8 +271,24 @@ where
         Ok(bytes_written)
     }
 
-    async fn write(self: Rc<Self>, _buf: BufView) -> FsResult<WriteOutcome> {
-        todo!()
+    async fn write(self: Rc<Self>, buf: BufView) -> FsResult<WriteOutcome> {
+        {
+            let inner = self.inner.borrow();
+            if !inner.writable {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "File not writable",
+                )
+                .into());
+            }
+        }
+
+        let bytes_written = self.write_at_position(buf.as_ref());
+        self.persist().await?;
+
+        Ok(WriteOutcome::Full {
+            nwritten: bytes_written,
+        })
     }
 
     fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()> {
