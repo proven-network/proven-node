@@ -1,17 +1,18 @@
 mod entry;
 mod file;
 mod metadata;
+mod stored_entry;
 
 use entry::Entry;
-pub use entry::StorageEntry;
 use file::File;
 use metadata::FsMetadata;
+pub use stored_entry::StoredEntry;
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use deno_fs::{AccessCheckCb, FileSystem as DenoFileSystem, FsDirEntry, FsFileType, OpenOptions};
 use deno_io::fs::{File as DenoFile, FsResult, FsStat};
 use futures::executor::block_on;
@@ -20,14 +21,14 @@ use proven_store::Store;
 #[derive(Debug)]
 pub struct FileSystem<S>
 where
-    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
 {
     store: S,
 }
 
 impl<S> FileSystem<S>
 where
-    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
 {
     pub const fn new(store: S) -> Self {
         Self { store }
@@ -50,34 +51,48 @@ where
             }
         }
 
+        // Always strip leading slashes for consistency
         normalized
             .iter()
             .map(|c| c.as_os_str().to_string_lossy().into_owned())
             .collect::<Vec<_>>()
             .join("/")
-            .trim_start_matches('/')
+            .trim_matches('/')
             .to_string()
     }
 
-    async fn get_entry(&self, path: &Path) -> FsResult<Option<Entry<S>>> {
-        let key = Self::normalize_path(path);
-        self.store
-            .get(key)
+    async fn get_entry(
+        &self,
+        path: &Path,
+        open_options: &OpenOptions,
+    ) -> FsResult<Option<Entry<S>>> {
+        self.get_stored_entry(path)
             .await
             .map(|opt| {
-                opt.map(|storage| {
-                    let mut entry: Entry<S> = storage.into();
-                    if let Entry::File(ref mut file) = &mut entry {
-                        file.path = path.to_path_buf();
-                        file.store = Some(self.store.clone());
+                opt.map(|stored_entry| match stored_entry {
+                    StoredEntry::Directory { metadata } => Entry::Directory { metadata },
+                    StoredEntry::File { content, metadata } => Entry::File(File::new(
+                        content.into(),
+                        path.to_path_buf(),
+                        metadata,
+                        self.store.clone(),
+                        open_options,
+                    )),
+                    StoredEntry::Symlink { metadata, target } => {
+                        Entry::Symlink { metadata, target }
                     }
-                    entry
                 })
             })
             .map_err(|_| todo!())
     }
 
-    async fn put_entry(&self, path: &Path, storage_entry: StorageEntry) -> FsResult<()> {
+    async fn get_stored_entry(&self, path: &Path) -> FsResult<Option<StoredEntry>> {
+        let key = Self::normalize_path(path);
+
+        self.store.get(key).await.map_err(|_| todo!())
+    }
+
+    async fn put_entry(&self, path: &Path, storage_entry: StoredEntry) -> FsResult<()> {
         let key = Self::normalize_path(path);
         self.store
             .put(key, storage_entry)
@@ -121,7 +136,7 @@ where
         _file_type: Option<FsFileType>,
     ) -> FsResult<()> {
         let target = Self::normalize_path(oldpath);
-        let storage_entry = StorageEntry::Symlink {
+        let storage_entry = StoredEntry::Symlink {
             metadata: FsMetadata {
                 mode: 0o777,
                 uid: 0,
@@ -138,7 +153,7 @@ where
 
     async fn follow_symlinks(&self, mut path: PathBuf) -> FsResult<PathBuf> {
         let mut seen = HashSet::new();
-        while let Some(entry) = self.get_entry(&path).await? {
+        while let Some(entry) = self.get_stored_entry(&path).await? {
             if let Some(target) = entry.symlink_target() {
                 if !seen.insert(path.clone()) {
                     return Err(std::io::Error::new(
@@ -159,7 +174,7 @@ where
 #[async_trait::async_trait(?Send)]
 impl<S> DenoFileSystem for FileSystem<S>
 where
-    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
 {
     fn cwd(&self) -> FsResult<PathBuf> {
         todo!()
@@ -192,15 +207,25 @@ where
     async fn open_async<'a>(
         &'a self,
         path: PathBuf,
-        options: OpenOptions,
+        open_options: OpenOptions,
         _access_check: Option<AccessCheckCb<'a>>,
     ) -> FsResult<Rc<dyn DenoFile>> {
-        let entry = if options.create {
-            Entry::File(File::<S> {
-                content: Bytes::new(),
-                path: path.clone(),
-                metadata: FsMetadata {
-                    mode: options.mode.unwrap_or(0o644),
+        let normalized_path = PathBuf::from(Self::normalize_path(&path));
+
+        let entry = if let Some(entry) = self.get_entry(&normalized_path, &open_options).await? {
+            if open_options.create_new {
+                return Err(
+                    std::io::Error::new(std::io::ErrorKind::AlreadyExists, "File exists").into(),
+                );
+            }
+
+            entry
+        } else if open_options.create {
+            let entry = Entry::File(File::new(
+                BytesMut::new(),
+                normalized_path.clone(),
+                FsMetadata {
+                    mode: open_options.mode.unwrap_or(0o644),
                     uid: 0,
                     gid: 0,
                     mtime: None,
@@ -208,16 +233,30 @@ where
                     birthtime: None,
                     ctime: None,
                 },
-                store: Some(self.store.clone()),
-            })
+                self.store.clone(),
+                &open_options,
+            ));
+
+            // Persist empty file to store before handing back File
+            self.put_entry(
+                &normalized_path,
+                StoredEntry::File {
+                    metadata: entry.metadata(),
+                    content: Bytes::new(),
+                },
+            )
+            .await?;
+
+            entry
         } else {
-            self.get_entry(&path).await?.ok_or_else(|| {
-                std::io::Error::new(std::io::ErrorKind::NotFound, "File not found")
-            })?
+            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "File not found").into());
         };
 
-        if options.create {
-            self.put_entry(&path, entry.clone().into()).await?;
+        // Handle truncation
+        if open_options.truncate {
+            if let Entry::File(file) = &entry {
+                file.truncate();
+            }
         }
 
         match entry {
@@ -312,14 +351,14 @@ where
 
     async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
         // Get stats without following symlinks
-        (self.get_entry(&path).await?).map_or_else(
+        (self.get_stored_entry(&path).await?).map_or_else(
             || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Not found").into()),
-            |entry| {
-                let metadata = entry.metadata();
+            |stored_entry| {
+                let metadata = stored_entry.metadata();
                 Ok(FsStat {
-                    is_file: matches!(entry, Entry::File(_)),
-                    is_directory: matches!(entry, Entry::Directory { .. }),
-                    is_symlink: matches!(entry, Entry::Symlink { .. }),
+                    is_directory: matches!(stored_entry, StoredEntry::Directory { .. }),
+                    is_file: matches!(stored_entry, StoredEntry::File { .. }),
+                    is_symlink: matches!(stored_entry, StoredEntry::Symlink { .. }),
                     mode: metadata.mode,
                     uid: metadata.uid,
                     gid: metadata.gid,
@@ -361,11 +400,11 @@ where
         let mut entries = Vec::new();
         for name in children {
             let child_path = path.join(&name);
-            if let Some(entry) = self.get_entry(&child_path).await? {
+            if let Some(stored_entry) = self.get_stored_entry(&child_path).await? {
                 entries.push(FsDirEntry {
                     name,
-                    is_file: matches!(entry, Entry::File(_)),
-                    is_directory: matches!(entry, Entry::Directory { .. }),
+                    is_file: matches!(stored_entry, StoredEntry::File { .. }),
+                    is_directory: matches!(stored_entry, StoredEntry::Directory { .. }),
                     is_symlink: false,
                 });
             }
@@ -413,8 +452,8 @@ where
     }
 
     async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf> {
-        match self.get_entry(&path).await? {
-            Some(Entry::Symlink { target, .. }) => Ok(PathBuf::from(target)),
+        match self.get_stored_entry(&path).await? {
+            Some(StoredEntry::Symlink { target, .. }) => Ok(PathBuf::from(target)),
             Some(_) => {
                 Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Not a symlink").into())
             }
@@ -477,11 +516,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{file::StorageFile, *};
-
-    use proven_store_memory::MemoryStore;
+    use super::*;
 
     use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use bytes::Bytes;
+    use proven_store_memory::MemoryStore;
 
     #[tokio::test]
     async fn test_read_write() {
@@ -508,12 +547,12 @@ mod tests {
         assert_eq!(execution_result.output.as_str().unwrap(), "Hello, world!");
     }
 
-    fn setup() -> FileSystem<MemoryStore<StorageEntry, serde_json::Error, serde_json::Error>> {
+    fn setup() -> FileSystem<MemoryStore<StoredEntry, serde_json::Error, serde_json::Error>> {
         FileSystem::new(MemoryStore::new())
     }
 
-    fn create_test_file() -> StorageEntry {
-        StorageEntry::File(StorageFile {
+    fn create_test_file() -> StoredEntry {
+        StoredEntry::File {
             content: Bytes::from("test content"),
             metadata: FsMetadata {
                 mode: 0o644,
@@ -524,20 +563,20 @@ mod tests {
                 birthtime: None,
                 ctime: None,
             },
-        })
+        }
     }
 
     #[test]
     fn test_path_normalization() {
         assert_eq!(
-            FileSystem::<MemoryStore<StorageEntry, serde_json::Error, serde_json::Error>>::normalize_path(
+            FileSystem::<MemoryStore<StoredEntry, serde_json::Error, serde_json::Error>>::normalize_path(
                 Path::new("/test/path")
             ),
             "test/path"
         );
 
         assert_eq!(
-            FileSystem::<MemoryStore<StorageEntry, serde_json::Error, serde_json::Error>>::normalize_path(
+            FileSystem::<MemoryStore<StoredEntry, serde_json::Error, serde_json::Error>>::normalize_path(
                 Path::new("./test/../path")
             ),
             "path"
@@ -547,7 +586,7 @@ mod tests {
     #[test]
     fn test_get_nonexistent_entry() {
         let fs = setup();
-        let result = block_on(fs.get_entry(Path::new("/nonexistent"))).unwrap();
+        let result = block_on(fs.get_stored_entry(Path::new("/nonexistent"))).unwrap();
         assert!(result.is_none());
     }
 
@@ -559,18 +598,18 @@ mod tests {
 
         block_on(async {
             fs.put_entry(path, entry.clone()).await.unwrap();
-            let retrieved = fs.get_entry(path).await.unwrap().unwrap();
+            let retrieved = fs.get_stored_entry(path).await.unwrap().unwrap();
 
-            match (entry, retrieved.into()) {
+            match (entry, retrieved) {
                 (
-                    StorageEntry::File(StorageFile {
+                    StoredEntry::File {
                         content: c1,
                         metadata: m1,
-                    }),
-                    StorageEntry::File(StorageFile {
+                    },
+                    StoredEntry::File {
                         content: c2,
                         metadata: m2,
-                    }),
+                    },
                 ) => {
                     assert_eq!(c1, c2);
                     assert_eq!(m1.mode, m2.mode);
@@ -622,8 +661,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Verify the file was created in the store
-        let entry = fs.get_entry(Path::new("/new.txt")).await.unwrap();
-        assert!(matches!(entry, Some(Entry::File { .. })));
+        let entry = fs.get_stored_entry(Path::new("/new.txt")).await.unwrap();
+        assert!(matches!(entry, Some(StoredEntry::File { .. })));
     }
 }

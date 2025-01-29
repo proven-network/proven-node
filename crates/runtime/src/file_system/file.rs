@@ -1,116 +1,258 @@
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_possible_wrap)]
+#![allow(clippy::cast_sign_loss)]
+
 use super::metadata::FsMetadata;
-use super::StorageEntry;
+use super::{FileSystem, StoredEntry};
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::rc::Rc;
 
-use bytes::Bytes;
-use deno_core::{BufMutView, BufView, ResourceHandleFd};
+use bytes::BytesMut;
+use deno_core::{BufMutView, BufView, ResourceHandleFd, WriteOutcome};
+use deno_fs::OpenOptions;
 use deno_io::fs::{File as DenoFile, FsResult, FsStat};
 use proven_store::Store;
-use serde::{Deserialize, Serialize};
-
-/// File type used for storage (without store reference)
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct StorageFile {
-    pub content: Bytes,
-    pub metadata: FsMetadata,
-}
 
 /// Runtime file type with store reference
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct File<S>
 where
-    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
 {
-    pub content: Bytes,
-    pub path: PathBuf,
-    pub metadata: FsMetadata,
-    pub store: Option<S>,
+    inner: RefCell<FileInner<S>>,
 }
 
-impl<S> From<StorageFile> for File<S>
+#[derive(Debug)]
+pub struct FileInner<S>
 where
-    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
 {
-    fn from(storage: StorageFile) -> Self {
-        Self {
-            content: storage.content,
-            path: PathBuf::new(), // Path needs to be set after conversion
-            metadata: storage.metadata,
-            store: None,
-        }
-    }
+    content: BytesMut,
+    path: PathBuf,
+    metadata: FsMetadata,
+    store: Option<S>,
+    position: u64,
+    append: bool,
+    writable: bool,
+    readable: bool,
 }
 
-impl<S> From<File<S>> for StorageFile
+impl<S> From<File<S>> for StoredEntry
 where
-    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    S: Store<Self, serde_json::Error, serde_json::Error>,
 {
     fn from(file: File<S>) -> Self {
-        Self {
-            content: file.content,
-            metadata: file.metadata,
+        let inner = file.inner.borrow();
+        Self::File {
+            metadata: inner.metadata.clone(),
+            content: inner.content.clone().into(),
         }
     }
 }
 
 impl<S> File<S>
 where
-    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    S: Store<StoredEntry, serde_json::Error, serde_json::Error>,
 {
-    pub const fn new(content: Bytes, path: PathBuf, metadata: FsMetadata, store: S) -> Self {
+    pub const fn new(
+        content: BytesMut,
+        path: PathBuf,
+        metadata: FsMetadata,
+        store: S,
+        options: &OpenOptions,
+    ) -> Self {
         Self {
-            content,
-            path,
-            metadata,
-            store: Some(store),
+            inner: RefCell::new(FileInner {
+                content,
+                path,
+                metadata,
+                store: Some(store),
+                position: 0,
+                append: options.append,
+                writable: options.write,
+                readable: options.read,
+            }),
         }
     }
 
-    async fn persist(&self) -> FsResult<()> {
-        let storage_entry = StorageEntry::File(self.clone().into());
+    pub fn content(&self) -> BytesMut {
+        self.inner.borrow().content.clone()
+    }
 
-        self.store
-            .as_ref()
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Store is None"))?
-            .put(self.path.to_string_lossy().to_string(), storage_entry)
+    pub fn metadata(&self) -> FsMetadata {
+        self.inner.borrow().metadata.clone()
+    }
+
+    pub const fn metadata_mut(&self) -> &RefCell<FileInner<S>> {
+        &self.inner
+    }
+
+    pub fn truncate(&self) {
+        let mut inner = self.inner.borrow_mut();
+        inner.content.clear();
+        inner.position = 0;
+    }
+
+    fn write_at_position(&self, buf: &[u8]) -> usize {
+        let mut inner = self.inner.borrow_mut();
+        let write_pos = if inner.append {
+            inner.content.len()
+        } else {
+            inner.position as usize
+        };
+
+        // For appending, we can use extend_from_slice
+        if inner.append {
+            inner.content.extend_from_slice(buf);
+        } else {
+            // Ensure we have enough capacity
+            let required_len = write_pos + buf.len();
+            if required_len > inner.content.len() {
+                inner.content.resize(required_len, 0);
+            }
+            // Write directly into the buffer
+            inner.content[write_pos..write_pos + buf.len()].copy_from_slice(buf);
+        }
+
+        // Update position
+        let new_pos = (write_pos + buf.len()) as u64;
+        inner.position = new_pos;
+        buf.len()
+    }
+
+    #[allow(clippy::future_not_send)]
+    async fn persist(&self) -> FsResult<()> {
+        let (storage_entry, store, path) = {
+            let inner = self.inner.borrow();
+            let entry = StoredEntry::File {
+                metadata: inner.metadata.clone(),
+                content: inner.content.clone().into(),
+            };
+            let store = inner
+                .store
+                .as_ref()
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Store is None"))?
+                .clone();
+            let path = inner.path.clone();
+            (entry, store, path)
+        };
+
+        let key = FileSystem::<S>::normalize_path(&path);
+        store
+            .put(key, storage_entry)
             .await
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         Ok(())
+    }
+
+    pub fn with_content_mut<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut BytesMut) -> R,
+    {
+        let mut inner = self.inner.borrow_mut();
+        f(&mut inner.content)
+    }
+
+    pub fn with_metadata_mut<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&mut FsMetadata) -> R,
+    {
+        let mut inner = self.inner.borrow_mut();
+        f(&mut inner.metadata)
+    }
+
+    fn write_all_at_position(&self, buf: &[u8]) {
+        let mut inner = self.inner.borrow_mut();
+        if inner.append {
+            inner.content.extend_from_slice(buf);
+            inner.position = inner.content.len() as u64;
+        } else {
+            let write_pos = inner.position as usize;
+            let required_len = write_pos + buf.len();
+            if required_len > inner.content.len() {
+                inner.content.resize(required_len, 0);
+            }
+            inner.content[write_pos..write_pos + buf.len()].copy_from_slice(buf);
+            inner.position = (write_pos + buf.len()) as u64;
+        }
+    }
+
+    fn read_at_position(&self, buf: &mut [u8]) -> FsResult<usize> {
+        let mut inner = self.inner.borrow_mut();
+        if !inner.readable {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "File not readable",
+            )
+            .into());
+        }
+
+        let available = inner.content.len().saturating_sub(inner.position as usize);
+        if available == 0 {
+            return Ok(0);
+        }
+
+        let to_read = buf.len().min(available);
+        buf[..to_read].copy_from_slice(&inner.content[inner.position as usize..][..to_read]);
+        inner.position += to_read as u64;
+
+        Ok(to_read)
     }
 }
 
 #[async_trait::async_trait(?Send)]
 impl<S> DenoFile for File<S>
 where
-    S: Store<StorageEntry, serde_json::Error, serde_json::Error> + 'static,
+    S: Store<StoredEntry, serde_json::Error, serde_json::Error> + 'static,
 {
-    fn read_sync(self: Rc<Self>, _buf: &mut [u8]) -> FsResult<usize> {
-        todo!()
+    fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
+        (*self).read_at_position(buf)
     }
 
     async fn read_byob(self: Rc<Self>, _buf: BufMutView) -> FsResult<(usize, BufMutView)> {
         todo!()
     }
 
-    fn write_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<usize> {
-        todo!()
+    fn write_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<usize> {
+        {
+            let inner = self.inner.borrow();
+            if !inner.writable {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "File not writable",
+                )
+                .into());
+            }
+        }
+
+        let bytes_written = self.write_at_position(buf);
+        futures::executor::block_on(self.persist())?;
+        Ok(bytes_written)
     }
 
-    async fn write(self: Rc<Self>, _buf: BufView) -> FsResult<deno_core::WriteOutcome> {
+    async fn write(self: Rc<Self>, _buf: BufView) -> FsResult<WriteOutcome> {
         todo!()
     }
 
     fn write_all_sync(self: Rc<Self>, buf: &[u8]) -> FsResult<()> {
-        let this = self.as_ref();
-        let mut cloned = this.clone();
-        cloned.content = Bytes::copy_from_slice(buf);
+        {
+            let inner = self.inner.borrow();
+            if !inner.writable {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "File not writable",
+                )
+                .into());
+            }
+        }
 
-        // Use block_on to run the async persist in sync context
-        futures::executor::block_on(cloned.persist())?;
+        self.write_all_at_position(buf);
+        futures::executor::block_on(self.persist())?;
         Ok(())
     }
 
@@ -119,11 +261,11 @@ where
     }
 
     fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
-        Ok(Cow::Owned(self.content.to_vec()))
+        Ok(Cow::Owned(self.inner.borrow().content.to_vec()))
     }
 
     async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
-        todo!()
+        Ok(Cow::Owned(self.inner.borrow().content.to_vec()))
     }
 
     fn chmod_sync(self: Rc<Self>, _pathmode: u32) -> FsResult<()> {
@@ -134,8 +276,16 @@ where
         todo!()
     }
 
-    fn seek_sync(self: Rc<Self>, _pos: std::io::SeekFrom) -> FsResult<u64> {
-        todo!()
+    fn seek_sync(self: Rc<Self>, pos: std::io::SeekFrom) -> FsResult<u64> {
+        let mut inner = self.inner.borrow_mut();
+        let new_pos = match pos {
+            std::io::SeekFrom::Start(p) => p,
+            std::io::SeekFrom::End(p) => (inner.content.len() as i64 + p) as u64,
+            std::io::SeekFrom::Current(p) => (inner.position as i64 + p) as u64,
+        };
+
+        inner.position = new_pos;
+        Ok(new_pos)
     }
 
     async fn seek_async(self: Rc<Self>, _pos: std::io::SeekFrom) -> FsResult<u64> {
@@ -210,7 +360,7 @@ where
         todo!()
     }
 
-    fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+    fn as_stdio(self: Rc<Self>) -> FsResult<Stdio> {
         todo!()
     }
 
@@ -219,6 +369,282 @@ where
     }
 
     fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn DenoFile>> {
-        todo!()
+        Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::file_system::FileSystem;
+    use deno_fs::FileSystem as DenoFileSystem;
+    use proven_store_memory::MemoryStore;
+    use std::io::SeekFrom;
+
+    fn setup() -> FileSystem<
+        MemoryStore<crate::file_system::StoredEntry, serde_json::Error, serde_json::Error>,
+    > {
+        FileSystem::new(MemoryStore::new())
+    }
+
+    #[tokio::test]
+    async fn test_write_and_read() {
+        let fs = setup();
+        let file = fs
+            .open_async(
+                PathBuf::from("/test.txt"),
+                OpenOptions {
+                    read: true,
+                    write: true,
+                    create: true,
+                    truncate: false,
+                    append: false,
+                    create_new: false,
+                    mode: Some(0o644),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Write some data
+        let written = Rc::clone(&file).write_sync(b"Hello").unwrap();
+        assert_eq!(written, 5);
+
+        // Append more data
+        file.write_sync(b", world!").unwrap();
+
+        // Reopen to verify complete content
+        let file = fs
+            .open_async(
+                PathBuf::from("/test.txt"),
+                OpenOptions {
+                    read: true,
+                    write: false,
+                    create: false,
+                    truncate: false,
+                    append: false,
+                    create_new: false,
+                    mode: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let content = file.read_all_sync().unwrap();
+        assert_eq!(&content[..], b"Hello, world!");
+    }
+
+    #[tokio::test]
+    async fn test_append_mode() {
+        let fs = setup();
+        let file = fs
+            .open_async(
+                PathBuf::from("/append.txt"),
+                OpenOptions {
+                    read: true,
+                    write: true,
+                    create: true,
+                    truncate: false,
+                    append: true,
+                    create_new: false,
+                    mode: Some(0o644),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        Rc::clone(&file).write_all_sync(b"First").unwrap();
+        file.write_all_sync(b"Second").unwrap();
+
+        // Reopen to verify content
+        let file = fs
+            .open_async(
+                PathBuf::from("/append.txt"),
+                OpenOptions {
+                    read: true,
+                    write: false,
+                    create: false,
+                    truncate: false,
+                    append: false,
+                    create_new: false,
+                    mode: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let content = file.read_all_sync().unwrap();
+        assert_eq!(&content[..], b"FirstSecond");
+    }
+
+    #[tokio::test]
+    async fn test_seek() {
+        let fs = setup();
+        let file = fs
+            .open_async(
+                PathBuf::from("/seek.txt"),
+                OpenOptions {
+                    read: true,
+                    write: true,
+                    create: true,
+                    truncate: false,
+                    append: false,
+                    create_new: false,
+                    mode: Some(0o644),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Write initial content
+        file.write_all_sync(b"Hello, world!").unwrap();
+
+        // Reopen file to verify content
+        let file = fs
+            .open_async(
+                PathBuf::from("/seek.txt"),
+                OpenOptions {
+                    read: true,
+                    write: true,
+                    create: false,
+                    truncate: false,
+                    append: false,
+                    create_new: false,
+                    mode: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Test seeking from start
+        let pos = Rc::clone(&file).seek_sync(SeekFrom::Start(6)).unwrap();
+        assert_eq!(pos, 6);
+
+        // Read after seek
+        let mut buf = [0u8; 7];
+        let read = Rc::clone(&file).read_sync(&mut buf).unwrap();
+        assert_eq!(read, 7);
+        assert_eq!(&buf, b" world!");
+
+        // Test seeking from end
+        let pos = Rc::clone(&file).seek_sync(SeekFrom::End(-6)).unwrap();
+        assert_eq!(pos, 7);
+
+        // Test seeking from current
+        let pos = Rc::clone(&file).seek_sync(SeekFrom::Current(-2)).unwrap();
+        assert_eq!(pos, 5);
+
+        // Verify final position by reading remaining content
+        let mut buf = [0u8; 8];
+        let read = file.read_sync(&mut buf).unwrap();
+        assert_eq!(read, 8);
+        assert_eq!(&buf, b", world!");
+    }
+
+    #[tokio::test]
+    async fn test_permissions() {
+        let fs = setup();
+
+        // Create and test read-only file
+        let readonly_file = fs
+            .open_async(
+                PathBuf::from("/readonly.txt"),
+                OpenOptions {
+                    read: true,
+                    write: true, // Need write permission initially to set up test
+                    create: true,
+                    truncate: false,
+                    append: false,
+                    create_new: false,
+                    mode: Some(0o444),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Write test data
+        Rc::clone(&readonly_file)
+            .write_all_sync(b"test content")
+            .unwrap();
+
+        // Reopen as read-only
+        let readonly_file = fs
+            .open_async(
+                PathBuf::from("/readonly.txt"),
+                OpenOptions {
+                    read: true,
+                    write: false,
+                    create: false,
+                    truncate: false,
+                    append: false,
+                    create_new: false,
+                    mode: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Write should fail but read should succeed
+        assert!(Rc::clone(&readonly_file).write_sync(b"test").is_err());
+        assert!(Rc::clone(&readonly_file).write_all_sync(b"test").is_err());
+
+        // Read the content and compare as slices
+        let content = Rc::clone(&readonly_file).read_all_sync().unwrap();
+        assert_eq!(&content[..], b"test content");
+
+        // Create and test write-only file
+        let writeonly_file = fs
+            .open_async(
+                PathBuf::from("/writeonly.txt"),
+                OpenOptions {
+                    read: false,
+                    write: true,
+                    create: true,
+                    truncate: false,
+                    append: false,
+                    create_new: false,
+                    mode: Some(0o222),
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        // Write should succeed
+        assert!(Rc::clone(&writeonly_file).write_sync(b"test").is_ok());
+
+        // Verify content by reopening with read permissions
+        let readable_file = fs
+            .open_async(
+                PathBuf::from("/writeonly.txt"),
+                OpenOptions {
+                    read: true,
+                    write: false,
+                    create: false,
+                    truncate: false,
+                    append: false,
+                    create_new: false,
+                    mode: None,
+                },
+                None,
+            )
+            .await
+            .unwrap();
+
+        let content = readable_file.read_all_sync().unwrap();
+        assert_eq!(&content[..], b"test");
+
+        // Verify original file still can't read
+        let mut buf = [0u8; 4];
+        assert!(writeonly_file.read_sync(&mut buf).is_err());
     }
 }

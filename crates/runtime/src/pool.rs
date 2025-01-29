@@ -1,4 +1,4 @@
-use crate::file_system::StorageEntry;
+use crate::file_system::StoredEntry;
 use crate::{
     Error, ExecutionRequest, ExecutionResult, ModuleLoader, Result, RuntimeOptions, Worker,
 };
@@ -35,7 +35,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StoredEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -136,7 +136,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StoredEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
@@ -170,7 +170,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StoredEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Creates a new `Pool`.
@@ -654,7 +654,7 @@ mod tests {
         DirectSqlStore2,
         DirectSqlStore3,
         DirectSqlStore3,
-        MemoryStore<StorageEntry, serde_json::Error, serde_json::Error>,
+        MemoryStore<StoredEntry, serde_json::Error, serde_json::Error>,
         MockRadixNftVerifier,
     > {
         PoolOptions {

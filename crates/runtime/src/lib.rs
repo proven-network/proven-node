@@ -22,7 +22,7 @@ mod util;
 mod worker;
 
 pub use error::*;
-pub use file_system::StorageEntry;
+pub use file_system::StoredEntry;
 pub use handler_specifier::HandlerSpecifier;
 pub use manager::*;
 pub use module_loader::ModuleLoader;
