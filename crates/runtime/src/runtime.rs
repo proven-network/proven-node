@@ -195,7 +195,7 @@ impl
 ///     RuntimeOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
-/// use proven_store_memory::{MemoryStore2, MemoryStore3};
+/// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 /// use radix_common::network::NetworkDefinition;
 /// use serde_json::json;
 /// use tempfile::tempdir;
@@ -205,6 +205,7 @@ impl
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
 ///     application_store: MemoryStore2::new(),
+///     file_system_store: MemoryStore::new(),
 ///     module_loader: ModuleLoader::new(code_package),
 ///     nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///     nft_store: MemoryStore3::new(),

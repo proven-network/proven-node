@@ -35,7 +35,11 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StoredEntry, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    FSS: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -93,7 +97,7 @@ where
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Pool, PoolOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
-/// use proven_store_memory::{MemoryStore2, MemoryStore3};
+/// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 /// use radix_common::network::NetworkDefinition;
 /// use serde_json::json;
 /// use tempfile::tempdir;
@@ -103,6 +107,7 @@ where
 ///     let pool = Pool::new(PoolOptions {
 ///         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
 ///         application_store: MemoryStore2::new(),
+///         file_system_store: MemoryStore::new(),
 ///         max_workers: 10,
 ///         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///         nft_store: MemoryStore3::new(),
@@ -136,7 +141,11 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StoredEntry, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    FSS: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
     RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
@@ -170,7 +179,11 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<StoredEntry, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    FSS: Store<
+        StoredEntry,
+        ciborium::de::Error<std::io::Error>,
+        ciborium::ser::Error<std::io::Error>,
+    >,
     RNV: RadixNftVerifier,
 {
     /// Creates a new `Pool`.
@@ -654,7 +667,11 @@ mod tests {
         DirectSqlStore2,
         DirectSqlStore3,
         DirectSqlStore3,
-        MemoryStore<StoredEntry, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+        MemoryStore<
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
         MockRadixNftVerifier,
     > {
         PoolOptions {
