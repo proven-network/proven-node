@@ -256,8 +256,23 @@ where
         Ok(())
     }
 
-    async fn write_all(self: Rc<Self>, _buf: BufView) -> FsResult<()> {
-        todo!()
+    async fn write_all(self: Rc<Self>, buf: BufView) -> FsResult<()> {
+        {
+            let inner = self.inner.borrow();
+            if !inner.writable {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "File not writable",
+                )
+                .into());
+            }
+        }
+
+        let bytes = buf.as_ref();
+        self.write_all_at_position(bytes);
+        self.persist().await?;
+
+        Ok(())
     }
 
     fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
@@ -268,12 +283,20 @@ where
         Ok(Cow::Owned(self.inner.borrow().content.to_vec()))
     }
 
-    fn chmod_sync(self: Rc<Self>, _pathmode: u32) -> FsResult<()> {
-        todo!()
+    fn chmod_sync(self: Rc<Self>, mode: u32) -> FsResult<()> {
+        {
+            let mut inner = self.inner.borrow_mut();
+            inner.metadata.mode = mode;
+        }
+        futures::executor::block_on(self.persist())
     }
 
-    async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
-        todo!()
+    async fn chmod_async(self: Rc<Self>, mode: u32) -> FsResult<()> {
+        {
+            let mut inner = self.inner.borrow_mut();
+            inner.metadata.mode = mode;
+        }
+        self.persist().await
     }
 
     fn seek_sync(self: Rc<Self>, pos: std::io::SeekFrom) -> FsResult<u64> {

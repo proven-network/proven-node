@@ -169,6 +169,36 @@ where
         }
         Ok(path)
     }
+
+    async fn chmod(&self, path: &Path, mode: u32) -> FsResult<()> {
+        let entry = self
+            .get_stored_entry(path)
+            .await?
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Not found"))?;
+
+        let updated_entry = match entry {
+            StoredEntry::Directory { mut metadata } => {
+                metadata.mode = mode;
+                StoredEntry::Directory { metadata }
+            }
+            StoredEntry::File {
+                content,
+                mut metadata,
+            } => {
+                metadata.mode = mode;
+                StoredEntry::File { content, metadata }
+            }
+            StoredEntry::Symlink {
+                mut metadata,
+                target,
+            } => {
+                metadata.mode = mode;
+                StoredEntry::Symlink { metadata, target }
+            }
+        };
+
+        self.put_entry(path, updated_entry).await
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -278,8 +308,8 @@ where
         todo!()
     }
 
-    async fn chmod_async(&self, _path: PathBuf, _mode: u32) -> FsResult<()> {
-        todo!()
+    async fn chmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
+        self.chmod(&path, mode).await
     }
 
     async fn chown_async(
@@ -295,8 +325,8 @@ where
         todo!()
     }
 
-    fn chmod_sync(&self, _path: &Path, _mode: u32) -> FsResult<()> {
-        todo!()
+    fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
+        block_on(self.chmod(path, mode))
     }
 
     fn lchown_sync(&self, _path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
