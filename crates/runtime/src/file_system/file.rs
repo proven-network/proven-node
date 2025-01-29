@@ -203,6 +203,26 @@ where
 
         Ok(to_read)
     }
+
+    pub fn truncate_to(&self, len: u64) -> FsResult<()> {
+        let mut inner = self.inner.borrow_mut();
+        if !inner.writable {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "File not writable",
+            )
+            .into());
+        }
+
+        let new_len = len as usize;
+        if new_len <= inner.content.len() {
+            inner.content.truncate(new_len);
+        } else {
+            inner.content.resize(new_len, 0);
+        }
+        inner.position = inner.position.min(len);
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -355,12 +375,14 @@ where
         todo!()
     }
 
-    fn truncate_sync(self: Rc<Self>, _len: u64) -> FsResult<()> {
-        todo!()
+    fn truncate_sync(self: Rc<Self>, len: u64) -> FsResult<()> {
+        self.truncate_to(len)?;
+        futures::executor::block_on(self.persist())
     }
 
-    async fn truncate_async(self: Rc<Self>, _len: u64) -> FsResult<()> {
-        todo!()
+    async fn truncate_async(self: Rc<Self>, len: u64) -> FsResult<()> {
+        self.truncate_to(len)?;
+        self.persist().await
     }
 
     fn utime_sync(
