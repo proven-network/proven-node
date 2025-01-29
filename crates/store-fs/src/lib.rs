@@ -75,11 +75,11 @@ where
         }
     }
 
-    fn get_file_path(&self, key: &str) -> PathBuf {
-        self.dir.join(key)
+    fn get_file_path<K: AsRef<str>>(&self, key: K) -> PathBuf {
+        self.dir.join(key.as_ref())
     }
 
-    fn list_files(&self, prefix: Option<&String>) -> Result<Vec<String>, Error> {
+    fn list_files(&self, prefix: Option<&str>) -> Result<Vec<String>, Error> {
         fn visit_dirs(
             dir: &std::path::Path,
             base: &std::path::Path,
@@ -109,7 +109,7 @@ where
         }
 
         let mut keys = Vec::new();
-        visit_dirs(&self.dir, &self.dir, prefix.map(String::as_str), &mut keys)
+        visit_dirs(&self.dir, &self.dir, prefix, &mut keys)
             .map_err(|e| Error::Io("error walking directory", e))?;
         Ok(keys)
     }
@@ -131,14 +131,17 @@ where
 {
     type Error = Error;
 
-    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
-        let path = self.get_file_path(&key.into());
+    async fn delete<K>(&self, key: K) -> Result<(), Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
+        let path = self.get_file_path(key);
         fs::remove_file(path).map_err(|e| Error::Io("error deleting file", e))?;
         Ok(())
     }
 
-    async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
-        let path = self.get_file_path(&key.into());
+    async fn get<K: AsRef<str> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
+        let path = self.get_file_path(key);
         match fs::read(path) {
             Ok(data) => {
                 let bytes: Bytes = data.into();
@@ -158,18 +161,13 @@ where
 
     async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
     where
-        P: Clone + Into<String> + Send,
+        P: AsRef<str> + Send,
     {
-        let prefix_string = prefix.into();
-        self.list_files(Some(&prefix_string))
+        self.list_files(Some(prefix.as_ref()))
     }
 
-    async fn put<K: Clone + Into<String> + Send>(
-        &self,
-        key: K,
-        value: T,
-    ) -> Result<(), Self::Error> {
-        let path = self.get_file_path(&key.into());
+    async fn put<K: AsRef<str> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
+        let path = self.get_file_path(key);
         if let Some(parent) = path.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent).map_err(|e| Error::Io("error creating directory", e))?;
@@ -284,10 +282,10 @@ macro_rules! impl_scoped_store {
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped
                 where
-                    K: Clone + Into<String> + Send,
+                    K: AsRef<str> + Send,
                 {
                     let mut dir = self.dir.clone();
-                    dir.push(scope.into());
+                    dir.push(scope.as_ref());
                     Self::Scoped::new(dir)
                 }
             }

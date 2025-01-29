@@ -123,11 +123,11 @@ where
         *hasher.finalize().as_bytes()
     }
 
-    fn get_key<K: Into<String>>(&self, key: K) -> String {
-        match &self.prefix {
-            Some(prefix) => format!("{}/{}", prefix, key.into()),
-            None => key.into(),
-        }
+    fn get_key<K: AsRef<str>>(&self, key: K) -> String {
+        self.prefix.as_ref().map_or_else(
+            || key.as_ref().to_string(),
+            |prefix| format!("{}/{}", prefix, key.as_ref()),
+        )
     }
 }
 
@@ -146,7 +146,10 @@ where
 {
     type Error = Error;
 
-    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn delete<K>(&self, key: K) -> Result<(), Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         let key = self.get_key(key);
 
         let resp = self
@@ -163,7 +166,10 @@ where
         }
     }
 
-    async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
+    async fn get<K>(&self, key: K) -> Result<Option<T>, Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -245,13 +251,13 @@ where
 
     async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
     where
-        P: Clone + Into<String> + Send,
+        P: AsRef<str> + Send,
     {
-        let prefix = prefix.into();
-        let full_prefix = match &self.prefix {
-            Some(store_prefix) => format!("{store_prefix}/{prefix}"),
-            None => prefix,
-        };
+        let prefix = prefix.as_ref();
+        let full_prefix = self.prefix.as_ref().map_or_else(
+            || prefix.to_string(),
+            |store_prefix| format!("{store_prefix}/{prefix}"),
+        );
 
         Ok(self
             .client
@@ -269,11 +275,10 @@ where
             .collect())
     }
 
-    async fn put<K: Clone + Into<String> + Send>(
-        &self,
-        key: K,
-        value: T,
-    ) -> Result<(), Self::Error> {
+    async fn put<K>(&self, key: K, value: T) -> Result<(), Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         let key = self.get_key(key);
         let sse_key = self.generate_aes_key(&key);
 
@@ -423,11 +428,11 @@ macro_rules! impl_scoped_store {
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped
                 where
-                    K: Clone + Into<String> + Send,
+                    K: AsRef<str> + Send,
                 {
                     let prefix = match &self.prefix {
-                        Some(prefix) => format!("{}/{}", prefix, scope.into()),
-                        None => scope.into(),
+                        Some(prefix) => format!("{}/{}", prefix, scope.as_ref()),
+                        None => scope.as_ref().to_string(),
                     };
                     Self::Scoped {
                         bucket: self.bucket.clone(),

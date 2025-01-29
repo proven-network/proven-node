@@ -108,10 +108,10 @@ where
         }
     }
 
-    fn get_key<K: Into<String>>(&self, key: K) -> String {
+    fn get_key<K: AsRef<str>>(&self, key: K) -> String {
         match &self.prefix {
-            Some(prefix) => format!("{}:{}", prefix, key.into()),
-            None => key.into(),
+            Some(prefix) => format!("{}:{}", prefix, key.as_ref()),
+            None => key.as_ref().to_string(),
         }
     }
 }
@@ -131,13 +131,19 @@ where
 {
     type Error = Error;
 
-    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
-        self.map.lock().unwrap().remove(&self.get_key(key)); // Changed from .await
+    async fn delete<K>(&self, key: K) -> Result<(), Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
+        self.map.lock().unwrap().remove(&self.get_key(key));
         Ok(())
     }
 
-    async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
-        let map = self.map.lock().unwrap(); // Changed from .await
+    async fn get<K>(&self, key: K) -> Result<Option<T>, Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
+        let map = self.map.lock().unwrap();
 
         match map.get(&self.get_key(key)).cloned() {
             Some(value) => {
@@ -154,9 +160,9 @@ where
 
     async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
     where
-        P: Clone + Into<String> + Send,
+        P: AsRef<str> + Send,
     {
-        let prefix = prefix.into();
+        let prefix = prefix.as_ref();
 
         Ok(self
             .map
@@ -180,7 +186,7 @@ where
                 };
 
                 // Apply the optional parameter prefix
-                if key.starts_with(&prefix) {
+                if key.starts_with(prefix) {
                     Some(key)
                 } else {
                     None
@@ -189,13 +195,11 @@ where
             .collect())
     }
 
-    async fn put<K: Clone + Into<String> + Send>(
-        &self,
-        key: K,
-        value: T,
-    ) -> Result<(), Self::Error> {
+    async fn put<K>(&self, key: K, value: T) -> Result<(), Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         self.map.lock().unwrap().insert(
-            // Changed from .await
             self.get_key(key),
             value
                 .try_into()
@@ -295,11 +299,11 @@ macro_rules! impl_scoped_store {
 
                 fn scope<K>(&self, scope: K) -> $parent<T, D, S>
                 where
-                    K: Clone + Into<String> + Send,
+                    K: AsRef<str> + Send,
                 {
                     let new_scope = match &self.prefix {
-                        Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
-                        None => scope.into(),
+                        Some(existing_scope) => format!("{}:{}", existing_scope, scope.as_ref()),
+                        None => scope.as_ref().to_string(),
                     };
                     $parent::<T, D, S>::with_scope(new_scope)
                 }

@@ -153,21 +153,27 @@ where
 {
     type Error = Error;
 
-    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn delete<K>(&self, key: K) -> Result<(), Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         self.get_kv_store()
             .await?
-            .delete(key.into())
+            .delete(key.as_ref())
             .await
             .map_err(|e| Error::Delete(e.kind()))?;
 
         Ok(())
     }
 
-    async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
+    async fn get<K>(&self, key: K) -> Result<Option<T>, Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         if let Some(bytes) = self
             .get_kv_store()
             .await?
-            .get(key)
+            .get(key.as_ref())
             .await
             .map_err(|e| Error::Entry(e.kind()))?
         {
@@ -195,9 +201,9 @@ where
 
     async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
     where
-        P: Clone + Into<String> + Send,
+        P: AsRef<str> + Send,
     {
-        let prefix = prefix.into();
+        let prefix = prefix.as_ref();
 
         Ok(self
             .get_kv_store()
@@ -209,22 +215,21 @@ where
             .await
             .unwrap()
             .into_iter()
-            .filter(|key| key.starts_with(&prefix))
+            .filter(|key| key.starts_with(prefix))
             .collect())
     }
 
-    async fn put<K: Clone + Into<String> + Send>(
-        &self,
-        key: K,
-        value: T,
-    ) -> Result<(), Self::Error> {
+    async fn put<K>(&self, key: K, value: T) -> Result<(), Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         let bytes: Bytes = value
             .try_into()
             .map_err(|e| Error::Serialize(e.to_string()))?;
 
         self.get_kv_store()
             .await?
-            .put(key.into(), bytes)
+            .put(key.as_ref(), bytes)
             .await
             .map_err(|e| Error::Put(e.kind()))?;
 
@@ -355,10 +360,10 @@ macro_rules! impl_scoped_store {
 
                 fn scope<K>(&self, scope: K) -> Self::Scoped
                 where
-                    K: Clone + Into<String> + Send,
+                    K: AsRef<str> + Send,
                 {
                     let mut bucket = self.bucket.clone();
-                    bucket.push_str(&format!("_{}", scope.into()));
+                    bucket.push_str(&format!("_{}", scope.as_ref()));
 
                     Self::Scoped::new(NatsStoreOptions {
                         client: self.client.clone(),

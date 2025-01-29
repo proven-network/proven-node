@@ -178,18 +178,24 @@ where
 {
     type Error = Error;
 
-    async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
+    async fn delete<K>(&self, key: K) -> Result<(), Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         let mut secret_map = self.get_secret_map().await?;
 
-        secret_map.remove(&key.into());
+        secret_map.remove(key.as_ref());
 
         self.update_secret_map(secret_map).await
     }
 
-    async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
+    async fn get<K>(&self, key: K) -> Result<Option<T>, Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         let secret_map = self.get_secret_map().await?;
 
-        match secret_map.get(&key.into()) {
+        match secret_map.get(key.as_ref()) {
             Some(bytes) => {
                 let value: T = bytes
                     .clone()
@@ -209,29 +215,27 @@ where
 
     async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
     where
-        P: Clone + Into<String> + Send,
+        P: AsRef<str> + Send,
     {
         let map = self.get_secret_map().await?;
-        let prefix = prefix.into();
 
         Ok(map
             .into_iter()
-            .filter(|(key, _)| key.starts_with(&prefix))
+            .filter(|(key, _)| key.starts_with(prefix.as_ref()))
             .map(|(key, _)| key)
             .collect())
     }
 
-    async fn put<K: Clone + Into<String> + Send>(
-        &self,
-        key: K,
-        value: T,
-    ) -> Result<(), Self::Error> {
+    async fn put<K>(&self, key: K, value: T) -> Result<(), Self::Error>
+    where
+        K: AsRef<str> + Send,
+    {
         let mut secret_map = self.get_secret_map().await?;
 
         let bytes: Bytes = value
             .try_into()
             .map_err(|e| Error::Serialize(e.to_string()))?;
-        secret_map.insert(key.into(), bytes);
+        secret_map.insert(key.as_ref().to_string(), bytes);
 
         self.update_secret_map(secret_map).await
     }
@@ -349,10 +353,13 @@ macro_rules! impl_scoped_store {
                 type Error = Error;
                 type Scoped = $parent<T, D, S>;
 
-                fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+                fn scope<K>(&self, scope: K) -> Self::Scoped
+                where
+                    K: AsRef<str> + Send
+                {
                     let new_scope = match &self.prefix {
-                        Some(existing_scope) => format!("{}:{}", existing_scope, scope.into()),
-                        None => scope.into(),
+                        Some(existing_scope) => format!("{}:{}", existing_scope, scope.as_ref()),
+                        None => scope.as_ref().to_string(),
                     };
 
                     Self::Scoped::new_with_client_and_prefix(
