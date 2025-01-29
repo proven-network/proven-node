@@ -5,7 +5,7 @@ use crate::extensions::{
     NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
     SqlQueryResultsManager,
 };
-use crate::file_system::{Entry, FileSystem};
+use crate::file_system::{FileSystem, StorageEntry};
 use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::HandlerOptions;
 use crate::permissions::OriginAllowlistWebPermissions;
@@ -42,7 +42,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -88,7 +88,7 @@ impl
         proven_sql_direct::DirectSqlStore2,
         proven_sql_direct::DirectSqlStore3,
         proven_sql_direct::DirectSqlStore3,
-        proven_store_memory::MemoryStore<Entry, serde_json::Error, serde_json::Error>,
+        proven_store_memory::MemoryStore<StorageEntry, serde_json::Error, serde_json::Error>,
         proven_radix_nft_verifier_mock::MockRadixNftVerifier,
     >
 {
@@ -151,7 +151,8 @@ impl
         Self {
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
             application_store: MemoryStore2::new(),
-            file_system_store: MemoryStore::<Entry, serde_json::Error, serde_json::Error>::new(),
+            file_system_store:
+                MemoryStore::<StorageEntry, serde_json::Error, serde_json::Error>::new(),
             module_loader: ModuleLoader::from_test_code_map(module_sources, module_roots),
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             nft_store: MemoryStore3::new(),
@@ -220,7 +221,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
@@ -244,7 +245,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Creates a new runtime with the given runtime options and stores.

@@ -41,6 +41,7 @@ declare namespace Deno {
   namespace core {
     const ops: {
       // console
+      // deno-lint-ignore no-explicit-any
       op_console_log: (level: string, args: any[]) => void;
 
       // crypto

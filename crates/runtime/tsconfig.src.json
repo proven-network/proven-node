@@ -14,9 +14,8 @@
     "experimentalDecorators": true,
     "forceConsistentCasingInFileNames": true,
     "useDefineForClassFields": false,
-    "skipLibCheck": true,
-    "noEmit": true
+    "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "test_esm/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "src/**/*.test.ts"]
 }

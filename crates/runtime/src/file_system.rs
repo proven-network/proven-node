@@ -2,7 +2,8 @@ mod entry;
 mod file;
 mod metadata;
 
-pub use entry::Entry;
+use entry::Entry;
+pub use entry::StorageEntry;
 use file::File;
 use metadata::FsMetadata;
 
@@ -17,13 +18,16 @@ use futures::executor::block_on;
 use proven_store::Store;
 
 #[derive(Debug)]
-pub struct FileSystem<S> {
+pub struct FileSystem<S>
+where
+    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
+{
     store: S,
 }
 
 impl<S> FileSystem<S>
 where
-    S: Store<Entry, serde_json::Error, serde_json::Error>,
+    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
 {
     pub const fn new(store: S) -> Self {
         Self { store }
@@ -55,14 +59,30 @@ where
             .to_string()
     }
 
-    async fn get_entry(&self, path: &Path) -> FsResult<Option<Entry>> {
+    async fn get_entry(&self, path: &Path) -> FsResult<Option<Entry<S>>> {
         let key = Self::normalize_path(path);
-        self.store.get(key).await.map_err(|_| todo!())
+        self.store
+            .get(key)
+            .await
+            .map(|opt| {
+                opt.map(|storage| {
+                    let mut entry: Entry<S> = storage.into();
+                    if let Entry::File(ref mut file) = &mut entry {
+                        file.path = path.to_path_buf();
+                        file.store = Some(self.store.clone());
+                    }
+                    entry
+                })
+            })
+            .map_err(|_| todo!())
     }
 
-    async fn put_entry(&self, path: &Path, entry: Entry) -> FsResult<()> {
+    async fn put_entry(&self, path: &Path, storage_entry: StorageEntry) -> FsResult<()> {
         let key = Self::normalize_path(path);
-        self.store.put(key, entry).await.map_err(|_| todo!())
+        self.store
+            .put(key, storage_entry)
+            .await
+            .map_err(|_| todo!())
     }
 
     async fn list_directory(&self, path: &Path) -> FsResult<Vec<String>> {
@@ -101,7 +121,7 @@ where
         _file_type: Option<FsFileType>,
     ) -> FsResult<()> {
         let target = Self::normalize_path(oldpath);
-        let entry = Entry::Symlink {
+        let storage_entry = StorageEntry::Symlink {
             metadata: FsMetadata {
                 mode: 0o777,
                 uid: 0,
@@ -113,7 +133,7 @@ where
             },
             target,
         };
-        self.put_entry(newpath, entry).await
+        self.put_entry(newpath, storage_entry).await
     }
 
     async fn follow_symlinks(&self, mut path: PathBuf) -> FsResult<PathBuf> {
@@ -139,7 +159,7 @@ where
 #[async_trait::async_trait(?Send)]
 impl<S> DenoFileSystem for FileSystem<S>
 where
-    S: Store<Entry, serde_json::Error, serde_json::Error>,
+    S: Store<StorageEntry, serde_json::Error, serde_json::Error>,
 {
     fn cwd(&self) -> FsResult<PathBuf> {
         todo!()
@@ -176,8 +196,9 @@ where
         _access_check: Option<AccessCheckCb<'a>>,
     ) -> FsResult<Rc<dyn DenoFile>> {
         let entry = if options.create {
-            Entry::File(File {
+            Entry::File(File::<S> {
                 content: Bytes::new(),
+                path: path.clone(),
                 metadata: FsMetadata {
                     mode: options.mode.unwrap_or(0o644),
                     uid: 0,
@@ -187,6 +208,7 @@ where
                     birthtime: None,
                     ctime: None,
                 },
+                store: Some(self.store.clone()),
             })
         } else {
             self.get_entry(&path).await?.ok_or_else(|| {
@@ -195,7 +217,7 @@ where
         };
 
         if options.create {
-            self.put_entry(&path, entry.clone()).await?;
+            self.put_entry(&path, entry.clone().into()).await?;
         }
 
         match entry {
@@ -455,16 +477,43 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{file::StorageFile, *};
 
     use proven_store_memory::MemoryStore;
 
-    fn setup() -> FileSystem<MemoryStore<Entry, serde_json::Error, serde_json::Error>> {
+    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+
+    #[tokio::test]
+    async fn test_read_write() {
+        let runtime_options = RuntimeOptions::for_test_code("file_system/test_read_write");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest::Rpc {
+            accounts: vec![],
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
+            identity: "my_identity".to_string(),
+        };
+
+        let result = worker.execute(request).await;
+
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
+
+        let execution_result = result.unwrap();
+
+        assert!(execution_result.output.is_string());
+        assert_eq!(execution_result.output.as_str().unwrap(), "Hello, world!");
+    }
+
+    fn setup() -> FileSystem<MemoryStore<StorageEntry, serde_json::Error, serde_json::Error>> {
         FileSystem::new(MemoryStore::new())
     }
 
-    fn create_test_file() -> Entry {
-        Entry::File(File {
+    fn create_test_file() -> StorageEntry {
+        StorageEntry::File(StorageFile {
             content: Bytes::from("test content"),
             metadata: FsMetadata {
                 mode: 0o644,
@@ -481,14 +530,14 @@ mod tests {
     #[test]
     fn test_path_normalization() {
         assert_eq!(
-            FileSystem::<MemoryStore<Entry, serde_json::Error, serde_json::Error>>::normalize_path(
+            FileSystem::<MemoryStore<StorageEntry, serde_json::Error, serde_json::Error>>::normalize_path(
                 Path::new("/test/path")
             ),
             "test/path"
         );
 
         assert_eq!(
-            FileSystem::<MemoryStore<Entry, serde_json::Error, serde_json::Error>>::normalize_path(
+            FileSystem::<MemoryStore<StorageEntry, serde_json::Error, serde_json::Error>>::normalize_path(
                 Path::new("./test/../path")
             ),
             "path"
@@ -512,13 +561,13 @@ mod tests {
             fs.put_entry(path, entry.clone()).await.unwrap();
             let retrieved = fs.get_entry(path).await.unwrap().unwrap();
 
-            match (entry, retrieved) {
+            match (entry, retrieved.into()) {
                 (
-                    Entry::File(File {
+                    StorageEntry::File(StorageFile {
                         content: c1,
                         metadata: m1,
                     }),
-                    Entry::File(File {
+                    StorageEntry::File(StorageFile {
                         content: c2,
                         metadata: m2,
                     }),

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::file_system::Entry;
+use crate::file_system::StorageEntry;
 use crate::{ExecutionRequest, ExecutionResult, ModuleLoader, Pool, PoolOptions};
 
 use super::Result;
@@ -20,7 +20,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -70,7 +70,7 @@ where
     type ApplicationStore: Store2;
 
     /// Store used for file-system virtualisation.
-    type FileSystemStore: Store<Entry, serde_json::Error, serde_json::Error>;
+    type FileSystemStore: Store<StorageEntry, serde_json::Error, serde_json::Error>;
 
     /// NFT-scoped SQL store.
     type NftSqlStore: SqlStore3;
@@ -127,7 +127,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>>,
@@ -143,7 +143,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     type ApplicationSqlStore = ASS;

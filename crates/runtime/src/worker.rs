@@ -1,4 +1,4 @@
-use crate::file_system::Entry;
+use crate::file_system::StorageEntry;
 use crate::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 
 use std::marker::PhantomData;
@@ -71,7 +71,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     sender: mpsc::Sender<WorkerRequest>,
@@ -91,7 +91,7 @@ where
     ASS: SqlStore2,
     PSS: SqlStore3,
     NSS: SqlStore3,
-    FSS: Store<Entry, serde_json::Error, serde_json::Error>,
+    FSS: Store<StorageEntry, serde_json::Error, serde_json::Error>,
     RNV: RadixNftVerifier,
 {
     /// Creates a new `Worker` with the given runtime options.
