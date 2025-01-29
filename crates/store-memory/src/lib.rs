@@ -149,19 +149,42 @@ where
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
-        let map = self.map.lock().unwrap(); // Changed from .await
-        Ok(map
+        self.keys_with_prefix(String::new()).await
+    }
+
+    async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
+    where
+        P: Clone + Into<String> + Send,
+    {
+        let prefix = prefix.into();
+
+        Ok(self
+            .map
+            .lock()
+            .unwrap()
             .keys()
+            // First filter by store's global prefix if it exists
             .filter(|&key| {
                 self.prefix
                     .as_ref()
-                    .map_or(true, |prefix| key.starts_with(prefix))
+                    .map_or(true, |store_prefix| key.starts_with(store_prefix))
             })
-            .map(|key| {
-                key.replace(self.prefix.as_ref().unwrap_or(&String::new()), "")
-                    .strip_prefix(":")
-                    .unwrap()
-                    .to_string()
+            .filter_map(|key| {
+                // Strip the store prefix if it exists
+                let key = if let Some(store_prefix) = &self.prefix {
+                    key.strip_prefix(store_prefix)?
+                        .strip_prefix(':')?
+                        .to_string()
+                } else {
+                    key.to_string()
+                };
+
+                // Apply the optional parameter prefix
+                if key.starts_with(&prefix) {
+                    Some(key)
+                } else {
+                    None
+                }
             })
             .collect())
     }
@@ -388,5 +411,59 @@ mod tests {
         let result = store.get(key.clone()).await.unwrap();
 
         assert_eq!(result, Some(value));
+    }
+
+    #[tokio::test]
+    async fn test_keys_with_store_prefix() {
+        let store = MemoryStore1::new();
+        let scoped = store.scope("test");
+
+        scoped.put("one.txt", Bytes::from("one")).await.unwrap();
+        scoped.put("two.txt", Bytes::from("two")).await.unwrap();
+        scoped
+            .put("sub/three.txt", Bytes::from("three"))
+            .await
+            .unwrap();
+
+        let keys = scoped.keys().await.unwrap();
+        assert_eq!(keys.len(), 3);
+        assert!(keys.contains(&"one.txt".to_string()));
+        assert!(keys.contains(&"two.txt".to_string()));
+        assert!(keys.contains(&"sub/three.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_keys_with_param_prefix() {
+        let store = MemoryStore1::new();
+        let scoped = store.scope("test");
+
+        scoped.put("one.txt", Bytes::from("one")).await.unwrap();
+        scoped.put("two.txt", Bytes::from("two")).await.unwrap();
+        scoped
+            .put("sub/three.txt", Bytes::from("three"))
+            .await
+            .unwrap();
+
+        let keys = scoped.keys_with_prefix("sub/").await.unwrap();
+        assert_eq!(keys.len(), 1);
+        assert!(keys.contains(&"sub/three.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_keys_with_both_prefixes() {
+        let store = MemoryStore2::new();
+        let scoped1 = store.scope("test1");
+        let scoped2 = scoped1.scope("test2");
+
+        scoped2.put("one.txt", Bytes::from("one")).await.unwrap();
+        scoped2.put("two.txt", Bytes::from("two")).await.unwrap();
+        scoped2
+            .put("sub/three.txt", Bytes::from("three"))
+            .await
+            .unwrap();
+
+        let keys = scoped2.keys_with_prefix("sub/").await.unwrap();
+        assert_eq!(keys.len(), 1);
+        assert!(keys.contains(&"sub/three.txt".to_string()));
     }
 }

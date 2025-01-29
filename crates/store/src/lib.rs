@@ -40,6 +40,11 @@ where
     /// Retrieves all keys in the store.
     async fn keys(&self) -> Result<Vec<String>, Self::Error>;
 
+    /// Retrieves all keys with the given prefix.
+    async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
+    where
+        P: Clone + Into<String> + Send;
+
     /// Stores a key-value pair.
     async fn put<K>(&self, key: K, value: T) -> Result<(), Self::Error>
     where

@@ -213,48 +213,60 @@ where
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
         if let Some(prefix) = &self.prefix {
-            let resp = self
+            Ok(self
                 .client
                 .list_objects_v2()
                 .bucket(&self.bucket)
                 .prefix(prefix)
                 .send()
-                .await;
-
-            match resp {
-                Ok(resp) => {
-                    let keys = resp
-                        .contents
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter_map(|obj| obj.key)
-                        .filter_map(|key| key.strip_prefix(prefix).map(String::from))
-                        .collect();
-                    Ok(keys)
-                }
-                Err(e) => Err(Error::S3(e.into())),
-            }
+                .await
+                .map_err(|e| Error::S3(e.into()))?
+                .contents
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|obj| obj.key)
+                .filter_map(|key| key.strip_prefix(prefix).map(String::from))
+                .collect())
         } else {
-            let resp = self
+            Ok(self
                 .client
                 .list_objects_v2()
                 .bucket(&self.bucket)
                 .send()
-                .await;
-
-            match resp {
-                Ok(resp) => {
-                    let keys = resp
-                        .contents
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter_map(|obj| obj.key)
-                        .collect();
-                    Ok(keys)
-                }
-                Err(e) => Err(Error::S3(e.into())),
-            }
+                .await
+                .map_err(|e| Error::S3(e.into()))?
+                .contents
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|obj| obj.key)
+                .collect())
         }
+    }
+
+    async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
+    where
+        P: Clone + Into<String> + Send,
+    {
+        let prefix = prefix.into();
+        let full_prefix = match &self.prefix {
+            Some(store_prefix) => format!("{store_prefix}/{prefix}"),
+            None => prefix,
+        };
+
+        Ok(self
+            .client
+            .list_objects_v2()
+            .bucket(&self.bucket)
+            .prefix(full_prefix.clone())
+            .send()
+            .await
+            .map_err(|e| Error::S3(e.into()))?
+            .contents
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|obj| obj.key)
+            .filter_map(|key| key.strip_prefix(&full_prefix).map(String::from))
+            .collect())
     }
 
     async fn put<K: Clone + Into<String> + Send>(

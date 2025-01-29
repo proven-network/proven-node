@@ -193,6 +193,26 @@ where
             .unwrap())
     }
 
+    async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
+    where
+        P: Clone + Into<String> + Send,
+    {
+        let prefix = prefix.into();
+
+        Ok(self
+            .get_kv_store()
+            .await?
+            .keys()
+            .await
+            .map_err(|e| Error::Watch(e.kind()))?
+            .try_collect::<Vec<String>>()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|key| key.starts_with(&prefix))
+            .collect())
+    }
+
     async fn put<K: Clone + Into<String> + Send>(
         &self,
         key: K,
@@ -201,6 +221,7 @@ where
         let bytes: Bytes = value
             .try_into()
             .map_err(|e| Error::Serialize(e.to_string()))?;
+
         self.get_kv_store()
             .await?
             .put(key.into(), bytes)
@@ -337,7 +358,8 @@ macro_rules! impl_scoped_store {
                     K: Clone + Into<String> + Send,
                 {
                     let mut bucket = self.bucket.clone();
-                    bucket.push_str(&format!(".{}", scope.into()));
+                    bucket.push_str(&format!("_{}", scope.into()));
+
                     Self::Scoped::new(NatsStoreOptions {
                         client: self.client.clone(),
                         bucket,
@@ -368,3 +390,68 @@ impl_scoped_store!(
     Store2,
     "A triple-scoped KV store using NATS JetStream."
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn test_keys_with_prefix() {
+        let client = async_nats::connect("localhost:4222").await.unwrap();
+        let store = NatsStore::new(NatsStoreOptions {
+            client,
+            bucket: "test".to_string(),
+            max_age: Duration::from_secs(3600),
+            persist: false,
+        });
+
+        // Setup test data
+        store.put("test/one.txt", Bytes::from("one")).await.unwrap();
+        store.put("test/two.txt", Bytes::from("two")).await.unwrap();
+        store
+            .put("other/three.txt", Bytes::from("three"))
+            .await
+            .unwrap();
+
+        // Test prefix filtering
+        let all_keys = store.keys().await.unwrap();
+        assert_eq!(all_keys.len(), 3);
+
+        let filtered_keys = store.keys_with_prefix("test/").await.unwrap();
+        assert_eq!(filtered_keys.len(), 2);
+        assert!(filtered_keys.contains(&"test/one.txt".to_string()));
+        assert!(filtered_keys.contains(&"test/two.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_scoped_store_with_prefix() {
+        let client = async_nats::connect("localhost:4222").await.unwrap();
+        let store = NatsStore1::new(NatsStoreOptions {
+            client,
+            bucket: "scoped".to_string(),
+            max_age: Duration::from_secs(3600),
+            persist: false,
+        });
+
+        let scoped = store.scope("myapp");
+        scoped
+            .put("test/one.txt", Bytes::from("one"))
+            .await
+            .unwrap();
+        scoped
+            .put("test/two.txt", Bytes::from("two"))
+            .await
+            .unwrap();
+        scoped
+            .put("other/three.txt", Bytes::from("three"))
+            .await
+            .unwrap();
+
+        let keys = scoped.keys_with_prefix("test/").await.unwrap();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&"test/one.txt".to_string()));
+        assert!(keys.contains(&"test/two.txt".to_string()));
+    }
+}

@@ -202,8 +202,23 @@ where
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
-        let secret_map = self.get_secret_map().await?;
-        Ok(secret_map.keys().cloned().collect())
+        let map = self.get_secret_map().await?;
+
+        Ok(map.keys().cloned().collect())
+    }
+
+    async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
+    where
+        P: Clone + Into<String> + Send,
+    {
+        let map = self.get_secret_map().await?;
+        let prefix = prefix.into();
+
+        Ok(map
+            .into_iter()
+            .filter(|(key, _)| key.starts_with(&prefix))
+            .map(|(key, _)| key)
+            .collect())
     }
 
     async fn put<K: Clone + Into<String> + Send>(

@@ -13,14 +13,14 @@ use error::Error;
 use std::convert::Infallible;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::fs;
+use std::io::Write;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_store::{Store, Store1, Store2, Store3};
-use tokio::fs;
-use tokio::io::{self, AsyncWriteExt};
 
 /// KV store using files on disk.
 #[derive(Debug)]
@@ -78,6 +78,41 @@ where
     fn get_file_path(&self, key: &str) -> PathBuf {
         self.dir.join(key)
     }
+
+    fn list_files(&self, prefix: Option<&String>) -> Result<Vec<String>, Error> {
+        fn visit_dirs(
+            dir: &std::path::Path,
+            base: &std::path::Path,
+            prefix: Option<&str>,
+            out: &mut Vec<String>,
+        ) -> std::io::Result<()> {
+            if dir.is_dir() {
+                for entry in fs::read_dir(dir)? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if path.is_dir() {
+                        visit_dirs(&path, base, prefix, out)?;
+                    } else if let Ok(rel_path) = path.strip_prefix(base) {
+                        if let Some(path_str) = rel_path.to_str() {
+                            if let Some(prefix) = prefix {
+                                if path_str.starts_with(prefix) {
+                                    out.push(path_str.to_string());
+                                }
+                            } else {
+                                out.push(path_str.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        let mut keys = Vec::new();
+        visit_dirs(&self.dir, &self.dir, prefix.map(String::as_str), &mut keys)
+            .map_err(|e| Error::Io("error walking directory", e))?;
+        Ok(keys)
+    }
 }
 
 #[async_trait]
@@ -98,45 +133,35 @@ where
 
     async fn delete<K: Clone + Into<String> + Send>(&self, key: K) -> Result<(), Self::Error> {
         let path = self.get_file_path(&key.into());
-        fs::remove_file(path)
-            .await
-            .map_err(|e| Error::Io("error deleting file", e))?;
+        fs::remove_file(path).map_err(|e| Error::Io("error deleting file", e))?;
         Ok(())
     }
 
     async fn get<K: Clone + Into<String> + Send>(&self, key: K) -> Result<Option<T>, Self::Error> {
         let path = self.get_file_path(&key.into());
-        match fs::read(path).await {
+        match fs::read(path) {
             Ok(data) => {
                 let bytes: Bytes = data.into();
                 let value: T = bytes
                     .try_into()
                     .map_err(|e: D| Error::Deserialize(e.to_string()))?;
-
                 Ok(Some(value))
             }
-            Err(ref e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(Error::Io("error reading file", e)),
         }
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
-        let mut entries = fs::read_dir(&self.dir)
-            .await
-            .map_err(|e| Error::Io("error reading directory", e))?;
-        let mut keys = Vec::new();
+        self.list_files(None)
+    }
 
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(|e| Error::Io("error reading directory entry", e))?
-        {
-            if let Some(key) = entry.file_name().to_str() {
-                keys.push(key.to_string());
-            }
-        }
-
-        Ok(keys)
+    async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
+    where
+        P: Clone + Into<String> + Send,
+    {
+        let prefix_string = prefix.into();
+        self.list_files(Some(&prefix_string))
     }
 
     async fn put<K: Clone + Into<String> + Send>(
@@ -147,19 +172,14 @@ where
         let path = self.get_file_path(&key.into());
         if let Some(parent) = path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent)
-                    .await
-                    .map_err(|e| Error::Io("error creating directory", e))?;
+                fs::create_dir_all(parent).map_err(|e| Error::Io("error creating directory", e))?;
             }
         }
-        let mut file = fs::File::create(path)
-            .await
-            .map_err(|e| Error::Io("error creating file", e))?;
         let value: Bytes = value
             .try_into()
             .map_err(|e| Error::Serialize(e.to_string()))?;
+        let mut file = fs::File::create(path).map_err(|e| Error::Io("error creating file", e))?;
         file.write_all(&value)
-            .await
             .map_err(|e| Error::Io("error writing file", e))?;
         Ok(())
     }
@@ -451,5 +471,47 @@ mod tests {
         store.delete(key).await.expect("Failed to delete value");
         let retrieved_value = store.get(key).await.expect("Failed to get value");
         assert_eq!(retrieved_value, None);
+    }
+
+    #[tokio::test]
+    async fn test_keys_with_prefix() {
+        let dir = tempdir().unwrap();
+        let store = FsStore::new(dir.path());
+
+        store.put("test/one.txt", Bytes::from("one")).await.unwrap();
+        store.put("test/two.txt", Bytes::from("two")).await.unwrap();
+        store
+            .put("other/three.txt", Bytes::from("three"))
+            .await
+            .unwrap();
+
+        let keys = store.keys_with_prefix("test/".to_string()).await.unwrap();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&"test/one.txt".to_string()));
+        assert!(keys.contains(&"test/two.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_nested_directories() {
+        let dir = tempdir().unwrap();
+        let store = FsStore::new(dir.path());
+
+        store
+            .put("a/b/c/file.txt", Bytes::from("content"))
+            .await
+            .unwrap();
+        store
+            .put("a/b/file2.txt", Bytes::from("content2"))
+            .await
+            .unwrap();
+
+        let keys = store.keys_with_prefix("a/b/".to_string()).await.unwrap();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&"a/b/c/file.txt".to_string()));
+        assert!(keys.contains(&"a/b/file2.txt".to_string()));
+
+        let keys = store.keys_with_prefix("a/b/c/".to_string()).await.unwrap();
+        assert_eq!(keys.len(), 1);
+        assert!(keys.contains(&"a/b/c/file.txt".to_string()));
     }
 }
