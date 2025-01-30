@@ -6,6 +6,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Channel communication error.
+    #[error("channel communication error")]
+    ChannelCommunicationError,
+
     /// Error from eszip.
     #[error("failure handling eszip")]
     CodePackage(String),

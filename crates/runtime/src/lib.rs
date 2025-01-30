@@ -26,6 +26,7 @@ pub use file_system::StoredEntry;
 pub use handler_specifier::HandlerSpecifier;
 pub use manager::*;
 pub use module_loader::ModuleLoader;
+pub use options::*;
 pub use pool::*;
 pub use runtime::*;
 pub use worker::*;

@@ -12,10 +12,12 @@ use crate::schema::SCHEMA_WHLIST;
 use crate::{Error, HandlerSpecifier};
 
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
 
 use deno_core::ModuleSpecifier;
 use rustyscript::{ExtensionOptions, WebOptions};
+use tokio::sync::oneshot;
 
 pub struct OptionsParser;
 
@@ -81,6 +83,7 @@ impl OptionsParser {
                     HandlerOptions::Http { path, .. } if path.is_some() => Some(HttpEndpoint {
                         handler_specifier: HandlerSpecifier::parse(handler_specifier).unwrap(),
                         path: path.clone().unwrap(),
+                        method: None, // TODO: Add handler options for specifying methods
                     }),
                     _ => None,
                 },
@@ -91,6 +94,36 @@ impl OptionsParser {
             handler_options,
             http_endpoints,
             sql_migrations,
+        })
+    }
+
+    /// Asynchronous version of parse that runs in a separate thread to avoid blocking.
+    ///
+    /// # Parameters
+    /// - `module_loader`: The module loader to use for parsing.
+    /// - `module_specifier`: The specifier of the module to parse options from.
+    ///
+    /// # Returns
+    /// A result containing the module options.
+    ///
+    /// # Errors
+    /// This function will return an error if the parsing fails or if there are channel communication issues.
+    pub async fn parse_async(
+        module_loader: ModuleLoader,
+        module_specifier: ModuleSpecifier,
+    ) -> Result<ModuleOptions, Error> {
+        let (sender, receiver) = oneshot::channel();
+
+        thread::spawn(move || {
+            let result = Self::parse(&module_loader, &module_specifier);
+            if sender.send(result).is_err() {
+                eprintln!("Failed to send parse result through channel");
+            }
+        });
+
+        receiver.await.unwrap_or_else(|_| {
+            eprintln!("Failed to receive parse result from channel");
+            Err(Error::ChannelCommunicationError)
         })
     }
 }

@@ -6,7 +6,9 @@ use axum::Router;
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
 use proven_code_package::CodePackage;
-use proven_runtime::{ExecutionRequest, HandlerSpecifier, ModuleLoader, RuntimePoolManagement};
+use proven_runtime::{
+    ExecutionRequest, HandlerSpecifier, ModuleLoader, ModuleOptions, RuntimePoolManagement,
+};
 use proven_sessions::SessionManagement;
 
 pub fn create_application_http_router<AM, RM, SM>(
@@ -25,15 +27,6 @@ where
 
         let body = if body.is_empty() { None } else { Some(body) };
 
-        let execution_request = ExecutionRequest::Http {
-            body,
-            dapp_definition_address: "dapp_definition_address".to_string(),
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            method,
-            path: path.to_string(),
-            query: query.map(String::from),
-        };
-
         let code_package = CodePackage::from_str(
             r#"
             import { runOnHttp } from "@proven-network/handler";
@@ -45,6 +38,24 @@ where
         "#,
         )
         .unwrap();
+
+        let handler_specifier = HandlerSpecifier::parse("file:///main.ts#test").unwrap();
+
+        let module_options =
+            ModuleOptions::from_code_package(&code_package, &handler_specifier.module_specifier())
+                .await
+                .unwrap();
+
+        println!("{module_options:?}");
+
+        let execution_request = ExecutionRequest::Http {
+            body,
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier,
+            method,
+            path: path.to_string(),
+            query: query.map(String::from),
+        };
 
         let result = runtime_pool_manager
             .execute(ModuleLoader::new(code_package), execution_request)
