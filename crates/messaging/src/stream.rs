@@ -195,7 +195,7 @@ macro_rules! define_scoped_stream {
                 /// Creates a scoped stream.
                 fn scope<K>(&self, scope: K) -> <Self as [< Stream $index >]<T, D, S>>::Scoped
                 where
-                    K: Clone + Into<String> + Send;
+                    K: AsRef<str> + Send;
             }
         }
     };

@@ -75,9 +75,12 @@ macro_rules! impl_scoped_sql_store {
 
                 type Scoped = $parent;
 
-                fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped {
+                fn scope<S>(&self, scope: S) -> Self::Scoped
+                where
+                    S: AsRef<str> + Copy + Send,
+                {
                     let mut new_dir = self.dir.clone();
-                    new_dir.push(scope.into());
+                    new_dir.push(scope.as_ref());
                     $parent::new(new_dir)
                 }
             }

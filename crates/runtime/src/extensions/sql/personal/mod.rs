@@ -216,13 +216,10 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Http {
-            body: None,
+        let request = ExecutionRequest::Rpc {
+            args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            method: http::Method::GET,
-            path: "/test".to_string(),
-            query: None,
         };
 
         let result = worker.execute(request).await;

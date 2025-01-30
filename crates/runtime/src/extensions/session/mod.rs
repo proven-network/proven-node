@@ -3,22 +3,30 @@
 
 use deno_core::{extension, op2};
 
-#[derive(Default)]
-pub struct SessionState {
-    pub identity: Option<String>,
-    pub accounts: Option<Vec<String>>,
+pub enum SessionState {
+    NoSession,
+    Session {
+        accounts: Vec<String>,
+        identity: String,
+    },
 }
 
 #[op2]
 #[string]
 pub fn op_get_current_identity(#[state] state: &SessionState) -> Option<String> {
-    state.identity.clone()
+    match state {
+        SessionState::NoSession => None,
+        SessionState::Session { identity, .. } => Some(identity.clone()),
+    }
 }
 
 #[op2]
 #[serde]
-pub fn op_get_current_accounts(#[state] state: &SessionState) -> Vec<String> {
-    state.accounts.clone().unwrap_or_default()
+pub fn op_get_current_accounts(#[state] state: &SessionState) -> Option<Vec<String>> {
+    match state {
+        SessionState::NoSession => None,
+        SessionState::Session { accounts, .. } => Some(accounts.clone()),
+    }
 }
 
 extension!(
@@ -65,13 +73,10 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("session/test_session_identity");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Http {
-            body: None,
+        let request = ExecutionRequest::Rpc {
+            args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            method: http::Method::GET,
-            path: "/test".to_string(),
-            query: None,
         };
 
         let result = worker.execute(request).await;
@@ -128,13 +133,12 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("session/test_session_accounts");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Http {
-            body: None,
+        let request = ExecutionRequest::RpcWithUserContext {
+            accounts: vec![],
+            args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            method: http::Method::GET,
-            path: "/test".to_string(),
-            query: None,
+            identity: "my_identity".to_string(),
         };
 
         let result = worker.execute(request).await;
@@ -146,5 +150,26 @@ mod tests {
         let execution_result = result.unwrap();
         assert!(execution_result.output.is_array());
         assert_eq!(execution_result.output.as_array().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_session_accounts_no_context() {
+        let runtime_options = RuntimeOptions::for_test_code("session/test_session_accounts");
+        let mut worker = Worker::new(runtime_options).await.unwrap();
+
+        let request = ExecutionRequest::Rpc {
+            args: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
+        };
+
+        let result = worker.execute(request).await;
+
+        if let Err(err) = result {
+            panic!("Error: {err:?}");
+        }
+
+        let execution_result = result.unwrap();
+        assert!(execution_result.output.is_null());
     }
 }

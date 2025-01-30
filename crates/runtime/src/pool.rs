@@ -122,7 +122,7 @@ where
 ///     let code_package =
 ///         CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
 ///
-///     let request = ExecutionRequest::Rpc {
+///     let request = ExecutionRequest::RpcWithUserContext {
 ///         accounts: vec![],
 ///         args: vec![json!(10), json!(20)],
 ///         dapp_definition_address: "dapp_definition_address".to_string(),
@@ -701,7 +701,7 @@ mod tests {
     async fn test_execute() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -733,7 +733,7 @@ mod tests {
             .await
             .insert(code_package_hash.clone(), module_loader);
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -751,7 +751,7 @@ mod tests {
     async fn test_queue_request() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -774,7 +774,7 @@ mod tests {
     async fn test_kill_idle_worker() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),

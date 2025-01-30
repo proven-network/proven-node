@@ -598,7 +598,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("file_system/test_read_write");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),

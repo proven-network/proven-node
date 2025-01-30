@@ -164,7 +164,7 @@ where
                 }
             }
             Request::Execute(module, handler_specifier_string, args) => {
-                let execution_request = ExecutionRequest::Rpc {
+                let execution_request = ExecutionRequest::RpcWithUserContext {
                     args,
                     accounts: self.account_addresses.clone(),
                     handler_specifier: HandlerSpecifier::parse(&handler_specifier_string).unwrap(),
@@ -185,7 +185,7 @@ where
                 }
             }
             Request::ExecuteHash(code_package_hash, handler_specifier_string, args) => {
-                let execution_request = ExecutionRequest::Rpc {
+                let execution_request = ExecutionRequest::RpcWithUserContext {
                     accounts: self.account_addresses.clone(),
                     args,
                     dapp_definition_address: self.dapp_definition_address.clone(),

@@ -32,15 +32,15 @@ impl<ASS: SqlStore1> ApplicationSqlConnectionManager<ASS> {
         let migrations = self
             .migrations
             .clone()
-            .entry(db_name.clone())
-            .or_default()
-            .clone();
+            .get(&db_name)
+            .cloned()
+            .unwrap_or_default();
 
         let connection = self
             .sql_store
             .lock()
             .await
-            .scope(db_name.clone())
+            .scope(&db_name)
             .connect(migrations)
             .await?;
 

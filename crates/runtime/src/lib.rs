@@ -95,8 +95,19 @@ pub enum ExecutionRequest {
         /// The handler specifier to execute.
         handler_specifier: HandlerSpecifier,
     },
-    /// A request received over a RPC session.
+    /// A request received over RPC.
     Rpc {
+        /// The arguments to the handler.
+        args: Vec<Value>,
+
+        /// The address of the dApp definition.
+        dapp_definition_address: String,
+
+        /// The handler specifier to execute.
+        handler_specifier: HandlerSpecifier,
+    },
+    /// A request received over RPC with authenticated user context.
+    RpcWithUserContext {
         /// The accounts of the executing user.
         accounts: Vec<String>,
 

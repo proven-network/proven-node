@@ -111,7 +111,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_signing");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -153,7 +153,7 @@ mod tests {
             RuntimeOptions::for_test_code("crypto/test_ed25519_signing_radix_transaction");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -194,7 +194,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_storage");
         let mut worker = Worker::new(runtime_options.clone()).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -214,7 +214,7 @@ mod tests {
             ed25519_dalek::VerifyingKey::from_bytes(bytes_vec.as_slice().try_into().unwrap())
                 .unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),

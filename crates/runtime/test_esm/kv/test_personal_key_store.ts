@@ -1,11 +1,10 @@
-import { runOnHttp } from "@proven-network/handler";
+import { run } from "@proven-network/handler";
 import { generateEd25519Key } from "@proven-network/crypto";
 import { getPersonalKeyStore } from "@proven-network/kv";
 
 const PERSONAL_KEY_STORE = getPersonalKeyStore("myKeyStore");
 
-// Use HTTP so we can test with and without a session
-export const test = runOnHttp({ path: "/test" }, async () => {
+export const test = run(async () => {
   const toSave = generateEd25519Key();
 
   await PERSONAL_KEY_STORE.set("key", toSave);

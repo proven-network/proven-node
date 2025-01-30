@@ -569,9 +569,12 @@ macro_rules! impl_scoped_stream {
 
                 type Scoped = $parent<T, D, S>;
 
-                fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> $parent<T, D, S> {
+                fn scope<K>(&self, scope: K) -> $parent<T, D, S>
+                where
+                    K: AsRef<str> + Send,
+                {
                     $parent::<T, D, S> {
-                        full_name: format!("{}_{}", self.full_name, scope.into()),
+                        full_name: format!("{}_{}", self.full_name, scope.as_ref()),
                         options: self.options.clone(),
                         _marker: PhantomData,
                     }

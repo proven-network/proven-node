@@ -53,7 +53,7 @@ use tokio::sync::oneshot;
 ///     .expect("Failed to create worker");
 ///
 ///     worker
-///         .execute(ExecutionRequest::Rpc {
+///         .execute(ExecutionRequest::RpcWithUserContext {
 ///             accounts: vec![],
 ///             args: vec![json!(10), json!(20)],
 ///             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -184,7 +184,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("test_runtime_execute");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![json!(10), json!(20)],
             dapp_definition_address: "dapp_definition_address".to_string(),

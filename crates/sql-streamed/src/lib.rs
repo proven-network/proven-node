@@ -283,12 +283,15 @@ where
 
     type Scoped = StreamedSqlStore<S::Scoped, SS::Scoped>;
 
-    fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+    fn scope<K>(&self, scope: K) -> Self::Scoped
+    where
+        K: AsRef<str> + Copy + Send,
+    {
         StreamedSqlStore {
             client_options: self.client_options.clone(),
             service_options: self.service_options.clone(),
-            snapshot_store: self.snapshot_store.scope(scope.clone().into()),
-            stream: self.stream.scope(scope.into()),
+            snapshot_store: self.snapshot_store.scope(scope),
+            stream: self.stream.scope(scope),
         }
     }
 }
@@ -401,12 +404,15 @@ where
 
     type Scoped = StreamedSqlStore1<S::Scoped, SS::Scoped>;
 
-    fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+    fn scope<K>(&self, scope: K) -> Self::Scoped
+    where
+        K: AsRef<str> + Copy + Send,
+    {
         StreamedSqlStore1 {
             client_options: self.client_options.clone(),
             service_options: self.service_options.clone(),
-            snapshot_store: self.snapshot_store.scope(scope.clone().into()),
-            stream: self.stream.scope(scope.into()),
+            snapshot_store: self.snapshot_store.scope(scope),
+            stream: self.stream.scope(scope),
         }
     }
 }
@@ -527,12 +533,15 @@ where
 
     type Scoped = StreamedSqlStore2<S::Scoped, SS::Scoped>;
 
-    fn scope<K: Clone + Into<String> + Send>(&self, scope: K) -> Self::Scoped {
+    fn scope<K>(&self, scope: K) -> Self::Scoped
+    where
+        K: AsRef<str> + Copy + Send,
+    {
         StreamedSqlStore2 {
             client_options: self.client_options.clone(),
             service_options: self.service_options.clone(),
-            snapshot_store: self.snapshot_store.scope(scope.clone().into()),
-            stream: self.stream.scope(scope.into()),
+            snapshot_store: self.snapshot_store.scope(scope),
+            stream: self.stream.scope(scope),
         }
     }
 }

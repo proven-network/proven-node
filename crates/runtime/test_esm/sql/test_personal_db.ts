@@ -1,12 +1,11 @@
-import { runOnHttp } from "@proven-network/handler";
+import { run } from "@proven-network/handler";
 import { getPersonalDb, sql } from "@proven-network/sql";
 
 const PERSONAL_DB = getPersonalDb("myAppDb").migrate(
   `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`
 );
 
-// Use HTTP so we can test with and without a session
-export const test = runOnHttp({ path: "/test" }, async () => {
+export const test = run(async () => {
   const email = "alice@example.com";
 
   const affectedRows = await PERSONAL_DB.execute(

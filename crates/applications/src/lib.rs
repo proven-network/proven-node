@@ -124,7 +124,7 @@ where
 
         let connection = self
             .sql_store
-            .scope(application_id.clone())
+            .scope(&application_id)
             .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
             .await
             .map_err(Error::SqlStore)?;
@@ -178,7 +178,7 @@ where
 
         let connection = self
             .sql_store
-            .scope(application_id.clone())
+            .scope(&application_id)
             .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
             .await
             .map_err(Error::SqlStore)?;

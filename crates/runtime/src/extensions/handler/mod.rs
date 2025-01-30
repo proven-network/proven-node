@@ -135,7 +135,7 @@ mod tests {
             RuntimeOptions::for_test_code("handler/test_fetch_with_allowed_origins");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -156,7 +156,7 @@ mod tests {
             RuntimeOptions::for_test_code("handler/test_fetch_with_disallowed_origins");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -199,7 +199,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -232,7 +232,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),

@@ -1,10 +1,9 @@
-import { runOnHttp } from "@proven-network/handler";
+import { run } from "@proven-network/handler";
 import { getPersonalBytesStore } from "@proven-network/kv";
 
 const PERSONAL_BYTES_STORE = getPersonalBytesStore("myBytesStore");
 
-// Use HTTP so we can test with and without a session
-export const test = runOnHttp({ path: "/test" }, async () => {
+export const test = run(async () => {
   const toSave = new Uint8Array([1, 2, 3]);
 
   await PERSONAL_BYTES_STORE.set("key", new Uint8Array([1, 2, 3]));

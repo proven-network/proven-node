@@ -217,7 +217,7 @@ impl
 /// })
 /// .expect("Failed to create runtime");
 ///
-/// runtime.execute(ExecutionRequest::Rpc {
+/// runtime.execute(ExecutionRequest::RpcWithUserContext {
 ///     accounts: vec![],
 ///     args: vec![json!(10), json!(20)],
 ///     dapp_definition_address: "dapp_definition_address".to_string(),
@@ -389,7 +389,7 @@ where
     pub fn execute(&mut self, execution_request: ExecutionRequest) -> Result<ExecutionResult> {
         let start = Instant::now();
 
-        let (accounts, args, dapp_definition_address, handler_specifier, identity) =
+        let (args, dapp_definition_address, handler_specifier, session_state) =
             match execution_request {
                 ExecutionRequest::Http {
                     body,
@@ -414,7 +414,12 @@ where
                         args.push(json!(body));
                     }
 
-                    (None, args, dapp_definition_address, handler_specifier, None)
+                    (
+                        args,
+                        dapp_definition_address,
+                        handler_specifier,
+                        SessionState::NoSession,
+                    )
                 }
 
                 ExecutionRequest::HttpWithUserContext {
@@ -443,11 +448,10 @@ where
                     }
 
                     (
-                        Some(accounts),
                         args,
                         dapp_definition_address,
                         handler_specifier,
-                        Some(identity),
+                        SessionState::Session { accounts, identity },
                     )
                 }
 
@@ -455,25 +459,34 @@ where
                     dapp_definition_address,
                     handler_specifier,
                 } => (
-                    None,
                     vec![], // TODO: Should use transaction data
                     dapp_definition_address,
                     handler_specifier,
-                    None,
+                    SessionState::NoSession,
                 ),
 
                 ExecutionRequest::Rpc {
+                    args,
+                    dapp_definition_address,
+                    handler_specifier,
+                } => (
+                    args,
+                    dapp_definition_address,
+                    handler_specifier,
+                    SessionState::NoSession,
+                ),
+
+                ExecutionRequest::RpcWithUserContext {
                     accounts,
                     args,
                     dapp_definition_address,
                     handler_specifier,
                     identity,
                 } => (
-                    Some(accounts),
                     args,
                     dapp_definition_address,
                     handler_specifier,
-                    Some(identity),
+                    SessionState::Session { accounts, identity },
                 ),
             };
 
@@ -531,26 +544,26 @@ where
 
         rustyscript::Runtime::put(
             &mut self.runtime,
-            match identity.as_ref() {
-                Some(current_identity) => Some(
+            match session_state {
+                SessionState::Session { ref identity, .. } => Some(
                     self.personal_store
                         .clone()
                         .scope(dapp_definition_address.clone())
-                        .scope(current_identity.clone()),
+                        .scope(identity),
                 ),
-                None => None,
+                SessionState::NoSession => None,
             },
         )?;
 
         rustyscript::Runtime::put(
             &mut self.runtime,
-            match accounts.as_ref() {
-                Some(accounts) if !accounts.is_empty() => Some(
+            match session_state {
+                SessionState::Session { ref accounts, .. } if !accounts.is_empty() => Some(
                     self.nft_store
                         .clone()
                         .scope(dapp_definition_address.clone()),
                 ),
-                Some(_) | None => None,
+                _ => None,
             },
         )?;
 
@@ -563,38 +576,42 @@ where
             ApplicationSqlConnectionManager::new(
                 self.application_sql_store
                     .clone()
-                    .scope(dapp_definition_address.clone()),
+                    .scope(&dapp_definition_address),
                 module_options.sql_migrations.application.clone(),
             ),
         )?;
 
         rustyscript::Runtime::put(
             &mut self.runtime,
-            match identity.as_ref() {
-                Some(current_identity) => Some(PersonalSqlConnectionManager::new(
-                    self.personal_sql_store
-                        .clone()
-                        .scope(dapp_definition_address.clone())
-                        .scope(current_identity.clone()),
-                    module_options.sql_migrations.personal.clone(),
-                )),
-                None => None,
+            match session_state {
+                SessionState::Session { ref identity, .. } => {
+                    Some(PersonalSqlConnectionManager::new(
+                        self.personal_sql_store
+                            .clone()
+                            .scope(&dapp_definition_address)
+                            .scope(identity),
+                        module_options.sql_migrations.personal.clone(),
+                    ))
+                }
+                SessionState::NoSession => None,
             },
         )?;
 
         rustyscript::Runtime::put(
             &mut self.runtime,
-            match accounts.as_ref() {
-                Some(_) => Some(NftSqlConnectionManager::new(
-                    self.nft_sql_store.clone().scope(dapp_definition_address),
-                    module_options.sql_migrations.nft.clone(),
-                )),
-                None => None,
+            match session_state {
+                SessionState::Session { ref accounts, .. } if !accounts.is_empty() => {
+                    Some(NftSqlConnectionManager::new(
+                        self.nft_sql_store.clone().scope(&dapp_definition_address),
+                        module_options.sql_migrations.nft.clone(),
+                    ))
+                }
+                _ => None,
             },
         )?;
 
         // Set the context for the session extension
-        rustyscript::Runtime::put(&mut self.runtime, SessionState { identity, accounts })?;
+        rustyscript::Runtime::put(&mut self.runtime, session_state)?;
 
         let module_handle = self.get_module_for_handler_specifier(&handler_specifier)?;
 
@@ -672,7 +689,7 @@ mod tests {
         let options = RuntimeOptions::for_test_code("test_runtime_execute");
 
         run_in_thread(|| {
-            let request = ExecutionRequest::Rpc {
+            let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
@@ -702,7 +719,7 @@ mod tests {
         let options = RuntimeOptions::for_test_code_map(&module_sources, module_roots);
 
         run_in_thread(|| {
-            let request = ExecutionRequest::Rpc {
+            let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
@@ -722,7 +739,7 @@ mod tests {
         let options = RuntimeOptions::for_test_code("test_runtime_execute_with_default_export");
 
         run_in_thread(|| {
-            let request = ExecutionRequest::Rpc {
+            let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
@@ -743,7 +760,7 @@ mod tests {
         let options = RuntimeOptions::for_test_code("test_runtime_execute_sets_timeout");
 
         run_in_thread(|| {
-            let request = ExecutionRequest::Rpc {
+            let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
@@ -764,7 +781,7 @@ mod tests {
         let options = RuntimeOptions::for_test_code("test_runtime_execute_exhausts_timeout");
 
         run_in_thread(|| {
-            let request = ExecutionRequest::Rpc {
+            let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
@@ -785,7 +802,7 @@ mod tests {
         let options = RuntimeOptions::for_test_code("test_runtime_execute_default_max_heap_size");
 
         run_in_thread(|| {
-            let request = ExecutionRequest::Rpc {
+            let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),

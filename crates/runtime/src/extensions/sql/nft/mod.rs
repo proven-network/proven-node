@@ -39,9 +39,9 @@ pub async fn op_execute_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     #[string] query: String,
     param_list_id_opt: Option<u32>,
 ) -> Result<NftDbResponse<u32>, Error> {
-    let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
-        Some(accounts) if !accounts.is_empty() => accounts,
-        Some(_) | None => return Ok(NftDbResponse::NoAccountsInContext),
+    let accounts = match state.borrow().borrow::<SessionState>() {
+        SessionState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
+        _ => return Ok(NftDbResponse::NoAccountsInContext),
     };
 
     let verifier = { state.borrow().borrow::<RNV>().clone() };
@@ -138,9 +138,9 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
     #[string] query: String,
     param_list_id_opt: Option<u32>,
 ) -> Result<NftDbResponse<Option<(Vec<SqlParam>, u32)>>, Error> {
-    let accounts = match state.borrow().borrow::<SessionState>().accounts.clone() {
-        Some(accounts) if !accounts.is_empty() => accounts,
-        Some(_) | None => return Ok(NftDbResponse::NoAccountsInContext),
+    let accounts = match state.borrow().borrow::<SessionState>() {
+        SessionState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
+        _ => return Ok(NftDbResponse::NoAccountsInContext),
     };
 
     let verifier = { state.borrow().borrow::<RNV>().clone() };
@@ -265,7 +265,7 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -296,7 +296,7 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -320,7 +320,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("sql/test_nft_db");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -348,7 +348,7 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec!["my_account".to_string()],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
@@ -366,7 +366,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("sql/test_nft_db");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),

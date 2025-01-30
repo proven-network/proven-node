@@ -89,7 +89,9 @@ macro_rules! define_scoped_sql_store {
                 type Scoped: $parent<Error = Self::Error> + Clone + Send + Sync + 'static;
 
                 /// Create a scoped version of the store.
-                fn scope<S: Clone + Into<String> + Send + 'static>(&self, scope: S) -> Self::Scoped;
+                fn scope<S>(&self, scope: S) -> Self::Scoped
+                where
+                    S: AsRef<str> + Copy + Send;
             }
         }
     };

@@ -44,7 +44,7 @@ fn main() -> Result<(), Error> {
         radix_nft_verifier: MockRadixNftVerifier::new(),
     })?;
 
-    let request = ExecutionRequest::Rpc {
+    let request = ExecutionRequest::RpcWithUserContext {
         accounts: vec!["my_account_1".to_string(), "my_account_2".to_string()],
         args: vec![json!(10), json!(20)],
         dapp_definition_address: "dapp_definition_address".to_string(),

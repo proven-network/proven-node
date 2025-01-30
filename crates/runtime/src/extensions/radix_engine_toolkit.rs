@@ -18,7 +18,7 @@ mod tests {
             RuntimeOptions::for_test_code("radix_engine_toolkit/test_radix_engine_toolkit");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::Rpc {
+        let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
             args: vec![],
             dapp_definition_address: "dapp_definition_address".to_string(),
