@@ -9,18 +9,19 @@ mod error;
 mod rpc;
 mod sessions;
 
-use application_http::create_application_http_router;
 pub use error::{Error, Result};
+use proven_code_package::{CodePackage, ModuleSpecifier};
 use sessions::create_session_router;
 
 use std::collections::HashSet;
 
+use crate::application_http::{execute_handler, ApplicationHttpContext};
 use axum::response::Response;
-use axum::routing::get;
+use axum::routing::{any, delete, get, patch, post, put};
 use axum::Router;
 use proven_applications::ApplicationManagement;
 use proven_http::HttpServer;
-use proven_runtime::RuntimePoolManagement;
+use proven_runtime::{ModuleLoader, ModuleOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -92,7 +93,8 @@ where
     /// # Errors
     ///
     /// This function will return an error if the core has already been started or if the HTTP server fails to start.
-    pub fn start<HS>(&self, http_server: HS) -> Result<JoinHandle<Result<(), HS::Error>>, HS::Error>
+    #[allow(clippy::missing_panics_doc)] // TODO: Remove with test code
+    pub async fn start<HS>(&self, http_server: HS) -> Result<JoinHandle<Result<()>>>
     where
         HS: HttpServer,
     {
@@ -122,20 +124,46 @@ where
             .route("/", get(|| async { redirect_response }))
             .merge(session_router)
             .merge(http_rpc_router)
-            .merge(websocket_router);
+            .merge(websocket_router)
+            .fallback(any(|| async { "404" }));
 
-        let application_http_router = create_application_http_router(
-            self.application_manager.clone(),
-            self.runtime_pool_manager.clone(),
-            self.session_manager.clone(),
-        );
+        let error_404_router = Router::new().fallback(any(|| async { "404" }));
+
+        // Add a test http endpoint
+        let code_package = CodePackage::from_str(
+            r#"
+            import { runOnHttp } from "@proven-network/handler";
+
+            export const root = runOnHttp({ path: "/" }, (request) => {
+                    return `Hello ${request.queryVariables.name || 'World'} from runtime!`;
+                }
+            );
+
+            export const another = runOnHttp({ path: "/another" }, (request) => {
+                    return `Hello from another endpoint!`;
+                }
+            );
+        "#,
+        )?;
+
+        let module_specifier = ModuleSpecifier::parse("file:///main.ts").unwrap();
+
+        let test_router = self
+            .create_application_http_router(code_package, module_specifier)
+            .await?;
+
+        http_server
+            .set_router_for_hostname("applications.proven.local".to_string(), test_router)
+            .await
+            .map_err(|e| Error::HttpServer(e.to_string()))?;
 
         let primary_hostnames = self.primary_hostnames.clone();
         let shutdown_token = self.shutdown_token.clone();
         let handle = self.task_tracker.spawn(async move {
             let https_handle = http_server
-                .start(primary_hostnames, primary_router, application_http_router)
-                .await?;
+                .start(primary_hostnames, primary_router, error_404_router)
+                .await
+                .map_err(|e| Error::HttpServer(e.to_string()))?;
 
             tokio::select! {
                 () = shutdown_token.cancelled() => {
@@ -147,7 +175,7 @@ where
                 _ = https_handle => {
                     error!("https server stopped unexpectedly");
 
-                    Err(Error::HttpServerStopped)
+                    Err(Error::HttpServer("https server stopped unexpectedly".to_string()))
                 }
             }
         });
@@ -165,5 +193,44 @@ where
         self.task_tracker.wait().await;
 
         info!("core shutdown");
+    }
+
+    /// Creates a router for handling HTTP requests to application endpoints.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the module options cannot be created from the code package,
+    /// or if there are issues setting up the router with the provided endpoints.
+    pub async fn create_application_http_router(
+        &self,
+        code_package: CodePackage,
+        module_specifier: ModuleSpecifier,
+    ) -> Result<Router> {
+        let module_options =
+            ModuleOptions::from_code_package(&code_package, &module_specifier).await?;
+
+        let mut router = Router::new();
+
+        for endpoint in module_options.http_endpoints {
+            let ctx = ApplicationHttpContext {
+                application_id: "TODO".to_string(),
+                module_loader: ModuleLoader::new(code_package.clone()),
+                runtime_pool_manager: self.runtime_pool_manager.clone(),
+                handler_specifier: endpoint.handler_specifier.clone(),
+            };
+
+            let method_router = match endpoint.method.as_deref() {
+                Some("GET") => get(execute_handler),
+                Some("POST") => post(execute_handler),
+                Some("PUT") => put(execute_handler),
+                Some("DELETE") => delete(execute_handler),
+                Some("PATCH") => patch(execute_handler),
+                _ => any(execute_handler),
+            };
+
+            router = router.route(&endpoint.path, method_router.with_state(ctx));
+        }
+
+        Ok(router)
     }
 }

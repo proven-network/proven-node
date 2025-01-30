@@ -1,80 +1,67 @@
 use axum::body::Body;
+use axum::extract::State;
 use axum::http::{Method, Uri};
+use axum::response::IntoResponse;
 use axum::response::Response;
-use axum::routing::any;
-use axum::Router;
 use bytes::Bytes;
-use proven_applications::ApplicationManagement;
-use proven_code_package::CodePackage;
-use proven_runtime::{
-    ExecutionRequest, HandlerSpecifier, ModuleLoader, ModuleOptions, RuntimePoolManagement,
-};
-use proven_sessions::SessionManagement;
+use proven_runtime::{ExecutionRequest, HandlerSpecifier, ModuleLoader, RuntimePoolManagement};
 
-pub fn create_application_http_router<AM, RM, SM>(
-    _application_manager: AM,
-    runtime_pool_manager: RM,
-    _session_manager: SM,
-) -> Router
+#[derive(Clone)]
+pub(crate) struct ApplicationHttpContext<RM>
 where
-    AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
 {
-    Router::new().fallback(any(|method: Method, uri: Uri, body: Bytes| async move {
-        let path = uri.path();
-        let query = uri.query();
+    pub application_id: String,
+    pub module_loader: ModuleLoader,
+    pub runtime_pool_manager: RM,
+    pub handler_specifier: HandlerSpecifier,
+}
 
-        let body = if body.is_empty() { None } else { Some(body) };
+pub(crate) async fn execute_handler<RM>(
+    State(ApplicationHttpContext {
+        application_id,
+        handler_specifier,
+        module_loader,
+        runtime_pool_manager,
+    }): State<ApplicationHttpContext<RM>>,
+    method: Method,
+    uri: Uri,
+    body: Bytes,
+) -> impl IntoResponse
+where
+    RM: RuntimePoolManagement,
+{
+    let path = uri.path();
+    let query = uri.query();
 
-        let code_package = CodePackage::from_str(
-            r#"
-            import { runOnHttp } from "@proven-network/handler";
+    let body = if body.is_empty() { None } else { Some(body) };
 
-            export const test = runOnHttp({ path: "/" }, (request) => {
-                    return `Hello ${request.queryVariables.name || 'World'} from runtime!`;
-                }
-            );
-        "#,
-        )
-        .unwrap();
+    let execution_request = ExecutionRequest::Http {
+        body,
+        dapp_definition_address: application_id,
+        handler_specifier,
+        method,
+        path: path.to_string(),
+        query: query.map(String::from),
+    };
 
-        let handler_specifier = HandlerSpecifier::parse("file:///main.ts#test").unwrap();
+    let result = runtime_pool_manager
+        .execute(module_loader, execution_request)
+        .await;
 
-        let module_options =
-            ModuleOptions::from_code_package(&code_package, &handler_specifier.module_specifier())
-                .await
-                .unwrap();
+    if let Err(err) = result {
+        return Response::builder()
+            .status(500)
+            .body(Body::from(format!("Error: {err:?}")))
+            .unwrap();
+    }
 
-        println!("{module_options:?}");
+    let execution_result = result.unwrap();
 
-        let execution_request = ExecutionRequest::Http {
-            body,
-            dapp_definition_address: "dapp_definition_address".to_string(),
-            handler_specifier,
-            method,
-            path: path.to_string(),
-            query: query.map(String::from),
-        };
+    let json_output = serde_json::to_string(&execution_result.output).unwrap();
 
-        let result = runtime_pool_manager
-            .execute(ModuleLoader::new(code_package), execution_request)
-            .await;
-
-        if let Err(err) = result {
-            return Response::builder()
-                .status(500)
-                .body(Body::from(format!("Error: {err:?}")))
-                .unwrap();
-        }
-
-        let execution_result = result.unwrap();
-
-        let json_output = serde_json::to_string(&execution_result.output).unwrap();
-
-        Response::builder()
-            .status(200)
-            .body(Body::from(json_output))
-            .unwrap()
-    }))
+    Response::builder()
+        .status(200)
+        .body(Body::from(json_output))
+        .unwrap()
 }

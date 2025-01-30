@@ -106,9 +106,7 @@ pub struct Bootstrap {
     nats_server_handle: Option<JoinHandle<proven_nats_server::Result<()>>>,
 
     core: Option<EnclaveCore>,
-    core_handle: Option<
-        JoinHandle<proven_core::Result<(), proven_http_letsencrypt::Error<proven_store_s3::Error>>>,
-    >,
+    core_handle: Option<JoinHandle<proven_core::Result<()>>>,
 
     // state
     started: bool,
@@ -988,7 +986,7 @@ impl Bootstrap {
             runtime_pool_manager,
             session_manager,
         });
-        let core_handle = core.start(http_server)?;
+        let core_handle = core.start(http_server).await?;
 
         self.core = Some(core);
         self.core_handle = Some(core_handle);

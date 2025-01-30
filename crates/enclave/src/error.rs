@@ -50,7 +50,7 @@ pub enum Error {
 
     /// `Core` error.
     #[error(transparent)]
-    Core(#[from] proven_core::Error<proven_http_letsencrypt::Error<proven_store_s3::Error>>),
+    Core(#[from] proven_core::Error),
 
     /// DNS proxy error.
     #[error(transparent)]

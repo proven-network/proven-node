@@ -1,15 +1,11 @@
-use proven_http::HttpServerError;
 use thiserror::Error;
 
 /// The result type for this crate.
-pub type Result<T, HE> = std::result::Result<T, Error<HE>>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
-pub enum Error<HE>
-where
-    HE: HttpServerError,
-{
+pub enum Error {
     /// Can't parse address.
     #[error(transparent)]
     AddrParse(std::net::AddrParseError),
@@ -26,17 +22,17 @@ where
     #[error(transparent)]
     Axum(axum::Error),
 
+    /// Code package error.
+    #[error(transparent)]
+    CodePackage(#[from] proven_code_package::Error),
+
     /// HTTP error.
     #[error(transparent)]
     Http(axum::http::Error),
 
     /// HTTP server error.
-    #[error(transparent)]
-    HttpServer(HE),
-
-    /// Http server not running.
-    #[error("HTTP server stopped")]
-    HttpServerStopped,
+    #[error("http server error: {0}")]
+    HttpServer(String),
 
     /// IO error.
     #[error(transparent)]
@@ -45,13 +41,8 @@ where
     /// RPC error.
     #[error(transparent)]
     Rpc(#[from] crate::rpc::RpcHandlerError),
-}
 
-impl<HE> From<HE> for Error<HE>
-where
-    HE: HttpServerError,
-{
-    fn from(err: HE) -> Self {
-        Self::HttpServer(err)
-    }
+    /// Runtime error.
+    #[error(transparent)]
+    Runtime(#[from] proven_runtime::Error),
 }

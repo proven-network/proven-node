@@ -80,7 +80,12 @@ impl HttpServer for InsecureHttpServer {
                     let host = req
                         .headers()
                         .get(axum::http::header::HOST)
-                        .and_then(|h| h.to_str().ok())
+                        .and_then(|hv| {
+                            hv.to_str()
+                                // Ignore port component of host header
+                                .map(|h| h.split(':').next().unwrap_or_default())
+                                .ok()
+                        })
                         .unwrap_or_default();
 
                     let router = if host.is_empty() {
