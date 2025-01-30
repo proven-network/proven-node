@@ -24,5 +24,4 @@ tokio-rustls-acme = { workspace = true }
 tokio-stream = { workspace = true }
 tokio-util = { workspace = true }
 tower = { workspace = true }
-tower-http = { workspace = true }
 tracing = { workspace = true }

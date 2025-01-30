@@ -38,7 +38,6 @@ use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower::Service;
-use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info};
 
 /// Secure HTTPS server using Let's Encrypt certificates.
@@ -248,13 +247,6 @@ where
                 }
             },
         ));
-
-        let router = router.layer(
-            CorsLayer::new()
-                .allow_methods(Any)
-                .allow_origin(Any)
-                .allow_credentials(true),
-        );
 
         let handle = self.task_tracker.spawn(async move {
             tokio::select! {

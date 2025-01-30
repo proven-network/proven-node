@@ -22,7 +22,6 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower::Service;
-use tower_http::cors::{Any, CorsLayer};
 use tracing::info;
 
 /// Simple non-secure HTTP server.
@@ -101,13 +100,6 @@ impl HttpServer for InsecureHttpServer {
                 }
             },
         ));
-
-        let router = router.layer(
-            CorsLayer::new()
-                .allow_methods(Any)
-                .allow_origin(Any)
-                .allow_credentials(true),
-        );
 
         let listener = tokio::net::TcpListener::bind(listen_addr)
             .await

@@ -26,6 +26,7 @@ use proven_sessions::SessionManagement;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 /// Options for creating a new core.
@@ -125,9 +126,12 @@ where
             .merge(session_router)
             .merge(http_rpc_router)
             .merge(websocket_router)
-            .fallback(any(|| async { "404" }));
+            .fallback(any(|| async { "404" }))
+            .layer(CorsLayer::very_permissive());
 
-        let error_404_router = Router::new().fallback(any(|| async { "404" }));
+        let error_404_router = Router::new()
+            .fallback(any(|| async { "404" }))
+            .layer(CorsLayer::very_permissive());
 
         // Add a test http endpoint
         let code_package = CodePackage::from_str(
@@ -209,7 +213,8 @@ where
         let module_options =
             ModuleOptions::from_code_package(&code_package, &module_specifier).await?;
 
-        let mut router = Router::new();
+        // TODO: Use application-defined CORS settings rather than very_permissive
+        let mut router = Router::new().layer(CorsLayer::very_permissive());
 
         for endpoint in module_options.http_endpoints {
             let ctx = ApplicationHttpContext {
