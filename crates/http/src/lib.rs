@@ -37,4 +37,14 @@ where
 
     /// Shutdown the server.
     async fn shutdown(&self);
+
+    /// Set the router for a hostname, creating or updating the mapping as needed.
+    async fn set_router_for_hostname(
+        &self,
+        hostname: String,
+        router: Router,
+    ) -> Result<(), Self::Error>;
+
+    /// Remove the router for the given hostname.
+    async fn remove_hostname(&self, hostname: String) -> Result<(), Self::Error>;
 }

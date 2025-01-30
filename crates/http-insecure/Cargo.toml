@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 async-trait = { workspace = true }
 axum = { workspace = true }
+parking_lot = { workspace = true }
 proven-http = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

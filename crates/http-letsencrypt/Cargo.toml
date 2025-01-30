@@ -12,6 +12,7 @@ bytes = { workspace = true }
 hickory-proto = { workspace = true }
 hickory-resolver = { workspace = true }
 multi_key_map = { workspace = true }
+parking_lot = { workspace = true }
 proven-http = { workspace = true }
 proven-store = { workspace = true }
 ring = { workspace = true }

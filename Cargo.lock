@@ -7306,6 +7306,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum 0.8.1",
+ "parking_lot",
  "proven-http",
  "thiserror 2.0.11",
  "tokio",
@@ -7327,6 +7328,7 @@ dependencies = [
  "hickory-proto",
  "hickory-resolver",
  "multi_key_map",
+ "parking_lot",
  "proven-http",
  "proven-store",
  "ring",

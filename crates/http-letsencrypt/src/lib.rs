@@ -16,19 +16,19 @@ use cert_cache::CertCache;
 pub use error::Error;
 use multi_resolver::MultiResolver;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::future::IntoFuture;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::http::Method;
 use axum::Router;
 use bytes::Bytes;
 use hickory_proto::rr::{RData, RecordType};
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use hickory_resolver::Resolver;
+use parking_lot::RwLock;
 use proven_http::HttpServer;
 use proven_store::Store;
 use tokio::task::JoinHandle;
@@ -50,7 +50,9 @@ where
     cert_store: S,
     cname_domain: String,
     emails: Vec<String>,
+    hostname_routers: Arc<RwLock<HashMap<String, Router>>>,
     listen_addr: SocketAddr,
+    registered_domains: Arc<RwLock<HashSet<String>>>,
     resolver: Arc<MultiResolver>,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
@@ -95,7 +97,7 @@ where
             listen_addr,
         }: LetsEncryptHttpServerOptions<S>,
     ) -> Self {
-        let mut node_endpoints_state = AcmeConfig::new(domains)
+        let mut node_endpoints_state = AcmeConfig::new(domains.clone())
             .contact(emails.iter().map(|e| format!("mailto:{e}")))
             .cache(CertCache::new(cert_store.clone()))
             .directory_lets_encrypt(true)
@@ -113,12 +115,16 @@ where
             }
         });
 
+        let registered_domains = Arc::new(RwLock::new(HashSet::from_iter(domains)));
+
         Self {
             acceptor,
             cert_store,
             cname_domain,
             emails,
+            hostname_routers: Arc::new(RwLock::new(HashMap::new())),
             listen_addr,
+            registered_domains,
             resolver,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
@@ -204,34 +210,41 @@ where
             return Err(Error::AlreadyStarted);
         }
 
-        let cors = CorsLayer::new()
-            .allow_methods([Method::GET, Method::POST])
-            .allow_origin(Any);
+        {
+            let mut routers = self.hostname_routers.write();
+            for primary_hostname in primary_hostnames {
+                routers.insert(primary_hostname, primary_router.clone());
+            }
+        }
 
-        // Create a router that switches based on hostname
+        let routers = self.hostname_routers.clone();
         let router = Router::new().fallback_service(tower::service_fn(
             move |req: axum::http::Request<_>| {
-                let mut primary = primary_router.clone();
                 let mut fallback = fallback_router.clone();
-                let primary_hostnames = primary_hostnames.clone();
+                let routers = routers.clone();
 
                 async move {
                     let host = req
                         .headers()
                         .get(axum::http::header::HOST)
                         .and_then(|h| h.to_str().ok())
-                        .unwrap_or("");
+                        .unwrap_or_default();
 
-                    if primary_hostnames.contains(host) {
-                        primary.call(req).await
+                    let router = if host.is_empty() {
+                        None
                     } else {
-                        fallback.call(req).await
+                        routers.read().get(host).cloned()
+                    };
+
+                    match router {
+                        Some(mut r) => r.call(req).await,
+                        None => fallback.call(req).await,
                     }
                 }
             },
         ));
 
-        let router = router.layer(cors);
+        let router = router.layer(CorsLayer::new().allow_methods(Any).allow_origin(Any));
 
         let handle = self.task_tracker.spawn(async move {
             tokio::select! {
@@ -245,6 +258,25 @@ where
         self.task_tracker.close();
 
         Ok(handle)
+    }
+
+    async fn set_router_for_hostname(
+        &self,
+        hostname: String,
+        router: Router,
+    ) -> Result<(), Self::Error> {
+        if self.registered_domains.write().insert(hostname.clone()) {
+            self.add_domain(hostname.clone());
+        }
+
+        self.hostname_routers.write().insert(hostname, router);
+
+        Ok(())
+    }
+
+    async fn remove_hostname(&self, hostname: String) -> Result<(), Self::Error> {
+        self.hostname_routers.write().remove(&hostname);
+        Ok(())
     }
 
     async fn shutdown(&self) {
