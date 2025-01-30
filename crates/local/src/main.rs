@@ -74,8 +74,8 @@ async fn main() -> Result<()> {
         attestor,
         challenge_store,
         sessions_store,
-        radix_gateway_origin: radix_gateway_origin.clone(),
-        radix_network_definition: radix_network_definition.clone(),
+        radix_gateway_origin: &radix_gateway_origin,
+        radix_network_definition: &radix_network_definition,
     });
 
     let application_manager = ApplicationManager::new(

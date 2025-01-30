@@ -15,13 +15,15 @@ async fn main() -> Result<()> {
 }
 
 async fn verify_ed25519_identity() -> Result<()> {
+    let stokenet = NetworkDefinition::stokenet();
+
     let rola = Rola::new(RolaOptions {
-        application_name: "test".to_string(),
+        application_name: "test",
         dapp_definition_address:
-            "account_tdx_2_12xdm5g7xdhh73zkh7xkty0dsxw4rw0jl0sq4lr3erpc3xdn54zx0le".to_string(),
-        expected_origin: "https://stokenet-dashboard.radixdlt.com".to_string(),
-        gateway_url: "https://stokenet.radixdlt.com".to_string(),
-        network_definition: NetworkDefinition::stokenet(),
+            "account_tdx_2_12xdm5g7xdhh73zkh7xkty0dsxw4rw0jl0sq4lr3erpc3xdn54zx0le",
+        expected_origin: "https://stokenet-dashboard.radixdlt.com",
+        gateway_url: "https://stokenet.radixdlt.com",
+        network_definition: &stokenet,
     });
 
     let public_key_bytes =
@@ -43,13 +45,15 @@ async fn verify_ed25519_identity() -> Result<()> {
 }
 
 async fn verify_ed25519_account() -> Result<()> {
+    let mainnet = NetworkDefinition::mainnet();
+
     let rola = Rola::new(RolaOptions {
-        application_name: "test".to_string(),
+        application_name: "test",
         dapp_definition_address:
-            "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn".to_string(),
-        expected_origin: "https://dev-sandbox.rdx-works-main.extratools.works".to_string(),
-        gateway_url: "https://mainnet.radixdlt.com".to_string(),
-        network_definition: NetworkDefinition::mainnet(),
+            "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn",
+        expected_origin: "https://dev-sandbox.rdx-works-main.extratools.works",
+        gateway_url: "https://mainnet.radixdlt.com",
+        network_definition: &mainnet,
     });
 
     let public_key_bytes =
@@ -71,13 +75,15 @@ async fn verify_ed25519_account() -> Result<()> {
 }
 
 async fn verify_secp256k1_account() -> Result<()> {
+    let mainnet = NetworkDefinition::mainnet();
+
     let rola = Rola::new(RolaOptions {
-        application_name: "test".to_string(),
+        application_name: "test",
         dapp_definition_address:
-            "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn".to_string(),
-        expected_origin: "https://dev-sandbox.rdx-works-main.extratools.works".to_string(),
-        gateway_url: "https://mainnet.radixdlt.com".to_string(),
-        network_definition: NetworkDefinition::mainnet(),
+            "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn",
+        expected_origin: "https://dev-sandbox.rdx-works-main.extratools.works",
+        gateway_url: "https://mainnet.radixdlt.com",
+        network_definition: &mainnet,
     });
 
     let public_key_bytes =

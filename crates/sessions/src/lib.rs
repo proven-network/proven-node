@@ -23,7 +23,7 @@ use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
 
 /// Options for creating a new `SessionManager`
-pub struct SessionManagerOptions<A, CS, SS>
+pub struct SessionManagerOptions<'a, A, CS, SS>
 where
     A: Attestor,
     CS: Store1,
@@ -39,34 +39,34 @@ where
     pub sessions_store: SS,
 
     /// The origin of the Radix gateway.
-    pub radix_gateway_origin: String,
+    pub radix_gateway_origin: &'a str,
 
     /// Radix network definition.
-    pub radix_network_definition: NetworkDefinition,
+    pub radix_network_definition: &'a NetworkDefinition,
 }
 
 /// Options for creating a new session.
-pub struct CreateSessionOptions {
+pub struct CreateSessionOptions<'a> {
     /// The application ID.
-    pub application_id: String,
+    pub application_id: &'a str,
 
     /// The application name.
-    pub application_name: Option<String>,
+    pub application_name: Option<&'a str>,
 
     /// The dApp definition address.
-    pub dapp_definition_address: String,
+    pub dapp_definition_address: &'a str,
 
     /// Challenge used in remote attestation.
-    pub nonce: Bytes,
+    pub nonce: &'a Bytes,
 
     /// The origin of the request.
-    pub origin: String,
+    pub origin: &'a str,
 
     /// Signed ROLA challenges.
-    pub signed_challenges: Vec<SignedChallenge>,
+    pub signed_challenges: &'a [SignedChallenge],
 
     /// The verifying key of the client.
-    pub verifying_key: VerifyingKey,
+    pub verifying_key: &'a VerifyingKey,
 }
 
 /// Trait for managing user sessions.
@@ -105,7 +105,7 @@ where
     /// Creates a new challenge to use for session creation.
     async fn create_challenge(
         &self,
-        origin: String,
+        origin: &str,
     ) -> Result<
         String,
         Error<Self::AttestorError, Self::ChallengeStoreError, Self::SessionStoreError>,
@@ -114,14 +114,14 @@ where
     /// Creates a new session.
     async fn create_session(
         &self,
-        params: CreateSessionOptions,
+        params: CreateSessionOptions<'_>,
     ) -> Result<Bytes, Error<Self::AttestorError, Self::ChallengeStoreError, Self::SessionStoreError>>;
 
     /// Gets a session by its ID.
     async fn get_session(
         &self,
-        application_id: String,
-        session_id: String,
+        application_id: &str,
+        session_id: &str,
     ) -> Result<
         Option<Session>,
         Error<Self::AttestorError, Self::ChallengeStoreError, Self::SessionStoreError>,
@@ -170,14 +170,14 @@ where
             attestor,
             challenge_store,
             sessions_store,
-            radix_gateway_origin,
-            radix_network_definition,
+            radix_gateway_origin: radix_gateway_origin.to_string(),
+            radix_network_definition: radix_network_definition.clone(),
         }
     }
 
     async fn create_challenge(
         &self,
-        origin: String,
+        origin: &str,
     ) -> Result<String, Error<A::Error, CS::Error, SS::Error>> {
         let mut challenge = String::new();
 
@@ -186,7 +186,7 @@ where
         }
 
         self.challenge_store
-            .scope(origin)
+            .scope(origin.to_string())
             .put(challenge.clone(), Bytes::from_static(&[1u8]))
             .await
             .map_err(Error::ChallengeStore)?;
@@ -204,23 +204,23 @@ where
             origin,
             signed_challenges,
             verifying_key,
-        }: CreateSessionOptions,
+        }: CreateSessionOptions<'_>,
     ) -> Result<Bytes, Error<A::Error, CS::Error, SS::Error>> {
         let rola = Rola::new(RolaOptions {
-            application_name: application_name.clone().unwrap_or_default(),
-            dapp_definition_address: dapp_definition_address.clone(),
-            expected_origin: origin.clone(),
-            gateway_url: self.radix_gateway_origin.clone(),
-            network_definition: self.radix_network_definition.clone(),
+            application_name: application_name.unwrap_or_default(),
+            dapp_definition_address,
+            expected_origin: origin,
+            gateway_url: &self.radix_gateway_origin,
+            network_definition: &self.radix_network_definition,
         });
 
         let mut challenges = HashSet::new();
-        for signed_challenge in signed_challenges.clone() {
-            challenges.insert(signed_challenge.challenge.clone());
+        for signed_challenge in signed_challenges {
+            challenges.insert(&signed_challenge.challenge);
         }
 
         for challenge in challenges {
-            let scoped_challenge_store = self.challenge_store.scope(origin.clone());
+            let scoped_challenge_store = self.challenge_store.scope(origin.to_string());
 
             match scoped_challenge_store.get(challenge.clone()).await {
                 Ok(_) => {
@@ -245,8 +245,8 @@ where
             return Err(Error::SignedChallengeInvalid);
         }
 
-        for signed_challenge in signed_challenges.clone() {
-            if (rola.verify_signed_challenge(signed_challenge).await).is_err() {
+        for signed_challenge in signed_challenges {
+            if (rola.verify_signed_challenge(signed_challenge.clone()).await).is_err() {
                 return Err(Error::SignedChallengeInvalid);
             }
         }
@@ -265,8 +265,8 @@ where
 
         let session = Session {
             account_addresses,
-            dapp_definition_address: dapp_definition_address.clone(),
-            expected_origin: origin.clone(),
+            dapp_definition_address: dapp_definition_address.to_string(),
+            expected_origin: origin.to_string(),
             identity_address: identity_addresses[0].clone(),
             session_id: hex::encode(session_id_bytes),
             signing_key: server_signing_key.as_bytes().to_vec(),
@@ -283,8 +283,8 @@ where
             .attestor
             .attest(AttestationParams {
                 nonce: Some(nonce),
-                user_data: Some(Bytes::from(session_id_bytes.to_vec())),
-                public_key: Some(Bytes::from(server_public_key.to_bytes().to_vec())),
+                user_data: Some(&Bytes::from(session_id_bytes.to_vec())),
+                public_key: Some(&Bytes::from(server_public_key.to_bytes().to_vec())),
             })
             .await
         {
@@ -295,13 +295,13 @@ where
 
     async fn get_session(
         &self,
-        application_id: String,
-        session_id: String,
+        application_id: &str,
+        session_id: &str,
     ) -> Result<Option<Session>, Error<A::Error, CS::Error, SS::Error>> {
         match self
             .sessions_store
-            .scope(application_id)
-            .get(session_id.clone())
+            .scope(application_id.to_string())
+            .get(session_id.to_string())
             .await
         {
             Ok(Some(session)) => Ok(Some(session)),

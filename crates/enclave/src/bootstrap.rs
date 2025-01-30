@@ -772,8 +772,8 @@ impl Bootstrap {
             attestor: self.nsm.clone(),
             challenge_store,
             sessions_store,
-            radix_gateway_origin: GATEWAY_URL.to_string(),
-            radix_network_definition: self.network_definition.clone(),
+            radix_gateway_origin: GATEWAY_URL,
+            radix_network_definition: &self.network_definition,
         });
 
         let cert_store = S3Store::new(S3StoreOptions {

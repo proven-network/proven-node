@@ -9,13 +9,13 @@ mod error;
 mod rpc;
 mod sessions;
 
+use application_http::{execute_handler, ApplicationHttpContext};
 pub use error::{Error, Result};
 use proven_code_package::{CodePackage, ModuleSpecifier};
 use sessions::create_session_router;
 
 use std::collections::HashSet;
 
-use crate::application_http::{execute_handler, ApplicationHttpContext};
 use axum::response::Response;
 use axum::routing::{any, delete, get, patch, post, put};
 use axum::Router;
@@ -214,9 +214,11 @@ where
         for endpoint in module_options.http_endpoints {
             let ctx = ApplicationHttpContext {
                 application_id: "TODO".to_string(),
-                module_loader: ModuleLoader::new(code_package.clone()),
-                runtime_pool_manager: self.runtime_pool_manager.clone(),
                 handler_specifier: endpoint.handler_specifier.clone(),
+                module_loader: ModuleLoader::new(code_package.clone()),
+                requires_session: false, // TODO: Make this configurable
+                runtime_pool_manager: self.runtime_pool_manager.clone(),
+                session_manager: self.session_manager.clone(),
             };
 
             let method_router = match endpoint.method.as_deref() {

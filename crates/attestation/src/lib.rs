@@ -11,15 +11,15 @@ use async_trait::async_trait;
 use bytes::Bytes;
 
 /// Parameters for attestation.
-pub struct AttestationParams {
+pub struct AttestationParams<'a> {
     /// Optional challenge to include in the attestation.
-    pub nonce: Option<Bytes>,
+    pub nonce: Option<&'a Bytes>,
 
     /// Optional user data to include in the attestation.
-    pub user_data: Option<Bytes>,
+    pub user_data: Option<&'a Bytes>,
 
     /// Optional public key to include in the attestation.
-    pub public_key: Option<Bytes>,
+    pub public_key: Option<&'a Bytes>,
 }
 
 /// Marker trait for `Attestor` errors.
@@ -35,7 +35,7 @@ where
     type Error: AttestorError;
 
     /// Attest to the authenticity of the device.
-    async fn attest(&self, params: AttestationParams) -> Result<Bytes, Self::Error>;
+    async fn attest(&self, params: AttestationParams<'_>) -> Result<Bytes, Self::Error>;
 
     /// Generate secure random bytes.
     async fn secure_random(&self) -> Result<Bytes, Self::Error>;

@@ -41,7 +41,7 @@ where
                     }
                 };
 
-                match session_manager_clone.create_challenge(origin).await {
+                match session_manager_clone.create_challenge(&origin).await {
                     Ok(challenge) => Response::builder()
                         .status(StatusCode::OK)
                         .body(Body::from(challenge))
@@ -97,13 +97,13 @@ where
 
                     match session_manager
                         .create_session(CreateSessionOptions {
-                            application_id: "TODO_APPLICATION_ID".to_string(),
-                            application_name: data.application_name.clone(),
-                            dapp_definition_address: data.dapp_definition_address.clone(),
-                            nonce: data.nonce.clone(),
-                            origin,
-                            signed_challenges,
-                            verifying_key,
+                            application_id: "TODO_APPLICATION_ID",
+                            application_name: data.application_name.as_deref(),
+                            dapp_definition_address: &data.dapp_definition_address,
+                            nonce: &data.nonce,
+                            origin: &origin,
+                            signed_challenges: &signed_challenges,
+                            verifying_key: &verifying_key,
                         })
                         .await
                     {

@@ -23,33 +23,33 @@ use tracing::error;
 
 /// Client for the Radix On Ledger Authenticator.
 #[derive(Debug)]
-pub struct Rola {
+pub struct Rola<'a> {
     application_name: String,
     dapp_definition_address: String,
     expected_origin: String,
-    gateway_url: String,
-    network_definition: NetworkDefinition,
+    gateway_url: &'a str,
+    network_definition: &'a NetworkDefinition,
 }
 
 /// Options for configuring `Rola`.
-pub struct RolaOptions {
+pub struct RolaOptions<'a> {
     /// The name of the application.
-    pub application_name: String,
+    pub application_name: &'a str,
 
     /// The address of the dApp definition.
-    pub dapp_definition_address: String,
+    pub dapp_definition_address: &'a str,
 
     /// The expected origin of the request.
-    pub expected_origin: String,
+    pub expected_origin: &'a str,
 
     /// The URL of the Radix Gateway.
-    pub gateway_url: String,
+    pub gateway_url: &'a str,
 
     /// The network definition.
-    pub network_definition: NetworkDefinition,
+    pub network_definition: &'a NetworkDefinition,
 }
 
-impl Rola {
+impl<'a> Rola<'a> {
     /// Creates a new `Rola` instance with the given options.
     #[must_use]
     pub fn new(
@@ -59,12 +59,12 @@ impl Rola {
             expected_origin,
             gateway_url,
             network_definition,
-        }: RolaOptions,
+        }: RolaOptions<'a>,
     ) -> Self {
         Self {
-            application_name,
-            dapp_definition_address,
-            expected_origin,
+            application_name: application_name.to_string(),
+            dapp_definition_address: dapp_definition_address.to_string(),
+            expected_origin: expected_origin.to_string(),
             gateway_url,
             network_definition,
         }
@@ -81,7 +81,7 @@ impl Rola {
 
         let check_ledger_for_key_address_match = || async {
             gateway::GatewayService::new(
-                &self.gateway_url,
+                self.gateway_url,
                 &self.dapp_definition_address,
                 &self.application_name,
             )
@@ -116,10 +116,8 @@ impl Rola {
         match check_ledger_for_key_address_match().await {
             Some(()) => Ok(()),
             None => {
-                match get_virtual_address_for_public_key(
-                    &signed_challenge,
-                    &self.network_definition,
-                ) {
+                match get_virtual_address_for_public_key(&signed_challenge, self.network_definition)
+                {
                     Ok(virtual_address) => {
                         if virtual_address == signed_challenge.address {
                             Ok(())

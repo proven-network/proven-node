@@ -33,7 +33,7 @@ struct Attestation {
 impl Attestor for DevAttestor {
     type Error = Error;
 
-    async fn attest(&self, params: AttestationParams) -> Result<Bytes> {
+    async fn attest(&self, params: AttestationParams<'_>) -> Result<Bytes> {
         // use zerod pcrs in dev mode
         let mut pcrs: BTreeMap<u8, Bytes> = BTreeMap::new();
         for i in 0..=4 {
@@ -43,9 +43,9 @@ impl Attestor for DevAttestor {
 
         let attestation = Attestation {
             pcrs,
-            nonce: params.nonce.unwrap_or_default(),
-            user_data: params.user_data.unwrap_or_default(),
-            public_key: params.public_key.unwrap_or_default(),
+            nonce: params.nonce.cloned().unwrap_or_default(),
+            user_data: params.user_data.cloned().unwrap_or_default(),
+            public_key: params.public_key.cloned().unwrap_or_default(),
         };
 
         let mut payload = Vec::new();

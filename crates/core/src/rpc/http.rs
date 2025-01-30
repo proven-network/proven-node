@@ -30,7 +30,7 @@ where
         "/rpc",
         post(|query: Query<QueryParams>, body: Bytes| async move {
             match session_manager
-                .get_session("TODO_APPLICATION_ID".to_string(), query.session.clone())
+                .get_session("TODO_APPLICATION_ID", &query.session)
                 .await
             {
                 Ok(Some(session)) => {

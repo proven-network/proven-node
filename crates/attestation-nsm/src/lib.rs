@@ -36,8 +36,8 @@ impl NsmAttestor {
 impl Attestor for NsmAttestor {
     type Error = Error;
 
-    async fn attest(&self, params: AttestationParams) -> Result<Bytes> {
-        Ok(Bytes::from(self.nsm.lock().await.attestation(params)?))
+    async fn attest(&self, params: AttestationParams<'_>) -> Result<Bytes> {
+        Ok(Bytes::from(self.nsm.lock().await.attestation(&params)?))
     }
 
     async fn secure_random(&self) -> Result<Bytes> {
