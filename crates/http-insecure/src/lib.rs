@@ -102,7 +102,12 @@ impl HttpServer for InsecureHttpServer {
             },
         ));
 
-        let router = router.layer(CorsLayer::new().allow_methods(Any).allow_origin(Any));
+        let router = router.layer(
+            CorsLayer::new()
+                .allow_methods(Any)
+                .allow_origin(Any)
+                .allow_credentials(true),
+        );
 
         let listener = tokio::net::TcpListener::bind(listen_addr)
             .await

@@ -249,7 +249,12 @@ where
             },
         ));
 
-        let router = router.layer(CorsLayer::new().allow_methods(Any).allow_origin(Any));
+        let router = router.layer(
+            CorsLayer::new()
+                .allow_methods(Any)
+                .allow_origin(Any)
+                .allow_credentials(true),
+        );
 
         let handle = self.task_tracker.spawn(async move {
             tokio::select! {
