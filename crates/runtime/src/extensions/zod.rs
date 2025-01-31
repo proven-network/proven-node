@@ -10,7 +10,7 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_zod() {
@@ -25,33 +25,19 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
-        }
-
-        let execution_result = result.unwrap();
-
-        assert!(execution_result.output.is_object());
-        assert_eq!(execution_result.output.as_object().unwrap().len(), 2);
-        assert_eq!(
-            execution_result
-                .output
-                .as_object()
-                .unwrap()
-                .get("name")
-                .unwrap(),
-            "Alice"
-        );
-        assert_eq!(
-            execution_result
-                .output
-                .as_object()
-                .unwrap()
-                .get("age")
-                .unwrap(),
-            30
-        );
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert!(output.is_object());
+                assert_eq!(output.as_object().unwrap().len(), 2);
+                assert_eq!(output.as_object().unwrap().get("name").unwrap(), "Alice");
+                assert_eq!(output.as_object().unwrap().get("age").unwrap(), 30);
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        };
     }
 }

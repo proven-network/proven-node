@@ -297,7 +297,7 @@ pub async fn op_set_application_string<AS: Store1>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_application_bytes_store() {
@@ -311,10 +311,15 @@ mod tests {
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
-        let result = worker.execute(request).await;
 
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { .. }) => {}
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
     }
 
@@ -330,10 +335,15 @@ mod tests {
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
-        let result = worker.execute(request).await;
 
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { .. }) => {}
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
     }
 
@@ -349,10 +359,15 @@ mod tests {
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
-        let result = worker.execute(request).await;
 
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { .. }) => {}
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
     }
 }

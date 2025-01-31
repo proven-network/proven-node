@@ -39,7 +39,7 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_session_identity() {
@@ -57,15 +57,18 @@ mod tests {
             query: None,
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert!(output.is_string());
+                assert_eq!(output.as_str().unwrap(), "my_identity");
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-
-        let execution_result = result.unwrap();
-        assert!(execution_result.output.is_string());
-        assert_eq!(execution_result.output.as_str().unwrap(), "my_identity");
     }
 
     #[tokio::test]
@@ -79,14 +82,17 @@ mod tests {
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert!(output.is_null());
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-
-        let execution_result = result.unwrap();
-        assert!(execution_result.output.is_null());
     }
 
     #[tokio::test]
@@ -105,27 +111,26 @@ mod tests {
             query: None,
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert!(output.is_array());
+                assert_eq!(output.as_array().unwrap().len(), 2);
+                assert_eq!(
+                    output.as_array().unwrap()[0].as_str().unwrap(),
+                    "my_account_1"
+                );
+                assert_eq!(
+                    output.as_array().unwrap()[1].as_str().unwrap(),
+                    "my_account_2"
+                );
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-
-        let execution_result = result.unwrap();
-        assert!(execution_result.output.is_array());
-        assert_eq!(execution_result.output.as_array().unwrap().len(), 2);
-        assert_eq!(
-            execution_result.output.as_array().unwrap()[0]
-                .as_str()
-                .unwrap(),
-            "my_account_1"
-        );
-        assert_eq!(
-            execution_result.output.as_array().unwrap()[1]
-                .as_str()
-                .unwrap(),
-            "my_account_2"
-        );
     }
 
     #[tokio::test]
@@ -141,15 +146,18 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert!(output.is_array());
+                assert_eq!(output.as_array().unwrap().len(), 0);
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-
-        let execution_result = result.unwrap();
-        assert!(execution_result.output.is_array());
-        assert_eq!(execution_result.output.as_array().unwrap().len(), 0);
     }
 
     #[tokio::test]
@@ -163,13 +171,16 @@ mod tests {
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert!(output.is_null());
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-
-        let execution_result = result.unwrap();
-        assert!(execution_result.output.is_null());
     }
 }

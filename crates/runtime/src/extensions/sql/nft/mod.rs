@@ -248,12 +248,11 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_nft_db() {
         let mut runtime_options = RuntimeOptions::for_test_code("sql/test_nft_db");
-
         runtime_options
             .radix_nft_verifier
             .insert_ownership(
@@ -273,18 +272,22 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert_eq!(output, "alice@example.com");
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-        assert_eq!(result.unwrap().output, "alice@example.com");
     }
 
     #[tokio::test]
     async fn test_nft_db_multiple() {
         let mut runtime_options = RuntimeOptions::for_test_code("sql/test_nft_db_multiple");
-
         runtime_options
             .radix_nft_verifier
             .insert_ownership(
@@ -304,15 +307,18 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert!(output.is_array());
+                assert_eq!(output.as_array().unwrap().len(), 2);
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-
-        let execution_result = result.unwrap();
-        assert!(execution_result.output.is_array());
-        assert_eq!(execution_result.output.as_array().unwrap().len(), 2);
     }
 
     #[tokio::test]
@@ -328,15 +334,22 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
-
-        assert!(result.is_err());
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - NFT doesn't exist
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
     async fn test_nft_db_nft_not_owned() {
         let mut runtime_options = RuntimeOptions::for_test_code("sql/test_nft_db");
-
         runtime_options
             .radix_nft_verifier
             .insert_ownership(
@@ -356,9 +369,17 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
-
-        assert!(result.is_err());
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - NFT not owned
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -374,8 +395,16 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
-
-        assert!(result.is_err());
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - no accounts in context
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 }

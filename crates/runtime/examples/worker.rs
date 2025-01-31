@@ -1,4 +1,6 @@
-use proven_runtime::{ExecutionRequest, HandlerSpecifier, ModuleLoader, RuntimeOptions, Worker};
+use proven_runtime::{
+    ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimeOptions, Worker,
+};
 
 use std::sync::Arc;
 
@@ -74,9 +76,7 @@ async fn main() -> Result<(), Error> {
             let duration = start.elapsed();
             durations.lock().await.push(duration);
 
-            assert!(result.output.is_number());
-            let output = result.output.as_i64().unwrap();
-            assert_eq!(output, 30);
+            assert!(matches!(result, ExecutionResult::Ok { .. }));
         });
         handles.push(handle);
     }

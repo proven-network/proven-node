@@ -26,15 +26,15 @@ pub enum Error {
     #[error(transparent)]
     RegexParse(#[from] regex::Error),
 
-    /// Root not found in graph.
-    #[error("root not found in graph")]
-    SpecifierNotFoundInCodePackage,
-
-    /// Rustyscript error.
+    /// Runtime error.
     #[error(transparent)]
-    RustyScript(#[from] rustyscript::Error),
+    RuntimeError(#[from] rustyscript::Error),
 
     /// Serde JSON error.
     #[error(transparent)]
     SerdeJson(#[from] serde_json::Error),
+
+    /// Root not found in graph.
+    #[error("root not found in graph")]
+    SpecifierNotFoundInCodePackage,
 }

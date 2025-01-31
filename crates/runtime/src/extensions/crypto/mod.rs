@@ -101,7 +101,7 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     use ed25519_dalek::Verifier;
     use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
@@ -119,32 +119,34 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                let (verifying_key_bytes, signature_bytes): (Vec<u8>, Vec<u8>) =
+                    serde_json::from_value(output).unwrap();
 
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
-        }
+                let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
+                    &verifying_key_bytes
+                        .try_into()
+                        .expect("slice with incorrect length"),
+                )
+                .unwrap();
 
-        let execution_result = result.unwrap();
-        assert!(execution_result.output.is_array());
-        let (verifying_key_bytes, signature_bytes): (Vec<u8>, Vec<u8>) =
-            execution_result.deserialize_output().unwrap();
+                let signature = ed25519_dalek::Signature::from_bytes(
+                    &signature_bytes
+                        .try_into()
+                        .expect("slice with incorrect length"),
+                );
 
-        // Check that the signature is valid
-        let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(
-            &verifying_key_bytes
-                .try_into()
-                .expect("slice with incorrect length"),
-        )
-        .unwrap();
-        let signature = ed25519_dalek::Signature::from_bytes(
-            &signature_bytes
-                .try_into()
-                .expect("slice with incorrect length"),
-        );
-
-        let message = "Hello, world!";
-        assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
+                let message = "Hello, world!";
+                assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        };
     }
 
     #[tokio::test]
@@ -161,32 +163,33 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                let output = output.as_array().unwrap();
 
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+                // First element is compiled notorized transaction in hex
+                assert!(output[0].is_string());
+                let raw_transaction: RawNotarizedTransaction =
+                    hex::decode(output[0].as_str().unwrap()).unwrap().into();
+
+                let parse_result =
+                    radix_transactions::model::NotarizedTransactionV1::from_raw(&raw_transaction);
+
+                assert!(parse_result.is_ok());
+
+                // Second element is notary public key in hex
+                assert!(output[1].is_string());
+
+                // Third element is signer public key in hex
+                assert!(output[2].is_string());
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-
-        let result = result.unwrap();
-        let output = result.output.as_array().unwrap();
-
-        // First element is compiled notorized transaction in hex
-        assert!(output[0].is_string());
-        let raw_transaction: RawNotarizedTransaction =
-            hex::decode(output[0].as_str().unwrap()).unwrap().into();
-
-        let parse_result =
-            radix_transactions::model::NotarizedTransactionV1::from_raw(&raw_transaction);
-
-        assert!(parse_result.is_ok());
-
-        // Second element is notary public key in hex
-        assert!(output[1].is_string());
-
-        // Third element is signer public key in hex
-        assert!(output[2].is_string());
-
-        // TODO: Check signatures
     }
 
     #[tokio::test]
@@ -202,17 +205,19 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request.clone()).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
-        }
-        let execution_result = result.unwrap();
-        let bytes_vec: Vec<u8> = execution_result.deserialize_output().unwrap();
-
-        let verifying_key =
-            ed25519_dalek::VerifyingKey::from_bytes(bytes_vec.as_slice().try_into().unwrap())
-                .unwrap();
+        let verifying_key = match worker.execute(request.clone()).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                let bytes_vec: Vec<u8> = serde_json::from_value(output).unwrap();
+                ed25519_dalek::VerifyingKey::from_bytes(bytes_vec.as_slice().try_into().unwrap())
+                    .unwrap()
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        };
 
         let request = ExecutionRequest::RpcWithUserContext {
             accounts: vec![],
@@ -222,19 +227,21 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                let bytes_vec: Vec<u8> = serde_json::from_value(output).unwrap();
+                let signature =
+                    ed25519_dalek::Signature::from_bytes(bytes_vec.as_slice().try_into().unwrap());
 
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+                let message = "Hello, world!";
+                assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-
-        // Check that the signature is valid
-        let execution_result = result.unwrap();
-        let bytes_vec: Vec<u8> = execution_result.deserialize_output().unwrap();
-        let signature =
-            ed25519_dalek::Signature::from_bytes(bytes_vec.as_slice().try_into().unwrap());
-
-        let message = "Hello, world!";
-        assert!(verifying_key.verify(message.as_bytes(), &signature).is_ok());
     }
 }

@@ -615,20 +615,19 @@ where
 
         let module_handle = self.get_module_for_handler_specifier(&handler_specifier)?;
 
-        let output: Value = match handler_specifier.handler_name() {
-            Some(ref handler_name) => {
-                self.runtime
-                    .call_function(Some(&module_handle), handler_name, &args)?
-            }
-            None => self.runtime.call_entrypoint(&module_handle, &args)?,
-        };
-
-        let handler_output: HandlerOutput = output.try_into(&mut self.runtime)?;
+        let result: std::result::Result<Value, rustyscript::Error> =
+            match handler_specifier.handler_name() {
+                Some(ref handler_name) => {
+                    self.runtime
+                        .call_function(Some(&module_handle), handler_name, &args)
+                }
+                None => self.runtime.call_entrypoint(&module_handle, &args),
+            };
 
         let console_state: ConsoleState = self.runtime.take().unwrap_or_default();
         let duration = start.elapsed();
 
-        let logs: Result<Vec<ExecutionLogs>> = console_state
+        let logs: Vec<ExecutionLogs> = console_state
             .messages
             .into_iter()
             .map(|message| {
@@ -640,16 +639,26 @@ where
                     args,
                 })
             })
-            .collect();
+            .collect::<Result<Vec<ExecutionLogs>>>()?;
 
-        let logs = logs?;
+        match result {
+            Ok(output) => {
+                let handler_output: HandlerOutput = output.try_into(&mut self.runtime)?;
 
-        Ok(ExecutionResult {
-            duration,
-            logs,
-            output: handler_output.output.unwrap_or_default(),
-            paths_to_uint8_arrays: handler_output.uint8_array_json_paths,
-        })
+                Ok(ExecutionResult::Ok {
+                    duration,
+                    logs,
+                    output: handler_output.output.unwrap_or_default(),
+                    paths_to_uint8_arrays: handler_output.uint8_array_json_paths,
+                })
+            }
+            Err(rustyscript::Error::JsError(js_error)) => Ok(ExecutionResult::Error {
+                duration,
+                logs,
+                error: js_error,
+            }),
+            Err(err) => Err(Error::RuntimeError(err)),
+        }
     }
 
     fn get_module_for_handler_specifier(
@@ -680,8 +689,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use core::panic;
 
+    use super::*;
     use crate::util::run_in_thread;
 
     #[tokio::test]
@@ -689,6 +699,8 @@ mod tests {
         let options = RuntimeOptions::for_test_code("test_runtime_execute");
 
         run_in_thread(|| {
+            let mut runtime = Runtime::new(options).unwrap();
+
             let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
@@ -696,9 +708,18 @@ mod tests {
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
                 identity: "my_identity".to_string(),
             };
-            let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
 
-            assert!(execution_result.output.is_null());
+            match runtime.execute(request) {
+                Ok(ExecutionResult::Ok { output, .. }) => {
+                    assert!(output.is_null());
+                }
+                Ok(ExecutionResult::Error { error, .. }) => {
+                    panic!("Unexpected js error: {error:?}");
+                }
+                Err(error) => {
+                    panic!("Unexpected execution error: {error:?}");
+                }
+            }
         });
     }
 
@@ -715,10 +736,11 @@ mod tests {
             ),
         ]);
         let module_roots = vec![ModuleSpecifier::parse("file:///main.ts").unwrap()];
-
         let options = RuntimeOptions::for_test_code_map(&module_sources, module_roots);
 
         run_in_thread(|| {
+            let mut runtime = Runtime::new(options).unwrap();
+
             let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
@@ -726,11 +748,19 @@ mod tests {
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
                 identity: "my_identity".to_string(),
             };
-            let execution_result = Runtime::new(options).unwrap().execute(request).unwrap();
 
-            assert!(execution_result.output.is_string());
-
-            assert_eq!(execution_result.output.as_str().unwrap(), "Hello, world!");
+            match runtime.execute(request) {
+                Ok(ExecutionResult::Ok { output, .. }) => {
+                    assert!(output.is_string());
+                    assert_eq!(output.as_str().unwrap(), "Hello, world!");
+                }
+                Ok(ExecutionResult::Error { error, .. }) => {
+                    panic!("Unexpected js error: {error:?}");
+                }
+                Err(error) => {
+                    panic!("Unexpected execution error: {error:?}");
+                }
+            }
         });
     }
 
@@ -739,6 +769,7 @@ mod tests {
         let options = RuntimeOptions::for_test_code("test_runtime_execute_with_default_export");
 
         run_in_thread(|| {
+            let mut runtime = Runtime::new(options).unwrap();
             let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
@@ -746,10 +777,15 @@ mod tests {
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts").unwrap(),
                 identity: "my_identity".to_string(),
             };
-            let result = Runtime::new(options).unwrap().execute(request);
 
-            if let Err(err) = result {
-                panic!("Error: {err:?}");
+            match runtime.execute(request) {
+                Ok(ExecutionResult::Ok { .. }) => {}
+                Ok(ExecutionResult::Error { error, .. }) => {
+                    panic!("Unexpected js error: {error:?}");
+                }
+                Err(error) => {
+                    panic!("Unexpected execution error: {error:?}");
+                }
             }
         });
     }
@@ -760,6 +796,7 @@ mod tests {
         let options = RuntimeOptions::for_test_code("test_runtime_execute_sets_timeout");
 
         run_in_thread(|| {
+            let mut runtime = Runtime::new(options).unwrap();
             let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
@@ -767,20 +804,25 @@ mod tests {
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
                 identity: "my_identity".to_string(),
             };
-            let result = Runtime::new(options).unwrap().execute(request);
 
-            if let Err(err) = result {
-                panic!("Error: {err:?}");
+            match runtime.execute(request) {
+                Ok(ExecutionResult::Ok { .. }) => {}
+                Ok(ExecutionResult::Error { error, .. }) => {
+                    panic!("Unexpected js error: {error:?}");
+                }
+                Err(error) => {
+                    panic!("Unexpected execution error: {error:?}");
+                }
             }
         });
     }
 
     #[tokio::test]
     async fn test_runtime_execute_exhausts_timeout() {
-        // The script will sleep for 5 seconds, but the timeout is set to 2 seconds
         let options = RuntimeOptions::for_test_code("test_runtime_execute_exhausts_timeout");
 
         run_in_thread(|| {
+            let mut runtime = Runtime::new(options).unwrap();
             let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
@@ -788,20 +830,25 @@ mod tests {
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
                 identity: "my_identity".to_string(),
             };
-            let result = Runtime::new(options).unwrap().execute(request);
 
-            if let Ok(execution_result) = result {
-                panic!("Ok: {execution_result:?}");
+            match runtime.execute(request) {
+                Ok(ExecutionResult::Ok { .. }) => {
+                    panic!("Expected timeout error but got success");
+                }
+                Ok(ExecutionResult::Error { .. }) => {}
+                Err(error) => {
+                    panic!("Unexpected execution error: {error:?}");
+                }
             }
         });
     }
 
     #[tokio::test]
     async fn test_runtime_execute_default_max_heap_size() {
-        // The script will allocate 40MB of memory, but the default max heap size is set to 10MB
         let options = RuntimeOptions::for_test_code("test_runtime_execute_default_max_heap_size");
 
         run_in_thread(|| {
+            let mut runtime = Runtime::new(options).unwrap();
             let request = ExecutionRequest::RpcWithUserContext {
                 accounts: vec![],
                 args: vec![],
@@ -809,9 +856,18 @@ mod tests {
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
                 identity: "my_identity".to_string(),
             };
-            let result = Runtime::new(options).unwrap().execute(request);
 
-            assert!(result.is_err());
+            match runtime.execute(request) {
+                Ok(ExecutionResult::Ok { .. }) => {
+                    panic!("Expected heap size error but got success");
+                }
+                Ok(ExecutionResult::Error { error, .. }) => {
+                    panic!("Unexpected js error: {error:?}");
+                }
+                Err(_) => {
+                    // Heap size error is expected
+                }
+            }
         });
     }
 }

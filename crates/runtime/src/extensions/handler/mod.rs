@@ -124,7 +124,7 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     use bytes::Bytes;
     use serde::Deserialize;
@@ -164,9 +164,17 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
-
-        assert!(result.is_err());
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - origin has not been allowed
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -183,15 +191,18 @@ mod tests {
             query: None,
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
-        }
-
-        let execution_result = result.unwrap();
-
-        assert_eq!(execution_result.output, "420");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert!(output.is_string());
+                assert_eq!(output, "420");
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        };
     }
 
     #[tokio::test]
@@ -207,19 +218,26 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok {
+                output,
+                paths_to_uint8_arrays,
+                ..
+            }) => {
+                let deserialized_output: Bytes = serde_json::from_value(output).unwrap();
 
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
-        }
+                assert_eq!(deserialized_output, Bytes::from_static(b"Hello, world!"));
 
-        let execution_result = result.unwrap();
-        let output = execution_result.deserialize_output::<Bytes>().unwrap();
-
-        assert_eq!(output, Bytes::from_static(b"Hello, world!"));
-
-        // Should have correct JSONPath
-        assert_eq!(execution_result.paths_to_uint8_arrays, vec!["$"]);
+                // Should have correct JSONPath
+                assert_eq!(paths_to_uint8_arrays, vec!["$"]);
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        };
     }
 
     #[tokio::test]
@@ -240,19 +258,28 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok {
+                output,
+                paths_to_uint8_arrays,
+                ..
+            }) => {
+                let deserialized_output: Nested = serde_json::from_value(output).unwrap();
 
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
-        }
+                assert_eq!(
+                    deserialized_output.nested,
+                    Bytes::from_static(b"Hello, world!")
+                );
 
-        let execution_result = result.unwrap();
-
-        let output = execution_result.deserialize_output::<Nested>().unwrap();
-
-        assert_eq!(output.nested, Bytes::from_static(b"Hello, world!"));
-
-        // Should have correct JSONPath
-        assert_eq!(execution_result.paths_to_uint8_arrays, vec!["$.nested"]);
+                // Should have correct JSONPath
+                assert_eq!(paths_to_uint8_arrays, vec!["$.nested"]);
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        };
     }
 }

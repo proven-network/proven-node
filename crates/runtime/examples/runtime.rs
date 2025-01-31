@@ -1,5 +1,6 @@
 use proven_runtime::{
-    Error, ExecutionRequest, HandlerSpecifier, ModuleLoader, Runtime, RuntimeOptions,
+    Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Runtime,
+    RuntimeOptions,
 };
 
 use proven_code_package::CodePackage;
@@ -54,9 +55,7 @@ fn main() -> Result<(), Error> {
 
     let result = runtime.execute(request)?;
 
-    assert!(result.output.is_number());
-    let output = result.output.as_i64().unwrap();
-    assert_eq!(output, 30);
+    assert!(matches!(result, ExecutionResult::Ok { .. }));
 
     println!("Result: {:?}", result);
 

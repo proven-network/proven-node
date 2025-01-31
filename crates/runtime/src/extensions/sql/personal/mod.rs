@@ -185,7 +185,7 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_personal_db() {
@@ -203,12 +203,17 @@ mod tests {
             query: None,
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert_eq!(output, "alice@example.com");
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
-        assert_eq!(result.unwrap().output, "alice@example.com");
     }
 
     #[tokio::test]
@@ -222,8 +227,14 @@ mod tests {
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
         };
 
-        let result = worker.execute(request).await;
-
-        assert!(result.is_err());
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Error { .. }) => {}
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 }

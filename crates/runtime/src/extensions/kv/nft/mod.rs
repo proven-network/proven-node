@@ -524,12 +524,11 @@ pub async fn op_set_nft_string<NS: Store2, RNV: RadixNftVerifier>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_nft_bytes_store() {
         let mut runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store");
-
         runtime_options
             .radix_nft_verifier
             .insert_ownership(
@@ -548,10 +547,15 @@ mod tests {
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
-        let result = worker.execute(request).await;
 
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { .. }) => {}
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
         }
     }
 
@@ -567,9 +571,18 @@ mod tests {
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             identity: "my_identity".to_string(),
         };
-        let result = worker.execute(request).await;
 
-        assert!(result.is_err());
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - NFT doesn't exist
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -596,7 +609,17 @@ mod tests {
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_err());
+        match result {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - NFT not owned
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -613,7 +636,17 @@ mod tests {
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_err());
+        match result {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - no accounts in context
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -659,7 +692,17 @@ mod tests {
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_err());
+        match result {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - NFT doesn't exist
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -686,7 +729,17 @@ mod tests {
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_err());
+        match result {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - NFT not owned
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -703,7 +756,17 @@ mod tests {
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_err());
+        match result {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - no accounts in context
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -749,7 +812,17 @@ mod tests {
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_err());
+        match result {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - NFT doesn't exist
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -776,7 +849,17 @@ mod tests {
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_err());
+        match result {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - NFT not owned
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 
     #[tokio::test]
@@ -793,6 +876,16 @@ mod tests {
         };
         let result = worker.execute(request).await;
 
-        assert!(result.is_err());
+        match result {
+            Ok(ExecutionResult::Error { .. }) => {
+                // Expected - no accounts in context
+            }
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                panic!("Expected error but got success: {output:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        }
     }
 }

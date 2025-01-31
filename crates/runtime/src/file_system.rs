@@ -589,7 +589,8 @@ where
 mod tests {
     use super::*;
 
-    use crate::{ExecutionRequest, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
+
     use bytes::Bytes;
     use proven_store_memory::MemoryStore;
 
@@ -606,16 +607,18 @@ mod tests {
             identity: "my_identity".to_string(),
         };
 
-        let result = worker.execute(request).await;
-
-        if let Err(err) = result {
-            panic!("Error: {err:?}");
-        }
-
-        let execution_result = result.unwrap();
-
-        assert!(execution_result.output.is_string());
-        assert_eq!(execution_result.output.as_str().unwrap(), "Hello, world!");
+        match worker.execute(request).await {
+            Ok(ExecutionResult::Ok { output, .. }) => {
+                assert!(output.is_string());
+                assert_eq!(output.as_str().unwrap(), "Hello, world!");
+            }
+            Ok(ExecutionResult::Error { error, .. }) => {
+                panic!("Unexpected js error: {error:?}");
+            }
+            Err(error) => {
+                panic!("Unexpected error: {error:?}");
+            }
+        };
     }
 
     fn setup() -> FileSystem<

@@ -295,7 +295,7 @@ where
 
                             if matches!(
                                 result,
-                                Err(Error::RustyScript(rustyscript::Error::HeapExhausted))
+                                Err(Error::RuntimeError(rustyscript::Error::HeapExhausted))
                             ) {
                                 // Remove the worker from the pool if the heap is exhausted (can't recover)
                                 pool.total_workers.fetch_sub(1, Ordering::SeqCst);
@@ -321,7 +321,7 @@ where
                             sender.send(result).unwrap();
                             continue 'outer;
                         }
-                        Err(Error::RustyScript(rustyscript::Error::HeapExhausted)) => {
+                        Err(Error::RuntimeError(rustyscript::Error::HeapExhausted)) => {
                             // Remove the worker from the pool if the heap is exhausted (can't recover)
                             pool.total_workers.fetch_sub(1, Ordering::SeqCst);
                         }
@@ -430,7 +430,7 @@ where
 
             if matches!(
                 result,
-                Err(Error::RustyScript(rustyscript::Error::HeapExhausted))
+                Err(Error::RuntimeError(rustyscript::Error::HeapExhausted))
             ) {
                 // Remove the worker from the pool if the heap is exhausted (can't recover)
                 self.total_workers.fetch_sub(1, Ordering::SeqCst);
@@ -539,7 +539,7 @@ where
 
                 if matches!(
                     result,
-                    Err(Error::RustyScript(rustyscript::Error::HeapExhausted))
+                    Err(Error::RuntimeError(rustyscript::Error::HeapExhausted))
                 ) {
                     // Remove the worker from the pool if the heap is exhausted (can't recover)
                     self.total_workers.fetch_sub(1, Ordering::SeqCst);

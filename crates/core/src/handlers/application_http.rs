@@ -6,7 +6,9 @@ use axum::http::{HeaderMap, Method, Uri};
 use axum::response::IntoResponse;
 use axum::response::Response;
 use bytes::Bytes;
-use proven_runtime::{ExecutionRequest, HandlerSpecifier, ModuleLoader, RuntimePoolManagement};
+use proven_runtime::{
+    ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
+};
 use proven_sessions::SessionManagement;
 
 #[derive(Clone)]
@@ -115,19 +117,22 @@ where
         .execute(module_loader, execution_request)
         .await;
 
-    if let Err(err) = result {
-        return Response::builder()
+    match result {
+        Ok(ExecutionResult::Ok { output, .. }) => {
+            let json_output = serde_json::to_string(&output).unwrap();
+
+            Response::builder()
+                .status(200)
+                .body(Body::from(json_output))
+                .unwrap()
+        }
+        Ok(ExecutionResult::Error { error, .. }) => Response::builder()
             .status(500)
-            .body(Body::from(format!("Error: {err:?}")))
-            .unwrap();
+            .body(Body::from(format!("Error: {error:?}")))
+            .unwrap(),
+        Err(error) => Response::builder()
+            .status(500)
+            .body(Body::from(format!("Error: {error:?}")))
+            .unwrap(),
     }
-
-    let execution_result = result.unwrap();
-
-    let json_output = serde_json::to_string(&execution_result.output).unwrap();
-
-    Response::builder()
-        .status(200)
-        .body(Body::from(json_output))
-        .unwrap()
 }

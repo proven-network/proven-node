@@ -34,6 +34,7 @@ pub use worker::*;
 use std::time::Duration;
 
 use bytes::Bytes;
+use deno_core::error::JsError;
 use http::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -137,18 +138,33 @@ pub struct ExecutionLogs {
 
 /// Result of a runtime execution.
 #[derive(Debug, Deserialize, Serialize)]
-pub struct ExecutionResult {
-    /// The duration of the execution.
-    pub duration: Duration,
+pub enum ExecutionResult {
+    /// The result of a successful execution
+    Ok {
+        /// The duration of the execution.
+        duration: Duration,
 
-    /// The logs from the execution.
-    pub logs: Vec<ExecutionLogs>,
+        /// The logs from the execution.
+        logs: Vec<ExecutionLogs>,
 
-    /// The output of the execution.
-    pub output: Value,
+        /// The output of the execution.
+        output: Value,
 
-    /// `JSONPath` locations of any `Uint8Array` elements in the output.
-    pub paths_to_uint8_arrays: Vec<String>,
+        /// `JSONPath` locations of any `Uint8Array` elements in the output.
+        paths_to_uint8_arrays: Vec<String>,
+    },
+
+    /// Encountered a runtime error during execution.
+    Error {
+        /// The duration of the execution.
+        duration: Duration,
+
+        /// The logs from the execution.
+        logs: Vec<ExecutionLogs>,
+
+        /// The error message.
+        error: JsError,
+    },
 }
 
 impl ExecutionResult {
@@ -161,6 +177,11 @@ impl ExecutionResult {
     where
         T: serde::de::DeserializeOwned,
     {
-        serde_json::from_value(self.output.clone()).map_err(Into::into)
+        match self {
+            Self::Ok { output, .. } => serde_json::from_value(output.clone()).map_err(Into::into),
+            Self::Error { error, .. } => Err(Error::RuntimeError(rustyscript::Error::JsError(
+                error.clone(),
+            ))),
+        }
     }
 }
