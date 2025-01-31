@@ -979,6 +979,7 @@ impl Bootstrap {
 
         let core = Core::new(CoreOptions {
             application_manager,
+            attestor: self.nsm.clone(),
             primary_hostnames: domains
                 .iter()
                 .map(|domain| format!("https://{domain}"))

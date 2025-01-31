@@ -112,6 +112,7 @@ async fn main() -> Result<()> {
 
     let core = Core::new(CoreOptions {
         application_manager,
+        attestor: DevAttestor,
         primary_hostnames: vec![format!("proven.local:{}", args.port)]
             .into_iter()
             .collect(),

@@ -9,6 +9,7 @@ use axum::response::IntoResponse;
 use bytes::Bytes;
 use futures::{sink::SinkExt, stream::StreamExt};
 use proven_applications::ApplicationManagement;
+use proven_attestation::Attestor;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 use tracing::{error, info};
@@ -23,13 +24,14 @@ async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
         .ok();
 }
 
-pub(crate) async fn ws_rpc_handler<AM, RM, SM>(
+pub(crate) async fn ws_rpc_handler<AM, RM, SM, A>(
     Path(application_id): Path<String>,
     State(PrimaryContext {
         application_manager,
+        attestor: _,
         runtime_pool_manager,
         session_manager,
-    }): State<PrimaryContext<AM, RM, SM>>,
+    }): State<PrimaryContext<AM, RM, SM, A>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse
@@ -37,6 +39,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
+    A: Attestor,
 {
     let Some(header) = headers.get("Authorization") else {
         return ws

@@ -20,6 +20,7 @@ use axum::response::Response;
 use axum::routing::{any, delete, get, patch, post, put};
 use axum::Router;
 use proven_applications::ApplicationManagement;
+use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_http::HttpServer;
 use proven_runtime::{ModuleLoader, ModuleOptions, RuntimePoolManagement};
@@ -31,27 +32,33 @@ use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 #[derive(Clone)]
-#[allow(clippy::struct_field_names)]
-struct PrimaryContext<AM, RM, SM>
+#[allow(dead_code)]
+struct PrimaryContext<AM, RM, SM, A>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
+    A: Attestor,
 {
     pub application_manager: AM,
+    pub attestor: A,
     pub runtime_pool_manager: RM,
     pub session_manager: SM,
 }
 
 /// Options for creating a new core.
-pub struct CoreOptions<AM, RM, SM>
+pub struct CoreOptions<AM, RM, SM, A>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
+    A: Attestor,
 {
     /// The application manager.
     pub application_manager: AM,
+
+    /// The remote attestation attestor.
+    pub attestor: A,
 
     /// The primary hostnames for RPC, WS, etc.
     pub primary_hostnames: HashSet<String>,
@@ -64,13 +71,15 @@ where
 }
 
 /// Core logic for handling user interactions.
-pub struct Core<AM, RM, SM>
+pub struct Core<AM, RM, SM, A>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
+    A: Attestor,
 {
     application_manager: AM,
+    attestor: A,
     primary_hostnames: HashSet<String>,
     runtime_pool_manager: RM,
     session_manager: SM,
@@ -78,23 +87,26 @@ where
     task_tracker: TaskTracker,
 }
 
-impl<AM, RM, SM> Core<AM, RM, SM>
+impl<AM, RM, SM, A> Core<AM, RM, SM, A>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
+    A: Attestor,
 {
     /// Create new core.
     pub fn new(
         CoreOptions {
             application_manager,
+            attestor,
             primary_hostnames,
             runtime_pool_manager,
             session_manager,
-        }: CoreOptions<AM, RM, SM>,
+        }: CoreOptions<AM, RM, SM, A>,
     ) -> Self {
         Self {
             application_manager,
+            attestor,
             primary_hostnames,
             runtime_pool_manager,
             session_manager,
@@ -125,6 +137,7 @@ where
 
         let ctx = PrimaryContext {
             application_manager: self.application_manager.clone(),
+            attestor: self.attestor.clone(),
             runtime_pool_manager: self.runtime_pool_manager.clone(),
             session_manager: self.session_manager.clone(),
         };
@@ -242,6 +255,7 @@ where
         for endpoint in module_options.http_endpoints {
             let ctx = ApplicationHttpContext {
                 application_id: "TODO".to_string(),
+                attestor: self.attestor.clone(),
                 handler_specifier: endpoint.handler_specifier.clone(),
                 module_loader: ModuleLoader::new(code_package.clone()),
                 requires_session: false, // TODO: Make this configurable

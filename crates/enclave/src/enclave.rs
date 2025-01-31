@@ -94,6 +94,7 @@ pub type EnclaveCore = Core<
             ciborium::ser::Error<std::io::Error>,
         >,
     >,
+    NsmAttestor,
 >;
 
 pub struct Services {
