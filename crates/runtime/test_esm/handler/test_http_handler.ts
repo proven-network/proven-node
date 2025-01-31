@@ -4,7 +4,7 @@ export const test = runOnHttp(
   {
     path: "/test/:id",
   },
-  async (request) => {
+  (request) => {
     if (request.path !== "/test/420") {
       throw new Error("Expected path to be /test/420");
     }
