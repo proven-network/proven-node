@@ -126,10 +126,14 @@ where
                 .body(Body::from(json_output))
                 .unwrap()
         }
-        Ok(ExecutionResult::Error { error, .. }) => Response::builder()
-            .status(500)
-            .body(Body::from(format!("Error: {error:?}")))
-            .unwrap(),
+        Ok(ExecutionResult::Error { error, .. }) => {
+            let json_output = serde_json::to_string(&error).unwrap();
+
+            Response::builder()
+                .status(500)
+                .body(Body::from(json_output))
+                .unwrap()
+        }
         Err(error) => Response::builder()
             .status(500)
             .body(Body::from(format!("Error: {error:?}")))

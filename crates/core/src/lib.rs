@@ -165,6 +165,11 @@ where
                     return `Hello from another endpoint!`;
                 }
             );
+
+            export const error = runOnHttp({ path: "/error" }, (request) => {
+                    throw new Error("This is an error");
+                }
+            );
         "#,
         )?;
 
