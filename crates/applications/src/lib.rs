@@ -6,6 +6,7 @@
 
 mod application;
 mod error;
+mod events;
 
 pub use application::Application;
 pub use error::Error;
