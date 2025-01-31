@@ -179,6 +179,11 @@ where
                 }
             );
 
+            export const getPost = runOnHttp({ path: "/post/:id" }, (request) => {
+                    return `Hello from post endpoint with id ${request.pathVariables.id}!`;
+                }
+            );
+
             export const error = runOnHttp({ path: "/error" }, (request) => {
                     throw new Error("This is an error");
                 }
@@ -272,9 +277,24 @@ where
                 _ => any(application_http_handler),
             };
 
-            router = router.route(&endpoint.path, method_router.with_state(ctx));
+            let axum_friedly_path = Self::convert_path_use_axum_capture_groups(&endpoint.path);
+
+            router = router.route(&axum_friedly_path, method_router.with_state(ctx));
         }
 
         Ok(router)
+    }
+
+    fn convert_path_use_axum_capture_groups(path: &str) -> String {
+        path.split('/')
+            .map(|segment| {
+                if let Some(without_colon) = segment.strip_prefix(':') {
+                    format!("{{{without_colon}}}")
+                } else {
+                    segment.to_string()
+                }
+            })
+            .collect::<Vec<String>>()
+            .join("/")
     }
 }
