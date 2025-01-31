@@ -1,77 +1,71 @@
-use super::RpcHandler;
+use super::parse_bearer_token;
+use crate::rpc::RpcHandler;
+use crate::PrimaryContext;
 
-use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, WebSocketUpgrade};
-use axum::extract::Query;
-use axum::routing::get;
-use axum::Router;
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{Path, State};
+use axum::http::HeaderMap;
+use axum::response::IntoResponse;
 use bytes::Bytes;
 use futures::{sink::SinkExt, stream::StreamExt};
 use proven_applications::ApplicationManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
-use serde::Deserialize;
 use tracing::{error, info};
 
-#[derive(Debug, Deserialize)]
-struct QueryParams {
-    session: String,
+async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
+    socket
+        .send(Message::Close(Some(CloseFrame {
+            code: axum::extract::ws::close_code::ERROR,
+            reason: reason.into(),
+        })))
+        .await
+        .ok();
 }
 
-pub fn create_rpc_router<AM, RM, SM>(
-    application_manager: AM,
-    runtime_pool_manager: RM,
-    session_manager: SM,
-) -> Router
+pub(crate) async fn ws_rpc_handler<AM, RM, SM>(
+    Path(application_id): Path<String>,
+    State(PrimaryContext {
+        application_manager,
+        runtime_pool_manager,
+        session_manager,
+    }): State<PrimaryContext<AM, RM, SM>>,
+    headers: HeaderMap,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
 {
-    Router::new().route(
-        "/ws",
-        get(
-            |ws: WebSocketUpgrade, query: Query<QueryParams>| async move {
-                match session_manager
-                    .get_session("TODO_APPLICATION_ID", &query.session)
-                    .await
-                {
-                    Ok(Some(session)) => {
-                        match RpcHandler::new(
-                            application_manager,
-                            runtime_pool_manager,
-                            session.clone(),
-                        ) {
-                            Ok(rpc_handler) => {
-                                ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
-                            }
-                            Err(e) => {
-                                error!("Error creating RpcHandler: {:?}", e);
-                                ws.on_upgrade(move |socket| {
-                                    handle_socket_error(
-                                        socket,
-                                        Utf8Bytes::from("Unrecoverable error."),
-                                    )
-                                })
-                            }
-                        }
-                    }
-                    _ => ws.on_upgrade(move |socket| {
-                        handle_socket_error(socket, Utf8Bytes::from("Session not valid."))
-                    }),
-                }
-            },
-        ),
-    )
-}
+    let Some(header) = headers.get("Authorization") else {
+        return ws
+            .on_upgrade(|socket| handle_socket_error(socket, "Authorization header required"));
+    };
 
-async fn handle_socket_error(mut socket: WebSocket, reason: Utf8Bytes) {
-    socket
-        .send(Message::Close(Some(CloseFrame {
-            code: axum::extract::ws::close_code::ERROR,
-            reason,
-        })))
-        .await
-        .ok();
+    let Ok(header_str) = header.to_str() else {
+        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid authorization header"));
+    };
+
+    let Ok(token) = parse_bearer_token(header_str) else {
+        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid bearer token format"));
+    };
+
+    let Ok(maybe_session) = session_manager.get_session(&application_id, &token).await else {
+        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid token"));
+    };
+
+    let Some(session) = maybe_session else {
+        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid session"));
+    };
+
+    let Ok(rpc_handler) = RpcHandler::new(application_manager, runtime_pool_manager, session)
+    else {
+        error!("Error creating RpcHandler");
+        return ws.on_upgrade(|socket| handle_socket_error(socket, "Unrecoverable error."));
+    };
+
+    ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
 }
 
 async fn handle_socket<AM: ApplicationManagement, RM: RuntimePoolManagement>(

@@ -754,7 +754,7 @@ impl Bootstrap {
             panic!("nats client not fetched before core");
         });
 
-        let challenge_store = NatsStore1::new(NatsStoreOptions {
+        let challenge_store = NatsStore2::new(NatsStoreOptions {
             bucket: "challenges".to_string(),
             client: nats_client.clone(),
             max_age: Duration::from_secs(5 * 60),

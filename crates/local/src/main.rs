@@ -24,7 +24,7 @@ use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManag
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_direct::{DirectSqlStore1, DirectSqlStore2, DirectSqlStore3};
 use proven_store_fs::{FsStore1, FsStore2, FsStore3};
-use proven_store_memory::{MemoryStore, MemoryStore1};
+use proven_store_memory::{MemoryStore, MemoryStore2};
 use radix_common::network::NetworkDefinition;
 use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
     }
 
     let args = Args::parse();
-    let challenge_store = MemoryStore1::new();
+    let challenge_store = MemoryStore2::new();
     let sessions_store = FsStore1::new("/tmp/proven/sessions");
     let radix_network_definition = NetworkDefinition::stokenet();
     let attestor = DevAttestor;

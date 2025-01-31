@@ -87,7 +87,7 @@ pub type EnclaveCore = Core<
     >,
     SessionManager<
         NsmAttestor,
-        NatsStore1,
+        NatsStore2,
         NatsStore1<
             Session,
             ciborium::de::Error<std::io::Error>,

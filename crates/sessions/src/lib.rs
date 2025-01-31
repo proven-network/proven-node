@@ -18,7 +18,7 @@ use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use proven_attestation::{AttestationParams, Attestor, AttestorError};
 use proven_radix_rola::{Rola, RolaOptions, SignedChallenge, Type as SignedChallengeType};
-use proven_store::{Store, Store1, StoreError};
+use proven_store::{Store, Store1, Store2, StoreError};
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
 
@@ -26,7 +26,7 @@ use rand::{thread_rng, Rng};
 pub struct SessionManagerOptions<'a, A, CS, SS>
 where
     A: Attestor,
-    CS: Store1,
+    CS: Store2,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     /// The attestor to use for remote attestation.
@@ -82,7 +82,7 @@ where
     type AttestorError: AttestorError;
 
     /// Challenge store type.
-    type ChallengeStore: Store1;
+    type ChallengeStore: Store2;
 
     /// Challenge store error type.
     type ChallengeStoreError: StoreError;
@@ -105,6 +105,7 @@ where
     /// Creates a new challenge to use for session creation.
     async fn create_challenge(
         &self,
+        application_id: &str,
         origin: &str,
     ) -> Result<
         String,
@@ -133,7 +134,7 @@ where
 pub struct SessionManager<A, CS, SS>
 where
     A: Attestor,
-    CS: Store1,
+    CS: Store2,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     attestor: A,
@@ -147,7 +148,7 @@ where
 impl<A, CS, SS> SessionManagement for SessionManager<A, CS, SS>
 where
     A: Attestor,
-    CS: Store1,
+    CS: Store2,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     type Attestor = A;
@@ -177,6 +178,7 @@ where
 
     async fn create_challenge(
         &self,
+        application_id: &str,
         origin: &str,
     ) -> Result<String, Error<A::Error, CS::Error, SS::Error>> {
         let mut challenge = String::new();
@@ -186,7 +188,8 @@ where
         }
 
         self.challenge_store
-            .scope(origin.to_string())
+            .scope(application_id)
+            .scope(origin)
             .put(challenge.clone(), Bytes::from_static(&[1u8]))
             .await
             .map_err(Error::ChallengeStore)?;
@@ -220,7 +223,7 @@ where
         }
 
         for challenge in challenges {
-            let scoped_challenge_store = self.challenge_store.scope(origin.to_string());
+            let scoped_challenge_store = self.challenge_store.scope(application_id).scope(origin);
 
             match scoped_challenge_store.get(challenge.clone()).await {
                 Ok(_) => {

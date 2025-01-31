@@ -1,3 +1,5 @@
+use super::parse_bearer_token;
+
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::{HeaderMap, Method, Uri};
@@ -21,15 +23,7 @@ where
     pub session_manager: SM,
 }
 
-fn parse_bearer_token(auth_header: &str) -> Result<String, &'static str> {
-    if let Some(token) = auth_header.strip_prefix("Bearer ") {
-        Ok(token.trim().to_string())
-    } else {
-        Err("Invalid authorization header format. Expected 'Bearer <token>'")
-    }
-}
-
-pub(crate) async fn execute_handler<RM, SM>(
+pub(crate) async fn application_http_handler<RM, SM>(
     State(ApplicationHttpContext {
         application_id,
         handler_specifier,

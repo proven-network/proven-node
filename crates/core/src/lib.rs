@@ -4,15 +4,15 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 
-mod application_http;
 mod error;
+mod handlers;
 mod rpc;
-mod sessions;
 
-use application_http::{execute_handler, ApplicationHttpContext};
 pub use error::{Error, Result};
-use proven_code_package::{CodePackage, ModuleSpecifier};
-use sessions::create_session_router;
+use handlers::{
+    application_http_handler, create_challenge_handler, http_rpc_handler, verify_session_handler,
+    ws_rpc_handler, ApplicationHttpContext,
+};
 
 use std::collections::HashSet;
 
@@ -20,6 +20,7 @@ use axum::response::Response;
 use axum::routing::{any, delete, get, patch, post, put};
 use axum::Router;
 use proven_applications::ApplicationManagement;
+use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_http::HttpServer;
 use proven_runtime::{ModuleLoader, ModuleOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
@@ -28,6 +29,19 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
+
+#[derive(Clone)]
+#[allow(clippy::struct_field_names)]
+struct PrimaryContext<AM, RM, SM>
+where
+    AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
+    SM: SessionManagement,
+{
+    pub application_manager: AM,
+    pub runtime_pool_manager: RM,
+    pub session_manager: SM,
+}
 
 /// Options for creating a new core.
 pub struct CoreOptions<AM, RM, SM>
@@ -39,7 +53,7 @@ where
     /// The application manager.
     pub application_manager: AM,
 
-    /// The primary hostnames for RPC, WS, etc. Everything not matching is assumed to be an application domain.
+    /// The primary hostnames for RPC, WS, etc.
     pub primary_hostnames: HashSet<String>,
 
     /// The runtime pool manager.
@@ -103,29 +117,33 @@ where
             return Err(Error::AlreadyStarted);
         }
 
-        let session_router = create_session_router(self.session_manager.clone());
-        let http_rpc_router = rpc::http::create_rpc_router(
-            self.application_manager.clone(),
-            self.runtime_pool_manager.clone(),
-            self.session_manager.clone(),
-        );
-        let websocket_router = rpc::ws::create_rpc_router(
-            self.application_manager.clone(),
-            self.runtime_pool_manager.clone(),
-            self.session_manager.clone(),
-        );
-
         let redirect_response = Response::builder()
             .status(301)
             .header("Location", "https://proven.network")
             .body(String::new())
             .map_err(Error::Http)?;
 
+        let ctx = PrimaryContext {
+            application_manager: self.application_manager.clone(),
+            runtime_pool_manager: self.runtime_pool_manager.clone(),
+            session_manager: self.session_manager.clone(),
+        };
+
         let primary_router = Router::new()
             .route("/", get(|| async { redirect_response }))
-            .merge(session_router)
-            .merge(http_rpc_router)
-            .merge(websocket_router)
+            .route(
+                "/sessions/{application_id}/challenge",
+                get(create_challenge_handler).with_state(ctx.clone()),
+            )
+            .route(
+                "/sessions/{application_id}/verify",
+                post(verify_session_handler).with_state(ctx.clone()),
+            )
+            .route(
+                "/rpc/{application_id}",
+                post(http_rpc_handler).with_state(ctx.clone()),
+            )
+            .route("/ws/{application_id}", get(ws_rpc_handler).with_state(ctx))
             .fallback(any(|| async { "404" }))
             .layer(CorsLayer::very_permissive());
 
@@ -227,12 +245,12 @@ where
             };
 
             let method_router = match endpoint.method.as_deref() {
-                Some("GET") => get(execute_handler),
-                Some("POST") => post(execute_handler),
-                Some("PUT") => put(execute_handler),
-                Some("DELETE") => delete(execute_handler),
-                Some("PATCH") => patch(execute_handler),
-                _ => any(execute_handler),
+                Some("GET") => get(application_http_handler),
+                Some("POST") => post(application_http_handler),
+                Some("PUT") => put(application_http_handler),
+                Some("DELETE") => delete(application_http_handler),
+                Some("PATCH") => patch(application_http_handler),
+                _ => any(application_http_handler),
             };
 
             router = router.route(&endpoint.path, method_router.with_state(ctx));
