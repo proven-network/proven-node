@@ -1,4 +1,8 @@
-import { HttpHandlerOptions, RpcHandlerOptions } from "@proven-network/handler";
+import {
+  HttpHandlerOptions,
+  RpcHandlerOptions,
+  HttpRequest,
+} from "@proven-network/handler";
 
 type Input =
   | string
@@ -6,8 +10,8 @@ type Input =
   | boolean
   | null
   | Uint8Array
-  | Output[]
-  | { [key: string]: Output };
+  | Input[]
+  | { [key: string]: Input };
 
 type Output =
   | string
@@ -20,14 +24,6 @@ type Output =
 
 type EncodedUint8Array = number[];
 
-type HttpRequest = {
-  body?: Uint8Array;
-  method: string;
-  path: string;
-  pathVariables: Record<string, string>;
-  queryVariables: Record<string, string>;
-};
-
 function encodeUint8Array(data: Uint8Array): EncodedUint8Array {
   return Array.from(data);
 }
@@ -37,7 +33,9 @@ async function encodeUint8ArrayInObject(
   path: string,
   paths: string[]
 ): Promise<Output> {
+  // deno-lint-ignore no-explicit-any
   if (typeof obj === "object" && obj !== null && "allRows" in (obj as any)) {
+    // deno-lint-ignore no-explicit-any
     return (await (obj as any).allRows) as Output;
   } else if (obj instanceof Uint8Array) {
     paths.push(path);
@@ -103,12 +101,19 @@ export const runWithOptions = (
   };
 };
 
+type ExtractPathVariables<Path extends string> =
+  Path extends `${infer _Start}:${infer Param}/${infer Rest}`
+    ? { [K in Param | keyof ExtractPathVariables<`/${Rest}`>]: string }
+    : Path extends `${infer _Start}:${infer Param}`
+      ? { [K in Param]: string }
+      : Record<string, never>;
+
 export function runOnHttp<P extends string>(
   options: HttpHandlerOptions<P>,
-  fn: (...args: any[]) => Promise<Output>
-): typeof fn {
+  fn: (request: HttpRequest) => Promise<Output>
+) {
   return async (
-    method: string,
+    method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
     currentPath: string,
     query?: string,
     body?: Uint8Array
@@ -116,29 +121,31 @@ export function runOnHttp<P extends string>(
     const optionsPath = options.path;
 
     // Extract path variables
-    const pathVariables: Record<string, string> = {};
+    const pathParameters: ExtractPathVariables<P> =
+      {} as ExtractPathVariables<P>;
     const templateSegments = optionsPath.split("/").filter(Boolean);
     const currentSegments = currentPath.split("/").filter(Boolean);
     templateSegments.forEach((template, index) => {
       if (template.startsWith(":")) {
-        const varName = template.slice(1);
-        pathVariables[varName] = currentSegments[index];
+        const param = template.slice(1);
+        pathParameters[param] = currentSegments[index];
       }
     });
 
     // Extract query parameters
     const queryParams = new URLSearchParams(query);
-    const queryVariables: Record<string, string> = {};
+    const queryParameters: Record<string, string> = {};
     queryParams.forEach((value, key) => {
-      queryVariables[key] = value;
+      queryParameters[key] = value;
     });
 
-    const request: HttpRequest = {
+    const request: HttpRequest<P> = {
       body: body ? new Uint8Array(body) : undefined,
+      headers: {},
       method,
       path: currentPath,
-      pathVariables,
-      queryVariables,
+      pathParameters,
+      queryParameters,
     };
 
     const handlerOutput = await (options.timeout

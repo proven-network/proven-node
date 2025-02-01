@@ -8,6 +8,8 @@ use std::collections::HashSet;
 use deno_core::{extension, op2};
 use serde::Deserialize;
 
+static VALID_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE", "PATCH"];
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HandlerOutput {
@@ -21,6 +23,7 @@ fn create_new_handler_options(handler_type: &str) -> HandlerOptions {
         "http" => HandlerOptions::Http {
             allowed_web_origins: HashSet::new(),
             max_heap_mbs: None,
+            method: None,
             path: None,
             timeout_millis: None,
         },
@@ -67,6 +70,27 @@ pub fn op_add_allowed_origin(
 }
 
 #[op2(fast)]
+pub fn op_set_method_option(
+    #[state] state: &mut ModuleHandlerOptions,
+    #[string] handler_type: &str,
+    #[string] handler_name: String,
+    #[string] value: String,
+) {
+    assert_eq!(handler_type, "http");
+
+    assert!(VALID_METHODS.contains(&value.as_str()));
+
+    let options = state
+        .entry(handler_name)
+        .or_insert_with(|| create_new_handler_options(handler_type));
+
+    match options {
+        HandlerOptions::Http { method, .. } => method.replace(value),
+        _ => unreachable!(),
+    };
+}
+
+#[op2(fast)]
 pub fn op_set_path_option(
     #[state] state: &mut ModuleHandlerOptions,
     #[string] handler_type: &str,
@@ -107,6 +131,7 @@ extension!(
     handler_options_ext,
     ops = [
         op_add_allowed_origin,
+        op_set_method_option,
         op_set_path_option,
         op_set_timeout_option
     ],

@@ -82,11 +82,13 @@ impl OptionsParser {
             .iter()
             .filter_map(
                 |(handler_specifier, handler_options)| match handler_options {
-                    HandlerOptions::Http { path, .. } if path.is_some() => Some(HttpEndpoint {
-                        handler_specifier: HandlerSpecifier::parse(handler_specifier).unwrap(),
-                        path: path.clone().unwrap(),
-                        method: None, // TODO: Add handler options for specifying methods
-                    }),
+                    HandlerOptions::Http { method, path, .. } if path.is_some() => {
+                        Some(HttpEndpoint {
+                            handler_specifier: HandlerSpecifier::parse(handler_specifier).unwrap(),
+                            path: path.clone().unwrap(),
+                            method: method.clone(),
+                        })
+                    }
                     _ => None,
                 },
             )

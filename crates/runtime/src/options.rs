@@ -30,6 +30,9 @@ pub enum HandlerOptions {
         /// The maximum heap size in MBs.
         max_heap_mbs: Option<u16>,
 
+        /// The HTTP method. If `None`, the handler should be invoked for any method.
+        method: Option<String>,
+
         /// The path the handler should be mounted at.
         path: Option<String>,
 

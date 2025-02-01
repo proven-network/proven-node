@@ -170,7 +170,7 @@ where
             import { runOnHttp } from "@proven-network/handler";
 
             export const root = runOnHttp({ path: "/" }, (request) => {
-                    return `Hello ${request.queryVariables.name || 'World'} from runtime!`;
+                    return `Hello ${request.queryParameters.name || 'World'} from runtime!`;
                 }
             );
 
@@ -179,8 +179,13 @@ where
                 }
             );
 
-            export const getPost = runOnHttp({ path: "/post/:id" }, (request) => {
-                    return `Hello from post endpoint with id ${request.pathVariables.id}!`;
+            export const getPost = runOnHttp({ method: "GET", path: "/post/:id" }, (request) => {
+                    return `Hello from post endpoint with id ${request.pathParameters.id}!`;
+                }
+            );
+
+            export const updatePost = runOnHttp({ method: "PUT", path: "/post/:id" }, (request) => {
+                    return `Hello from post endpoint with id ${request.pathParameters.id}!`;
                 }
             );
 

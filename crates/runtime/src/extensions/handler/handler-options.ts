@@ -2,8 +2,18 @@ import {
   HttpHandlerOptions,
   RpcHandlerOptions,
   RadixEventHandlerOptions,
+  HttpRequest,
 } from "@proven-network/handler";
 import { CommittedTransactionInfo } from "@radixdlt/babylon-gateway-api-sdk";
+
+type Input =
+  | string
+  | number
+  | boolean
+  | null
+  | Uint8Array
+  | Input[]
+  | { [key: string]: Input };
 
 type Output =
   | boolean
@@ -14,14 +24,18 @@ type Output =
   | Output[]
   | { [key: string]: Output };
 
-const { op_add_allowed_origin, op_set_path_option, op_set_timeout_option } =
-  globalThis.Deno.core.ops;
+const {
+  op_add_allowed_origin,
+  op_set_path_option,
+  op_set_timeout_option,
+  op_set_method_option,
+} = globalThis.Deno.core.ops;
 
 // moduleSpecifier and handlerName is dynamically inserted and should not be part of exported types.
 export function run(
   moduleSpecifier: string,
   handlerName: string,
-  fn: (...args: any[]) => Promise<Output>
+  fn: (...args: Input[]) => Promise<Output>
 ): typeof fn {
   if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error("run must be used in conjunction with the export keyword");
@@ -39,7 +53,7 @@ export function runWithOptions(
   moduleSpecifier: string,
   handlerName: string,
   options: RpcHandlerOptions,
-  fn: (...args: any[]) => Promise<Output>
+  fn: (...args: Input[]) => Promise<Output>
 ): typeof fn {
   if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error(
@@ -88,7 +102,7 @@ export function runOnHttp<P extends string>(
   moduleSpecifier: string,
   handlerName: string,
   options: HttpHandlerOptions<P>,
-  fn: (...args: any[]) => Promise<Output>
+  fn: (request: HttpRequest) => Promise<Output>
 ): typeof fn {
   if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error(
@@ -116,6 +130,14 @@ export function runOnHttp<P extends string>(
   }
 
   op_set_path_option("http", handlerSpecifier, options.path);
+
+  if (options.method) {
+    if (!["GET", "POST", "PUT", "DELETE", "PATCH"].includes(options.method)) {
+      throw new Error("Method must be one of GET, POST, PUT, DELETE, PATCH");
+    }
+
+    op_set_method_option("http", handlerSpecifier, options.method);
+  }
 
   if (options.timeout) {
     if (typeof options.timeout !== "number") {

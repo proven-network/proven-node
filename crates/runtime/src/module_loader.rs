@@ -360,6 +360,7 @@ mod tests {
                 .unwrap(),
             &HandlerOptions::Http {
                 allowed_web_origins: HashSet::new(),
+                method: None,
                 path: Some("/hello".to_string()),
                 max_heap_mbs: None,
                 timeout_millis: Some(5000),

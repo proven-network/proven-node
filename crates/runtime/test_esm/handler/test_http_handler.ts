@@ -22,7 +22,7 @@ export const test = runOnHttp(
       throw new Error("Expected body to be 'Hello, world!'");
     }
 
-    // Check path variable extraction works
-    return request.pathVariables.id;
+    // Check path parameter extraction works
+    return request.pathParameters.id;
   }
 );
