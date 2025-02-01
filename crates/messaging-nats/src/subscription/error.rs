@@ -1,35 +1,24 @@
-use std::error::Error as StdError;
-
 use proven_messaging::subscription::SubscriptionError;
 use thiserror::Error;
 
 /// Error type for NATS operations.
 #[derive(Debug, Error)]
-pub enum Error<DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-{
+pub enum Error {
     /// Deserialization error.
-    #[error(transparent)]
-    Deserialize(DE),
+    #[error("deserialization error: {0}")]
+    Deserialize(String),
 
     /// Serialization error.
-    #[error(transparent)]
-    Serialize(SE),
+    #[error("serialization error: {0}")]
+    Serialize(String),
 
     /// Subscribe error.
-    #[error("Failed to subscribe")]
+    #[error("failed to subscribe")]
     Subscribe,
 
     /// Unsubscribe error.
-    #[error("Failed to unsubscribe")]
+    #[error("failed to unsubscribe")]
     Unsubscribe,
 }
 
-impl<DE, SE> SubscriptionError for Error<DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-{
-}
+impl SubscriptionError for Error {}

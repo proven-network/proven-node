@@ -1,52 +1,42 @@
 use std::fmt::Debug;
 
 use proven_messaging::stream::StreamError;
-use std::error::Error as StdError;
 use thiserror::Error;
 
 /// Error type for memory stream operations.
 #[derive(Debug, Error)]
-pub enum Error<DE, SE>
-where
-    DE: Debug + Send + StdError + Sync + 'static,
-    SE: Debug + Send + StdError + Sync + 'static,
-{
+pub enum Error {
     /// Delete error.
-    #[error("Failed to delete message: {0}")]
+    #[error("failed to delete message: {0}")]
     Delete(async_nats::jetstream::stream::DeleteMessageErrorKind),
 
     /// Deserialization error.
-    #[error(transparent)]
-    Deserialize(DE),
+    #[error("deserialization error: {0}")]
+    Deserialize(String),
 
     /// Direct get error.
-    #[error("Failed to get message: {0}")]
+    #[error("failed to get message: {0}")]
     DirectGet(async_nats::jetstream::stream::DirectGetErrorKind),
 
     /// Stream info error.
-    #[error("Failed to get stream info: {0}")]
+    #[error("failed to get stream info: {0}")]
     Info(async_nats::jetstream::context::RequestErrorKind),
 
     /// Publish error.
-    #[error("Failed to publish: {0}")]
+    #[error("failed to publish: {0}")]
     Publish(async_nats::jetstream::context::PublishErrorKind),
 
     /// Serialization error.
-    #[error(transparent)]
-    Serialize(SE),
+    #[error("serialization error: {0}")]
+    Serialize(String),
 
     /// An error occured while starting a service.
     #[error(transparent)]
     Service(#[from] crate::service::Error),
 
     /// An error occured while subscribing to a subject.
-    #[error(transparent)]
-    Subject(#[from] crate::subject::Error<DE, SE>),
+    #[error("failed to subscribe to subject: {0}")]
+    Subject(String),
 }
 
-impl<DE, SE> StreamError for Error<DE, SE>
-where
-    DE: Debug + Send + StdError + Sync + 'static,
-    SE: Debug + Send + StdError + Sync + 'static,
-{
-}
+impl StreamError for Error {}

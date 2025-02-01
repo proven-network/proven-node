@@ -16,9 +16,9 @@ use std::collections::HashSet;
 use async_trait::async_trait;
 use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use proven_attestation::{AttestationParams, Attestor, AttestorError};
+use proven_attestation::{AttestationParams, Attestor};
 use proven_radix_rola::{Rola, RolaOptions, SignedChallenge, Type as SignedChallengeType};
-use proven_store::{Store, Store1, Store2, StoreError};
+use proven_store::{Store, Store1, Store2};
 use radix_common::network::NetworkDefinition;
 use rand::{thread_rng, Rng};
 
@@ -78,14 +78,8 @@ where
     /// Attestor type.
     type Attestor: Attestor;
 
-    /// Attestor error type.
-    type AttestorError: AttestorError;
-
     /// Challenge store type.
     type ChallengeStore: Store2;
-
-    /// Challenge store error type.
-    type ChallengeStoreError: StoreError;
 
     /// Session store type.
     type SessionStore: Store1<
@@ -94,39 +88,23 @@ where
         ciborium::ser::Error<std::io::Error>,
     >;
 
-    /// Session store error type.
-    type SessionStoreError: StoreError;
-
     /// Creates a new instance of the session manager.
     fn new(
         options: SessionManagerOptions<Self::Attestor, Self::ChallengeStore, Self::SessionStore>,
     ) -> Self;
 
     /// Creates a new challenge to use for session creation.
-    async fn create_challenge(
-        &self,
-        application_id: &str,
-        origin: &str,
-    ) -> Result<
-        String,
-        Error<Self::AttestorError, Self::ChallengeStoreError, Self::SessionStoreError>,
-    >;
+    async fn create_challenge(&self, application_id: &str, origin: &str) -> Result<String, Error>;
 
     /// Creates a new session.
-    async fn create_session(
-        &self,
-        params: CreateSessionOptions<'_>,
-    ) -> Result<Bytes, Error<Self::AttestorError, Self::ChallengeStoreError, Self::SessionStoreError>>;
+    async fn create_session(&self, params: CreateSessionOptions<'_>) -> Result<Bytes, Error>;
 
     /// Gets a session by its ID.
     async fn get_session(
         &self,
         application_id: &str,
         session_id: &str,
-    ) -> Result<
-        Option<Session>,
-        Error<Self::AttestorError, Self::ChallengeStoreError, Self::SessionStoreError>,
-    >;
+    ) -> Result<Option<Session>, Error>;
 }
 
 /// Manages all user sessions (created via ROLA) and their associated data.
@@ -152,11 +130,8 @@ where
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     type Attestor = A;
-    type AttestorError = A::Error;
     type ChallengeStore = CS;
-    type ChallengeStoreError = CS::Error;
     type SessionStore = SS;
-    type SessionStoreError = SS::Error;
 
     fn new(
         SessionManagerOptions {
@@ -176,11 +151,7 @@ where
         }
     }
 
-    async fn create_challenge(
-        &self,
-        application_id: &str,
-        origin: &str,
-    ) -> Result<String, Error<A::Error, CS::Error, SS::Error>> {
+    async fn create_challenge(&self, application_id: &str, origin: &str) -> Result<String, Error> {
         let mut challenge = String::new();
 
         for _ in 0..32 {
@@ -192,7 +163,7 @@ where
             .scope(origin)
             .put(challenge.clone(), Bytes::from_static(&[1u8]))
             .await
-            .map_err(Error::ChallengeStore)?;
+            .map_err(|e| Error::ChallengeStore(e.to_string()))?;
 
         Ok(challenge)
     }
@@ -208,7 +179,7 @@ where
             signed_challenges,
             verifying_key,
         }: CreateSessionOptions<'_>,
-    ) -> Result<Bytes, Error<A::Error, CS::Error, SS::Error>> {
+    ) -> Result<Bytes, Error> {
         let rola = Rola::new(RolaOptions {
             application_name: application_name.unwrap_or_default(),
             dapp_definition_address,
@@ -230,10 +201,10 @@ where
                     scoped_challenge_store
                         .delete(challenge.clone())
                         .await
-                        .map_err(Error::ChallengeStore)?;
+                        .map_err(|e| Error::ChallengeStore(e.to_string()))?;
                 }
                 Err(e) => {
-                    return Err(Error::ChallengeStore(e));
+                    return Err(Error::ChallengeStore(e.to_string()));
                 }
             }
         }
@@ -280,7 +251,7 @@ where
             .scope(application_id)
             .put(session.session_id.clone(), session.clone())
             .await
-            .map_err(Error::SessionStore)?;
+            .map_err(|e| Error::SessionStore(e.to_string()))?;
 
         match self
             .attestor
@@ -292,7 +263,7 @@ where
             .await
         {
             Ok(attestation) => Ok(attestation),
-            Err(e) => Err(Error::Attestation(e)),
+            Err(e) => Err(Error::Attestation(e.to_string())),
         }
     }
 
@@ -300,7 +271,7 @@ where
         &self,
         application_id: &str,
         session_id: &str,
-    ) -> Result<Option<Session>, Error<A::Error, CS::Error, SS::Error>> {
+    ) -> Result<Option<Session>, Error> {
         match self
             .sessions_store
             .scope(application_id.to_string())
@@ -309,7 +280,7 @@ where
         {
             Ok(Some(session)) => Ok(Some(session)),
             Ok(None) => Ok(None),
-            Err(e) => Err(Error::SessionStore(e)),
+            Err(e) => Err(Error::SessionStore(e.to_string())),
         }
     }
 }

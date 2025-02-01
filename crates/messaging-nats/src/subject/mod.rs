@@ -103,7 +103,7 @@ where
     pub fn new(
         subject_partial: impl Into<String>,
         NatsSubjectOptions { client }: NatsSubjectOptions,
-    ) -> Result<Self, Error<D, S>> {
+    ) -> Result<Self, Error> {
         let subject = subject_partial.into();
         if subject.contains('.') || subject.contains('*') || subject.contains('>') {
             return Err(Error::InvalidSubjectPartial);
@@ -130,11 +130,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error<DE, SE>
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
+    type Error = Error;
 
     type SubscriptionType<X>
         = NatsSubscription<X, T, D, S>
@@ -143,10 +139,7 @@ where
 
     type StreamType = InitializedNatsStream<T, D, S>;
 
-    async fn subscribe<X>(
-        &self,
-        handler: X,
-    ) -> Result<NatsSubscription<X, T, D, S>, Self::Error<D, S>>
+    async fn subscribe<X>(&self, handler: X) -> Result<NatsSubscription<X, T, D, S>, Self::Error>
     where
         X: SubscriptionHandler<T, D, S>,
     {
@@ -199,8 +192,10 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     #[allow(clippy::significant_drop_tightening)]
-    async fn publish(&self, message: T) -> Result<(), Self::Error<D, S>> {
-        let payload: Bytes = message.try_into().map_err(|e| Error::Serialize(e))?;
+    async fn publish(&self, message: T) -> Result<(), Self::Error> {
+        let payload: Bytes = message
+            .try_into()
+            .map_err(|e| Error::Serialize(e.to_string()))?;
 
         self.client
             .publish(self.full_subject.clone(), payload)
@@ -210,7 +205,7 @@ where
         Ok(())
     }
 
-    async fn request<X>(&self, _message: T) -> Result<X::ResponseType, Self::Error<D, S>>
+    async fn request<X>(&self, _message: T) -> Result<X::ResponseType, Self::Error>
     where
         X: SubscriptionHandler<T, D, S>,
     {
@@ -311,11 +306,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error<DE, SE>
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
+    type Error = Error;
 
     type SubscriptionType<X>
         = NatsSubscription<X, T, D, S>
@@ -324,7 +315,7 @@ where
 
     type StreamType = InitializedNatsStream<T, D, S>;
 
-    async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error<D, S>>
+    async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error>
     where
         X: SubscriptionHandler<T, D, S>,
     {
@@ -336,7 +327,7 @@ where
             handler,
         )
         .await
-        .map_err(|e| Error::SubscriptionError(e))
+        .map_err(Error::SubscriptionError)
     }
 
     async fn to_stream<K>(
@@ -441,7 +432,7 @@ macro_rules! define_scoped_subject {
                 pub fn new(
                     subject_partial: impl Into<String>,
                     NatsSubjectOptions { client }: NatsSubjectOptions,
-                ) -> Result<Self, Error<D, S>> {
+                ) -> Result<Self, Error> {
                     let subject = subject_partial.into();
                     if subject.contains('.') || subject.contains('*') || subject.contains('>') {
                         return Err(Error::InvalidSubjectPartial);

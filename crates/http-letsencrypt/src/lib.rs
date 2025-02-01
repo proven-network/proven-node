@@ -193,7 +193,7 @@ impl<S> HttpServer for LetsEncryptHttpServer<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<S::Error>;
+    type Error = Error;
 
     async fn start(
         &self,

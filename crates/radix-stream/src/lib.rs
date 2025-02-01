@@ -75,8 +75,6 @@ where
     pub transaction_stream: TS,
 }
 
-type StartResult<TSE> = Result<JoinHandle<Result<(), Error<TSE>>>, Error<TSE>>;
-
 impl<TS> RadixStream<TS>
 where
     TS: InitializedStream<
@@ -96,13 +94,13 @@ where
             radix_gateway_origin,
             transaction_stream,
         }: RadixStreamOptions<TS>,
-    ) -> Result<Self, Error<TS::Error>> {
+    ) -> Result<Self, Error> {
         let client = build_client(radix_gateway_origin, None, None);
 
         let last_state_version = (transaction_stream
             .last_message()
             .await
-            .map_err(Error::TransactionStream)?)
+            .map_err(|e| Error::TransactionStream(e.to_string()))?)
         .map(|last_transaction| {
             let state_version = last_transaction.state_version();
             info!("Starting from state version: {}", state_version);
@@ -130,7 +128,7 @@ where
         transaction_stream: TS,
         last_state_version: Arc<Mutex<Option<u64>>>,
         shutdown_token: CancellationToken,
-    ) -> Result<(), Error<TS::Error>> {
+    ) -> Result<(), Error> {
         loop {
             if shutdown_token.is_cancelled() {
                 break;
@@ -213,13 +211,13 @@ where
         transactions: Vec<Transaction>,
         transaction_stream: TS,
         last_state_version: Arc<Mutex<Option<u64>>>,
-    ) -> Result<(), Error<TS::Error>> {
+    ) -> Result<(), Error> {
         for transaction in &transactions {
             trace!("Publishing transaction: {:?}", transaction);
             transaction_stream
                 .publish(transaction.clone())
                 .await
-                .map_err(Error::TransactionStream)?;
+                .map_err(|e| Error::TransactionStream(e.to_string()))?;
 
             *last_state_version.lock().await = Some(transaction.state_version());
         }
@@ -232,7 +230,7 @@ where
     /// # Errors
     ///
     /// This function will return an error if the `RadixStream` has already been started.
-    pub fn start(&self) -> StartResult<TS::Error> {
+    pub fn start(&self) -> Result<JoinHandle<Result<(), Error>>, Error> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }

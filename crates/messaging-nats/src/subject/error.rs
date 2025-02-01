@@ -1,39 +1,28 @@
-use std::error::Error as StdError;
-
 use proven_messaging::subject::SubjectError;
 use thiserror::Error;
 
 /// Error type for NATS operations.
 #[derive(Debug, Error)]
-pub enum Error<DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-{
+pub enum Error {
     /// Deserialization error.
-    #[error(transparent)]
-    Deserialize(DE),
+    #[error("deserialization error: {0}")]
+    Deserialize(String),
 
     /// The subject name is invalid
     #[error("invalid subject name - must not contain '.', '*', or '>'")]
     InvalidSubjectPartial,
 
     /// Publish error.
-    #[error("Failed to publish: {0}")]
+    #[error("failed to publish: {0}")]
     Publish(async_nats::client::PublishErrorKind),
 
     /// Serialization error.
-    #[error(transparent)]
-    Serialize(SE),
+    #[error("serialization error: {0}")]
+    Serialize(String),
 
     /// Error making subscription.
     #[error(transparent)]
-    SubscriptionError(#[from] crate::subscription::Error<DE, SE>),
+    SubscriptionError(#[from] crate::subscription::Error),
 }
 
-impl<DE, SE> SubjectError for Error<DE, SE>
-where
-    DE: Send + StdError + Sync + 'static,
-    SE: Send + StdError + Sync + 'static,
-{
-}
+impl SubjectError for Error {}

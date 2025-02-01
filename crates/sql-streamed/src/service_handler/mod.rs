@@ -69,17 +69,17 @@ where
         }
     }
 
-    async fn get_database(&self) -> Result<MutexGuard<'_, Option<Database>>, Error<S, SS>> {
+    async fn get_database(&self) -> Result<MutexGuard<'_, Option<Database>>, Error> {
         let mut db_guard = self.database.lock().await;
         if db_guard.is_none() {
             let db_path = NamedTempFile::new()
-                .map_err(|e| Error::TempFile(e))?
+                .map_err(Error::TempFile)?
                 .into_temp_path()
                 .to_path_buf();
 
             let database = Database::connect(&db_path)
                 .await
-                .map_err(Error::<S, SS>::Libsql)
+                .map_err(Error::Libsql)
                 .unwrap();
             *db_guard = Some(database);
         }
@@ -91,7 +91,7 @@ where
         self.caught_up_tx.lock().await.is_none()
     }
 
-    async fn save_snapshot(&self, current_seq: u64) -> Result<(), Error<S, SS>> {
+    async fn save_snapshot(&self, current_seq: u64) -> Result<(), Error> {
         // Limit the frequency of snapshot attempts to prevent thundering herd.
         // (Rolling up a stream will fail if new requests coming in during backup.)
         let mut last_snapshot_time = self.last_snapshot_attempt.lock().await;
@@ -115,22 +115,20 @@ where
 
         let backup_result = database
             .backup(move |path: PathBuf| async move {
-                let db_bytes = tokio::fs::read(path)
-                    .await
-                    .map_err(Error::<S, SS>::TempFile)?;
+                let db_bytes = tokio::fs::read(path).await.map_err(Error::TempFile)?;
                 let store_key = current_seq.to_string();
 
                 snapshot_store
                     .put(store_key.clone(), Bytes::from(db_bytes))
                     .await
-                    .map_err(Error::<S, SS>::SnapshotStore)?;
+                    .map_err(|e| Error::SnapshotStore(e.to_string()))?;
 
                 stream
                     .rollup(Request::Snapshot(store_key), current_seq)
                     .await
-                    .map_err(Error::<S, SS>::Stream)?;
+                    .map_err(|e| Error::Stream(e.to_string()))?;
 
-                Ok::<(), Error<S, SS>>(())
+                Ok::<(), Error>(())
             })
             .await?;
 
@@ -159,7 +157,7 @@ where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
     SS: Store<Bytes, Infallible, Infallible>,
 {
-    type Error = Error<S, SS>;
+    type Error = Error;
     type ResponseType = Response;
     type ResponseDeserializationError = ciborium::de::Error<std::io::Error>;
     type ResponseSerializationError = ciborium::ser::Error<std::io::Error>;
@@ -303,11 +301,11 @@ where
                     .snapshot_store
                     .get(&snapshot_key)
                     .await
-                    .map_err(Error::SnapshotStore)?
+                    .map_err(|e| Error::SnapshotStore(e.to_string()))?
                     .ok_or(Error::SnapshotNotFound)?;
 
                 let db_path = NamedTempFile::new()
-                    .map_err(|e| Error::TempFile(e))?
+                    .map_err(Error::TempFile)?
                     .into_temp_path()
                     .to_path_buf();
 
@@ -317,7 +315,7 @@ where
 
                 let database = Database::connect(&db_path)
                     .await
-                    .map_err(Error::<S, SS>::Libsql)
+                    .map_err(Error::Libsql)
                     .unwrap();
 
                 self.database.lock().await.replace(database);

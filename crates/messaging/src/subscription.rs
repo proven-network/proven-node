@@ -30,10 +30,7 @@ where
     S: Debug + Error + Send + Sync + 'static,
 {
     /// The error type for the subscriber.
-    type Error<DE, SE>: SubscriptionError
-    where
-        DE: Debug + Error + Send + Sync + 'static,
-        SE: Debug + Error + Send + Sync + 'static;
+    type Error: SubscriptionError;
 
     /// The options for the subscriber.
     type Options: SubscriptionOptions;
@@ -46,5 +43,5 @@ where
         subject: Self::Subject,
         options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error<D, S>>;
+    ) -> Result<Self, Self::Error>;
 }

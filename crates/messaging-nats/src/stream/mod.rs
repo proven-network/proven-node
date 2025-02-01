@@ -88,7 +88,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = Error<D, S>;
+    type Error = Error;
 
     type Options = NatsStreamOptions;
 
@@ -211,7 +211,7 @@ where
                 let payload: T = message
                     .payload
                     .try_into()
-                    .map_err(|e| Error::Deserialize(e))?;
+                    .map_err(|e: D| Error::Deserialize(e.to_string()))?;
 
                 Ok(Some(payload))
             }
@@ -246,7 +246,9 @@ where
 
     /// Publishes a message directly to the stream.
     async fn publish(&self, message: T) -> Result<u64, Self::Error> {
-        let payload: Bytes = message.try_into().map_err(|e| Error::Serialize(e))?;
+        let payload: Bytes = message
+            .try_into()
+            .map_err(|e| Error::Serialize(e.to_string()))?;
 
         let seq = self
             .jetstream_context
@@ -263,7 +265,9 @@ where
     /// Publishes a rollup message directly to the stream - purges all prior messages.
     /// Must provide expected sequence number for optimistic concurrency control.
     async fn rollup(&self, message: T, expected_seq: u64) -> Result<u64, Self::Error> {
-        let payload: Bytes = message.try_into().map_err(|e| Error::Serialize(e))?;
+        let payload: Bytes = message
+            .try_into()
+            .map_err(|e| Error::Serialize(e.to_string()))?;
 
         let mut headers = HeaderMap::new();
         headers.insert("Nats-Rollup", "all");

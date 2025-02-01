@@ -120,11 +120,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
+    type Error = Error;
 
     type SubscriptionType<X>
         = MemorySubscription<X, T, D, S>
@@ -305,11 +301,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
+    type Error = Error;
 
     type SubscriptionType<X>
         = MemorySubscription<X, T, D, S>

@@ -75,11 +75,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
+    type Error = Error;
 
     type Options = MemorySubscriptionOptions;
 
@@ -90,7 +86,7 @@ where
         subject: Self::Subject,
         _options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error<D, S>> {
+    ) -> Result<Self, Self::Error> {
         let mut state = GLOBAL_STATE.lock().await;
         if !state.has::<GlobalState<T>>() {
             state.put(GlobalState::<T>::default());

@@ -81,11 +81,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error<DE, SE>
-        = Error<DE, SE>
-    where
-        DE: Debug + Send + StdError + Sync + 'static,
-        SE: Debug + Send + StdError + Sync + 'static;
+    type Error = Error;
 
     type Options = NatsSubscriptionOptions;
 
@@ -95,7 +91,7 @@ where
         subject: Self::Subject,
         options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error<D, S>> {
+    ) -> Result<Self, Self::Error> {
         let (stop_sender, mut stop_receiver) = watch::channel(());
 
         let subscription = Self {
@@ -119,7 +115,7 @@ where
                         if let Some(msg) = message {
                             let data: T = msg.payload
                                 .try_into()
-                                .map_err(Error::<D, S>::Deserialize)
+                                .map_err(|e: D| Error::Deserialize(e.to_string()))
                                 .unwrap();
 
                                 let responder = NatsSubscriptionResponder::new(options.client.clone(), "TODO".to_string(), "TODO".to_string());

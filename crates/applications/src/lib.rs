@@ -52,33 +52,10 @@ where
     async fn create_application(
         &self,
         options: CreateApplicationOptions,
-    ) -> Result<
-        Application,
-        Error<
-            <Self::Store as Store<
-                Application,
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >>::Error,
-            <Self::SqlStore as SqlStore1>::Error,
-        >,
-    >;
+    ) -> Result<Application, Error>;
 
     /// Get an application by its ID.
-    async fn get_application(
-        &self,
-        application_id: String,
-    ) -> Result<
-        Option<Application>,
-        Error<
-            <Self::Store as Store<
-                Application,
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >>::Error,
-            <Self::SqlStore as SqlStore1>::Error,
-        >,
-    >;
+    async fn get_application(&self, application_id: String) -> Result<Option<Application>, Error>;
 }
 
 /// Manages database of all currently deployed applications.
@@ -120,7 +97,7 @@ where
             owner_identity_address,
             dapp_definition_addresses,
         }: CreateApplicationOptions,
-    ) -> Result<Application, Error<S::Error, SS::Error>> {
+    ) -> Result<Application, Error> {
         let application_id = Uuid::new_v4().to_string();
 
         let connection = self
@@ -128,7 +105,7 @@ where
             .scope(&application_id)
             .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
             .await
-            .map_err(Error::SqlStore)?;
+            .map_err(|e| Error::SqlStore(e.to_string()))?;
 
         connection
             .execute(
@@ -139,7 +116,7 @@ where
                 ],
             )
             .await
-            .map_err(Error::SqlStore)?;
+            .map_err(|e| Error::SqlStore(e.to_string()))?;
 
         connection
             .execute_batch(
@@ -155,7 +132,7 @@ where
                     .collect(),
             )
             .await
-            .map_err(Error::SqlStore)?;
+            .map_err(|e| Error::SqlStore(e.to_string()))?;
 
         Ok(Application {
             id: application_id,
@@ -164,15 +141,12 @@ where
         })
     }
 
-    async fn get_application(
-        &self,
-        application_id: String,
-    ) -> Result<Option<Application>, Error<S::Error, SS::Error>> {
+    async fn get_application(&self, application_id: String) -> Result<Option<Application>, Error> {
         if let Some(application) = self
             .store
             .get(application_id.clone())
             .await
-            .map_err(Error::Store)?
+            .map_err(|e| Error::Store(e.to_string()))?
         {
             return Ok(Some(application));
         }
@@ -182,7 +156,7 @@ where
             .scope(&application_id)
             .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
             .await
-            .map_err(Error::SqlStore)?;
+            .map_err(|e| Error::SqlStore(e.to_string()))?;
 
         let mut rows = connection
             .query(
@@ -195,7 +169,7 @@ where
                 vec![SqlParam::Text(application_id.clone())],
             )
             .await
-            .map_err(Error::SqlStore)?;
+            .map_err(|e| Error::SqlStore(e.to_string()))?;
 
         // Early return if no rows found
         let Some(first_row) = rows.next().await else {
