@@ -38,6 +38,10 @@ pub enum Error {
     #[error(transparent)]
     Io(std::io::Error),
 
+    /// Overlapping routes error.
+    #[error("overlapping routes detected: {0} and {1}")]
+    OverlappingRoutes(String, String),
+
     /// RPC error.
     #[error(transparent)]
     Rpc(#[from] crate::rpc::RpcHandlerError),

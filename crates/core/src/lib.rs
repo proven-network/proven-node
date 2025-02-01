@@ -23,7 +23,7 @@ use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_http::HttpServer;
-use proven_runtime::{ModuleLoader, ModuleOptions, RuntimePoolManagement};
+use proven_runtime::{HttpEndpoint, ModuleLoader, ModuleOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -254,7 +254,9 @@ where
         let module_options =
             ModuleOptions::from_code_package(&code_package, &module_specifier).await?;
 
-        // TODO: Use application-defined CORS settings rather than very_permissive
+        // Validate before creating the router
+        Self::ensure_no_overlapping_routes(&module_options.http_endpoints)?;
+
         let mut router = Router::new().layer(CorsLayer::very_permissive());
 
         for endpoint in module_options.http_endpoints {
@@ -285,6 +287,8 @@ where
         Ok(router)
     }
 
+    /// Switches the path parameters from the colon-prefixed style, used in `Runtime`, to Axum capture groups.
+    /// This is necessary because Axum uses a curly brace style for path parameters.
     fn convert_path_use_axum_capture_groups(path: &str) -> String {
         path.split('/')
             .map(|segment| {
@@ -297,4 +301,48 @@ where
             .collect::<Vec<String>>()
             .join("/")
     }
+
+    /// Validates that there are no overlapping routes in the endpoint set.
+    /// Without this check, it would be possible to for two endpoints to overlap in path and method.
+    /// Axum panics if this occurs, so we check for it here.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any endpoints overlap in path or method.
+    fn ensure_no_overlapping_routes(endpoints: &HashSet<HttpEndpoint>) -> Result<()> {
+        let mut routes: Vec<(&str, &str)> = Vec::new();
+
+        for endpoint in endpoints {
+            let method = endpoint.method.as_deref().unwrap_or("*");
+            let path = endpoint.path.as_str();
+
+            for (existing_method, existing_path) in &routes {
+                if (method == *existing_method || method == "*" || *existing_method == "*")
+                    && normalize_path_parameters(path) == normalize_path_parameters(existing_path)
+                {
+                    return Err(Error::OverlappingRoutes(
+                        format!("{existing_method} {existing_path}"),
+                        format!("{method} {path}"),
+                    ));
+                }
+            }
+
+            routes.push((method, path));
+        }
+
+        Ok(())
+    }
+}
+
+fn normalize_path_parameters(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            if segment.starts_with(':') {
+                ":param".to_string()
+            } else {
+                segment.to_string()
+            }
+        })
+        .collect::<Vec<String>>()
+        .join("/")
 }
