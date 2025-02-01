@@ -7137,6 +7137,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "ciborium",
  "deno_ast",
  "deno_core",
  "deno_error",
@@ -7146,6 +7147,7 @@ dependencies = [
  "deno_semver 0.7.1",
  "eszip",
  "futures",
+ "serde",
  "sha2",
  "thiserror 2.0.11",
 ]

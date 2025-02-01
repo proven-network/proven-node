@@ -8,25 +8,24 @@ mod error;
 mod npm_resolver;
 mod resolver;
 
-use npm_resolver::CodePackageNpmResolver;
-
-pub use deno_core::ModuleSpecifier;
 pub use error::Error;
-
+use npm_resolver::CodePackageNpmResolver;
 use resolver::CodePackageResolver;
-
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use deno_ast::{EmitOptions, TranspileOptions};
+pub use deno_core::ModuleSpecifier;
+use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
+use std::sync::{Arc, Mutex};
+
 use deno_graph::source::{MemoryLoader, NullFileSystem, Source};
 use deno_graph::{BuildOptions, GraphKind, ModuleGraph};
 use deno_graph::{CapturingEsParser, DefaultParsedSourceStore};
 use eszip::{EszipV2, FromGraphOptions};
 use futures::executor::block_on;
 use futures::io::BufReader;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// Represents a package of code that can be executed on a runtime. Can be serialized to and from bytes.
@@ -35,7 +34,10 @@ pub struct CodePackage {
     eszip: Arc<Mutex<Option<EszipV2>>>,
 
     /// The hash of the code package bytes.
-    pub hash: String,
+    hash: String,
+
+    /// The valid entrypoints of the code package.
+    valid_entrypoints: HashSet<ModuleSpecifier>,
 }
 
 impl CodePackage {
@@ -80,7 +82,7 @@ impl CodePackage {
     /// This function will return an error if the module graph cannot be built or if the `EszipV2::from_graph` function fails.
     pub fn from_map(
         module_sources: &HashMap<ModuleSpecifier, String>,
-        module_roots: impl IntoIterator<Item = ModuleSpecifier>,
+        module_roots: impl IntoIterator<Item = ModuleSpecifier> + Clone,
     ) -> Result<Self, Error> {
         let mut sources = module_sources
             .iter()
@@ -117,12 +119,16 @@ impl CodePackage {
 
         let loader = MemoryLoader::new(sources, Vec::new());
 
+        let module_roots_clone = module_roots
+            .clone()
+            .into_iter()
+            .collect::<Vec<ModuleSpecifier>>();
         let module_graph_future = async move {
             let mut graph = ModuleGraph::new(GraphKind::All);
 
             graph
                 .build(
-                    module_roots.into_iter().collect(),
+                    module_roots_clone,
                     &loader,
                     BuildOptions {
                         is_dynamic: true,
@@ -145,7 +151,7 @@ impl CodePackage {
 
         let module_graph = block_on(module_graph_future);
 
-        Self::from_module_graph(module_graph)
+        Self::from_module_graph(module_graph, module_roots)
     }
 
     /// Creates a `CodePackage` from a string containing module source code.
@@ -173,7 +179,10 @@ impl CodePackage {
     /// # Errors
     ///
     /// This function will return an error if the `EszipV2::from_graph` function fails.
-    pub fn from_module_graph(module_graph: ModuleGraph) -> Result<Self, Error> {
+    pub fn from_module_graph(
+        module_graph: ModuleGraph,
+        valid_entrypoints: impl IntoIterator<Item = ModuleSpecifier>,
+    ) -> Result<Self, Error> {
         let eszip = EszipV2::from_graph(FromGraphOptions {
             graph: module_graph.clone(),
             parser: CapturingEsParser::new(None, &DefaultParsedSourceStore::default()),
@@ -208,6 +217,7 @@ impl CodePackage {
         Ok(Self {
             eszip: Arc::new(Mutex::new(Some(eszip))),
             hash,
+            valid_entrypoints: valid_entrypoints.into_iter().collect(),
         })
     }
 
@@ -235,6 +245,12 @@ impl CodePackage {
         Bytes::from(vec_u8)
     }
 
+    /// Returns the hash of the code package.
+    #[must_use]
+    pub fn hash(&self) -> &str {
+        &self.hash
+    }
+
     /// Returns a list of module specifiers.
     ///
     /// # Panics
@@ -243,6 +259,12 @@ impl CodePackage {
     #[must_use]
     pub fn specifiers(&self) -> Vec<String> {
         self.eszip.lock().unwrap().as_mut().unwrap().specifiers()
+    }
+
+    /// Returns a reference to the set of valid entrypoints.
+    #[must_use]
+    pub const fn valid_entrypoints(&self) -> &HashSet<ModuleSpecifier> {
+        &self.valid_entrypoints
     }
 }
 
@@ -258,6 +280,7 @@ impl Clone for CodePackage {
         Self {
             eszip: Arc::new(Mutex::new(Some(eszip))),
             hash: self.hash.clone(),
+            valid_entrypoints: self.valid_entrypoints.clone(),
         }
     }
 }
@@ -270,31 +293,54 @@ impl Debug for CodePackage {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct StoredCodePackage {
+    eszip_bytes: Bytes,
+    valid_entrypoints: HashSet<ModuleSpecifier>,
+}
+
 impl TryFrom<Bytes> for CodePackage {
     type Error = Error;
 
     fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
+        let stored_code_package: StoredCodePackage =
+            ciborium::de::from_reader(&bytes[..]).map_err(|e| Error::CodePackage(e.to_string()))?;
+
         // First get a hash of the bytes
         let mut hasher = Sha256::new();
-        hasher.update(bytes.as_ref());
+        hasher.update(&stored_code_package.eszip_bytes);
         let hash_bytes = hasher.finalize();
 
         // Convert the hash result to a hexadecimal string
         let hash = format!("{hash_bytes:x}");
 
-        let reader = BufReader::new(&bytes[..]);
+        let reader = BufReader::new(&stored_code_package.eszip_bytes[..]);
         let (eszip, _loaded_future) = block_on(async { EszipV2::parse(reader).await }).unwrap();
 
         Ok(Self {
             eszip: Arc::new(Mutex::new(Some(eszip))),
             hash,
+            valid_entrypoints: stored_code_package.valid_entrypoints,
         })
     }
 }
 
-impl From<CodePackage> for Bytes {
-    fn from(code_package: CodePackage) -> Self {
-        code_package.into_bytes()
+impl TryInto<Bytes> for CodePackage {
+    type Error = Error;
+
+    fn try_into(self) -> Result<Bytes, Self::Error> {
+        // TODO: Handle errors
+        let eszip_bytes = self.eszip.lock().unwrap().take().unwrap().into_bytes();
+
+        let stored_code_package = StoredCodePackage {
+            eszip_bytes: Bytes::from(eszip_bytes),
+            valid_entrypoints: self.valid_entrypoints,
+        };
+
+        let mut u8_vec = Vec::new();
+        ciborium::ser::into_writer(&stored_code_package, &mut u8_vec).unwrap();
+
+        Ok(Bytes::from(u8_vec))
     }
 }
 
@@ -304,8 +350,23 @@ mod tests {
 
     #[test]
     fn test_code_package_from_str() {
-        let code_package = CodePackage::from_str("export default = 'Hello, world!'").unwrap();
+        let code_package = CodePackage::from_str("export default 'Hello, world!'").unwrap();
 
         assert_eq!(code_package.specifiers().len(), 1);
+        assert_eq!(code_package.valid_entrypoints().len(), 1);
+    }
+
+    #[test]
+    fn test_code_package_serde() {
+        let code_package = CodePackage::from_str("export default 'Hello, world!'").unwrap();
+        let bytes: Bytes = code_package.clone().try_into().unwrap();
+        let code_package2: CodePackage = bytes.try_into().unwrap();
+
+        assert_eq!(code_package.hash, code_package2.hash);
+        assert_eq!(code_package.specifiers(), code_package2.specifiers());
+        assert_eq!(
+            code_package.valid_entrypoints(),
+            code_package2.valid_entrypoints()
+        );
     }
 }

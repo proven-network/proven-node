@@ -148,7 +148,7 @@ impl
     #[must_use]
     pub fn for_test_code_map(
         module_sources: &HashMap<ModuleSpecifier, &str>,
-        module_roots: impl IntoIterator<Item = ModuleSpecifier>,
+        module_roots: impl IntoIterator<Item = ModuleSpecifier> + Clone,
     ) -> Self {
         use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
         use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
@@ -493,7 +493,7 @@ where
         let module_specifier = handler_specifier.module_specifier();
 
         let Ok(module_options) = self.module_loader.get_module_options(&module_specifier) else {
-            return Err(Error::SpecifierNotFoundInCodePackage);
+            return Err(Error::SpecifierNotFoundInCodePackage(module_specifier));
         };
 
         let handler_options = module_options
@@ -675,7 +675,7 @@ where
             .module_loader
             .get_module(&module_specifier, ProcessingMode::Runtime)
         else {
-            return Err(Error::SpecifierNotFoundInCodePackage);
+            return Err(Error::SpecifierNotFoundInCodePackage(module_specifier));
         };
 
         let module_handle = self.runtime.load_module(&module)?;

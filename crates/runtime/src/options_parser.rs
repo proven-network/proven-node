@@ -66,7 +66,9 @@ impl OptionsParser {
 
         let Some(module) = module_loader.get_module(module_specifier, ProcessingMode::Options)
         else {
-            return Err(Error::SpecifierNotFoundInCodePackage);
+            return Err(Error::SpecifierNotFoundInCodePackage(
+                module_specifier.clone(),
+            ));
         };
 
         runtime.load_module(&module)?;

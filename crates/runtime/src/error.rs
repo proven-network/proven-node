@@ -1,3 +1,4 @@
+use deno_core::ModuleSpecifier;
 use thiserror::Error;
 
 /// The result type for this crate.
@@ -36,5 +37,5 @@ pub enum Error {
 
     /// Root not found in graph.
     #[error("root not found in graph")]
-    SpecifierNotFoundInCodePackage,
+    SpecifierNotFoundInCodePackage(ModuleSpecifier),
 }

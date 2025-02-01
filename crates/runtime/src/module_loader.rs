@@ -4,7 +4,7 @@ use crate::options_parser::OptionsParser;
 use crate::util::run_in_thread;
 use crate::Error;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use proven_code_package::{CodePackage, ModuleSpecifier};
@@ -45,7 +45,19 @@ impl ModuleLoader {
     /// Retrieves the hash of the code package.
     #[must_use]
     pub fn code_package_hash(&self) -> String {
-        self.code_package.hash.clone()
+        self.code_package.hash().to_string()
+    }
+
+    /// Retrieves the specifiers of the code package.
+    #[must_use]
+    pub fn specifiers(&self) -> Vec<String> {
+        self.code_package.specifiers()
+    }
+
+    /// Retrieves the valid entrypoints of the code package.
+    #[must_use]
+    pub fn valid_entrypoints(&self) -> HashSet<ModuleSpecifier> {
+        self.code_package.valid_entrypoints().clone()
     }
 
     /// Retrieves a module by its specifier and processing mode.
@@ -68,6 +80,15 @@ impl ModuleLoader {
         module_specifer: &ModuleSpecifier,
         processing_mode: ProcessingMode,
     ) -> Option<Module> {
+        if !self
+            // Only valid entrypoints can be loaded directly
+            .code_package
+            .valid_entrypoints()
+            .contains(module_specifer)
+        {
+            return None;
+        }
+
         let mut module_cache = self.module_cache.lock().unwrap();
 
         if let Some(cached_module) = module_cache.get(&(module_specifer.clone(), processing_mode)) {
@@ -198,7 +219,7 @@ impl ModuleLoader {
     #[must_use]
     pub fn from_test_code_map(
         module_sources: &HashMap<ModuleSpecifier, &str>,
-        module_roots: impl IntoIterator<Item = ModuleSpecifier>,
+        module_roots: impl IntoIterator<Item = ModuleSpecifier> + Clone,
     ) -> Self {
         let mut sources = HashMap::new();
         for (specifier, script_name) in module_sources {
