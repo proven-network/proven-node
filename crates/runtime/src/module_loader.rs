@@ -219,11 +219,21 @@ pub struct ImportProvider {
 impl rustyscript::module_loader::ImportProvider for ImportProvider {
     fn resolve(
         &mut self,
-        _specifier: &ModuleSpecifier,
+        specifier: &ModuleSpecifier,
         _referrer: &str,
         _kind: deno_core::ResolutionKind,
     ) -> Option<Result<ModuleSpecifier, anyhow::Error>> {
-        None
+        let to_strip = format!(
+            "file://{}/file:",
+            std::env::current_dir().unwrap().to_str().unwrap()
+        );
+
+        specifier
+            .as_str()
+            .strip_prefix(&to_strip)
+            .map(|stripped_specifier| {
+                Ok(ModuleSpecifier::from_file_path(stripped_specifier).unwrap())
+            })
     }
 
     fn import(
@@ -233,18 +243,15 @@ impl rustyscript::module_loader::ImportProvider for ImportProvider {
         _is_dyn_import: bool,
         _requested_module_type: deno_core::RequestedModuleType,
     ) -> Option<Result<String, anyhow::Error>> {
-        // TODO: Should possibly be fixed somewhere else
         let pwd = std::env::current_dir().unwrap();
-        let specifier_without_pwd = specifier
-            .as_str()
-            .strip_prefix(format!("file://{}", pwd.to_str().unwrap()).as_str())
-            .unwrap_or(specifier.as_str())
-            .strip_prefix("/file:")
-            .map_or_else(|| specifier.as_str().to_string(), |s| format!("file://{s}"));
+        let specifier_with_pwd = specifier.as_str().replace(
+            "file:///file:",
+            &format!("file://{}/file:", pwd.to_str().unwrap()),
+        );
 
         self.module_loader
             .get_module_source(
-                &ModuleSpecifier::parse(specifier_without_pwd.as_str()).unwrap(),
+                &ModuleSpecifier::parse(&specifier_with_pwd).unwrap(),
                 self.processing_mode,
             )
             .map(Ok)
