@@ -1,5 +1,4 @@
 //! Manages a pool of V8 isolates for running proven application code.
-#![feature(async_closure)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
