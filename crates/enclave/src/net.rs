@@ -48,7 +48,7 @@ pub mod linux {
     use futures::{stream::TryStreamExt, TryFutureExt};
     use rtnetlink::LinkUnspec;
     use tokio::process::Command;
-    use tracing::{error, info};
+    use tracing::info;
 
     /// Brings up the loopback interface (disabled by default in enclave).
     pub async fn bring_up_loopback() -> Result<()> {
@@ -79,7 +79,7 @@ pub mod linux {
         host_ip: Ipv4Addr,
         cidr: Ipv4Cidr,
     ) -> Result<()> {
-        let cmd = Command::new("ip")
+        Command::new("ip")
             .arg("route")
             .arg("add")
             .arg("default")

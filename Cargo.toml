@@ -150,11 +150,12 @@ deno_webstorage = { path = "vendor/deno/ext/webstorage" }
 denokv_proto = "0.9.0"
 denokv_remote = "0.9.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.9.0" }
+denokv_sqlite = { default-features = false, path = "vendor/denokv/sqlite" }
 derive_more = { version = "1.0.0", features = ["from"] }
 dlopen2 = "0.7.0"
 dns-stamp-parser = { git = "https://github.com/LinkTed/dns-stamp-parser" }
 dyn-clone = "1"
+dynasmrt = "1.2.3"
 ecb = "=0.1.2"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core", "signature"] }
 elliptic-curve = { version = "0.13.8", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
@@ -192,7 +193,11 @@ junction = "1.2.0"
 jsonc-parser = { version = "=0.26.2", features = ["serde"] }
 lazy-regex = "3.4.1"
 lazy_static = "1.4.0"
+libffi = { path = "vendor/libffi-rs/libffi-rs" }
+libffi-sys = { path = "vendor/libffi-rs/libffi-sys-rs" }
 libsql = { version = "0.6.0", default-features = false, features = ["core", "stream"] }
+libsql-ffi = "0.5.0"
+libsql-rusqlite = "0.33.0"
 libsui = "0.5.0"
 libc = "0.2.169"
 libz-sys = { version = "1.1.21", default-features = false }
@@ -289,7 +294,6 @@ ring = "^0.17.0"
 rlimit = "0.10.2"
 rsa = { version = "0.9.7", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 rtnetlink = { git = "https://github.com/mwanner/rtnetlink", branch = "deps-update" }
-rusqlite = { version = "0.32.1", features = ["unlock_notify", "bundled"] }
 rustls = { version = "0.23.21", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.3.0"
@@ -303,6 +307,7 @@ serde = { version = "1.0.217", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.138"
 serde_yaml = "0.9.34+deprecated"
+serde-value = "0.7"
 serial_test = "3.2.0"
 sha1 = { version = "0.10.6", features = ["oid"] }
 sha2 = { version = "0.10.8", features = ["oid"] }
@@ -338,6 +343,7 @@ tracing-subscriber = "0.3.19"
 twox-hash = "2.1.0"
 url = { version = "2.5.4", features = ["serde", "expose_internals"] }
 uuid = { version = "1.12.1", features = ["v4"] }
+v8_valueserializer = "0.1.1"
 webpki-root-certs = "0.26.7"
 webpki-roots = "0.26.7"
 wgpu-core = "0.21.1"

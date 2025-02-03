@@ -1,5 +1,4 @@
 //! Manages all user sessions (created via ROLA) and their associated data.
-#![feature(associated_type_defaults)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]

@@ -2347,8 +2347,8 @@ dependencies = [
  "http-body-util",
  "hyper 1.6.0",
  "hyper-util",
+ "libsql-rusqlite",
  "log",
- "rusqlite",
  "serde",
  "sha2",
  "slab",
@@ -2754,12 +2754,12 @@ dependencies = [
  "faster-hex",
  "http 1.2.0",
  "http-body-util",
+ "libsql-rusqlite",
  "log",
  "num-bigint",
  "prost",
  "prost-build",
  "rand",
- "rusqlite",
  "serde",
  "thiserror 2.0.11",
  "url",
@@ -2934,7 +2934,8 @@ dependencies = [
  "k256",
  "lazy-regex",
  "libc",
- "libsqlite3-sys",
+ "libsql-ffi",
+ "libsql-rusqlite",
  "libz-sys",
  "md-5",
  "md4",
@@ -2956,7 +2957,6 @@ dependencies = [
  "ring",
  "ripemd",
  "rsa",
- "rusqlite",
  "scrypt",
  "sec1 0.7.3",
  "serde",
@@ -3418,7 +3418,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_web",
- "rusqlite",
+ "libsql-rusqlite",
  "thiserror 2.0.11",
 ]
 
@@ -3477,8 +3477,6 @@ dependencies = [
 [[package]]
 name = "denokv_sqlite"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc0f21a450a35eb85760761401fddf9bfff9840127be07a6ca5c31863127913d"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -3487,10 +3485,10 @@ dependencies = [
  "denokv_proto",
  "futures",
  "hex",
+ "libsql-rusqlite",
  "log",
  "num-bigint",
  "rand",
- "rusqlite",
  "serde_json",
  "thiserror 2.0.11",
  "tokio",
@@ -3971,7 +3969,7 @@ dependencies = [
  "deno_npm 0.27.2",
  "deno_semver 0.7.1",
  "futures",
- "hashlink 0.8.4",
+ "hashlink",
  "indexmap 2.7.1",
  "serde",
  "serde_json",
@@ -3982,9 +3980,9 @@ dependencies = [
 
 [[package]]
 name = "fallible-iterator"
-version = "0.3.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
 
 [[package]]
 name = "fallible-streaming-iterator"
@@ -4615,15 +4613,6 @@ name = "hashlink"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8094feaf31ff591f651a2664fb9cfd92bba7a60ce3197265e9482ebe753c8f7"
-dependencies = [
- "hashbrown 0.14.5",
-]
-
-[[package]]
-name = "hashlink"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
 dependencies = [
  "hashbrown 0.14.5",
 ]
@@ -5528,8 +5517,6 @@ checksum = "b5aba8db14291edd000dfcc4d620c7ebfb122c613afb886ca8803fa4e128a20a"
 [[package]]
 name = "libffi"
 version = "3.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce826c243048e3d5cec441799724de52e2d42f820468431fc3fceee2341871e2"
 dependencies = [
  "libc",
  "libffi-sys",
@@ -5538,8 +5525,6 @@ dependencies = [
 [[package]]
 name = "libffi-sys"
 version = "2.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f36115160c57e8529781b4183c2bb51fdc1f6d6d1ed345591d84be7703befb3c"
 dependencies = [
  "cc",
 ]
@@ -5608,6 +5593,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "libsql-rusqlite"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae65c66088dcd309abbd5617ae046abac2a2ee0a7fdada5127353bd68e0a27ea"
+dependencies = [
+ "bitflags 2.8.0",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "libsql-ffi",
+ "smallvec",
+]
+
+[[package]]
 name = "libsql-sys"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5618,17 +5617,6 @@ dependencies = [
  "once_cell",
  "tracing",
  "zerocopy",
-]
-
-[[package]]
-name = "libsqlite3-sys"
-version = "0.30.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
-dependencies = [
- "cc",
- "pkg-config",
- "vcpkg",
 ]
 
 [[package]]
@@ -8557,20 +8545,6 @@ dependencies = [
  "nix 0.29.0",
  "thiserror 1.0.69",
  "tokio",
-]
-
-[[package]]
-name = "rusqlite"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7753b721174eb8ff87a9a0e799e2d7bc3749323e773db92e0984debb00019d6e"
-dependencies = [
- "bitflags 2.8.0",
- "fallible-iterator",
- "fallible-streaming-iterator",
- "hashlink 0.9.1",
- "libsqlite3-sys",
- "smallvec",
 ]
 
 [[package]]

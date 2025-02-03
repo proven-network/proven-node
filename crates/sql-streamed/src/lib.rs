@@ -1,5 +1,4 @@
 //! Implementation of SQL storage using a streams as an append-only log.
-#![feature(associated_type_defaults)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
