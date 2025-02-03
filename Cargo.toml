@@ -292,7 +292,7 @@ ring = "^0.17.0"
 rlimit = "0.10.2"
 rsa = { version = "0.9.7", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 rtnetlink = { git = "https://github.com/mwanner/rtnetlink", branch = "deps-update" }
-rusqlite = { version = "0.32.1", features = ["unlock_notify", "bundled"] }
+rusqlite = { version = "0.32.0", features = ["unlock_notify", "bundled"] }
 rustls = { version = "0.23.21", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.3.0"
