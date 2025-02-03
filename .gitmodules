@@ -7,3 +7,6 @@
 [submodule "vendor/libffi-rs"]
 	path = vendor/libffi-rs
 	url = https://github.com/proven-network/libffi-rs
+[submodule "vendor/denokv"]
+	path = vendor/denokv
+	url = https://github.com/proven-network/denokv
