@@ -128,7 +128,7 @@ RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
 
 # Move to /bin
 RUN mkdir -p /bin/babylon-node
-RUN mv core-v1.3.0 /bin/babylon-node
+RUN mv core-v1.3.0.2 /bin/babylon-node
 RUN mv libcorerust.so /bin/babylon-node
 RUN mv nats-server-v2.10.25-linux-arm64/nats-server /bin/
 RUN mv linux-arm64/dnscrypt-proxy /bin/
