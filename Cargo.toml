@@ -193,8 +193,8 @@ junction = "1.2.0"
 jsonc-parser = { version = "=0.26.2", features = ["serde"] }
 lazy-regex = "3.4.1"
 lazy_static = "1.4.0"
-libffi = { git = "https://github.com/tov/libffi-rs", branch = "master" }
-libffi-sys = { git = "https://github.com/tov/libffi-rs", branch = "master" }
+libffi = { path = "vendor/libffi-rs/libffi-rs" }
+libffi-sys = { path = "vendor/libffi-rs/libffi-sys-rs" }
 libsql = { version = "0.6.0", default-features = false, features = ["core", "stream"] }
 libsui = "0.5.0"
 libc = "0.2.169"
