@@ -89,7 +89,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 # Build proven-enclave
 ARG COMMIT
-RUN git clone --recurse-submodules git@github.com:proven-network/proven-node.git
+RUN git clone --recurse-submodules https://github.com/proven-network/proven-node.git
 WORKDIR /proven-node
 RUN git checkout ${COMMIT}
 RUN cargo build --release --package proven-enclave
