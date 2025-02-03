@@ -1,5 +1,4 @@
 //! In-memory implementation of the messaging crate.
-#![feature(associated_type_defaults)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]

@@ -72,7 +72,7 @@ RUN chmod 0755      /bin/gocryptfs
 # ----------------
 # RUST BUILD STEPS
 # ----------------
-FROM rust:1.84.1-slim-bookworm as rust-builder
+FROM rust:nightly-bookworm-slim as rust-builder
 WORKDIR /
 
 # Install base dependencies

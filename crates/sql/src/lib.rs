@@ -1,5 +1,4 @@
 //! Abstract interface for managing SQL storage.
-#![feature(associated_type_defaults)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
