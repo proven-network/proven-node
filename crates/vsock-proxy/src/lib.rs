@@ -72,7 +72,7 @@ pub mod linux {
             cidr: Ipv4Cidr,
             tun_interface_name: &str,
         ) -> Result<Self> {
-            let mut tuns = TunBuilder::new()
+            let tuns = TunBuilder::new()
                 .name(tun_interface_name)
                 .mtu(FRAME_LEN as i32)
                 .address(ip_addr)
