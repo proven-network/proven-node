@@ -72,7 +72,7 @@ pub mod linux {
             cidr: Ipv4Cidr,
             tun_interface_name: &str,
         ) -> Result<Self> {
-            let tuns = TunBuilder::new()
+            let mut tuns = TunBuilder::new()
                 .name(tun_interface_name)
                 .mtu(FRAME_LEN as i32)
                 .address(ip_addr)
@@ -136,7 +136,7 @@ pub mod linux {
             })
         }
 
-        pub async fn start_host(self: Arc<Self>, mut vsock: VsockListener) {
+        pub async fn start_host(self: Arc<Self>, vsock: VsockListener) {
             loop {
                 tokio::select! {
                     _ = self.shutdown_token.cancelled() => {
