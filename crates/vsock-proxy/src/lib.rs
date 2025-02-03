@@ -72,16 +72,16 @@ pub mod linux {
             cidr: Ipv4Cidr,
             tun_interface_name: &str,
         ) -> Result<Self> {
-            let tun = Arc::new(
-                TunBuilder::new()
-                    .name(tun_interface_name)
-                    .mtu(FRAME_LEN as i32)
-                    .address(ip_addr)
-                    .destination(dest_addr)
-                    .netmask(cidr.mask())
-                    .up()
-                    .try_build()?,
-            );
+            let mut tuns = TunBuilder::new()
+                .name(tun_interface_name)
+                .mtu(FRAME_LEN as i32)
+                .address(ip_addr)
+                .destination(dest_addr)
+                .netmask(cidr.mask())
+                .up()
+                .build()?;
+
+            let tun = Arc::new(tuns.pop().unwrap());
 
             tokio::process::Command::new("tc")
                 .args([
