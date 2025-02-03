@@ -69,16 +69,13 @@ pub async fn start(args: StartArgs) -> Result<()> {
 
     let http_server = InsecureHttpServer::new(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 80)));
     let fqdn = args.fqdn.clone();
-    let http_redirector = Router::new().route(
-        "/*path",
-        any(move |uri: Uri| {
-            let fqdn = fqdn.clone();
-            async move {
-                let https_uri = format!("https://{fqdn}{uri}");
-                Redirect::permanent(&https_uri)
-            }
-        }),
-    );
+    let http_redirector = Router::new().fallback(any(move |uri: Uri| {
+        let fqdn = fqdn.clone();
+        async move {
+            let https_uri = format!("https://{fqdn}{uri}");
+            Redirect::permanent(&https_uri)
+        }
+    }));
     let http_server_handle = http_server
         // Always use fallback_router for all requests
         .start(HashSet::new(), Router::new(), http_redirector)
