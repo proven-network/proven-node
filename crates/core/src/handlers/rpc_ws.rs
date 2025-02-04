@@ -62,8 +62,12 @@ where
         return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid session"));
     };
 
-    let Ok(rpc_handler) = RpcHandler::new(application_manager, runtime_pool_manager, session)
-    else {
+    let Ok(rpc_handler) = RpcHandler::new(
+        application_manager,
+        runtime_pool_manager,
+        application_id,
+        session,
+    ) else {
         error!("Error creating RpcHandler");
         return ws.on_upgrade(|socket| handle_socket_error(socket, "Unrecoverable error."));
     };

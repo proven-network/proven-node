@@ -5,6 +5,7 @@ use proven_runtime::{
 
 use proven_code_package::CodePackage;
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
+use proven_sessions::{Identity, RadixIdentityDetails};
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 use radix_common::network::NetworkDefinition;
@@ -46,11 +47,15 @@ fn main() -> Result<(), Error> {
     })?;
 
     let request = ExecutionRequest::RpcWithUserContext {
-        accounts: vec!["my_account_1".to_string(), "my_account_2".to_string()],
+        application_id: "application_id".to_string(),
         args: vec![json!(10), json!(20)],
-        dapp_definition_address: "dapp_definition_address".to_string(),
         handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-        identity: "my_identity".to_string(),
+        identities: vec![Identity::Radix(RadixIdentityDetails {
+            account_addresses: vec![],
+            dapp_definition_address: "dapp_definition_address".to_string(),
+            expected_origin: "origin".to_string(),
+            identity_address: "my_identity".to_string(),
+        })],
     };
 
     let result = runtime.execute(request)?;

@@ -187,20 +187,23 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
 mod tests {
     use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
+    use proven_sessions::{Identity, RadixIdentityDetails};
+
     #[tokio::test]
     async fn test_personal_db() {
         let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::HttpWithUserContext {
-            accounts: vec![],
-            body: None,
-            dapp_definition_address: "dapp_definition_address".to_string(),
+        let request = ExecutionRequest::RpcWithUserContext {
+            application_id: "application_id".to_string(),
+            args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identity: "my_identity".to_string(),
-            method: http::Method::GET,
-            path: "/test".to_string(),
-            query: None,
+            identities: vec![Identity::Radix(RadixIdentityDetails {
+                account_addresses: vec!["my_account".to_string()],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                expected_origin: "origin".to_string(),
+                identity_address: "my_identity".to_string(),
+            })],
         };
 
         match worker.execute(request).await {
@@ -222,8 +225,8 @@ mod tests {
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Rpc {
+            application_id: "application_id".to_string(),
             args: vec![],
-            dapp_definition_address: "dapp_definition_address".to_string(),
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
         };
 

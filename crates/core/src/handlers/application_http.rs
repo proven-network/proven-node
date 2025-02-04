@@ -98,19 +98,18 @@ where
 
     let execution_request = if let Some(session) = maybe_session {
         ExecutionRequest::HttpWithUserContext {
-            accounts: session.account_addresses,
+            application_id,
             body,
-            dapp_definition_address: application_id,
             handler_specifier,
-            identity: session.identity_address,
+            identities: session.identities,
             method,
             path: path.to_string(),
             query: query.map(String::from),
         }
     } else {
         ExecutionRequest::Http {
+            application_id,
             body,
-            dapp_definition_address: application_id,
             handler_specifier,
             method,
             path: path.to_string(),

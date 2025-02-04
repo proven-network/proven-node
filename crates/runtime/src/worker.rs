@@ -25,6 +25,7 @@ use tokio::sync::oneshot;
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Runtime,
 ///     RuntimeOptions, Worker,
 /// };
+/// use proven_sessions::{Identity, RadixIdentityDetails};
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 /// use radix_common::network::NetworkDefinition;
@@ -54,11 +55,15 @@ use tokio::sync::oneshot;
 ///
 ///     worker
 ///         .execute(ExecutionRequest::RpcWithUserContext {
-///             accounts: vec![],
+///             application_id: "application_id".to_string(),
 ///             args: vec![json!(10), json!(20)],
-///             dapp_definition_address: "dapp_definition_address".to_string(),
 ///             handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-///             identity: "my_identity".to_string(),
+///             identities: vec![Identity::Radix(RadixIdentityDetails {
+///                 account_addresses: vec![],
+///                 dapp_definition_address: "dapp_definition_address".to_string(),
+///                 expected_origin: "origin".to_string(),
+///                 identity_address: "my_identity".to_string(),
+///             })],
 ///         })
 ///         .await;
 /// }
@@ -177,6 +182,7 @@ mod tests {
 
     use crate::HandlerSpecifier;
 
+    use proven_sessions::{Identity, RadixIdentityDetails};
     use serde_json::json;
 
     #[tokio::test]
@@ -185,11 +191,15 @@ mod tests {
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::RpcWithUserContext {
-            accounts: vec![],
+            application_id: "application_id".to_string(),
             args: vec![json!(10), json!(20)],
-            dapp_definition_address: "dapp_definition_address".to_string(),
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identity: "my_identity".to_string(),
+            identities: vec![Identity::Radix(RadixIdentityDetails {
+                account_addresses: vec![],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                expected_origin: "origin".to_string(),
+                identity_address: "my_identity".to_string(),
+            })],
         };
         let result = worker.execute(request).await;
 

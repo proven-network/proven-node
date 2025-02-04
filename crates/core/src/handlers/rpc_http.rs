@@ -72,7 +72,12 @@ where
 
     match maybe_session {
         Some(session) => {
-            match RpcHandler::new(application_manager, runtime_pool_manager, session) {
+            match RpcHandler::new(
+                application_manager,
+                runtime_pool_manager,
+                application_id,
+                session,
+            ) {
                 Ok(mut rpc_handler) => match rpc_handler.handle_rpc(body).await {
                     Ok(response) => {
                         let body = Body::from(response);

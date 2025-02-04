@@ -21,6 +21,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use proven_code_package::ModuleSpecifier;
 use proven_radix_nft_verifier::RadixNftVerifier;
+use proven_sessions::Identity;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
 use radix_common::network::NetworkDefinition;
@@ -194,6 +195,7 @@ impl
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Runtime,
 ///     RuntimeOptions,
 /// };
+/// use proven_sessions::{Identity, RadixIdentityDetails};
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 /// use radix_common::network::NetworkDefinition;
@@ -218,11 +220,15 @@ impl
 /// .expect("Failed to create runtime");
 ///
 /// runtime.execute(ExecutionRequest::RpcWithUserContext {
-///     accounts: vec![],
+///     application_id: "application_id".to_string(),
 ///     args: vec![json!(10), json!(20)],
-///     dapp_definition_address: "dapp_definition_address".to_string(),
 ///     handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-///     identity: "my_identity".to_string(),
+///     identities: vec![Identity::Radix(RadixIdentityDetails {
+///         account_addresses: vec![],
+///         dapp_definition_address: "dapp_definition_address".to_string(),
+///         expected_origin: "origin".to_string(),
+///         identity_address: "my_identity".to_string(),
+///     })],
 /// });
 /// ```
 pub struct Runtime<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
@@ -389,106 +395,121 @@ where
     pub fn execute(&mut self, execution_request: ExecutionRequest) -> Result<ExecutionResult> {
         let start = Instant::now();
 
-        let (args, dapp_definition_address, handler_specifier, session_state) =
-            match execution_request {
-                ExecutionRequest::Http {
-                    body,
-                    dapp_definition_address,
-                    handler_specifier,
-                    method,
-                    path,
-                    query,
-                } => {
-                    let mut args = vec![];
+        let (application_id, args, handler_specifier, session_state) = match execution_request {
+            ExecutionRequest::Http {
+                application_id,
+                body,
+                handler_specifier,
+                method,
+                path,
+                query,
+            } => {
+                let mut args = vec![];
 
-                    args.push(json!(method.as_str()));
-                    args.push(json!(path));
+                args.push(json!(method.as_str()));
+                args.push(json!(path));
 
-                    if let Some(query) = query {
-                        args.push(json!(query));
-                    } else {
-                        args.push(json!(null));
-                    }
-
-                    if let Some(body) = body {
-                        args.push(json!(body));
-                    }
-
-                    (
-                        args,
-                        dapp_definition_address,
-                        handler_specifier,
-                        SessionState::NoSession,
-                    )
+                if let Some(query) = query {
+                    args.push(json!(query));
+                } else {
+                    args.push(json!(null));
                 }
 
-                ExecutionRequest::HttpWithUserContext {
-                    accounts,
-                    body,
-                    dapp_definition_address,
-                    handler_specifier,
-                    identity,
-                    method,
-                    path,
-                    query,
-                } => {
-                    let mut args = vec![];
-
-                    args.push(json!(method.as_str()));
-                    args.push(json!(path));
-
-                    if let Some(query) = query {
-                        args.push(json!(query));
-                    } else {
-                        args.push(json!(null));
-                    }
-
-                    if let Some(body) = body {
-                        args.push(json!(body));
-                    }
-
-                    (
-                        args,
-                        dapp_definition_address,
-                        handler_specifier,
-                        SessionState::Session { accounts, identity },
-                    )
+                if let Some(body) = body {
+                    args.push(json!(body));
                 }
 
-                ExecutionRequest::RadixEvent {
-                    dapp_definition_address,
-                    handler_specifier,
-                } => (
-                    vec![], // TODO: Should use transaction data
-                    dapp_definition_address,
+                (
+                    application_id,
+                    args,
                     handler_specifier,
                     SessionState::NoSession,
-                ),
+                )
+            }
 
-                ExecutionRequest::Rpc {
-                    args,
-                    dapp_definition_address,
-                    handler_specifier,
-                } => (
-                    args,
-                    dapp_definition_address,
-                    handler_specifier,
-                    SessionState::NoSession,
-                ),
+            ExecutionRequest::HttpWithUserContext {
+                application_id,
+                body,
+                handler_specifier,
+                identities,
+                method,
+                path,
+                query,
+            } => {
+                let mut args = vec![];
 
-                ExecutionRequest::RpcWithUserContext {
-                    accounts,
-                    args,
-                    dapp_definition_address,
-                    handler_specifier,
-                    identity,
-                } => (
-                    args,
-                    dapp_definition_address,
-                    handler_specifier,
-                    SessionState::Session { accounts, identity },
-                ),
-            };
+                args.push(json!(method.as_str()));
+                args.push(json!(path));
+
+                if let Some(query) = query {
+                    args.push(json!(query));
+                } else {
+                    args.push(json!(null));
+                }
+
+                if let Some(body) = body {
+                    args.push(json!(body));
+                }
+
+                if let Some(Identity::Radix(radix_identity_detaails)) = identities.first().cloned()
+                {
+                    (
+                        application_id,
+                        args,
+                        handler_specifier,
+                        SessionState::Session {
+                            accounts: radix_identity_detaails.account_addresses,
+                            identity: radix_identity_detaails.identity_address,
+                        },
+                    )
+                } else {
+                    todo!("fix this")
+                }
+            }
+
+            ExecutionRequest::RadixEvent {
+                application_id,
+                handler_specifier,
+            } => (
+                application_id,
+                vec![], // TODO: Should use transaction data for args
+                handler_specifier,
+                SessionState::NoSession,
+            ),
+
+            ExecutionRequest::Rpc {
+                application_id,
+                args,
+                handler_specifier,
+            } => (
+                application_id,
+                args,
+                handler_specifier,
+                SessionState::NoSession,
+            ),
+
+            ExecutionRequest::RpcWithUserContext {
+                application_id,
+                args,
+                handler_specifier,
+                identities,
+            } => {
+                if let Some(Identity::Radix(radix_identity_detaails)) = identities.first().cloned()
+                {
+                    (
+                        application_id,
+                        args,
+                        handler_specifier,
+                        SessionState::Session {
+                            accounts: radix_identity_detaails.account_addresses,
+                            identity: radix_identity_detaails.identity_address,
+                        },
+                    )
+                } else {
+                    todo!("fix this")
+                }
+            }
+        };
 
         let module_specifier = handler_specifier.module_specifier();
 
@@ -537,9 +558,7 @@ where
         // Set the kv stores for the storage extension
         rustyscript::Runtime::put(
             &mut self.runtime,
-            self.application_store
-                .clone()
-                .scope(dapp_definition_address.clone()),
+            self.application_store.clone().scope(application_id.clone()),
         )?;
 
         rustyscript::Runtime::put(
@@ -548,7 +567,7 @@ where
                 SessionState::Session { ref identity, .. } => Some(
                     self.personal_store
                         .clone()
-                        .scope(dapp_definition_address.clone())
+                        .scope(application_id.clone())
                         .scope(identity),
                 ),
                 SessionState::NoSession => None,
@@ -558,11 +577,9 @@ where
         rustyscript::Runtime::put(
             &mut self.runtime,
             match session_state {
-                SessionState::Session { ref accounts, .. } if !accounts.is_empty() => Some(
-                    self.nft_store
-                        .clone()
-                        .scope(dapp_definition_address.clone()),
-                ),
+                SessionState::Session { ref accounts, .. } if !accounts.is_empty() => {
+                    Some(self.nft_store.clone().scope(application_id.clone()))
+                }
                 _ => None,
             },
         )?;
@@ -574,9 +591,7 @@ where
         rustyscript::Runtime::put(
             &mut self.runtime,
             ApplicationSqlConnectionManager::new(
-                self.application_sql_store
-                    .clone()
-                    .scope(&dapp_definition_address),
+                self.application_sql_store.clone().scope(&application_id),
                 module_options.sql_migrations.application.clone(),
             ),
         )?;
@@ -588,7 +603,7 @@ where
                     Some(PersonalSqlConnectionManager::new(
                         self.personal_sql_store
                             .clone()
-                            .scope(&dapp_definition_address)
+                            .scope(&application_id)
                             .scope(identity),
                         module_options.sql_migrations.personal.clone(),
                     ))
@@ -602,7 +617,7 @@ where
             match session_state {
                 SessionState::Session { ref accounts, .. } if !accounts.is_empty() => {
                     Some(NftSqlConnectionManager::new(
-                        self.nft_sql_store.clone().scope(&dapp_definition_address),
+                        self.nft_sql_store.clone().scope(&application_id),
                         module_options.sql_migrations.nft.clone(),
                     ))
                 }
@@ -694,6 +709,8 @@ mod tests {
     use super::*;
     use crate::util::run_in_thread;
 
+    use proven_sessions::RadixIdentityDetails;
+
     #[tokio::test]
     async fn test_runtime_execute() {
         let options = RuntimeOptions::for_test_code("test_runtime_execute");
@@ -702,11 +719,15 @@ mod tests {
             let mut runtime = Runtime::new(options).unwrap();
 
             let request = ExecutionRequest::RpcWithUserContext {
-                accounts: vec![],
+                application_id: "application_id".to_string(),
                 args: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identity: "my_identity".to_string(),
+                identities: vec![Identity::Radix(RadixIdentityDetails {
+                    account_addresses: vec![],
+                    dapp_definition_address: "dapp_definition_address".to_string(),
+                    expected_origin: "origin".to_string(),
+                    identity_address: "my_identity".to_string(),
+                })],
             };
 
             match runtime.execute(request) {
@@ -742,11 +763,15 @@ mod tests {
             let mut runtime = Runtime::new(options).unwrap();
 
             let request = ExecutionRequest::RpcWithUserContext {
-                accounts: vec![],
+                application_id: "application_id".to_string(),
                 args: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identity: "my_identity".to_string(),
+                identities: vec![Identity::Radix(RadixIdentityDetails {
+                    account_addresses: vec![],
+                    dapp_definition_address: "dapp_definition_address".to_string(),
+                    expected_origin: "origin".to_string(),
+                    identity_address: "my_identity".to_string(),
+                })],
             };
 
             match runtime.execute(request) {
@@ -771,11 +796,15 @@ mod tests {
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
             let request = ExecutionRequest::RpcWithUserContext {
-                accounts: vec![],
+                application_id: "application_id".to_string(),
                 args: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts").unwrap(),
-                identity: "my_identity".to_string(),
+                identities: vec![Identity::Radix(RadixIdentityDetails {
+                    account_addresses: vec![],
+                    dapp_definition_address: "dapp_definition_address".to_string(),
+                    expected_origin: "origin".to_string(),
+                    identity_address: "my_identity".to_string(),
+                })],
             };
 
             match runtime.execute(request) {
@@ -798,11 +827,15 @@ mod tests {
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
             let request = ExecutionRequest::RpcWithUserContext {
-                accounts: vec![],
+                application_id: "application_id".to_string(),
                 args: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identity: "my_identity".to_string(),
+                identities: vec![Identity::Radix(RadixIdentityDetails {
+                    account_addresses: vec![],
+                    dapp_definition_address: "dapp_definition_address".to_string(),
+                    expected_origin: "origin".to_string(),
+                    identity_address: "my_identity".to_string(),
+                })],
             };
 
             match runtime.execute(request) {
@@ -824,11 +857,15 @@ mod tests {
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
             let request = ExecutionRequest::RpcWithUserContext {
-                accounts: vec![],
+                application_id: "application_id".to_string(),
                 args: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identity: "my_identity".to_string(),
+                identities: vec![Identity::Radix(RadixIdentityDetails {
+                    account_addresses: vec![],
+                    dapp_definition_address: "dapp_definition_address".to_string(),
+                    expected_origin: "origin".to_string(),
+                    identity_address: "my_identity".to_string(),
+                })],
             };
 
             match runtime.execute(request) {
@@ -850,11 +887,15 @@ mod tests {
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
             let request = ExecutionRequest::RpcWithUserContext {
-                accounts: vec![],
+                application_id: "application_id".to_string(),
                 args: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identity: "my_identity".to_string(),
+                identities: vec![Identity::Radix(RadixIdentityDetails {
+                    account_addresses: vec![],
+                    dapp_definition_address: "dapp_definition_address".to_string(),
+                    expected_origin: "origin".to_string(),
+                    identity_address: "my_identity".to_string(),
+                })],
             };
 
             match runtime.execute(request) {

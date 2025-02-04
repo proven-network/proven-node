@@ -1,20 +1,13 @@
+use crate::identity::Identity;
+
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 /// A session.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Session {
-    /// The account addresses.
-    pub account_addresses: Vec<String>,
-
-    /// The dApp definition address.
-    pub dapp_definition_address: String,
-
-    /// The expected origin of future requests.
-    pub expected_origin: String,
-
-    /// The identity address.
-    pub identity_address: String,
+    /// Identities verified in this session.
+    pub identities: Vec<Identity>,
 
     /// The session ID.
     pub session_id: String,

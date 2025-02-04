@@ -159,17 +159,23 @@ pub async fn op_query_application_sql<ASS: SqlStore1>(
 mod tests {
     use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
+    use proven_sessions::{Identity, RadixIdentityDetails};
+
     #[tokio::test]
     async fn test_application_db() {
         let runtime_options = RuntimeOptions::for_test_code("sql/test_application_db");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::RpcWithUserContext {
-            accounts: vec![],
+            application_id: "application_id".to_string(),
             args: vec![],
-            dapp_definition_address: "dapp_definition_address".to_string(),
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identity: "my_identity".to_string(),
+            identities: vec![Identity::Radix(RadixIdentityDetails {
+                account_addresses: vec!["my_account".to_string()],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                expected_origin: "origin".to_string(),
+                identity_address: "my_identity".to_string(),
+            })],
         };
 
         match worker.execute(request).await {
@@ -191,11 +197,15 @@ mod tests {
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::RpcWithUserContext {
-            accounts: vec![],
+            application_id: "application_id".to_string(),
             args: vec![],
-            dapp_definition_address: "dapp_definition_address".to_string(),
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identity: "my_identity".to_string(),
+            identities: vec![Identity::Radix(RadixIdentityDetails {
+                account_addresses: vec!["my_account".to_string()],
+                dapp_definition_address: "dapp_definition_address".to_string(),
+                expected_origin: "origin".to_string(),
+                identity_address: "my_identity".to_string(),
+            })],
         };
 
         match worker.execute(request).await {

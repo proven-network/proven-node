@@ -2,12 +2,12 @@ use bytes::Bytes;
 use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
-use proven_applications::{Application, ApplicationManagement, CreateApplicationOptions};
+use proven_applications::ApplicationManagement;
 use proven_code_package::CodePackage;
 use proven_runtime::{
     ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
 };
-use proven_sessions::Session;
+use proven_sessions::{Identity, Session};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -45,10 +45,9 @@ where
     RM: RuntimePoolManagement,
 {
     aad: Vec<u8>,
-    account_addresses: Vec<String>,
-    application_manager: AM,
-    dapp_definition_address: String,
-    identity_address: String,
+    application_id: String,
+    _application_manager: AM,
+    identities: Vec<Identity>,
     runtime_pool_manager: RM,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
@@ -61,7 +60,6 @@ type ModuleHash = String;
 #[repr(u8)]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Request {
-    CreateApplication,
     Execute(Module, HandlerSpecifierString, Args),
     ExecuteHash(ModuleHash, HandlerSpecifierString, Args),
     Watch(String),
@@ -70,19 +68,11 @@ pub enum Request {
 
 #[derive(Debug, Serialize)]
 pub enum Response {
-    CreateApplicationFailure(String),
-    CreateApplicationSuccess(Application),
     ExecuteHashUnknown,
     ExecuteSuccess(ExecutionResult),
     ExecuteFailure(String),
     Ok,
-    WhoAmI(WhoAmIResponse),
-}
-
-#[derive(Debug, Serialize)]
-pub struct WhoAmIResponse {
-    pub identity_address: String,
-    pub account_addresses: Vec<String>,
+    WhoAmI(Vec<Identity>),
 }
 
 impl<AM, RM> RpcHandler<AM, RM>
@@ -93,6 +83,7 @@ where
     pub fn new(
         application_manager: AM,
         runtime_pool_manager: RM,
+        application_id: String,
         session: Session,
     ) -> Result<Self, RpcHandlerError> {
         let signing_key_bytes: [u8; 32] = session
@@ -113,10 +104,9 @@ where
 
         Ok(Self {
             aad,
-            account_addresses: session.account_addresses,
-            application_manager,
-            dapp_definition_address: session.dapp_definition_address,
-            identity_address: session.identity_address,
+            application_id,
+            _application_manager: application_manager,
+            identities: session.identities,
             runtime_pool_manager,
             signing_key,
             verifying_key,
@@ -147,26 +137,12 @@ where
             ciborium::de::from_reader(payload.as_slice()).map_err(|_| RpcHandlerError::Payload)?;
 
         let response = match method {
-            Request::CreateApplication => {
-                match self
-                    .application_manager
-                    .create_application(CreateApplicationOptions {
-                        owner_identity_address: self.identity_address.clone(),
-                        dapp_definition_addresses: vec![],
-                    })
-                    .await
-                {
-                    Ok(application) => Ok(Response::CreateApplicationSuccess(application)),
-                    Err(e) => Ok(Response::CreateApplicationFailure(e.to_string())),
-                }
-            }
             Request::Execute(module, handler_specifier_string, args) => {
                 let execution_request = ExecutionRequest::RpcWithUserContext {
+                    application_id: self.application_id.clone(),
                     args,
-                    accounts: self.account_addresses.clone(),
                     handler_specifier: HandlerSpecifier::parse(&handler_specifier_string).unwrap(),
-                    dapp_definition_address: self.dapp_definition_address.clone(),
-                    identity: self.identity_address.clone(),
+                    identities: self.identities.clone(),
                 };
 
                 match self
@@ -183,11 +159,10 @@ where
             }
             Request::ExecuteHash(code_package_hash, handler_specifier_string, args) => {
                 let execution_request = ExecutionRequest::RpcWithUserContext {
-                    accounts: self.account_addresses.clone(),
+                    application_id: self.application_id.clone(),
                     args,
-                    dapp_definition_address: self.dapp_definition_address.clone(),
                     handler_specifier: HandlerSpecifier::parse(&handler_specifier_string).unwrap(),
-                    identity: self.identity_address.clone(),
+                    identities: self.identities.clone(),
                 };
 
                 match self
@@ -201,10 +176,7 @@ where
                 }
             }
             Request::Watch(_) => Ok(Response::Ok),
-            Request::WhoAmI => Ok(Response::WhoAmI(WhoAmIResponse {
-                identity_address: self.identity_address.clone(),
-                account_addresses: self.account_addresses.clone(),
-            })),
+            Request::WhoAmI => Ok(Response::WhoAmI(self.identities.clone())),
         }?;
 
         let mut payload = Vec::new();

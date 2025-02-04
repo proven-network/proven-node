@@ -5,9 +5,12 @@
 #![warn(clippy::nursery)]
 
 mod error;
+mod identity;
 mod session;
 
-use error::Error;
+pub use error::Error;
+pub use identity::radix::RadixIdentityDetails;
+pub use identity::Identity;
 pub use session::Session;
 
 use std::collections::HashSet;
@@ -236,11 +239,15 @@ where
         let mut session_id_bytes = [0u8; 32];
         thread_rng().fill(&mut session_id_bytes);
 
-        let session = Session {
+        let radix_identity = RadixIdentityDetails {
             account_addresses,
             dapp_definition_address: dapp_definition_address.to_string(),
             expected_origin: origin.to_string(),
             identity_address: identity_addresses[0].clone(),
+        };
+
+        let session = Session {
+            identities: vec![Identity::Radix(radix_identity)],
             session_id: hex::encode(session_id_bytes),
             signing_key: server_signing_key.as_bytes().to_vec(),
             verifying_key: verifying_key.as_bytes().to_vec(),

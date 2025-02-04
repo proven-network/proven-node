@@ -35,6 +35,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use deno_core::error::JsError;
 use http::Method;
+use proven_sessions::Identity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -43,11 +44,11 @@ use serde_json::Value;
 pub enum ExecutionRequest {
     /// A request received from an HTTP endpoint.
     Http {
+        /// The application ID.
+        application_id: String,
+
         /// The body of the HTTP if there was one.
         body: Option<Bytes>,
-
-        /// The address of the dApp definition.
-        dapp_definition_address: String,
 
         /// The handler specifier to execute.
         handler_specifier: HandlerSpecifier,
@@ -63,20 +64,17 @@ pub enum ExecutionRequest {
     },
     /// A request received from an HTTP endpoint with authenticated user context.
     HttpWithUserContext {
-        /// The accounts of the authenticated user.
-        accounts: Vec<String>,
+        /// The application ID.
+        application_id: String,
 
         /// The body of the HTTP if there was one.
         body: Option<Bytes>,
-
-        /// The address of the dApp definition.
-        dapp_definition_address: String,
 
         /// The handler specifier to execute.
         handler_specifier: HandlerSpecifier,
 
         /// The identity of the authenticated user.
-        identity: String,
+        identities: Vec<Identity>,
 
         /// The HTTP method.
         method: Method,
@@ -89,39 +87,36 @@ pub enum ExecutionRequest {
     },
     /// A request created to respond to an event from the Radix network.
     RadixEvent {
-        /// The address of the dApp definition.
-        dapp_definition_address: String,
+        /// The application ID.
+        application_id: String,
         // TODO: should have Radix transaction data
         /// The handler specifier to execute.
         handler_specifier: HandlerSpecifier,
     },
     /// A request received over RPC.
     Rpc {
+        /// The application ID.
+        application_id: String,
+
         /// The arguments to the handler.
         args: Vec<Value>,
-
-        /// The address of the dApp definition.
-        dapp_definition_address: String,
 
         /// The handler specifier to execute.
         handler_specifier: HandlerSpecifier,
     },
     /// A request received over RPC with authenticated user context.
     RpcWithUserContext {
-        /// The accounts of the executing user.
-        accounts: Vec<String>,
+        /// The application ID.
+        application_id: String,
 
         /// The arguments to the handler.
         args: Vec<Value>,
 
-        /// The address of the dApp definition.
-        dapp_definition_address: String,
-
         /// The handler specifier to execute.
         handler_specifier: HandlerSpecifier,
 
-        /// The identity of the executing user.
-        identity: String,
+        /// The identity of the authenticated user.
+        identities: Vec<Identity>,
     },
 }
 
