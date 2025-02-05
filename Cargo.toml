@@ -344,6 +344,7 @@ twox-hash = "2.1.0"
 url = { version = "2.5.4", features = ["serde", "expose_internals"] }
 uuid = { version = "1.12.1", features = ["v4"] }
 v8_valueserializer = "0.1.1"
+webauthn-rs = { version = "0.5.1", features = ["danger-allow-state-serialisation"] }
 webpki-root-certs = "0.26.7"
 webpki-roots = "0.26.7"
 wgpu-core = "0.21.1"

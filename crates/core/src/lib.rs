@@ -11,11 +11,13 @@ mod rpc;
 pub use error::{Error, Result};
 use handlers::{
     application_http_handler, create_challenge_handler, http_rpc_handler, verify_session_handler,
-    ws_rpc_handler, ApplicationHttpContext,
+    webauthn_iframe_handler, webauthn_js_handler, webauthn_registration_finish_handler,
+    webauthn_registration_start_handler, ws_rpc_handler, ApplicationHttpContext,
 };
 
 use std::collections::HashSet;
 
+use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::{any, delete, get, patch, post, put};
 use axum::Router;
@@ -121,6 +123,7 @@ where
     ///
     /// This function will return an error if the core has already been started or if the HTTP server fails to start.
     #[allow(clippy::missing_panics_doc)] // TODO: Remove with test code
+    #[allow(clippy::too_many_lines)]
     pub async fn start<HS>(&self, http_server: HS) -> Result<JoinHandle<Result<()>>>
     where
         HS: HttpServer,
@@ -145,23 +148,42 @@ where
         let primary_router = Router::new()
             .route("/", get(|| async { redirect_response }))
             .route(
-                "/sessions/{application_id}/challenge",
+                "/app/{application_id}/auth/rola/challenge",
                 get(create_challenge_handler).with_state(ctx.clone()),
             )
             .route(
-                "/sessions/{application_id}/verify",
+                "/app/{application_id}/auth/rola/verify",
                 post(verify_session_handler).with_state(ctx.clone()),
             )
             .route(
-                "/rpc/{application_id}",
+                "/app/{application_id}/auth/webauthn/login",
+                get(webauthn_iframe_handler).with_state(ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/login.js",
+                get(webauthn_js_handler),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/start",
+                get(webauthn_registration_start_handler).with_state(ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/finish",
+                post(webauthn_registration_finish_handler).with_state(ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/rpc",
                 post(http_rpc_handler).with_state(ctx.clone()),
             )
-            .route("/ws/{application_id}", get(ws_rpc_handler).with_state(ctx))
-            .fallback(any(|| async { "404" }))
+            .route(
+                "/app/{application_id}/ws",
+                get(ws_rpc_handler).with_state(ctx),
+            )
+            .fallback(any(|| async { StatusCode::NOT_FOUND }))
             .layer(CorsLayer::very_permissive());
 
         let error_404_router = Router::new()
-            .fallback(any(|| async { "404" }))
+            .fallback(any(|| async { StatusCode::NOT_FOUND }))
             .layer(CorsLayer::very_permissive());
 
         // Add a test http endpoint

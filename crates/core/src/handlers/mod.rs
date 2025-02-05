@@ -2,11 +2,16 @@ mod application_http;
 mod rpc_http;
 mod rpc_ws;
 mod sessions;
+mod webauthn;
 
 pub(crate) use application_http::{application_http_handler, ApplicationHttpContext};
 pub(crate) use rpc_http::http_rpc_handler;
 pub(crate) use rpc_ws::ws_rpc_handler;
 pub(crate) use sessions::{create_challenge_handler, verify_session_handler};
+pub(crate) use webauthn::{
+    webauthn_iframe_handler, webauthn_js_handler, webauthn_registration_finish_handler,
+    webauthn_registration_start_handler,
+};
 
 fn parse_bearer_token(auth_header: &str) -> Result<String, &'static str> {
     if let Some(token) = auth_header.strip_prefix("Bearer ") {

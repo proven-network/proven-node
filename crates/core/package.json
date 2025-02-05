@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "build": "esbuild static/webauthn.ts --bundle --outfile=static/webauthn.js"
+  },
+  "dependencies": {
+    "@simplewebauthn/browser": "13.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2"
+  }
+}
