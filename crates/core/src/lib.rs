@@ -10,9 +10,10 @@ mod rpc;
 
 pub use error::{Error, Result};
 use handlers::{
-    application_http_handler, create_challenge_handler, http_rpc_handler, verify_session_handler,
-    webauthn_iframe_handler, webauthn_js_handler, webauthn_registration_finish_handler,
-    webauthn_registration_start_handler, ws_rpc_handler, ApplicationHttpContext,
+    application_http_handler, create_challenge_handler, http_rpc_handler, iframe_js_handler,
+    verify_session_handler, webauthn_iframe_handler, webauthn_js_handler,
+    webauthn_registration_finish_handler, webauthn_registration_start_handler, ws_rpc_handler,
+    ws_worker_js_handler, ApplicationHttpContext,
 };
 
 use std::collections::HashSet;
@@ -25,8 +26,8 @@ use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_http::HttpServer;
+use proven_identity::IdentityManagement;
 use proven_runtime::{HttpEndpoint, ModuleLoader, ModuleOptions, RuntimePoolManagement};
-use proven_sessions::SessionManagement;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -39,7 +40,7 @@ struct PrimaryContext<AM, RM, SM, A>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     pub application_manager: AM,
@@ -53,7 +54,7 @@ pub struct CoreOptions<AM, RM, SM, A>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     /// The application manager.
@@ -77,7 +78,7 @@ pub struct Core<AM, RM, SM, A>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     application_manager: AM,
@@ -93,7 +94,7 @@ impl<AM, RM, SM, A> Core<AM, RM, SM, A>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     /// Create new core.
@@ -162,6 +163,18 @@ where
             .route(
                 "/app/{application_id}/auth/webauthn/login.js",
                 get(webauthn_js_handler),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/iframe.js",
+                get(iframe_js_handler),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/webauthn.js",
+                get(ws_worker_js_handler),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/ws-worker.js",
+                get(ws_worker_js_handler),
             )
             .route(
                 "/app/{application_id}/auth/webauthn/start",

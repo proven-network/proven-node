@@ -1,58 +1,66 @@
 use crate::PrimaryContext;
 
 use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{Html, IntoResponse, Response};
 use axum::Json;
 use axum_extra::TypedHeader;
 use headers::Origin;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
+use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
-use proven_sessions::SessionManagement;
 use url::Url;
 use uuid::Uuid;
 use webauthn_rs::prelude::*;
 
 use axum::extract::Path;
 
-static WEB_AUTHN_IFRAME_HTML: &str = include_str!("../../static/webauthn.html");
-static WEB_AUTHN_JS: &str = include_str!("../../static/webauthn.js");
+const IFRAME_HTML: &str = include_str!("../../static/iframe.html");
+const IFRAME_JS: &str = include_str!("../../static/iframe.js");
+const WEBAUTHN_JS: &str = include_str!("../../static/webauthn.js");
+const WS_WORKER_JS: &str = include_str!("../../static/ws-worker.js");
 
 pub(crate) async fn webauthn_iframe_handler<AM, RM, SM, A>(
     Path(_application_id): Path<String>,
     State(PrimaryContext { .. }): State<PrimaryContext<AM, RM, SM, A>>,
-    origin_header: Option<TypedHeader<Origin>>,
+    headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
-    let origin = match origin_header {
-        Some(value) => value.to_string(),
-        None => "proven.local".to_string(),
-    };
+    let referer = headers
+        .get("Referer")
+        .map_or("http://localhost:3200", |r| r.to_str().unwrap());
 
-    Response::builder()
-        .header(
-            "Content-Security-Policy",
-            format!("frame-ancestors {origin}"),
-        )
-        .header(
-            "X-Frame-Options",
-            format!("ALLOW-FROM frame-ancestors {origin}"),
-        )
-        .body(WEB_AUTHN_IFRAME_HTML.to_string())
-        .unwrap()
+    (
+        [
+            (
+                "Content-Security-Policy",
+                format!("frame-ancestors {referer}"),
+            ),
+            (
+                "X-Frame-Options",
+                format!("ALLOW-FROM frame-ancestors {referer}"),
+            ),
+        ],
+        Html(IFRAME_HTML),
+    )
 }
 
 pub(crate) async fn webauthn_js_handler() -> impl IntoResponse {
-    Response::builder()
-        .header("Content-Type", "application/javascript")
-        .body(WEB_AUTHN_JS.to_string())
-        .unwrap()
+    ([("Content-Type", "application/javascript")], WEBAUTHN_JS)
+}
+
+pub(crate) async fn iframe_js_handler() -> impl IntoResponse {
+    ([("Content-Type", "application/javascript")], IFRAME_JS)
+}
+
+pub(crate) async fn ws_worker_js_handler() -> impl IntoResponse {
+    ([("Content-Type", "application/javascript")], WS_WORKER_JS)
 }
 
 pub(crate) async fn webauthn_registration_start_handler<AM, RM, SM, A>(
@@ -62,7 +70,7 @@ pub(crate) async fn webauthn_registration_start_handler<AM, RM, SM, A>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     let user_unique_id = Uuid::new_v4();
@@ -96,7 +104,7 @@ pub(crate) async fn webauthn_registration_finish_handler<AM, RM, SM, A>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     // TODO: Replace with value from primary domains

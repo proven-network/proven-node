@@ -21,7 +21,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use proven_code_package::ModuleSpecifier;
 use proven_radix_nft_verifier::RadixNftVerifier;
-use proven_sessions::Identity;
+use proven_identity::LedgerIdentity;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
 use radix_common::network::NetworkDefinition;
@@ -195,7 +195,7 @@ impl
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Runtime,
 ///     RuntimeOptions,
 /// };
-/// use proven_sessions::{Identity, RadixIdentityDetails};
+/// use proven_identity::{Identity, RadixIdentityDetails};
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 /// use radix_common::network::NetworkDefinition;
@@ -451,7 +451,7 @@ where
                     args.push(json!(body));
                 }
 
-                if let Some(Identity::Radix(radix_identity_detaails)) = identities.first().cloned()
+                if let Some(LedgerIdentity::Radix(radix_identity_detaails)) = identities.first().cloned()
                 {
                     (
                         application_id,
@@ -494,7 +494,7 @@ where
                 handler_specifier,
                 identities,
             } => {
-                if let Some(Identity::Radix(radix_identity_detaails)) = identities.first().cloned()
+                if let Some(LedgerIdentity::Radix(radix_identity_detaails)) = identities.first().cloned()
                 {
                     (
                         application_id,
@@ -709,7 +709,7 @@ mod tests {
     use super::*;
     use crate::util::run_in_thread;
 
-    use proven_sessions::RadixIdentityDetails;
+    use proven_identity::RadixIdentityDetails;
 
     #[tokio::test]
     async fn test_runtime_execute() {
@@ -722,7 +722,7 @@ mod tests {
                 application_id: "application_id".to_string(),
                 args: vec![],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identities: vec![Identity::Radix(RadixIdentityDetails {
+                identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                     account_addresses: vec![],
                     dapp_definition_address: "dapp_definition_address".to_string(),
                     expected_origin: "origin".to_string(),
@@ -766,7 +766,7 @@ mod tests {
                 application_id: "application_id".to_string(),
                 args: vec![],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identities: vec![Identity::Radix(RadixIdentityDetails {
+                identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                     account_addresses: vec![],
                     dapp_definition_address: "dapp_definition_address".to_string(),
                     expected_origin: "origin".to_string(),
@@ -799,7 +799,7 @@ mod tests {
                 application_id: "application_id".to_string(),
                 args: vec![],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts").unwrap(),
-                identities: vec![Identity::Radix(RadixIdentityDetails {
+                identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                     account_addresses: vec![],
                     dapp_definition_address: "dapp_definition_address".to_string(),
                     expected_origin: "origin".to_string(),
@@ -830,7 +830,7 @@ mod tests {
                 application_id: "application_id".to_string(),
                 args: vec![],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identities: vec![Identity::Radix(RadixIdentityDetails {
+                identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                     account_addresses: vec![],
                     dapp_definition_address: "dapp_definition_address".to_string(),
                     expected_origin: "origin".to_string(),
@@ -860,7 +860,7 @@ mod tests {
                 application_id: "application_id".to_string(),
                 args: vec![],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identities: vec![Identity::Radix(RadixIdentityDetails {
+                identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                     account_addresses: vec![],
                     dapp_definition_address: "dapp_definition_address".to_string(),
                     expected_origin: "origin".to_string(),
@@ -890,7 +890,7 @@ mod tests {
                 application_id: "application_id".to_string(),
                 args: vec![],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-                identities: vec![Identity::Radix(RadixIdentityDetails {
+                identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                     account_addresses: vec![],
                     dapp_definition_address: "dapp_definition_address".to_string(),
                     expected_origin: "origin".to_string(),

@@ -104,7 +104,7 @@ mod tests {
     use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     use ed25519_dalek::Verifier;
-    use proven_sessions::{Identity, RadixIdentityDetails};
+    use proven_identity::{LedgerIdentity, RadixIdentityDetails};
     use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
 
     #[tokio::test]
@@ -116,7 +116,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -164,7 +164,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -210,7 +210,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#save").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -236,7 +236,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#load").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),

@@ -8,13 +8,13 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_core::Core;
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
+use proven_identity::{IdentityManager, OldSession};
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_runtime::RuntimePoolManager;
-use proven_sessions::{Session, SessionManager};
 use proven_sql_streamed::{
     Request as SqlRequest, StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3,
 };
@@ -85,11 +85,11 @@ pub type EnclaveCore = Core<
         >,
         GatewayRadixNftVerifier,
     >,
-    SessionManager<
+    IdentityManager<
         NsmAttestor,
         NatsStore2,
         NatsStore1<
-            Session,
+            OldSession,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,

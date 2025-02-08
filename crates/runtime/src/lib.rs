@@ -35,7 +35,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use deno_core::error::JsError;
 use http::Method;
-use proven_sessions::Identity;
+use proven_identity::{Identity, LedgerIdentity};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -74,7 +74,7 @@ pub enum ExecutionRequest {
         handler_specifier: HandlerSpecifier,
 
         /// The identity of the authenticated user.
-        identities: Vec<Identity>,
+        identity: Identity,
 
         /// The HTTP method.
         method: Method,
@@ -116,7 +116,7 @@ pub enum ExecutionRequest {
         handler_specifier: HandlerSpecifier,
 
         /// The identity of the authenticated user.
-        identities: Vec<Identity>,
+        identity: Identity,
     },
 }
 

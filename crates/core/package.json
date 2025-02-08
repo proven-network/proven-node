@@ -1,11 +1,13 @@
 {
   "scripts": {
-    "build": "esbuild static/webauthn.ts --bundle --outfile=static/webauthn.js"
+    "build": "esbuild static/{iframe,webauthn,ws-worker}.ts --bundle --outdir=static",
+    "test:iframe": "node test/server.js"
   },
   "dependencies": {
     "@simplewebauthn/browser": "13.1.0"
   },
   "devDependencies": {
+    "@radixdlt/radix-dapp-toolkit": "2.2.1",
     "esbuild": "0.24.2"
   }
 }

@@ -10,8 +10,8 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
+use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
-use proven_sessions::SessionManagement;
 use tracing::error;
 
 pub(crate) async fn http_rpc_handler<AM, RM, SM, A>(
@@ -28,7 +28,7 @@ pub(crate) async fn http_rpc_handler<AM, RM, SM, A>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     let maybe_session_id = match headers.get("Authorization") {

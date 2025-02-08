@@ -11,9 +11,9 @@ use ed25519_dalek::VerifyingKey;
 use headers::Origin;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
+use proven_identity::{IdentifySessionViaRadixOptions, IdentityManagement};
 use proven_radix_rola::SignedChallenge;
 use proven_runtime::RuntimePoolManagement;
-use proven_sessions::{CreateSessionOptions, SessionManagement};
 use tracing::info;
 
 #[derive(TryFromMultipart)]
@@ -35,7 +35,7 @@ pub(crate) async fn create_challenge_handler<AM, RM, SM, A>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     let origin = match origin_header {
@@ -81,7 +81,7 @@ pub(crate) async fn verify_session_handler<AM, RM, SM, A>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     let origin = match origin_header {
@@ -115,7 +115,7 @@ where
         serde_json::from_str(data.signed_challenge.as_str()).unwrap();
 
     match session_manager
-        .create_session(CreateSessionOptions {
+        .identify_session_via_radix(IdentifySessionViaRadixOptions {
             application_id: &application_id,
             application_name: data.application_name.as_deref(),
             dapp_definition_address: &data.dapp_definition_address,

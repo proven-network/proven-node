@@ -10,8 +10,8 @@ use bytes::Bytes;
 use futures::{sink::SinkExt, stream::StreamExt};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
+use proven_identity::{IdentityManagement, OldSession};
 use proven_runtime::RuntimePoolManagement;
-use proven_sessions::SessionManagement;
 use tracing::{error, info};
 
 async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
@@ -38,28 +38,35 @@ pub(crate) async fn ws_rpc_handler<AM, RM, SM, A>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
-    let Some(header) = headers.get("Authorization") else {
-        return ws
-            .on_upgrade(|socket| handle_socket_error(socket, "Authorization header required"));
-    };
+    // let Some(header) = headers.get("Authorization") else {
+    //     return ws
+    //         .on_upgrade(|socket| handle_socket_error(socket, "Authorization header required"));
+    // };
 
-    let Ok(header_str) = header.to_str() else {
-        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid authorization header"));
-    };
+    // let Ok(header_str) = header.to_str() else {
+    //     return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid authorization header"));
+    // };
 
-    let Ok(token) = parse_bearer_token(header_str) else {
-        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid bearer token format"));
-    };
+    // let Ok(token) = parse_bearer_token(header_str) else {
+    //     return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid bearer token format"));
+    // };
 
-    let Ok(maybe_session) = session_manager.get_session(&application_id, &token).await else {
-        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid token"));
-    };
+    // let Ok(maybe_session) = session_manager.get_session(&application_id, &token).await else {
+    //     return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid token"));
+    // };
 
-    let Some(session) = maybe_session else {
-        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid session"));
+    // let Some(session) = maybe_session else {
+    //     return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid session"));
+    // };
+
+    let session = OldSession {
+        identities: vec![],
+        session_id: "session_id".to_string(),
+        signing_key: vec![],
+        verifying_key: vec![],
     };
 
     let Ok(rpc_handler) = RpcHandler::new(

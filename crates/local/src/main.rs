@@ -19,9 +19,9 @@ use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
 use proven_core::{Core, CoreOptions};
 use proven_http_insecure::InsecureHttpServer;
+use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
-use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_direct::{DirectSqlStore1, DirectSqlStore2, DirectSqlStore3};
 use proven_store_fs::{FsStore1, FsStore2, FsStore3};
 use proven_store_memory::{MemoryStore, MemoryStore2};
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
 
     let radix_gateway_origin = "https://stokenet.radixdlt.com".to_string();
 
-    let session_manager = SessionManager::new(SessionManagerOptions {
+    let session_manager = IdentityManager::new(IdentityManagerOptions {
         attestor,
         challenge_store,
         sessions_store,

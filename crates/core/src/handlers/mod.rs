@@ -9,8 +9,9 @@ pub(crate) use rpc_http::http_rpc_handler;
 pub(crate) use rpc_ws::ws_rpc_handler;
 pub(crate) use sessions::{create_challenge_handler, verify_session_handler};
 pub(crate) use webauthn::{
-    webauthn_iframe_handler, webauthn_js_handler, webauthn_registration_finish_handler,
-    webauthn_registration_start_handler,
+    iframe_js_handler, webauthn_iframe_handler, webauthn_js_handler,
+    webauthn_registration_finish_handler, webauthn_registration_start_handler,
+    ws_worker_js_handler,
 };
 
 fn parse_bearer_token(auth_header: &str) -> Result<String, &'static str> {

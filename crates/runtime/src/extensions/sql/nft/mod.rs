@@ -250,7 +250,7 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
 mod tests {
     use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
-    use proven_sessions::{Identity, RadixIdentityDetails};
+    use proven_identity::{LedgerIdentity, RadixIdentityDetails};
 
     #[tokio::test]
     async fn test_nft_db() {
@@ -270,7 +270,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec!["my_account".to_string()],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -309,7 +309,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec!["my_account".to_string()],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -340,7 +340,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec!["my_account".to_string()],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -379,7 +379,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec!["my_account".to_string()],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -409,7 +409,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),

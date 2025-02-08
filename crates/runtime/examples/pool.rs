@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use proven_code_package::CodePackage;
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
-use proven_sessions::{Identity, RadixIdentityDetails};
+use proven_identity::{LedgerIdentity, RadixIdentityDetails};
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 use radix_common::network::NetworkDefinition;
@@ -69,7 +69,7 @@ async fn main() -> Result<(), Error> {
                 application_id: "application_id".to_string(),
                 args: vec![json!(10), json!(20)],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-                identities: vec![Identity::Radix(RadixIdentityDetails {
+                identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                     account_addresses: vec![],
                     dapp_definition_address: "dapp_definition_address".to_string(),
                     expected_origin: "origin".to_string(),

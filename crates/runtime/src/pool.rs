@@ -92,11 +92,11 @@ where
 ///
 /// ```rust
 /// use proven_code_package::CodePackage;
+/// use proven_identity::{Identity, RadixIdentityDetails};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Pool, PoolOptions,
 /// };
-/// use proven_sessions::{Identity, RadixIdentityDetails};
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 /// use radix_common::network::NetworkDefinition;
@@ -658,8 +658,8 @@ mod tests {
 
     use super::*;
 
+    use proven_identity::{LedgerIdentity, RadixIdentityDetails};
     use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
-    use proven_sessions::{Identity, RadixIdentityDetails};
     use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
     use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
     use serde_json::json;
@@ -711,7 +711,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![json!(10), json!(20)],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -747,7 +747,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![json!(10), json!(20)],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec!["my_account".to_string()],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -769,7 +769,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![json!(10), json!(20)],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec!["my_account".to_string()],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),
@@ -796,7 +796,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![json!(10), json!(20)],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec!["my_account".to_string()],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),

@@ -7,16 +7,16 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor};
+use proven_identity::IdentityManagement;
 use proven_runtime::{
     ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
 };
-use proven_sessions::SessionManagement;
 
 #[derive(Clone)]
 pub(crate) struct ApplicationHttpContext<RM, SM, A>
 where
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
 {
     pub application_id: String,
     pub attestor: A,
@@ -45,7 +45,7 @@ pub(crate) async fn application_http_handler<RM, SM, A>(
 ) -> impl IntoResponse
 where
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
 {
     let maybe_session_id = match headers.get("Authorization") {

@@ -592,7 +592,7 @@ mod tests {
     use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     use bytes::Bytes;
-    use proven_sessions::{Identity, RadixIdentityDetails};
+    use proven_identity::{LedgerIdentity, RadixIdentityDetails};
     use proven_store_memory::MemoryStore;
 
     #[tokio::test]
@@ -604,7 +604,7 @@ mod tests {
             application_id: "application_id".to_string(),
             args: vec![],
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
+            identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
                 account_addresses: vec![],
                 dapp_definition_address: "dapp_definition_address".to_string(),
                 expected_origin: "origin".to_string(),

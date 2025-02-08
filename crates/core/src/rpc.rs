@@ -4,10 +4,10 @@ use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
 use proven_applications::ApplicationManagement;
 use proven_code_package::CodePackage;
+use proven_identity::{LedgerIdentity, OldSession};
 use proven_runtime::{
     ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
 };
-use proven_sessions::{Identity, Session};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -47,7 +47,7 @@ where
     aad: Vec<u8>,
     application_id: String,
     _application_manager: AM,
-    identities: Vec<Identity>,
+    identities: Vec<LedgerIdentity>,
     runtime_pool_manager: RM,
     signing_key: SigningKey,
     verifying_key: VerifyingKey,
@@ -72,7 +72,7 @@ pub enum Response {
     ExecuteSuccess(ExecutionResult),
     ExecuteFailure(String),
     Ok,
-    WhoAmI(Vec<Identity>),
+    WhoAmI(Vec<LedgerIdentity>),
 }
 
 impl<AM, RM> RpcHandler<AM, RM>
@@ -84,7 +84,7 @@ where
         application_manager: AM,
         runtime_pool_manager: RM,
         application_id: String,
-        session: Session,
+        session: OldSession,
     ) -> Result<Self, RpcHandlerError> {
         let signing_key_bytes: [u8; 32] = session
             .signing_key

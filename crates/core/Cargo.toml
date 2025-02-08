@@ -20,9 +20,9 @@ proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
 proven-code-package = { workspace = true }
 proven-http = { workspace = true }
+proven-identity = { workspace = true }
 proven-radix-rola = { workspace = true }
 proven-runtime = { workspace = true }
-proven-sessions = { workspace = true }
 proven-sql = { workspace = true }
 proven-store = { workspace = true }
 radix-common = { workspace = true }

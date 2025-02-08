@@ -21,6 +21,7 @@ members = [
     "crates/http",
     "crates/http-insecure",
     "crates/http-letsencrypt",
+    "crates/identity",
     "crates/instance-details",
     "crates/imds",
     "crates/kms",
@@ -44,7 +45,6 @@ members = [
     "crates/radix-rola",
     "crates/radix-stream",
     "crates/runtime",
-    "crates/sessions",
     "crates/sql",
     "crates/sql-direct",
     "crates/sql-streamed",
@@ -247,6 +247,7 @@ proven-host = { path = "crates/host" }
 proven-http = { path = "crates/http" }
 proven-http-insecure = { path = "crates/http-insecure" }
 proven-http-letsencrypt = { path = "crates/http-letsencrypt" }
+proven-identity = { path = "crates/identity" }
 proven-imds = { path = "crates/imds" }
 proven-instance-details = { path = "crates/instance-details" }
 proven-kms = { path = "crates/kms" }
@@ -270,7 +271,6 @@ proven-radix-node = { path = "crates/radix-node" }
 proven-radix-rola = { path = "crates/radix-rola" }
 proven-radix-stream = { path = "crates/radix-stream" }
 proven-runtime = { path = "crates/runtime" }
-proven-sessions = { path = "crates/sessions" }
 proven-sql = { path = "crates/sql" }
 proven-sql-direct = { path = "crates/sql-direct" }
 proven-sql-streamed = { path = "crates/sql-streamed" }

@@ -31,7 +31,7 @@ use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
-use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
+use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
@@ -768,7 +768,7 @@ impl Bootstrap {
             persist: true,
         });
 
-        let session_manager = SessionManager::new(SessionManagerOptions {
+        let session_manager = IdentityManager::new(IdentityManagerOptions {
             attestor: self.nsm.clone(),
             challenge_store,
             sessions_store,
