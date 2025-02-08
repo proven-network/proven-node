@@ -157,7 +157,7 @@ dns-stamp-parser = { git = "https://github.com/LinkTed/dns-stamp-parser" }
 dyn-clone = "1"
 dynasmrt = "1.2.3"
 ecb = "=0.1.2"
-ed25519-dalek = { version = "2.1.1", features = ["rand_core", "signature"] }
+ed25519-dalek = { version = "2.1.1", features = ["rand_core", "serde", "signature"] }
 elliptic-curve = { version = "0.13.8", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 encoding_rs = "0.8.35"
 error_reporter = "1"

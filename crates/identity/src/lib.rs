@@ -13,7 +13,7 @@ pub use error::Error;
 pub use identity::Identity;
 pub use ledger_identity::radix::RadixIdentityDetails;
 pub use ledger_identity::LedgerIdentity;
-pub use session::{OldSession, Session};
+pub use session::Session;
 
 use std::collections::HashSet;
 
@@ -166,6 +166,7 @@ where
     CS: Store2,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
+    #[allow(clippy::unused_self)]
     fn create_identity_from_ledger_identity(
         &self,
         _ledger_identity: LedgerIdentity,
@@ -222,8 +223,8 @@ where
         let session = Session::Anonymous {
             origin: origin.to_string(),
             session_id: session_id.clone(),
-            signing_key: server_signing_key.to_bytes().to_vec(),
-            verifying_key: verifying_key.to_bytes().to_vec(),
+            signing_key: server_signing_key.clone(),
+            verifying_key: *verifying_key,
         };
 
         self.sessions_store
@@ -354,8 +355,8 @@ where
             ledger_identity: LedgerIdentity::Radix(radix_identity),
             origin: origin.to_string(),
             session_id: hex::encode(session_id_bytes),
-            signing_key: server_signing_key.as_bytes().to_vec(),
-            verifying_key: verifying_key.as_bytes().to_vec(),
+            signing_key: server_signing_key.clone(),
+            verifying_key: *verifying_key,
         };
 
         self.sessions_store

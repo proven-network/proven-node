@@ -97,14 +97,14 @@ where
     let body = if body.is_empty() { None } else { Some(body) };
 
     let execution_request = if let Some(session) = maybe_session {
-        ExecutionRequest::HttpWithUserContext {
+        ExecutionRequest::HttpWithSession {
             application_id,
             body,
             handler_specifier,
-            identities: session.identities,
             method,
             path: path.to_string(),
             query: query.map(String::from),
+            session,
         }
     } else {
         ExecutionRequest::Http {
