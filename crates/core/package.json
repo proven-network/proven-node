@@ -4,10 +4,15 @@
     "test:iframe": "node test/server.js"
   },
   "dependencies": {
-    "@simplewebauthn/browser": "13.1.0"
+    "@auth0/cose": "1.0.2",
+    "@simplewebauthn/browser": "13.1.0",
+    "cbor-x": "1.6.0",
+    "elliptic": "6.6.1",
+    "@peculiar/x509": "1.12.3"
   },
   "devDependencies": {
     "@radixdlt/radix-dapp-toolkit": "2.2.1",
-    "esbuild": "0.24.2"
+    "@types/elliptic": "6.4.18",
+    "esbuild": "0.25.0"
   }
 }

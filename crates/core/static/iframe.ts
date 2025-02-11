@@ -1,4 +1,5 @@
 import { Proof } from "@radixdlt/radix-dapp-toolkit";
+import { createSession } from "./sessions";
 
 type RequestAttestation = {
   type: "requestAttestation";
@@ -17,6 +18,8 @@ type VerifyRolaProofs = {
 type Request = RequestAttestation | RequestRolaChallenge | VerifyRolaProofs;
 type ParentMessage = { nonce: number; request: Request };
 
+const iframeId = Math.floor(Math.random() * 1000000);
+
 function isParentMessage(data: unknown): data is ParentMessage {
   return (
     typeof data === "object" &&
@@ -31,9 +34,17 @@ class IframeClient {
   worker: SharedWorker;
 
   constructor() {
-    this.worker = new SharedWorker("./ws-worker.js");
-    this.setupWorkerCommunication();
-    this.setupParentCommunication();
+    // this.worker = new SharedWorker("./ws-worker.js");
+    this.setupSession();
+    // this.setupWorkerCommunication();
+    // this.setupParentCommunication();
+  }
+
+  setupSession() {
+    // Create a new session when the iframe is loaded
+    createSession("application_id").then(() => {
+      console.log("Session created!");
+    });
   }
 
   setupWorkerCommunication() {
@@ -67,6 +78,7 @@ class IframeClient {
 
   handleWebSocketMessage(data) {
     // Forward WebSocket messages to parent
+
     window.parent.postMessage(
       {
         type: "ws-message",
@@ -78,12 +90,14 @@ class IframeClient {
 
   handleParentMessage(data: ParentMessage) {
     // Forward parent messages to WebSocket
-    if (data.type === "ws-send") {
-      this.worker.port.postMessage({
-        type: "ws-send",
-        message: data.message,
-      });
-    }
+
+    const { nonce, request } = data;
+
+    this.worker.port.postMessage({
+      iframeId,
+      nonce,
+      request,
+    });
   }
 
   // Initialize the client when the page loads

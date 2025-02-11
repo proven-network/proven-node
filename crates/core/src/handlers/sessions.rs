@@ -1,8 +1,10 @@
+mod radix;
+
 use crate::PrimaryContext;
+pub(crate) use radix::{create_rola_challenge_handler, verify_rola_handler};
 
 use axum::body::Body;
-use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_typed_multipart::{TryFromMultipart, TypedMultipart};
@@ -11,72 +13,23 @@ use ed25519_dalek::VerifyingKey;
 use headers::Origin;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
-use proven_identity::{IdentifySessionViaRadixOptions, IdentityManagement};
-use proven_radix_rola::SignedChallenge;
+use proven_identity::{CreateAnonymousSessionOptions, IdentityManagement};
 use proven_runtime::RuntimePoolManagement;
 use tracing::info;
 
 #[derive(TryFromMultipart)]
-pub struct SessionRequest {
-    application_name: Option<String>,
-    dapp_definition_address: String,
+pub struct CreateSessionRequest {
+    application_id: String,
     nonce: Bytes,
     public_key: Bytes,
-    signed_challenge: String,
 }
 
-pub(crate) async fn create_challenge_handler<AM, RM, SM, A>(
-    Path(application_id): Path<String>,
+pub(crate) async fn create_session_handler<AM, RM, SM, A>(
     State(PrimaryContext {
         session_manager, ..
     }): State<PrimaryContext<AM, RM, SM, A>>,
     origin_header: Option<TypedHeader<Origin>>,
-) -> impl IntoResponse
-where
-    AM: ApplicationManagement,
-    RM: RuntimePoolManagement,
-    SM: IdentityManagement,
-    A: Attestor,
-{
-    let origin = match origin_header {
-        Some(value) => value.to_string(),
-        None => {
-            return Response::builder()
-                .status(400)
-                .body("Origin header not found".into())
-                .unwrap()
-        }
-    };
-
-    match session_manager
-        .create_challenge(&application_id, &origin)
-        .await
-    {
-        Ok(challenge) => Response::builder()
-            .status(StatusCode::OK)
-            .body(Body::from(challenge))
-            .unwrap_or_else(|_| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Body::from("Failed to construct response"),
-                )
-                    .into_response()
-            }),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Body::from(format!("Failed to create challenge: {e}")),
-        )
-            .into_response(),
-    }
-}
-
-pub(crate) async fn verify_session_handler<AM, RM, SM, A>(
-    Path(application_id): Path<String>,
-    State(PrimaryContext {
-        session_manager, ..
-    }): State<PrimaryContext<AM, RM, SM, A>>,
-    origin_header: Option<TypedHeader<Origin>>,
-    data: TypedMultipart<SessionRequest>,
+    data: TypedMultipart<CreateSessionRequest>,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
@@ -111,17 +64,11 @@ where
             .unwrap();
     };
 
-    let signed_challenges: Vec<SignedChallenge> =
-        serde_json::from_str(data.signed_challenge.as_str()).unwrap();
-
     match session_manager
-        .identify_session_via_radix(IdentifySessionViaRadixOptions {
-            application_id: &application_id,
-            application_name: data.application_name.as_deref(),
-            dapp_definition_address: &data.dapp_definition_address,
+        .create_anonymous_session(CreateAnonymousSessionOptions {
+            application_id: &data.application_id,
             nonce: &data.nonce,
             origin: &origin,
-            signed_challenges: &signed_challenges,
             verifying_key: &verifying_key,
         })
         .await

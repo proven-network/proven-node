@@ -10,10 +10,10 @@ mod rpc;
 
 pub use error::{Error, Result};
 use handlers::{
-    application_http_handler, create_challenge_handler, http_rpc_handler, iframe_js_handler,
-    verify_session_handler, webauthn_iframe_handler, webauthn_js_handler,
-    webauthn_registration_finish_handler, webauthn_registration_start_handler, ws_rpc_handler,
-    ws_worker_js_handler, ApplicationHttpContext,
+    application_http_handler, create_rola_challenge_handler, create_session_handler,
+    http_rpc_handler, iframe_js_handler, verify_rola_handler, webauthn_iframe_handler,
+    webauthn_js_handler, webauthn_registration_finish_handler, webauthn_registration_start_handler,
+    ws_rpc_handler, ws_worker_js_handler, ApplicationHttpContext,
 };
 
 use std::collections::HashSet;
@@ -149,12 +149,16 @@ where
         let primary_router = Router::new()
             .route("/", get(|| async { redirect_response }))
             .route(
-                "/app/{application_id}/auth/rola/challenge",
-                get(create_challenge_handler).with_state(ctx.clone()),
+                "/auth/create_session",
+                post(create_session_handler).with_state(ctx.clone()),
             )
             .route(
-                "/app/{application_id}/auth/rola/verify",
-                post(verify_session_handler).with_state(ctx.clone()),
+                "/auth/rola/challenge",
+                get(create_rola_challenge_handler).with_state(ctx.clone()),
+            )
+            .route(
+                "/auth/rola/verify",
+                post(verify_rola_handler).with_state(ctx.clone()),
             )
             .route(
                 "/app/{application_id}/auth/webauthn/login",
@@ -170,7 +174,7 @@ where
             )
             .route(
                 "/app/{application_id}/auth/webauthn/webauthn.js",
-                get(ws_worker_js_handler),
+                get(webauthn_js_handler),
             )
             .route(
                 "/app/{application_id}/auth/webauthn/ws-worker.js",

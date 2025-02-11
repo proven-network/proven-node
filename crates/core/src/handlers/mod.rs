@@ -7,7 +7,9 @@ mod webauthn;
 pub(crate) use application_http::{application_http_handler, ApplicationHttpContext};
 pub(crate) use rpc_http::http_rpc_handler;
 pub(crate) use rpc_ws::ws_rpc_handler;
-pub(crate) use sessions::{create_challenge_handler, verify_session_handler};
+pub(crate) use sessions::{
+    create_rola_challenge_handler, create_session_handler, verify_rola_handler,
+};
 pub(crate) use webauthn::{
     iframe_js_handler, webauthn_iframe_handler, webauthn_js_handler,
     webauthn_registration_finish_handler, webauthn_registration_start_handler,
