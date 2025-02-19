@@ -119,8 +119,12 @@ where
         options: CreateAnonymousSessionOptions<'_>,
     ) -> Result<Bytes, Error>;
 
-    /// Creates a new challenge to use for session creation.
-    async fn create_challenge(&self, application_id: &str, origin: &str) -> Result<String, Error>;
+    /// Creates a new ROLA challenge to use for session identifiction.
+    async fn create_rola_challenge(
+        &self,
+        application_id: &str,
+        origin: &str,
+    ) -> Result<String, Error>;
 
     /// Gets an identity by ID.
     async fn get_identity(&self, identity_id: &str) -> Result<Option<Identity>, Error>;
@@ -139,7 +143,7 @@ where
     ) -> Result<Option<Session>, Error>;
 
     /// Identifies a session via ROLA.
-    async fn identify_session_via_radix(
+    async fn identify_session_via_rola(
         &self,
         options: IdentifySessionViaRadixOptions<'_>,
     ) -> Result<Bytes, Error>;
@@ -247,7 +251,11 @@ where
         }
     }
 
-    async fn create_challenge(&self, application_id: &str, origin: &str) -> Result<String, Error> {
+    async fn create_rola_challenge(
+        &self,
+        application_id: &str,
+        origin: &str,
+    ) -> Result<String, Error> {
         let mut challenge = String::new();
 
         for _ in 0..32 {
@@ -264,7 +272,35 @@ where
         Ok(challenge)
     }
 
-    async fn identify_session_via_radix(
+    async fn get_identity(&self, _identity_id: &str) -> Result<Option<Identity>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_identity_by_radix_identity_address(
+        &self,
+        _radix_identity_address: &str,
+    ) -> Result<Option<Identity>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_session(
+        &self,
+        application_id: &str,
+        session_id: &str,
+    ) -> Result<Option<Session>, Error> {
+        match self
+            .sessions_store
+            .scope(application_id.to_string())
+            .get(session_id.to_string())
+            .await
+        {
+            Ok(Some(session)) => Ok(Some(session)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(Error::SessionStore(e.to_string())),
+        }
+    }
+
+    async fn identify_session_via_rola(
         &self,
         IdentifySessionViaRadixOptions {
             application_id,
@@ -376,34 +412,6 @@ where
         {
             Ok(attestation) => Ok(attestation),
             Err(e) => Err(Error::Attestation(e.to_string())),
-        }
-    }
-
-    async fn get_identity(&self, _identity_id: &str) -> Result<Option<Identity>, Error> {
-        unimplemented!()
-    }
-
-    async fn get_identity_by_radix_identity_address(
-        &self,
-        _radix_identity_address: &str,
-    ) -> Result<Option<Identity>, Error> {
-        unimplemented!()
-    }
-
-    async fn get_session(
-        &self,
-        application_id: &str,
-        session_id: &str,
-    ) -> Result<Option<Session>, Error> {
-        match self
-            .sessions_store
-            .scope(application_id.to_string())
-            .get(session_id.to_string())
-            .await
-        {
-            Ok(Some(session)) => Ok(Some(session)),
-            Ok(None) => Ok(None),
-            Err(e) => Err(Error::SessionStore(e.to_string())),
         }
     }
 }

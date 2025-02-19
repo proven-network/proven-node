@@ -1,8 +1,9 @@
+use super::super::parse_bearer_token;
 use crate::PrimaryContext;
 
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_typed_multipart::{TryFromMultipart, TypedMultipart};
@@ -26,11 +27,10 @@ pub struct SessionRequest {
 }
 
 pub(crate) async fn create_rola_challenge_handler<AM, RM, SM, A>(
-    Path(application_id): Path<String>,
     State(PrimaryContext {
         session_manager, ..
     }): State<PrimaryContext<AM, RM, SM, A>>,
-    origin_header: Option<TypedHeader<Origin>>,
+    headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
@@ -38,18 +38,50 @@ where
     SM: IdentityManagement,
     A: Attestor,
 {
-    let origin = match origin_header {
-        Some(value) => value.to_string(),
-        None => {
-            return Response::builder()
-                .status(400)
-                .body("Origin header not found".into())
-                .unwrap()
+    let maybe_session_id = match headers.get("Authorization") {
+        Some(header) => match header.to_str() {
+            Ok(header_str) => match parse_bearer_token(header_str) {
+                Ok(token) => Some(token),
+                Err(e) => return Response::builder().status(401).body(Body::from(e)).unwrap(),
+            },
+            Err(_) => {
+                return Response::builder()
+                    .status(401)
+                    .body(Body::from("Invalid authorization header"))
+                    .unwrap()
+            }
+        },
+        None => None,
+    };
+
+    let maybe_session = if let Some(session_id) = maybe_session_id {
+        match session_manager
+            .get_session(&application_id, &session_id)
+            .await
+        {
+            Ok(Some(session)) => Some(session),
+            Ok(None) => {
+                return Response::builder()
+                    .status(401)
+                    .body(Body::from("Invalid session"))
+                    .unwrap()
+            }
+            Err(_) => {
+                return Response::builder()
+                    .status(401)
+                    .body(Body::from("Invalid token"))
+                    .unwrap()
+            }
         }
+    } else {
+        return Response::builder()
+            .status(401)
+            .body(Body::from("Authorization header required"))
+            .unwrap();
     };
 
     match session_manager
-        .create_challenge(&application_id, &origin)
+        .create_rola_challenge("application_id", &origin)
         .await
     {
         Ok(challenge) => Response::builder()
@@ -115,7 +147,7 @@ where
         serde_json::from_str(data.signed_challenge.as_str()).unwrap();
 
     match session_manager
-        .identify_session_via_radix(IdentifySessionViaRadixOptions {
+        .identify_session_via_rola(IdentifySessionViaRadixOptions {
             application_id: &application_id,
             application_name: data.application_name.as_deref(),
             dapp_definition_address: &data.dapp_definition_address,
