@@ -1,0 +1,39 @@
+{
+  "name": "proven-governance",
+  "version": "1.0.0",
+  "description": "Smart contracts for Proven Network Governance",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.ts",
+    "coverage": "hardhat coverage",
+    "typechain": "hardhat typechain"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "2.0.8",
+    "@nomicfoundation/hardhat-ethers": "3.0.8",
+    "@nomicfoundation/hardhat-ignition": "^0.15.10",
+    "@nomicfoundation/hardhat-ignition-ethers": "^0.15.10",
+    "@nomicfoundation/hardhat-network-helpers": "1.0.12",
+    "@nomicfoundation/hardhat-toolbox": "5.0.0",
+    "@nomicfoundation/hardhat-verify": "2.0.13",
+    "@nomicfoundation/ignition-core": "^0.15.10",
+    "@typechain/ethers-v6": "0.5.1",
+    "@typechain/hardhat": "9.1.0",
+    "@types/chai": "5.0.1",
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.13.5",
+    "chai": "4.2.0",
+    "ethers": "6.13.5",
+    "hardhat": "2.22.19",
+    "hardhat-gas-reporter": "2.2.2",
+    "solidity-coverage": "0.8.14",
+    "ts-node": "10.9.2",
+    "typechain": "8.3.2",
+    "typescript": "5.7.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.2.0",
+    "dotenv": "16.4.7"
+  }
+}

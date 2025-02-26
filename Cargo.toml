@@ -17,6 +17,8 @@ members = [
     "crates/dnscrypt-proxy",
     "crates/enclave",
     "crates/external-fs",
+    "crates/governance",
+    "crates/governance-helios",
     "crates/host",
     "crates/http",
     "crates/http-insecure",
@@ -61,6 +63,19 @@ members = [
 
 [workspace.dependencies]
 aes = "0.8.4"
+alloy = { version = "0.9.2", features = [
+    "rpc-types",
+    "consensus",
+    "rlp",
+    "k256",
+    "provider-http",
+    "sol-types",
+    "network",
+    "ssz",
+    "json-rpc",
+    "signers",
+] }
+alloy-sol-types = "0.8.21"
 anyhow = "1.0.95"
 asn1-rs = "0.7.0"
 async-nats = "0.38.0"
@@ -162,6 +177,7 @@ elliptic-curve = { version = "0.13.8", features = ["alloc", "arithmetic", "ecdh"
 encoding_rs = "0.8.35"
 error_reporter = "1"
 eszip = { git = "https://github.com/denoland/eszip" }
+eyre = "0.6.12"
 fast-socks5 = "0.10.0"
 faster-hex = "0.10.0"
 fastwebsockets = { version = "0.10.0", features = ["upgrade", "unstable-split"] }
@@ -173,6 +189,9 @@ futures = "0.3.21"
 glob = "0.3.2"
 h2 = "0.4.7"
 headers = "0.4.0"
+helios-consensus-core = { git = "https://github.com/a16z/helios" }
+helios-core = { git = "https://github.com/a16z/helios" }
+helios-ethereum = { git = "https://github.com/a16z/helios" }
 hex = "0.4.3"
 hickory-proto = { version = "0.25.0-alpha.4", features = ["tokio-runtime"] }
 hickory-resolver = { version = "0.25.0-alpha.4", features = ["tokio-runtime", "serde"] }
@@ -243,6 +262,8 @@ proven-core = { path = "crates/core" }
 proven-dnscrypt-proxy = { path = "crates/dnscrypt-proxy" }
 proven-enclave = { path = "crates/enclave" }
 proven-external-fs = { path = "crates/external-fs" }
+proven-governance = { path = "crates/governance" }
+proven-governance-helios = { path = "crates/governance-helios" }
 proven-host = { path = "crates/host" }
 proven-http = { path = "crates/http" }
 proven-http-insecure = { path = "crates/http-insecure" }
@@ -303,7 +324,7 @@ rustyscript = { path = "vendor/rustyscript", features = ["fs", "web"]}
 saffron = "=0.1.0"
 scopeguard = "1.2.0"
 sec1 = "0.7"
-serde = { version = "1.0.217", features = ["derive"] }
+serde = { version = "1.0.218", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.138"
 serde_yaml = "0.9.34+deprecated"
