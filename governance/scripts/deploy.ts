@@ -82,7 +82,7 @@ async function main() {
   );
   const proposerRole = await timelockContract.PROPOSER_ROLE();
   const executorRole = await timelockContract.EXECUTOR_ROLE();
-  const adminRole = await timelockContract.TIMELOCK_ADMIN_ROLE();
+  const adminRole = await timelockContract.DEFAULT_ADMIN_ROLE();
 
   // Grant proposer role to governors
   console.log("- Granting proposer role to governance contracts");

@@ -7,6 +7,8 @@ edition = "2021"
 alloy = { workspace = true }
 alloy-sol-types = { workspace = true }
 async-trait = { workspace = true }
+dotenv = { workspace = true }
+eyre = { workspace = true }
 helios-consensus-core = { workspace = true }
 helios-core = { workspace = true }
 helios-ethereum = { workspace = true }
@@ -14,7 +16,6 @@ proven-governance = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-eyre = { workspace = true }
 
 [dev-dependencies]
 tracing-subscriber = { workspace = true }

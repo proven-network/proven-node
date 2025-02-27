@@ -169,6 +169,7 @@ denokv_sqlite = { default-features = false, path = "vendor/denokv/sqlite" }
 derive_more = { version = "1.0.0", features = ["from"] }
 dlopen2 = "0.7.0"
 dns-stamp-parser = { git = "https://github.com/LinkTed/dns-stamp-parser" }
+dotenv = "0.15.0"
 dyn-clone = "1"
 dynasmrt = "1.2.3"
 ecb = "=0.1.2"

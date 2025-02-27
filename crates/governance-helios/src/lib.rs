@@ -30,6 +30,9 @@ pub struct HeliosGovernanceOptions {
     /// The URL of the Ethereum execution layer RPC endpoint.
     pub execution_rpc: String,
 
+    /// The network to use.
+    pub network: Network,
+
     /// The address of the node governance contract.
     pub node_governance_contract_address: String,
 
@@ -79,7 +82,7 @@ impl HeliosGovernance {
     /// Create a new Helios governance client.
     pub async fn new(options: HeliosGovernanceOptions) -> Result<Self, Error> {
         let mut client = EthereumClientBuilder::new()
-            .network(Network::Mainnet)
+            .network(options.network)
             .data_dir(options.data_dir.clone())
             .consensus_rpc(&options.consensus_rpc)
             .execution_rpc(&options.execution_rpc)

@@ -1,13 +1,18 @@
 #![allow(deprecated)]
 
+use std::env;
 use std::path::PathBuf;
 
+use helios_ethereum::config::networks::Network;
 use proven_governance::Governance;
 use proven_governance_helios::{HeliosGovernance, HeliosGovernanceOptions};
 use tracing::info;
 
 #[tokio::main]
 async fn main() {
+    // Load environment variables from .env file
+    dotenv::dotenv().ok();
+
     tracing::subscriber::set_global_default(
         tracing_subscriber::FmtSubscriber::builder()
             .with_max_level(tracing::Level::DEBUG)
@@ -15,20 +20,34 @@ async fn main() {
     )
     .unwrap();
 
-    let eth_rpc_url = "https://eth-mainnet.g.alchemy.com/v2/_82Y5NUN4Ed9769-SfQbd0AVgSd69448";
-    let consensus_rpc = "https://www.lightclientdata.org";
+    // Get environment variables with fallbacks
+    let network = match env::var("HELIOS_NETWORK").unwrap().as_str() {
+        "mainnet" => Network::Mainnet,
+        "sepolia" => Network::Sepolia,
+        _ => panic!("Invalid network"),
+    };
+    let eth_rpc_url = env::var("ETH_RPC_URL").unwrap();
+    let consensus_rpc = env::var("CONSENSUS_RPC_URL").unwrap();
+
+    let token_address = env::var("TOKEN_CONTRACT_ADDRESS").unwrap();
+    let node_governance_address = env::var("NODE_GOVERNANCE_CONTRACT_ADDRESS").unwrap();
+    let version_governance_address = env::var("VERSION_GOVERNANCE_CONTRACT_ADDRESS").unwrap();
+
+    info!("Using contract addresses:");
+    info!("Token: {}", token_address);
+    info!("Node Governance: {}", node_governance_address);
+    info!("Version Governance: {}", version_governance_address);
     info!("Consensus RPC URL: {}", consensus_rpc);
 
     // Construct the governance options
     let options = HeliosGovernanceOptions {
-        consensus_rpc: consensus_rpc.to_string(),
-        data_dir: PathBuf::from("/tmp/helios"),
-        execution_rpc: eth_rpc_url.to_string(),
-        // These are placeholder addresses
-        node_governance_contract_address: "0x1234567890123456789012345678901234567890".to_string(),
-        token_contract_address: "0x1234567890123456789012345678901234567890".to_string(),
-        version_governance_contract_address: "0x1234567890123456789012345678901234567890"
-            .to_string(),
+        consensus_rpc,
+        data_dir: PathBuf::from("/tmp/helios").join(network.to_string()),
+        execution_rpc: eth_rpc_url,
+        network,
+        node_governance_contract_address: node_governance_address,
+        token_contract_address: token_address,
+        version_governance_contract_address: version_governance_address,
     };
 
     // Create and initialize the governance client
