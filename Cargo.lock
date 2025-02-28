@@ -8958,6 +8958,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-governance-mock"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "proven-governance",
+ "thiserror 2.0.11",
+ "tokio",
+]
+
+[[package]]
 name = "proven-host"
 version = "0.1.0"
 dependencies = [

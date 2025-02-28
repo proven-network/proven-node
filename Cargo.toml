@@ -19,6 +19,7 @@ members = [
     "crates/external-fs",
     "crates/governance",
     "crates/governance-helios",
+    "crates/governance-mock",
     "crates/host",
     "crates/http",
     "crates/http-insecure",
@@ -265,6 +266,7 @@ proven-enclave = { path = "crates/enclave" }
 proven-external-fs = { path = "crates/external-fs" }
 proven-governance = { path = "crates/governance" }
 proven-governance-helios = { path = "crates/governance-helios" }
+proven-governance-mock = { path = "crates/governance-mock" }
 proven-host = { path = "crates/host" }
 proven-http = { path = "crates/http" }
 proven-http-insecure = { path = "crates/http-insecure" }

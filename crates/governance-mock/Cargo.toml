@@ -1,0 +1,10 @@
+[package]
+name = "proven-governance-mock"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = { workspace = true }
+proven-governance = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }

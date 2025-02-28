@@ -12,7 +12,7 @@ use std::time::SystemTime;
 use async_trait::async_trait;
 
 /// A node in the network topology.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Node {
     /// The availability zone of the node.
     pub availability_zone: String,
@@ -34,7 +34,7 @@ pub struct Node {
 }
 
 /// The possible specializations of a node.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum NodeSpecialization {
     /// Runs a mainnet Radix node.
     RadixMainnet,
@@ -44,7 +44,7 @@ pub enum NodeSpecialization {
 }
 
 /// A version of the node software.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Version {
     /// The timestamp when the version was activated.
     pub activated_at: SystemTime,
