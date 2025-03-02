@@ -86,6 +86,12 @@ pub struct HeliosGovernance {
 
 impl HeliosGovernance {
     /// Create a new Helios governance client.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The Helios client fails to build or start
+    /// - The provided contract addresses cannot be parsed
     pub async fn new(options: HeliosGovernanceOptions) -> Result<Self, Error> {
         let mut client = EthereumClientBuilder::new()
             .network(options.network)
@@ -107,12 +113,20 @@ impl HeliosGovernance {
         let node_governance_address = options
             .node_governance_contract_address
             .parse::<Address>()
-            .map_err(|_| Error::InvalidAddress("node_governance_contract_address".into()))?;
+            .map_err(|e| {
+                Error::InvalidAddress(format!(
+                    "Error parsing node_governance_contract_address: {e}"
+                ))
+            })?;
 
         let version_governance_address = options
             .version_governance_contract_address
             .parse::<Address>()
-            .map_err(|_| Error::InvalidAddress("version_governance_contract_address".into()))?;
+            .map_err(|e| {
+                Error::InvalidAddress(format!(
+                    "Error parsing version_governance_contract_address: {e}"
+                ))
+            })?;
 
         Ok(Self {
             client,
@@ -157,7 +171,7 @@ impl Governance for HeliosGovernance {
             .await?;
 
         let versions_result = getActiveVersionsCall::abi_decode_returns(&result, true)
-            .map_err(|e| Error::ContractDataDecode(format!("Error decoding versions: {}", e)))?;
+            .map_err(|e| Error::ContractDataDecode(format!("Error decoding versions: {e}")))?;
 
         // Extract the version structs from the result
         let mut versions = Vec::new();
@@ -190,7 +204,7 @@ impl Governance for HeliosGovernance {
             .await?;
 
         let nodes_result = getNodesCall::abi_decode_returns(&result, true)
-            .map_err(|e| Error::ContractDataDecode(format!("Error decoding nodes: {}", e)))?;
+            .map_err(|e| Error::ContractDataDecode(format!("Error decoding nodes: {e}")))?;
 
         // Extract the node structs from the result
         let mut nodes = Vec::new();
