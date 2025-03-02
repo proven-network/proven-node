@@ -1,24 +1,29 @@
 # Proven Node
 
-This repo contains code for Proven Network nodes. Proven is a novel TEE-based platform designed to complement the Radix DLT. It provides:
+This repo contains code for Proven Network nodes. Proven is a novel TEE-based platform designed to complement blockchains. It provides:
 
 ⭐ End-to-end zero-trust networking and full execution verifiability through trusted-execution environments.
 
 ⭐ A distributed highly-available system which can scale horizontally to a geo-distributed edge network.
 
-⭐ Embeded Radix DLT nodes to ensure verifiability of all network read operations.
+⭐ Embeded blockchain/DLT full nodes to ensure verifiability of all network read operations.
 
 ⭐ A custom and highly-performant (sub-millisecond) runtime for application code based on V8 isolates.
 
-⭐ The ability to trigger FaaS code via front-end SDK RPC, HTTPS APIs, cron schedules, or events from Radix DLT and other Proven apps.
+⭐ The ability to trigger FaaS code via front-end SDK RPC, HTTPS APIs, cron schedules, or events from blockchains and other Proven apps.
 
-⭐ Close integrations with Radix DLT SDKs, tooling, and network primitives (such as identity and accounts).
+⭐ Close integrations with Web3 SDKs, tooling, and network primitives (such as identity and accounts).
 
 ⭐ A novel deployment model for application code which gives end-users full visibility and auditability of dApps.
 
 ⭐ Batteries-included access to encrypted storage (KV, SQL, and file) scopable to any of: app, user (persona), or NFT.
 
-⭐ Best-in-class DevEx for TEE development, tight integration with typical front-end tooling/LSPs, and simple Radix-native settlement for fees.
+⭐ Best-in-class DevEx for TEE development, tight integration with typical front-end tooling/LSPs, and simple on-chain settlement for fees.
+
+## Integated full nodes
+
+- [Radix DLT](https://github.com/radixdlt/babylon-node)
+- More to come...
 
 ## Security Model
 
@@ -38,7 +43,7 @@ Given the node software is fully auditable via the above process - we can now [c
 - Nodes can resolve DNS, but only over a tamper-resistent protocols like DoH, and with explicit acknowledgement of the DNS resolver's role in the overall threat model.
 - Nodes can connect to external APIs and systems, but only if the connection is over encrypted channels (like HTTPS or WSS), and using a root of trust which is shipped explicitly as part of the node software.
 - Nodes can mount external file-systems, but only if all data is encrypted before it leaves the enclave, and decrypted only within the enclave - using keys which are only available inside the enclave.
-- Nodes can trust the state of Radix DLT, but only if each enclave runs a complete stack of node software itself, and doesn't rely on any third-party nodes or gateways.
+- Nodes can trust the state of blockchains, but only if each enclave runs a complete stack of node software itself, and doesn't rely on any third-party nodes, RPCs, or gateways.
 - Nodes can trust each other, but only if they pass each other's remote attestation checks, ensuring true peer-ship and a uniform threat model.
 
 **The Application Layer**
@@ -80,6 +85,9 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [dnscrypt-proxy](crates/dnscrypt-proxy): Configures and runs a DNSCrypt proxy to ensure all DNS runs over tamper-proof HTTPS.
 - [enclave](crates/enclave): Main entrypoint for enclave images. Bootstraps all other components before handing off to core.
 - [external-fs](crates/external-fs): Mounts external filesystems into the enclave via NFS, intermediated by a layer of FUSE-based AES-GCM disk-encryption based on enclave-internal cryptographic keys.
+- [governance](crates/governance): Abstract interface for getting active version information, network topology, etc. from a governance mechanism.
+- [governance-helios](crates/governance-helios): Helios light-client based implementation of the governance interface.
+- [governance-mock](crates/governance-mock): Mock implementation of the governance interface for testing.
 - [host](crates/host): Binary to run on the host machine to manage enclave lifecycle.
 - [http](crates/http): Abstract interface for running an Axum-based HTTP server.
 - [http-insecure](crates/http-insecure): Implementation of simple non-secure HTTP for local development.

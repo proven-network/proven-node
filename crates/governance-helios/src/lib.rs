@@ -1,3 +1,9 @@
+//! Helios light-client based implementation of the governance interface.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
 mod error;
 
 use error::Error;
