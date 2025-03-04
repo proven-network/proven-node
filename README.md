@@ -22,6 +22,7 @@ This repo contains code for Proven Network nodes. Proven is a novel TEE-based pl
 
 ## Integated full nodes
 
+- [Bitcoin](https://bitcoin.org)
 - [Ethereum](https://ethereum.org)
 - [Radix DLT](https://www.radixdlt.com)
 - More to come...
@@ -68,6 +69,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 
 - [babylon-gateway](https:://github.com/radixdlt/babylon-gateway): Radix Babylon Gateway for accessing read data from the Radix DLT.
 - [babylon-node](https://github.com/radixdlt/babylon-node): Radix Babylon Core Node for driving above gateway.
+- [bitcoin-core](https://github.com/bitcoin/bitcoin): Bitcoin Core full node for interacting with the Bitcoin network.
 - [dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy): DNSCrypt Proxy to ensure host cannot tamper with DNS.
 - [dotnet](https://dotnet.microsoft.com/): .NET runtime for running gateway.
 - [geth](https://github.com/ethereum/go-ethereum): Ethereum execution client for running an Ethereum full node.
@@ -83,6 +85,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [attestation](crates/attestation): Abstract interface for managing remote attestation and interacting with hardware-based security modules.
 - [attestation-dev](crates/attestation-dev): Noop implementation of attestation for local development.
 - [attestation-nsm](crates/attestation-nsm): Implementation of attestation using the Nitro Security Module.
+- [bitcoin-core](crates/bitcoin-core): Configures and runs a local Bitcoin Core full node.
 - [code-package](crates/code-package): Tools for creating and working with code packages runnable in the Proven runtime.
 - [core](crates/core): Core logic for the Proven node and the entrypoint for all user interactions.
 - [dnscrypt-proxy](crates/dnscrypt-proxy): Configures and runs a DNSCrypt proxy to ensure all DNS runs over tamper-proof HTTPS.

@@ -8792,6 +8792,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-bitcoin-core"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "nix 0.27.1",
+ "regex",
+ "strip-ansi-escapes",
+ "thiserror 2.0.11",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "proven-code-package"
 version = "0.1.0"
 dependencies = [

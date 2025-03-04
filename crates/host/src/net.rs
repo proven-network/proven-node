@@ -75,10 +75,11 @@ pub async fn configure_port_forwarding(
         111,   // RPC (NFS)
         443,   // HTTPS
         2049,  // NFS
+        8333,  // Bitcoin
         20001, // NFS
         20002, // NFS
         20003, // NFS
-        30000, // Babylon (gossip)
+        30000, // Radix (gossip)
     ] {
         Command::new("iptables")
             .arg("-t")

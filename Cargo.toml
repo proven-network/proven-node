@@ -12,6 +12,7 @@ members = [
     "crates/attestation",
     "crates/attestation-dev",
     "crates/attestation-nsm",
+    "crates/bitcoin-core",
     "crates/code-package",
     "crates/core",
     "crates/dnscrypt-proxy",
@@ -261,6 +262,7 @@ proven-applications = { path = "crates/applications" }
 proven-attestation = { path = "crates/attestation" }
 proven-attestation-dev = { path = "crates/attestation-dev" }
 proven-attestation-nsm = { path = "crates/attestation-nsm" }
+proven-bitcoin-core = { path = "crates/bitcoin-core" }
 proven-code-package = { path = "crates/code-package" }
 proven-core = { path = "crates/core" }
 proven-dnscrypt-proxy = { path = "crates/dnscrypt-proxy" }

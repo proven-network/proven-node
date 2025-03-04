@@ -1,0 +1,14 @@
+[package]
+name = "proven-bitcoin-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures = { workspace = true }
+nix = { workspace = true }
+regex = { workspace = true }
+strip-ansi-escapes = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }

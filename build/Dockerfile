@@ -15,6 +15,37 @@ RUN dotnet publish -c Release -o /bin/DatabaseMigrations
 WORKDIR /babylon-gateway/apps/GatewayApi
 RUN dotnet publish -c Release -o /bin/GatewayApi
 
+# -------------------
+# BITCOIN BUILD STEPS
+# -------------------
+FROM debian:bookworm-20240904-slim as bitcoin-builder
+
+# Build Bitcoin Core
+WORKDIR /
+RUN git clone https://github.com/bitcoin/bitcoin.git
+WORKDIR /bitcoin
+RUN git checkout v27.0
+
+# Install dependencies for Bitcoin Core
+RUN apk add --no-cache \
+    autoconf \
+    automake \
+    boost-dev \
+    libtool \
+    zeromq-dev \
+    libevent-dev
+
+# Build Bitcoin Core
+RUN ./autogen.sh
+RUN ./configure --disable-wallet --without-gui --disable-tests --with-utils
+RUN make -j$(nproc)
+
+# Move bitcoin binaries to /bin
+RUN cp /bitcoin/src/bitcoind /bin/
+RUN cp /bitcoin/src/bitcoin-cli /bin/
+RUN chown root:root /bin/bitcoind /bin/bitcoin-cli
+RUN chmod 0755      /bin/bitcoind /bin/bitcoin-cli
+
 # --------------------
 # POSTGRES BUILD STEPS
 # --------------------
@@ -191,6 +222,8 @@ RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
+COPY --from=bitcoin-builder /bin/bitcoind /bin/
+COPY --from=bitcoin-builder /bin/bitcoin-cli /bin/
 COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 COPY --from=go-builder /bin/gocryptfs /bin/
 COPY --from=go-builder /bin/geth /bin/
