@@ -52,11 +52,11 @@ RUN make install
 # --------------
 # GO BUILD STEPS
 # --------------
-FROM golang:1.22.11-alpine3.21 as go-builder
+FROM golang:1.23.6-alpine3.21 as go-builder
 WORKDIR /
 
 # Install dependencies
-RUN apk add --no-cache bash git
+RUN apk add --no-cache bash git make gcc musl-dev linux-headers
 
 # Build gocryptfs
 RUN git clone https://github.com/rfjakob/gocryptfs.git
@@ -69,6 +69,18 @@ RUN cp /gocryptfs/gocryptfs /bin/
 RUN chown root:root /bin/gocryptfs
 RUN chmod 0755      /bin/gocryptfs
 
+# Build Geth (Go Ethereum)
+WORKDIR /
+RUN git clone https://github.com/ethereum/go-ethereum.git
+WORKDIR /go-ethereum
+RUN git checkout v1.15.4
+RUN make geth
+
+# Move geth to /bin
+RUN cp /go-ethereum/build/bin/geth /bin/
+RUN chown root:root /bin/geth
+RUN chmod 0755      /bin/geth
+
 # ----------------
 # RUST BUILD STEPS
 # ----------------
@@ -78,8 +90,15 @@ WORKDIR /
 # Install base dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
+    cmake \
     curl \
+    g++ \
     git \
+    gcc \
+    libclang-dev \
+    libssl-dev \
+    make \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js (for vendored runtime dependencies)
@@ -102,6 +121,18 @@ RUN chmod 0755      /bin/proven-enclave
 
 # Remove target dir to speed up snapshot
 RUN rm -rf /proven-node/target
+
+# Build Lighthouse
+WORKDIR /
+RUN git clone https://github.com/sigp/lighthouse.git
+WORKDIR /lighthouse
+RUN git checkout v6.0.1
+RUN cargo build --release --bin lighthouse
+
+# Move lighthouse to /bin
+RUN cp /lighthouse/target/release/lighthouse /bin/
+RUN chown root:root /bin/lighthouse
+RUN chmod 0755      /bin/lighthouse
 
 # --------------
 # EXTRA BINARIES
@@ -162,7 +193,9 @@ COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
 COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 COPY --from=go-builder /bin/gocryptfs /bin/
+COPY --from=go-builder /bin/geth /bin/
 COPY --from=rust-builder /bin/proven-enclave /bin/
+COPY --from=rust-builder /bin/lighthouse /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/

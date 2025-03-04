@@ -22,7 +22,8 @@ This repo contains code for Proven Network nodes. Proven is a novel TEE-based pl
 
 ## Integated full nodes
 
-- [Radix DLT](https://github.com/radixdlt/babylon-node)
+- [Ethereum](https://ethereum.org)
+- [Radix DLT](https://www.radixdlt.com)
 - More to come...
 
 ## Security Model
@@ -69,7 +70,9 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [babylon-node](https://github.com/radixdlt/babylon-node): Radix Babylon Core Node for driving above gateway.
 - [dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy): DNSCrypt Proxy to ensure host cannot tamper with DNS.
 - [dotnet](https://dotnet.microsoft.com/): .NET runtime for running gateway.
+- [geth](https://github.com/ethereum/go-ethereum): Ethereum execution client for running an Ethereum full node.
 - [gocryptfs](https://github.com/rfjakob/gocryptfs): Used for encrypting NFS-mounted external filesystems. Threat model described [here](https://nuetzlich.net/gocryptfs/threat_model/).
+- [lighthouse](https://github.com/sigp/lighthouse): Ethereum consensus client to pair with Geth for full Ethereum node functionality.
 - [nats-server](https://github.com/nats-io/nats-server): NATS server for inter-node communication and control plane.
 - [openjdk](https://openjdk.java.net/): Java runtime for Java component of Radix DLT core node.
 - [postgres](https://www.postgresql.org/): Postgres server for storing gateway data.
@@ -84,6 +87,8 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [core](crates/core): Core logic for the Proven node and the entrypoint for all user interactions.
 - [dnscrypt-proxy](crates/dnscrypt-proxy): Configures and runs a DNSCrypt proxy to ensure all DNS runs over tamper-proof HTTPS.
 - [enclave](crates/enclave): Main entrypoint for enclave images. Bootstraps all other components before handing off to core.
+- [ethereum-geth](crates/ethereum-geth): Configures and runs a local Geth execution client.
+- [ethereum-lighthouse](crates/ethereum-lighthouse): Configures and runs a local Lighthouse consensus client.
 - [external-fs](crates/external-fs): Mounts external filesystems into the enclave via NFS, intermediated by a layer of FUSE-based AES-GCM disk-encryption based on enclave-internal cryptographic keys.
 - [governance](crates/governance): Abstract interface for getting active version information, network topology, etc. from a governance mechanism.
 - [governance-helios](crates/governance-helios): Helios light-client based implementation of the governance interface.
