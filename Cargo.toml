@@ -430,7 +430,7 @@ rtnetlink = { git = "https://github.com/mwanner/rtnetlink", branch = "deps-updat
 rustls = { version = "0.23.23", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "0.5.0"
-rustls-webpki = "=0.102.8"
+rustls-webpki = { version = "0.102.8", default-features = false, features = ["ring"] }
 rustyline = "=13.0.0"
 rustyscript = { path = "vendor/rustyscript", features = ["fs", "web"]}
 saffron = "=0.1.0"
