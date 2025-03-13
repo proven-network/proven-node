@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 base64 = { workspace = true }
 http = { workspace = true }
-httpclient = { workspace = true }
 pem = { workspace = true }
+reqwest = { workspace = true }
 ring = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

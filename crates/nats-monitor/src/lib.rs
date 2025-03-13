@@ -10,12 +10,13 @@ mod types;
 pub use error::{Error, Result};
 pub use types::*;
 
-use httpclient::{Client, InMemoryResponseExt};
+use reqwest::Client;
 use tracing::info;
 
 /// Helper for querying NATS HTTP monitoring endpoints.
 pub struct NatsMonitor {
     client: Client,
+    monitoring_port: u32,
 }
 
 impl NatsMonitor {
@@ -31,7 +32,8 @@ impl NatsMonitor {
     #[must_use]
     pub fn new(monitoring_port: u32) -> Self {
         Self {
-            client: Client::new().base_url(format!("http://localhost:{monitoring_port}").as_str()),
+            client: Client::new(),
+            monitoring_port,
         }
     }
 
@@ -42,8 +44,9 @@ impl NatsMonitor {
     /// This function will return an error if the HTTP request fails or if the response
     /// cannot be parsed into a `Connz` object.
     pub async fn get_connz(&self) -> Result<Connz> {
-        let response = self.client.get("/connz?subs=1").await?;
-        let json = response.text()?;
+        let url = format!("http://localhost:{}/connz?subs=1", self.monitoring_port);
+        let response = self.client.get(url).send().await?;
+        let json = response.text().await?;
         info!("raw connz: {}", json); // TODO: remove this later
         let connz: Connz = serde_json::from_str(&json)?;
         Ok(connz)
@@ -56,8 +59,9 @@ impl NatsMonitor {
     /// This function will return an error if the HTTP request fails or if the response
     /// cannot be parsed into a `Varz` object.
     pub async fn get_varz(&self) -> Result<Varz> {
-        let response = self.client.get("/varz").await?;
-        let json = response.text()?;
+        let url = format!("http://localhost:{}/varz", self.monitoring_port);
+        let response = self.client.get(url).send().await?;
+        let json = response.text().await?;
         info!("raw varz: {}", json); // TODO: remove this later
         let varz: Varz = serde_json::from_str(&json)?;
         Ok(varz)

@@ -12,7 +12,7 @@ pub enum Error {
 
     /// HTTP client error.
     #[error(transparent)]
-    Http(#[from] httpclient::Error<http::response::Response<httpclient::InMemoryBody>>),
+    Http(#[from] reqwest::Error),
 
     /// JSON decode error.
     #[error(transparent)]

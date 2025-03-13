@@ -14,7 +14,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::str;
 
-use httpclient::{Client, InMemoryBody};
+use reqwest::Client;
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
@@ -277,11 +277,10 @@ impl GethNode {
             // Test Geth JSON-RPC
             let body = r#"{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}"#;
 
-            let body_bytes = body.as_bytes().to_vec();
             match client
                 .post(GETH_RPC_URL)
                 .header("Content-Type", "application/json")
-                .body(InMemoryBody::Bytes(body_bytes))
+                .body(body)
                 .send()
                 .await
             {

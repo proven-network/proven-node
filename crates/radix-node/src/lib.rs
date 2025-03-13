@@ -11,7 +11,7 @@ pub use error::{Error, Result};
 
 use std::process::Stdio;
 
-use httpclient::{Client, InMemoryBody};
+use reqwest::Client;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use radix_common::network::NetworkDefinition;
@@ -281,10 +281,10 @@ impl RadixNode {
 
     async fn wait_until_ready(&self, server_task: &JoinHandle<Result<()>>) -> Result<()> {
         let client = Client::new();
-        let payload = InMemoryBody::Text(format!(
+        let payload = format!(
             "{{\"network\":\"{}\"}}",
             self.network_definition.logical_name
-        ));
+        );
 
         loop {
             if server_task.is_finished() {

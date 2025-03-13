@@ -13,8 +13,7 @@ use pem::REGION_PEMS;
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use httpclient::Client;
-use httpclient::InMemoryResponseExt;
+use reqwest::Client;
 use ring::signature;
 use ring::signature::UnparsedPublicKey;
 use serde::Deserialize;
@@ -81,14 +80,15 @@ impl Imds {
     /// - The HTTP request to obtain the token fails
     /// - The response cannot be parsed as text
     pub async fn new() -> Result<Self> {
-        let client = Client::new().base_url(IMDS_BASE_URL);
+        let client = Client::new();
 
         let token_response = client
-            .put(IMDS_TOKEN_PATH)
+            .put(format!("{}{}", IMDS_BASE_URL, IMDS_TOKEN_PATH))
             .header("X-aws-ec2-metadata-token-ttl-seconds", "21600")
+            .send()
             .await?;
 
-        let token = token_response.text()?;
+        let token = token_response.text().await?;
 
         Ok(Self { client, token })
     }
@@ -141,10 +141,11 @@ impl Imds {
     async fn get_from_endpoint(&self, path: &str) -> Result<String> {
         let response = self
             .client
-            .get(path)
+            .get(format!("{}{}", IMDS_BASE_URL, path))
             .header("X-aws-ec2-metadata-token", &self.token)
+            .send()
             .await?;
-        let body = response.text()?;
+        let body = response.text().await?;
 
         Ok(body)
     }

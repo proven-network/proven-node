@@ -14,7 +14,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::str;
 
-use httpclient::Client;
+use reqwest::Client;
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;

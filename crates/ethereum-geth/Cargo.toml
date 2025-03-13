@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-httpclient = { workspace = true }
 nix = { workspace = true }
 regex = { workspace = true }
 strip-ansi-escapes = { workspace = true }
@@ -12,3 +11,4 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+reqwest = { workspace = true }
