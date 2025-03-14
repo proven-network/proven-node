@@ -26,6 +26,7 @@ proven-store = { workspace = true }
 radix-common = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
+rustls = { workspace = true }
 rustyscript = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

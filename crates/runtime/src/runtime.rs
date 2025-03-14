@@ -10,7 +10,7 @@ use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::HandlerOptions;
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
-use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult, HandlerSpecifier, Result};
+use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult, HandlerSpecifier, Result, RUSTLS_INIT};
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
@@ -300,6 +300,9 @@ where
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Result<Self> {
+        // Ensure rustls crypto provider is initialized
+        let _ = *RUSTLS_INIT;
+        
         let origin_allowlist_web_permissions = Arc::new(OriginAllowlistWebPermissions::new(vec![
             // Always allow Radix gateway origin
             radix_gateway_origin.clone(),

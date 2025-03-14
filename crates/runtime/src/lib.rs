@@ -30,6 +30,7 @@ pub use pool::*;
 pub use runtime::*;
 pub use worker::*;
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -38,6 +39,15 @@ use http::Method;
 use proven_sessions::Identity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+// Initialize rustls crypto provider at load time using LazyLock
+static RUSTLS_INIT: LazyLock<()> = LazyLock::new(|| {
+    let provider = rustls::crypto::aws_lc_rs::default_provider();
+    let result = provider.install_default();
+    if let Err(e) = result {
+        eprintln!("Warning: Failed to install rustls CryptoProvider: {:?}", e);
+    }
+});
 
 /// Request for a runtime execution.
 #[derive(Clone)]
