@@ -18,7 +18,7 @@ use alloy::primitives::Address;
 use alloy::rpc::types::TransactionRequest;
 use alloy_sol_types::{sol, SolCall};
 use async_trait::async_trait;
-use helios_core::types::BlockTag;
+use helios_common::types::BlockTag;
 use helios_ethereum::{
     config::networks::Network, database::FileDB, EthereumClient, EthereumClientBuilder,
 };

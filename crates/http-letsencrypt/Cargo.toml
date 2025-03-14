@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+aws-lc-rs = { workspace = true }
 axum-server = { workspace = true }
 async-trait = { workspace = true }
 axum = { workspace = true }
@@ -15,7 +16,6 @@ multi_key_map = { workspace = true }
 parking_lot = { workspace = true }
 proven-http = { workspace = true }
 proven-store = { workspace = true }
-ring = { workspace = true }
 rustls = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
