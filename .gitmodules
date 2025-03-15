@@ -10,3 +10,6 @@
 [submodule "vendor/denokv"]
 	path = vendor/denokv
 	url = https://github.com/proven-network/denokv
+[submodule "vendor/helios"]
+	path = vendor/helios
+	url = https://github.com/proven-network/helios
