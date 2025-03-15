@@ -19,8 +19,7 @@ async fn verify_ed25519_identity() -> Result<()> {
 
     let rola = Rola::new(RolaOptions {
         application_name: "test",
-        dapp_definition_address:
-            "account_tdx_2_12xdm5g7xdhh73zkh7xkty0dsxw4rw0jl0sq4lr3erpc3xdn54zx0le",
+        dapp_definition_address: "account_tdx_2_12xdm5g7xdhh73zkh7xkty0dsxw4rw0jl0sq4lr3erpc3xdn54zx0le",
         expected_origin: "https://stokenet-dashboard.radixdlt.com",
         gateway_url: "https://stokenet.radixdlt.com",
         network_definition: &stokenet,
@@ -49,8 +48,7 @@ async fn verify_ed25519_account() -> Result<()> {
 
     let rola = Rola::new(RolaOptions {
         application_name: "test",
-        dapp_definition_address:
-            "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn",
+        dapp_definition_address: "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn",
         expected_origin: "https://dev-sandbox.rdx-works-main.extratools.works",
         gateway_url: "https://mainnet.radixdlt.com",
         network_definition: &mainnet,
@@ -79,8 +77,7 @@ async fn verify_secp256k1_account() -> Result<()> {
 
     let rola = Rola::new(RolaOptions {
         application_name: "test",
-        dapp_definition_address:
-            "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn",
+        dapp_definition_address: "account_rdx12y7md4spfq5qy7e3mfjpa52937uvkxf0nmydsu5wydkkxw3qx6nghn",
         expected_origin: "https://dev-sandbox.rdx-works-main.extratools.works",
         gateway_url: "https://mainnet.radixdlt.com",
         network_definition: &mainnet,

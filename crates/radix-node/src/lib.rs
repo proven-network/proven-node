@@ -11,11 +11,11 @@ pub use error::{Error, Result};
 
 use std::process::Stdio;
 
-use reqwest::Client;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use radix_common::network::NetworkDefinition;
 use regex::Regex;
+use reqwest::Client;
 use strip_ansi_escapes::strip_str;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -41,7 +41,7 @@ static STOKENET_SEED_NODES: &[&str] = &[
     "radix://node_tdx_2_1qv89yg0la2jt429vqp8sxtpg95hj637gards67gpgqy2vuvwe4s5ss0va2y@babylon-stokenet-ap-south-1-node0.radixdlt.com",
     "radix://node_tdx_2_1qvtd9ffdhxyg7meqggr2ezsdfgjre5aqs6jwk5amdhjg86xhurgn5c79t9t@babylon-stokenet-ap-southeast-2-node0.radixdlt.com",
     "radix://node_tdx_2_1qwfh2nn0zx8cut5fqfz6n7pau2f7vdyl89mypldnn4fwlhaeg2tvunp8s8h@babylon-stokenet-eu-west-1-node0.radixdlt.com",
-    "radix://node_tdx_2_1qwz237kqdpct5l3yjhmna66uxja2ymrf3x6hh528ng3gtvnwndtn5rsrad4@babylon-stokenet-us-east-1-node1.radixdlt.com"
+    "radix://node_tdx_2_1qwz237kqdpct5l3yjhmna66uxja2ymrf3x6hh528ng3gtvnwndtn5rsrad4@babylon-stokenet-us-east-1-node1.radixdlt.com",
 ];
 
 static JAVA_OPTS: &[&str] = &[

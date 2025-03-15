@@ -4,15 +4,15 @@ use crate::{
 };
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
 use radix_common::network::NetworkDefinition;
-use tokio::sync::{mpsc, oneshot, Mutex};
-use tokio::time::{sleep, Duration, Instant};
+use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::time::{Duration, Instant, sleep};
 
 type WorkerMap<AS, PS, NS, ASS, PSS, NSS, FSS, RNV> =
     HashMap<String, Vec<Worker<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>>>;
@@ -36,10 +36,10 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
     FSS: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -147,10 +147,10 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
     FSS: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
@@ -185,10 +185,10 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
     FSS: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     RNV: RadixNftVerifier,
 {
     /// Creates a new `Pool`.

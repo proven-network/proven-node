@@ -43,13 +43,13 @@ where
     async fn handle<R>(&self, message: T, responder: R) -> Result<R::UsedResponder, Self::Error>
     where
         R: ServiceResponder<
-            T,
-            D,
-            S,
-            Self::ResponseType,
-            Self::ResponseDeserializationError,
-            Self::ResponseSerializationError,
-        >;
+                T,
+                D,
+                S,
+                Self::ResponseType,
+                Self::ResponseDeserializationError,
+                Self::ResponseSerializationError,
+            >;
 
     /// Hook for when the consumer is caught up.
     async fn on_caught_up(&self) -> Result<(), Self::Error> {

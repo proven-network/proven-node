@@ -446,16 +446,22 @@ mod tests {
 
         pin!(rows);
 
-        if let Some(row) = rows.next().await {
-            assert_eq!(
-                row,
-                vec![
-                    SqlParam::IntegerWithName("id".to_string(), 1),
-                    SqlParam::TextWithName("email".to_string(), "alice@example.com".to_string())
-                ]
-            );
-        } else {
-            panic!("No rows returned");
+        match rows.next().await {
+            Some(row) => {
+                assert_eq!(
+                    row,
+                    vec![
+                        SqlParam::IntegerWithName("id".to_string(), 1),
+                        SqlParam::TextWithName(
+                            "email".to_string(),
+                            "alice@example.com".to_string()
+                        )
+                    ]
+                );
+            }
+            _ => {
+                panic!("No rows returned");
+            }
         }
 
         assert!(rows.next().await.is_none(), "Too many rows returned");
@@ -660,16 +666,22 @@ mod tests {
 
         pin!(rows);
 
-        if let Some(row) = rows.next().await {
-            assert_eq!(
-                row,
-                vec![
-                    SqlParam::IntegerWithName("id".to_string(), 1),
-                    SqlParam::TextWithName("email".to_string(), "alice@example.com".to_string())
-                ]
-            );
-        } else {
-            panic!("No rows returned");
+        match rows.next().await {
+            Some(row) => {
+                assert_eq!(
+                    row,
+                    vec![
+                        SqlParam::IntegerWithName("id".to_string(), 1),
+                        SqlParam::TextWithName(
+                            "email".to_string(),
+                            "alice@example.com".to_string()
+                        )
+                    ]
+                );
+            }
+            _ => {
+                panic!("No rows returned");
+            }
         }
 
         assert!(rows.next().await.is_none(), "Too many rows returned");

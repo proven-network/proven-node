@@ -25,7 +25,7 @@ use proven_messaging::stream::{
     InitializedStream, Stream, Stream1, Stream2, Stream3, StreamOptions,
 };
 use proven_messaging::subject::Subject;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 
 type InternalSubscription<T, D, S> =
@@ -485,7 +485,7 @@ where
 }
 
 macro_rules! impl_scoped_stream {
-    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+    ($index:expr_2021, $parent:ident, $parent_trait:ident, $doc:expr_2021) => {
         paste::paste! {
             #[doc = $doc]
             #[derive(Debug)]

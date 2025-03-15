@@ -4,7 +4,7 @@ mod error;
 
 use crate::service_responder::{MemoryServiceResponder, MemoryUsedServiceResponder};
 use crate::stream::InitializedMemoryStream;
-use crate::{GlobalState, GLOBAL_STATE};
+use crate::{GLOBAL_STATE, GlobalState};
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]

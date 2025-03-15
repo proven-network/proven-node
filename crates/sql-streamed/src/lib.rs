@@ -28,7 +28,7 @@ use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stre
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
 use service_handler::SqlServiceHandler;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
 type SerializeError = ciborium::ser::Error<std::io::Error>;
@@ -557,7 +557,7 @@ mod tests {
     };
     use proven_sql::{SqlConnection, SqlParam};
     use proven_store_memory::MemoryStore;
-    use tokio::time::{sleep, timeout, Duration};
+    use tokio::time::{Duration, sleep, timeout};
 
     #[tokio::test]
     async fn test_sql_store() {

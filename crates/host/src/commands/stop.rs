@@ -1,9 +1,9 @@
+use crate::StopArgs;
 use crate::error::{Error, Result};
 use crate::nitro::NitroCli;
-use crate::StopArgs;
 
 use proven_vsock_rpc::RpcClient;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use tokio_vsock::VsockAddr;
 use tracing::info;
 

@@ -1,5 +1,5 @@
-use deno_core::url::{ParseError, Url};
 use deno_core::ModuleSpecifier;
+use deno_core::url::{ParseError, Url};
 
 /// A specifier for a handler - specifies both entrypoint module and handler name (in fragment).
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]

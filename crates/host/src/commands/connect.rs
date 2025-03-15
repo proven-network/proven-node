@@ -1,6 +1,6 @@
+use crate::ConnectArgs;
 use crate::error::{Error, Result};
 use crate::nitro::NitroCli;
-use crate::ConnectArgs;
 
 use proven_vsock_tracing::host::VsockTracingConsumer;
 use tracing::info;

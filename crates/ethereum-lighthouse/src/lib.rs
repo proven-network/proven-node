@@ -14,10 +14,10 @@ use std::path::Path;
 use std::process::Stdio;
 use std::str;
 
-use reqwest::Client;
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
+use reqwest::Client;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;

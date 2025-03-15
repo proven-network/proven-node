@@ -16,11 +16,11 @@ use std::vec::Vec;
 
 use alloy::primitives::Address;
 use alloy::rpc::types::TransactionRequest;
-use alloy_sol_types::{sol, SolCall};
+use alloy_sol_types::{SolCall, sol};
 use async_trait::async_trait;
 use helios_common::types::BlockTag;
 use helios_ethereum::{
-    config::networks::Network, database::FileDB, EthereumClient, EthereumClientBuilder,
+    EthereumClient, EthereumClientBuilder, config::networks::Network, database::FileDB,
 };
 use proven_governance::{Governance, Node, NodeSpecialization, Version};
 

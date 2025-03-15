@@ -41,7 +41,7 @@ where
                 return Response::builder()
                     .status(401)
                     .body(Body::from("Invalid authorization header"))
-                    .unwrap()
+                    .unwrap();
             }
         },
         None => None,
@@ -57,13 +57,13 @@ where
                 return Response::builder()
                     .status(401)
                     .body(Body::from("Invalid session"))
-                    .unwrap()
+                    .unwrap();
             }
             Err(_) => {
                 return Response::builder()
                     .status(401)
                     .body(Body::from("Invalid token"))
-                    .unwrap()
+                    .unwrap();
             }
         }
     } else {

@@ -22,10 +22,10 @@ use proven_store::Store;
 pub struct File<S>
 where
     S: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     inner: RefCell<FileInner<S>>,
 }
@@ -34,10 +34,10 @@ where
 pub struct FileInner<S>
 where
     S: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     content: BytesMut,
     path: PathBuf,
@@ -65,10 +65,10 @@ where
 impl<S> File<S>
 where
     S: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     pub const fn new(
         content: BytesMut,

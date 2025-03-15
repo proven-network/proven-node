@@ -170,7 +170,7 @@ where
 }
 
 macro_rules! define_scoped_stream {
-    ($index:expr, $parent:ident, $doc:expr) => {
+    ($index:expr_2021, $parent:ident, $doc:expr_2021) => {
         paste::paste! {
             #[doc = $doc]
             pub trait [< Stream $index >]<T, D, S>

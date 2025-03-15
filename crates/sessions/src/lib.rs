@@ -9,8 +9,8 @@ mod identity;
 mod session;
 
 pub use error::Error;
-pub use identity::radix::RadixIdentityDetails;
 pub use identity::Identity;
+pub use identity::radix::RadixIdentityDetails;
 pub use session::Session;
 
 use std::collections::HashSet;
@@ -22,7 +22,7 @@ use proven_attestation::{AttestationParams, Attestor};
 use proven_radix_rola::{Rola, RolaOptions, SignedChallenge, Type as SignedChallengeType};
 use proven_store::{Store, Store1, Store2};
 use radix_common::network::NetworkDefinition;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 
 /// Options for creating a new `SessionManager`
 pub struct SessionManagerOptions<'a, A, CS, SS>
@@ -84,11 +84,7 @@ where
     type ChallengeStore: Store2;
 
     /// Session store type.
-    type SessionStore: Store1<
-        Session,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >;
+    type SessionStore: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>;
 
     /// Creates a new instance of the session manager.
     fn new(
@@ -157,7 +153,7 @@ where
         let mut challenge = String::new();
 
         for _ in 0..32 {
-            challenge.push_str(&format!("{:02x}", thread_rng().gen::<u8>()));
+            challenge.push_str(&format!("{:02x}", thread_rng().r#gen::<u8>()));
         }
 
         self.challenge_store

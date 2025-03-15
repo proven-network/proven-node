@@ -7,22 +7,22 @@ use futures::StreamExt;
 use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt::Debug;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
-use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
-use async_nats::jetstream::stream::Config as NatsStreamConfig;
-use async_nats::jetstream::Context;
 use async_nats::Client as AsyncNatsClient;
 use async_nats::HeaderMap;
+use async_nats::jetstream::Context;
+use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
+use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
+use async_nats::jetstream::stream::Config as NatsStreamConfig;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::client::{Client, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
-use tokio::sync::{mpsc, oneshot, Mutex};
-use tokio::time::{sleep, timeout, Duration};
+use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::time::{Duration, sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
 
 use uuid::Uuid;
@@ -159,10 +159,13 @@ where
             offset += len;
 
             // Deserialize item
-            if let Ok(response) = item_bytes.try_into() {
-                responses.push(response);
-            } else {
-                return Err(Error::Deserialization);
+            match item_bytes.try_into() {
+                Ok(response) => {
+                    responses.push(response);
+                }
+                _ => {
+                    return Err(Error::Deserialization);
+                }
             }
         }
 
@@ -431,14 +434,15 @@ where
             .unwrap();
 
         // Wait for response with cleanup
-        if let Ok(Ok(response)) = timeout(Duration::from_secs(5), receiver).await {
-            Ok(response)
-        } else {
-            // Clean up map on timeout/error
-            let mut map = self.response_map.lock().await;
-            map.remove(&request_id);
-            drop(map);
-            Err(Error::NoResponse)
+        match timeout(Duration::from_secs(5), receiver).await {
+            Ok(Ok(response)) => Ok(response),
+            _ => {
+                // Clean up map on timeout/error
+                let mut map = self.response_map.lock().await;
+                map.remove(&request_id);
+                drop(map);
+                Err(Error::NoResponse)
+            }
         }
     }
 }
@@ -500,13 +504,13 @@ mod tests {
         ) -> Result<R::UsedResponder, Self::Error>
         where
             R: ServiceResponder<
-                TestMessage,
-                serde_json::Error,
-                serde_json::Error,
-                Self::ResponseType,
-                Self::ResponseDeserializationError,
-                Self::ResponseSerializationError,
-            >,
+                    TestMessage,
+                    serde_json::Error,
+                    serde_json::Error,
+                    Self::ResponseType,
+                    Self::ResponseDeserializationError,
+                    Self::ResponseSerializationError,
+                >,
         {
             Ok(responder
                 .reply(TestMessage {
@@ -533,13 +537,13 @@ mod tests {
         ) -> Result<R::UsedResponder, Self::Error>
         where
             R: ServiceResponder<
-                TestMessage,
-                serde_json::Error,
-                serde_json::Error,
-                Self::ResponseType,
-                Self::ResponseDeserializationError,
-                Self::ResponseSerializationError,
-            >,
+                    TestMessage,
+                    serde_json::Error,
+                    serde_json::Error,
+                    Self::ResponseType,
+                    Self::ResponseDeserializationError,
+                    Self::ResponseSerializationError,
+                >,
         {
             use futures::stream;
 
@@ -576,13 +580,13 @@ mod tests {
         ) -> Result<R::UsedResponder, Self::Error>
         where
             R: ServiceResponder<
-                TestMessage,
-                serde_json::Error,
-                serde_json::Error,
-                Self::ResponseType,
-                Self::ResponseDeserializationError,
-                Self::ResponseSerializationError,
-            >,
+                    TestMessage,
+                    serde_json::Error,
+                    serde_json::Error,
+                    Self::ResponseType,
+                    Self::ResponseDeserializationError,
+                    Self::ResponseSerializationError,
+                >,
         {
             use futures::stream;
 
@@ -642,20 +646,22 @@ mod tests {
             content: "hello".to_string(),
         };
 
-        if let ClientResponseType::Response(response) =
-            timeout(Duration::from_secs(5), client.request(request))
-                .await
-                .expect("Request timed out")
-                .expect("Failed to send request")
+        match timeout(Duration::from_secs(5), client.request(request))
+            .await
+            .expect("Request timed out")
+            .expect("Failed to send request")
         {
-            assert_eq!(
-                response,
-                TestMessage {
-                    content: "response: hello".to_string()
-                }
-            );
-        } else {
-            panic!("Expected single response");
+            ClientResponseType::Response(response) => {
+                assert_eq!(
+                    response,
+                    TestMessage {
+                        content: "response: hello".to_string()
+                    }
+                );
+            }
+            _ => {
+                panic!("Expected single response");
+            }
         }
     }
 
@@ -752,34 +758,36 @@ mod tests {
             content: "hello".to_string(),
         };
 
-        if let ClientResponseType::Stream(mut stream) =
-            timeout(Duration::from_secs(5), client.request(request))
-                .await
-                .expect("Request timed out")
-                .expect("Failed to send request")
+        match timeout(Duration::from_secs(5), client.request(request))
+            .await
+            .expect("Request timed out")
+            .expect("Failed to send request")
         {
-            let mut responses = Vec::new();
-            while let Some(response) = stream.next().await {
-                responses.push(response);
-            }
+            ClientResponseType::Stream(mut stream) => {
+                let mut responses = Vec::new();
+                while let Some(response) = stream.next().await {
+                    responses.push(response);
+                }
 
-            assert_eq!(responses.len(), 3);
-            assert_eq!(
-                responses,
-                vec![
-                    TestMessage {
-                        content: "stream 1: hello".to_string()
-                    },
-                    TestMessage {
-                        content: "stream 2: hello".to_string()
-                    },
-                    TestMessage {
-                        content: "stream 3: hello".to_string()
-                    },
-                ]
-            );
-        } else {
-            panic!("Expected stream response");
+                assert_eq!(responses.len(), 3);
+                assert_eq!(
+                    responses,
+                    vec![
+                        TestMessage {
+                            content: "stream 1: hello".to_string()
+                        },
+                        TestMessage {
+                            content: "stream 2: hello".to_string()
+                        },
+                        TestMessage {
+                            content: "stream 3: hello".to_string()
+                        },
+                    ]
+                );
+            }
+            _ => {
+                panic!("Expected stream response");
+            }
         }
     }
 
@@ -835,20 +843,22 @@ mod tests {
             content: "hello".to_string(),
         };
 
-        if let ClientResponseType::Stream(mut stream) =
-            timeout(Duration::from_secs(5), client.request(request))
-                .await
-                .expect("Request timed out")
-                .expect("Failed to send request")
+        match timeout(Duration::from_secs(5), client.request(request))
+            .await
+            .expect("Request timed out")
+            .expect("Failed to send request")
         {
-            let mut responses = Vec::new();
-            while let Some(response) = stream.next().await {
-                responses.push(response);
-            }
+            ClientResponseType::Stream(mut stream) => {
+                let mut responses = Vec::new();
+                while let Some(response) = stream.next().await {
+                    responses.push(response);
+                }
 
-            assert_eq!(responses.len(), 0);
-        } else {
-            panic!("Expected stream response");
+                assert_eq!(responses.len(), 0);
+            }
+            _ => {
+                panic!("Expected stream response");
+            }
         }
     }
 }

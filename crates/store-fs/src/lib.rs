@@ -184,7 +184,7 @@ where
 }
 
 macro_rules! impl_scoped_store {
-    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+    ($index:expr_2021, $parent:ident, $parent_trait:ident, $doc:expr_2021) => {
         paste::paste! {
             #[doc = $doc]
             pub struct [< FsStore $index >]<T = Bytes, D = Infallible, S = Infallible>

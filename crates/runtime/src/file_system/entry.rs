@@ -9,7 +9,11 @@ use proven_store::Store;
 #[derive(Debug)]
 pub enum Entry<S>
 where
-    S: Store<StoredEntry, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    S: Store<
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     /// Represents a directory entry.
     Directory {
@@ -33,7 +37,11 @@ where
 #[allow(dead_code)]
 impl<S> Entry<S>
 where
-    S: Store<StoredEntry, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+    S: Store<
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     pub(crate) fn content(&self) -> Option<BytesMut> {
         match self {

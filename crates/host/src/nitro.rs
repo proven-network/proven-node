@@ -221,8 +221,17 @@ mod tests {
 
         // Test PCR measurements
         assert_eq!(enclave.measurements.hash_algorithm, "Sha384 { ... }");
-        assert_eq!(enclave.measurements.pcr0, "1515c1e20129b2cbc6da0153cc9b2b55d66db36773d825491cee6c61803bc176d13698ce03fec00f33265201da33c162");
-        assert_eq!(enclave.measurements.pcr1, "437d0fa6b3a633f61717acdcce51ff4d6e543b4f60bfc1082465597628a3f5d067d7748084be07d7edc29e7f9cefb444");
-        assert_eq!(enclave.measurements.pcr2, "770afa1c127e014cb646e92bf16ecbe699c853c669ca83651508c3c1c0934dc6d8d8303790e5a0286034e0a1917286a5");
+        assert_eq!(
+            enclave.measurements.pcr0,
+            "1515c1e20129b2cbc6da0153cc9b2b55d66db36773d825491cee6c61803bc176d13698ce03fec00f33265201da33c162"
+        );
+        assert_eq!(
+            enclave.measurements.pcr1,
+            "437d0fa6b3a633f61717acdcce51ff4d6e543b4f60bfc1082465597628a3f5d067d7748084be07d7edc29e7f9cefb444"
+        );
+        assert_eq!(
+            enclave.measurements.pcr2,
+            "770afa1c127e014cb646e92bf16ecbe699c853c669ca83651508c3c1c0934dc6d8d8303790e5a0286034e0a1917286a5"
+        );
     }
 }

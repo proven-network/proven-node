@@ -11,8 +11,8 @@ mod pem;
 pub use error::{Error, Result};
 use pem::REGION_PEMS;
 
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use reqwest::Client;
 use ring::signature;
 use ring::signature::UnparsedPublicKey;

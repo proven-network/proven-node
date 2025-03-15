@@ -2,7 +2,7 @@ mod error;
 
 use crate::subject::MemoryUnpublishableSubject;
 use crate::subscription_responder::{MemorySubscriptionResponder, MemoryUsedSubscriptionResponder};
-use crate::{GlobalState, GLOBAL_STATE};
+use crate::{GLOBAL_STATE, GlobalState};
 pub use error::Error;
 
 use std::error::Error as StdError;

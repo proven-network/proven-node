@@ -53,7 +53,7 @@ pub use linux::*;
 pub mod linux {
     use super::*;
 
-    use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf, split};
     use tokio::runtime::Handle;
     use tokio_tun::{Tun, TunBuilder};
     use tracing::{error, info};

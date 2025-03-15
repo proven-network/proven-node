@@ -1,7 +1,7 @@
 use crate::extensions::{
-    babylon_gateway_api_ext, console_ext, crypto_ext, handler_options_ext, kv_options_ext,
-    openai_ext, radix_engine_toolkit_ext, session_ext, sql_migrations_ext, sql_options_ext,
-    uuid_ext, zod_ext, ConsoleState, GatewayDetailsState,
+    ConsoleState, GatewayDetailsState, babylon_gateway_api_ext, console_ext, crypto_ext,
+    handler_options_ext, kv_options_ext, openai_ext, radix_engine_toolkit_ext, session_ext,
+    sql_migrations_ext, sql_options_ext, uuid_ext, zod_ext,
 };
 use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::{

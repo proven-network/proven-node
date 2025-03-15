@@ -53,7 +53,7 @@ impl SqlStore for DirectSqlStore {
 }
 
 macro_rules! impl_scoped_sql_store {
-    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+    ($index:expr_2021, $parent:ident, $parent_trait:ident, $doc:expr_2021) => {
         paste::paste! {
             #[doc = $doc]
             #[derive(Clone, Debug)]

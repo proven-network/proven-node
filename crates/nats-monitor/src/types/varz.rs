@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{from_value, Value};
+use serde_json::{Value, from_value};
 
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -1,22 +1,22 @@
 mod error;
 
 use crate::stream::InitializedMemoryStream;
-use crate::{ClientRequest, GlobalState, ServiceResponse, GLOBAL_STATE};
+use crate::{ClientRequest, GLOBAL_STATE, GlobalState, ServiceResponse};
 pub use error::Error;
 use proven_messaging::stream::InitializedStream;
 
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::channel::mpsc::{self, Sender};
 use proven_messaging::client::{Client, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
-use tokio::sync::{broadcast, oneshot, Mutex};
+use tokio::sync::{Mutex, broadcast, oneshot};
 use uuid::Uuid;
 
 type ResponseMap<R> = HashMap<String, oneshot::Sender<ClientResponseType<R>>>;
@@ -256,15 +256,14 @@ where
         drop(client_requests);
         drop(state);
 
-        if let Ok(Ok(response)) =
-            tokio::time::timeout(std::time::Duration::from_secs(5), receiver).await
-        {
-            Ok(response)
-        } else {
-            let mut map = self.response_map.lock().await;
-            map.remove(&request_id);
-            drop(map);
-            Err(Error::NoResponse)
+        match tokio::time::timeout(std::time::Duration::from_secs(5), receiver).await {
+            Ok(Ok(response)) => Ok(response),
+            _ => {
+                let mut map = self.response_map.lock().await;
+                map.remove(&request_id);
+                drop(map);
+                Err(Error::NoResponse)
+            }
         }
     }
 }
@@ -295,13 +294,13 @@ mod tests {
         async fn handle<R>(&self, msg: Bytes, responder: R) -> Result<R::UsedResponder, Self::Error>
         where
             R: ServiceResponder<
-                Bytes,
-                Infallible,
-                Infallible,
-                Self::ResponseType,
-                Self::ResponseDeserializationError,
-                Self::ResponseSerializationError,
-            >,
+                    Bytes,
+                    Infallible,
+                    Infallible,
+                    Self::ResponseType,
+                    Self::ResponseDeserializationError,
+                    Self::ResponseSerializationError,
+                >,
         {
             Ok(responder
                 .reply(Bytes::from(format!(
@@ -338,15 +337,17 @@ mod tests {
         // Send request and get response with timeout
         let request = Bytes::from("hello");
 
-        if let ClientResponseType::Response(response) =
-            timeout(Duration::from_secs(5), client.request(request))
-                .await
-                .expect("Request timed out")
-                .expect("Failed to send request")
+        match timeout(Duration::from_secs(5), client.request(request))
+            .await
+            .expect("Request timed out")
+            .expect("Failed to send request")
         {
-            assert_eq!(response, Bytes::from("response: hello"));
-        } else {
-            panic!("Expected single response");
+            ClientResponseType::Response(response) => {
+                assert_eq!(response, Bytes::from("response: hello"));
+            }
+            _ => {
+                panic!("Expected single response");
+            }
         }
     }
 

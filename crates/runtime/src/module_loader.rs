@@ -1,8 +1,8 @@
+use crate::Error;
 use crate::import_replacements::replace_esm_imports;
 use crate::options::ModuleOptions;
 use crate::options_parser::OptionsParser;
 use crate::util::run_in_thread;
-use crate::Error;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
@@ -333,17 +333,23 @@ mod tests {
             .unwrap();
 
         assert_eq!(module_options.handler_options.len(), 2);
-        assert!(module_options
-            .handler_options
-            .contains_key("file:///main.ts#handler"));
-        assert!(module_options
-            .handler_options
-            .contains_key("file:///main.ts"));
+        assert!(
+            module_options
+                .handler_options
+                .contains_key("file:///main.ts#handler")
+        );
+        assert!(
+            module_options
+                .handler_options
+                .contains_key("file:///main.ts")
+        );
 
-        assert!(module_options
-            .sql_migrations
-            .application
-            .contains_key("main"));
+        assert!(
+            module_options
+                .sql_migrations
+                .application
+                .contains_key("main")
+        );
         assert_eq!(
             module_options
                 .sql_migrations

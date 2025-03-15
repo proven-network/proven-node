@@ -12,7 +12,7 @@ use error::Error;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::{op2, OpState};
+use deno_core::{OpState, op2};
 use futures::StreamExt;
 use proven_radix_nft_verifier::{RadixNftVerificationResult, RadixNftVerifier};
 use proven_sql::{SqlConnection, SqlParam, SqlStore2};
@@ -220,29 +220,30 @@ pub async fn op_query_nft_sql<NSS: SqlStore2, RNV: RadixNftVerifier>(
             .map_err(|e| Error::SqlStore(e.to_string()))?
     };
 
-    if let Some(first_row) = stream.next().await {
-        let mut query_results_manager = {
-            loop {
-                let query_results_manager = {
-                    let mut borrowed_state = state.borrow_mut();
-                    borrowed_state.try_take::<SqlQueryResultsManager>()
-                };
+    match stream.next().await {
+        Some(first_row) => {
+            let mut query_results_manager = {
+                loop {
+                    let query_results_manager = {
+                        let mut borrowed_state = state.borrow_mut();
+                        borrowed_state.try_take::<SqlQueryResultsManager>()
+                    };
 
-                match query_results_manager {
-                    Some(store) => break store,
-                    None => {
-                        tokio::task::yield_now().await;
+                    match query_results_manager {
+                        Some(store) => break store,
+                        None => {
+                            tokio::task::yield_now().await;
+                        }
                     }
                 }
-            }
-        };
+            };
 
-        let row_stream_id = query_results_manager.save_stream(stream);
-        state.borrow_mut().put(query_results_manager);
+            let row_stream_id = query_results_manager.save_stream(stream);
+            state.borrow_mut().put(query_results_manager);
 
-        Ok(NftDbResponse::Ok(Some((first_row, row_stream_id))))
-    } else {
-        Ok(NftDbResponse::Ok(None))
+            Ok(NftDbResponse::Ok(Some((first_row, row_stream_id))))
+        }
+        _ => Ok(NftDbResponse::Ok(None)),
     }
 }
 

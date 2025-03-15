@@ -3,8 +3,8 @@
 
 use bytes::Bytes;
 use deno_core::{extension, op2};
-use ed25519_dalek::ed25519::signature::Signer;
 use ed25519_dalek::SigningKey;
+use ed25519_dalek::ed25519::signature::Signer;
 
 pub enum Key {
     Ed25519(SigningKey),

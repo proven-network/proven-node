@@ -38,13 +38,13 @@ where
 
     /// The responder type for the subscriber.
     type Responder: ServiceResponder<
-        T,
-        D,
-        S,
-        X::ResponseType,
-        X::ResponseDeserializationError,
-        X::ResponseSerializationError,
-    >;
+            T,
+            D,
+            S,
+            X::ResponseType,
+            X::ResponseDeserializationError,
+            X::ResponseSerializationError,
+        >;
 
     /// The response consumer type for the subscriber.
     type UsedResponder: UsedServiceResponder;

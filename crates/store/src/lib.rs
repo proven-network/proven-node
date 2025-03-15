@@ -52,7 +52,7 @@ where
 }
 
 macro_rules! define_scoped_store {
-    ($index:expr, $parent:ident, $doc:expr) => {
+    ($index:expr_2021, $parent:ident, $doc:expr_2021) => {
         paste::paste! {
             #[async_trait]
             #[doc = $doc]

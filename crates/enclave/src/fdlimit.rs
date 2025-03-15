@@ -1,4 +1,4 @@
-use fdlimit::{raise_fd_limit, Outcome};
+use fdlimit::{Outcome, raise_fd_limit};
 use tracing::{error, info, warn};
 
 /// Increase soft fd limit to hard limit if possible.

@@ -45,7 +45,7 @@ pub mod linux {
 
     use crate::error::Error;
 
-    use futures::{stream::TryStreamExt, TryFutureExt};
+    use futures::{TryFutureExt, stream::TryStreamExt};
     use rtnetlink::LinkUnspec;
     use tokio::process::Command;
     use tracing::info;

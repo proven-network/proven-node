@@ -15,10 +15,10 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::marker::PhantomData;
 use std::time::Duration;
 
-use async_nats::jetstream;
-use async_nats::jetstream::kv::{Config, Store as KvStore};
-use async_nats::jetstream::Context as JetStreamContext;
 use async_nats::Client;
+use async_nats::jetstream;
+use async_nats::jetstream::Context as JetStreamContext;
+use async_nats::jetstream::kv::{Config, Store as KvStore};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::TryStreamExt;
@@ -170,20 +170,21 @@ where
     where
         K: AsRef<str> + Send,
     {
-        if let Some(bytes) = self
+        match self
             .get_kv_store()
             .await?
             .get(key.as_ref())
             .await
             .map_err(|e| Error::Entry(e.kind()))?
         {
-            let value: T = bytes
-                .try_into()
-                .map_err(|e: D| Error::Deserialize(e.to_string()))?;
+            Some(bytes) => {
+                let value: T = bytes
+                    .try_into()
+                    .map_err(|e: D| Error::Deserialize(e.to_string()))?;
 
-            Ok(Some(value))
-        } else {
-            Ok(None)
+                Ok(Some(value))
+            }
+            _ => Ok(None),
         }
     }
 
@@ -238,7 +239,7 @@ where
 }
 
 macro_rules! impl_scoped_store {
-    ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
+    ($index:expr_2021, $parent:ident, $parent_trait:ident, $doc:expr_2021) => {
         paste::paste! {
             #[doc = $doc]
             pub struct [< NatsStore $index >]<T = Bytes, D = Infallible, S = Infallible>

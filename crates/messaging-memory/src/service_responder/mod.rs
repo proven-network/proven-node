@@ -1,7 +1,7 @@
 mod error;
 
 use crate::stream::InitializedMemoryStream;
-use crate::{GlobalState, ServiceResponse, GLOBAL_STATE};
+use crate::{GLOBAL_STATE, GlobalState, ServiceResponse};
 pub use error::Error;
 
 use std::error::Error as StdError;

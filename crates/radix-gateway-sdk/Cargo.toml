@@ -1,6 +1,6 @@
 [package]
 name = "proven-radix-gateway-sdk"
-edition = "2021"
+edition = "2024"
 version = "0.1.0"
 build = "build.rs"
 

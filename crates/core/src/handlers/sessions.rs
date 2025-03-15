@@ -44,7 +44,7 @@ where
             return Response::builder()
                 .status(400)
                 .body("Origin header not found".into())
-                .unwrap()
+                .unwrap();
         }
     };
 
@@ -90,7 +90,7 @@ where
             return Response::builder()
                 .status(400)
                 .body("Origin header not found".into())
-                .unwrap()
+                .unwrap();
         }
     };
 
@@ -100,7 +100,7 @@ where
             return Response::builder()
                 .status(400)
                 .body("Public key incorrect length".into())
-                .unwrap()
+                .unwrap();
         }
     };
 

@@ -26,7 +26,7 @@ use proven_sql_direct::{DirectSqlStore1, DirectSqlStore2, DirectSqlStore3};
 use proven_store_fs::{FsStore1, FsStore2, FsStore3};
 use proven_store_memory::{MemoryStore, MemoryStore2};
 use radix_common::network::NetworkDefinition;
-use tracing::{error, info, Level};
+use tracing::{Level, error, info};
 use tracing_subscriber::FmtSubscriber;
 
 #[derive(Parser, Debug)]

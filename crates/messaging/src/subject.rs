@@ -76,7 +76,7 @@ where
 }
 
 macro_rules! define_scoped_subject {
-    ($index:expr, $parent_pub:ident, $parent_sub:ident, $doc_pub:expr, $doc_sub:expr) => {
+    ($index:expr_2021, $parent_pub:ident, $parent_sub:ident, $doc_pub:expr_2021, $doc_sub:expr_2021) => {
         paste::paste! {
             #[async_trait]
             #[doc = $doc_pub]

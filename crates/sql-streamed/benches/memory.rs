@@ -4,7 +4,7 @@ use std::time::Duration;
 use proven_sql_streamed::{Connection, Request, StreamedSqlStore};
 
 use bytes::Bytes;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use proven_messaging::stream::Stream;
 use proven_messaging_memory::{
     client::MemoryClientOptions,

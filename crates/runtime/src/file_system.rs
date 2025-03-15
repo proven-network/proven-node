@@ -24,10 +24,10 @@ use proven_store::Store;
 pub struct FileSystem<S>
 where
     S: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     store: S,
 }
@@ -35,10 +35,10 @@ where
 impl<S> FileSystem<S>
 where
     S: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     pub const fn new(store: S) -> Self {
         Self { store }
@@ -242,10 +242,10 @@ where
 impl<S> DenoFileSystem for FileSystem<S>
 where
     S: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     fn cwd(&self) -> FsResult<PathBuf> {
         todo!()
@@ -283,44 +283,55 @@ where
     ) -> FsResult<Rc<dyn DenoFile>> {
         let normalized_path = PathBuf::from(Self::normalize_path(&path));
 
-        let entry = if let Some(entry) = self.get_entry(&normalized_path, &open_options).await? {
-            if open_options.create_new {
-                return Err(
-                    std::io::Error::new(std::io::ErrorKind::AlreadyExists, "File exists").into(),
-                );
+        let entry = match self.get_entry(&normalized_path, &open_options).await? {
+            Some(entry) => {
+                if open_options.create_new {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        "File exists",
+                    )
+                    .into());
+                }
+
+                entry
             }
+            _ => {
+                if open_options.create {
+                    let entry = Entry::File(File::new(
+                        BytesMut::new(),
+                        normalized_path.clone(),
+                        FsMetadata {
+                            mode: open_options.mode.unwrap_or(0o644),
+                            uid: 0,
+                            gid: 0,
+                            mtime: None,
+                            atime: None,
+                            birthtime: None,
+                            ctime: None,
+                        },
+                        self.store.clone(),
+                        &open_options,
+                    ));
 
-            entry
-        } else if open_options.create {
-            let entry = Entry::File(File::new(
-                BytesMut::new(),
-                normalized_path.clone(),
-                FsMetadata {
-                    mode: open_options.mode.unwrap_or(0o644),
-                    uid: 0,
-                    gid: 0,
-                    mtime: None,
-                    atime: None,
-                    birthtime: None,
-                    ctime: None,
-                },
-                self.store.clone(),
-                &open_options,
-            ));
+                    // Persist empty file to store before handing back File
+                    self.put_entry(
+                        &normalized_path,
+                        StoredEntry::File {
+                            metadata: entry.metadata(),
+                            content: Bytes::new(),
+                        },
+                    )
+                    .await?;
 
-            // Persist empty file to store before handing back File
-            self.put_entry(
-                &normalized_path,
-                StoredEntry::File {
-                    metadata: entry.metadata(),
-                    content: Bytes::new(),
-                },
-            )
-            .await?;
-
-            entry
-        } else {
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "File not found").into());
+                    entry
+                } else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "File not found",
+                    )
+                    .into());
+                }
+            }
         };
 
         // Handle truncation

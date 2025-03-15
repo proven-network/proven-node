@@ -35,7 +35,7 @@ use std::sync::Arc;
 use std::sync::LazyLock;
 
 use gotham_state::GothamState;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 
 static GLOBAL_STATE: LazyLock<Mutex<GothamState>> =
     LazyLock::new(|| Mutex::new(GothamState::default()));
@@ -89,7 +89,7 @@ mod tests {
     use serial_test::serial;
     use tokio::sync::mpsc;
     use tokio::sync::mpsc::Receiver;
-    use tokio::time::{timeout, Duration};
+    use tokio::time::{Duration, timeout};
 
     #[derive(Clone, Debug)]
     struct TestSubscriptionHandler {

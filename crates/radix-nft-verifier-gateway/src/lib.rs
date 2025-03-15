@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 use proven_radix_gateway_sdk::types::{NonFungibleId, StateNonFungibleLocationRequest};
-use proven_radix_gateway_sdk::{build_client, Client};
+use proven_radix_gateway_sdk::{Client, build_client};
 use proven_radix_nft_verifier::{RadixNftVerificationResult, RadixNftVerifier};
 
 mod error;

@@ -10,7 +10,7 @@ pub use connection_manager::PersonalSqlConnectionManager;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::{op2, OpState};
+use deno_core::{OpState, op2};
 use futures::StreamExt;
 use proven_sql::{SqlConnection, SqlParam, SqlStore1};
 use serde::Serialize;
@@ -157,29 +157,30 @@ pub async fn op_query_personal_sql<PSS: SqlStore1>(
         connection.query(query, vec![]).await?
     };
 
-    if let Some(first_row) = stream.next().await {
-        let mut query_results_manager = {
-            loop {
-                let query_results_manager = {
-                    let mut borrowed_state = state.borrow_mut();
-                    borrowed_state.try_take::<SqlQueryResultsManager>()
-                };
+    match stream.next().await {
+        Some(first_row) => {
+            let mut query_results_manager = {
+                loop {
+                    let query_results_manager = {
+                        let mut borrowed_state = state.borrow_mut();
+                        borrowed_state.try_take::<SqlQueryResultsManager>()
+                    };
 
-                match query_results_manager {
-                    Some(store) => break store,
-                    None => {
-                        tokio::task::yield_now().await;
+                    match query_results_manager {
+                        Some(store) => break store,
+                        None => {
+                            tokio::task::yield_now().await;
+                        }
                     }
                 }
-            }
-        };
+            };
 
-        let row_stream_id = query_results_manager.save_stream(stream);
-        state.borrow_mut().put(query_results_manager);
+            let row_stream_id = query_results_manager.save_stream(stream);
+            state.borrow_mut().put(query_results_manager);
 
-        Ok(PersonalDbResponse::Ok(Some((first_row, row_stream_id))))
-    } else {
-        Ok(PersonalDbResponse::Ok(None))
+            Ok(PersonalDbResponse::Ok(Some((first_row, row_stream_id))))
+        }
+        _ => Ok(PersonalDbResponse::Ok(None)),
     }
 }
 

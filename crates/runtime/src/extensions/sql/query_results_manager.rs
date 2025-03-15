@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use deno_core::{op2, OpState};
+use deno_core::{OpState, op2};
 use futures::{Stream, StreamExt};
 use proven_sql::SqlParam;
 

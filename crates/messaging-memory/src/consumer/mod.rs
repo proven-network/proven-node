@@ -12,8 +12,8 @@ use bytes::Bytes;
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
 use tokio::sync::Mutex;
-use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::stream::InitializedMemoryStream;
 

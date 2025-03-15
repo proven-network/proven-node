@@ -37,10 +37,10 @@ where
 {
     /// The store type.
     type Store: Store<
-        Application,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >;
+            Application,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >;
 
     /// The SQL store type.
     type SqlStore: SqlStore1;
@@ -63,10 +63,10 @@ where
 pub struct ApplicationManager<S, SS>
 where
     S: Store<
-        Application,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            Application,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     SS: SqlStore1,
 {
     store: S,
@@ -77,10 +77,10 @@ where
 impl<S, SS> ApplicationManagement for ApplicationManager<S, SS>
 where
     S: Store<
-        Application,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            Application,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     SS: SqlStore1,
 {
     type Store = S;

@@ -1,26 +1,26 @@
+use crate::StartArgs;
 use crate::error::{Error, Result};
 use crate::net::{configure_nat, configure_port_forwarding, configure_route};
 use crate::nitro::NitroCli;
 use crate::systemctl;
-use crate::StartArgs;
 
 use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::sync::Arc;
 
+use axum::Router;
 use axum::http::Uri;
 use axum::response::Redirect;
 use axum::routing::any;
-use axum::Router;
 use nix::unistd::Uid;
 use proven_http::HttpServer;
 use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{InitializeRequest, RpcClient};
 use proven_vsock_tracing::host::VsockTracingConsumer;
-use tokio::signal::unix::{signal, SignalKind};
-use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
+use tokio::signal::unix::{SignalKind, signal};
+use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener};
 use tracing::{error, info};
 
 static ALLOCATOR_CONFIG_TEMPLATE: &str = include_str!("../../templates/allocator.yaml");

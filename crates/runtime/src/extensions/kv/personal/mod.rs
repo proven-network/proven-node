@@ -9,7 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use bytes::{Bytes, BytesMut};
-use deno_core::{op2, OpState};
+use deno_core::{OpState, op2};
 use proven_store::{Store, Store1};
 use serde::Serialize;
 

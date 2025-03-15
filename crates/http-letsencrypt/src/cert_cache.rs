@@ -3,8 +3,8 @@ use crate::Error;
 use std::convert::Infallible;
 
 use async_trait::async_trait;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use bytes::Bytes;
 use proven_store::Store;
 use ring::digest::{Context, SHA256};

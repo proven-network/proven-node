@@ -14,9 +14,9 @@ use pkcs7::ContentInfo;
 pub use error::{Error, Result};
 
 use aws_config::Region;
+use aws_sdk_kms::Client;
 use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::{KeyEncryptionMechanism, RecipientInfo};
-use aws_sdk_kms::Client;
 use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor};
 use proven_attestation_nsm::NsmAttestor;

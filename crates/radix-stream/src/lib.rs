@@ -21,7 +21,7 @@ use proven_radix_gateway_sdk::types::{
     LedgerStateSelector, LedgerStateSelectorInner, StreamTransactionsRequest,
     StreamTransactionsRequestKindFilter, StreamTransactionsRequestOrder, TransactionDetailsOptIns,
 };
-use proven_radix_gateway_sdk::{build_client, Client};
+use proven_radix_gateway_sdk::{Client, build_client};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -47,10 +47,10 @@ static GATEWAY_OPT_INS: LazyLock<TransactionDetailsOptIns> =
 pub struct RadixStream<TS>
 where
     TS: InitializedStream<
-        Transaction,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            Transaction,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     client: Client,
     last_state_version: Arc<Mutex<Option<u64>>>,
@@ -63,10 +63,10 @@ where
 pub struct RadixStreamOptions<TS>
 where
     TS: InitializedStream<
-        Transaction,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            Transaction,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     /// The origin of the Radix Gateway.
     pub radix_gateway_origin: &'static str,
@@ -78,10 +78,10 @@ where
 impl<TS> RadixStream<TS>
 where
     TS: InitializedStream<
-        Transaction,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            Transaction,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
 {
     /// Creates a new `RadixStream`.
     ///

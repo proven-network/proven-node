@@ -7,10 +7,10 @@ pub use error::Error;
 use std::error::Error as StdError;
 use std::fmt::Debug;
 
-use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
-use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
-use async_nats::jetstream::Context;
 use async_nats::Client as NatsClient;
+use async_nats::jetstream::Context;
+use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
+use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
@@ -317,13 +317,13 @@ mod tests {
         ) -> Result<R::UsedResponder, Self::Error>
         where
             R: ServiceResponder<
-                TestMessage,
-                serde_json::Error,
-                serde_json::Error,
-                Self::ResponseType,
-                Self::ResponseDeserializationError,
-                Self::ResponseSerializationError,
-            >,
+                    TestMessage,
+                    serde_json::Error,
+                    serde_json::Error,
+                    Self::ResponseType,
+                    Self::ResponseDeserializationError,
+                    Self::ResponseSerializationError,
+                >,
         {
             let mut count = self.messages_processed.lock().await;
             *count += 1;

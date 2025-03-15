@@ -36,7 +36,7 @@ where
 }
 
 macro_rules! define_scoped_lock_manager {
-    ($name:ident, $parent:ident, $doc:expr) => {
+    ($name:ident, $parent:ident, $doc:expr_2021) => {
         #[async_trait]
         #[doc = $doc]
         pub trait $name

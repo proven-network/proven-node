@@ -10,15 +10,15 @@ mod rpc;
 
 pub use error::{Error, Result};
 use handlers::{
-    application_http_handler, create_challenge_handler, http_rpc_handler, verify_session_handler,
-    ws_rpc_handler, ApplicationHttpContext,
+    ApplicationHttpContext, application_http_handler, create_challenge_handler, http_rpc_handler,
+    verify_session_handler, ws_rpc_handler,
 };
 
 use std::collections::HashSet;
 
+use axum::Router;
 use axum::response::Response;
 use axum::routing::{any, delete, get, patch, post, put};
-use axum::Router;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};

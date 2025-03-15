@@ -4,7 +4,7 @@ use crate::error::Result;
 use proven_radix_gateway_sdk::types::{
     Address, StateEntityDetailsOptIns, StateEntityDetailsRequest,
 };
-use proven_radix_gateway_sdk::{build_client, Client};
+use proven_radix_gateway_sdk::{Client, build_client};
 
 pub struct GatewayService {
     client: Client,

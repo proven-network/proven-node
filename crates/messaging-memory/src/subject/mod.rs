@@ -3,7 +3,7 @@ mod error;
 
 use crate::stream::InitializedMemoryStream;
 use crate::subscription::{MemorySubscription, MemorySubscriptionOptions};
-use crate::{GlobalState, GLOBAL_STATE};
+use crate::{GLOBAL_STATE, GlobalState};
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -340,7 +340,7 @@ where
 }
 
 macro_rules! define_scoped_subject {
-    ($n:expr, $parent:ident, $parent_non_pub:ident, $doc:expr, $doc_non_pub:expr) => {
+    ($n:expr_2021, $parent:ident, $parent_non_pub:ident, $doc:expr_2021, $doc_non_pub:expr_2021) => {
         paste::paste! {
             #[doc = $doc]
             #[derive(Debug)]

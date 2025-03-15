@@ -12,7 +12,7 @@ use proven_sql::{SqlConnection, SqlParam, SqlStore};
 use proven_sql_streamed::{Request, StreamedSqlStore};
 use proven_store::Store;
 use proven_store_memory::MemoryStore;
-use tokio::time::{sleep, timeout, Duration};
+use tokio::time::{Duration, sleep, timeout};
 
 async fn setup(
     stream_name: &str,

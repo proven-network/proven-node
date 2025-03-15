@@ -86,7 +86,9 @@ impl WebPermissions for OriginAllowlistWebPermissions {
         _p: &'a Path,
         _api_name: Option<&str>,
     ) -> Result<Cow<'a, Path>, deno_io::fs::FsError> {
-        Err(deno_io::fs::FsError::NotCapable("Permission denied for reading"))
+        Err(deno_io::fs::FsError::NotCapable(
+            "Permission denied for reading",
+        ))
     }
 
     fn check_write<'a>(

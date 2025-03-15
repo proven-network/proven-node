@@ -21,10 +21,10 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
     FSS: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -75,10 +75,10 @@ where
 
     /// Store used for file-system virtualisation.
     type FileSystemStore: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >;
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >;
 
     /// NFT-scoped SQL store.
     type NftSqlStore: SqlStore3;
@@ -136,10 +136,10 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
     FSS: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     RNV: RadixNftVerifier,
 {
     pool: Arc<Pool<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>>,
@@ -156,10 +156,10 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
     FSS: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     RNV: RadixNftVerifier,
 {
     type ApplicationSqlStore = ASS;

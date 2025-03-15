@@ -4,7 +4,7 @@ use crate::VSOCK_LOG_PORT;
 pub use error::{Error, Result};
 
 use tokio::{io::AsyncWriteExt, sync::broadcast};
-use tokio_vsock::{VsockAddr, VsockListener, VMADDR_CID_ANY};
+use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener};
 use tracing::{error, info};
 use tracing_subscriber::{filter, fmt, layer::SubscriberExt, reload};
 

@@ -75,5 +75,5 @@ where
 
     /// Sends a request to the service and returns a response.
     async fn request(&self, request: T)
-        -> Result<ClientResponseType<X::ResponseType>, Self::Error>;
+    -> Result<ClientResponseType<X::ResponseType>, Self::Error>;
 }

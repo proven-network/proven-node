@@ -21,7 +21,7 @@ use std::net::Ipv4Addr;
 use std::path::PathBuf;
 
 use cidr::Ipv4Cidr;
-use clap::{arg, command, Parser};
+use clap::{Parser, arg, command};
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 

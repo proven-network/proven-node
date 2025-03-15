@@ -3,9 +3,9 @@
 // Copyright 2017 Gotham Project Developers. MIT license.
 #![allow(dead_code)]
 
-use std::any::type_name;
 use std::any::Any;
 use std::any::TypeId;
+use std::any::type_name;
 use std::collections::BTreeMap;
 
 #[derive(Default)]

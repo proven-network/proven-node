@@ -71,7 +71,7 @@ where
 }
 
 macro_rules! define_scoped_sql_store {
-    ($index:expr, $parent:ident, $doc:expr) => {
+    ($index:expr_2021, $parent:ident, $doc:expr_2021) => {
         paste::paste! {
             #[doc = $doc]
             pub trait [< SqlStore $index >]

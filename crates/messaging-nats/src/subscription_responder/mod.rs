@@ -117,7 +117,7 @@ where
                         } else {
                             let batch = current_batch.split().freeze();
                             Poll::Ready(Some(batch))
-                        }
+                        };
                     }
                     Poll::Pending => return Poll::Pending,
                 }

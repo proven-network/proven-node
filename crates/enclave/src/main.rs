@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use proven_vsock_rpc::{InitializeResponse, RpcCall, RpcServer, ShutdownResponse};
 use tokio::sync::Mutex;
-use tokio_vsock::{VsockAddr, VMADDR_CID_ANY};
+use tokio_vsock::{VMADDR_CID_ANY, VsockAddr};
 use tracing::{error, info};
 use tracing_panic::panic_hook;
 

@@ -1,6 +1,6 @@
 use super::parse_bearer_token;
-use crate::rpc::RpcHandler;
 use crate::PrimaryContext;
+use crate::rpc::RpcHandler;
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};

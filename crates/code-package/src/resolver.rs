@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use deno_graph::source::{ResolutionKind, ResolveError, Resolver};
-use deno_graph::{resolve_import, ModuleSpecifier, Range};
+use deno_graph::{ModuleSpecifier, Range, resolve_import};
 
 const DEFAULT_JSX_IMPORT_SOURCE_MODULE: &str = "jsx-runtime";
 

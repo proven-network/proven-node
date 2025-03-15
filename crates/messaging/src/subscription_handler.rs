@@ -43,8 +43,8 @@ where
     async fn handle<R>(&self, message: T, responder: R) -> Result<R::UsedResponder, Self::Error>
     where
         R: SubscriptionResponder<
-            Self::ResponseType,
-            Self::ResponseDeserializationError,
-            Self::ResponseSerializationError,
-        >;
+                Self::ResponseType,
+                Self::ResponseDeserializationError,
+                Self::ResponseSerializationError,
+            >;
 }

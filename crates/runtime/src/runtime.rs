@@ -1,9 +1,9 @@
 use crate::extensions::{
-    babylon_gateway_api_ext, console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext,
-    openai_ext, radix_engine_toolkit_ext, session_ext, sql_runtime_ext, uuid_ext, zod_ext,
     ApplicationSqlConnectionManager, ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput,
     NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
-    SqlQueryResultsManager,
+    SqlQueryResultsManager, babylon_gateway_api_ext, console_ext, crypto_ext, handler_runtime_ext,
+    kv_runtime_ext, openai_ext, radix_engine_toolkit_ext, session_ext, sql_runtime_ext, uuid_ext,
+    zod_ext,
 };
 use crate::file_system::{FileSystem, StoredEntry};
 use crate::module_loader::{ModuleLoader, ProcessingMode};
@@ -44,10 +44,10 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
     FSS: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     RNV: RadixNftVerifier,
 {
     /// Application-scoped SQL store.
@@ -240,10 +240,10 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
     FSS: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     RNV: RadixNftVerifier,
 {
     application_sql_store: ASS,
@@ -268,10 +268,10 @@ where
     PSS: SqlStore3,
     NSS: SqlStore3,
     FSS: Store<
-        StoredEntry,
-        ciborium::de::Error<std::io::Error>,
-        ciborium::ser::Error<std::io::Error>,
-    >,
+            StoredEntry,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
     RNV: RadixNftVerifier,
 {
     /// Creates a new runtime with the given runtime options and stores.

@@ -9,8 +9,8 @@ pub use error::Error;
 
 use std::convert::Infallible;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -22,7 +22,7 @@ use proven_messaging::service_responder::ServiceResponder;
 use proven_messaging::stream::InitializedStream;
 use proven_store::Store;
 use tempfile::NamedTempFile;
-use tokio::sync::{oneshot, Mutex, MutexGuard};
+use tokio::sync::{Mutex, MutexGuard, oneshot};
 
 static SNAPSHOT_INTERVAL: u64 = 1000;
 static SNAPSHOT_MIN_INTERVAL_SECS: u64 = 30;
@@ -170,13 +170,13 @@ where
     ) -> Result<R::UsedResponder, Self::Error>
     where
         R: ServiceResponder<
-            Request,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-            Self::ResponseType,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-        >,
+                Request,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+                Self::ResponseType,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >,
     {
         Ok(match request {
             Request::Execute(sql, params) => {
