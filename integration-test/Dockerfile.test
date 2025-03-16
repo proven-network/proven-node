@@ -1,0 +1,26 @@
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    jq \
+    netcat-openbsd \
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the test scripts
+COPY integration-test/test-scripts /test-scripts
+RUN chmod +x /test-scripts/*.sh
+
+# Create a script to handle host resolution
+RUN echo '#!/bin/bash' > /app/resolve-hosts.sh && \
+    echo 'for i in {1..3}; do echo "172.28.1.$i proven.local"  >> /tmp/hosts_entries; done' >> /app/resolve-hosts.sh && \
+    echo 'export HOSTS_FILE="/tmp/hosts_entries"' >> /app/resolve-hosts.sh && \
+    echo 'exec "$@"' >> /app/resolve-hosts.sh && \
+    chmod +x /app/resolve-hosts.sh
+
+ENTRYPOINT ["/app/resolve-hosts.sh"]
+CMD ["bash", "-c", "sleep 10 && /test-scripts/run-tests.sh"] 

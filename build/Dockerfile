@@ -1,7 +1,7 @@
 # ------------------
 # DOTNET BUILD STEPS
 # ------------------
-FROM mcr.microsoft.com/dotnet/sdk:8.0 as dotnet-builder
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS dotnet-builder
 WORKDIR /
 
 RUN git clone https://github.com/radixdlt/babylon-gateway.git
@@ -18,7 +18,7 @@ RUN dotnet publish -c Release -o /bin/GatewayApi
 # -------------------
 # BITCOIN BUILD STEPS
 # -------------------
-FROM debian:bookworm-20240904-slim as bitcoin-builder
+FROM debian:bookworm-20240904-slim AS bitcoin-builder
 
 # Build Bitcoin Core
 WORKDIR /
@@ -49,7 +49,7 @@ RUN chmod 0755      /bin/bitcoind /bin/bitcoin-cli
 # --------------------
 # POSTGRES BUILD STEPS
 # --------------------
-FROM debian:bookworm-20240904-slim as postgres-builder
+FROM debian:bookworm-20240904-slim AS postgres-builder
 
 # Install dependencies to build from source
 RUN apt-get update && apt-get install -y \
@@ -83,7 +83,7 @@ RUN make install
 # --------------
 # GO BUILD STEPS
 # --------------
-FROM golang:1.23.6-alpine3.21 as go-builder
+FROM golang:1.23.6-alpine3.21 AS go-builder
 WORKDIR /
 
 # Install dependencies
@@ -115,7 +115,7 @@ RUN chmod 0755      /bin/geth
 # ----------------
 # RUST BUILD STEPS
 # ----------------
-FROM rustlang/rust:nightly-bookworm-slim as rust-builder
+FROM rustlang/rust:nightly-bookworm-slim AS rust-builder
 WORKDIR /
 
 # Install base dependencies
@@ -168,7 +168,7 @@ RUN chmod 0755      /bin/lighthouse
 # --------------
 # EXTRA BINARIES
 # --------------
-FROM alpine:3.21 as extra-binaries
+FROM alpine:3.21 AS extra-binaries
 
 RUN apk add --no-cache unzip wget
 

@@ -1,0 +1,92 @@
+services:
+  # Node with RadixMainnet specialization
+  node-mainnet:
+    build:
+      context: ..
+      dockerfile: integration-test/Dockerfile
+    environment:
+      - NODE_ID=node1
+      - NODE_SPECIALIZATION=RadixMainnet
+      - PORT=3201
+    ports:
+      - "3201:3201"
+    volumes:
+      - mainnet-data:/tmp/proven
+    networks:
+      proven-network:
+        ipv4_address: 172.28.1.2
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  # Node with RadixStokenet specialization
+  node-stokenet:
+    build:
+      context: ..
+      dockerfile: integration-test/Dockerfile
+    environment:
+      - NODE_ID=node2
+      - NODE_SPECIALIZATION=RadixStokenet
+      - PORT=3202
+    ports:
+      - "3202:3202"
+    volumes:
+      - stokenet-data:/tmp/proven
+    networks:
+      proven-network:
+        ipv4_address: 172.28.1.3
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+
+  # Generic node without specializations
+  node-generic:
+    build:
+      context: ..
+      dockerfile: integration-test/Dockerfile
+    environment:
+      - NODE_ID=node3
+      - PORT=3203
+    ports:
+      - "3203:3203"
+    volumes:
+      - generic-data:/tmp/proven
+    networks:
+      proven-network:
+        ipv4_address: 172.28.1.4
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  # Test client to run integration tests
+  test-client:
+    build:
+      context: ..
+      dockerfile: integration-test/Dockerfile.test
+    depends_on:
+      - node-mainnet
+      - node-stokenet
+      - node-generic
+    volumes:
+      - ./test-scripts:/test-scripts
+    networks:
+      proven-network:
+        ipv4_address: 172.28.1.10
+
+networks:
+  proven-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  mainnet-data:
+  stokenet-data:
+  generic-data: 
