@@ -121,6 +121,10 @@ impl RadixNode {
 
         let server_task = self.task_tracker.spawn(async move {
             // Start the radix-node process
+            info!("Attempting to spawn radix-node process at: /bin/babylon-node/core-v1.3.0.2/bin/core");
+            debug!("Environment variables: JAVA_OPTS={}, LD_PRELOAD=/bin/babylon-node/libcorerust.so", JAVA_OPTS.join(" "));
+            debug!("Config path: {}", CONFIG_PATH);
+            
             let mut cmd = Command::new("/bin/babylon-node/core-v1.3.0.2/bin/core")
                 .env("RADIX_NODE_KEYSTORE_PASSWORD", KEYSTORE_PASS)
                 .env("JAVA_OPTS", JAVA_OPTS.join(" "))
@@ -130,10 +134,25 @@ impl RadixNode {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .map_err(|e| Error::Io("failed to spawn radix-node process", e))?;
+                .map_err(|e| {
+                    error!("Failed to spawn radix-node process: {}", e);
+                    if let std::io::ErrorKind::NotFound = e.kind() {
+                        error!("The executable '/bin/babylon-node/core-v1.3.0.2/bin/core' was not found. Check if babylon-node files are properly installed.");
+                    } else if let std::io::ErrorKind::PermissionDenied = e.kind() {
+                        error!("Permission denied when trying to execute '/bin/babylon-node/core-v1.3.0.2/bin/core'. Check file permissions.");
+                    }
+                    Error::Io("failed to spawn radix-node process", e)
+                })?;
 
-            let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
-            let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+            info!("Successfully spawned radix-node process");
+            let stdout = cmd.stdout.take().ok_or_else(|| {
+                error!("Failed to capture stdout from radix-node process");
+                Error::OutputParse
+            })?;
+            let stderr = cmd.stderr.take().ok_or_else(|| {
+                error!("Failed to capture stderr from radix-node process");
+                Error::OutputParse
+            })?;
 
             // Java log regexp
             let jre = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)")?;
@@ -227,6 +246,7 @@ impl RadixNode {
     }
 
     async fn generate_node_key(&self) -> Result<()> {
+        info!("Attempting to generate node key using: /bin/babylon-node/core-v1.3.0.2/bin/keygen");
         let output = Command::new("/bin/babylon-node/core-v1.3.0.2/bin/keygen")
             .arg("-k")
             .arg(KEYSTORE_PATH)
@@ -234,9 +254,20 @@ impl RadixNode {
             .arg(KEYSTORE_PASS)
             .output()
             .await
-            .map_err(|e| Error::Io("failed to generate node key", e))?;
+            .map_err(|e| {
+                error!("Failed to execute node key generation: {}", e);
+                if let std::io::ErrorKind::NotFound = e.kind() {
+                    error!("The keygen executable '/bin/babylon-node/core-v1.3.0.2/bin/keygen' was not found. Check if babylon-node files are properly installed.");
+                } else if let std::io::ErrorKind::PermissionDenied = e.kind() {
+                    error!("Permission denied when trying to execute '/bin/babylon-node/core-v1.3.0.2/bin/keygen'. Check file permissions.");
+                }
+                Error::Io("failed to generate node key", e)
+            })?;
 
         if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            error!("Node key generation process exited with non-zero status: {}", output.status);
+            error!("Stderr output: {}", stderr);
             return Err(Error::NonZeroExitCode(output.status));
         }
 

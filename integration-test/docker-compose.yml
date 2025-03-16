@@ -13,7 +13,7 @@ services:
     ports:
       - "3201:3201"
     volumes:
-      - mainnet-data:/tmp/proven
+      - bulbasaur-data:/tmp/proven
       - shared-config:/etc/proven
       - cargo-cache:/usr/local/cargo/registry
       - cargo-git-cache:/usr/local/cargo/git
@@ -41,8 +41,9 @@ services:
       - PRIVATE_KEY=76709830bdd5eee1601fc8dee71713a9dde29c9895d15b3208bd26ce0c9e266d
     ports:
       - "3202:3202"
+      - "30000:30000"
     volumes:
-      - stokenet-data:/tmp/proven
+      - charmander-data:/tmp/proven
       - shared-config:/etc/proven
       - cargo-cache:/usr/local/cargo/registry
       - cargo-git-cache:/usr/local/cargo/git
@@ -71,7 +72,7 @@ services:
     ports:
       - "3203:3203"
     volumes:
-      - generic-data:/tmp/proven
+      - squirtle-data:/tmp/proven
       - shared-config:/etc/proven
       - cargo-cache:/usr/local/cargo/registry
       - cargo-git-cache:/usr/local/cargo/git
@@ -112,9 +113,9 @@ networks:
         - subnet: 172.28.0.0/16
 
 volumes:
-  mainnet-data:
-  stokenet-data:
-  generic-data:
+  bulbasaur-data:
+  charmander-data:
+  squirtle-data:
   shared-config:
   cargo-cache:
   cargo-git-cache:

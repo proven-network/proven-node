@@ -35,6 +35,8 @@ RUN apt-get update && apt-get install -y \
     jq \
     netcat-openbsd \
     wget \
+    unzip \
+    openjdk-17-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PostgreSQL
@@ -74,6 +76,16 @@ RUN wget https://github.com/sigp/lighthouse/releases/download/v4.5.0/lighthouse-
 RUN wget https://github.com/nats-io/nats-server/releases/download/v2.10.4/nats-server-v2.10.4-linux-arm64.tar.gz \
     && tar -xzf nats-server-v2.10.4-linux-arm64.tar.gz \
     && install -m 0755 -o root -g root -t /usr/local/bin nats-server-v2.10.4-linux-arm64/nats-server
+
+# Download and install Babylon Node
+RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip \
+    && wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-v1.3.0.2.zip \
+    && unzip babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip \
+    && unzip babylon-node-v1.3.0.2.zip \
+    && mkdir -p /bin/babylon-node \
+    && mv core-v1.3.0.2 /bin/babylon-node/ \
+    && mv libcorerust.so /bin/babylon-node/ \
+    && rm -f *.zip
 
 # Copy the built binary from the builder stage
 COPY --from=builder /tmp/build/proven-local /usr/local/bin/

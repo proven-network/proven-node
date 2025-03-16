@@ -20,7 +20,7 @@ COPY integration-test/test-scripts /app
 RUN npm install
 
 # Set delay to wait for nodes to start
-ENV WAIT_TIME=10
+ENV WAIT_TIME=1000
 
 # Command to run tests
 CMD ["sh", "-c", "echo 'Waiting for nodes to start...' && sleep $WAIT_TIME && node run-tests.js"] 

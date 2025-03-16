@@ -14,6 +14,7 @@ proven-governance = { workspace = true }
 proven-governance-mock = { workspace = true }
 proven-http-insecure = { workspace = true }
 proven-radix-nft-verifier-gateway = { workspace = true }
+proven-radix-node = { workspace = true }
 proven-runtime = { workspace = true }
 proven-sessions = { workspace = true }
 proven-sql-direct = { workspace = true }
@@ -22,6 +23,7 @@ proven-store-fs = { workspace = true }
 proven-store-memory = { workspace = true }
 proven-core = { workspace = true }
 radix-common = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

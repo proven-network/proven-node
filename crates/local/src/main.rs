@@ -24,6 +24,7 @@ use proven_governance::{Governance, NodeSpecialization};
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
+use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_direct::{DirectSqlStore1, DirectSqlStore2, DirectSqlStore3};
@@ -32,6 +33,29 @@ use proven_store_memory::{MemoryStore, MemoryStore2};
 use radix_common::network::NetworkDefinition;
 use tracing::{Level, error, info};
 use tracing_subscriber::FmtSubscriber;
+
+/// Fetches the external IP address using myip.com API
+async fn fetch_external_ip() -> Result<std::net::IpAddr> {
+    let response = reqwest::get("https://api.myip.com")
+        .await
+        .map_err(|e| error::Error::Io(format!("Failed to fetch external IP: {}", e)))?;
+
+    let json_response = response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| error::Error::Io(format!("Failed to parse JSON response: {}", e)))?;
+
+    let ip_text = json_response["ip"]
+        .as_str()
+        .ok_or_else(|| error::Error::Io("IP field not found in response".to_string()))?;
+
+    let ip_addr = ip_text
+        .parse::<std::net::IpAddr>()
+        .map_err(|e| error::Error::Io(format!("Failed to parse external IP: {}", e)))?;
+
+    info!("External IP detected: {}", ip_addr);
+    Ok(ip_addr)
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -52,13 +76,11 @@ struct Args {
 async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(
         FmtSubscriber::builder()
-            .with_max_level(Level::TRACE)
+            .with_max_level(Level::DEBUG)
             .finish(),
     )?;
 
     let args = Args::parse();
-
-    info!("Using private key from environment variable");
 
     // Create the governance mock and initialize it with the private key
     info!("Loading topology file from: {:?}", args.topology_file);
@@ -71,60 +93,36 @@ async fn main() -> Result<()> {
     let node_config = governance
         .get_self()
         .await
-        .map_err(|e| error::Error::Io(format!("Failed to find node in topology: {}", e)))?;
+        .expect("Failed to find node in topology");
+
+    // If the node has a RadixStokenet specialization start the stokenet node
+    let _radix_node_handle = if node_config
+        .specializations
+        .contains(&NodeSpecialization::RadixStokenet)
+    {
+        // Fetch external IP address from ipify
+        let external_ip = fetch_external_ip().await?;
+
+        let radix_node = RadixNode::new(RadixNodeOptions {
+            host_ip: external_ip.to_string(),
+            network_definition: NetworkDefinition::stokenet(),
+            store_dir: "/tmp/proven/radix-node".to_string(),
+        });
+
+        Some(
+            radix_node
+                .start()
+                .await
+                .map_err(|e| error::Error::Io(format!("Failed to start radix node: {}", e))),
+        )
+    } else {
+        None
+    };
 
     info!("Found node in topology: {}", node_config.fqdn);
 
     // Check /etc/hosts to ensure the node's FQDN is properly configured
-    // First try DNS resolution using Hickory resolver
-    let resolver = match Resolver::tokio_from_system_conf() {
-        Ok(resolver) => resolver,
-        Err(e) => {
-            error!("Failed to create DNS resolver: {}", e);
-            return Err(error::Error::Io(format!(
-                "Failed to create DNS resolver: {}",
-                e
-            )));
-        }
-    };
-    let dns_lookup_result = resolver.lookup_ip(&node_config.fqdn).await;
-
-    if let Ok(lookup_result) = dns_lookup_result {
-        if !lookup_result.iter().collect::<Vec<_>>().is_empty() {
-            info!(
-                "Hostname {} can be resolved via DNS: {:?}",
-                node_config.fqdn,
-                lookup_result.iter().collect::<Vec<_>>()
-            );
-        } else {
-            error!(
-                "DNS resolution for {} returned no addresses",
-                node_config.fqdn
-            );
-            if !check_hosts_file(&node_config.fqdn) {
-                error!(
-                    "{} is not configured in hosts file or DNS",
-                    node_config.fqdn
-                );
-                show_hosts_file_instructions(&node_config.fqdn);
-                std::process::exit(1);
-            }
-        }
-    } else {
-        error!(
-            "Could not resolve {} via DNS: {:?}",
-            node_config.fqdn,
-            dns_lookup_result.err()
-        );
-        if !check_hosts_file(&node_config.fqdn) {
-            error!(
-                "{} is not configured in hosts file either",
-                node_config.fqdn
-            );
-            show_hosts_file_instructions(&node_config.fqdn);
-            std::process::exit(1);
-        }
-    }
+    check_hostname_resolution(&node_config.fqdn).await?;
 
     let challenge_store = MemoryStore2::new();
     let sessions_store = FsStore1::new("/tmp/proven/sessions");
@@ -230,6 +228,54 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Checks if a hostname can be resolved via DNS or hosts file.
+/// Exits the process if the hostname cannot be resolved.
+async fn check_hostname_resolution(hostname: &str) -> Result<()> {
+    // First try DNS resolution using Hickory resolver
+    let resolver = match Resolver::tokio_from_system_conf() {
+        Ok(resolver) => resolver,
+        Err(e) => {
+            error!("Failed to create DNS resolver: {}", e);
+            return Err(error::Error::Io(format!(
+                "Failed to create DNS resolver: {}",
+                e
+            )));
+        }
+    };
+    let dns_lookup_result = resolver.lookup_ip(hostname).await;
+
+    if let Ok(lookup_result) = dns_lookup_result {
+        if !lookup_result.iter().collect::<Vec<_>>().is_empty() {
+            info!(
+                "Hostname {} can be resolved via DNS: {:?}",
+                hostname,
+                lookup_result.iter().collect::<Vec<_>>()
+            );
+        } else {
+            error!("DNS resolution for {} returned no addresses", hostname);
+            if !check_hosts_file(hostname) {
+                error!("{} is not configured in hosts file or DNS", hostname);
+                show_hosts_file_instructions(hostname);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        error!(
+            "Could not resolve {} via DNS: {:?}",
+            hostname,
+            dns_lookup_result.err()
+        );
+        if !check_hosts_file(hostname) {
+            error!("{} is not configured in hosts file either", hostname);
+            show_hosts_file_instructions(hostname);
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+/// Shows instructions for adding the hostname to the hosts file.
 fn show_hosts_file_instructions(hostname: &str) {
     #[cfg(target_family = "unix")]
     error!(
