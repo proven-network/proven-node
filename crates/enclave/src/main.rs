@@ -9,15 +9,15 @@
 #![allow(clippy::large_futures)]
 
 mod bootstrap;
-mod enclave;
 mod error;
 mod fdlimit;
 mod net;
+mod node;
 mod speedtest;
 
 use bootstrap::Bootstrap;
-use enclave::Enclave;
 use error::{Error, Result};
+use node::EnclaveNode;
 use proven_vsock_tracing::enclave::VsockTracingProducer;
 
 use std::sync::Arc;
@@ -76,7 +76,7 @@ async fn handle_initial_request(rpc_server: &RpcServer) -> Result<()> {
     Ok(())
 }
 
-async fn handle_requests_loop(rpc_server: &RpcServer, enclave: Enclave) -> Result<()> {
+async fn handle_requests_loop(rpc_server: &RpcServer, enclave: EnclaveNode) -> Result<()> {
     let enclave = Arc::new(Mutex::new(enclave));
 
     loop {

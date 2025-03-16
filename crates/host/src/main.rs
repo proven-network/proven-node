@@ -124,6 +124,9 @@ struct StartArgs {
     #[clap(long, required = true, env = "PROVEN_NFS_MOUNT_POINT")]
     nfs_mount_point: String,
 
+    #[clap(long, required = true, env = "PROVEN_NODE_KEY")]
+    node_key: String,
+
     #[arg(long, default_value_t = format!("ens5"), env = "PROVEN_OUTBOUND_DEVICE")]
     outbound_device: String,
 
@@ -142,8 +145,8 @@ struct StartArgs {
     #[clap(long, required = true, env = "PROVEN_SQL_SNAPSHOTS_BUCKET")]
     sql_snapshots_bucket: String,
 
-    #[arg(long, default_value_t = false, env = "PROVEN_STOKENET")]
-    stokenet: bool,
+    #[arg(long, default_value_t = false, env = "PROVEN_TESTNET")]
+    testnet: bool,
 
     #[arg(long, default_value_t = format!("tun0"), env = "PROVEN_TUN_DEVICE")]
     tun_device: String,

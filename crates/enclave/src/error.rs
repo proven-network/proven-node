@@ -24,18 +24,6 @@ pub enum Error {
     #[error(transparent)]
     Async(#[from] tokio::task::JoinError),
 
-    /// Babylon aggregator error.
-    #[error(transparent)]
-    BabylonAggregator(#[from] proven_radix_aggregator::Error),
-
-    /// Babylon gateway error.
-    #[error(transparent)]
-    BabylonGateway(#[from] proven_radix_gateway::Error),
-
-    /// Babylon node error.
-    #[error(transparent)]
-    BabylonNode(#[from] proven_radix_node::Error),
-
     /// Bad key error.
     #[error("The key is invalid")]
     BadKey,
@@ -59,6 +47,10 @@ pub enum Error {
     /// External file system error.
     #[error(transparent)]
     ExternalFs(#[from] proven_external_fs::Error),
+
+    /// Governance error.
+    #[error("governance error: {0}")]
+    Governance(proven_governance::GovernanceErrorKind),
 
     /// Instance metadata error.
     #[error(transparent)]
@@ -113,6 +105,18 @@ pub enum Error {
     /// Postgres error.
     #[error(transparent)]
     Postgres(#[from] proven_postgres::Error),
+
+    /// Babylon aggregator error.
+    #[error(transparent)]
+    RadixAggregator(#[from] proven_radix_aggregator::Error),
+
+    /// Babylon gateway error.
+    #[error(transparent)]
+    RadixGateway(#[from] proven_radix_gateway::Error),
+
+    /// Babylon node error.
+    #[error(transparent)]
+    RadixNode(#[from] proven_radix_node::Error),
 
     /// Simple Storage Service error.
     #[error(transparent)]

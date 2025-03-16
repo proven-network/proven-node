@@ -28,14 +28,13 @@ use proven_radix_node::RadixNode;
 use proven_store_s3::{S3Store, S3Store1, S3Store2, S3Store3};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{AddPeerRequest, AddPeerResponse};
-use radix_common::network::NetworkDefinition;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 
-pub type EnclaveCore = Core<
+pub type EnclaveNodeCore = Core<
     ApplicationManager<
         NatsStore<
             Application,
@@ -110,12 +109,11 @@ pub struct Services {
     pub radix_gateway: Arc<Mutex<RadixGateway>>,
     pub nats_server_fs: Arc<Mutex<ExternalFs>>,
     pub nats_server: Arc<Mutex<NatsServer>>,
-    pub core: Arc<Mutex<EnclaveCore>>,
+    pub core: Arc<Mutex<EnclaveNodeCore>>,
 }
 
-pub struct Enclave {
-    nsm: NsmAttestor,
-    network_definition: NetworkDefinition,
+pub struct EnclaveNode {
+    attestor: NsmAttestor,
     imds_identity: IdentityDocument,
     instance_details: Instance,
     services: Services,
@@ -123,10 +121,9 @@ pub struct Enclave {
     task_tracker: TaskTracker,
 }
 
-impl Enclave {
+impl EnclaveNode {
     pub const fn new(
-        nsm: NsmAttestor,
-        network_definition: NetworkDefinition,
+        attestor: NsmAttestor,
         imds_identity: IdentityDocument,
         instance_details: Instance,
         services: Services,
@@ -134,8 +131,7 @@ impl Enclave {
         task_tracker: TaskTracker,
     ) -> Self {
         Self {
-            nsm,
-            network_definition,
+            attestor,
             imds_identity,
             instance_details,
             services,

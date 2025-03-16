@@ -43,6 +43,9 @@ pub struct InitializeRequest {
     /// NATS port for messaging between enclaves (should match host TCP forwarding).
     pub nats_port: u16,
 
+    /// Private key for the node.
+    pub node_key: String,
+
     /// NFS mount point for external file-systems.
     pub nfs_mount_point: String,
 
@@ -61,8 +64,8 @@ pub struct InitializeRequest {
     /// S3 bucket for SQL snapshots (encrypted/decrypted inside enclave).
     pub sql_snapshots_bucket: String,
 
-    /// Whether to use stokenet - or mainnet.
-    pub stokenet: bool,
+    /// Whether this network is testnet.
+    pub testnet: bool,
 }
 
 /// The response to an add peer request.

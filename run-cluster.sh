@@ -1,11 +1,11 @@
 #!/bin/bash
-# Main script to run the integration tests
+# Script to run the Proven Node cluster
 
 set -e
 
-echo "======================================"
-echo "Starting Proven Node Integration Tests"
-echo "======================================"
+echo "============================"
+echo "Starting Proven Node Cluster"
+echo "============================"
 
 # Set up UPnP port forwarding for port 30000
 echo "Setting up UPnP port forwarding for port 30000..."
@@ -40,26 +40,21 @@ echo "UPnP port forwarding setup complete"
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
 
-# Build the Docker images and run the tests
+# Build and run the Docker containers
 cd integration-test
 
+echo "Building containers..."
 docker-compose build --build-arg BUILDKIT_INLINE_CACHE=1
-docker-compose up --abort-on-container-exit
 
-# Check if tests passed
-exit_code=$?
+echo "Starting node cluster"
+# Run only the node containers, not the test-client
+docker-compose up bulbasaur charmander squirtle
+
+# This line will only be reached when the user stops the cluster with Ctrl+C
+echo "Cluster stopped. Cleaning up..."
 
 # Clean up UPnP port forwarding
 echo "Cleaning up UPnP port forwarding..."
 upnpc -d 30000 TCP
 
-if [ $exit_code -eq 0 ]; then
-  echo "✅ All tests passed"
-  docker-compose down
-  exit 0
-else
-  echo "❌ Tests failed"
-  docker-compose logs
-  docker-compose down
-  exit 1
-fi 
+echo "Shutdown complete" 

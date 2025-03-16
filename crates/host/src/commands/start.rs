@@ -171,12 +171,13 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
             max_runtime_workers: args.max_runtime_workers,
             nats_port: args.nats_port,
             nfs_mount_point: args.nfs_mount_point.clone(),
+            node_key: args.node_key.clone(),
             proxy_port: args.proxy_port,
             skip_fsck: args.skip_fsck,
             skip_speedtest: args.skip_speedtest,
             skip_vacuum: args.skip_vacuum,
             sql_snapshots_bucket: args.sql_snapshots_bucket.clone(),
-            stokenet: args.stokenet,
+            testnet: args.testnet,
         })
         .await;
 

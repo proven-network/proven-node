@@ -1,6 +1,6 @@
-use super::enclave::{Enclave, EnclaveCore, Services};
 use super::error::{Error, Result};
 use super::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
+use super::node::{EnclaveNode, EnclaveNodeCore, Services};
 use super::speedtest::SpeedTest;
 
 use std::convert::TryInto;
@@ -16,6 +16,7 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
+use proven_governance::{Governance, GovernanceError, Node};
 use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
 use proven_imds::{IdentityDocument, Imds};
@@ -40,7 +41,6 @@ use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStore
 use proven_store_s3::{S3Store, S3Store1, S3Store2, S3Store3, S3StoreOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
-use radix_common::network::NetworkDefinition;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -68,12 +68,13 @@ static RADIX_NODE_STORE_DIR: &str = "/var/lib/babylon";
 // TODO: This is in dire need of refactoring.
 pub struct Bootstrap {
     args: InitializeRequest,
-    nsm: NsmAttestor,
-    network_definition: NetworkDefinition,
+    attestor: NsmAttestor,
 
     // added during initialization
+    governance: Option<MockGovernance>,
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
+    node_config: Option<Node>,
 
     proxy: Option<Proxy>,
     proxy_handle: Option<JoinHandle<proven_vsock_proxy::Result<()>>>,
@@ -106,7 +107,7 @@ pub struct Bootstrap {
     nats_server: Option<NatsServer>,
     nats_server_handle: Option<JoinHandle<proven_nats_server::Result<()>>>,
 
-    core: Option<EnclaveCore>,
+    core: Option<EnclaveNodeCore>,
     core_handle: Option<JoinHandle<proven_core::Result<()>>>,
 
     // state
@@ -117,20 +118,14 @@ pub struct Bootstrap {
 
 impl Bootstrap {
     pub fn new(args: InitializeRequest) -> Self {
-        let nsm = NsmAttestor::new();
-        let network_definition = if args.stokenet {
-            NetworkDefinition::stokenet()
-        } else {
-            NetworkDefinition::mainnet()
-        };
-
         Self {
             args,
-            nsm,
-            network_definition,
+            attestor: NsmAttestor::new(),
 
+            governance: None,
             imds_identity: None,
             instance_details: None,
+            node_config: None,
 
             proxy: None,
             proxy_handle: None,
@@ -174,7 +169,7 @@ impl Bootstrap {
 
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::large_stack_frames)]
-    pub async fn initialize(mut self) -> Result<Enclave> {
+    pub async fn initialize(mut self) -> Result<EnclaveNode> {
         if self.started {
             return Err(Error::AlreadyStarted);
         }
@@ -231,6 +226,12 @@ impl Bootstrap {
 
         if let Err(e) = self.start_dnscrypt_proxy().await {
             error!("failed to start dnscrypt-proxy: {:?}", e);
+            self.unwind_services().await;
+            return Err(e);
+        }
+
+        if let Err(e) = self.get_network_topology().await {
+            error!("failed to get network topology: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
@@ -313,7 +314,7 @@ impl Bootstrap {
         let nats_server = Arc::new(Mutex::new(self.nats_server.take().unwrap()));
         let core = Arc::new(Mutex::new(self.core.take().unwrap()));
 
-        let enclave_services = Services {
+        let node_services = Services {
             proxy: proxy.clone(),
             dnscrypt_proxy: dnscrypt_proxy.clone(),
             radix_node_fs: radix_node_fs.clone(),
@@ -391,12 +392,11 @@ impl Bootstrap {
 
         self.task_tracker.close();
 
-        let enclave = Enclave::new(
-            self.nsm.clone(),
-            self.network_definition.clone(),
+        let enclave = EnclaveNode::new(
+            self.attestor.clone(),
             self.imds_identity.take().unwrap(),
             self.instance_details.take().unwrap(),
-            enclave_services,
+            node_services,
             self.shutdown_token.clone(),
             self.task_tracker.clone(),
         );
@@ -508,7 +508,7 @@ impl Bootstrap {
     }
 
     async fn seed_entropy(&self) -> Result<()> {
-        let secured_random_bytes = self.nsm.secure_random().await?;
+        let secured_random_bytes = self.attestor.secure_random().await?;
         let mut dev_random = std::fs::OpenOptions::new()
             .write(true)
             .open("/dev/random")
@@ -589,6 +589,25 @@ impl Bootstrap {
         Ok(())
     }
 
+    async fn get_network_topology(&mut self) -> Result<()> {
+        // TODO: use helios in production
+        let governance = MockGovernance::new(Vec::new(), Vec::new())
+            .with_private_key(&self.args.node_key)
+            .map_err(|e| Error::Governance(e.kind()))?;
+
+        let node_config = governance
+            .get_self()
+            .await
+            .map_err(|e| Error::Governance(e.kind()))?;
+
+        info!("node config: {:?}", node_config);
+
+        self.governance = Some(governance);
+        self.node_config = Some(node_config);
+
+        Ok(())
+    }
+
     async fn start_radix_node_fs(&mut self) -> Result<()> {
         let radix_node_fs = ExternalFs::new(ExternalFsOptions {
             encryption_key: "your-password".to_string(),
@@ -615,7 +634,8 @@ impl Bootstrap {
         let host_ip = instance_details.public_ip.unwrap().to_string();
         let radix_node = RadixNode::new(RadixNodeOptions {
             host_ip,
-            network_definition: self.network_definition.clone(),
+            // TODO: switch on specialization
+            network_definition: radix_common::network::NetworkDefinition::stokenet(),
             store_dir: RADIX_NODE_STORE_DIR.to_string(),
         });
 
@@ -723,7 +743,7 @@ impl Bootstrap {
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
-            debug: self.args.stokenet,
+            debug: self.args.testnet,
             listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
             server_name: instance_details.instance_id.clone(),
             store_dir: "/var/lib/nats/nats".to_string(),
@@ -770,11 +790,11 @@ impl Bootstrap {
         });
 
         let session_manager = SessionManager::new(SessionManagerOptions {
-            attestor: self.nsm.clone(),
+            attestor: self.attestor.clone(),
             challenge_store,
             sessions_store,
             radix_gateway_origin: GATEWAY_URL,
-            radix_network_definition: &self.network_definition,
+            radix_network_definition: &radix_common::network::NetworkDefinition::stokenet(),
         });
 
         let cert_store = S3Store::new(S3StoreOptions {
@@ -973,14 +993,14 @@ impl Bootstrap {
             personal_sql_store,
             personal_store,
             radix_gateway_origin: GATEWAY_URL.to_string(),
-            radix_network_definition: self.network_definition.clone(),
+            radix_network_definition: radix_common::network::NetworkDefinition::stokenet(),
             radix_nft_verifier,
         })
         .await;
 
         let core = Core::new(CoreOptions {
             application_manager,
-            attestor: self.nsm.clone(),
+            attestor: self.attestor.clone(),
             governance: MockGovernance::new(Vec::new(), Vec::new()),
             primary_hostnames: domains
                 .iter()

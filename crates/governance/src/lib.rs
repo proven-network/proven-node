@@ -4,10 +4,10 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-use std::collections::HashSet;
 use std::error::Error;
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::time::SystemTime;
+use std::{collections::HashSet, fmt::Display};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -83,6 +83,12 @@ pub enum GovernanceErrorKind {
 
     /// Other/unknown error
     Other,
+}
+
+impl Display for GovernanceErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 /// Marker trait for `Governance` errors

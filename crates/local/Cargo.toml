@@ -4,30 +4,41 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+async-nats = { workspace = true }
+bytes = { workspace = true }
+ciborium = { workspace = true }
 clap = { workspace = true }
 console = { workspace = true }
 hickory-resolver = { workspace = true }
 proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-dev = { workspace = true }
+proven-core = { workspace = true }
 proven-governance = { workspace = true }
 proven-governance-mock = { workspace = true }
 proven-http-insecure = { workspace = true }
+proven-messaging = { workspace = true }
+proven-messaging-nats = { workspace = true }
+proven-nats-server = { workspace = true }
+proven-postgres = { workspace = true }
+proven-radix-aggregator = { workspace = true }
+proven-radix-gateway = { workspace = true }
 proven-radix-nft-verifier-gateway = { workspace = true }
 proven-radix-node = { workspace = true }
 proven-runtime = { workspace = true }
 proven-sessions = { workspace = true }
-proven-sql-direct = { workspace = true }
+proven-sql-streamed = { workspace = true }
 proven-store = { workspace = true }
 proven-store-fs = { workspace = true }
 proven-store-memory = { workspace = true }
-proven-core = { workspace = true }
+proven-store-nats = { workspace = true }
 radix-common = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
