@@ -1,0 +1,69 @@
+# Exclude build artifacts
+target/
+**/target/
+
+# Exclude Rust package cache
+**/.cargo/registry/
+**/.cargo/git/
+.cargo/registry/
+.cargo/git/
+
+# Keep Cargo.toml and config files
+!.cargo/config
+!.cargo/config.toml
+
+# Exclude version control files
+.git/
+.gitignore
+.gitmodules
+.github/
+.gitattributes
+
+# Exclude editor files
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# Exclude log files
+*.log
+logs/
+
+# Exclude test artifacts
+**/test-results/
+coverage/
+tests/
+
+# Exclude documentation
+docs/
+*.md
+!README.md
+
+# Exclude temporary files
+tmp/
+temp/
+**/*.tmp
+
+# Exclude debugging and profile data
+**/*.profraw
+**/*.gcda
+**/*.gcno
+
+# Exclude benchmark files
+benches/
+**/*bench*
+
+# Exclude node modules
+**/node_modules/
+
+# Exclude integration test files except specific ones
+integration-test/*
+!integration-test/entrypoint.sh
+!integration-test/topology.json
+!integration-test/test-scripts/
+
+# Don't exclude important project files
+!Cargo.toml
+!Cargo.lock
+!vendor/** 

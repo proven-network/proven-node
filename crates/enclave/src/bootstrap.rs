@@ -16,6 +16,7 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
+use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
@@ -980,6 +981,7 @@ impl Bootstrap {
         let core = Core::new(CoreOptions {
             application_manager,
             attestor: self.nsm.clone(),
+            governance: MockGovernance::new(Vec::new(), Vec::new()),
             primary_hostnames: domains
                 .iter()
                 .map(|domain| format!("https://{domain}"))

@@ -16,6 +16,8 @@ proven-attestation-nsm = { workspace = true }
 proven-core = { workspace = true }
 proven-dnscrypt-proxy = { workspace = true }
 proven-external-fs = { workspace = true }
+proven-governance = { workspace = true }
+proven-governance-mock = { workspace = true }
 proven-http-letsencrypt = { workspace = true }
 proven-imds = { workspace = true }
 proven-instance-details = { workspace = true }

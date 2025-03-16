@@ -22,6 +22,7 @@ use axum::routing::{any, delete, get, patch, post, put};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};
+use proven_governance::Governance;
 use proven_http::HttpServer;
 use proven_runtime::{HttpEndpoint, ModuleLoader, ModuleOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
@@ -47,18 +48,22 @@ where
 }
 
 /// Options for creating a new core.
-pub struct CoreOptions<AM, RM, SM, A>
+pub struct CoreOptions<AM, RM, SM, A, G>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
     A: Attestor,
+    G: Governance,
 {
     /// The application manager.
     pub application_manager: AM,
 
     /// The remote attestation attestor.
     pub attestor: A,
+
+    /// The governance manager.
+    pub governance: G,
 
     /// The primary hostnames for RPC, WS, etc.
     pub primary_hostnames: HashSet<String>,
@@ -71,15 +76,17 @@ where
 }
 
 /// Core logic for handling user interactions.
-pub struct Core<AM, RM, SM, A>
+pub struct Core<AM, RM, SM, A, G>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
     A: Attestor,
+    G: Governance,
 {
     application_manager: AM,
     attestor: A,
+    _governance: G,
     primary_hostnames: HashSet<String>,
     runtime_pool_manager: RM,
     session_manager: SM,
@@ -87,26 +94,29 @@ where
     task_tracker: TaskTracker,
 }
 
-impl<AM, RM, SM, A> Core<AM, RM, SM, A>
+impl<AM, RM, SM, A, G> Core<AM, RM, SM, A, G>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
     A: Attestor,
+    G: Governance,
 {
     /// Create new core.
     pub fn new(
         CoreOptions {
             application_manager,
             attestor,
+            governance,
             primary_hostnames,
             runtime_pool_manager,
             session_manager,
-        }: CoreOptions<AM, RM, SM, A>,
+        }: CoreOptions<AM, RM, SM, A, G>,
     ) -> Self {
         Self {
             application_manager,
             attestor,
+            _governance: governance,
             primary_hostnames,
             runtime_pool_manager,
             session_manager,

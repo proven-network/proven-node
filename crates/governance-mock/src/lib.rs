@@ -58,7 +58,6 @@ mod tests {
         let node_1 = Node {
             availability_zone: "az1".to_string(),
             fqdn: "node1.example.com".to_string(),
-            id: "node1".to_string(),
             public_key: "key1".to_string(),
             region: "region1".to_string(),
             specializations: HashSet::new(),
@@ -67,7 +66,6 @@ mod tests {
         let node_2 = Node {
             availability_zone: "az2".to_string(),
             fqdn: "node2.example.com".to_string(),
-            id: "node2".to_string(),
             public_key: "key2".to_string(),
             region: "region2".to_string(),
             specializations: {

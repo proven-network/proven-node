@@ -8,6 +8,7 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_core::Core;
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
+use proven_governance_mock::MockGovernance;
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3};
@@ -95,6 +96,7 @@ pub type EnclaveCore = Core<
         >,
     >,
     NsmAttestor,
+    MockGovernance,
 >;
 
 pub struct Services {

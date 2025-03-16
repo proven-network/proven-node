@@ -29,7 +29,9 @@ proven-store-memory = { workspace = true }
 [[bench]]
 name = "nats"
 harness = false
+path = "benches/nats.rs"
 
 [[bench]]
 name = "memory"
 harness = false
+path = "benches/memory.rs"

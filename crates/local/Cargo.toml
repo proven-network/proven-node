@@ -6,9 +6,14 @@ edition = "2024"
 [dependencies]
 clap = { workspace = true }
 console = { workspace = true }
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
+hickory-resolver = { workspace = true }
 proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-dev = { workspace = true }
+proven-governance = { workspace = true }
+proven-governance-mock = { workspace = true }
 proven-http-insecure = { workspace = true }
 proven-radix-nft-verifier-gateway = { workspace = true }
 proven-runtime = { workspace = true }
@@ -19,6 +24,8 @@ proven-store-fs = { workspace = true }
 proven-store-memory = { workspace = true }
 proven-core = { workspace = true }
 radix-common = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

@@ -225,7 +225,6 @@ impl Governance for HeliosGovernance {
             }
 
             nodes.push(Node {
-                id: node_struct.id.clone(),
                 region: node_struct.region.clone(),
                 availability_zone: node_struct.availabilityZone.clone(),
                 fqdn: node_struct.fqdn.clone(),

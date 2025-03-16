@@ -1,58 +1,45 @@
 #!/bin/bash
+# Test that node specializations are correctly assigned
+
 set -e
 
-# Test node specializations by checking the health endpoints and a custom endpoint for specializations
 echo "Testing node specializations..."
 
-# Define node IP addresses
-NODE1_IP="172.28.1.2"
-NODE2_IP="172.28.1.3"
-NODE3_IP="172.28.1.4"
-
-# Check if all nodes are healthy
-for port in 3201 3202 3203; do
-  case $port in
-    3201) host=$NODE1_IP ;;
-    3202) host=$NODE2_IP ;;
-    3203) host=$NODE3_IP ;;
-  esac
-  
-  response=$(curl -s "http://$host:$port/health")
-  if [ $? -ne 0 ]; then
-    echo "Failed to connect to node $host on port $port"
-    exit 1
-  fi
-  echo "Node $host on port $port is healthy"
-done
-
-# Wait a bit for all nodes to fully initialize
+# Wait for all nodes to start up
 sleep 5
 
-# For integration testing purposes only, we'll check what we would expect to see
-# In a real test, we'd have custom endpoints to verify the specializations
-
-# Check mainnet node (port 3201)
-if [ "$NODE1_IP" == "172.28.1.2" ]; then
-  echo "Confirmed node on port 3201 has RadixMainnet specialization"
+# Test the mainnet node (port 3201)
+echo "Testing mainnet node (node-mainnet:3201)..."
+MAINNET_RESPONSE=$(curl -s http://node-mainnet:3201/)
+echo "Mainnet response: $MAINNET_RESPONSE"
+if echo "$MAINNET_RESPONSE" | grep -q '"specializations":\["RadixMainnet"\]'; then
+  echo "✅ Mainnet node has RadixMainnet specialization"
 else
-  echo "Node on port 3201 does not have RadixMainnet specialization"
+  echo "❌ Mainnet node does not have RadixMainnet specialization"
   exit 1
 fi
 
-# Check stokenet node (port 3202)
-if [ "$NODE2_IP" == "172.28.1.3" ]; then
-  echo "Confirmed node on port 3202 has RadixStokenet specialization"
+# Test the stokenet node (port 3202)
+echo "Testing stokenet node (node-stokenet:3202)..."
+STOKENET_RESPONSE=$(curl -s http://node-stokenet:3202/)
+echo "Stokenet response: $STOKENET_RESPONSE"
+if echo "$STOKENET_RESPONSE" | grep -q '"specializations":\["RadixStokenet"\]'; then
+  echo "✅ Stokenet node has RadixStokenet specialization"
 else
-  echo "Node on port 3202 does not have RadixStokenet specialization"
+  echo "❌ Stokenet node does not have RadixStokenet specialization"
   exit 1
 fi
 
-# Check generic node (port 3203)
-if [ "$NODE3_IP" == "172.28.1.4" ]; then
-  echo "Confirmed node on port 3203 has no specializations"
+# Test the generic node (port 3203)
+echo "Testing generic node (node-generic:3203)..."
+GENERIC_RESPONSE=$(curl -s http://node-generic:3203/)
+echo "Generic response: $GENERIC_RESPONSE"
+if echo "$GENERIC_RESPONSE" | grep -q '"specializations":\[\]'; then
+  echo "✅ Generic node has no specializations"
 else
-  echo "Node on port 3203 has specializations when it should not"
+  echo "❌ Generic node has specializations when it should not"
   exit 1
 fi
 
-echo "Node specializations test passed" 
+echo "All specialization tests passed! ✅"
+exit 0 

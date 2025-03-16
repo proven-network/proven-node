@@ -20,9 +20,6 @@ pub struct Node {
     /// The fully qualified domain name of the node.
     pub fqdn: String,
 
-    /// The unique identifier of the node.
-    pub id: String,
-
     /// The public key of the node.
     pub public_key: String,
 
@@ -36,6 +33,12 @@ pub struct Node {
 /// The possible specializations of a node.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum NodeSpecialization {
+    /// Runs a mainnet Ethereum node.
+    EthereumMainnet,
+
+    /// Runs a Sepolia (testnet) Ethereum node.
+    EthereumSepolia,
+
     /// Runs a mainnet Radix node.
     RadixMainnet,
 

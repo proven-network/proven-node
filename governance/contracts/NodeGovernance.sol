@@ -34,11 +34,9 @@ contract NodeGovernance is
         string fqdn;
         string publicKey;
         uint256 votes;
-        string id;  // Unique identifier
     }
 
     struct Node {
-        string id;
         string region;
         string availabilityZone;
         string fqdn;
@@ -50,15 +48,16 @@ contract NodeGovernance is
     // Storage
     mapping(bytes32 => NodeOpportunity) public opportunities;
     mapping(bytes32 => mapping(address => NodeCandidate)) public candidates;
-    mapping(string => Node) public nodes;
-    mapping(uint256 => string) public nodeIds; // Index to ID mapping for iteration
+    mapping(string => Node) public nodes; // publicKey to Node mapping
+    mapping(uint256 => string) public nodePublicKeys; // Index to publicKey mapping for iteration
     uint256 public nodeCount = 0;
+    mapping(string => bool) public usedPublicKeys; // Track used public keys
 
     // Events
     event OpportunityCreated(bytes32 id, string region, string availabilityZone);
-    event CandidateRegistered(bytes32 opportunityId, address candidate, string fqdn);
-    event NodeApproved(bytes32 opportunityId, address candidate, string nodeId);
-    event NodeRemoved(string nodeId);
+    event CandidateRegistered(bytes32 opportunityId, address candidate, string fqdn, string publicKey);
+    event NodeApproved(bytes32 opportunityId, address candidate, string publicKey);
+    event NodeRemoved(string publicKey);
 
     /**
      * @dev Constructor to initialize the governor contract.
@@ -118,16 +117,16 @@ contract NodeGovernance is
         string memory publicKey
     ) external {
         require(opportunities[opportunityId].open, "Opportunity is closed");
+        require(!usedPublicKeys[publicKey], "Public key already in use");
 
         candidates[opportunityId][msg.sender] = NodeCandidate({
             owner: msg.sender,
             fqdn: fqdn,
             publicKey: publicKey,
-            votes: 0,
-            id: string(abi.encodePacked(opportunityId, "-", msg.sender))
+            votes: 0
         });
 
-        emit CandidateRegistered(opportunityId, msg.sender, fqdn);
+        emit CandidateRegistered(opportunityId, msg.sender, fqdn, publicKey);
     }
 
     /**
@@ -139,11 +138,11 @@ contract NodeGovernance is
 
         NodeCandidate memory winner = candidates[opportunityId][candidate];
         NodeOpportunity memory opportunity = opportunities[opportunityId];
+        
+        require(!usedPublicKeys[winner.publicKey], "Public key already in use");
+        usedPublicKeys[winner.publicKey] = true;
 
-        string memory nodeId = winner.id;
-
-        nodes[nodeId] = Node({
-            id: nodeId,
+        nodes[winner.publicKey] = Node({
             region: opportunity.region,
             availabilityZone: opportunity.availabilityZone,
             fqdn: winner.fqdn,
@@ -153,25 +152,25 @@ contract NodeGovernance is
         });
 
         // Add to list for iteration
-        nodeIds[nodeCount] = nodeId;
+        nodePublicKeys[nodeCount] = winner.publicKey;
         nodeCount++;
 
         // Close opportunity
         opportunities[opportunityId].open = false;
 
-        emit NodeApproved(opportunityId, candidate, nodeId);
+        emit NodeApproved(opportunityId, candidate, winner.publicKey);
     }
 
     /**
      * @dev Remove a node (can only be called through governance).
      */
-    function removeNode(string memory nodeId) public onlyGovernance {
-        require(bytes(nodes[nodeId].id).length > 0, "Node does not exist");
+    function removeNode(string memory publicKey) public onlyGovernance {
+        require(bytes(nodes[publicKey].publicKey).length > 0, "Node does not exist");
 
         // Find index
         uint256 indexToRemove = type(uint256).max;
         for (uint256 i = 0; i < nodeCount; i++) {
-            if (keccak256(bytes(nodeIds[i])) == keccak256(bytes(nodeId))) {
+            if (keccak256(bytes(nodePublicKeys[i])) == keccak256(bytes(publicKey))) {
                 indexToRemove = i;
                 break;
             }
@@ -181,17 +180,18 @@ contract NodeGovernance is
 
         // Replace with the last element
         if (indexToRemove != nodeCount - 1) {
-            nodeIds[indexToRemove] = nodeIds[nodeCount - 1];
+            nodePublicKeys[indexToRemove] = nodePublicKeys[nodeCount - 1];
         }
 
         // Delete last element
-        delete nodeIds[nodeCount - 1];
+        delete nodePublicKeys[nodeCount - 1];
         nodeCount--;
 
-        // Delete node data
-        delete nodes[nodeId];
+        // Delete node data and mark public key as available
+        delete nodes[publicKey];
+        delete usedPublicKeys[publicKey];
 
-        emit NodeRemoved(nodeId);
+        emit NodeRemoved(publicKey);
     }
 
     /**
@@ -201,8 +201,8 @@ contract NodeGovernance is
         Node[] memory activeNodes = new Node[](nodeCount);
 
         for (uint256 i = 0; i < nodeCount; i++) {
-            string memory nodeId = nodeIds[i];
-            activeNodes[i] = nodes[nodeId];
+            string memory publicKey = nodePublicKeys[i];
+            activeNodes[i] = nodes[publicKey];
         }
 
         return activeNodes;

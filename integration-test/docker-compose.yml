@@ -1,20 +1,27 @@
 services:
-  # Node with RadixMainnet specialization
-  node-mainnet:
+  # Node with radix-mainnet specialization
+  bulbasaur:
     build:
       context: ..
       dockerfile: integration-test/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+        CACHEBUST: ${CACHEBUST:-1}
     environment:
-      - NODE_ID=node1
-      - NODE_SPECIALIZATION=RadixMainnet
       - PORT=3201
+      - PRIVATE_KEY=5625b9a5552793f321c6b1178fd20be8f8ab83fbab91a729fb9d5d222fc830c2
     ports:
       - "3201:3201"
     volumes:
       - mainnet-data:/tmp/proven
+      - shared-config:/etc/proven
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git-cache:/usr/local/cargo/git
+      - target-cache:/app/target
     networks:
       proven-network:
         ipv4_address: 172.28.1.2
+    hostname: bulbasaur.local
     deploy:
       resources:
         limits:
@@ -22,21 +29,28 @@ services:
           memory: 4G
 
   # Node with RadixStokenet specialization
-  node-stokenet:
+  charmander:
     build:
       context: ..
       dockerfile: integration-test/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+        CACHEBUST: ${CACHEBUST:-2}
     environment:
-      - NODE_ID=node2
-      - NODE_SPECIALIZATION=RadixStokenet
       - PORT=3202
+      - PRIVATE_KEY=76709830bdd5eee1601fc8dee71713a9dde29c9895d15b3208bd26ce0c9e266d
     ports:
       - "3202:3202"
     volumes:
       - stokenet-data:/tmp/proven
+      - shared-config:/etc/proven
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git-cache:/usr/local/cargo/git
+      - target-cache:/app/target
     networks:
       proven-network:
         ipv4_address: 172.28.1.3
+    hostname: charmander.local
     deploy:
       resources:
         limits:
@@ -44,20 +58,28 @@ services:
           memory: 4G
 
   # Generic node without specializations
-  node-generic:
+  squirtle:
     build:
       context: ..
       dockerfile: integration-test/Dockerfile
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+        CACHEBUST: ${CACHEBUST:-3}
     environment:
-      - NODE_ID=node3
       - PORT=3203
+      - PRIVATE_KEY=9d3585d534880f32264b35c087cbc84d774b53fcbebc9649fec7bdf2db04ffe4
     ports:
       - "3203:3203"
     volumes:
       - generic-data:/tmp/proven
+      - shared-config:/etc/proven
+      - cargo-cache:/usr/local/cargo/registry
+      - cargo-git-cache:/usr/local/cargo/git
+      - target-cache:/app/target
     networks:
       proven-network:
         ipv4_address: 172.28.1.4
+    hostname: squirtle.local
     deploy:
       resources:
         limits:
@@ -69,15 +91,19 @@ services:
     build:
       context: ..
       dockerfile: integration-test/Dockerfile.test
+      args:
+        BUILDKIT_INLINE_CACHE: 1
     depends_on:
-      - node-mainnet
-      - node-stokenet
-      - node-generic
+      - bulbasaur
+      - charmander
+      - squirtle
     volumes:
       - ./test-scripts:/test-scripts
+      - shared-config:/etc/proven
     networks:
       proven-network:
         ipv4_address: 172.28.1.10
+    hostname: test-client
 
 networks:
   proven-network:
@@ -89,4 +115,8 @@ networks:
 volumes:
   mainnet-data:
   stokenet-data:
-  generic-data: 
+  generic-data:
+  shared-config:
+  cargo-cache:
+  cargo-git-cache:
+  target-cache: 

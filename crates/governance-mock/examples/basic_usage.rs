@@ -10,7 +10,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let node1 = Node {
         availability_zone: "az1".to_string(),
         fqdn: "node1.example.com".to_string(),
-        id: "node1".to_string(),
         public_key: "key1".to_string(),
         region: "region1".to_string(),
         specializations: HashSet::new(),
@@ -19,7 +18,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let node2 = Node {
         availability_zone: "az2".to_string(),
         fqdn: "node2.example.com".to_string(),
-        id: "node2".to_string(),
         public_key: "key2".to_string(),
         region: "region2".to_string(),
         specializations: {
@@ -55,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let topology = governance.get_topology().await?;
     println!("Topology:");
     for node in topology {
-        println!("  - Node ID: {}, FQDN: {}", node.id, node.fqdn);
+        println!("  - Node ID: {}, FQDN: {}", node.public_key, node.fqdn);
     }
 
     // Get active versions

@@ -77,7 +77,11 @@ async fn main() {
             for node in nodes {
                 info!(
                     "Node {}: Region: {}, AZ: {}, FQDN: {}, Specializations: {:?}",
-                    node.id, node.region, node.availability_zone, node.fqdn, node.specializations
+                    node.public_key,
+                    node.region,
+                    node.availability_zone,
+                    node.fqdn,
+                    node.specializations
                 );
             }
         }
