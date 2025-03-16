@@ -1,3 +1,4 @@
+use std::env;
 use std::fs::{self, create_dir_all};
 use std::path::Path;
 use std::process::Command;
@@ -88,68 +89,115 @@ fn clean_vendor_file(package_name: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-fn main() {
-    // Tell Cargo when to rerun
-    println!("cargo:rerun-if-changed=package.json");
-    println!("cargo:rerun-if-changed=rollup.config.js");
-    println!("cargo:rerun-if-changed=src/**/*.ts");
-
-    // Run npm install
-    let npm_install_status = Command::new("npm")
-        .arg("install")
-        .status()
-        .expect("Failed to run npm install");
-
-    if !npm_install_status.success() {
-        panic!("npm install failed");
-    }
-
-    // Run npm build
-    let npm_install_status = Command::new("npm")
-        .arg("run")
-        .arg("build")
-        .status()
-        .expect("Failed to run npm run build");
-
-    if !npm_install_status.success() {
-        panic!("npm run build failed");
-    }
-
-    // Do ESM replacements on extensions
-    [
+fn check_output_files_exist() -> bool {
+    // Check if all expected output files exist
+    let expected_files = [
         "src/extensions/gateway_api_sdk/gateway-api-sdk.js",
         "src/extensions/kv/kv-options.js",
         "src/extensions/kv/kv-runtime.js",
-    ]
-    .iter()
-    .for_each(|path| {
-        let content = fs::read_to_string(path).expect("Failed to read file");
-        // Do this replacement first to avoid cycle
-        let intermediate = content.replace(
-            "@radixdlt/babylon-gateway-api-sdk",
-            "proven:raw_babylon_gateway_api",
-        );
-        let replaced = replace_esm_imports(&intermediate);
-        fs::write(path, replaced).expect("Failed to write file");
-    });
+        "vendor/openai/index.mjs",
+        "vendor/uuid/index.mjs",
+        "vendor/zod/index.mjs",
+        "vendor/@radixdlt/babylon-gateway-api-sdk/index.mjs",
+        "vendor/@radixdlt/radix-engine-toolkit/index.mjs",
+    ];
 
-    // Rollup deps
-    let rollup_status = Command::new("npm")
-        .arg("run")
-        .arg("bundle")
-        .status()
-        .expect("Failed to run rollup");
+    expected_files.iter().all(|file| Path::new(file).exists())
+}
 
-    if !rollup_status.success() {
-        panic!("rollup bundling failed");
+fn main() {
+    // Tell Cargo when to rerun - only when these specific files change
+    println!("cargo:rerun-if-changed=package.json");
+    println!("cargo:rerun-if-changed=package-lock.json");
+    println!("cargo:rerun-if-changed=rollup.config.js");
+    println!("cargo:rerun-if-changed=src/import_replacements.rs");
+
+    // Only rerun for TS files, not for any file in src
+    println!("cargo:rerun-if-changed=src/**/*.ts");
+
+    // Also track the vendor directory files
+    println!("cargo:rerun-if-changed=vendor/openai/index.mjs");
+    println!("cargo:rerun-if-changed=vendor/uuid/index.mjs");
+    println!("cargo:rerun-if-changed=vendor/zod/index.mjs");
+    println!("cargo:rerun-if-changed=vendor/@radixdlt/babylon-gateway-api-sdk/index.mjs");
+    println!("cargo:rerun-if-changed=vendor/@radixdlt/radix-engine-toolkit/index.mjs");
+
+    // Add this to prevent rerunning for other files
+    println!("cargo:rerun-if-changed=build.rs");
+
+    // Tell Cargo to only rerun when explicitly tracked files change
+    println!("cargo:rerun-if-env-changed=CARGO_FORCE_JS_REBUILD");
+
+    // Check if all the output files exist and if npm dependencies are already installed
+    let output_files_exist = check_output_files_exist();
+    let node_modules_exists = Path::new("node_modules").exists();
+    let force_rebuild = env::var("CARGO_FORCE_JS_REBUILD").is_ok();
+
+    if !output_files_exist || !node_modules_exists || force_rebuild {
+        // Create vendor directory if it doesn't exist
+        if !Path::new("vendor").exists() {
+            create_dir_all("vendor").expect("Failed to create vendor directory");
+        }
+
+        // Run npm install
+        let npm_install_status = Command::new("npm")
+            .arg("install")
+            .status()
+            .expect("Failed to run npm install");
+
+        if !npm_install_status.success() {
+            panic!("npm install failed");
+        }
+
+        // Run npm build
+        let npm_build_status = Command::new("npm")
+            .arg("run")
+            .arg("build")
+            .status()
+            .expect("Failed to run npm run build");
+
+        if !npm_build_status.success() {
+            panic!("npm run build failed");
+        }
+
+        // Do ESM replacements on extensions
+        [
+            "src/extensions/gateway_api_sdk/gateway-api-sdk.js",
+            "src/extensions/kv/kv-options.js",
+            "src/extensions/kv/kv-runtime.js",
+        ]
+        .iter()
+        .for_each(|path| {
+            let content = fs::read_to_string(path).expect("Failed to read file");
+            // Do this replacement first to avoid cycle
+            let intermediate = content.replace(
+                "@radixdlt/babylon-gateway-api-sdk",
+                "proven:raw_babylon_gateway_api",
+            );
+            let replaced = replace_esm_imports(&intermediate);
+            fs::write(path, replaced).expect("Failed to write file");
+        });
+
+        // Rollup deps
+        let rollup_status = Command::new("npm")
+            .arg("run")
+            .arg("bundle")
+            .status()
+            .expect("Failed to run rollup");
+
+        if !rollup_status.success() {
+            panic!("rollup bundling failed");
+        }
+        clean_vendor_file("openai").expect("Failed to clean openai bundle");
+        clean_vendor_file("uuid").expect("Failed to clean uuid bundle");
+
+        // Copy and clean other packages
+        copy_and_clean_package("zod").expect("Failed to process zod files");
+        copy_and_clean_package("@radixdlt/babylon-gateway-api-sdk")
+            .expect("Failed to process @radixdlt/babylon-gateway-api-sdk files");
+        copy_and_clean_package("@radixdlt/radix-engine-toolkit")
+            .expect("Failed to process @radixdlt/radix-engine-toolkit files");
+    } else {
+        println!("cargo:warning=Skipping JS build as all output files already exist");
     }
-    clean_vendor_file("openai").expect("Failed to clean openai bundle");
-    clean_vendor_file("uuid").expect("Failed to clean uuid bundle");
-
-    // Copy and clean other packages
-    copy_and_clean_package("zod").expect("Failed to process zod files");
-    copy_and_clean_package("@radixdlt/babylon-gateway-api-sdk")
-        .expect("Failed to process @radixdlt/babylon-gateway-api-sdk files");
-    copy_and_clean_package("@radixdlt/radix-engine-toolkit")
-        .expect("Failed to process @radixdlt/radix-engine-toolkit files");
 }
