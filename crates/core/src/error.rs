@@ -49,4 +49,8 @@ pub enum Error {
     /// Runtime error.
     #[error(transparent)]
     Runtime(#[from] proven_runtime::Error),
+
+    /// Governance error.
+    #[error("governance error: {0}")]
+    Governance(String),
 }

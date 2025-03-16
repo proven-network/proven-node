@@ -98,7 +98,6 @@ services:
       - charmander
       - squirtle
     volumes:
-      - ./test-scripts:/test-scripts
       - shared-config:/etc/proven
     networks:
       proven-network:

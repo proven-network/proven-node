@@ -1,0 +1,12 @@
+{
+  "name": "proven-integration-tests",
+  "version": "1.0.0",
+  "description": "Integration tests for Proven Node",
+  "main": "run-tests.js",
+  "scripts": {
+    "test": "node run-tests.js"
+  },
+  "dependencies": {
+    "node-fetch": "2.7.0"
+  }
+} 

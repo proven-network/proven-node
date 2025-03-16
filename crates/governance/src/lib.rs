@@ -10,9 +10,10 @@ use std::fmt::Debug;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 /// A node in the network topology.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     /// The availability zone of the node.
     pub availability_zone: String,
@@ -31,7 +32,7 @@ pub struct Node {
 }
 
 /// The possible specializations of a node.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum NodeSpecialization {
     /// Runs a mainnet Ethereum node.
     EthereumMainnet,
@@ -65,14 +66,36 @@ pub struct Version {
     pub sequence: u64,
 }
 
+/// The kind of governance error.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GovernanceErrorKind {
+    /// Error related to private key operations
+    PrivateKey,
+
+    /// Error when a required value is not initialized
+    NotInitialized,
+
+    /// Error when a node is not found in the topology
+    NodeNotFound,
+
+    /// Error with contract/external service
+    External,
+
+    /// Other/unknown error
+    Other,
+}
+
 /// Marker trait for `Governance` errors
-pub trait GovernanceError: Debug + Error + Send + Sync {}
+pub trait GovernanceError: Debug + Error + Send + Sync {
+    /// Returns the kind of this error
+    fn kind(&self) -> GovernanceErrorKind;
+}
 
 /// Abstract interface for getting active version information, network topology, etc. from a governance mechanism.
 #[async_trait]
 pub trait Governance
 where
-    Self: Send + Sync + 'static,
+    Self: Send + Sync + Clone + 'static,
 {
     /// The error type for this server.
     type Error: GovernanceError;
@@ -82,4 +105,7 @@ where
 
     /// Get the network topology.
     async fn get_topology(&self) -> Result<Vec<Node>, Self::Error>;
+
+    /// Get the node definition for this node based on the private key.
+    async fn get_self(&self) -> Result<Node, Self::Error>;
 }

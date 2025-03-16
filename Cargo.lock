@@ -9025,6 +9025,7 @@ name = "proven-governance"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
  "tokio",
 ]
 
@@ -9036,11 +9037,13 @@ dependencies = [
  "alloy-sol-types",
  "async-trait",
  "dotenv",
+ "ed25519-dalek",
  "eyre",
  "helios-common",
  "helios-consensus-core",
  "helios-core",
  "helios-ethereum",
+ "hex",
  "proven-governance",
  "thiserror 2.0.12",
  "tokio",
@@ -9053,7 +9056,11 @@ name = "proven-governance-mock"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "ed25519-dalek",
+ "hex",
  "proven-governance",
+ "serde",
+ "serde_json",
  "thiserror 2.0.12",
  "tokio",
 ]
@@ -9198,8 +9205,6 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "console",
- "ed25519-dalek",
- "hex",
  "hickory-resolver",
  "proven-applications",
  "proven-attestation",

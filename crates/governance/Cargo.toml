@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 async-trait = { workspace = true }
+serde = { workspace = true }
 tokio = { workspace = true }

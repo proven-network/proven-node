@@ -11,7 +11,7 @@ mod rpc;
 pub use error::{Error, Result};
 use handlers::{
     ApplicationHttpContext, application_http_handler, create_challenge_handler, http_rpc_handler,
-    verify_session_handler, ws_rpc_handler,
+    verify_session_handler, whoami_handler, ws_rpc_handler,
 };
 
 use std::collections::HashSet;
@@ -33,16 +33,17 @@ use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 #[derive(Clone)]
-#[allow(dead_code)]
-struct PrimaryContext<AM, RM, SM, A>
+pub(crate) struct PrimaryContext<AM, RM, SM, A, G>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     SM: SessionManagement,
     A: Attestor,
+    G: Governance,
 {
     pub application_manager: AM,
-    pub attestor: A,
+    pub _attestor: A,
+    pub governance: G,
     pub runtime_pool_manager: RM,
     pub session_manager: SM,
 }
@@ -86,7 +87,7 @@ where
 {
     application_manager: AM,
     attestor: A,
-    _governance: G,
+    governance: G,
     primary_hostnames: HashSet<String>,
     runtime_pool_manager: RM,
     session_manager: SM,
@@ -116,7 +117,7 @@ where
         Self {
             application_manager,
             attestor,
-            _governance: governance,
+            governance,
             primary_hostnames,
             runtime_pool_manager,
             session_manager,
@@ -147,13 +148,15 @@ where
 
         let ctx = PrimaryContext {
             application_manager: self.application_manager.clone(),
-            attestor: self.attestor.clone(),
+            _attestor: self.attestor.clone(),
+            governance: self.governance.clone(),
             runtime_pool_manager: self.runtime_pool_manager.clone(),
             session_manager: self.session_manager.clone(),
         };
 
         let primary_router = Router::new()
             .route("/", get(|| async { redirect_response }))
+            .route("/whoami", get(whoami_handler).with_state(ctx.clone()))
             .route(
                 "/sessions/{application_id}/challenge",
                 get(create_challenge_handler).with_state(ctx.clone()),

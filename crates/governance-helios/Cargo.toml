@@ -8,11 +8,13 @@ alloy = { workspace = true }
 alloy-sol-types = { workspace = true }
 async-trait = { workspace = true }
 dotenv = { workspace = true }
+ed25519-dalek = { workspace = true }
 eyre = { workspace = true }
 helios-common = { workspace = true }
 helios-consensus-core = { workspace = true }
 helios-core = { workspace = true }
 helios-ethereum = { workspace = true }
+hex = { workspace = true }
 proven-governance = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

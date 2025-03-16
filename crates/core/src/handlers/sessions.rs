@@ -11,6 +11,7 @@ use ed25519_dalek::VerifyingKey;
 use headers::Origin;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
+use proven_governance::Governance;
 use proven_radix_rola::SignedChallenge;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::{CreateSessionOptions, SessionManagement};
@@ -25,11 +26,11 @@ pub struct SessionRequest {
     signed_challenge: String,
 }
 
-pub(crate) async fn create_challenge_handler<AM, RM, SM, A>(
+pub(crate) async fn create_challenge_handler<AM, RM, SM, A, G>(
     Path(application_id): Path<String>,
     State(PrimaryContext {
         session_manager, ..
-    }): State<PrimaryContext<AM, RM, SM, A>>,
+    }): State<PrimaryContext<AM, RM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
 where
@@ -37,6 +38,7 @@ where
     RM: RuntimePoolManagement,
     SM: SessionManagement,
     A: Attestor,
+    G: Governance,
 {
     let origin = match origin_header {
         Some(value) => value.to_string(),
@@ -70,11 +72,11 @@ where
     }
 }
 
-pub(crate) async fn verify_session_handler<AM, RM, SM, A>(
+pub(crate) async fn verify_session_handler<AM, RM, SM, A, G>(
     Path(application_id): Path<String>,
     State(PrimaryContext {
         session_manager, ..
-    }): State<PrimaryContext<AM, RM, SM, A>>,
+    }): State<PrimaryContext<AM, RM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     data: TypedMultipart<SessionRequest>,
 ) -> impl IntoResponse
@@ -83,6 +85,7 @@ where
     RM: RuntimePoolManagement,
     SM: SessionManagement,
     A: Attestor,
+    G: Governance,
 {
     let origin = match origin_header {
         Some(value) => value.to_string(),

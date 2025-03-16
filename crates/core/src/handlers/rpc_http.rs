@@ -10,18 +10,20 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
+use proven_governance::Governance;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 use tracing::error;
 
-pub(crate) async fn http_rpc_handler<AM, RM, SM, A>(
+pub(crate) async fn http_rpc_handler<AM, RM, SM, A, G>(
     Path(application_id): Path<String>,
     State(PrimaryContext {
         application_manager,
-        attestor: _,
+        _attestor: _,
+        governance: _,
         runtime_pool_manager,
         session_manager,
-    }): State<PrimaryContext<AM, RM, SM, A>>,
+    }): State<PrimaryContext<AM, RM, SM, A, G>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse
@@ -30,6 +32,7 @@ where
     RM: RuntimePoolManagement,
     SM: SessionManagement,
     A: Attestor,
+    G: Governance,
 {
     let maybe_session_id = match headers.get("Authorization") {
         Some(header) => match header.to_str() {
