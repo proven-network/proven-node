@@ -40,4 +40,8 @@ pub enum Error {
     /// Bitcoin Core is not ready.
     #[error("bitcoind is not ready")]
     NotReady,
+
+    /// Error related to RPC calls
+    #[error("RPC error: {0}")]
+    Rpc(String),
 }

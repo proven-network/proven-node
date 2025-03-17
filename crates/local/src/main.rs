@@ -23,6 +23,22 @@ use tracing_subscriber::FmtSubscriber;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
+    /// Bitcoin mainnet store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/bitcoin-mainnet",
+        env = "PROVEN_BITCOIN_MAINNET_STORE_DIR"
+    )]
+    bitcoin_mainnet_store_dir: PathBuf,
+
+    /// Bitcoin testnet store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/bitcoin-testnet",
+        env = "PROVEN_BITCOIN_TESTNET_STORE_DIR"
+    )]
+    bitcoin_testnet_store_dir: PathBuf,
+
     #[arg(long, default_value_t = 3200, env = "PROVEN_PORT")]
     port: u16,
 

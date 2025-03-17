@@ -10,7 +10,6 @@ mod error;
 pub use error::{Error, Result};
 
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::str;
 
@@ -22,11 +21,16 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info};
+
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 
 // RPC endpoint (host/port)
 static BITCOIND_RPC_HOST: &str = "127.0.0.1";
 static BITCOIND_RPC_PORT: u16 = 8332;
+static BITCOIND_RPC_USER: &str = "bitcoin";
+static BITCOIND_RPC_PASSWORD: &str = "bitcoin";
 
 /// Represents a Bitcoin network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,17 +96,8 @@ impl BitcoinNode {
     pub async fn start(&self) -> Result<JoinHandle<()>> {
         debug!("Starting Bitcoin Core node...");
 
-        // Create data directories
-        let data_dir = self.get_data_dir();
-        let config_path = self.get_config_path();
-
-        fs::create_dir_all(&data_dir)
+        fs::create_dir_all(&self.store_dir)
             .map_err(|e| Error::Io("failed to create data directory", e))?;
-
-        // Prepare Bitcoin config file
-        let config_content = self.generate_config_file();
-        fs::write(&config_path, config_content)
-            .map_err(|e| Error::Io("failed to write config file", e))?;
 
         // Start bitcoind
         let network_arg = match self.network {
@@ -112,18 +107,28 @@ impl BitcoinNode {
             BitcoinNetwork::Signet => vec!["--signet"],
         };
 
-        let mut cmd = Command::new("/bin/bitcoind");
-        cmd.args([
-            &format!("--conf={}", config_path.display()),
-            &format!("--datadir={}", data_dir.display()),
-        ])
-        .args(network_arg)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        let mut cmd = Command::new("bitcoind");
+        cmd.args([&format!("--datadir={}", self.store_dir)])
+            .args(network_arg)
+            .args([
+                &format!("--rpcuser={}", BITCOIND_RPC_USER),
+                &format!("--rpcpassword={}", BITCOIND_RPC_PASSWORD),
+                "--rpcallowip=127.0.0.1",
+                "--server=1",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| Error::Io("failed to spawn bitcoind", e))?;
+        debug!("Attempting to spawn bitcoind with command: {:?}", cmd);
+        let mut child = match cmd.spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                error!("Failed to spawn bitcoind process: {}", e);
+                error!("Command was: {:?}", cmd);
+                return Err(Error::Io("failed to spawn bitcoind", e));
+            }
+        };
+        info!("Bitcoin Core process spawned successfully");
 
         // Handle stdout
         let stdout = child
@@ -137,7 +142,7 @@ impl BitcoinNode {
         let _stdout_task = tracker.spawn(async move {
             let mut lines = stdout_lines;
             while let Ok(Some(line)) = lines.next_line().await {
-                trace!("bitcoind stdout: {line}");
+                info!("bitcoind stdout: {line}");
             }
         });
 
@@ -153,7 +158,7 @@ impl BitcoinNode {
         let _stderr_task = tracker.spawn(async move {
             let mut lines = stderr_lines;
             while let Ok(Some(line)) = lines.next_line().await {
-                trace!("bitcoind stderr: {line}");
+                info!("bitcoind stderr: {line}");
             }
         });
 
@@ -211,6 +216,8 @@ impl BitcoinNode {
             }
         });
 
+        self.task_tracker.close();
+
         // Wait for the node to be ready
         self.wait_until_ready().await?;
 
@@ -225,20 +232,9 @@ impl BitcoinNode {
         self.shutdown_token.cancel();
 
         // Wait for tasks to complete
-        self.task_tracker.close();
-        let () = self.task_tracker.wait().await;
+        self.task_tracker.wait().await;
 
         info!("Bitcoin Core node shut down.");
-    }
-
-    fn get_data_dir(&self) -> PathBuf {
-        Path::new(&self.store_dir).join("bitcoin").join("data")
-    }
-
-    fn get_config_path(&self) -> PathBuf {
-        Path::new(&self.store_dir)
-            .join("bitcoin")
-            .join("bitcoin.conf")
     }
 
     /// Returns the RPC URL for the Bitcoin Core node.
@@ -247,23 +243,78 @@ impl BitcoinNode {
         format!("http://{BITCOIND_RPC_HOST}:{BITCOIND_RPC_PORT}")
     }
 
+    /// Make an RPC call to the Bitcoin Core node
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC call fails
+    pub async fn rpc_call<T: Serialize, R: for<'de> Deserialize<'de>>(
+        &self,
+        method: &str,
+        params: T,
+    ) -> Result<R> {
+        let client = reqwest::Client::new();
+
+        let request_body = json!({
+            "jsonrpc": "1.0",
+            "id": "rust-client",
+            "method": method,
+            "params": params,
+        });
+
+        let response = client
+            .post(&self.get_rpc_url())
+            .basic_auth(BITCOIND_RPC_USER, Some(BITCOIND_RPC_PASSWORD))
+            .json(&request_body)
+            .send()
+            .await
+            .map_err(|e| Error::Rpc(format!("Request failed: {}", e)))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(Error::Rpc(format!("HTTP error {}: {}", status, error_text)));
+        }
+
+        let response_body: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| Error::Rpc(format!("Failed to parse response: {}", e)))?;
+
+        if let Some(error) = response_body.get("error") {
+            if !error.is_null() {
+                return Err(Error::Rpc(format!("RPC error: {:?}", error)));
+            }
+        }
+
+        serde_json::from_value(response_body["result"].clone())
+            .map_err(|e| Error::Rpc(format!("Failed to parse result: {}", e)))
+    }
+
     async fn wait_until_ready(&self) -> Result<()> {
         info!("Waiting for Bitcoin Core node to be ready...");
 
-        // Use simple TCP connection check instead of RPC
-        // Bitcoin's RPC will be available when the daemon is up
         let mut retries = 0;
         let max_retries = 30;
 
         while retries < max_retries {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-            // Try to connect to the RPC port
-            if (tokio::net::TcpStream::connect((BITCOIND_RPC_HOST, BITCOIND_RPC_PORT)).await)
-                .is_ok()
+            // Try to make a simple RPC call
+            match self
+                .rpc_call::<Vec<()>, Value>("getblockchaininfo", vec![])
+                .await
             {
-                info!("Bitcoin Core node is ready.");
-                return Ok(());
+                Ok(_) => {
+                    info!("Bitcoin Core node is ready with RPC interface accessible.");
+                    return Ok(());
+                }
+                Err(e) => {
+                    debug!("Node not ready yet: {}", e);
+                }
             }
 
             retries += 1;
@@ -272,39 +323,5 @@ impl BitcoinNode {
 
         error!("Timed out waiting for Bitcoin Core node to be ready");
         Err(Error::NotReady)
-    }
-
-    fn generate_config_file(&self) -> String {
-        let network = match self.network {
-            BitcoinNetwork::Mainnet => "",
-            BitcoinNetwork::Testnet => "testnet=1\n",
-            BitcoinNetwork::Regtest => "regtest=1\n",
-            BitcoinNetwork::Signet => "signet=1\n",
-        };
-
-        format!(
-            "{network}
-# Network-specific settings
-server=1
-rpcallowip=127.0.0.1
-rpcbind=127.0.0.1
-rpcuser=proven
-rpcpassword=provensecret
-
-# Bitcoin Core settings
-txindex=1
-daemon=0
-disablewallet=0
-
-# Performance settings
-dbcache=1000
-maxmempool=300
-maxconnections=40
-
-# Logging settings
-debug=net
-printtoconsole=1
-"
-        )
     }
 }

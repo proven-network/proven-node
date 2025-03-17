@@ -5,6 +5,7 @@ use std::convert::Infallible;
 use bytes::Bytes;
 use proven_applications::{Application, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
+use proven_bitcoin_core::BitcoinNode;
 use proven_core::Core;
 use proven_ethereum_lighthouse::LighthouseNode;
 use proven_ethereum_reth::RethNode;
@@ -106,6 +107,9 @@ pub struct Services {
 
     /// The Ethereum Lighthouse node.
     pub ethereum_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
+
+    /// The Bitcoin node (testnet or mainnet).
+    pub bitcoin_node: Option<Arc<Mutex<BitcoinNode>>>,
 
     /// The Postgres database.
     pub postgres: Option<Arc<Mutex<Postgres>>>,

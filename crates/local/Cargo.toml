@@ -13,6 +13,7 @@ hickory-resolver = { workspace = true }
 proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-dev = { workspace = true }
+proven-bitcoin-core = { workspace = true }
 proven-core = { workspace = true }
 proven-ethereum-reth = { workspace = true }
 proven-ethereum-lighthouse = { workspace = true }

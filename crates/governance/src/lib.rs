@@ -34,6 +34,12 @@ pub struct Node {
 /// The possible specializations of a node.
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum NodeSpecialization {
+    /// Runs a Bitcoin node.
+    BitcoinMainnet,
+
+    /// Runs a Bitcoin testnet node.
+    BitcoinTestnet,
+
     /// Runs a mainnet Ethereum node.
     EthereumMainnet,
 

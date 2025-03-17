@@ -15,6 +15,6 @@
     "fqdn": "squirtle.local",
     "public_key": "2eed1d6d1b8a8dd6ffe7b186dc5ea59a7e572bae03dafaec3f388d7c7798ca8a",
     "endpoint": "http://squirtle.local:3203",
-    "specializations": []
+    "specializations": ["bitcoin-testnet"]
   }
 ]

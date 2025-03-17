@@ -11,6 +11,7 @@ use std::time::Duration;
 use async_nats::Client as NatsClient;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
+use proven_bitcoin_core::{BitcoinNode, BitcoinNodeOptions, BitcoinNetwork};
 use proven_core::{Core, CoreOptions};
 use proven_ethereum_reth::{RethNode, RethNodeOptions, EthereumNetwork as RethNetwork};
 use proven_ethereum_lighthouse::{LighthouseNode, LighthouseNodeOptions, EthereumNetwork as LighthouseNetwork};
@@ -66,6 +67,9 @@ pub struct Bootstrap {
     ethereum_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
     ethereum_lighthouse_node_handle: Option<JoinHandle<()>>,
 
+    bitcoin_node: Option<BitcoinNode>,
+    bitcoin_node_handle: Option<JoinHandle<()>>,
+
     postgres: Option<Postgres>,
     postgres_handle: Option<JoinHandle<proven_postgres::Result<()>>>,
 
@@ -111,6 +115,9 @@ impl Bootstrap {
 
             ethereum_lighthouse_node: None,
             ethereum_lighthouse_node_handle: None,
+
+            bitcoin_node: None,
+            bitcoin_node_handle: None,
 
             postgres: None,
             postgres_handle: None,
@@ -161,6 +168,12 @@ impl Bootstrap {
             return Err(e);
         }
 
+        if let Err(e) = self.start_bitcoin_node().await {
+            error!("failed to start bitcoin node: {:?}", e);
+            self.unwind_services().await;
+            return Err(e);
+        }
+
         if let Err(e) = self.start_postgres().await {
             error!("failed to start postgres: {:?}", e);
             self.unwind_services().await;
@@ -196,6 +209,7 @@ impl Bootstrap {
         let radix_stokenet_node_handle = self.radix_stokenet_node_handle.take();
         let ethereum_reth_node_handle = self.ethereum_reth_node_handle.take();
         let ethereum_lighthouse_node_handle = self.ethereum_lighthouse_node_handle.take();
+        let bitcoin_node_handle = self.bitcoin_node_handle.take();
         let postgres_handle = self.postgres_handle.take();
         let radix_aggregator_handle = self.radix_aggregator_handle.take();
         let radix_gateway_handle = self.radix_gateway_handle.take();
@@ -209,6 +223,7 @@ impl Bootstrap {
         let radix_stokenet_node_option = self.radix_stokenet_node.take().map(|node| Arc::new(Mutex::new(node)));
         let ethereum_reth_node_option = self.ethereum_reth_node.take().map(|node| Arc::new(Mutex::new(node)));
         let ethereum_lighthouse_node_option = self.ethereum_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let bitcoin_node_option = self.bitcoin_node.take().map(|node| Arc::new(Mutex::new(node)));
         let postgres = self.postgres.take().map(|postgres| Arc::new(Mutex::new(postgres)));
         let radix_aggregator = self.radix_aggregator.take().map(|aggregator| Arc::new(Mutex::new(aggregator)));
         let radix_gateway = self.radix_gateway.take().map(|gateway| Arc::new(Mutex::new(gateway)));
@@ -222,6 +237,7 @@ impl Bootstrap {
             radix_stokenet_node: radix_stokenet_node_option.clone(),
             ethereum_reth_node: ethereum_reth_node_option.clone(),
             ethereum_lighthouse_node: ethereum_lighthouse_node_option.clone(),
+            bitcoin_node: bitcoin_node_option.clone(),
             postgres: postgres.clone(),
             radix_aggregator: radix_aggregator.clone(),
             radix_gateway: radix_gateway.clone(),
@@ -265,6 +281,15 @@ impl Bootstrap {
                         if let Some(handle) = ethereum_lighthouse_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("ethereum lighthouse node exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = bitcoin_node_handle {
+                            if let Ok(e) = handle.await {
+                                error!("bitcoin node exited: {:?}", e);
                                 return;
                             }
                         }
@@ -345,6 +370,10 @@ impl Bootstrap {
             if let Some(lighthouse_node) = &ethereum_lighthouse_node_option {
                 lighthouse_node.lock().await.shutdown().await;
             }
+
+            if let Some(bitcoin_node) = &bitcoin_node_option {
+                bitcoin_node.lock().await.shutdown().await;
+            }
         });
 
         self.task_tracker.close();
@@ -388,6 +417,10 @@ impl Bootstrap {
 
         if let Some(ethereum_reth_node) = self.ethereum_reth_node {
             ethereum_reth_node.shutdown().await;
+        }
+
+        if let Some(bitcoin_node) = self.bitcoin_node {
+            bitcoin_node.shutdown().await;
         }
 
         if let Some(radix_node) = self.radix_mainnet_node {
@@ -509,6 +542,33 @@ impl Bootstrap {
             self.ethereum_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
 
             info!("ethereum lighthouse node (sepolia) started");
+        }
+
+        Ok(())
+    }
+
+    async fn start_bitcoin_node(&mut self) -> Result<()> {
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not set before bitcoin node step");
+        });
+
+        if node_config
+            .specializations
+            .contains(&proven_governance::NodeSpecialization::BitcoinTestnet)
+        {
+            // Start Bitcoin testnet node
+            let bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
+                network: BitcoinNetwork::Testnet,
+                store_dir: self.args.bitcoin_testnet_store_dir.to_string_lossy().to_string(),
+            });
+
+            let bitcoin_node_handle = bitcoin_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Bitcoin testnet node: {}", e)))?;
+
+            self.bitcoin_node = Some(bitcoin_node);
+            self.bitcoin_node_handle = Some(bitcoin_node_handle);
+
+            info!("bitcoin testnet node started");
         }
 
         Ok(())

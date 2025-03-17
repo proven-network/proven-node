@@ -251,7 +251,15 @@ impl Governance for HeliosGovernance {
             for spec_bytes in &node_struct.specializations {
                 // Convert bytes32 to string and check
                 let spec_str = String::from_utf8_lossy(&spec_bytes[..]).to_string();
-                if spec_str.starts_with("radix-mainnet") {
+                if spec_str.starts_with("bitcoin-mainnet") {
+                    specializations.insert(NodeSpecialization::BitcoinMainnet);
+                } else if spec_str.starts_with("bitcoin-testnet") {
+                    specializations.insert(NodeSpecialization::BitcoinTestnet);
+                } else if spec_str.starts_with("ethereum-mainnet") {
+                    specializations.insert(NodeSpecialization::EthereumMainnet);
+                } else if spec_str.starts_with("ethereum-sepolia") {
+                    specializations.insert(NodeSpecialization::EthereumSepolia);
+                } else if spec_str.starts_with("radix-mainnet") {
                     specializations.insert(NodeSpecialization::RadixMainnet);
                 } else if spec_str.starts_with("radix-stokenet") {
                     specializations.insert(NodeSpecialization::RadixStokenet);

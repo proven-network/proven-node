@@ -106,7 +106,11 @@ impl MockGovernance {
             .map(|n| {
                 let mut specializations = HashSet::new();
                 for spec in n.specializations {
-                    if spec == "radix-mainnet" {
+                    if spec == "bitcoin-mainnet" {
+                        specializations.insert(NodeSpecialization::BitcoinMainnet);
+                    } else if spec == "bitcoin-testnet" {
+                        specializations.insert(NodeSpecialization::BitcoinTestnet);
+                    } else if spec == "radix-mainnet" {
                         specializations.insert(NodeSpecialization::RadixMainnet);
                     } else if spec == "radix-stokenet" {
                         specializations.insert(NodeSpecialization::RadixStokenet);
