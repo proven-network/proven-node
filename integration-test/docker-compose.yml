@@ -12,6 +12,13 @@ services:
       - PROVEN_NODE_KEY=5625b9a5552793f321c6b1178fd20be8f8ab83fbab91a729fb9d5d222fc830c2
     ports:
       - "3201:3201"
+      # go-ethereum ports
+      - "30303:30303"      # P2P communication
+      - "8545:8545"        # HTTP-RPC server
+      - "8546:8546"        # WebSocket-RPC server
+      # lighthouse ports
+      - "9000:9000"        # Discovery and libp2p
+      - "5052:5052"        # HTTP API
     volumes:
       - bulbasaur-data:/tmp/proven
       - shared-config:/etc/proven
@@ -37,7 +44,8 @@ services:
       - PROVEN_NODE_KEY=76709830bdd5eee1601fc8dee71713a9dde29c9895d15b3208bd26ce0c9e266d
     ports:
       - "3202:3202"
-      - "30001:30001" # radix stokenet port
+      # radix ports
+      - "30001:30001"   # gossip port
     volumes:
       - charmander-data:/tmp/proven
       - shared-config:/etc/proven

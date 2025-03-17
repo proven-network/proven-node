@@ -107,13 +107,13 @@ RUN wget https://bitcoincore.org/bin/bitcoin-core-27.0/bitcoin-27.0-aarch64-linu
     && install -m 0755 -o root -g root -t /usr/local/bin bitcoin-27.0/bin/bitcoind bitcoin-27.0/bin/bitcoin-cli
 
 # Download and install Go-Ethereum
-RUN wget https://gethstore.blob.core.windows.net/builds/geth-linux-arm64-1.15.4-8ccca244.tar.gz \
-    && tar -xzf geth-linux-arm64-1.15.4-8ccca244.tar.gz \
-    && install -m 0755 -o root -g root -t /usr/local/bin geth-linux-arm64-1.15.4-8ccca244/geth
+RUN wget https://gethstore.blob.core.windows.net/builds/geth-linux-arm64-1.15.5-4263936a.tar.gz \
+    && tar -xzf geth-linux-arm64-1.15.5-4263936a.tar.gz \
+    && install -m 0755 -o root -g root -t /usr/local/bin geth-linux-arm64-1.15.5-4263936a/geth
 
 # Download and install Lighthouse for Ethereum PoS consensus
-RUN wget https://github.com/sigp/lighthouse/releases/download/v4.5.0/lighthouse-v4.5.0-aarch64-unknown-linux-gnu.tar.gz \
-    && tar -xzf lighthouse-v4.5.0-aarch64-unknown-linux-gnu.tar.gz \
+RUN wget https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.0/lighthouse-v7.0.0-beta.0-aarch64-unknown-linux-gnu.tar.gz \
+    && tar -xzf lighthouse-v7.0.0-beta.0-aarch64-unknown-linux-gnu.tar.gz \
     && install -m 0755 -o root -g root -t /usr/local/bin lighthouse
 
 # Download and install NATS server

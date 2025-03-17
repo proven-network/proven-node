@@ -18,12 +18,13 @@ use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use reqwest::Client;
+use serde_json;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, info, trace};
+use tracing::{error, info};
 
 // Configuration paths
 #[allow(dead_code)]
@@ -41,8 +42,6 @@ pub enum EthereumNetwork {
     Mainnet,
     /// Ethereum testnet (Sepolia)
     Sepolia,
-    /// Ethereum testnet (Goerli)
-    Goerli,
     /// Ethereum testnet (Holesky)
     Holesky,
 }
@@ -54,7 +53,6 @@ impl EthereumNetwork {
         match self {
             Self::Mainnet => "mainnet",
             Self::Sepolia => "sepolia",
-            Self::Goerli => "goerli",
             Self::Holesky => "holesky",
         }
     }
@@ -123,10 +121,11 @@ impl LighthouseNode {
             // Start the Lighthouse process
             let network_str = network.as_str();
             let data_dir = Path::new(&store_dir).join("lighthouse");
+            let jwt_path = format!("/tmp/proven/ethereum-{}/geth/jwtsecret", network_str);
 
-            let mut cmd = Command::new("/bin/lighthouse");
+            let mut cmd = Command::new("lighthouse");
             cmd.args([
-                "bn", // beacon node
+                "beacon_node",
                 "--datadir",
                 data_dir.to_str().unwrap_or(LIGHTHOUSE_DATA_DIR),
                 "--network",
@@ -135,19 +134,22 @@ impl LighthouseNode {
                 "http://127.0.0.1:8551",
                 "--http",
                 "--http-address",
-                "0.0.0.0",
+                "127.0.0.1",
                 "--http-port",
                 "5052",
                 "--metrics",
                 "--metrics-address",
-                "0.0.0.0",
+                "127.0.0.1",
                 "--metrics-port",
                 "5054",
                 "--checkpoint-sync-url",
                 &get_checkpoint_sync_url(network),
-                "--execution-jwt-secret",
-                "/var/lib/proven-node/ethereum/jwt-secret.hex",
+                "--jwt-secrets",
+                &jwt_path,
+                "--purge-db",
             ]);
+
+            info!("Starting Lighthouse with command: {:?}", cmd);
 
             cmd.stdout(Stdio::piped());
             cmd.stderr(Stdio::piped());
@@ -181,7 +183,7 @@ impl LighthouseNode {
                     let bytes = strip_ansi_escapes::strip(&line);
                     // Skip logging if we don't have valid UTF-8
                     if let Ok(s) = std::str::from_utf8(&bytes) {
-                        trace!(target: "lighthouse", "{s}");
+                        info!(target: "lighthouse", "{s}");
                     }
                 }
             });
@@ -193,7 +195,7 @@ impl LighthouseNode {
                     let bytes = strip_ansi_escapes::strip(&line);
                     // Skip logging if we don't have valid UTF-8
                     if let Ok(s) = std::str::from_utf8(&bytes) {
-                        trace!(target: "lighthouse", "{s}");
+                        info!(target: "lighthouse", "{s}");
                     }
                 }
             });
@@ -283,43 +285,111 @@ impl LighthouseNode {
         let client = Client::new();
 
         // Check Lighthouse HTTP endpoint until it responds
-        let mut lighthouse_ready = false;
-        for _ in 0..30 {
+        info!(
+            "Waiting for Lighthouse HTTP API to become available and syncing to complete at {LIGHTHOUSE_HTTP_URL}/lighthouse/syncing"
+        );
+
+        // Keep trying indefinitely as long as we're syncing
+        let mut attempt = 1;
+        loop {
+            info!("HTTP syncing check attempt {attempt}");
             match client
-                .get(format!("{LIGHTHOUSE_HTTP_URL}/node/version"))
+                .get(format!("{LIGHTHOUSE_HTTP_URL}/lighthouse/syncing"))
                 .send()
                 .await
             {
                 Ok(response) => {
                     if response.status() == 200 {
-                        info!("Lighthouse is ready");
-                        lighthouse_ready = true;
-                        break;
+                        // Parse the response to check if still syncing
+                        match response.json::<serde_json::Value>().await {
+                            Ok(json) => {
+                                // Check if the node is still syncing
+                                if let Some(data) = json.get("data") {
+                                    if data.is_string() {
+                                        match data.as_str() {
+                                            Some("Synced") => {
+                                                info!("Lighthouse syncing completed");
+                                                info!(
+                                                    "Lighthouse consensus client is ready and synced"
+                                                );
+                                                return Ok(());
+                                            }
+                                            Some("Stalled") => {
+                                                info!(
+                                                    "Lighthouse sync is stalled (waiting for peers), continuing to wait..."
+                                                );
+                                                tokio::time::sleep(
+                                                    tokio::time::Duration::from_secs(10),
+                                                )
+                                                .await;
+                                                attempt += 1;
+                                                continue;
+                                            }
+                                            _ => {
+                                                info!(
+                                                    "Unexpected syncing response string: {:?}, will try again",
+                                                    data
+                                                );
+                                            }
+                                        }
+                                    } else if data.is_object()
+                                        && data.get("SyncingFinalized").is_some()
+                                    {
+                                        info!("Lighthouse is still syncing, continuing to wait...");
+                                        tokio::time::sleep(tokio::time::Duration::from_secs(10))
+                                            .await;
+                                        attempt += 1;
+                                        continue;
+                                    } else {
+                                        info!(
+                                            "Unexpected syncing response format: {:?}, will try again",
+                                            data
+                                        );
+                                    }
+                                } else {
+                                    info!(
+                                        "Unexpected syncing response format, missing 'data' field"
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                info!("Failed to parse syncing response: {e}, will try again")
+                            }
+                        }
+                    } else {
+                        info!(
+                            "Lighthouse HTTP endpoint responded with status: {}",
+                            response.status()
+                        );
                     }
                 }
-                Err(e) => debug!("Lighthouse not ready yet: {e}"),
+                Err(e) => {
+                    info!("Lighthouse HTTP endpoint not ready yet: {e}");
+                    // Only return error if connection is refused or another critical error
+                    if e.is_connect() || e.is_timeout() {
+                        // This is likely because the service isn't up yet, keep trying
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                        attempt += 1;
+                        continue;
+                    } else {
+                        // Other types of errors might indicate a more serious problem
+                        error!("Error connecting to Lighthouse: {e}");
+                        return Err(Error::HttpRequest(format!("Lighthouse HTTP error: {e}")));
+                    }
+                }
             }
 
-            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            attempt += 1;
         }
-
-        if !lighthouse_ready {
-            return Err(Error::HttpRequest(
-                "Lighthouse HTTP endpoint not available".to_string(),
-            ));
-        }
-
-        info!("Lighthouse consensus client is ready");
-        Ok(())
     }
 }
 
 // Returns the appropriate checkpoint sync URL based on the network
 fn get_checkpoint_sync_url(network: EthereumNetwork) -> String {
     match network {
-        EthereumNetwork::Mainnet => "https://mainnet.checkpoint.sigp.io".to_string(),
-        EthereumNetwork::Sepolia => "https://sepolia.checkpoint.sigp.io".to_string(),
-        EthereumNetwork::Goerli => "https://goerli.checkpoint.sigp.io".to_string(),
-        EthereumNetwork::Holesky => "https://checkpoint-sync.holesky.ethpandaops.io".to_string(),
+        EthereumNetwork::Mainnet => "https://mainnet.beaconstate.info/".to_string(),
+        EthereumNetwork::Sepolia => "https://sepolia.beaconstate.info".to_string(),
+        EthereumNetwork::Holesky => "https://holesky.beaconstate.info".to_string(),
     }
 }

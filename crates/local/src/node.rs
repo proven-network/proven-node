@@ -6,6 +6,8 @@ use bytes::Bytes;
 use proven_applications::{Application, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
 use proven_core::Core;
+use proven_ethereum_geth::GethNode;
+use proven_ethereum_lighthouse::LighthouseNode;
 use proven_governance_mock::MockGovernance;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
@@ -94,6 +96,8 @@ pub type LocalNodeCore = Core<
 pub struct Services {
     pub radix_mainnet_node: Option<Arc<Mutex<RadixNode>>>,
     pub radix_stokenet_node: Option<Arc<Mutex<RadixNode>>>,
+    pub ethereum_geth_node: Option<Arc<Mutex<GethNode>>>,
+    pub ethereum_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
     pub postgres: Option<Arc<Mutex<Postgres>>>,
     pub radix_aggregator: Option<Arc<Mutex<RadixAggregator>>>,
     pub radix_gateway: Option<Arc<Mutex<RadixGateway>>>,

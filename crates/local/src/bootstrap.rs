@@ -12,6 +12,8 @@ use async_nats::Client as NatsClient;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
 use proven_core::{Core, CoreOptions};
+use proven_ethereum_geth::{GethNode, GethNodeOptions, EthereumNetwork as GethNetwork};
+use proven_ethereum_lighthouse::{LighthouseNode, LighthouseNodeOptions, EthereumNetwork as LighthouseNetwork};
 use proven_governance::{Governance, GovernanceError, Node};
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
@@ -58,6 +60,12 @@ pub struct Bootstrap {
     radix_stokenet_node: Option<RadixNode>,
     radix_stokenet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
 
+    ethereum_geth_node: Option<proven_ethereum_geth::GethNode>,
+    ethereum_geth_node_handle: Option<JoinHandle<()>>,
+
+    ethereum_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
+    ethereum_lighthouse_node_handle: Option<JoinHandle<()>>,
+
     postgres: Option<Postgres>,
     postgres_handle: Option<JoinHandle<proven_postgres::Result<()>>>,
 
@@ -97,6 +105,12 @@ impl Bootstrap {
 
             radix_stokenet_node: None,
             radix_stokenet_node_handle: None,
+
+            ethereum_geth_node: None,
+            ethereum_geth_node_handle: None,
+
+            ethereum_lighthouse_node: None,
+            ethereum_lighthouse_node_handle: None,
 
             postgres: None,
             postgres_handle: None,
@@ -141,6 +155,12 @@ impl Bootstrap {
             return Err(e);
         }
 
+        if let Err(e) = self.start_ethereum_nodes().await {
+            error!("failed to start ethereum nodes: {:?}", e);
+            self.unwind_services().await;
+            return Err(e);
+        }
+
         if let Err(e) = self.start_postgres().await {
             error!("failed to start postgres: {:?}", e);
             self.unwind_services().await;
@@ -174,6 +194,8 @@ impl Bootstrap {
         // Optional handles
         let radix_mainnet_node_handle = self.radix_mainnet_node_handle.take();
         let radix_stokenet_node_handle = self.radix_stokenet_node_handle.take();
+        let ethereum_geth_node_handle = self.ethereum_geth_node_handle.take();
+        let ethereum_lighthouse_node_handle = self.ethereum_lighthouse_node_handle.take();
         let postgres_handle = self.postgres_handle.take();
         let radix_aggregator_handle = self.radix_aggregator_handle.take();
         let radix_gateway_handle = self.radix_gateway_handle.take();
@@ -185,6 +207,8 @@ impl Bootstrap {
         // Optional services
         let radix_mainnet_node_option = self.radix_mainnet_node.take().map(|node| Arc::new(Mutex::new(node)));
         let radix_stokenet_node_option = self.radix_stokenet_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_geth_node_option = self.ethereum_geth_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_lighthouse_node_option = self.ethereum_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
         let postgres = self.postgres.take().map(|postgres| Arc::new(Mutex::new(postgres)));
         let radix_aggregator = self.radix_aggregator.take().map(|aggregator| Arc::new(Mutex::new(aggregator)));
         let radix_gateway = self.radix_gateway.take().map(|gateway| Arc::new(Mutex::new(gateway)));
@@ -196,6 +220,8 @@ impl Bootstrap {
         let node_services = Services {
             radix_mainnet_node: radix_mainnet_node_option.clone(),
             radix_stokenet_node: radix_stokenet_node_option.clone(),
+            ethereum_geth_node: ethereum_geth_node_option.clone(),
+            ethereum_lighthouse_node: ethereum_lighthouse_node_option.clone(),
             postgres: postgres.clone(),
             radix_aggregator: radix_aggregator.clone(),
             radix_gateway: radix_gateway.clone(),
@@ -221,6 +247,24 @@ impl Bootstrap {
                         if let Some(handle) = radix_stokenet_node_handle {
                             if let Ok(Err(e)) = handle.await {
                                 error!("radix stokenet node exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = ethereum_geth_node_handle {
+                            if let Ok(e) = handle.await {
+                                error!("ethereum geth node exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = ethereum_lighthouse_node_handle {
+                            if let Ok(e) = handle.await {
+                                error!("ethereum lighthouse node exited: {:?}", e);
                                 return;
                             }
                         }
@@ -293,6 +337,14 @@ impl Bootstrap {
             if let Some(stokenet_node) = &radix_stokenet_node_option {
                 stokenet_node.lock().await.shutdown().await;
             }
+
+            if let Some(geth_node) = &ethereum_geth_node_option {
+                geth_node.lock().await.shutdown().await;
+            }
+            
+            if let Some(lighthouse_node) = &ethereum_lighthouse_node_option {
+                lighthouse_node.lock().await.shutdown().await;
+            }
         });
 
         self.task_tracker.close();
@@ -328,6 +380,14 @@ impl Bootstrap {
 
         if let Some(postgres) = self.postgres {
             postgres.shutdown().await;
+        }
+
+        if let Some(ethereum_lighthouse_node) = self.ethereum_lighthouse_node {
+            ethereum_lighthouse_node.shutdown().await;
+        }
+
+        if let Some(ethereum_geth_node) = self.ethereum_geth_node {
+            ethereum_geth_node.shutdown().await;
         }
 
         if let Some(radix_node) = self.radix_mainnet_node {
@@ -407,6 +467,48 @@ impl Bootstrap {
             self.radix_stokenet_node_handle = Some(radix_stokenet_node_handle);
 
             info!("radix stokenet node started");
+        }
+
+        Ok(())
+    }
+
+    async fn start_ethereum_nodes(&mut self) -> Result<()> {
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not set before ethereum nodes step");
+        });
+
+        if node_config
+            .specializations
+            .contains(&proven_governance::NodeSpecialization::EthereumSepolia)
+        {
+            // Start Geth execution client
+            let ethereum_geth_node = GethNode::new(GethNodeOptions {
+                network: GethNetwork::Sepolia,
+                store_dir: self.args.ethereum_sepolia_store_dir.to_string_lossy().to_string(),
+            });
+
+            let ethereum_geth_node_handle = ethereum_geth_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Geth node: {}", e)))?;
+
+            self.ethereum_geth_node = Some(ethereum_geth_node);
+            self.ethereum_geth_node_handle = Some(ethereum_geth_node_handle);
+
+            info!("ethereum geth node (sepolia) started");
+
+            // Start Lighthouse consensus client
+            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+                host_ip: self.external_ip.to_string(),
+                network: LighthouseNetwork::Sepolia,
+                store_dir: self.args.ethereum_sepolia_store_dir.to_string_lossy().to_string(),
+            });
+
+            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
+
+            self.ethereum_lighthouse_node = Some(ethereum_lighthouse_node);
+            self.ethereum_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
+
+            info!("ethereum lighthouse node (sepolia) started");
         }
 
         Ok(())

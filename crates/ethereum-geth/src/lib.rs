@@ -23,7 +23,7 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info};
 
 // Configuration paths
 #[allow(dead_code)]
@@ -41,8 +41,6 @@ pub enum EthereumNetwork {
     Mainnet,
     /// Ethereum testnet (Sepolia)
     Sepolia,
-    /// Ethereum testnet (Goerli)
-    Goerli,
     /// Ethereum testnet (Holesky)
     Holesky,
 }
@@ -54,7 +52,6 @@ impl EthereumNetwork {
         match self {
             Self::Mainnet => "mainnet",
             Self::Sepolia => "sepolia",
-            Self::Goerli => "goerli",
             Self::Holesky => "holesky",
         }
     }
@@ -114,15 +111,32 @@ impl GethNode {
         let server_task = self.task_tracker.spawn(async move {
             // Start the Geth process
             let network_str = network.as_str();
-            let data_dir = Path::new(&store_dir).join("geth");
+            let data_dir = Path::new(&store_dir);
 
-            let mut cmd = Command::new("/bin/geth");
+            let mut cmd = Command::new("geth");
             cmd.args(["--datadir", data_dir.to_str().unwrap_or(GETH_DATA_DIR)]);
 
             // Add network-specific args
             if network != EthereumNetwork::Mainnet {
                 cmd.arg(format!("--{network_str}"));
             }
+
+            // Enable HTTP-RPC server with localhost restriction (no auth)
+            cmd.args([
+                "--http", // Enable HTTP-RPC server
+                "--http.addr",
+                "127.0.0.1", // Restrict to localhost
+                "--http.api",
+                "eth,net,web3,txpool", // Enable common APIs
+                "--authrpc.addr",
+                "127.0.0.1",
+                // "--authrpc.port",
+                // "8551",
+                // "--authrpc.vhosts",
+                // "localhost",
+                // "--authrpc.jwtsecret",
+                // "/tmp/proven/ethereum-sepolia/geth/jwt-secret.hex",
+            ]);
 
             cmd.stdout(Stdio::piped());
             cmd.stderr(Stdio::piped());
@@ -156,7 +170,7 @@ impl GethNode {
                     let bytes = strip_ansi_escapes::strip(&line);
                     // Skip logging if we don't have valid UTF-8
                     if let Ok(s) = std::str::from_utf8(&bytes) {
-                        trace!(target: "geth", "{s}");
+                        info!(target: "geth", "{s}");
                     }
                 }
             });
@@ -168,7 +182,7 @@ impl GethNode {
                     let bytes = strip_ansi_escapes::strip(&line);
                     // Skip logging if we don't have valid UTF-8
                     if let Ok(s) = std::str::from_utf8(&bytes) {
-                        trace!(target: "geth", "{s}");
+                        info!(target: "geth", "{s}");
                     }
                 }
             });
@@ -304,6 +318,7 @@ impl GethNode {
         }
 
         info!("Geth execution client is ready");
+
         Ok(())
     }
 }

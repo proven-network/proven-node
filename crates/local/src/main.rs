@@ -67,6 +67,13 @@ struct Args {
     )]
     radix_stokenet_store_dir: PathBuf,
 
+    #[arg(
+        long,
+        default_value = "/tmp/proven/ethereum-sepolia",
+        env = "PROVEN_ETHEREUM_SEPOLIA_STORE_DIR"
+    )]
+    ethereum_sepolia_store_dir: PathBuf,
+
     /// Skip vacuuming the database
     #[arg(long, env = "PROVEN_SKIP_VACUUM")]
     skip_vacuum: bool,
