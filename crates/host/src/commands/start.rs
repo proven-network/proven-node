@@ -173,6 +173,8 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
             nfs_mount_point: args.nfs_mount_point.clone(),
             node_key: args.node_key.clone(),
             proxy_port: args.proxy_port,
+            radix_mainnet_port: args.radix_mainnet_port,
+            radix_stokenet_port: args.radix_stokenet_port,
             skip_fsck: args.skip_fsck,
             skip_speedtest: args.skip_speedtest,
             skip_vacuum: args.skip_vacuum,

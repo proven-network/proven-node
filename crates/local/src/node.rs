@@ -92,10 +92,11 @@ pub type LocalNodeCore = Core<
 >;
 
 pub struct Services {
-    pub radix_node: Arc<Mutex<RadixNode>>,
-    pub postgres: Arc<Mutex<Postgres>>,
-    pub radix_aggregator: Arc<Mutex<RadixAggregator>>,
-    pub radix_gateway: Arc<Mutex<RadixGateway>>,
+    pub radix_mainnet_node: Option<Arc<Mutex<RadixNode>>>,
+    pub radix_stokenet_node: Option<Arc<Mutex<RadixNode>>>,
+    pub postgres: Option<Arc<Mutex<Postgres>>>,
+    pub radix_aggregator: Option<Arc<Mutex<RadixAggregator>>>,
+    pub radix_gateway: Option<Arc<Mutex<RadixGateway>>>,
     pub nats_server: Arc<Mutex<NatsServer>>,
     pub core: Arc<Mutex<LocalNodeCore>>,
 }

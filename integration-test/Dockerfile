@@ -1,3 +1,51 @@
+# Build .NET applications
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS dotnet-builder
+WORKDIR /
+
+RUN git clone https://github.com/radixdlt/babylon-gateway.git
+WORKDIR /babylon-gateway
+RUN git checkout v1.9.2
+
+WORKDIR /babylon-gateway/apps/DataAggregator
+RUN dotnet publish -c Release -o /bin/DataAggregator
+WORKDIR /babylon-gateway/apps/DatabaseMigrations
+RUN dotnet publish -c Release -o /bin/DatabaseMigrations
+WORKDIR /babylon-gateway/apps/GatewayApi
+RUN dotnet publish -c Release -o /bin/GatewayApi
+
+# Build postgres which can handle root user
+FROM debian:bookworm-20240904-slim AS postgres
+
+# Install dependencies to build from source
+RUN apt-get update && apt-get install -y \
+    bison \
+    build-essential \
+    flex \
+    gcc \
+    libicu-dev \
+    libreadline6-dev \
+    perl \
+    pkg-config \
+    wget \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download source code
+WORKDIR /tmp
+RUN wget -q https://ftp.postgresql.org/pub/source/v17.2/postgresql-17.2.tar.bz2
+RUN tar -xvf postgresql-17.2.tar.bz2
+WORKDIR /tmp/postgresql-17.2
+
+# Overwrite root check
+RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/main.c
+RUN sed -i 's/if (geteuid() == 0)/if (false)/g' src/bin/initdb/initdb.c
+
+# Build and install
+RUN ./configure
+RUN make -j$(nproc)
+RUN make install
+
+# Build proven
 FROM rustlang/rust:nightly-bookworm-slim AS builder
 
 # Install build dependencies
@@ -46,12 +94,8 @@ RUN sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main
     && rm -rf /var/lib/apt/lists/*
 
 # Install .NET Runtime
-RUN apt-get update && \
-    apt-get install -y curl && \
-    curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0 && \
-    ln -s /root/.dotnet/dotnet /usr/local/bin/dotnet && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.12 --install-dir /usr/share/dotnet
+RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 
 # Create necessary directories
 RUN mkdir -p /tmp/proven/kv/application /tmp/proven/kv/persona /etc/proven
@@ -87,6 +131,14 @@ RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/
     && mv libcorerust.so /bin/babylon-node/ \
     && rm -f *.zip
 
+# Copy .NET applications
+COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
+COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
+COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
+
+# Copy postgres binaries
+COPY --from=postgres /usr/local/pgsql /usr/local/pgsql
+
 # Copy the built binary from the builder stage
 COPY --from=builder /tmp/build/proven-local /usr/local/bin/
 
@@ -100,4 +152,4 @@ COPY integration-test/topology.json /etc/proven/topology.json
 # Expose port for API
 EXPOSE 3201 3202 3203
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"] 
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

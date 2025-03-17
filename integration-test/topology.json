@@ -3,7 +3,7 @@
     "fqdn": "bulbasaur.local",
     "public_key": "3fded8e1f5b1125e3f2360e91fdba2498ef5f53a57b2ad562349ad88dcff6d7f",
     "endpoint": "http://bulbasaur.local:3201",
-    "specializations": ["radix-mainnet"]
+    "specializations": ["ethereum-sepolia"]
   },
   {
     "fqdn": "charmander.local",

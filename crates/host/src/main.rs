@@ -133,6 +133,12 @@ struct StartArgs {
     #[arg(long, default_value_t = 1025, env = "PROVEN_PROXY_PORT")]
     proxy_port: u32,
 
+    #[arg(long, default_value_t = 30000, env = "PROVEN_RADIX_MAINNET_PORT")]
+    radix_mainnet_port: u16,
+
+    #[arg(long, default_value_t = 30001, env = "PROVEN_RADIX_STOKENET_PORT")]
+    radix_stokenet_port: u16,
+
     #[arg(long, default_value_t = false, env = "PROVEN_SKIP_FSCK")]
     skip_fsck: bool,
 

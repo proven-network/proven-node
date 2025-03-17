@@ -64,6 +64,12 @@ pub struct InitializeRequest {
     /// S3 bucket for SQL snapshots (encrypted/decrypted inside enclave).
     pub sql_snapshots_bucket: String,
 
+    /// The port to listen on for the radix mainnet node.
+    pub radix_mainnet_port: u16,
+
+    /// The port to listen on for the radix stokenet node.
+    pub radix_stokenet_port: u16,
+
     /// Whether this network is testnet.
     pub testnet: bool,
 }

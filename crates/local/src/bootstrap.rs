@@ -40,10 +40,7 @@ static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
 static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
-static POSTGRES_DATABASE: &str = "babylon-db";
-static POSTGRES_STORE_DIR: &str = "/var/lib/postgres";
-
-static RADIX_NODE_STORE_DIR: &str = "/var/lib/babylon";
+static POSTGRES_RADIX_STOKENET_DATABASE: &str = "radix-stokenet-db";
 
 // TODO: This is in dire need of refactoring.
 pub struct Bootstrap {
@@ -55,8 +52,11 @@ pub struct Bootstrap {
     governance: Option<MockGovernance>,
     node_config: Option<Node>,
 
-    radix_node: Option<RadixNode>,
-    radix_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
+    radix_mainnet_node: Option<RadixNode>,
+    radix_mainnet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
+
+    radix_stokenet_node: Option<RadixNode>,
+    radix_stokenet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
 
     postgres: Option<Postgres>,
     postgres_handle: Option<JoinHandle<proven_postgres::Result<()>>>,
@@ -92,8 +92,11 @@ impl Bootstrap {
             governance: None,
             node_config: None,
 
-            radix_node: None,
-            radix_node_handle: None,
+            radix_mainnet_node: None,
+            radix_mainnet_node_handle: None,
+
+            radix_stokenet_node: None,
+            radix_stokenet_node_handle: None,
 
             postgres: None,
             postgres_handle: None,
@@ -168,22 +171,31 @@ impl Bootstrap {
             return Err(e);
         }
 
-        let radix_node_handle = self.radix_node_handle.take().unwrap();
-        let postgres_handle = self.postgres_handle.take().unwrap();
-        let radix_aggregator_handle = self.radix_aggregator_handle.take().unwrap();
-        let radix_gateway_handle = self.radix_gateway_handle.take().unwrap();
+        // Optional handles
+        let radix_mainnet_node_handle = self.radix_mainnet_node_handle.take();
+        let radix_stokenet_node_handle = self.radix_stokenet_node_handle.take();
+        let postgres_handle = self.postgres_handle.take();
+        let radix_aggregator_handle = self.radix_aggregator_handle.take();
+        let radix_gateway_handle = self.radix_gateway_handle.take();
+
+        // Mandatory handles
         let nats_server_handle = self.nats_server_handle.take().unwrap();
         let core_handle = self.core_handle.take().unwrap();
 
-        let radix_node = Arc::new(Mutex::new(self.radix_node.take().unwrap()));
-        let postgres = Arc::new(Mutex::new(self.postgres.take().unwrap()));
-        let radix_aggregator = Arc::new(Mutex::new(self.radix_aggregator.take().unwrap()));
-        let radix_gateway = Arc::new(Mutex::new(self.radix_gateway.take().unwrap()));
+        // Optional services
+        let radix_mainnet_node_option = self.radix_mainnet_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let radix_stokenet_node_option = self.radix_stokenet_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let postgres = self.postgres.take().map(|postgres| Arc::new(Mutex::new(postgres)));
+        let radix_aggregator = self.radix_aggregator.take().map(|aggregator| Arc::new(Mutex::new(aggregator)));
+        let radix_gateway = self.radix_gateway.take().map(|gateway| Arc::new(Mutex::new(gateway)));
+
+        // Mandatory services
         let nats_server = Arc::new(Mutex::new(self.nats_server.take().unwrap()));
         let core = Arc::new(Mutex::new(self.core.take().unwrap()));
 
         let node_services = Services {
-            radix_node: radix_node.clone(),
+            radix_mainnet_node: radix_mainnet_node_option.clone(),
+            radix_stokenet_node: radix_stokenet_node_option.clone(),
             postgres: postgres.clone(),
             radix_aggregator: radix_aggregator.clone(),
             radix_gateway: radix_gateway.clone(),
@@ -196,18 +208,51 @@ impl Bootstrap {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
-                    Ok(Err(e)) = radix_node_handle => {
-                        error!("radix_node exited: {:?}", e);
-                    }
-                    Ok(Err(e)) = postgres_handle => {
-                        error!("postgres exited: {:?}", e);
-                    }
-                    Ok(Err(e)) = radix_aggregator_handle => {
-                        error!("radix_aggregator exited: {:?}", e);
-                    }
-                    Ok(Err(e)) = radix_gateway_handle => {
-                        error!("radix_gateway exited: {:?}", e);
-                    }
+                    _ = async { 
+                        if let Some(handle) = radix_mainnet_node_handle {
+                            if let Ok(Err(e)) = handle.await {
+                                error!("radix mainnet node exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = radix_stokenet_node_handle {
+                            if let Ok(Err(e)) = handle.await {
+                                error!("radix stokenet node exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = postgres_handle {
+                            if let Ok(Err(e)) = handle.await {
+                                error!("postgres exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = radix_aggregator_handle {
+                            if let Ok(Err(e)) = handle.await {
+                                error!("radix_aggregator exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = radix_gateway_handle {
+                            if let Ok(Err(e)) = handle.await {
+                                error!("radix_gateway exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
                     Ok(Err(e)) = nats_server_handle => {
                         error!("nats_server exited: {:?}", e);
                     }
@@ -225,12 +270,29 @@ impl Bootstrap {
                 _ = critical_tasks => error!("critical task failed - exiting")
             }
 
+            // Shutdown services in reverse order
             core.lock().await.shutdown().await;
             nats_server.lock().await.shutdown().await;
-            radix_gateway.lock().await.shutdown().await;
-            radix_aggregator.lock().await.shutdown().await;
-            radix_node.lock().await.shutdown().await;
-            postgres.lock().await.shutdown().await;
+            
+            if let Some(gateway) = &radix_gateway {
+                gateway.lock().await.shutdown().await;
+            }
+            
+            if let Some(aggregator) = &radix_aggregator {
+                aggregator.lock().await.shutdown().await;
+            }
+            
+            if let Some(pg) = &postgres {
+                pg.lock().await.shutdown().await;
+            }
+            
+            if let Some(mainnet_node) = &radix_mainnet_node_option {
+                mainnet_node.lock().await.shutdown().await;
+            }
+            
+            if let Some(stokenet_node) = &radix_stokenet_node_option {
+                stokenet_node.lock().await.shutdown().await;
+            }
         });
 
         self.task_tracker.close();
@@ -268,7 +330,7 @@ impl Bootstrap {
             postgres.shutdown().await;
         }
 
-        if let Some(radix_node) = self.radix_node {
+        if let Some(radix_node) = self.radix_mainnet_node {
             radix_node.shutdown().await;
         }
     }
@@ -277,7 +339,7 @@ impl Bootstrap {
         let governance =
             MockGovernance::from_topology_file(self.args.topology_file.clone(), vec![])
                 .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?
-                .with_private_key(&self.args.private_key)
+                .with_private_key(&self.args.node_key)
                 .map_err(|e| Error::Io(format!("Failed to initialize governance: {}", e)))?;
 
         let node_config = governance
@@ -297,70 +359,138 @@ impl Bootstrap {
     }
 
     async fn start_radix_node(&mut self) -> Result<()> {
-        let radix_node = RadixNode::new(RadixNodeOptions {
-            host_ip: self.external_ip.to_string(),
-            network_definition: NetworkDefinition::stokenet(),
-            store_dir: RADIX_NODE_STORE_DIR.to_string(),
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not set before radix node step");
         });
 
-        let radix_node_handle = radix_node.start().await?;
+        if node_config
+            .specializations
+            .contains(&proven_governance::NodeSpecialization::RadixMainnet)
+        {
+            let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
+                host_ip: self.external_ip.to_string(),
+                network_definition: NetworkDefinition::mainnet(),
+                port: self.args.radix_mainnet_port,
+                store_dir: self
+                    .args
+                    .radix_mainnet_store_dir
+                    .to_string_lossy()
+                    .to_string(),
+            });
 
-        self.radix_node = Some(radix_node);
-        self.radix_node_handle = Some(radix_node_handle);
+            let radix_mainnet_node_handle = radix_mainnet_node.start().await?;
 
-        info!("radix-node started");
+            self.radix_mainnet_node = Some(radix_mainnet_node);
+            self.radix_mainnet_node_handle = Some(radix_mainnet_node_handle);
+
+            info!("radix mainnet node started");
+        }
+
+        if node_config
+            .specializations
+            .contains(&proven_governance::NodeSpecialization::RadixStokenet)
+        {
+            let radix_stokenet_node = RadixNode::new(RadixNodeOptions {
+                host_ip: self.external_ip.to_string(),
+                network_definition: NetworkDefinition::stokenet(),
+                port: self.args.radix_stokenet_port,
+                store_dir: self
+                    .args
+                    .radix_stokenet_store_dir
+                    .to_string_lossy()
+                    .to_string(),
+            });
+
+            let radix_stokenet_node_handle = radix_stokenet_node.start().await?;
+
+            self.radix_stokenet_node = Some(radix_stokenet_node);
+            self.radix_stokenet_node_handle = Some(radix_stokenet_node_handle);
+
+            info!("radix stokenet node started");
+        }
 
         Ok(())
     }
 
     async fn start_postgres(&mut self) -> Result<()> {
-        let postgres = Postgres::new(PostgresOptions {
-            password: POSTGRES_PASSWORD.to_string(),
-            username: POSTGRES_USERNAME.to_string(),
-            skip_vacuum: self.args.skip_vacuum,
-            store_dir: POSTGRES_STORE_DIR.to_string(),
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not set before postgres step");
         });
 
-        let postgres_handle = postgres.start().await?;
+        if node_config
+            .specializations
+            .contains(&proven_governance::NodeSpecialization::RadixMainnet)
+            || node_config
+                .specializations
+                .contains(&proven_governance::NodeSpecialization::RadixStokenet)
+        {
+            let postgres = Postgres::new(PostgresOptions {
+                bin_path: self.args.postgres_bin_path.clone(),
+                password: POSTGRES_PASSWORD.to_string(),
+                username: POSTGRES_USERNAME.to_string(),
+                skip_vacuum: self.args.skip_vacuum,
+                store_dir: self.args.postgres_store_dir.to_string_lossy().to_string(),
+            });
 
-        self.postgres = Some(postgres);
-        self.postgres_handle = Some(postgres_handle);
+            let postgres_handle = postgres.start().await?;
 
-        info!("postgres started");
+            self.postgres = Some(postgres);
+            self.postgres_handle = Some(postgres_handle);
+
+            info!("postgres for radix stokenet started");
+        }
 
         Ok(())
     }
 
     async fn start_radix_aggregator(&mut self) -> Result<()> {
-        let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
-            postgres_database: POSTGRES_DATABASE.to_string(),
-            postgres_password: POSTGRES_PASSWORD.to_string(),
-            postgres_username: POSTGRES_USERNAME.to_string(),
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not fetched before core");
         });
 
-        let radix_aggregator_handle = radix_aggregator.start().await?;
+        if node_config
+            .specializations
+            .contains(&proven_governance::NodeSpecialization::RadixStokenet)
+        {
+            let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
+                postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
+                postgres_password: POSTGRES_PASSWORD.to_string(),
+                postgres_username: POSTGRES_USERNAME.to_string(),
+            });
 
-        self.radix_aggregator = Some(radix_aggregator);
-        self.radix_aggregator_handle = Some(radix_aggregator_handle);
+            let radix_aggregator_handle = radix_aggregator.start().await?;
 
-        info!("radix-aggregator started");
+            self.radix_aggregator = Some(radix_aggregator);
+            self.radix_aggregator_handle = Some(radix_aggregator_handle);
+
+            info!("radix-aggregator for radix stokenet started");
+        }
 
         Ok(())
     }
 
     async fn start_radix_gateway(&mut self) -> Result<()> {
-        let radix_gateway = RadixGateway::new(RadixGatewayOptions {
-            postgres_database: POSTGRES_DATABASE.to_string(),
-            postgres_password: POSTGRES_PASSWORD.to_string(),
-            postgres_username: POSTGRES_USERNAME.to_string(),
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not fetched before core");
         });
 
-        let radix_gateway_handle = radix_gateway.start().await?;
+        if node_config
+            .specializations
+            .contains(&proven_governance::NodeSpecialization::RadixStokenet)
+        {
+            let radix_gateway = RadixGateway::new(RadixGatewayOptions {
+                postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
+                postgres_password: POSTGRES_PASSWORD.to_string(),
+                postgres_username: POSTGRES_USERNAME.to_string(),
+            });
 
-        self.radix_gateway = Some(radix_gateway);
-        self.radix_gateway_handle = Some(radix_gateway_handle);
+            let radix_gateway_handle = radix_gateway.start().await?;
 
-        info!("radix-gateway started");
+            self.radix_gateway = Some(radix_gateway);
+            self.radix_gateway_handle = Some(radix_gateway_handle);
+
+            info!("radix-gateway for radix stokenet started");
+        }
 
         Ok(())
     }

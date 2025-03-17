@@ -634,8 +634,8 @@ impl Bootstrap {
         let host_ip = instance_details.public_ip.unwrap().to_string();
         let radix_node = RadixNode::new(RadixNodeOptions {
             host_ip,
-            // TODO: switch on specialization
             network_definition: radix_common::network::NetworkDefinition::stokenet(),
+            port: self.args.radix_stokenet_port,
             store_dir: RADIX_NODE_STORE_DIR.to_string(),
         });
 
@@ -669,6 +669,7 @@ impl Bootstrap {
 
     async fn start_postgres(&mut self) -> Result<()> {
         let postgres = Postgres::new(PostgresOptions {
+            bin_path: "/usr/local/pgsql/bin".to_string(),
             password: POSTGRES_PASSWORD.to_string(),
             username: POSTGRES_USERNAME.to_string(),
             skip_vacuum: self.args.skip_vacuum,

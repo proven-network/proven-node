@@ -24,6 +24,7 @@ use tracing::{debug, error, info, warn};
 
 /// Runs a Postgres server to provide storage for Radix Gateway.
 pub struct Postgres {
+    bin_path: String,
     password: String,
     username: String,
     shutdown_token: CancellationToken,
@@ -34,6 +35,9 @@ pub struct Postgres {
 
 /// Options for configuring a `Postgres`.
 pub struct PostgresOptions {
+    /// The path to the directory containing the Postgres binaries.
+    pub bin_path: String,
+
     /// The password for the Postgres user.
     pub password: String,
 
@@ -52,6 +56,7 @@ impl Postgres {
     #[must_use]
     pub fn new(
         PostgresOptions {
+            bin_path,
             password,
             username,
             skip_vacuum,
@@ -59,6 +64,7 @@ impl Postgres {
         }: PostgresOptions,
     ) -> Self {
         Self {
+            bin_path,
             password,
             username,
             shutdown_token: CancellationToken::new(),
@@ -94,13 +100,14 @@ impl Postgres {
                 .map_err(|e| Error::Io("failed to remove postmaster pid", e))?;
         }
 
+        let bin_path = self.bin_path.clone();
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
         let store_dir = self.store_dir.clone();
 
         let server_task = self.task_tracker.spawn(async move {
             // Start the postgres process
-            let mut cmd = Command::new("/usr/local/pgsql/bin/postgres")
+            let mut cmd = Command::new(format!("{}/postgres", bin_path))
                 .arg("-D")
                 .arg(&store_dir)
                 .arg("-c")
@@ -205,7 +212,7 @@ impl Postgres {
             .await
             .map_err(|e| Error::Io("failed to write password file", e))?;
 
-        let cmd = Command::new("/usr/local/pgsql/bin/initdb")
+        let cmd = Command::new(format!("{}/initdb", self.bin_path))
             .arg("-D")
             .arg(&self.store_dir)
             .arg("-U")
@@ -237,7 +244,7 @@ impl Postgres {
     async fn wait_until_ready(&self) -> Result<()> {
         loop {
             info!("checking if postgres is ready...");
-            let cmd = Command::new("/usr/local/pgsql/bin/pg_isready")
+            let cmd = Command::new(format!("{}/pg_isready", self.bin_path))
                 .arg("-h")
                 .arg("127.0.0.1")
                 .arg("-p")
@@ -262,7 +269,7 @@ impl Postgres {
     async fn vacuum_database(&self) -> Result<()> {
         info!("vacuuming database...");
 
-        let mut cmd = Command::new("/usr/local/pgsql/bin/vacuumdb")
+        let mut cmd = Command::new(format!("{}/vacuumdb", self.bin_path))
             .arg("-U")
             .arg(&self.username)
             .arg("--all")

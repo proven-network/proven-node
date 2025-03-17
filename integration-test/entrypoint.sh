@@ -19,6 +19,4 @@ fi
 
 # Run the proven-local binary
 echo "Starting proven-local with topology file: $TOPOLOGY_FILE and private key via environment variable on port $PORT"
-exec proven-local \
-  --port $PORT \
-  --topology-file $TOPOLOGY_FILE
+exec proven-local --topology-file $TOPOLOGY_FILE

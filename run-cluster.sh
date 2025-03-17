@@ -32,8 +32,8 @@ fi
 echo "Local IP: $LOCAL_IP"
 
 # Try to set up port forwarding
-echo "Setting up UPnP port forwarding from external port 30000 to internal $LOCAL_IP:30000..."
-upnpc -a "$LOCAL_IP" 30000 30000 TCP "Proven Node"
+echo "Setting up UPnP port forwarding from external port 30001 to internal $LOCAL_IP:30001..."
+upnpc -a "$LOCAL_IP" 30001 30001 TCP "Proven Node"
 echo "UPnP port forwarding setup complete"
 
 # Enable Docker BuildKit
@@ -55,6 +55,6 @@ echo "Cluster stopped. Cleaning up..."
 
 # Clean up UPnP port forwarding
 echo "Cleaning up UPnP port forwarding..."
-upnpc -d 30000 TCP
+upnpc -d 30001 TCP
 
 echo "Shutdown complete" 
