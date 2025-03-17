@@ -12,7 +12,7 @@ use async_nats::Client as NatsClient;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
 use proven_core::{Core, CoreOptions};
-use proven_ethereum_geth::{GethNode, GethNodeOptions, EthereumNetwork as GethNetwork};
+use proven_ethereum_reth::{RethNode, RethNodeOptions, EthereumNetwork as RethNetwork};
 use proven_ethereum_lighthouse::{LighthouseNode, LighthouseNodeOptions, EthereumNetwork as LighthouseNetwork};
 use proven_governance::{Governance, GovernanceError, Node};
 use proven_governance_mock::MockGovernance;
@@ -60,8 +60,8 @@ pub struct Bootstrap {
     radix_stokenet_node: Option<RadixNode>,
     radix_stokenet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
 
-    ethereum_geth_node: Option<proven_ethereum_geth::GethNode>,
-    ethereum_geth_node_handle: Option<JoinHandle<()>>,
+    ethereum_reth_node: Option<proven_ethereum_reth::RethNode>,
+    ethereum_reth_node_handle: Option<JoinHandle<()>>,
 
     ethereum_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
     ethereum_lighthouse_node_handle: Option<JoinHandle<()>>,
@@ -106,8 +106,8 @@ impl Bootstrap {
             radix_stokenet_node: None,
             radix_stokenet_node_handle: None,
 
-            ethereum_geth_node: None,
-            ethereum_geth_node_handle: None,
+            ethereum_reth_node: None,
+            ethereum_reth_node_handle: None,
 
             ethereum_lighthouse_node: None,
             ethereum_lighthouse_node_handle: None,
@@ -194,7 +194,7 @@ impl Bootstrap {
         // Optional handles
         let radix_mainnet_node_handle = self.radix_mainnet_node_handle.take();
         let radix_stokenet_node_handle = self.radix_stokenet_node_handle.take();
-        let ethereum_geth_node_handle = self.ethereum_geth_node_handle.take();
+        let ethereum_reth_node_handle = self.ethereum_reth_node_handle.take();
         let ethereum_lighthouse_node_handle = self.ethereum_lighthouse_node_handle.take();
         let postgres_handle = self.postgres_handle.take();
         let radix_aggregator_handle = self.radix_aggregator_handle.take();
@@ -207,7 +207,7 @@ impl Bootstrap {
         // Optional services
         let radix_mainnet_node_option = self.radix_mainnet_node.take().map(|node| Arc::new(Mutex::new(node)));
         let radix_stokenet_node_option = self.radix_stokenet_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let ethereum_geth_node_option = self.ethereum_geth_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_reth_node_option = self.ethereum_reth_node.take().map(|node| Arc::new(Mutex::new(node)));
         let ethereum_lighthouse_node_option = self.ethereum_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
         let postgres = self.postgres.take().map(|postgres| Arc::new(Mutex::new(postgres)));
         let radix_aggregator = self.radix_aggregator.take().map(|aggregator| Arc::new(Mutex::new(aggregator)));
@@ -220,7 +220,7 @@ impl Bootstrap {
         let node_services = Services {
             radix_mainnet_node: radix_mainnet_node_option.clone(),
             radix_stokenet_node: radix_stokenet_node_option.clone(),
-            ethereum_geth_node: ethereum_geth_node_option.clone(),
+            ethereum_reth_node: ethereum_reth_node_option.clone(),
             ethereum_lighthouse_node: ethereum_lighthouse_node_option.clone(),
             postgres: postgres.clone(),
             radix_aggregator: radix_aggregator.clone(),
@@ -253,9 +253,9 @@ impl Bootstrap {
                         std::future::pending::<()>().await
                     } => {},
                     _ = async { 
-                        if let Some(handle) = ethereum_geth_node_handle {
+                        if let Some(handle) = ethereum_reth_node_handle {
                             if let Ok(e) = handle.await {
-                                error!("ethereum geth node exited: {:?}", e);
+                                error!("ethereum reth node exited: {:?}", e);
                                 return;
                             }
                         }
@@ -338,8 +338,8 @@ impl Bootstrap {
                 stokenet_node.lock().await.shutdown().await;
             }
 
-            if let Some(geth_node) = &ethereum_geth_node_option {
-                geth_node.lock().await.shutdown().await;
+            if let Some(reth_node) = &ethereum_reth_node_option {
+                reth_node.lock().await.shutdown().await;
             }
             
             if let Some(lighthouse_node) = &ethereum_lighthouse_node_option {
@@ -386,8 +386,8 @@ impl Bootstrap {
             ethereum_lighthouse_node.shutdown().await;
         }
 
-        if let Some(ethereum_geth_node) = self.ethereum_geth_node {
-            ethereum_geth_node.shutdown().await;
+        if let Some(ethereum_reth_node) = self.ethereum_reth_node {
+            ethereum_reth_node.shutdown().await;
         }
 
         if let Some(radix_node) = self.radix_mainnet_node {
@@ -481,19 +481,19 @@ impl Bootstrap {
             .specializations
             .contains(&proven_governance::NodeSpecialization::EthereumSepolia)
         {
-            // Start Geth execution client
-            let ethereum_geth_node = GethNode::new(GethNodeOptions {
-                network: GethNetwork::Sepolia,
+            // Start Reth execution client
+            let ethereum_reth_node = RethNode::new(RethNodeOptions {
+                network: RethNetwork::Sepolia,
                 store_dir: self.args.ethereum_sepolia_store_dir.to_string_lossy().to_string(),
             });
 
-            let ethereum_geth_node_handle = ethereum_geth_node.start().await
-                .map_err(|e| Error::Io(format!("Failed to start Geth node: {}", e)))?;
+            let ethereum_reth_node_handle = ethereum_reth_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
-            self.ethereum_geth_node = Some(ethereum_geth_node);
-            self.ethereum_geth_node_handle = Some(ethereum_geth_node_handle);
+            self.ethereum_reth_node = Some(ethereum_reth_node);
+            self.ethereum_reth_node_handle = Some(ethereum_reth_node_handle);
 
-            info!("ethereum geth node (sepolia) started");
+            info!("ethereum reth node (sepolia) started");
 
             // Start Lighthouse consensus client
             let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {

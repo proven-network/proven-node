@@ -121,7 +121,7 @@ impl LighthouseNode {
             // Start the Lighthouse process
             let network_str = network.as_str();
             let data_dir = Path::new(&store_dir).join("lighthouse");
-            let jwt_path = format!("/tmp/proven/ethereum-{}/geth/jwtsecret", network_str);
+            let jwt_path = format!("/tmp/proven/ethereum-{}/reth/jwt.hex", network_str);
 
             let mut cmd = Command::new("lighthouse");
             cmd.args([
@@ -146,7 +146,6 @@ impl LighthouseNode {
                 &get_checkpoint_sync_url(network),
                 "--jwt-secrets",
                 &jwt_path,
-                "--purge-db",
             ]);
 
             info!("Starting Lighthouse with command: {:?}", cmd);
@@ -234,8 +233,8 @@ impl LighthouseNode {
                         };
 
                         let pid = Pid::from_raw(raw_pid);
-                        if let Err(e) = signal::kill(pid, Signal::SIGTERM) {
-                            error!("Failed to send SIGTERM to Lighthouse process: {}", e);
+                        if let Err(e) = signal::kill(pid, Signal::SIGINT) {
+                            error!("Failed to send SIGINT to Lighthouse process: {}", e);
                         }
                     } else {
                         error!("Could not get Lighthouse process ID for termination");
@@ -252,6 +251,8 @@ impl LighthouseNode {
                 }
             }
         });
+
+        self.task_tracker.close();
 
         // Wait until Lighthouse is ready before returning
         self.wait_until_ready().await?;

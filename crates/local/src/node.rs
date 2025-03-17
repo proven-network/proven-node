@@ -6,8 +6,8 @@ use bytes::Bytes;
 use proven_applications::{Application, ApplicationManager};
 use proven_attestation_dev::DevAttestor;
 use proven_core::Core;
-use proven_ethereum_geth::GethNode;
 use proven_ethereum_lighthouse::LighthouseNode;
+use proven_ethereum_reth::RethNode;
 use proven_governance_mock::MockGovernance;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
@@ -93,15 +93,33 @@ pub type LocalNodeCore = Core<
     MockGovernance,
 >;
 
+/// A collection of all the services that can be running in the enclave.
 pub struct Services {
+    /// The Radix Mainnet node.
     pub radix_mainnet_node: Option<Arc<Mutex<RadixNode>>>,
+
+    /// The Radix Stokenet node.
     pub radix_stokenet_node: Option<Arc<Mutex<RadixNode>>>,
-    pub ethereum_geth_node: Option<Arc<Mutex<GethNode>>>,
+
+    /// The Ethereum Reth node.
+    pub ethereum_reth_node: Option<Arc<Mutex<RethNode>>>,
+
+    /// The Ethereum Lighthouse node.
     pub ethereum_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
+
+    /// The Postgres database.
     pub postgres: Option<Arc<Mutex<Postgres>>>,
+
+    /// The Radix Aggregator.
     pub radix_aggregator: Option<Arc<Mutex<RadixAggregator>>>,
+
+    /// The Radix Gateway.
     pub radix_gateway: Option<Arc<Mutex<RadixGateway>>>,
+
+    /// The NATS server.
     pub nats_server: Arc<Mutex<NatsServer>>,
+
+    /// The Core.
     pub core: Arc<Mutex<LocalNodeCore>>,
 }
 

@@ -100,7 +100,7 @@ RUN cp /gocryptfs/gocryptfs /bin/
 RUN chown root:root /bin/gocryptfs
 RUN chmod 0755      /bin/gocryptfs
 
-# Build Geth (Go Ethereum)
+# Build Geth (Go Ethereum) TODO: Replace with Reth
 WORKDIR /
 RUN git clone https://github.com/ethereum/go-ethereum.git
 WORKDIR /go-ethereum

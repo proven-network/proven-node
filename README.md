@@ -72,12 +72,12 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [bitcoin-core](https://github.com/bitcoin/bitcoin): Bitcoin Core full node for interacting with the Bitcoin network.
 - [dnscrypt-proxy](https://github.com/DNSCrypt/dnscrypt-proxy): DNSCrypt Proxy to ensure host cannot tamper with DNS.
 - [dotnet](https://dotnet.microsoft.com/): .NET runtime for running gateway.
-- [geth](https://github.com/ethereum/go-ethereum): Ethereum execution client for running an Ethereum full node.
 - [gocryptfs](https://github.com/rfjakob/gocryptfs): Used for encrypting NFS-mounted external filesystems. Threat model described [here](https://nuetzlich.net/gocryptfs/threat_model/).
-- [lighthouse](https://github.com/sigp/lighthouse): Ethereum consensus client to pair with Geth for full Ethereum node functionality.
+- [lighthouse](https://github.com/sigp/lighthouse): Ethereum consensus client to pair with Reth for full Ethereum node functionality.
 - [nats-server](https://github.com/nats-io/nats-server): NATS server for inter-node communication and control plane.
 - [openjdk](https://openjdk.java.net/): Java runtime for Java component of Radix DLT core node.
 - [postgres](https://www.postgresql.org/): Postgres server for storing gateway data.
+- [reth](https://github.com/paradigmxyz/reth): Ethereum execution client for running an Ethereum full node.
 
 ## Crates
 
@@ -90,8 +90,8 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [core](crates/core): Core logic for the Proven node and the entrypoint for all user interactions.
 - [dnscrypt-proxy](crates/dnscrypt-proxy): Configures and runs a DNSCrypt proxy to ensure all DNS runs over tamper-proof HTTPS.
 - [enclave](crates/enclave): Main entrypoint for enclave images. Bootstraps all other components before handing off to core.
-- [ethereum-geth](crates/ethereum-geth): Configures and runs a local Geth execution client.
 - [ethereum-lighthouse](crates/ethereum-lighthouse): Configures and runs a local Lighthouse consensus client.
+- [ethereum-reth](crates/ethereum-reth): Configures and runs a local Reth execution client.
 - [external-fs](crates/external-fs): Mounts external filesystems into the enclave via NFS, intermediated by a layer of FUSE-based AES-GCM disk-encryption based on enclave-internal cryptographic keys.
 - [governance](crates/governance): Abstract interface for getting active version information, network topology, etc. from a governance mechanism.
 - [governance-helios](crates/governance-helios): Helios light-client based implementation of the governance interface.

@@ -1,14 +1,15 @@
 [package]
-name = "proven-ethereum-geth"
+name = "proven-ethereum-reth"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 nix = { workspace = true }
 regex = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
 strip-ansi-escapes = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
-reqwest = { workspace = true }

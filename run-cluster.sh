@@ -28,6 +28,6 @@ docker-compose up bulbasaur charmander squirtle
 echo "Cluster stopped. Cleaning up..."
 
 # Clean up UPnP port forwarding
-./upnp-teardown.sh
+./../upnp-teardown.sh
 
 echo "Shutdown complete" 

@@ -14,7 +14,7 @@ proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-dev = { workspace = true }
 proven-core = { workspace = true }
-proven-ethereum-geth = { workspace = true }
+proven-ethereum-reth = { workspace = true }
 proven-ethereum-lighthouse = { workspace = true }
 proven-governance = { workspace = true }
 proven-governance-mock = { workspace = true }

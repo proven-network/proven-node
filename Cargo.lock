@@ -8981,12 +8981,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-ethereum-geth"
+name = "proven-ethereum-lighthouse"
 version = "0.1.0"
 dependencies = [
  "nix 0.27.1",
  "regex",
  "reqwest",
+ "serde_json",
  "strip-ansi-escapes",
  "thiserror 2.0.12",
  "tokio",
@@ -8995,7 +8996,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-ethereum-lighthouse"
+name = "proven-ethereum-reth"
 version = "0.1.0"
 dependencies = [
  "nix 0.27.1",
@@ -9214,8 +9215,8 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-dev",
  "proven-core",
- "proven-ethereum-geth",
  "proven-ethereum-lighthouse",
+ "proven-ethereum-reth",
  "proven-governance",
  "proven-governance-mock",
  "proven-http-insecure",

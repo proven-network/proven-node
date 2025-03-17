@@ -17,8 +17,8 @@ members = [
     "crates/core",
     "crates/dnscrypt-proxy",
     "crates/enclave",
-    "crates/ethereum-geth",
     "crates/ethereum-lighthouse",
+    "crates/ethereum-reth",
     "crates/external-fs",
     "crates/governance",
     "crates/governance-helios",
@@ -74,8 +74,8 @@ default-members = [
     "crates/core",
     "crates/dnscrypt-proxy",
     "crates/enclave",
-    "crates/ethereum-geth",
     "crates/ethereum-lighthouse",
+    "crates/ethereum-reth",
     "crates/external-fs",
     "crates/governance",
     "crates/governance-helios",
@@ -373,8 +373,8 @@ proven-code-package = { path = "crates/code-package" }
 proven-core = { path = "crates/core" }
 proven-dnscrypt-proxy = { path = "crates/dnscrypt-proxy" }
 proven-enclave = { path = "crates/enclave" }
-proven-ethereum-geth = { path = "crates/ethereum-geth" }
 proven-ethereum-lighthouse = { path = "crates/ethereum-lighthouse" }
+proven-ethereum-reth = { path = "crates/ethereum-reth" }
 proven-external-fs = { path = "crates/external-fs" }
 proven-governance = { path = "crates/governance" }
 proven-governance-helios = { path = "crates/governance-helios" }

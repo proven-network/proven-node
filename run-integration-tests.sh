@@ -24,7 +24,7 @@ docker-compose up --abort-on-container-exit
 exit_code=$?
 
 # Clean up UPnP port forwarding
-./upnp-teardown.sh
+./../upnp-teardown.sh
 
 if [ $exit_code -eq 0 ]; then
   echo "✅ All tests passed"
