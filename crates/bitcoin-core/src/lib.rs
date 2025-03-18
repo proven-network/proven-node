@@ -29,8 +29,8 @@ use serde_json::{Value, json};
 // RPC endpoint (host/port)
 static BITCOIND_RPC_HOST: &str = "127.0.0.1";
 static BITCOIND_RPC_PORT: u16 = 8332;
-static BITCOIND_RPC_USER: &str = "bitcoin";
-static BITCOIND_RPC_PASSWORD: &str = "bitcoin";
+static BITCOIND_RPC_USER: &str = "proven";
+static BITCOIND_RPC_PASSWORD: &str = "proven";
 
 /// Represents a Bitcoin network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,10 +111,12 @@ impl BitcoinNode {
         cmd.args([&format!("--datadir={}", self.store_dir)])
             .args(network_arg)
             .args([
+                "--server=1",
+                "--txindex=1",
+                &format!("--rpcbind={}", BITCOIND_RPC_HOST),
+                &format!("--rpcport={}", BITCOIND_RPC_PORT),
                 &format!("--rpcuser={}", BITCOIND_RPC_USER),
                 &format!("--rpcpassword={}", BITCOIND_RPC_PASSWORD),
-                "--rpcallowip=127.0.0.1",
-                "--server=1",
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
