@@ -112,8 +112,8 @@ RUN wget https://github.com/paradigmxyz/reth/releases/download/v1.3.1/reth-v1.3.
     && install -m 0755 -o root -g root -t /usr/local/bin reth
 
 # Download and install Lighthouse for Ethereum PoS consensus
-RUN wget https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.0/lighthouse-v7.0.0-beta.0-aarch64-unknown-linux-gnu.tar.gz \
-    && tar -xzf lighthouse-v7.0.0-beta.0-aarch64-unknown-linux-gnu.tar.gz \
+RUN wget https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.3/lighthouse-v7.0.0-beta.3-aarch64-unknown-linux-gnu.tar.gz \
+    && tar -xzf lighthouse-v7.0.0-beta.3-aarch64-unknown-linux-gnu.tar.gz \
     && install -m 0755 -o root -g root -t /usr/local/bin lighthouse
 
 # Download and install NATS server
