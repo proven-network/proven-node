@@ -15,7 +15,7 @@ use proven_bitcoin_core::{BitcoinNode, BitcoinNodeOptions, BitcoinNetwork};
 use proven_core::{Core, CoreOptions};
 use proven_ethereum_reth::{RethNode, RethNodeOptions, EthereumNetwork as RethNetwork};
 use proven_ethereum_lighthouse::{LighthouseNode, LighthouseNodeOptions, EthereumNetwork as LighthouseNetwork};
-use proven_governance::{Governance, GovernanceError, Node};
+use proven_governance::{Governance, GovernanceError, Node, NodeSpecialization};
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_messaging_nats::client::NatsClientOptions;
@@ -61,11 +61,23 @@ pub struct Bootstrap {
     radix_stokenet_node: Option<RadixNode>,
     radix_stokenet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
 
-    ethereum_reth_node: Option<proven_ethereum_reth::RethNode>,
-    ethereum_reth_node_handle: Option<JoinHandle<()>>,
+    ethereum_mainnet_reth_node: Option<proven_ethereum_reth::RethNode>,
+    ethereum_mainnet_reth_node_handle: Option<JoinHandle<()>>,
 
-    ethereum_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
-    ethereum_lighthouse_node_handle: Option<JoinHandle<()>>,
+    ethereum_mainnet_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
+    ethereum_mainnet_lighthouse_node_handle: Option<JoinHandle<()>>,
+
+    ethereum_holesky_reth_node: Option<proven_ethereum_reth::RethNode>,
+    ethereum_holesky_reth_node_handle: Option<JoinHandle<()>>,
+
+    ethereum_holesky_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
+    ethereum_holesky_lighthouse_node_handle: Option<JoinHandle<()>>,
+
+    ethereum_sepolia_reth_node: Option<proven_ethereum_reth::RethNode>,
+    ethereum_sepolia_reth_node_handle: Option<JoinHandle<()>>,
+
+    ethereum_sepolia_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
+    ethereum_sepolia_lighthouse_node_handle: Option<JoinHandle<()>>,
 
     bitcoin_node: Option<BitcoinNode>,
     bitcoin_node_handle: Option<JoinHandle<()>>,
@@ -110,11 +122,23 @@ impl Bootstrap {
             radix_stokenet_node: None,
             radix_stokenet_node_handle: None,
 
-            ethereum_reth_node: None,
-            ethereum_reth_node_handle: None,
+            ethereum_mainnet_reth_node: None,
+            ethereum_mainnet_reth_node_handle: None,
 
-            ethereum_lighthouse_node: None,
-            ethereum_lighthouse_node_handle: None,
+            ethereum_mainnet_lighthouse_node: None,
+            ethereum_mainnet_lighthouse_node_handle: None,
+
+            ethereum_holesky_reth_node: None,
+            ethereum_holesky_reth_node_handle: None,
+
+            ethereum_holesky_lighthouse_node: None,
+            ethereum_holesky_lighthouse_node_handle: None,
+
+            ethereum_sepolia_reth_node: None,
+            ethereum_sepolia_reth_node_handle: None,
+
+            ethereum_sepolia_lighthouse_node: None,
+            ethereum_sepolia_lighthouse_node_handle: None,
 
             bitcoin_node: None,
             bitcoin_node_handle: None,
@@ -162,8 +186,20 @@ impl Bootstrap {
             return Err(e);
         }
 
-        if let Err(e) = self.start_ethereum_nodes().await {
-            error!("failed to start ethereum nodes: {:?}", e);
+        if let Err(e) = self.start_ethereum_mainnet_node().await {
+            error!("failed to start ethereum mainnet nodes: {:?}", e);
+            self.unwind_services().await;
+            return Err(e);
+        }
+
+        if let Err(e) = self.start_ethereum_holesky_node().await {
+            error!("failed to start ethereum holesky nodes: {:?}", e);
+            self.unwind_services().await;
+            return Err(e);
+        }
+
+        if let Err(e) = self.start_ethereum_sepolia_node().await {
+            error!("failed to start ethereum sepolia nodes: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
@@ -207,8 +243,12 @@ impl Bootstrap {
         // Optional handles
         let radix_mainnet_node_handle = self.radix_mainnet_node_handle.take();
         let radix_stokenet_node_handle = self.radix_stokenet_node_handle.take();
-        let ethereum_reth_node_handle = self.ethereum_reth_node_handle.take();
-        let ethereum_lighthouse_node_handle = self.ethereum_lighthouse_node_handle.take();
+        let ethereum_mainnet_reth_node_handle = self.ethereum_mainnet_reth_node_handle.take();
+        let ethereum_mainnet_lighthouse_node_handle = self.ethereum_mainnet_lighthouse_node_handle.take();
+        let ethereum_holesky_reth_node_handle = self.ethereum_holesky_reth_node_handle.take();
+        let ethereum_holesky_lighthouse_node_handle = self.ethereum_holesky_lighthouse_node_handle.take();
+        let ethereum_sepolia_reth_node_handle = self.ethereum_sepolia_reth_node_handle.take();
+        let ethereum_sepolia_lighthouse_node_handle = self.ethereum_sepolia_lighthouse_node_handle.take();
         let bitcoin_node_handle = self.bitcoin_node_handle.take();
         let postgres_handle = self.postgres_handle.take();
         let radix_aggregator_handle = self.radix_aggregator_handle.take();
@@ -221,8 +261,12 @@ impl Bootstrap {
         // Optional services
         let radix_mainnet_node_option = self.radix_mainnet_node.take().map(|node| Arc::new(Mutex::new(node)));
         let radix_stokenet_node_option = self.radix_stokenet_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let ethereum_reth_node_option = self.ethereum_reth_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let ethereum_lighthouse_node_option = self.ethereum_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_mainnet_reth_node_option = self.ethereum_mainnet_reth_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_mainnet_lighthouse_node_option = self.ethereum_mainnet_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_holesky_reth_node_option = self.ethereum_holesky_reth_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_holesky_lighthouse_node_option = self.ethereum_holesky_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_sepolia_reth_node_option = self.ethereum_sepolia_reth_node.take().map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_sepolia_lighthouse_node_option = self.ethereum_sepolia_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
         let bitcoin_node_option = self.bitcoin_node.take().map(|node| Arc::new(Mutex::new(node)));
         let postgres = self.postgres.take().map(|postgres| Arc::new(Mutex::new(postgres)));
         let radix_aggregator = self.radix_aggregator.take().map(|aggregator| Arc::new(Mutex::new(aggregator)));
@@ -235,8 +279,12 @@ impl Bootstrap {
         let node_services = Services {
             radix_mainnet_node: radix_mainnet_node_option.clone(),
             radix_stokenet_node: radix_stokenet_node_option.clone(),
-            ethereum_reth_node: ethereum_reth_node_option.clone(),
-            ethereum_lighthouse_node: ethereum_lighthouse_node_option.clone(),
+            ethereum_holesky_reth_node: ethereum_holesky_reth_node_option.clone(),
+            ethereum_holesky_lighthouse_node: ethereum_holesky_lighthouse_node_option.clone(),
+            ethereum_mainnet_reth_node: ethereum_mainnet_reth_node_option.clone(),
+            ethereum_mainnet_lighthouse_node: ethereum_mainnet_lighthouse_node_option.clone(),
+            ethereum_sepolia_reth_node: ethereum_sepolia_reth_node_option.clone(),
+            ethereum_sepolia_lighthouse_node: ethereum_sepolia_lighthouse_node_option.clone(),
             bitcoin_node: bitcoin_node_option.clone(),
             postgres: postgres.clone(),
             radix_aggregator: radix_aggregator.clone(),
@@ -269,18 +317,54 @@ impl Bootstrap {
                         std::future::pending::<()>().await
                     } => {},
                     _ = async { 
-                        if let Some(handle) = ethereum_reth_node_handle {
+                        if let Some(handle) = ethereum_mainnet_reth_node_handle {
                             if let Ok(e) = handle.await {
-                                error!("ethereum reth node exited: {:?}", e);
+                                error!("ethereum mainnet reth node exited: {:?}", e);
                                 return;
                             }
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async { 
-                        if let Some(handle) = ethereum_lighthouse_node_handle {
+                        if let Some(handle) = ethereum_mainnet_lighthouse_node_handle {
                             if let Ok(e) = handle.await {
-                                error!("ethereum lighthouse node exited: {:?}", e);
+                                error!("ethereum mainnet lighthouse node exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = ethereum_holesky_reth_node_handle {
+                            if let Ok(e) = handle.await {
+                                error!("ethereum holesky reth node exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = ethereum_holesky_lighthouse_node_handle {
+                            if let Ok(e) = handle.await {
+                                error!("ethereum holesky lighthouse node exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = ethereum_sepolia_reth_node_handle {
+                            if let Ok(e) = handle.await {
+                                error!("ethereum sepolia reth node exited: {:?}", e);
+                                return;
+                            }
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async { 
+                        if let Some(handle) = ethereum_sepolia_lighthouse_node_handle {
+                            if let Ok(e) = handle.await {
+                                error!("ethereum sepolia lighthouse node exited: {:?}", e);
                                 return;
                             }
                         }
@@ -363,12 +447,28 @@ impl Bootstrap {
                 stokenet_node.lock().await.shutdown().await;
             }
 
-            if let Some(reth_node) = &ethereum_reth_node_option {
-                reth_node.lock().await.shutdown().await;
+            if let Some(ethereum_mainnet_reth_node) = &ethereum_mainnet_reth_node_option {
+                ethereum_mainnet_reth_node.lock().await.shutdown().await;
             }
             
-            if let Some(lighthouse_node) = &ethereum_lighthouse_node_option {
-                lighthouse_node.lock().await.shutdown().await;
+            if let Some(ethereum_mainnet_lighthouse_node) = &ethereum_mainnet_lighthouse_node_option {
+                ethereum_mainnet_lighthouse_node.lock().await.shutdown().await;
+            }
+
+            if let Some(ethereum_holesky_reth_node) = &ethereum_holesky_reth_node_option {
+                ethereum_holesky_reth_node.lock().await.shutdown().await;
+            }
+            
+            if let Some(ethereum_holesky_lighthouse_node) = &ethereum_holesky_lighthouse_node_option {
+                ethereum_holesky_lighthouse_node.lock().await.shutdown().await;
+            }
+
+            if let Some(ethereum_sepolia_reth_node) = &ethereum_sepolia_reth_node_option {
+                ethereum_sepolia_reth_node.lock().await.shutdown().await;
+            }
+            
+            if let Some(ethereum_sepolia_lighthouse_node) = &ethereum_sepolia_lighthouse_node_option {
+                ethereum_sepolia_lighthouse_node.lock().await.shutdown().await;
             }
 
             if let Some(bitcoin_node) = &bitcoin_node_option {
@@ -411,20 +511,40 @@ impl Bootstrap {
             postgres.shutdown().await;
         }
 
-        if let Some(ethereum_lighthouse_node) = self.ethereum_lighthouse_node {
-            ethereum_lighthouse_node.shutdown().await;
+        if let Some(ethereum_sepolia_lighthouse_node) = self.ethereum_sepolia_lighthouse_node {
+            ethereum_sepolia_lighthouse_node.shutdown().await;
         }
 
-        if let Some(ethereum_reth_node) = self.ethereum_reth_node {
-            ethereum_reth_node.shutdown().await;
+        if let Some(ethereum_sepolia_reth_node) = self.ethereum_sepolia_reth_node {
+            ethereum_sepolia_reth_node.shutdown().await;
+        }
+
+        if let Some(ethereum_holesky_lighthouse_node) = self.ethereum_holesky_lighthouse_node {
+            ethereum_holesky_lighthouse_node.shutdown().await;
+        }
+
+        if let Some(ethereum_holesky_reth_node) = self.ethereum_holesky_reth_node {
+            ethereum_holesky_reth_node.shutdown().await;
+        }
+
+        if let Some(ethereum_mainnet_lighthouse_node) = self.ethereum_mainnet_lighthouse_node {
+            ethereum_mainnet_lighthouse_node.shutdown().await;
+        }
+
+        if let Some(ethereum_mainnet_reth_node) = self.ethereum_mainnet_reth_node {
+            ethereum_mainnet_reth_node.shutdown().await;
         }
 
         if let Some(bitcoin_node) = self.bitcoin_node {
             bitcoin_node.shutdown().await;
         }
 
-        if let Some(radix_node) = self.radix_mainnet_node {
-            radix_node.shutdown().await;
+        if let Some(radix_mainnet_node) = self.radix_mainnet_node {
+            radix_mainnet_node.shutdown().await;
+        }
+
+        if let Some(radix_stokenet_node) = self.radix_stokenet_node {
+            radix_stokenet_node.shutdown().await;
         }
     }
 
@@ -458,7 +578,7 @@ impl Bootstrap {
 
         if node_config
             .specializations
-            .contains(&proven_governance::NodeSpecialization::RadixMainnet)
+            .contains(&NodeSpecialization::RadixMainnet)
         {
             let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
                 host_ip: self.external_ip.to_string(),
@@ -481,7 +601,7 @@ impl Bootstrap {
 
         if node_config
             .specializations
-            .contains(&proven_governance::NodeSpecialization::RadixStokenet)
+            .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_stokenet_node = RadixNode::new(RadixNodeOptions {
                 host_ip: self.external_ip.to_string(),
@@ -505,14 +625,98 @@ impl Bootstrap {
         Ok(())
     }
 
-    async fn start_ethereum_nodes(&mut self) -> Result<()> {
+    async fn start_ethereum_mainnet_node(&mut self) -> Result<()> {
         let node_config = self.node_config.as_ref().unwrap_or_else(|| {
             panic!("node config not set before ethereum nodes step");
         });
 
         if node_config
             .specializations
-            .contains(&proven_governance::NodeSpecialization::EthereumSepolia)
+            .contains(&NodeSpecialization::EthereumMainnet)
+        {
+            // Start Reth execution client
+            let ethereum_reth_node = RethNode::new(RethNodeOptions {
+                network: RethNetwork::Mainnet,
+                store_dir: self.args.ethereum_mainnet_store_dir.to_string_lossy().to_string(),
+            });
+
+            let ethereum_reth_node_handle = ethereum_reth_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
+
+            self.ethereum_mainnet_reth_node = Some(ethereum_reth_node);
+            self.ethereum_mainnet_reth_node_handle = Some(ethereum_reth_node_handle);
+
+            info!("ethereum reth node (mainnet) started");
+
+            // Start Lighthouse consensus client
+            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+                host_ip: self.external_ip.to_string(),
+                network: LighthouseNetwork::Mainnet,
+                store_dir: self.args.ethereum_mainnet_store_dir.to_string_lossy().to_string(),
+            });
+
+            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
+
+            self.ethereum_mainnet_lighthouse_node = Some(ethereum_lighthouse_node);
+            self.ethereum_mainnet_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
+
+            info!("ethereum lighthouse node (mainnet) started");
+        }
+
+        Ok(())
+    }
+
+    async fn start_ethereum_holesky_node(&mut self) -> Result<()> {
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not set before ethereum nodes step");
+        });
+
+        if node_config
+            .specializations
+            .contains(&NodeSpecialization::EthereumHolesky)
+        {
+            // Start Reth execution client
+            let ethereum_reth_node = RethNode::new(RethNodeOptions {
+                network: RethNetwork::Holesky,
+                store_dir: self.args.ethereum_holesky_store_dir.to_string_lossy().to_string(),
+            });
+
+            let ethereum_reth_node_handle = ethereum_reth_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
+
+            self.ethereum_holesky_reth_node = Some(ethereum_reth_node);
+            self.ethereum_holesky_reth_node_handle = Some(ethereum_reth_node_handle);
+
+            info!("ethereum reth node (holesky) started");
+
+            // Start Lighthouse consensus client
+            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+                host_ip: self.external_ip.to_string(),
+                network: LighthouseNetwork::Holesky,
+                store_dir: self.args.ethereum_holesky_store_dir.to_string_lossy().to_string(),
+            });
+
+            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
+
+            self.ethereum_holesky_lighthouse_node = Some(ethereum_lighthouse_node);
+            self.ethereum_holesky_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
+
+            info!("ethereum lighthouse node (holesky) started");
+        }
+
+        Ok(())
+    }
+
+    async fn start_ethereum_sepolia_node(&mut self) -> Result<()> {
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not set before ethereum nodes step");
+        });
+
+        if node_config
+            .specializations
+            .contains(&NodeSpecialization::EthereumSepolia)
         {
             // Start Reth execution client
             let ethereum_reth_node = RethNode::new(RethNodeOptions {
@@ -523,8 +727,8 @@ impl Bootstrap {
             let ethereum_reth_node_handle = ethereum_reth_node.start().await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
-            self.ethereum_reth_node = Some(ethereum_reth_node);
-            self.ethereum_reth_node_handle = Some(ethereum_reth_node_handle);
+            self.ethereum_sepolia_reth_node = Some(ethereum_reth_node);
+            self.ethereum_sepolia_reth_node_handle = Some(ethereum_reth_node_handle);
 
             info!("ethereum reth node (sepolia) started");
 
@@ -538,8 +742,8 @@ impl Bootstrap {
             let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
                 .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
 
-            self.ethereum_lighthouse_node = Some(ethereum_lighthouse_node);
-            self.ethereum_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
+            self.ethereum_sepolia_lighthouse_node = Some(ethereum_lighthouse_node);
+            self.ethereum_sepolia_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
 
             info!("ethereum lighthouse node (sepolia) started");
         }
@@ -554,7 +758,7 @@ impl Bootstrap {
 
         if node_config
             .specializations
-            .contains(&proven_governance::NodeSpecialization::BitcoinTestnet)
+            .contains(&NodeSpecialization::BitcoinTestnet)
         {
             // Start Bitcoin testnet node
             let bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
@@ -581,10 +785,10 @@ impl Bootstrap {
 
         if node_config
             .specializations
-            .contains(&proven_governance::NodeSpecialization::RadixMainnet)
+            .contains(&NodeSpecialization::RadixMainnet)
             || node_config
                 .specializations
-                .contains(&proven_governance::NodeSpecialization::RadixStokenet)
+                .contains(&NodeSpecialization::RadixStokenet)
         {
             let postgres = Postgres::new(PostgresOptions {
                 bin_path: self.args.postgres_bin_path.clone(),
@@ -612,7 +816,7 @@ impl Bootstrap {
 
         if node_config
             .specializations
-            .contains(&proven_governance::NodeSpecialization::RadixStokenet)
+            .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
@@ -638,7 +842,7 @@ impl Bootstrap {
 
         if node_config
             .specializations
-            .contains(&proven_governance::NodeSpecialization::RadixStokenet)
+            .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_gateway = RadixGateway::new(RadixGatewayOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),

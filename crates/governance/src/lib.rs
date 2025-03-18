@@ -40,6 +40,9 @@ pub enum NodeSpecialization {
     /// Runs a Bitcoin testnet node.
     BitcoinTestnet,
 
+    /// Runs a Holesky (testnet) Ethereum node.
+    EthereumHolesky,
+
     /// Runs a mainnet Ethereum node.
     EthereumMainnet,
 

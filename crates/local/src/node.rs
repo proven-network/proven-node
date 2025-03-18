@@ -102,11 +102,23 @@ pub struct Services {
     /// The Radix Stokenet node.
     pub radix_stokenet_node: Option<Arc<Mutex<RadixNode>>>,
 
-    /// The Ethereum Reth node.
-    pub ethereum_reth_node: Option<Arc<Mutex<RethNode>>>,
+    /// The Ethereum Holesky Reth node.
+    pub ethereum_holesky_reth_node: Option<Arc<Mutex<RethNode>>>,
 
-    /// The Ethereum Lighthouse node.
-    pub ethereum_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
+    /// The Ethereum Holesky Lighthouse node.
+    pub ethereum_holesky_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
+
+    /// The Ethereum Mainnet Reth node.
+    pub ethereum_mainnet_reth_node: Option<Arc<Mutex<RethNode>>>,
+
+    /// The Ethereum Mainnet Lighthouse node.
+    pub ethereum_mainnet_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
+
+    /// The Ethereum Sepolia Reth node.
+    pub ethereum_sepolia_reth_node: Option<Arc<Mutex<RethNode>>>,
+
+    /// The Ethereum Sepolia Lighthouse node.
+    pub ethereum_sepolia_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
 
     /// The Bitcoin node (testnet or mainnet).
     pub bitcoin_node: Option<Arc<Mutex<BitcoinNode>>>,

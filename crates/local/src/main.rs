@@ -39,9 +39,11 @@ struct Args {
     )]
     bitcoin_testnet_store_dir: PathBuf,
 
+    /// Proven HTTP port
     #[arg(long, default_value_t = 3200, env = "PROVEN_PORT")]
     port: u16,
 
+    /// NATS port
     #[arg(long, default_value_t = 4222, env = "PROVEN_NATS_PORT")]
     nats_port: u16,
 
@@ -49,6 +51,7 @@ struct Args {
     #[arg(long, env = "PROVEN_NODE_KEY", required = true)]
     node_key: String,
 
+    /// Postgres binary directory path
     #[arg(
         long,
         default_value = "/usr/local/pgsql/bin",
@@ -56,6 +59,7 @@ struct Args {
     )]
     postgres_bin_path: String,
 
+    /// Postgres store directory
     #[arg(
         long,
         default_value = "/tmp/proven/postgres",
@@ -63,9 +67,11 @@ struct Args {
     )]
     postgres_store_dir: PathBuf,
 
+    /// Radix Mainnet port
     #[arg(long, default_value_t = 30000, env = "PROVEN_RADIX_MAINNET_PORT")]
     radix_mainnet_port: u16,
 
+    /// Radix Mainnet store directory
     #[arg(
         long,
         default_value = "/tmp/proven/radix-node-mainnet",
@@ -73,9 +79,11 @@ struct Args {
     )]
     radix_mainnet_store_dir: PathBuf,
 
+    /// Radix Stokenet port
     #[arg(long, default_value_t = 30001, env = "PROVEN_RADIX_STOKENET_PORT")]
     radix_stokenet_port: u16,
 
+    /// Radix Stokenet store directory
     #[arg(
         long,
         default_value = "/tmp/proven/radix-node-stokenet",
@@ -83,6 +91,23 @@ struct Args {
     )]
     radix_stokenet_store_dir: PathBuf,
 
+    /// Ethereum Holesky store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/ethereum-holesky",
+        env = "PROVEN_ETHEREUM_HOLESKY_STORE_DIR"
+    )]
+    ethereum_holesky_store_dir: PathBuf,
+
+    /// Ethereum Mainnet store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/ethereum-mainnet",
+        env = "PROVEN_ETHEREUM_MAINNET_STORE_DIR"
+    )]
+    ethereum_mainnet_store_dir: PathBuf,
+
+    /// Ethereum Sepolia store directory
     #[arg(
         long,
         default_value = "/tmp/proven/ethereum-sepolia",
