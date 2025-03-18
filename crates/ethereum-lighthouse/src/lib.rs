@@ -146,6 +146,7 @@ impl LighthouseNode {
                 &get_checkpoint_sync_url(network),
                 "--jwt-secrets",
                 &jwt_path,
+                "--disable-upnp", // Port mapping handled externally
             ]);
 
             info!("Starting Lighthouse with command: {:?}", cmd);
