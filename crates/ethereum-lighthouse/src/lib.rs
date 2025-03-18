@@ -60,7 +60,6 @@ impl EthereumNetwork {
 
 /// Runs a Lighthouse consensus client.
 pub struct LighthouseNode {
-    #[allow(dead_code)]
     host_ip: String,
     network: EthereumNetwork,
     shutdown_token: CancellationToken,
@@ -116,7 +115,7 @@ impl LighthouseNode {
         let task_tracker = self.task_tracker.clone();
         let network = self.network;
         let store_dir = self.store_dir.clone();
-
+        let host_ip = self.host_ip.clone();
         let server_task = self.task_tracker.spawn(async move {
             // Start the Lighthouse process
             let network_str = network.as_str();
@@ -146,7 +145,13 @@ impl LighthouseNode {
                 &get_checkpoint_sync_url(network),
                 "--jwt-secrets",
                 &jwt_path,
-                "--disable-upnp", // Port mapping handled externally
+                "--disable-upnp", // Port mapping handled externally,
+                "--enr-address",
+                &host_ip,
+                "--enr-udp-port",
+                "9000",
+                "--enr-tcp-port",
+                "9000",
             ]);
 
             info!("Starting Lighthouse with command: {:?}", cmd);
