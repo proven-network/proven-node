@@ -390,8 +390,8 @@ impl LighthouseNode {
 // Returns the appropriate checkpoint sync URL based on the network
 fn get_checkpoint_sync_url(network: EthereumNetwork) -> String {
     match network {
-        EthereumNetwork::Mainnet => "https://mainnet.beaconstate.info/".to_string(),
-        EthereumNetwork::Sepolia => "https://sepolia.beaconstate.info".to_string(),
-        EthereumNetwork::Holesky => "https://holesky.beaconstate.info".to_string(),
+        EthereumNetwork::Mainnet => "https://beaconstate-mainnet.chainsafe.io".to_string(),
+        EthereumNetwork::Sepolia => "https://beaconstate-sepolia.chainsafe.io".to_string(),
+        EthereumNetwork::Holesky => "https://beaconstate-holesky.chainsafe.io".to_string(),
     }
 }
