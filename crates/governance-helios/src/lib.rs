@@ -255,6 +255,8 @@ impl Governance for HeliosGovernance {
                     specializations.insert(NodeSpecialization::BitcoinMainnet);
                 } else if spec_str.starts_with("bitcoin-testnet") {
                     specializations.insert(NodeSpecialization::BitcoinTestnet);
+                } else if spec_str.starts_with("ethereum-holesky") {
+                    specializations.insert(NodeSpecialization::EthereumHolesky);
                 } else if spec_str.starts_with("ethereum-mainnet") {
                     specializations.insert(NodeSpecialization::EthereumMainnet);
                 } else if spec_str.starts_with("ethereum-sepolia") {

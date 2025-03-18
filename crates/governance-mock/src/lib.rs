@@ -114,6 +114,8 @@ impl MockGovernance {
                         specializations.insert(NodeSpecialization::RadixMainnet);
                     } else if spec == "radix-stokenet" {
                         specializations.insert(NodeSpecialization::RadixStokenet);
+                    } else if spec == "ethereum-holesky" {
+                        specializations.insert(NodeSpecialization::EthereumHolesky);
                     } else if spec == "ethereum-mainnet" {
                         specializations.insert(NodeSpecialization::EthereumMainnet);
                     } else if spec == "ethereum-sepolia" {
