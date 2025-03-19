@@ -15,37 +15,6 @@ RUN dotnet publish -c Release -o /bin/DatabaseMigrations
 WORKDIR /babylon-gateway/apps/GatewayApi
 RUN dotnet publish -c Release -o /bin/GatewayApi
 
-# -------------------
-# BITCOIN BUILD STEPS
-# -------------------
-FROM debian:bookworm-20240904-slim AS bitcoin-builder
-
-# Build Bitcoin Core
-WORKDIR /
-RUN git clone https://github.com/bitcoin/bitcoin.git
-WORKDIR /bitcoin
-RUN git checkout v27.0
-
-# Install dependencies for Bitcoin Core
-RUN apk add --no-cache \
-    autoconf \
-    automake \
-    boost-dev \
-    libtool \
-    zeromq-dev \
-    libevent-dev
-
-# Build Bitcoin Core
-RUN ./autogen.sh
-RUN ./configure --disable-wallet --without-gui --disable-tests --with-utils
-RUN make -j$(nproc)
-
-# Move bitcoin binaries to /bin
-RUN cp /bitcoin/src/bitcoind /bin/
-RUN cp /bitcoin/src/bitcoin-cli /bin/
-RUN chown root:root /bin/bitcoind /bin/bitcoin-cli
-RUN chmod 0755      /bin/bitcoind /bin/bitcoin-cli
-
 # --------------------
 # POSTGRES BUILD STEPS
 # --------------------
@@ -100,18 +69,6 @@ RUN cp /gocryptfs/gocryptfs /bin/
 RUN chown root:root /bin/gocryptfs
 RUN chmod 0755      /bin/gocryptfs
 
-# Build Geth (Go Ethereum) TODO: Replace with Reth
-WORKDIR /
-RUN git clone https://github.com/ethereum/go-ethereum.git
-WORKDIR /go-ethereum
-RUN git checkout v1.15.4
-RUN make geth
-
-# Move geth to /bin
-RUN cp /go-ethereum/build/bin/geth /bin/
-RUN chown root:root /bin/geth
-RUN chmod 0755      /bin/geth
-
 # ----------------
 # RUST BUILD STEPS
 # ----------------
@@ -153,18 +110,6 @@ RUN chmod 0755      /bin/proven-enclave
 # Remove target dir to speed up snapshot
 RUN rm -rf /proven-node/target
 
-# Build Lighthouse
-WORKDIR /
-RUN git clone https://github.com/sigp/lighthouse.git
-WORKDIR /lighthouse
-RUN git checkout v6.0.1
-RUN cargo build --release --bin lighthouse
-
-# Move lighthouse to /bin
-RUN cp /lighthouse/target/release/lighthouse /bin/
-RUN chown root:root /bin/lighthouse
-RUN chmod 0755      /bin/lighthouse
-
 # --------------
 # EXTRA BINARIES
 # --------------
@@ -175,6 +120,9 @@ RUN apk add --no-cache unzip wget
 WORKDIR /tmp
 
 # Download
+RUN wget -q https://github.com/bitcoin/bitcoin/releases/download/v27.0/bitcoin-27.0-aarch64-linux-gnu.tar.gz
+RUN wget -q https://github.com/paradigmxyz/reth/releases/download/v1.3.1/reth-v1.3.1-aarch64-unknown-linux-gnu.tar.gz
+RUN wget -q https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.3/lighthouse-v7.0.0-beta.3-aarch64-unknown-linux-gnu.tar.gz
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-v1.3.0.2.zip
 RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.10.25/nats-server-v2.10.25-linux-arm64.zip
@@ -182,6 +130,9 @@ RUN wget -q https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.7/d
 RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
 
 # Unzip
+RUN tar -xvzf bitcoin-27.0-aarch64-linux-gnu.tar.gz
+RUN tar -xvzf reth-v1.3.1-aarch64-unknown-linux-gnu.tar.gz
+RUN tar -xvzf lighthouse-v7.0.0-beta.3-aarch64-unknown-linux-gnu.tar.gz
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN unzip babylon-node-v1.3.0.2.zip
 RUN unzip nats-server-v2.10.25-linux-arm64.zip
@@ -189,6 +140,10 @@ RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.7.tar.gz
 RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
 
 # Move to /bin
+RUN mv bitcoin-27.0/bin/bitcoind /bin/
+RUN mv bitcoin-27.0/bin/bitcoin-cli /bin/
+RUN mv reth /bin/
+RUN mv lighthouse /bin/
 RUN mkdir -p /bin/babylon-node
 RUN mv core-v1.3.0.2 /bin/babylon-node
 RUN mv libcorerust.so /bin/babylon-node
@@ -222,13 +177,13 @@ RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
 COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
 COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
-COPY --from=bitcoin-builder /bin/bitcoind /bin/
-COPY --from=bitcoin-builder /bin/bitcoin-cli /bin/
 COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
 COPY --from=go-builder /bin/gocryptfs /bin/
-COPY --from=go-builder /bin/geth /bin/
 COPY --from=rust-builder /bin/proven-enclave /bin/
-COPY --from=rust-builder /bin/lighthouse /bin/
+COPY --from=extra-binaries /bin/bitcoind /bin/
+COPY --from=extra-binaries /bin/bitcoin-cli /bin/
+COPY --from=extra-binaries /bin/reth /bin/
+COPY --from=extra-binaries /bin/lighthouse /bin/
 COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
 COPY --from=extra-binaries /bin/nats-server /bin/
 COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
