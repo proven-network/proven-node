@@ -48,10 +48,6 @@ pub enum Error {
     #[error(transparent)]
     ExternalFs(#[from] proven_external_fs::Error),
 
-    /// Governance error.
-    #[error("governance error: {0}")]
-    Governance(proven_governance::GovernanceErrorKind),
-
     /// Instance metadata error.
     #[error(transparent)]
     Imds(#[from] proven_imds::Error),
@@ -105,6 +101,10 @@ pub enum Error {
     /// Postgres error.
     #[error(transparent)]
     Postgres(#[from] proven_postgres::Error),
+
+    /// Proven network error.
+    #[error(transparent)]
+    ProvenNetwork(#[from] proven_network::Error),
 
     /// Babylon aggregator error.
     #[error(transparent)]

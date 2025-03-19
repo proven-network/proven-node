@@ -10,18 +10,19 @@ use std::time::Duration;
 
 use async_nats::Client as NatsClient;
 use proven_applications::{ApplicationManagement, ApplicationManager};
-use proven_attestation_dev::DevAttestor;
+use proven_attestation_mock::MockAttestor;
 use proven_bitcoin_core::{BitcoinNode, BitcoinNodeOptions, BitcoinNetwork};
 use proven_core::{Core, CoreOptions};
 use proven_ethereum_reth::{RethNode, RethNodeOptions, EthereumNetwork as RethNetwork};
 use proven_ethereum_lighthouse::{LighthouseNode, LighthouseNodeOptions, EthereumNetwork as LighthouseNetwork};
-use proven_governance::{Governance, GovernanceError, Node, NodeSpecialization};
+use proven_governance::{TopologyNode, NodeSpecialization};
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
+use proven_network::{ProvenNetwork, ProvenNetworkOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
@@ -48,12 +49,13 @@ static POSTGRES_RADIX_STOKENET_DATABASE: &str = "radix-stokenet-db";
 // TODO: This is in dire need of refactoring.
 pub struct Bootstrap {
     args: Args,
-    attestor: DevAttestor,
+    attestor: MockAttestor,
     external_ip: IpAddr,
 
     // added during initialization
     governance: Option<MockGovernance>,
-    node_config: Option<Node>,
+    network: Option<ProvenNetwork<MockGovernance, MockAttestor>>,
+    node_config: Option<TopologyNode>,
 
     radix_mainnet_node: Option<RadixNode>,
     radix_mainnet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
@@ -92,7 +94,7 @@ pub struct Bootstrap {
     radix_gateway_handle: Option<JoinHandle<proven_radix_gateway::Result<()>>>,
 
     nats_client: Option<NatsClient>,
-    nats_server: Option<NatsServer<MockGovernance>>,
+    nats_server: Option<NatsServer<MockGovernance, MockAttestor>>,
     nats_server_handle: Option<JoinHandle<proven_nats_server::Result<()>>>,
 
     core: Option<LocalNodeCore>,
@@ -110,10 +112,11 @@ impl Bootstrap {
 
         Ok(Self {
             args,
-            attestor: DevAttestor,
+            attestor: MockAttestor,
             external_ip,
 
             governance: None,
+            network: None,
             node_config: None,
 
             radix_mainnet_node: None,
@@ -551,14 +554,17 @@ impl Bootstrap {
     async fn get_network_topology(&mut self) -> Result<()> {
         let governance =
             MockGovernance::from_topology_file(self.args.topology_file.clone(), vec![])
-                .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?
-                .with_private_key(&self.args.node_key)
-                .map_err(|e| Error::Io(format!("Failed to initialize governance: {}", e)))?;
+                .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?;
 
-        let node_config = governance
+        let network = ProvenNetwork::new(ProvenNetworkOptions {
+            governance: governance.clone(),
+            attestor: self.attestor.clone(),
+            private_key_hex: self.args.node_key.clone(),
+        })?;
+
+        let node_config = network
             .get_self()
-            .await
-            .map_err(|e| Error::Governance(e.kind()))?;
+            .await?;
 
         info!("node config: {:?}", node_config);
 
@@ -566,6 +572,7 @@ impl Bootstrap {
         check_hostname_resolution(&node_config.fqdn).await?;
 
         self.governance = Some(governance);
+        self.network = Some(network);
         self.node_config = Some(node_config);
 
         Ok(())
@@ -862,15 +869,15 @@ impl Bootstrap {
     }
 
     async fn start_nats_server(&mut self) -> Result<()> {
-        let governance = self.governance.as_ref().unwrap_or_else(|| {
-            panic!("governance not set before nats server step");
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before nats server step");
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
             client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
             cluster_listen_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.args.nats_cluster_port),
             debug: self.args.testnet,
-            governance: governance.clone(),
+            network: network.clone(),
             server_name: self.node_config.as_ref().unwrap().fqdn.clone(),
             store_dir: "/var/lib/nats/nats".to_string(),
         });
@@ -891,6 +898,10 @@ impl Bootstrap {
     async fn start_core(&mut self) -> Result<()> {
         let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
             panic!("nats client not fetched before core");
+        });
+
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before core");
         });
 
         let node_config = self.node_config.as_ref().unwrap_or_else(|| {
@@ -1045,7 +1056,7 @@ impl Bootstrap {
         let core = Core::new(CoreOptions {
             application_manager,
             attestor: self.attestor.clone(),
-            governance: MockGovernance::new(Vec::new(), Vec::new()),
+            network: network.clone(),
             primary_hostnames: vec![node_config.fqdn.clone()].into_iter().collect(),
             runtime_pool_manager,
             session_manager,

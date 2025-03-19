@@ -12,7 +12,7 @@ console = { workspace = true }
 hickory-resolver = { workspace = true }
 proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
-proven-attestation-dev = { workspace = true }
+proven-attestation-mock = { workspace = true }
 proven-bitcoin-core = { workspace = true }
 proven-core = { workspace = true }
 proven-ethereum-reth = { workspace = true }
@@ -23,6 +23,7 @@ proven-http-insecure = { workspace = true }
 proven-messaging = { workspace = true }
 proven-messaging-nats = { workspace = true }
 proven-nats-server = { workspace = true }
+proven-network = { workspace = true }
 proven-postgres = { workspace = true }
 proven-radix-aggregator = { workspace = true }
 proven-radix-gateway = { workspace = true }

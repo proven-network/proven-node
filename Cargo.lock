@@ -8810,7 +8810,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-attestation-dev"
+name = "proven-attestation-mock"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -8894,6 +8894,7 @@ dependencies = [
  "proven-code-package",
  "proven-governance",
  "proven-http",
+ "proven-network",
  "proven-radix-rola",
  "proven-runtime",
  "proven-sessions",
@@ -8952,6 +8953,7 @@ dependencies = [
  "proven-messaging-nats",
  "proven-nats-monitor",
  "proven-nats-server",
+ "proven-network",
  "proven-postgres",
  "proven-radix-aggregator",
  "proven-radix-gateway",
@@ -9216,7 +9218,7 @@ dependencies = [
  "hickory-resolver",
  "proven-applications",
  "proven-attestation",
- "proven-attestation-dev",
+ "proven-attestation-mock",
  "proven-bitcoin-core",
  "proven-core",
  "proven-ethereum-lighthouse",
@@ -9227,6 +9229,7 @@ dependencies = [
  "proven-messaging",
  "proven-messaging-nats",
  "proven-nats-server",
+ "proven-network",
  "proven-postgres",
  "proven-radix-aggregator",
  "proven-radix-gateway",
@@ -9333,12 +9336,30 @@ version = "0.1.0"
 dependencies = [
  "async-nats",
  "nix 0.27.1",
+ "proven-attestation",
  "proven-governance",
+ "proven-network",
  "regex",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
  "tracing",
+]
+
+[[package]]
+name = "proven-network"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "ed25519-dalek",
+ "hex",
+ "proven-attestation",
+ "proven-attestation-mock",
+ "proven-governance",
+ "proven-governance-mock",
+ "serde",
+ "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]

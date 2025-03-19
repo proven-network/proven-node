@@ -1,0 +1,18 @@
+[package]
+name = "proven-network"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
+proven-attestation = { workspace = true }
+proven-governance = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true } 
+
+[dev-dependencies]
+async-trait = { workspace = true }
+proven-attestation-mock = { workspace = true }
+proven-governance-mock = { workspace = true }

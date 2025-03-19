@@ -20,7 +20,7 @@ pub(crate) async fn http_rpc_handler<AM, RM, SM, A, G>(
     State(PrimaryContext {
         application_manager,
         _attestor: _,
-        governance: _,
+        network: _,
         runtime_pool_manager,
         session_manager,
     }): State<PrimaryContext<AM, RM, SM, A, G>>,

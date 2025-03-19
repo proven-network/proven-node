@@ -24,6 +24,7 @@ use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_governance::Governance;
 use proven_http::HttpServer;
+use proven_network::ProvenNetwork;
 use proven_runtime::{HttpEndpoint, ModuleLoader, ModuleOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
 use tokio::task::JoinHandle;
@@ -43,7 +44,7 @@ where
 {
     pub application_manager: AM,
     pub _attestor: A,
-    pub governance: G,
+    pub network: ProvenNetwork<G, A>,
     pub runtime_pool_manager: RM,
     pub session_manager: SM,
 }
@@ -63,8 +64,8 @@ where
     /// The remote attestation attestor.
     pub attestor: A,
 
-    /// The governance manager.
-    pub governance: G,
+    /// The network for peer discovery.
+    pub network: ProvenNetwork<G, A>,
 
     /// The primary hostnames for RPC, WS, etc.
     pub primary_hostnames: HashSet<String>,
@@ -87,7 +88,7 @@ where
 {
     application_manager: AM,
     attestor: A,
-    governance: G,
+    network: ProvenNetwork<G, A>,
     primary_hostnames: HashSet<String>,
     runtime_pool_manager: RM,
     session_manager: SM,
@@ -108,7 +109,7 @@ where
         CoreOptions {
             application_manager,
             attestor,
-            governance,
+            network,
             primary_hostnames,
             runtime_pool_manager,
             session_manager,
@@ -117,7 +118,7 @@ where
         Self {
             application_manager,
             attestor,
-            governance,
+            network,
             primary_hostnames,
             runtime_pool_manager,
             session_manager,
@@ -149,7 +150,7 @@ where
         let ctx = PrimaryContext {
             application_manager: self.application_manager.clone(),
             _attestor: self.attestor.clone(),
-            governance: self.governance.clone(),
+            network: self.network.clone(),
             runtime_pool_manager: self.runtime_pool_manager.clone(),
             session_manager: self.session_manager.clone(),
         };

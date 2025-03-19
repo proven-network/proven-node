@@ -16,7 +16,7 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
-use proven_governance::{Governance, GovernanceError, Node};
+use proven_governance::TopologyNode;
 use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
 use proven_imds::{IdentityDocument, Imds};
@@ -27,6 +27,7 @@ use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
+use proven_network::{ProvenNetwork, ProvenNetworkOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
@@ -74,7 +75,8 @@ pub struct Bootstrap {
     governance: Option<MockGovernance>,
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
-    node_config: Option<Node>,
+    network: Option<ProvenNetwork<MockGovernance, NsmAttestor>>,
+    node_config: Option<TopologyNode>,
 
     proxy: Option<Proxy>,
     proxy_handle: Option<JoinHandle<proven_vsock_proxy::Result<()>>>,
@@ -104,7 +106,7 @@ pub struct Bootstrap {
     nats_server_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
 
     nats_client: Option<NatsClient>,
-    nats_server: Option<NatsServer<MockGovernance>>,
+    nats_server: Option<NatsServer<MockGovernance, NsmAttestor>>,
     nats_server_handle: Option<JoinHandle<proven_nats_server::Result<()>>>,
 
     core: Option<EnclaveNodeCore>,
@@ -125,6 +127,7 @@ impl Bootstrap {
             governance: None,
             imds_identity: None,
             instance_details: None,
+            network: None,
             node_config: None,
 
             proxy: None,
@@ -591,18 +594,20 @@ impl Bootstrap {
 
     async fn get_network_topology(&mut self) -> Result<()> {
         // TODO: use helios in production
-        let governance = MockGovernance::new(Vec::new(), Vec::new())
-            .with_private_key(&self.args.node_key)
-            .map_err(|e| Error::Governance(e.kind()))?;
+        let governance = MockGovernance::new(Vec::new(), Vec::new());
 
-        let node_config = governance
-            .get_self()
-            .await
-            .map_err(|e| Error::Governance(e.kind()))?;
+        let network = ProvenNetwork::new(ProvenNetworkOptions {
+            attestor: self.attestor.clone(),
+            governance: governance.clone(),
+            private_key_hex: self.args.node_key.clone(),
+        })?;
+
+        let node_config = network.get_self().await?;
 
         info!("node config: {:?}", node_config);
 
         self.governance = Some(governance);
+        self.network = Some(network);
         self.node_config = Some(node_config);
 
         Ok(())
@@ -743,18 +748,18 @@ impl Bootstrap {
             panic!("instance details not fetched before nats-server");
         });
 
-        let governance = self.governance.as_ref().unwrap_or_else(|| {
+        let network = self.network.as_ref().unwrap_or_else(|| {
             panic!("governance not set before nats server step");
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
             debug: self.args.testnet,
-            governance: governance.clone(),
             client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4222),
             cluster_listen_addr: SocketAddrV4::new(
                 Ipv4Addr::UNSPECIFIED,
                 self.args.nats_cluster_port,
             ),
+            network: network.clone(),
             server_name: instance_details.instance_id.clone(),
             store_dir: "/var/lib/nats/nats".to_string(),
         });
@@ -783,6 +788,10 @@ impl Bootstrap {
 
         let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
             panic!("nats client not fetched before core");
+        });
+
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before core");
         });
 
         let challenge_store = NatsStore2::new(NatsStoreOptions {
@@ -1011,7 +1020,7 @@ impl Bootstrap {
         let core = Core::new(CoreOptions {
             application_manager,
             attestor: self.attestor.clone(),
-            governance: MockGovernance::new(Vec::new(), Vec::new()),
+            network: network.clone(),
             primary_hostnames: domains
                 .iter()
                 .map(|domain| format!("https://{domain}"))

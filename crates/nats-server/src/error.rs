@@ -26,6 +26,10 @@ pub enum Error {
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),
 
+    /// Network error.
+    #[error("network error: {0}")]
+    Network(String),
+
     /// Process exited with non-zero.
     #[error("nats server exited with non-zero status: {0}")]
     NonZeroExitCode(std::process::ExitStatus),

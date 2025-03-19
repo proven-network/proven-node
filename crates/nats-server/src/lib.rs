@@ -15,7 +15,9 @@ use std::sync::Arc;
 use async_nats::Client;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
-use proven_governance::{Governance, GovernanceError, Node};
+use proven_attestation::Attestor;
+use proven_governance::{Governance, TopologyNode};
+use proven_network::ProvenNetwork;
 use regex::Regex;
 use std::net::SocketAddrV4;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -31,12 +33,16 @@ static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
 
 /// Runs a NATS server for inter-node communication.
 #[derive(Clone)]
-pub struct NatsServer<G: Governance> {
+pub struct NatsServer<G, A>
+where
+    G: Governance,
+    A: Attestor,
+{
     client_listen_addr: SocketAddrV4,
     clients: Arc<Mutex<Vec<Client>>>,
     cluster_listen_addr: SocketAddrV4,
     debug: bool,
-    governance: G,
+    network: ProvenNetwork<G, A>,
     server_name: String,
     store_dir: String,
     shutdown_token: CancellationToken,
@@ -44,7 +50,11 @@ pub struct NatsServer<G: Governance> {
 }
 
 /// Options for configuring a `NatsServer`.
-pub struct NatsServerOptions<G: Governance> {
+pub struct NatsServerOptions<G, A>
+where
+    G: Governance,
+    A: Attestor,
+{
     /// The address to listen on.
     pub client_listen_addr: SocketAddrV4,
 
@@ -54,8 +64,8 @@ pub struct NatsServerOptions<G: Governance> {
     /// Whether to enable debug logging.
     pub debug: bool,
 
-    /// Governance instance to manage cluster topology.
-    pub governance: G,
+    /// Network for peer discovery
+    pub network: ProvenNetwork<G, A>,
 
     /// The name of the server.
     pub server_name: String,
@@ -64,7 +74,11 @@ pub struct NatsServerOptions<G: Governance> {
     pub store_dir: String,
 }
 
-impl<G: Governance> NatsServer<G> {
+impl<G, A> NatsServer<G, A>
+where
+    G: Governance,
+    A: Attestor,
+{
     /// Creates a new instance of `NatsServer`.
     #[must_use]
     pub fn new(
@@ -72,17 +86,17 @@ impl<G: Governance> NatsServer<G> {
             client_listen_addr,
             cluster_listen_addr,
             debug,
-            governance,
+            network,
             server_name,
             store_dir,
-        }: NatsServerOptions<G>,
+        }: NatsServerOptions<G, A>,
     ) -> Self {
         Self {
             clients: Arc::new(Mutex::new(Vec::new())),
             client_listen_addr,
             cluster_listen_addr,
             debug,
-            governance,
+            network,
             server_name,
             store_dir,
             shutdown_token: CancellationToken::new(),
@@ -124,8 +138,8 @@ impl<G: Governance> NatsServer<G> {
             .await
             .map_err(|e| Error::Io("failed to create jetstream directory", e))?;
         
-        // Initialize topology from governance
-        self.update_topology_from_governance(&self.governance).await?;
+        // Initialize topology from network
+        self.update_topology().await?;
         
         // Start periodic topology update task
         self.start_topology_update_task()?;
@@ -218,27 +232,26 @@ impl<G: Governance> NatsServer<G> {
         Ok(server_task)
     }
     
-    /// Updates topology from governance and updates NATS configuration.
+    /// Updates topology from network and updates NATS configuration.
     ///
     /// # Errors
     ///
     /// This function will return an error if it fails to get the topology or update the configuration.
-    async fn update_topology_from_governance(&self, governance: &G) -> Result<()> {
-        info!("Fetching peers from governance...");
-        match governance.get_peers().await {
+    async fn update_topology(&self) -> Result<()> {
+        info!("Fetching peers from network...");
+        match self.network.get_peers().await {
             Ok(peers) => {
-                info!("Retrieved {} peers from governance", peers.len());
+                info!("Retrieved {} peers from network", peers.len());
                 self.update_nats_config_with_peers(&peers).await
             }
             Err(e) => {
-                error!("Failed to get peers from governance: {}", e);
-
-                Err(Error::Governance(e.kind()))
+                error!("Failed to get peers from network: {}", e);
+                Err(Error::Network(e.to_string()))
             }
         }
     }
     
-    /// Starts a task that periodically updates the topology from governance.
+    /// Starts a task that periodically updates the topology from network.
     ///
     /// # Errors
     ///
@@ -249,7 +262,6 @@ impl<G: Governance> NatsServer<G> {
         
         // We need self reference for updating config
         let self_clone = self.clone();
-        let governance = self.governance.clone();
         
         self.task_tracker.spawn(async move {
             let update_interval = Duration::from_secs(300); // 5 minutes
@@ -259,21 +271,21 @@ impl<G: Governance> NatsServer<G> {
                 tokio::select! {
                     _ = interval.tick() => {
                         info!("[{}] Checking for topology updates...", server_name);
-                        match governance.get_peers().await {
+                        match self_clone.network.get_peers().await {
                             Ok(peers) => {
-                                info!("[{}] Retrieved {} peers from governance", server_name, peers.len());
+                                info!("[{}] Retrieved {} peers from network", server_name, peers.len());
                                 // Update config with new peers
                                 if let Err(e) = self_clone.update_nats_config_with_peers(&peers).await {
                                     error!("[{}] Failed to update NATS config: {}", server_name, e);
                                 }
                             }
                             Err(e) => {
-                                error!("[{}] Failed to get peers from governance: {}", server_name, e);
+                                error!("[{}] Failed to get peers from network: {}", server_name, e);
                             }
                         }
                     }
                     _ = shutdown_token.cancelled() => {
-                        info!("[{}] Topology update task shutting down", server_name);
+                        info!("[{}] Stopping topology update task", server_name);
                         break;
                     }
                 }
@@ -292,7 +304,7 @@ impl<G: Governance> NatsServer<G> {
     /// # Errors
     ///
     /// This function will return an error if it fails to update the configuration.
-    async fn update_nats_config_with_peers(&self, peers: &[Node]) -> Result<()> {
+    async fn update_nats_config_with_peers(&self, peers: &[TopologyNode]) -> Result<()> {
         // Build routes for cluster configuration
         let mut routes = String::new();
         for peer in peers {

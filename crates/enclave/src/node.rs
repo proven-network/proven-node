@@ -108,7 +108,7 @@ pub struct Services {
     pub radix_aggregator: Arc<Mutex<RadixAggregator>>,
     pub radix_gateway: Arc<Mutex<RadixGateway>>,
     pub nats_server_fs: Arc<Mutex<ExternalFs>>,
-    pub nats_server: Arc<Mutex<NatsServer<MockGovernance>>>,
+    pub nats_server: Arc<Mutex<NatsServer<MockGovernance, NsmAttestor>>>,
     pub core: Arc<Mutex<EnclaveNodeCore>>,
 }
 

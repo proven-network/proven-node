@@ -13,9 +13,9 @@ use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 
 /// Handler for the `/whoami` endpoint.
-/// Returns the node information from governance.get_self().
+/// Returns the node information from network.get_self().
 pub async fn whoami_handler<AM, RM, SM, A, G>(
-    State(PrimaryContext { governance, .. }): State<PrimaryContext<AM, RM, SM, A, G>>,
+    State(PrimaryContext { network, .. }): State<PrimaryContext<AM, RM, SM, A, G>>,
 ) -> Result<Json<serde_json::Value>, Response>
 where
     AM: ApplicationManagement,
@@ -24,7 +24,7 @@ where
     A: Attestor,
     G: Governance,
 {
-    match governance.get_self().await {
+    match network.get_self().await {
         Ok(node) => {
             let response = json!({
                 "node": {

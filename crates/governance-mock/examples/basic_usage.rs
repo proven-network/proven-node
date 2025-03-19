@@ -1,13 +1,13 @@
 use std::collections::HashSet;
 use std::time::SystemTime;
 
-use proven_governance::{Governance, Node, NodeSpecialization, Version};
+use proven_governance::{Governance, TopologyNode, NodeSpecialization, Version};
 use proven_governance_mock::MockGovernance;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create test nodes
-    let node1 = Node {
+    let node1 = TopologyNode {
         availability_zone: "az1".to_string(),
         fqdn: "node1.example.com".to_string(),
         public_key: "key1".to_string(),
@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         specializations: HashSet::new(),
     };
 
-    let node2 = Node {
+    let node2 = TopologyNode {
         availability_zone: "az2".to_string(),
         fqdn: "node2.example.com".to_string(),
         public_key: "key2".to_string(),

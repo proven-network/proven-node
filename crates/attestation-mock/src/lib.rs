@@ -19,7 +19,7 @@ use serde::Serialize;
 
 /// Noop attestation provider for local development.
 #[derive(Clone, Debug, Default)]
-pub struct DevAttestor;
+pub struct MockAttestor;
 
 #[derive(Clone, Debug, Default, Serialize)]
 struct Attestation {
@@ -30,7 +30,7 @@ struct Attestation {
 }
 
 #[async_trait]
-impl Attestor for DevAttestor {
+impl Attestor for MockAttestor {
     type Error = Error;
 
     async fn attest(&self, params: AttestationParams<'_>) -> Result<Bytes> {

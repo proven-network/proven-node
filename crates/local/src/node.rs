@@ -4,7 +4,7 @@ use std::convert::Infallible;
 
 use bytes::Bytes;
 use proven_applications::{Application, ApplicationManager};
-use proven_attestation_dev::DevAttestor;
+use proven_attestation_mock::MockAttestor;
 use proven_bitcoin_core::BitcoinNode;
 use proven_core::Core;
 use proven_ethereum_lighthouse::LighthouseNode;
@@ -82,7 +82,7 @@ pub type LocalNodeCore = Core<
         GatewayRadixNftVerifier,
     >,
     SessionManager<
-        DevAttestor,
+        MockAttestor,
         NatsStore2,
         NatsStore1<
             Session,
@@ -90,7 +90,7 @@ pub type LocalNodeCore = Core<
             ciborium::ser::Error<std::io::Error>,
         >,
     >,
-    DevAttestor,
+    MockAttestor,
     MockGovernance,
 >;
 
@@ -133,14 +133,14 @@ pub struct Services {
     pub radix_gateway: Option<Arc<Mutex<RadixGateway>>>,
 
     /// The NATS server.
-    pub nats_server: Arc<Mutex<NatsServer<MockGovernance>>>,
+    pub nats_server: Arc<Mutex<NatsServer<MockGovernance, MockAttestor>>>,
 
     /// The Core.
     pub core: Arc<Mutex<LocalNodeCore>>,
 }
 
 pub struct LocalNode {
-    attestor: DevAttestor,
+    attestor: MockAttestor,
     services: Services,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
@@ -148,7 +148,7 @@ pub struct LocalNode {
 
 impl LocalNode {
     pub const fn new(
-        attestor: DevAttestor,
+        attestor: MockAttestor,
         services: Services,
         shutdown_token: CancellationToken,
         task_tracker: TaskTracker,

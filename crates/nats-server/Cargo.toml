@@ -6,7 +6,9 @@ edition = "2024"
 [dependencies]
 async-nats = { workspace = true }
 nix = { workspace = true }
+proven-attestation = { workspace = true }
 proven-governance = { workspace = true }
+proven-network = { workspace = true }
 regex = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

@@ -12,10 +12,6 @@ pub enum Error {
     #[error(transparent)]
     Core(#[from] proven_core::Error),
 
-    /// Governance error.
-    #[error("governance error: {0}")]
-    Governance(proven_governance::GovernanceErrorKind),
-
     /// Could not set global default subscriber.
     #[error("could not set global default subscriber: {0}")]
     SetTracing(#[from] tracing::dispatcher::SetGlobalDefaultError),
@@ -35,6 +31,10 @@ pub enum Error {
     /// Postgres error.
     #[error(transparent)]
     Postgres(#[from] proven_postgres::Error),
+
+    /// Proven network error.
+    #[error(transparent)]
+    ProvenNetwork(#[from] proven_network::Error),
 
     /// Babylon aggregator error.
     #[error(transparent)]

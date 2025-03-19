@@ -8,12 +8,10 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use std::sync::Arc;
+use std::vec::Vec;
 
 use async_trait::async_trait;
-use ed25519_dalek;
-use hex;
-use proven_governance::{Governance, Node, NodeSpecialization, Version};
+use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
 use serde::{Deserialize, Serialize};
 
 mod error;
@@ -21,7 +19,7 @@ pub use error::Error;
 
 /// Node definition in the topology file
 #[derive(Debug, Serialize, Deserialize)]
-struct TopologyNode {
+struct TopologyFileNode {
     endpoint: String,
     fqdn: String,
     public_key: String,
@@ -31,50 +29,15 @@ struct TopologyNode {
 /// Mock implementation of the governance interface.
 #[derive(Debug, Clone)]
 pub struct MockGovernance {
-    nodes: Arc<Vec<Node>>,
-    versions: Arc<Vec<Version>>,
-    private_key: Option<String>,
-    public_key: Option<String>,
+    nodes: Vec<TopologyNode>,
+    versions: Vec<Version>,
 }
 
 impl MockGovernance {
     /// Create a new mock governance implementation with the given nodes and versions.
     #[must_use]
-    pub fn new(nodes: Vec<Node>, versions: Vec<Version>) -> Self {
-        Self {
-            nodes: Arc::new(nodes),
-            versions: Arc::new(versions),
-            private_key: None,
-            public_key: None,
-        }
-    }
-
-    /// Set the private key and calculate the public key
-    pub fn with_private_key(mut self, private_key: &str) -> Result<Self, Error> {
-        // Only set if not empty
-        if private_key.is_empty() {
-            return Ok(self);
-        }
-
-        // Parse the private key and calculate public key
-        let private_key_bytes = hex::decode(private_key.trim()).map_err(|e| {
-            Error::PrivateKey(format!("Failed to decode private key as hex: {}", e))
-        })?;
-
-        // We need exactly 32 bytes for ed25519 private key
-        let signing_key = ed25519_dalek::SigningKey::try_from(private_key_bytes.as_slice())
-            .map_err(|_| {
-                Error::PrivateKey("Failed to create SigningKey: invalid key length".to_string())
-            })?;
-
-        // Derive the public key
-        let verifying_key = signing_key.verifying_key();
-        let public_key_hex = hex::encode(verifying_key.as_bytes());
-
-        self.private_key = Some(private_key.to_string());
-        self.public_key = Some(public_key_hex);
-
-        Ok(self)
+    pub fn new(nodes: Vec<TopologyNode>, versions: Vec<Version>) -> Self {
+        Self { nodes, versions }
     }
 
     /// Create a new mock governance instance from a topology file
@@ -97,7 +60,7 @@ impl MockGovernance {
             .map_err(|e| Error::TopologyFile(format!("Failed to read topology file: {}", e)))?;
 
         // Parse the topology nodes
-        let topology_nodes: Vec<TopologyNode> = serde_json::from_str(&content)
+        let topology_nodes: Vec<TopologyFileNode> = serde_json::from_str(&content)
             .map_err(|e| Error::TopologyFile(format!("Failed to parse topology file: {}", e)))?;
 
         // Convert to governance nodes
@@ -123,7 +86,7 @@ impl MockGovernance {
                     }
                 }
 
-                Node {
+                TopologyNode {
                     availability_zone: "local".to_string(),
                     fqdn: n.fqdn.clone(),
                     public_key: n.public_key,
@@ -133,12 +96,7 @@ impl MockGovernance {
             })
             .collect();
 
-        Ok(Self {
-            nodes: Arc::new(nodes),
-            versions: Arc::new(versions),
-            private_key: None,
-            public_key: None,
-        })
+        Ok(Self { nodes, versions })
     }
 }
 
@@ -147,33 +105,11 @@ impl Governance for MockGovernance {
     type Error = Error;
 
     async fn get_active_versions(&self) -> Result<Vec<Version>, Self::Error> {
-        Ok((*self.versions).clone())
+        Ok(self.versions.clone())
     }
 
-    async fn get_topology(&self) -> Result<Vec<Node>, Self::Error> {
-        Ok((*self.nodes).clone())
-    }
-
-    async fn get_self(&self) -> Result<Node, Self::Error> {
-        let public_key = self.public_key.as_ref().ok_or_else(|| {
-            Error::NotInitialized(
-                "Public key not initialized. Call with_private_key first.".to_string(),
-            )
-        })?;
-
-        // Find the node with matching public_key in the topology
-        let nodes = &*self.nodes;
-        let node = nodes
-            .iter()
-            .find(|n| &n.public_key == public_key)
-            .ok_or_else(|| {
-                Error::NodeNotFound(format!(
-                    "Node with public key {} not found in topology",
-                    public_key
-                ))
-            })?;
-
-        Ok(node.clone())
+    async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error> {
+        Ok(self.nodes.clone())
     }
 }
 
@@ -182,14 +118,14 @@ mod tests {
     use std::collections::HashSet;
     use std::time::SystemTime;
 
-    use proven_governance::{Node, NodeSpecialization, Version};
+    use proven_governance::{NodeSpecialization, TopologyNode, Version};
 
     use super::*;
 
     #[tokio::test]
     async fn test_mock_governance() {
         // Create test nodes
-        let node_1 = Node {
+        let node_1 = TopologyNode {
             availability_zone: "az1".to_string(),
             fqdn: "node1.example.com".to_string(),
             public_key: "key1".to_string(),
@@ -197,7 +133,7 @@ mod tests {
             specializations: HashSet::new(),
         };
 
-        let node_2 = Node {
+        let node_2 = TopologyNode {
             availability_zone: "az2".to_string(),
             fqdn: "node2.example.com".to_string(),
             public_key: "key2".to_string(),
@@ -227,9 +163,10 @@ mod tests {
         };
 
         // Create mock governance
-        let nodes = vec![node_1.clone(), node_2.clone()];
-        let versions = vec![version_1.clone(), version_2.clone()];
-        let governance = MockGovernance::new(nodes, versions);
+        let governance = MockGovernance::new(
+            vec![node_1.clone(), node_2.clone()],
+            vec![version_1.clone(), version_2.clone()],
+        );
 
         // Test get_topology
         let topology = governance.get_topology().await.unwrap();

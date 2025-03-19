@@ -20,6 +20,7 @@ proven-attestation = { workspace = true }
 proven-code-package = { workspace = true }
 proven-governance = { workspace = true }
 proven-http = { workspace = true }
+proven-network = { workspace = true }
 proven-radix-rola = { workspace = true }
 proven-runtime = { workspace = true }
 proven-sessions = { workspace = true }

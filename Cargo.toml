@@ -10,7 +10,7 @@ resolver = "2"
 members = [
     "crates/applications",
     "crates/attestation",
-    "crates/attestation-dev",
+    "crates/attestation-mock",
     "crates/attestation-nsm",
     "crates/bitcoin-core",
     "crates/code-package",
@@ -39,6 +39,7 @@ members = [
     "crates/messaging-nats",
     "crates/nats-monitor",
     "crates/nats-server",
+    "crates/network",
     "crates/postgres",
     "crates/radix-aggregator",
     "crates/radix-gateway",
@@ -67,7 +68,7 @@ members = [
 default-members = [
     "crates/applications",
     "crates/attestation",
-    "crates/attestation-dev",
+    "crates/attestation-mock",
     "crates/attestation-nsm",
     "crates/bitcoin-core",
     "crates/code-package",
@@ -96,6 +97,7 @@ default-members = [
     "crates/messaging-nats",
     "crates/nats-monitor",
     "crates/nats-server",
+    "crates/network",
     "crates/postgres",
     "crates/radix-aggregator",
     "crates/radix-gateway",
@@ -366,7 +368,7 @@ prost = "0.13.5"
 prost-build = "0.13.5"
 proven-applications = { path = "crates/applications" }
 proven-attestation = { path = "crates/attestation" }
-proven-attestation-dev = { path = "crates/attestation-dev" }
+proven-attestation-mock = { path = "crates/attestation-mock" }
 proven-attestation-nsm = { path = "crates/attestation-nsm" }
 proven-bitcoin-core = { path = "crates/bitcoin-core" }
 proven-code-package = { path = "crates/code-package" }
@@ -395,6 +397,7 @@ proven-messaging-memory = { path = "crates/messaging-memory" }
 proven-messaging-nats = { path = "crates/messaging-nats" }
 proven-nats-monitor = { path = "crates/nats-monitor" }
 proven-nats-server = { path = "crates/nats-server" }
+proven-network = { path = "crates/network" }
 proven-postgres = { path = "crates/postgres" }
 proven-radix-aggregator = { path = "crates/radix-aggregator" }
 proven-radix-gateway = { path = "crates/radix-gateway" }

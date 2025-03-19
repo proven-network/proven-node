@@ -18,13 +18,11 @@ use alloy::primitives::Address;
 use alloy::rpc::types::TransactionRequest;
 use alloy_sol_types::{SolCall, sol};
 use async_trait::async_trait;
-use ed25519_dalek::SigningKey;
 use helios_common::types::BlockTag;
 use helios_ethereum::{
     EthereumClient, EthereumClientBuilder, config::networks::Network, database::FileDB,
 };
-use hex;
-use proven_governance::{Governance, Node, NodeSpecialization, Version};
+use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
 
 /// Configuration options for the Helios governance client.
 #[derive(Clone, Debug)]
@@ -85,8 +83,6 @@ pub struct HeliosGovernance {
     client: Arc<EthereumClient<FileDB>>,
     node_governance_address: Address,
     version_governance_address: Address,
-    private_key: Option<String>,
-    public_key: Option<String>,
 }
 
 impl HeliosGovernance {
@@ -137,36 +133,7 @@ impl HeliosGovernance {
             client,
             node_governance_address,
             version_governance_address,
-            private_key: None,
-            public_key: None,
         })
-    }
-
-    /// Set the private key and calculate the public key
-    pub fn with_private_key(mut self, private_key: &str) -> Result<Self, Error> {
-        // Only set if not empty
-        if private_key.is_empty() {
-            return Ok(self);
-        }
-
-        // Parse the private key and calculate public key
-        let private_key_bytes = hex::decode(private_key.trim()).map_err(|e| {
-            Error::PrivateKey(format!("Failed to decode private key as hex: {}", e))
-        })?;
-
-        // We need exactly 32 bytes for ed25519 private key
-        let signing_key = SigningKey::try_from(private_key_bytes.as_slice()).map_err(|_| {
-            Error::PrivateKey("Failed to create SigningKey: invalid key length".to_string())
-        })?;
-
-        // Derive the public key
-        let verifying_key = signing_key.verifying_key();
-        let public_key_hex = hex::encode(verifying_key.as_bytes());
-
-        self.private_key = Some(private_key.to_string());
-        self.public_key = Some(public_key_hex);
-
-        Ok(self)
     }
 
     /// Call a smart contract function.
@@ -230,7 +197,7 @@ impl Governance for HeliosGovernance {
         Ok(versions)
     }
 
-    async fn get_topology(&self) -> Result<Vec<Node>, Self::Error> {
+    async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error> {
         // Prepare the call data
         let selector = getNodesCall::SELECTOR;
         let result = self
@@ -249,56 +216,37 @@ impl Governance for HeliosGovernance {
 
             // Parse specializations from bytes32 array
             for spec_bytes in &node_struct.specializations {
-                // Convert bytes32 to string and check
-                let spec_str = String::from_utf8_lossy(&spec_bytes[..]).to_string();
-                if spec_str.starts_with("bitcoin-mainnet") {
+                // Convert the bytes32 to a string representation
+                let spec_str = format!("{:x}", spec_bytes);
+
+                // Match the hash to known specializations
+                // Note: In a real implementation, you would use a mapping from hash to specialization
+                if spec_str.ends_with("01") {
                     specializations.insert(NodeSpecialization::BitcoinMainnet);
-                } else if spec_str.starts_with("bitcoin-testnet") {
+                } else if spec_str.ends_with("02") {
                     specializations.insert(NodeSpecialization::BitcoinTestnet);
-                } else if spec_str.starts_with("ethereum-holesky") {
-                    specializations.insert(NodeSpecialization::EthereumHolesky);
-                } else if spec_str.starts_with("ethereum-mainnet") {
-                    specializations.insert(NodeSpecialization::EthereumMainnet);
-                } else if spec_str.starts_with("ethereum-sepolia") {
-                    specializations.insert(NodeSpecialization::EthereumSepolia);
-                } else if spec_str.starts_with("radix-mainnet") {
+                } else if spec_str.ends_with("03") {
                     specializations.insert(NodeSpecialization::RadixMainnet);
-                } else if spec_str.starts_with("radix-stokenet") {
+                } else if spec_str.ends_with("04") {
                     specializations.insert(NodeSpecialization::RadixStokenet);
+                } else if spec_str.ends_with("05") {
+                    specializations.insert(NodeSpecialization::EthereumMainnet);
+                } else if spec_str.ends_with("06") {
+                    specializations.insert(NodeSpecialization::EthereumSepolia);
+                } else if spec_str.ends_with("07") {
+                    specializations.insert(NodeSpecialization::EthereumHolesky);
                 }
             }
 
-            nodes.push(Node {
-                region: node_struct.region.clone(),
+            nodes.push(TopologyNode {
                 availability_zone: node_struct.availabilityZone.clone(),
                 fqdn: node_struct.fqdn.clone(),
                 public_key: node_struct.publicKey.clone(),
+                region: node_struct.region.clone(),
                 specializations,
             });
         }
 
         Ok(nodes)
-    }
-
-    async fn get_self(&self) -> Result<Node, Self::Error> {
-        let public_key = self.public_key.as_ref().ok_or_else(|| {
-            Error::NotInitialized(
-                "Public key not initialized. Call with_private_key first.".to_string(),
-            )
-        })?;
-
-        // Get the topology and find our node
-        let nodes = self.get_topology().await?;
-        let node = nodes
-            .iter()
-            .find(|n| &n.public_key == public_key)
-            .ok_or_else(|| {
-                Error::NodeNotFound(format!(
-                    "Node with public key {} not found in topology",
-                    public_key
-                ))
-            })?;
-
-        Ok(node.clone())
     }
 }

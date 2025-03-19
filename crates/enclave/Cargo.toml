@@ -26,6 +26,7 @@ proven-messaging = { workspace = true }
 proven-messaging-nats = { workspace = true }
 proven-nats-monitor = { workspace = true }
 proven-nats-server = { workspace = true }
+proven-network = { workspace = true }
 proven-postgres = { workspace = true }
 proven-radix-aggregator = { workspace = true }
 proven-radix-gateway = { workspace = true }

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 /// A node in the network topology.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct Node {
+pub struct TopologyNode {
     /// The availability zone of the node.
     pub availability_zone: String,
 
@@ -78,12 +78,6 @@ pub struct Version {
 /// The kind of governance error.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GovernanceErrorKind {
-    /// Error related to private key operations
-    PrivateKey,
-
-    /// Error when a required value is not initialized
-    NotInitialized,
-
     /// Error when a node is not found in the topology
     NodeNotFound,
 
@@ -119,20 +113,5 @@ where
     async fn get_active_versions(&self) -> Result<Vec<Version>, Self::Error>;
 
     /// Get the network topology.
-    async fn get_topology(&self) -> Result<Vec<Node>, Self::Error>;
-
-    /// Get all peer nodes in the network topology (excluding self).
-    async fn get_peers(&self) -> Result<Vec<Node>, Self::Error> {
-        let self_node = self.get_self().await?;
-        let all_nodes = self.get_topology().await?;
-
-        // Filter out the self node
-        Ok(all_nodes
-            .into_iter()
-            .filter(|node| node.public_key != self_node.public_key)
-            .collect())
-    }
-
-    /// Get the node definition for this node based on the private key.
-    async fn get_self(&self) -> Result<Node, Self::Error>;
+    async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error>;
 }

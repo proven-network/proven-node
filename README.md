@@ -83,7 +83,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 
 - [applications](crates/applications): Manages database of all currently deployed applications.
 - [attestation](crates/attestation): Abstract interface for managing remote attestation and interacting with hardware-based security modules.
-- [attestation-dev](crates/attestation-dev): Noop implementation of attestation for local development.
+- [attestation-mock](crates/attestation-mock): Noop implementation of attestation for local development.
 - [attestation-nsm](crates/attestation-nsm): Implementation of attestation using the Nitro Security Module.
 - [bitcoin-core](crates/bitcoin-core): Configures and runs a local Bitcoin Core full node.
 - [code-package](crates/code-package): Tools for creating and working with code packages runnable in the Proven runtime.
@@ -113,6 +113,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [messaging-nats](crates/messaging-nats): Implementation of messaging using Core NATS.
 - [nats-monitor](crates/nats-monitor): Helper crate for querying NATS HTTP monitoring endpoints.
 - [nats-server](crates/nats-server): Configures and runs a NATS server for inter-node communication.
+- [network](crates/network): Manages network configuration and point-to-point node communication.
 - [postgres](crates/postgres): Configures and runs a Postgres server to provide storage for Radix Gateway.
 - [radix-aggregator](crates/radix-aggregator): Configures and runs Radix Gateway's data aggregator. Also manages migration process as part of boot.
 - [radix-gateway](crates/radix-gateway): Configures and runs a local Radix Gateway.
