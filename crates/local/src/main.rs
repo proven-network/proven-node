@@ -44,8 +44,12 @@ struct Args {
     port: u16,
 
     /// NATS port
-    #[arg(long, default_value_t = 4222, env = "PROVEN_NATS_PORT")]
+    #[arg(long, default_value_t = 4222, env = "PROVEN_NATS_CLIENT_PORT")]
     nats_port: u16,
+
+    /// NATS cluster port
+    #[arg(long, default_value_t = 6222, env = "PROVEN_NATS_CLUSTER_PORT")]
+    nats_cluster_port: u16,
 
     /// Private key provided directly as an environment variable
     #[arg(long, env = "PROVEN_NODE_KEY", required = true)]

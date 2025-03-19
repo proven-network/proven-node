@@ -133,7 +133,7 @@ pub struct Services {
     pub radix_gateway: Option<Arc<Mutex<RadixGateway>>>,
 
     /// The NATS server.
-    pub nats_server: Arc<Mutex<NatsServer>>,
+    pub nats_server: Arc<Mutex<NatsServer<MockGovernance>>>,
 
     /// The Core.
     pub core: Arc<Mutex<LocalNodeCore>>,

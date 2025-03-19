@@ -121,6 +121,18 @@ where
     /// Get the network topology.
     async fn get_topology(&self) -> Result<Vec<Node>, Self::Error>;
 
+    /// Get all peer nodes in the network topology (excluding self).
+    async fn get_peers(&self) -> Result<Vec<Node>, Self::Error> {
+        let self_node = self.get_self().await?;
+        let all_nodes = self.get_topology().await?;
+
+        // Filter out the self node
+        Ok(all_nodes
+            .into_iter()
+            .filter(|node| node.public_key != self_node.public_key)
+            .collect())
+    }
+
     /// Get the node definition for this node based on the private key.
     async fn get_self(&self) -> Result<Node, Self::Error>;
 }

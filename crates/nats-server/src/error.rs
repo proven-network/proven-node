@@ -18,6 +18,10 @@ pub enum Error {
     #[error("failed to connect to nats server: {0}")]
     ClientFailedToConnect(#[from] async_nats::ConnectError),
 
+    /// Governance error.
+    #[error("governance error: {0}")]
+    Governance(proven_governance::GovernanceErrorKind),
+
     /// IO operation failed.
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),

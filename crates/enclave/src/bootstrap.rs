@@ -104,7 +104,7 @@ pub struct Bootstrap {
     nats_server_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
 
     nats_client: Option<NatsClient>,
-    nats_server: Option<NatsServer>,
+    nats_server: Option<NatsServer<MockGovernance>>,
     nats_server_handle: Option<JoinHandle<proven_nats_server::Result<()>>>,
 
     core: Option<EnclaveNodeCore>,
@@ -743,9 +743,18 @@ impl Bootstrap {
             panic!("instance details not fetched before nats-server");
         });
 
+        let governance = self.governance.as_ref().unwrap_or_else(|| {
+            panic!("governance not set before nats server step");
+        });
+
         let nats_server = NatsServer::new(NatsServerOptions {
             debug: self.args.testnet,
-            listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
+            governance: governance.clone(),
+            client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4222),
+            cluster_listen_addr: SocketAddrV4::new(
+                Ipv4Addr::UNSPECIFIED,
+                self.args.nats_cluster_port,
+            ),
             server_name: instance_details.instance_id.clone(),
             store_dir: "/var/lib/nats/nats".to_string(),
         });

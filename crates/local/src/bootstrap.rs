@@ -92,7 +92,7 @@ pub struct Bootstrap {
     radix_gateway_handle: Option<JoinHandle<proven_radix_gateway::Result<()>>>,
 
     nats_client: Option<NatsClient>,
-    nats_server: Option<NatsServer>,
+    nats_server: Option<NatsServer<MockGovernance>>,
     nats_server_handle: Option<JoinHandle<proven_nats_server::Result<()>>>,
 
     core: Option<LocalNodeCore>,
@@ -862,9 +862,15 @@ impl Bootstrap {
     }
 
     async fn start_nats_server(&mut self) -> Result<()> {
+        let governance = self.governance.as_ref().unwrap_or_else(|| {
+            panic!("governance not set before nats server step");
+        });
+
         let nats_server = NatsServer::new(NatsServerOptions {
+            client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
+            cluster_listen_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.args.nats_cluster_port),
             debug: self.args.testnet,
-            listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
+            governance: governance.clone(),
             server_name: self.node_config.as_ref().unwrap().fqdn.clone(),
             store_dir: "/var/lib/nats/nats".to_string(),
         });

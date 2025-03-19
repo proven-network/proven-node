@@ -40,8 +40,8 @@ pub struct InitializeRequest {
     /// Maximum number of concurrent runtime workers.
     pub max_runtime_workers: u32,
 
-    /// NATS port for messaging between enclaves (should match host TCP forwarding).
-    pub nats_port: u16,
+    /// NATS cluster port for messaging between enclaves (should match host TCP forwarding).
+    pub nats_cluster_port: u16,
 
     /// Private key for the node.
     pub node_key: String,

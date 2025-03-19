@@ -169,7 +169,7 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
             https_port: args.https_port,
             kms_key_id: args.kms_key_id.clone(),
             max_runtime_workers: args.max_runtime_workers,
-            nats_port: args.nats_port,
+            nats_cluster_port: args.nats_cluster_port,
             nfs_mount_point: args.nfs_mount_point.clone(),
             node_key: args.node_key.clone(),
             proxy_port: args.proxy_port,
