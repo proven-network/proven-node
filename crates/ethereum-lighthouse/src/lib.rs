@@ -131,6 +131,10 @@ impl LighthouseNode {
                 network_str,
                 "--execution-endpoint",
                 "http://127.0.0.1:8551",
+                "--listen-address",
+                "0.0.0.0",
+                "--port",
+                "9909",
                 "--http",
                 "--http-address",
                 "127.0.0.1",
@@ -149,9 +153,9 @@ impl LighthouseNode {
                 "--enr-address",
                 &host_ip,
                 "--enr-udp-port",
-                "9000",
+                "9909",
                 "--enr-tcp-port",
-                "9000",
+                "9909",
             ]);
 
             info!("Starting Lighthouse with command: {:?}", cmd);

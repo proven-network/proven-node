@@ -72,19 +72,33 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     mkdir -p /tmp/build && \
     cp -r /app/target/release/proven-local /tmp/build/
 
-# Start new stage for runtime
-FROM rust:1.85-slim-bookworm
+# Start new stage for runtime - switch to plain Debian
+FROM debian:bookworm-slim
 
-# Install runtime dependencies
+# Install runtime dependencies and debugging tools
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     gnupg \
     jq \
+    libssl3 \
     netcat-openbsd \
     wget \
     unzip \
     openjdk-17-jre-headless \
+    # Debug tools
+    procps \
+    net-tools \
+    iproute2 \
+    tcpdump \
+    dnsutils \
+    iputils-ping \
+    lsof \
+    strace \
+    htop \
+    telnet \
+    traceroute \
+    iftop \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PostgreSQL
