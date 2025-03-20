@@ -31,7 +31,7 @@ contract NodeGovernance is
 
     struct NodeCandidate {
         address owner;
-        string fqdn;
+        string origin;
         string publicKey;
         uint256 votes;
     }
@@ -39,7 +39,7 @@ contract NodeGovernance is
     struct Node {
         string region;
         string availabilityZone;
-        string fqdn;
+        string origin;
         string publicKey;
         bytes32[] specializations;
         address owner;
@@ -55,7 +55,7 @@ contract NodeGovernance is
 
     // Events
     event OpportunityCreated(bytes32 id, string region, string availabilityZone);
-    event CandidateRegistered(bytes32 opportunityId, address candidate, string fqdn, string publicKey);
+    event CandidateRegistered(bytes32 opportunityId, address candidate, string origin, string publicKey);
     event NodeApproved(bytes32 opportunityId, address candidate, string publicKey);
     event NodeRemoved(string publicKey);
 
@@ -108,25 +108,92 @@ contract NodeGovernance is
     }
 
     /**
+     * @dev Check if a string is an IP address (IPv4 or IPv6)
+     * @param str The string to check
+     * @return True if the string is an IP address, false otherwise
+     */
+    function isIpAddress(string memory str) internal pure returns (bool) {
+        bytes memory strBytes = bytes(str);
+        
+        // Check for empty string
+        if (strBytes.length == 0) {
+            return false;
+        }
+
+        // Quick check for IPv4 (four groups of 1-3 digits separated by dots)
+        bool couldBeIPv4 = true;
+        uint8 dotCount = 0;
+        uint8 digitCount = 0;
+        
+        // Quick check for IPv6 (groups separated by colons)
+        bool couldBeIPv6 = false;
+        uint8 colonCount = 0;
+        
+        for (uint i = 0; i < strBytes.length; i++) {
+            // Check for IPv4 pattern
+            if (strBytes[i] >= bytes1('0') && strBytes[i] <= bytes1('9')) {
+                if (couldBeIPv4) {
+                    digitCount++;
+                    // More than 3 digits in a group means not IPv4
+                    if (digitCount > 3) {
+                        couldBeIPv4 = false;
+                    }
+                }
+            } else if (strBytes[i] == bytes1('.')) {
+                if (couldBeIPv4) {
+                    // Reset digit count for next group
+                    digitCount = 0;
+                    dotCount++;
+                }
+            } else if (strBytes[i] == bytes1(':')) {
+                colonCount++;
+                couldBeIPv6 = true;
+            } else if ((strBytes[i] >= bytes1('a') && strBytes[i] <= bytes1('f')) || 
+                      (strBytes[i] >= bytes1('A') && strBytes[i] <= bytes1('F'))) {
+                // Hex digits are valid in IPv6
+                if (!couldBeIPv6) {
+                    couldBeIPv6 = true;
+                }
+            } else {
+                // Any other character means it's not a pure IP address
+                if (strBytes[i] == bytes1('-')) {
+                    // Domain names can contain hyphens
+                    couldBeIPv4 = false;
+                    couldBeIPv6 = false;
+                }
+            }
+        }
+        
+        // Valid IPv4 has exactly 3 dots
+        bool isIPv4 = couldBeIPv4 && dotCount == 3;
+        
+        // Minimum valid IPv6 has at least 2 colons
+        bool isIPv6 = couldBeIPv6 && colonCount >= 2;
+        
+        return isIPv4 || isIPv6;
+    }
+
+    /**
      * @dev Register as a candidate for a node opportunity.
      * This is allowed for anyone, not just governance, as individuals need to apply.
      */
     function registerAsCandidate(
         bytes32 opportunityId,
-        string memory fqdn,
+        string memory origin,
         string memory publicKey
     ) external {
         require(opportunities[opportunityId].open, "Opportunity is closed");
         require(!usedPublicKeys[publicKey], "Public key already in use");
+        require(!isIpAddress(origin), "Origin must be a domain name, not an IP address");
 
         candidates[opportunityId][msg.sender] = NodeCandidate({
             owner: msg.sender,
-            fqdn: fqdn,
+            origin: origin,
             publicKey: publicKey,
             votes: 0
         });
 
-        emit CandidateRegistered(opportunityId, msg.sender, fqdn, publicKey);
+        emit CandidateRegistered(opportunityId, msg.sender, origin, publicKey);
     }
 
     /**
@@ -145,7 +212,7 @@ contract NodeGovernance is
         nodes[winner.publicKey] = Node({
             region: opportunity.region,
             availabilityZone: opportunity.availabilityZone,
-            fqdn: winner.fqdn,
+            origin: winner.origin,
             publicKey: winner.publicKey,
             specializations: opportunity.specializations,
             owner: winner.owner

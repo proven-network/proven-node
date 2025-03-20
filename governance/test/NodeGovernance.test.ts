@@ -233,7 +233,7 @@ describe("NodeGovernance", function () {
     const region = "us-east-1";
     const availabilityZone = "us-east-1a";
     const specializations = [ethers.encodeBytes32String("compute")];
-    const fqdn = "node1.proven.network";
+    const origin = "node1.proven.network";
     const publicKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC...";
 
     beforeEach(async function () {
@@ -350,7 +350,7 @@ describe("NodeGovernance", function () {
       // Register user1 as a candidate
       await nodeGovernance
         .connect(user1)
-        .registerAsCandidate(opportunityId, fqdn, publicKey);
+        .registerAsCandidate(opportunityId, origin, publicKey);
 
       // Check that the candidate was registered
       const candidate = await nodeGovernance.candidates(
@@ -358,7 +358,7 @@ describe("NodeGovernance", function () {
         user1.address
       );
       expect(candidate.owner).to.equal(user1.address);
-      expect(candidate.fqdn).to.equal(fqdn);
+      expect(candidate.origin).to.equal(origin);
       expect(candidate.publicKey).to.equal(publicKey);
     });
 
@@ -372,7 +372,7 @@ describe("NodeGovernance", function () {
       await expect(
         nodeGovernance
           .connect(user1)
-          .registerAsCandidate(nonExistentId, fqdn, publicKey)
+          .registerAsCandidate(nonExistentId, origin, publicKey)
       ).to.be.revertedWith("Opportunity is closed");
     });
 
@@ -384,7 +384,7 @@ describe("NodeGovernance", function () {
       // Register user1 as a candidate
       await nodeGovernance
         .connect(user1)
-        .registerAsCandidate(opportunityId, fqdn, publicKey);
+        .registerAsCandidate(opportunityId, origin, publicKey);
 
       // Prepare calldata for approving the candidate
       const approveCalldata = nodeGovernance.interface.encodeFunctionData(
@@ -485,6 +485,22 @@ describe("NodeGovernance", function () {
       // Also check the opportunity is now closed
       const opportunity = await nodeGovernance.opportunities(opportunityId);
       expect(opportunity.open).to.be.false;
+    });
+
+    it("Should not allow registration with IP addresses", async function () {
+      // Try to register with IPv4
+      await expect(
+        nodeGovernance
+          .connect(user1)
+          .registerAsCandidate(opportunityId, "192.168.1.1", publicKey)
+      ).to.be.revertedWith("Origin must be a domain name, not an IP address");
+
+      // Try to register with IPv6
+      await expect(
+        nodeGovernance
+          .connect(user1)
+          .registerAsCandidate(opportunityId, "2001:0db8:85a3:0000:0000:8a2e:0370:7334", publicKey)
+      ).to.be.revertedWith("Origin must be a domain name, not an IP address");
     });
   });
 

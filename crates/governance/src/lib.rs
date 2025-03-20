@@ -18,8 +18,8 @@ pub struct TopologyNode {
     /// The availability zone of the node.
     pub availability_zone: String,
 
-    /// The fully qualified domain name of the node.
-    pub fqdn: String,
+    /// The origin of the node.
+    pub origin: String,
 
     /// The public key of the node.
     pub public_key: String,

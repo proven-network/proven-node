@@ -28,7 +28,7 @@ where
         Ok(node) => {
             let response = json!({
                 "node": {
-                    "fqdn": node.fqdn(),
+                    "origin": node.origin(),
                     "public_key": node.public_key(),
                     "region": node.region(),
                     "availability_zone": node.availability_zone(),

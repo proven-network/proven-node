@@ -66,7 +66,7 @@ sol! {
         string id;
         string region;
         string availabilityZone;
-        string fqdn;
+        string origin;
         string publicKey;
         bytes32[] specializations;
         address owner;
@@ -240,7 +240,7 @@ impl Governance for HeliosGovernance {
 
             nodes.push(TopologyNode {
                 availability_zone: node_struct.availabilityZone.clone(),
-                fqdn: node_struct.fqdn.clone(),
+                origin: node_struct.origin.clone(),
                 public_key: node_struct.publicKey.clone(),
                 region: node_struct.region.clone(),
                 specializations,

@@ -22,9 +22,6 @@ pub struct InitializeRequest {
     /// S3 bucket for file-systems (encrypted/decrypted inside enclave).
     pub file_systems_bucket: String,
 
-    /// Top-level domain for network connectivity. IE proven.network.
-    pub fqdn: String,
-
     /// DNS resolv.conf from host (used temporarily until DOH starta).
     pub host_dns_resolv: String,
 

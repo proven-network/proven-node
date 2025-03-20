@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up a simple mock governance
     let node1 = TopologyNode {
         availability_zone: "az1".to_string(),
-        fqdn: "node1.example.com".to_string(),
+        origin: "http://node1.example.com".to_string(),
         public_key: "4cb5abf6ad79fbf5abbccafcc269d85cd2651ed4b885b5869f241aedf0a5ba29".to_string(),
         region: "region1".to_string(),
         specializations: HashSet::new(),
@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let node2 = TopologyNode {
         availability_zone: "az2".to_string(),
-        fqdn: "node2.example.com".to_string(),
+        origin: "http://node2.example.com".to_string(),
         public_key: "other_key".to_string(),
         region: "region2".to_string(),
         specializations: HashSet::new(),

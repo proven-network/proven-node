@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::time::SystemTime;
 
-use proven_governance::{Governance, TopologyNode, NodeSpecialization, Version};
+use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
 use proven_governance_mock::MockGovernance;
 
 #[tokio::main]
@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create test nodes
     let node1 = TopologyNode {
         availability_zone: "az1".to_string(),
-        fqdn: "node1.example.com".to_string(),
+        origin: "http://node1.example.com".to_string(),
         public_key: "key1".to_string(),
         region: "region1".to_string(),
         specializations: HashSet::new(),
@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let node2 = TopologyNode {
         availability_zone: "az2".to_string(),
-        fqdn: "node2.example.com".to_string(),
+        origin: "http://node2.example.com".to_string(),
         public_key: "key2".to_string(),
         region: "region2".to_string(),
         specializations: {
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let topology = governance.get_topology().await?;
     println!("Topology:");
     for node in topology {
-        println!("  - Node ID: {}, FQDN: {}", node.public_key, node.fqdn);
+        println!("  - Node ID: {}, Origin: {}", node.public_key, node.origin);
     }
 
     // Get active versions

@@ -569,7 +569,7 @@ impl Bootstrap {
         info!("node config: {:?}", node_config);
 
         // Check /etc/hosts to ensure the node's FQDN is properly configured
-        check_hostname_resolution(node_config.fqdn()).await?;
+        check_hostname_resolution(node_config.fqdn()?.as_str()).await?;
 
         self.governance = Some(governance);
         self.network = Some(network);
@@ -873,12 +873,16 @@ impl Bootstrap {
             panic!("network not set before nats server step");
         });
 
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not fetched before nats server step");
+        });
+
         let nats_server = NatsServer::new(NatsServerOptions {
             client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
             cluster_listen_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.args.nats_cluster_port),
             debug: self.args.testnet,
             network: network.clone(),
-            server_name: self.node_config.as_ref().unwrap().fqdn().to_string(),
+            server_name: node_config.fqdn()?,
             store_dir: "/var/lib/nats/nats".to_string(),
         });
 
@@ -1057,7 +1061,7 @@ impl Bootstrap {
             application_manager,
             attestor: self.attestor.clone(),
             network: network.clone(),
-            primary_hostnames: vec![node_config.fqdn().to_string()].into_iter().collect(),
+            primary_hostnames: vec![node_config.fqdn()?].into_iter().collect(),
             runtime_pool_manager,
             session_manager,
         });

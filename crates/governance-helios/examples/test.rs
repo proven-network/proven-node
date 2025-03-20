@@ -76,11 +76,11 @@ async fn main() {
             info!("Found {} nodes in the network:", nodes.len());
             for node in nodes {
                 info!(
-                    "Node {}: Region: {}, AZ: {}, FQDN: {}, Specializations: {:?}",
+                    "Node {}: Region: {}, AZ: {}, Origin: {}, Specializations: {:?}",
                     node.public_key,
                     node.region,
                     node.availability_zone,
-                    node.fqdn,
+                    node.origin,
                     node.specializations
                 );
             }

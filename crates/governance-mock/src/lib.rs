@@ -20,8 +20,7 @@ pub use error::Error;
 /// Node definition in the topology file
 #[derive(Debug, Serialize, Deserialize)]
 struct TopologyFileNode {
-    endpoint: String,
-    fqdn: String,
+    origin: String,
     public_key: String,
     specializations: Vec<String>,
 }
@@ -88,7 +87,7 @@ impl MockGovernance {
 
                 TopologyNode {
                     availability_zone: "local".to_string(),
-                    fqdn: n.fqdn.clone(),
+                    origin: n.origin.clone(),
                     public_key: n.public_key,
                     region: "local".to_string(),
                     specializations,
@@ -127,7 +126,7 @@ mod tests {
         // Create test nodes
         let node_1 = TopologyNode {
             availability_zone: "az1".to_string(),
-            fqdn: "node1.example.com".to_string(),
+            origin: "http://node1.example.com".to_string(),
             public_key: "key1".to_string(),
             region: "region1".to_string(),
             specializations: HashSet::new(),
@@ -135,7 +134,7 @@ mod tests {
 
         let node_2 = TopologyNode {
             availability_zone: "az2".to_string(),
-            fqdn: "node2.example.com".to_string(),
+            origin: "http://node2.example.com".to_string(),
             public_key: "key2".to_string(),
             region: "region2".to_string(),
             specializations: {

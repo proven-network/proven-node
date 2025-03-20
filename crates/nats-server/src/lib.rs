@@ -31,6 +31,18 @@ use tracing::{debug, error, info, trace, warn};
 
 static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
 
+// Cluster configuration template that will be added dynamically when peers are available
+static CLUSTER_TEMPLATE: &str = r#"
+cluster {
+  name: proven_cluster
+  listen: {cluster_listen_addr}
+
+  routes: [
+{cluster_routes}
+  ]
+}
+"#;
+
 /// Runs a NATS server for inter-node communication.
 #[derive(Clone)]
 pub struct NatsServer<G, A>
@@ -246,7 +258,7 @@ where
             }
             Err(e) => {
                 error!("Failed to get peers from network: {}", e);
-                Err(Error::Network(e.to_string()))
+                Err(Error::ProvenNetwork(e))
             }
         }
     }
@@ -307,26 +319,39 @@ where
     async fn update_nats_config_with_peers(&self, peers: &[Node]) -> Result<()> {
         // Build routes for cluster configuration
         let mut routes = String::new();
-        for peer in peers {
-            // Quick hack to add correct ports for integration tests
-            // TODO: Remove this once we have a proper way to handle ports
-            let route = match peer.fqdn() {
-                "bulbasaur.local" => "nats://bulbasaur.local:6222",
-                "charmander.local" => "nats://charmander.local:6223",
-                "squirtle.local" => "nats://squirtle.local:6224",
-                _ => panic!("unknown peer fqdn: {}", peer.fqdn()),
-            };
+        let mut valid_peer_count = 0;
 
-            // Use FQDN for the route address
-            routes.push_str(&format!("    {}\n", route));
+        for peer in peers {
+            // Try to get the NATS cluster endpoint
+            match peer.nats_cluster_endpoint().await {
+                Ok(endpoint) => {
+                    routes.push_str(&format!("    {}\n", endpoint));
+                    valid_peer_count += 1;
+                }
+                Err(e) => {
+                    // Log the error but continue with other peers
+                    warn!("Failed to get NATS cluster endpoint for peer: {}", e);
+                }
+            }
         }
         
-        let config = CONFIG_TEMPLATE
+        // Log the number of valid peers found
+        info!("Found {} valid peers for NATS cluster configuration", valid_peer_count);
+        
+        // Start with the basic configuration
+        let mut config = CONFIG_TEMPLATE
             .replace("{server_name}", &self.server_name)
             .replace("{client_listen_addr}", &self.client_listen_addr.to_string())
-            .replace("{cluster_listen_addr}", &self.cluster_listen_addr.to_string())
-            .replace("{store_dir}", &self.store_dir)
-            .replace("    {cluster_routes}", &routes);
+            .replace("{store_dir}", &self.store_dir);
+        
+        // Only add cluster configuration if there are valid peers
+        if valid_peer_count > 0 {
+            let cluster_config = CLUSTER_TEMPLATE
+                .replace("{cluster_listen_addr}", &self.cluster_listen_addr.to_string())
+                .replace("{cluster_routes}", &routes);
+            
+            config.push_str(&cluster_config);
+        }
 
         info!("{}", config);
 

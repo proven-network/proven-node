@@ -184,7 +184,7 @@ mod tests {
         // Create nodes
         let node1 = TopologyNode {
             availability_zone: "az1".to_string(),
-            fqdn: "node1.example.com".to_string(),
+            origin: "http://node1.example.com".to_string(),
             public_key: public_key.to_string(),
             region: "region1".to_string(),
             specializations: HashSet::new(),
@@ -192,7 +192,7 @@ mod tests {
 
         let node2 = TopologyNode {
             availability_zone: "az2".to_string(),
-            fqdn: "node2.example.com".to_string(),
+            origin: "http://node2.example.com".to_string(),
             public_key: "other_key".to_string(),
             region: "region2".to_string(),
             specializations: HashSet::new(),

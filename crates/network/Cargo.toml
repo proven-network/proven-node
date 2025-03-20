@@ -8,9 +8,11 @@ ed25519-dalek = { workspace = true }
 hex = { workspace = true }
 proven-attestation = { workspace = true }
 proven-governance = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true } 
+tokio = { workspace = true }
+url = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }

@@ -781,16 +781,16 @@ impl Bootstrap {
             panic!("imds identity not fetched before core");
         });
 
-        let instance_details = self.instance_details.as_ref().unwrap_or_else(|| {
-            panic!("instance details not fetched before core");
-        });
-
         let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
             panic!("nats client not fetched before core");
         });
 
         let network = self.network.as_ref().unwrap_or_else(|| {
             panic!("network not set before core");
+        });
+
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not set before core");
         });
 
         let challenge_store = NatsStore2::new(NatsStoreOptions {
@@ -828,15 +828,14 @@ impl Bootstrap {
         })
         .await;
 
-        let cluster_fqdn = format!("{}.{}", id.region.clone(), self.args.fqdn.clone());
-        let node_fqdn = format!("{}.{}", instance_details.instance_id.clone(), cluster_fqdn);
-        let domains = vec![node_fqdn, cluster_fqdn, self.args.fqdn.clone()];
+        // Parse the domain name from the origin in node config
+        let domain = node_config.fqdn()?;
 
         let http_sock_addr = SocketAddr::from((self.args.enclave_ip, self.args.https_port));
         let http_server = LetsEncryptHttpServer::new(LetsEncryptHttpServerOptions {
             cert_store,
-            cname_domain: self.args.fqdn.clone(),
-            domains: domains.clone(),
+            cname_domain: domain.to_string(),
+            domains: vec![domain.to_string()],
             emails: self.args.email.clone(),
             listen_addr: http_sock_addr,
         });
@@ -1020,10 +1019,7 @@ impl Bootstrap {
             application_manager,
             attestor: self.attestor.clone(),
             network: network.clone(),
-            primary_hostnames: domains
-                .iter()
-                .map(|domain| format!("https://{domain}"))
-                .collect(),
+            primary_hostnames: vec![node_config.fqdn()?].into_iter().collect(),
             runtime_pool_manager,
             session_manager,
         });

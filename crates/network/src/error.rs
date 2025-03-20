@@ -2,9 +2,16 @@
 
 use thiserror::Error;
 
+/// Result type for the network implementation.
+pub type Result<T> = std::result::Result<T, Error>;
+
 /// Error type for the network implementation.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Bad origin error.
+    #[error("the origin is invalid")]
+    BadOrigin,
+
     /// Error from the governance implementation.
     #[error("governance error: {0}")]
     Governance(String),
@@ -16,4 +23,12 @@ pub enum Error {
     /// Error related to private key operations.
     #[error("private key error: {0}")]
     PrivateKey(String),
+
+    /// Error from reqwest.
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+
+    /// URL parsing error.
+    #[error(transparent)]
+    Url(#[from] url::ParseError),
 }

@@ -1,20 +1,17 @@
 [
   {
-    "fqdn": "bulbasaur.local",
     "public_key": "3fded8e1f5b1125e3f2360e91fdba2498ef5f53a57b2ad562349ad88dcff6d7f",
-    "endpoint": "http://bulbasaur.local:3201",
+    "origin": "http://bulbasaur.local:3201",
     "specializations": ["ethereum-sepolia"]
   },
   {
-    "fqdn": "charmander.local",
     "public_key": "8b13f1f0bf178207ed466dd1449ff6f3074e707a5085312cd8eb357d9be3e86d",
-    "endpoint": "http://charmander.local:3202",
+    "origin": "http://charmander.local:3202",
     "specializations": ["radix-stokenet"]
   },
   {
-    "fqdn": "squirtle.local",
     "public_key": "2eed1d6d1b8a8dd6ffe7b186dc5ea59a7e572bae03dafaec3f388d7c7798ca8a",
-    "endpoint": "http://squirtle.local:3203",
+    "origin": "http://squirtle.local:3203",
     "specializations": ["bitcoin-testnet"]
   }
 ]

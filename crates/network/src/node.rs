@@ -1,6 +1,9 @@
+use crate::error::{Error, Result};
+
 use std::collections::HashSet;
 
 use proven_governance::{NodeSpecialization, TopologyNode};
+use url::Url;
 
 /// A node in the network.
 #[derive(Clone, Debug)]
@@ -12,9 +15,23 @@ impl Node {
         &self.0.availability_zone
     }
 
-    /// Get the fqdn of the node.
-    pub fn fqdn(&self) -> &str {
-        &self.0.fqdn
+    /// FQDN of the node.
+    pub fn fqdn(&self) -> Result<String> {
+        let url = Url::parse(self.origin())?;
+
+        Ok(url.host_str().ok_or(Error::BadOrigin)?.to_string())
+    }
+
+    /// Get the nats cluster endpoint of the node.
+    pub async fn nats_cluster_endpoint(&self) -> Result<String> {
+        let response = self.request_info("/nats-cluster-endpoint").await?;
+
+        Ok(response)
+    }
+
+    /// Get the origin of the node.
+    pub fn origin(&self) -> &str {
+        &self.0.origin
     }
 
     /// Get the public key of the node.
@@ -30,6 +47,12 @@ impl Node {
     /// Get the specializations of the node.
     pub fn specializations(&self) -> &HashSet<NodeSpecialization> {
         &self.0.specializations
+    }
+
+    async fn request_info(&self, path: &str) -> Result<String> {
+        let response = reqwest::get(format!("{}{}", self.origin(), path)).await?;
+
+        response.text().await.map_err(Error::Reqwest)
     }
 }
 

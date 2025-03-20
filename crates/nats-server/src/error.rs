@@ -27,8 +27,8 @@ pub enum Error {
     Io(&'static str, #[source] std::io::Error),
 
     /// Network error.
-    #[error("network error: {0}")]
-    Network(String),
+    #[error(transparent)]
+    ProvenNetwork(#[from] proven_network::Error),
 
     /// Process exited with non-zero.
     #[error("nats server exited with non-zero status: {0}")]
