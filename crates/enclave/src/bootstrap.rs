@@ -16,7 +16,6 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_core::{Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
-use proven_governance::TopologyNode;
 use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
 use proven_imds::{IdentityDocument, Imds};
@@ -27,7 +26,7 @@ use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
-use proven_network::{ProvenNetwork, ProvenNetworkOptions};
+use proven_network::{Node, ProvenNetwork, ProvenNetworkOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
@@ -76,7 +75,7 @@ pub struct Bootstrap {
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
     network: Option<ProvenNetwork<MockGovernance, NsmAttestor>>,
-    node_config: Option<TopologyNode>,
+    node_config: Option<Node>,
 
     proxy: Option<Proxy>,
     proxy_handle: Option<JoinHandle<proven_vsock_proxy::Result<()>>>,

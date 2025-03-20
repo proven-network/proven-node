@@ -5,12 +5,15 @@
 #![warn(clippy::nursery)]
 
 mod error;
+mod node;
+
 pub use error::Error;
+pub use node::Node;
 
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use hex;
 use proven_attestation::Attestor;
-use proven_governance::{Governance, TopologyNode};
+use proven_governance::Governance;
 
 /// Options for creating a ProvenNetwork instance.
 #[derive(Debug, Clone)]
@@ -98,7 +101,7 @@ where
     /// Returns an error if:
     /// - Failed to get topology from governance
     /// - Failed to get self node
-    pub async fn get_peers(&self) -> Result<Vec<TopologyNode>, Error> {
+    pub async fn get_peers(&self) -> Result<Vec<Node>, Error> {
         let self_node = self.get_self().await?;
         let all_nodes = self
             .governance
@@ -109,7 +112,8 @@ where
         // Filter out the self node
         Ok(all_nodes
             .into_iter()
-            .filter(|node| node.public_key != self_node.public_key)
+            .filter(|node| node.public_key != self_node.public_key())
+            .map(Node::from)
             .collect())
     }
 
@@ -120,7 +124,7 @@ where
     /// Returns an error if:
     /// - Failed to get topology from governance
     /// - Self node not found in topology
-    pub async fn get_self(&self) -> Result<TopologyNode, Error> {
+    pub async fn get_self(&self) -> Result<Node, Error> {
         let topology = self
             .governance
             .get_topology()
@@ -138,7 +142,7 @@ where
                 ))
             })?;
 
-        Ok(node.clone())
+        Ok(node.clone().into())
     }
 
     /// Get the governance implementation used by this network.
@@ -207,11 +211,11 @@ mod tests {
 
         // Test get_self
         let self_node = network.get_self().await.unwrap();
-        assert_eq!(self_node.public_key, public_key);
+        assert_eq!(self_node.public_key(), public_key);
 
         // Test get_peers
         let peers = network.get_peers().await.unwrap();
         assert_eq!(peers.len(), 1);
-        assert_eq!(peers[0].public_key, "other_key");
+        assert_eq!(peers[0].public_key(), "other_key");
     }
 }

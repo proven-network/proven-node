@@ -15,14 +15,14 @@ use proven_bitcoin_core::{BitcoinNode, BitcoinNodeOptions, BitcoinNetwork};
 use proven_core::{Core, CoreOptions};
 use proven_ethereum_reth::{RethNode, RethNodeOptions, EthereumNetwork as RethNetwork};
 use proven_ethereum_lighthouse::{LighthouseNode, LighthouseNodeOptions, EthereumNetwork as LighthouseNetwork};
-use proven_governance::{TopologyNode, NodeSpecialization};
+use proven_governance::NodeSpecialization;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
-use proven_network::{ProvenNetwork, ProvenNetworkOptions};
+use proven_network::{ProvenNetwork, ProvenNetworkOptions, Node};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
@@ -55,7 +55,7 @@ pub struct Bootstrap {
     // added during initialization
     governance: Option<MockGovernance>,
     network: Option<ProvenNetwork<MockGovernance, MockAttestor>>,
-    node_config: Option<TopologyNode>,
+    node_config: Option<Node>,
 
     radix_mainnet_node: Option<RadixNode>,
     radix_mainnet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
@@ -569,7 +569,7 @@ impl Bootstrap {
         info!("node config: {:?}", node_config);
 
         // Check /etc/hosts to ensure the node's FQDN is properly configured
-        check_hostname_resolution(&node_config.fqdn).await?;
+        check_hostname_resolution(node_config.fqdn()).await?;
 
         self.governance = Some(governance);
         self.network = Some(network);
@@ -584,7 +584,7 @@ impl Bootstrap {
         });
 
         if node_config
-            .specializations
+            .specializations()
             .contains(&NodeSpecialization::RadixMainnet)
         {
             let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
@@ -607,7 +607,7 @@ impl Bootstrap {
         }
 
         if node_config
-            .specializations
+            .specializations()
             .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_stokenet_node = RadixNode::new(RadixNodeOptions {
@@ -638,7 +638,7 @@ impl Bootstrap {
         });
 
         if node_config
-            .specializations
+            .specializations()
             .contains(&NodeSpecialization::EthereumMainnet)
         {
             // Start Reth execution client
@@ -680,7 +680,7 @@ impl Bootstrap {
         });
 
         if node_config
-            .specializations
+            .specializations()
             .contains(&NodeSpecialization::EthereumHolesky)
         {
             // Start Reth execution client
@@ -722,7 +722,7 @@ impl Bootstrap {
         });
 
         if node_config
-            .specializations
+            .specializations()
             .contains(&NodeSpecialization::EthereumSepolia)
         {
             // Start Reth execution client
@@ -764,7 +764,7 @@ impl Bootstrap {
         });
 
         if node_config
-            .specializations
+            .specializations()
             .contains(&NodeSpecialization::BitcoinTestnet)
         {
             // Start Bitcoin testnet node
@@ -791,10 +791,10 @@ impl Bootstrap {
         });
 
         if node_config
-            .specializations
+            .specializations()
             .contains(&NodeSpecialization::RadixMainnet)
             || node_config
-                .specializations
+                .specializations()
                 .contains(&NodeSpecialization::RadixStokenet)
         {
             let postgres = Postgres::new(PostgresOptions {
@@ -822,7 +822,7 @@ impl Bootstrap {
         });
 
         if node_config
-            .specializations
+            .specializations()
             .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
@@ -848,7 +848,7 @@ impl Bootstrap {
         });
 
         if node_config
-            .specializations
+            .specializations()
             .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_gateway = RadixGateway::new(RadixGatewayOptions {
@@ -878,7 +878,7 @@ impl Bootstrap {
             cluster_listen_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.args.nats_cluster_port),
             debug: self.args.testnet,
             network: network.clone(),
-            server_name: self.node_config.as_ref().unwrap().fqdn.clone(),
+            server_name: self.node_config.as_ref().unwrap().fqdn().to_string(),
             store_dir: "/var/lib/nats/nats".to_string(),
         });
 
@@ -1057,7 +1057,7 @@ impl Bootstrap {
             application_manager,
             attestor: self.attestor.clone(),
             network: network.clone(),
-            primary_hostnames: vec![node_config.fqdn.clone()].into_iter().collect(),
+            primary_hostnames: vec![node_config.fqdn().to_string()].into_iter().collect(),
             runtime_pool_manager,
             session_manager,
         });

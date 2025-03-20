@@ -16,8 +16,8 @@ use async_nats::Client;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use proven_attestation::Attestor;
-use proven_governance::{Governance, TopologyNode};
-use proven_network::ProvenNetwork;
+use proven_governance::Governance;
+use proven_network::{Node, ProvenNetwork};
 use regex::Regex;
 use std::net::SocketAddrV4;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -304,17 +304,17 @@ where
     /// # Errors
     ///
     /// This function will return an error if it fails to update the configuration.
-    async fn update_nats_config_with_peers(&self, peers: &[TopologyNode]) -> Result<()> {
+    async fn update_nats_config_with_peers(&self, peers: &[Node]) -> Result<()> {
         // Build routes for cluster configuration
         let mut routes = String::new();
         for peer in peers {
             // Quick hack to add correct ports for integration tests
             // TODO: Remove this once we have a proper way to handle ports
-            let route = match peer.fqdn.as_str() {
+            let route = match peer.fqdn() {
                 "bulbasaur.local" => "nats://bulbasaur.local:6222",
                 "charmander.local" => "nats://charmander.local:6223",
                 "squirtle.local" => "nats://squirtle.local:6224",
-                _ => panic!("unknown peer fqdn: {}", peer.fqdn),
+                _ => panic!("unknown peer fqdn: {}", peer.fqdn()),
             };
 
             // Use FQDN for the route address

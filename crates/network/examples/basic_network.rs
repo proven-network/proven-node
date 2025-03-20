@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Use the network to get self and peers
     let self_node = network.get_self().await?;
-    println!("Self node: {:?}", self_node);
+    println!("Self node: {}", self_node.public_key());
 
     let peers = network.get_peers().await?;
     println!("Peers: {:?}", peers);

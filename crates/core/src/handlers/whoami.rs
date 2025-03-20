@@ -28,11 +28,11 @@ where
         Ok(node) => {
             let response = json!({
                 "node": {
-                    "fqdn": node.fqdn,
-                    "public_key": node.public_key,
-                    "region": node.region,
-                    "availability_zone": node.availability_zone,
-                    "specializations": node.specializations,
+                    "fqdn": node.fqdn(),
+                    "public_key": node.public_key(),
+                    "region": node.region(),
+                    "availability_zone": node.availability_zone(),
+                    "specializations": node.specializations(),
                 }
             });
             Ok(Json(response))
