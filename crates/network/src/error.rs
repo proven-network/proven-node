@@ -28,6 +28,10 @@ pub enum Error {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
+    /// Request failed with non-200 status code.
+    #[error("request failed with status code: {0}")]
+    RequestFailed(u16),
+
     /// URL parsing error.
     #[error(transparent)]
     Url(#[from] url::ParseError),

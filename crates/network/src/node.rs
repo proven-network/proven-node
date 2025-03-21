@@ -52,6 +52,10 @@ impl Node {
     async fn request_info(&self, path: &str) -> Result<String> {
         let response = reqwest::get(format!("{}{}", self.origin(), path)).await?;
 
+        if response.status() != reqwest::StatusCode::OK {
+            return Err(Error::RequestFailed(response.status().as_u16()));
+        }
+
         response.text().await.map_err(Error::Reqwest)
     }
 }
