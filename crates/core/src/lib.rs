@@ -17,6 +17,7 @@ use handlers::{
 use std::collections::HashSet;
 
 use axum::Router;
+use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::{any, delete, get, patch, post, put};
 use proven_applications::ApplicationManagement;
@@ -171,11 +172,11 @@ where
                 post(http_rpc_handler).with_state(ctx.clone()),
             )
             .route("/ws/{application_id}", get(ws_rpc_handler).with_state(ctx))
-            .fallback(any(|| async { "404" }))
+            .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
             .layer(CorsLayer::very_permissive());
 
         let error_404_router = Router::new()
-            .fallback(any(|| async { "404" }))
+            .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
             .layer(CorsLayer::very_permissive());
 
         // Add a test http endpoint
@@ -276,7 +277,9 @@ where
         // Validate before creating the router
         Self::ensure_no_overlapping_routes(&module_options.http_endpoints)?;
 
-        let mut router = Router::new().layer(CorsLayer::very_permissive());
+        let mut router = Router::new()
+            .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
+            .layer(CorsLayer::very_permissive());
 
         for endpoint in module_options.http_endpoints {
             let ctx = ApplicationHttpContext {
