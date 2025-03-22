@@ -19,9 +19,9 @@ services:
       - "8545:8545/tcp"        # HTTP-RPC server
       - "8546:8546/tcp"        # WebSocket-RPC server
       # lighthouse ports
-      - "9909:9909/tcp"        # Discovery and libp2p
-      - "9909:9909/udp"        # Discovery and libp2p
-      - "9910:9910/udp"        # QUIC
+      - "9919:9919/tcp"        # Discovery and libp2p
+      - "9919:9919/udp"        # Discovery and libp2p
+      - "9920:9920/udp"        # QUIC
       - "5052:5052/tcp"        # HTTP API
     volumes:
       - bulbasaur-data:/tmp/proven
