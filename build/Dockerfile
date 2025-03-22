@@ -121,8 +121,8 @@ WORKDIR /tmp
 
 # Download
 RUN wget -q https://github.com/bitcoin/bitcoin/releases/download/v27.0/bitcoin-27.0-aarch64-linux-gnu.tar.gz
-RUN wget -q https://github.com/paradigmxyz/reth/releases/download/v1.3.1/reth-v1.3.1-aarch64-unknown-linux-gnu.tar.gz
-RUN wget -q https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.3/lighthouse-v7.0.0-beta.3-aarch64-unknown-linux-gnu.tar.gz
+RUN wget -q https://github.com/paradigmxyz/reth/releases/download/v1.3.4/reth-v1.3.4-aarch64-unknown-linux-gnu.tar.gz
+RUN wget -q https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.4/lighthouse-v7.0.0-beta.4-aarch64-unknown-linux-gnu.tar.gz
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-v1.3.0.2.zip
 RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.10.25/nats-server-v2.10.25-linux-arm64.zip
@@ -131,8 +131,8 @@ RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.1
 
 # Unzip
 RUN tar -xvzf bitcoin-27.0-aarch64-linux-gnu.tar.gz
-RUN tar -xvzf reth-v1.3.1-aarch64-unknown-linux-gnu.tar.gz
-RUN tar -xvzf lighthouse-v7.0.0-beta.3-aarch64-unknown-linux-gnu.tar.gz
+RUN tar -xvzf reth-v1.3.4-aarch64-unknown-linux-gnu.tar.gz
+RUN tar -xvzf lighthouse-v7.0.0-beta.4-aarch64-unknown-linux-gnu.tar.gz
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN unzip babylon-node-v1.3.0.2.zip
 RUN unzip nats-server-v2.10.25-linux-arm64.zip
