@@ -131,9 +131,9 @@ RUN wget https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.4/ligh
     && install -m 0755 -o root -g root -t /usr/local/bin lighthouse
 
 # Download and install NATS server
-RUN wget https://github.com/nats-io/nats-server/releases/download/v2.10.4/nats-server-v2.10.4-linux-arm64.tar.gz \
-    && tar -xzf nats-server-v2.10.4-linux-arm64.tar.gz \
-    && install -m 0755 -o root -g root -t /usr/local/bin nats-server-v2.10.4-linux-arm64/nats-server
+RUN wget https://github.com/nats-io/nats-server/releases/download/v2.11.0/nats-server-v2.11.0-linux-arm64.tar.gz \
+    && tar -xzf nats-server-v2.11.0-linux-arm64.tar.gz \
+    && install -m 0755 -o root -g root -t /usr/local/bin nats-server-v2.11.0-linux-arm64/nats-server
 
 # Download and install Babylon Node
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip \

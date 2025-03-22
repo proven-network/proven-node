@@ -125,7 +125,7 @@ RUN wget -q https://github.com/paradigmxyz/reth/releases/download/v1.3.4/reth-v1
 RUN wget -q https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.4/lighthouse-v7.0.0-beta.4-aarch64-unknown-linux-gnu.tar.gz
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-v1.3.0.2.zip
-RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.10.25/nats-server-v2.10.25-linux-arm64.zip
+RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.11.0/nats-server-v2.11.0-linux-arm64.tar.gz
 RUN wget -q https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.7/dnscrypt-proxy-linux_arm64-2.1.7.tar.gz
 RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
 
@@ -135,7 +135,7 @@ RUN tar -xvzf reth-v1.3.4-aarch64-unknown-linux-gnu.tar.gz
 RUN tar -xvzf lighthouse-v7.0.0-beta.4-aarch64-unknown-linux-gnu.tar.gz
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN unzip babylon-node-v1.3.0.2.zip
-RUN unzip nats-server-v2.10.25-linux-arm64.zip
+RUN tar -xvzf nats-server-v2.11.0-linux-arm64.tar.gz
 RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.7.tar.gz
 RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
 
@@ -147,7 +147,7 @@ RUN mv lighthouse /bin/
 RUN mkdir -p /bin/babylon-node
 RUN mv core-v1.3.0.2 /bin/babylon-node
 RUN mv libcorerust.so /bin/babylon-node
-RUN mv nats-server-v2.10.25-linux-arm64/nats-server /bin/
+RUN mv nats-server-v2.11.0-linux-arm64/nats-server /bin/
 RUN mv linux-arm64/dnscrypt-proxy /bin/
 RUN mv librespeed-cli /bin/
 
