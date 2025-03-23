@@ -4,10 +4,10 @@
 echo "Cleaning up UPnP port forwarding..."
 
 upnpc -d 30001 TCP
-upnpc -d 30303 TCP
-upnpc -d 30303 UDP
-upnpc -d 9919 TCP
-upnpc -d 9919 UDP
-upnpc -d 9920 UDP
+upnpc -d 30304 TCP
+upnpc -d 30304 UDP
+upnpc -d 10109 TCP
+upnpc -d 10109 UDP
+upnpc -d 10110 UDP
 
 echo "UPnP port forwarding cleanup complete" 

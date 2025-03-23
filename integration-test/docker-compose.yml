@@ -7,6 +7,14 @@ services:
       args:
         BUILDKIT_INLINE_CACHE: 1
     environment:
+      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_P2P_ADDR=0.0.0.0:10109
+      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_HTTP_ADDR=127.0.0.1:5052
+      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_METRICS_ADDR=127.0.0.1:5054
+      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_STORE_DIR=/tmp/proven/ethereum-sepolia/lighthouse
+      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_DISCOVERY_ADDR=0.0.0.0:30304
+      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_HTTP_ADDR=127.0.0.1:8546
+      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_RPC_ADDR=127.0.0.1:8545
+      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_STORE_DIR=/tmp/proven/ethereum-sepolia/reth
       - PROVEN_PORT=3201
       - PROVEN_NATS_CLIENT_PORT=4222
       - PROVEN_NATS_CLUSTER_PORT=6222
@@ -18,9 +26,9 @@ services:
       - "30304:30304/udp"      # P2P communication
       - "8546:8546/tcp"        # HTTP-RPC server
       # lighthouse ports
-      - "9919:9919/tcp"        # Discovery and libp2p
-      - "9919:9919/udp"        # Discovery and libp2p
-      - "9920:9920/udp"        # QUIC
+      - "10109:10109/tcp"        # Discovery and libp2p
+      - "10109:10109/udp"        # Discovery and libp2p
+      - "10110:10110/udp"        # QUIC
       - "5052:5052/tcp"        # HTTP API
     volumes:
       - bulbasaur-data:/tmp/proven
