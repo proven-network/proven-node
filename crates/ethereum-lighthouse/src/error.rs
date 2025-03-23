@@ -18,6 +18,10 @@ pub enum Error {
     #[error("node exited before ready")]
     ExitBeforeReady,
 
+    /// HTTP request failed.
+    #[error("HTTP request failed: {0}")]
+    HttpRequest(String),
+
     /// IO operation failed.
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),
@@ -37,8 +41,4 @@ pub enum Error {
     /// Failed to send signal.
     #[error(transparent)]
     Signal(#[from] nix::Error),
-
-    /// HTTP request failed.
-    #[error("HTTP request failed: {0}")]
-    HttpRequest(String),
 }

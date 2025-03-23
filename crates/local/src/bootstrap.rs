@@ -632,48 +632,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    async fn start_ethereum_mainnet_node(&mut self) -> Result<()> {
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not set before ethereum nodes step");
-        });
-
-        if node_config
-            .specializations()
-            .contains(&NodeSpecialization::EthereumMainnet)
-        {
-            // Start Reth execution client
-            let ethereum_reth_node = RethNode::new(RethNodeOptions {
-                network: RethNetwork::Mainnet,
-                store_dir: self.args.ethereum_mainnet_store_dir.to_string_lossy().to_string(),
-            });
-
-            let ethereum_reth_node_handle = ethereum_reth_node.start().await
-                .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
-
-            self.ethereum_mainnet_reth_node = Some(ethereum_reth_node);
-            self.ethereum_mainnet_reth_node_handle = Some(ethereum_reth_node_handle);
-
-            info!("ethereum reth node (mainnet) started");
-
-            // Start Lighthouse consensus client
-            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
-                host_ip: self.external_ip.to_string(),
-                network: LighthouseNetwork::Mainnet,
-                store_dir: self.args.ethereum_mainnet_store_dir.to_string_lossy().to_string(),
-            });
-
-            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
-                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
-
-            self.ethereum_mainnet_lighthouse_node = Some(ethereum_lighthouse_node);
-            self.ethereum_mainnet_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
-
-            info!("ethereum lighthouse node (mainnet) started");
-        }
-
-        Ok(())
-    }
-
     async fn start_ethereum_holesky_node(&mut self) -> Result<()> {
         let node_config = self.node_config.as_ref().unwrap_or_else(|| {
             panic!("node config not set before ethereum nodes step");
@@ -685,8 +643,12 @@ impl Bootstrap {
         {
             // Start Reth execution client
             let ethereum_reth_node = RethNode::new(RethNodeOptions {
+                discovery_addr: self.args.ethereum_holesky_execution_discovery_addr,
+                http_addr: self.args.ethereum_holesky_execution_http_addr,
+                metrics_addr: self.args.ethereum_holesky_execution_metrics_addr,
                 network: RethNetwork::Holesky,
-                store_dir: self.args.ethereum_holesky_store_dir.to_string_lossy().to_string(),
+                rpc_addr: self.args.ethereum_holesky_execution_rpc_addr,
+                store_dir: self.args.ethereum_holesky_execution_store_dir.clone(),
             });
 
             let ethereum_reth_node_handle = ethereum_reth_node.start().await
@@ -699,9 +661,13 @@ impl Bootstrap {
 
             // Start Lighthouse consensus client
             let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+                execution_rpc_addr: self.args.ethereum_holesky_execution_rpc_addr,
                 host_ip: self.external_ip.to_string(),
+                http_addr: self.args.ethereum_holesky_consensus_http_addr,
+                metrics_addr: self.args.ethereum_holesky_consensus_metrics_addr,
                 network: LighthouseNetwork::Holesky,
-                store_dir: self.args.ethereum_holesky_store_dir.to_string_lossy().to_string(),
+                p2p_addr: self.args.ethereum_holesky_consensus_p2p_addr,
+                store_dir: self.args.ethereum_holesky_consensus_store_dir.clone(),
             });
 
             let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
@@ -711,6 +677,56 @@ impl Bootstrap {
             self.ethereum_holesky_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
 
             info!("ethereum lighthouse node (holesky) started");
+        }
+
+        Ok(())
+    }
+
+    async fn start_ethereum_mainnet_node(&mut self) -> Result<()> {
+        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
+            panic!("node config not set before ethereum nodes step");
+        });
+
+        if node_config
+            .specializations()
+            .contains(&NodeSpecialization::EthereumMainnet)
+        {
+            // Start Reth execution client
+            let ethereum_reth_node = RethNode::new(RethNodeOptions {
+                discovery_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30303),
+                http_addr: self.args.ethereum_mainnet_execution_http_addr,
+                metrics_addr: self.args.ethereum_mainnet_execution_metrics_addr,
+                network: RethNetwork::Mainnet,
+                rpc_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8545),
+                store_dir: self.args.ethereum_mainnet_execution_store_dir.clone(),
+            });
+
+            let ethereum_reth_node_handle = ethereum_reth_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
+
+            self.ethereum_mainnet_reth_node = Some(ethereum_reth_node);
+            self.ethereum_mainnet_reth_node_handle = Some(ethereum_reth_node_handle);
+
+            info!("ethereum reth node (mainnet) started");
+
+            // Start Lighthouse consensus client
+            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+                execution_rpc_addr: self.args.ethereum_mainnet_execution_rpc_addr,
+                host_ip: self.external_ip.to_string(),
+                http_addr: self.args.ethereum_mainnet_consensus_http_addr,
+                metrics_addr: self.args.ethereum_mainnet_consensus_metrics_addr,
+                network: LighthouseNetwork::Mainnet,
+                p2p_addr: self.args.ethereum_mainnet_consensus_p2p_addr,
+                store_dir: self.args.ethereum_mainnet_consensus_store_dir.clone(),
+            });
+
+            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
+                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
+
+            self.ethereum_mainnet_lighthouse_node = Some(ethereum_lighthouse_node);
+            self.ethereum_mainnet_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
+
+            info!("ethereum lighthouse node (mainnet) started");
         }
 
         Ok(())
@@ -727,8 +743,12 @@ impl Bootstrap {
         {
             // Start Reth execution client
             let ethereum_reth_node = RethNode::new(RethNodeOptions {
+                discovery_addr: self.args.ethereum_sepolia_execution_discovery_addr,
+                http_addr: self.args.ethereum_sepolia_execution_http_addr,
+                metrics_addr: self.args.ethereum_sepolia_execution_metrics_addr,
                 network: RethNetwork::Sepolia,
-                store_dir: self.args.ethereum_sepolia_store_dir.to_string_lossy().to_string(),
+                rpc_addr: self.args.ethereum_sepolia_execution_rpc_addr,
+                store_dir: self.args.ethereum_sepolia_execution_store_dir.clone(),
             });
 
             let ethereum_reth_node_handle = ethereum_reth_node.start().await
@@ -741,9 +761,13 @@ impl Bootstrap {
 
             // Start Lighthouse consensus client
             let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+                execution_rpc_addr: self.args.ethereum_sepolia_execution_rpc_addr,
                 host_ip: self.external_ip.to_string(),
+                http_addr: self.args.ethereum_sepolia_consensus_http_addr,
+                metrics_addr: self.args.ethereum_sepolia_consensus_metrics_addr,
                 network: LighthouseNetwork::Sepolia,
-                store_dir: self.args.ethereum_sepolia_store_dir.to_string_lossy().to_string(),
+                p2p_addr: self.args.ethereum_sepolia_consensus_p2p_addr,
+                store_dir: self.args.ethereum_sepolia_consensus_store_dir.clone(),
             });
 
             let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
@@ -878,7 +902,7 @@ impl Bootstrap {
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
-            client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_port),
+            client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_client_port),
             cluster_listen_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.args.nats_cluster_port),
             debug: self.args.testnet,
             network: network.clone(),

@@ -10,7 +10,8 @@ mod error;
 pub use error::{Error, Result};
 
 use std::fs;
-use std::path::Path;
+use std::net::SocketAddrV4;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::str;
 
@@ -25,15 +26,6 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
-
-// Configuration paths
-#[allow(dead_code)]
-static LIGHTHOUSE_DATA_DIR: &str = "/var/lib/proven-node/ethereum/lighthouse";
-#[allow(dead_code)]
-static LIGHTHOUSE_CONFIG_PATH: &str = "/var/lib/proven-node/ethereum/lighthouse.config";
-
-// RPC endpoints
-static LIGHTHOUSE_HTTP_URL: &str = "http://127.0.0.1:5052";
 
 /// Represents an Ethereum network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,23 +52,39 @@ impl EthereumNetwork {
 
 /// Runs a Lighthouse consensus client.
 pub struct LighthouseNode {
+    execution_rpc_addr: SocketAddrV4,
     host_ip: String,
+    http_addr: SocketAddrV4,
+    metrics_addr: SocketAddrV4,
     network: EthereumNetwork,
+    p2p_addr: SocketAddrV4,
     shutdown_token: CancellationToken,
-    store_dir: String,
+    store_dir: PathBuf,
     task_tracker: TaskTracker,
 }
 
 /// Options for configuring a `LighthouseNode`.
 pub struct LighthouseNodeOptions {
+    /// The execution client RPC endpoint.
+    pub execution_rpc_addr: SocketAddrV4,
+
     /// The host IP address.
     pub host_ip: String,
+
+    /// The HTTP API socket address.
+    pub http_addr: SocketAddrV4,
+
+    /// The metrics socket address.
+    pub metrics_addr: SocketAddrV4,
 
     /// The Ethereum network to connect to.
     pub network: EthereumNetwork,
 
+    /// The P2P networking socket address.
+    pub p2p_addr: SocketAddrV4,
+
     /// The directory to store data in.
-    pub store_dir: String,
+    pub store_dir: PathBuf,
 }
 
 impl LighthouseNode {
@@ -84,14 +92,22 @@ impl LighthouseNode {
     #[must_use]
     pub fn new(
         LighthouseNodeOptions {
+            execution_rpc_addr,
             host_ip,
+            http_addr,
+            metrics_addr,
             network,
+            p2p_addr,
             store_dir,
         }: LighthouseNodeOptions,
     ) -> Self {
         Self {
+            execution_rpc_addr,
             host_ip,
+            http_addr,
+            metrics_addr,
             network,
+            p2p_addr,
             shutdown_token: CancellationToken::new(),
             store_dir,
             task_tracker: TaskTracker::new(),
@@ -111,52 +127,84 @@ impl LighthouseNode {
         self.create_data_directories()?;
 
         // Start Lighthouse and handle it in a single task
-        let shutdown_token = self.shutdown_token.clone();
-        let task_tracker = self.task_tracker.clone();
-        let network = self.network;
-        let store_dir = self.store_dir.clone();
+        let execution_rpc_addr = self.execution_rpc_addr;
         let host_ip = self.host_ip.clone();
+        let http_addr = self.http_addr;
+        let metrics_addr = self.metrics_addr;
+        let network = self.network;
+        let p2p_addr = self.p2p_addr;
+        let shutdown_token = self.shutdown_token.clone();
+        let store_dir = self.store_dir.clone();
+        let task_tracker = self.task_tracker.clone();
+
         let server_task = self.task_tracker.spawn(async move {
             // Start the Lighthouse process
             let network_str = network.as_str();
-            let data_dir = Path::new(&store_dir).join("lighthouse");
             let jwt_path = format!("/tmp/proven/ethereum-{}/reth/jwt.hex", network_str);
 
             let mut cmd = Command::new("lighthouse");
+            cmd.args(["beacon_node", "--datadir", store_dir.to_str().unwrap()]);
+
+            // Add network-specific args
+            match network {
+                EthereumNetwork::Mainnet => {
+                    // Mainnet is default, no args needed
+                }
+                EthereumNetwork::Sepolia => {
+                    cmd.arg("--network=sepolia");
+                }
+                EthereumNetwork::Holesky => {
+                    cmd.arg("--network=holesky");
+                }
+            }
+
+            // Add execution endpoint
             cmd.args([
-                "beacon_node",
-                "--datadir",
-                data_dir.to_str().unwrap_or(LIGHTHOUSE_DATA_DIR),
-                "--network",
-                network_str,
                 "--execution-endpoint",
-                "http://127.0.0.1:8551",
+                &format!(
+                    "http://{}:{}",
+                    execution_rpc_addr.ip(),
+                    execution_rpc_addr.port()
+                ),
+            ]);
+
+            // Add JWT secret
+            cmd.args(["--jwt-secrets", &jwt_path]);
+
+            // Add P2P networking args
+            cmd.args([
                 "--listen-address",
-                "0.0.0.0",
+                &p2p_addr.ip().to_string(),
                 "--port",
-                "9919",
+                &p2p_addr.port().to_string(),
+            ]);
+
+            // Add HTTP API args
+            cmd.args([
                 "--http",
                 "--http-address",
-                "127.0.0.1",
+                &http_addr.ip().to_string(),
                 "--http-port",
-                "5052",
+                &http_addr.port().to_string(),
+            ]);
+
+            // Add metrics args
+            cmd.args([
                 "--metrics",
                 "--metrics-address",
-                "127.0.0.1",
+                &metrics_addr.ip().to_string(),
                 "--metrics-port",
-                "5054",
-                "--checkpoint-sync-url",
-                &get_checkpoint_sync_url(network),
-                "--jwt-secrets",
-                &jwt_path,
-                "--disable-upnp", // Port mapping handled externally,
-                "--enr-address",
-                &host_ip,
-                "--enr-udp-port",
-                "9919",
-                "--enr-tcp-port",
-                "9919",
+                &metrics_addr.port().to_string(),
             ]);
+
+            // Add checkpoint sync URL
+            cmd.args(["--checkpoint-sync-url", &get_checkpoint_sync_url(network)]);
+
+            // Add ENR IP address
+            cmd.args(["--enr-address", &host_ip]);
+
+            // Disable UPNP
+            cmd.args(["--disable-upnp"]);
 
             info!("Starting Lighthouse with command: {:?}", cmd);
 
@@ -273,17 +321,17 @@ impl LighthouseNode {
     /// Shuts down the Lighthouse node.
     pub async fn shutdown(&self) {
         info!("Lighthouse node shutting down...");
+
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
+
         info!("Lighthouse node shutdown");
     }
 
     // Creates necessary data directories
     fn create_data_directories(&self) -> Result<()> {
-        let lighthouse_dir = Path::new(&self.store_dir).join("lighthouse");
-
-        if !lighthouse_dir.exists() {
-            fs::create_dir_all(&lighthouse_dir)
+        if !self.store_dir.exists() {
+            fs::create_dir_all(&self.store_dir)
                 .map_err(|e| Error::Io("failed to create lighthouse directory", e))?;
         }
 
@@ -294,10 +342,12 @@ impl LighthouseNode {
     async fn wait_until_ready(&self) -> Result<()> {
         // Create HTTP client
         let client = Client::new();
+        let http_url = format!("http://{}:{}", self.http_addr.ip(), self.http_addr.port());
 
         // Check Lighthouse HTTP endpoint until it responds
         info!(
-            "Waiting for Lighthouse HTTP API to become available and syncing to complete at {LIGHTHOUSE_HTTP_URL}/lighthouse/syncing"
+            "Waiting for Lighthouse HTTP API to become available and syncing to complete at {}/lighthouse/syncing",
+            http_url
         );
 
         // Keep trying indefinitely as long as we're syncing
@@ -305,7 +355,7 @@ impl LighthouseNode {
         loop {
             info!("HTTP syncing check attempt {attempt}");
             match client
-                .get(format!("{LIGHTHOUSE_HTTP_URL}/lighthouse/syncing"))
+                .get(format!("{}/lighthouse/syncing", http_url))
                 .send()
                 .await
             {

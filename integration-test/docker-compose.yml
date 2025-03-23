@@ -1,5 +1,5 @@
 services:
-  # Node with radix-mainnet specialization
+  # Ethereum sepolia node
   bulbasaur:
     build:
       context: ..
@@ -14,10 +14,9 @@ services:
     ports:
       - "3201:3201/tcp"
       # reth ports
-      - "30303:30303/tcp"      # P2P communication
-      - "30303:30303/udp"      # P2P communication
-      - "8545:8545/tcp"        # HTTP-RPC server
-      - "8546:8546/tcp"        # WebSocket-RPC server
+      - "30304:30304/tcp"      # P2P communication
+      - "30304:30304/udp"      # P2P communication
+      - "8546:8546/tcp"        # HTTP-RPC server
       # lighthouse ports
       - "9919:9919/tcp"        # Discovery and libp2p
       - "9919:9919/udp"        # Discovery and libp2p
@@ -35,7 +34,7 @@ services:
     hostname: bulbasaur.local
     stop_grace_period: 1m30s
 
-  # Node with RadixStokenet specialization
+  # Radix Stokenet node
   charmander:
     build:
       context: ..
@@ -64,7 +63,7 @@ services:
     hostname: charmander.local
     stop_grace_period: 1m30s
 
-  # Generic node without specializations
+  # Bitcoin testnet node
   squirtle:
     build:
       context: ..

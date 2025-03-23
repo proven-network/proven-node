@@ -14,7 +14,7 @@ mod node;
 use bootstrap::Bootstrap;
 use error::Result;
 
-use std::path::PathBuf;
+use std::{net::SocketAddrV4, path::PathBuf};
 
 use clap::Parser;
 use tracing::{Level, info};
@@ -45,7 +45,7 @@ struct Args {
 
     /// NATS port
     #[arg(long, default_value_t = 4222, env = "PROVEN_NATS_CLIENT_PORT")]
-    nats_port: u16,
+    nats_client_port: u16,
 
     /// NATS cluster port
     #[arg(long, default_value_t = 6222, env = "PROVEN_NATS_CLUSTER_PORT")]
@@ -95,29 +95,220 @@ struct Args {
     )]
     radix_stokenet_store_dir: PathBuf,
 
+    /// Ethereum Holesky Consensus HTTP address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:5052",
+        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_HTTP_ADDR"
+    )]
+    ethereum_holesky_consensus_http_addr: SocketAddrV4,
+
+    /// Ethereum Holesky Consensus metrics address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:5054",
+        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_METRICS_ADDR"
+    )]
+    ethereum_holesky_consensus_metrics_addr: SocketAddrV4,
+
+    /// Ethereum Holesky Consensus P2P address
+    #[arg(
+        long,
+        default_value = "0.0.0.0:9919",
+        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_P2P_ADDR"
+    )]
+    ethereum_holesky_consensus_p2p_addr: SocketAddrV4,
+
+    /// Ethereum Holesky Consensus store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/ethereum-holesky/lighthouse",
+        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_STORE_DIR"
+    )]
+    ethereum_holesky_consensus_store_dir: PathBuf,
+
+    /// Ethereum Holesky Execution discovery address
+    #[arg(
+        long,
+        default_value = "0.0.0.0:30305",
+        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_DISCOVERY_ADDR"
+    )]
+    ethereum_holesky_execution_discovery_addr: SocketAddrV4,
+
+    /// Ethereum Holesky Execution HTTP address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:8547",
+        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_HTTP_ADDR"
+    )]
+    ethereum_holesky_execution_http_addr: SocketAddrV4,
+
+    /// Ethereum Holesky Execution metrics address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:9420",
+        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_METRICS_ADDR"
+    )]
+    ethereum_holesky_execution_metrics_addr: SocketAddrV4,
+
+    /// Ethereum Holesky Execution RPC address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:8553",
+        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_RPC_ADDR"
+    )]
+    ethereum_holesky_execution_rpc_addr: SocketAddrV4,
+
     /// Ethereum Holesky store directory
     #[arg(
         long,
-        default_value = "/tmp/proven/ethereum-holesky",
-        env = "PROVEN_ETHEREUM_HOLESKY_STORE_DIR"
+        default_value = "/tmp/proven/ethereum-holesky/reth",
+        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_STORE_DIR"
     )]
-    ethereum_holesky_store_dir: PathBuf,
+    ethereum_holesky_execution_store_dir: PathBuf,
+
+    /// Ethereum Mainnet Consensus HTTP address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:5052",
+        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_HTTP_ADDR"
+    )]
+    ethereum_mainnet_consensus_http_addr: SocketAddrV4,
+
+    /// Ethereum Mainnet Consensus metrics address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:5054",
+        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_METRICS_ADDR"
+    )]
+    ethereum_mainnet_consensus_metrics_addr: SocketAddrV4,
+
+    /// Ethereum Mainnet Consensus P2P address
+    #[arg(
+        long,
+        default_value = "0.0.0.0:9919",
+        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_P2P_ADDR"
+    )]
+    ethereum_mainnet_consensus_p2p_addr: SocketAddrV4,
+
+    /// Ethereum Mainnet Consensus store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/ethereum-mainnet/lighthouse",
+        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_STORE_DIR"
+    )]
+    ethereum_mainnet_consensus_store_dir: PathBuf,
+
+    /// Ethereum Mainnet Execution discovery address
+    #[arg(
+        long,
+        default_value = "0.0.0.0:30303",
+        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_DISCOVERY_ADDR"
+    )]
+    ethereum_mainnet_execution_discovery_addr: SocketAddrV4,
+
+    /// Ethereum Mainnet Execution HTTP address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:8545",
+        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_HTTP_ADDR"
+    )]
+    ethereum_mainnet_execution_http_addr: SocketAddrV4,
+
+    /// Ethereum Mainnet Execution metrics address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:9418",
+        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_METRICS_ADDR"
+    )]
+    ethereum_mainnet_execution_metrics_addr: SocketAddrV4,
+    /// Ethereum Mainnet Execution RPC address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:8551",
+        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_RPC_ADDR"
+    )]
+    ethereum_mainnet_execution_rpc_addr: SocketAddrV4,
 
     /// Ethereum Mainnet store directory
     #[arg(
         long,
-        default_value = "/tmp/proven/ethereum-mainnet",
-        env = "PROVEN_ETHEREUM_MAINNET_STORE_DIR"
+        default_value = "/tmp/proven/ethereum-mainnet/reth",
+        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_STORE_DIR"
     )]
-    ethereum_mainnet_store_dir: PathBuf,
+    ethereum_mainnet_execution_store_dir: PathBuf,
+
+    /// Ethereum Sepolia Consensus HTTP address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:5052",
+        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_HTTP_ADDR"
+    )]
+    ethereum_sepolia_consensus_http_addr: SocketAddrV4,
+
+    /// Ethereum Sepolia Consensus metrics address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:5054",
+        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_METRICS_ADDR"
+    )]
+    ethereum_sepolia_consensus_metrics_addr: SocketAddrV4,
+
+    /// Ethereum Sepolia Consensus P2P address
+    #[arg(
+        long,
+        default_value = "0.0.0.0:9919",
+        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_P2P_ADDR"
+    )]
+    ethereum_sepolia_consensus_p2p_addr: SocketAddrV4,
+
+    /// Ethereum Sepolia Consensus store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/ethereum-sepolia/lighthouse",
+        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_STORE_DIR"
+    )]
+    ethereum_sepolia_consensus_store_dir: PathBuf,
+
+    /// Ethereum Sepolia Execution discovery address
+    #[arg(
+        long,
+        default_value = "0.0.0.0:30304",
+        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_DISCOVERY_ADDR"
+    )]
+    ethereum_sepolia_execution_discovery_addr: SocketAddrV4,
+
+    /// Ethereum Sepolia Execution HTTP address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:8546",
+        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_HTTP_ADDR"
+    )]
+    ethereum_sepolia_execution_http_addr: SocketAddrV4,
+
+    /// Ethereum Sepolia Execution metrics address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:9419",
+        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_METRICS_ADDR"
+    )]
+    ethereum_sepolia_execution_metrics_addr: SocketAddrV4,
+
+    /// Ethereum Sepolia Execution RPC address
+    #[arg(
+        long,
+        default_value = "127.0.0.1:8552",
+        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_RPC_ADDR"
+    )]
+    ethereum_sepolia_execution_rpc_addr: SocketAddrV4,
 
     /// Ethereum Sepolia store directory
     #[arg(
         long,
-        default_value = "/tmp/proven/ethereum-sepolia",
-        env = "PROVEN_ETHEREUM_SEPOLIA_STORE_DIR"
+        default_value = "/tmp/proven/ethereum-sepolia/reth",
+        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_STORE_DIR"
     )]
-    ethereum_sepolia_store_dir: PathBuf,
+    ethereum_sepolia_execution_store_dir: PathBuf,
 
     /// Skip vacuuming the database
     #[arg(long, env = "PROVEN_SKIP_VACUUM")]

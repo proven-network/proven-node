@@ -10,7 +10,8 @@ mod error;
 pub use error::{Error, Result};
 
 use std::fs;
-use std::path::Path;
+use std::net::SocketAddrV4;
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::str;
 
@@ -24,9 +25,6 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
-
-// RPC endpoints
-static RETH_RPC_URL: &str = "http://127.0.0.1:8545";
 
 /// Represents an Ethereum network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,27 +51,56 @@ impl EthereumNetwork {
 
 /// Runs a Reth execution client.
 pub struct RethNode {
+    discovery_addr: SocketAddrV4,
+    http_addr: SocketAddrV4,
+    metrics_addr: SocketAddrV4,
     network: EthereumNetwork,
+    rpc_addr: SocketAddrV4,
     shutdown_token: CancellationToken,
-    store_dir: String,
+    store_dir: PathBuf,
     task_tracker: TaskTracker,
 }
 
 /// Options for configuring a `RethNode`.
 pub struct RethNodeOptions {
+    /// The peer discovery socket address.
+    pub discovery_addr: SocketAddrV4,
+
+    /// The HTTP RPC socket address.
+    pub http_addr: SocketAddrV4,
+
+    /// The metrics socket address.
+    pub metrics_addr: SocketAddrV4,
+
     /// The Ethereum network to connect to.
     pub network: EthereumNetwork,
 
+    /// The RPC socket address.
+    pub rpc_addr: SocketAddrV4,
+
     /// The directory to store data in.
-    pub store_dir: String,
+    pub store_dir: PathBuf,
 }
 
 impl RethNode {
     /// Create a new Reth node.
     #[must_use]
-    pub fn new(RethNodeOptions { network, store_dir }: RethNodeOptions) -> Self {
-        Self {
+    pub fn new(
+        RethNodeOptions {
+            discovery_addr,
+            http_addr,
+            metrics_addr,
             network,
+            rpc_addr,
+            store_dir,
+        }: RethNodeOptions,
+    ) -> Self {
+        Self {
+            discovery_addr,
+            http_addr,
+            metrics_addr,
+            network,
+            rpc_addr,
             shutdown_token: CancellationToken::new(),
             store_dir,
             task_tracker: TaskTracker::new(),
@@ -88,17 +115,18 @@ impl RethNode {
         self.create_data_directories()?;
 
         // Start Reth and handle it in a single task
-        let shutdown_token = self.shutdown_token.clone();
-        let task_tracker = self.task_tracker.clone();
+        let discovery_addr = self.discovery_addr;
+        let http_addr = self.http_addr;
+        let metrics_addr = self.metrics_addr;
         let network = self.network;
+        let rpc_addr = self.rpc_addr;
+        let shutdown_token = self.shutdown_token.clone();
         let store_dir = self.store_dir.clone();
+        let task_tracker = self.task_tracker.clone();
 
         let server_task = self.task_tracker.spawn(async move {
-            // Start the Reth process
-            let data_dir = Path::new(&store_dir).join("reth");
-
             let mut cmd = Command::new("reth");
-            cmd.args(["node", "--full", "--datadir", data_dir.to_str().unwrap()]);
+            cmd.args(["node", "--full", "--datadir", store_dir.to_str().unwrap()]);
 
             // Add network-specific args
             match network {
@@ -113,14 +141,40 @@ impl RethNode {
                 }
             }
 
-            // Enable HTTP-RPC server with localhost restriction (no auth)
+            // Configure Auth server
+            cmd.args([
+                "--authrpc.addr",
+                &rpc_addr.ip().to_string(),
+                "--authrpc.port",
+                &rpc_addr.port().to_string(),
+            ]);
+
+            // Enable HTTP-RPC server with configured address
             cmd.args([
                 "--http", // Enable HTTP-RPC server
                 "--http.addr",
-                "127.0.0.1", // Restrict to localhost
+                &http_addr.ip().to_string(), // Use configured IP
+                "--http.port",
+                &http_addr.port().to_string(), // Use configured port
                 "--http.api",
                 "eth,net,web3,txpool", // Enable common APIs
             ]);
+
+            // Configure peer discovery
+            cmd.args([
+                "--discovery.addr",
+                &discovery_addr.ip().to_string(),
+                "--discovery.port",
+                &discovery_addr.port().to_string(),
+            ]);
+
+            // Configure metrics
+            cmd.args([
+                "--metrics",
+                format!("{}:{}", metrics_addr.ip(), metrics_addr.port()).as_str(),
+            ]);
+
+            info!("Starting Reth with command: {:?}", cmd);
 
             cmd.stdout(Stdio::piped());
             cmd.stderr(Stdio::piped());
@@ -243,15 +297,18 @@ impl RethNode {
     }
 
     fn create_data_directories(&self) -> Result<()> {
-        let data_dir = Path::new(&self.store_dir);
-        fs::create_dir_all(data_dir)?;
+        if !self.store_dir.exists() {
+            fs::create_dir_all(&self.store_dir)
+                .map_err(|e| Error::Io("failed to create reth directory", e))?;
+        }
+
         Ok(())
     }
 
     async fn wait_until_ready(&self) -> Result<()> {
         // Simple health check - wait for RPC to be ready
         let client = Client::new();
-        let url = format!("{}", RETH_RPC_URL);
+        let url = format!("http://{}:{}", self.rpc_addr.ip(), self.rpc_addr.port());
 
         // Try to connect for up to 60 seconds
         for _ in 0..60 {
