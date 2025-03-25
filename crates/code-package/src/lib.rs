@@ -132,6 +132,7 @@ impl CodePackage {
                     &loader,
                     BuildOptions {
                         is_dynamic: true,
+                        skip_dynamic_deps: false,
                         imports: Vec::default(),
                         executor: Default::default(),
                         locker: None,
