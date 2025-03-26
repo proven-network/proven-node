@@ -31,6 +31,9 @@ use tracing::{debug, error, info, trace, warn};
 
 static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
 static CLUSTER_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster.conf");
+
+const PEER_DISCOVERY_INTERVAL: u64 = 300; // 5 minutes
+
 /// Runs a NATS server for inter-node communication.
 #[derive(Clone)]
 pub struct NatsServer<G, A>
@@ -134,9 +137,6 @@ where
         
         // Initialize topology from network
         self.update_topology().await?;
-        
-        // Start periodic topology update task
-        self.start_topology_update_task()?;
 
         let shutdown_token = self.shutdown_token.clone();
         let task_tracker = self.task_tracker.clone();
@@ -219,7 +219,11 @@ where
             }
         });
 
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        // TODO: Do a better ready check here
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        // Start periodic topology update task
+        self.start_topology_update_task()?;
 
         self.task_tracker.close();
 
@@ -258,7 +262,7 @@ where
         let self_clone = self.clone();
         
         self.task_tracker.spawn(async move {
-            let update_interval = Duration::from_secs(300); // 5 minutes
+            let update_interval = Duration::from_secs(PEER_DISCOVERY_INTERVAL);
             let mut interval = tokio::time::interval(update_interval);
             
             loop {
@@ -307,7 +311,7 @@ where
             // Try to get the NATS cluster endpoint
             match peer.nats_cluster_endpoint().await {
                 Ok(endpoint) => {
-                    routes.push_str(&format!("    {}\n", endpoint));
+                    routes.push_str(&format!("{}\n    ", endpoint));
                     valid_peer_count += 1;
                 }
                 Err(e) => {
@@ -331,10 +335,10 @@ where
         // Only add cluster.routes configuration if there are valid peers
         if valid_peer_count > 0 {
             config.push_str(&CLUSTER_CONFIG_TEMPLATE
-                .replace("{cluster_listen_addr}", &nats_cluster_endpoint.port().unwrap().to_string())
+                .replace("{cluster_port}", &nats_cluster_endpoint.port().unwrap().to_string())
                 .replace("{cluster_node_user}", &nats_cluster_endpoint.username())
                 .replace("{cluster_node_password}", &nats_cluster_endpoint.password().unwrap())
-                .replace("{cluster_routes}", &routes));
+                .replace("{cluster_routes}", &routes.trim()));
         }
 
         info!("{}", config);

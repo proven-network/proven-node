@@ -43,9 +43,6 @@ where
     /// The network for peer discovery.
     pub network: ProvenNetwork<G, A>,
 
-    /// The primary hostnames for RPC, WS, etc.
-    pub primary_hostnames: HashSet<String>,
-
     /// The runtime pool manager.
     pub runtime_pool_manager: RM,
 
@@ -65,7 +62,6 @@ where
     application_manager: AM,
     attestor: A,
     network: ProvenNetwork<G, A>,
-    primary_hostnames: HashSet<String>,
     runtime_pool_manager: RM,
     session_manager: SM,
     shutdown_token: CancellationToken,
@@ -86,7 +82,6 @@ where
             application_manager,
             attestor,
             network,
-            primary_hostnames,
             runtime_pool_manager,
             session_manager,
         }: CoreOptions<AM, RM, SM, A, G>,
@@ -95,7 +90,6 @@ where
             application_manager,
             attestor,
             network,
-            primary_hostnames,
             runtime_pool_manager,
             session_manager,
             shutdown_token: CancellationToken::new(),
@@ -198,6 +192,17 @@ where
 
         let module_specifier = ModuleSpecifier::parse("file:///main.ts").unwrap();
 
+        let fqdn = self
+            .network
+            .fqdn()
+            .await
+            .map_err(|e| Error::Network(e.to_string()))?;
+
+        http_server
+            .set_router_for_hostname(fqdn, primary_router)
+            .await
+            .map_err(|e| Error::HttpServer(e.to_string()))?;
+
         let test_router = self
             .create_application_http_router(code_package, module_specifier)
             .await?;
@@ -207,11 +212,11 @@ where
             .await
             .map_err(|e| Error::HttpServer(e.to_string()))?;
 
-        let primary_hostnames = self.primary_hostnames.clone();
         let shutdown_token = self.shutdown_token.clone();
+
         let handle = self.task_tracker.spawn(async move {
             let https_handle = http_server
-                .start(primary_hostnames, primary_router, error_404_router)
+                .start(error_404_router)
                 .await
                 .map_err(|e| Error::HttpServer(e.to_string()))?;
 

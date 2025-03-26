@@ -4,7 +4,6 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::Debug;
 
@@ -25,15 +24,10 @@ where
     type Error: HttpServerError;
 
     /// Start the server with the given Axum routers.
-    /// - `primary_hostnames`: The hostnames to match for the primary router
+    /// - `primary_hostname`: The hostname to match for the primary router
     /// - `primary_router`: Router to use when hostname matches
     /// - `fallback_router`: Router to use when hostname doesn't match
-    async fn start(
-        &self,
-        primary_hostnames: HashSet<String>,
-        primary_router: Router,
-        fallback_router: Router,
-    ) -> Result<JoinHandle<()>, Self::Error>;
+    async fn start(&self, fallback_router: Router) -> Result<JoinHandle<()>, Self::Error>;
 
     /// Shutdown the server.
     async fn shutdown(&self);

@@ -195,25 +195,13 @@ where
 {
     type Error = Error;
 
-    async fn start(
-        &self,
-        primary_hostnames: HashSet<String>,
-        primary_router: Router,
-        fallback_router: Router,
-    ) -> Result<JoinHandle<()>, Self::Error> {
+    async fn start(&self, fallback_router: Router) -> Result<JoinHandle<()>, Self::Error> {
         let acceptor = self.acceptor.clone();
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();
 
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
-        }
-
-        {
-            let mut routers = self.hostname_routers.write();
-            for primary_hostname in primary_hostnames {
-                routers.insert(primary_hostname, primary_router.clone());
-            }
         }
 
         let routers = self.hostname_routers.clone();

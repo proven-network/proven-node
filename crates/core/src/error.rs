@@ -26,6 +26,10 @@ pub enum Error {
     #[error(transparent)]
     CodePackage(#[from] proven_code_package::Error),
 
+    /// Governance error.
+    #[error("governance error: {0}")]
+    Governance(String),
+
     /// HTTP error.
     #[error(transparent)]
     Http(axum::http::Error),
@@ -38,6 +42,10 @@ pub enum Error {
     #[error(transparent)]
     Io(std::io::Error),
 
+    /// Network error.
+    #[error("network error: {0}")]
+    Network(String),
+
     /// Overlapping routes error.
     #[error("overlapping routes detected: {0} and {1}")]
     OverlappingRoutes(String, String),
@@ -49,8 +57,4 @@ pub enum Error {
     /// Runtime error.
     #[error(transparent)]
     Runtime(#[from] proven_runtime::Error),
-
-    /// Governance error.
-    #[error("governance error: {0}")]
-    Governance(String),
 }

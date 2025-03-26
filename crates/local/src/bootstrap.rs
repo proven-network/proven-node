@@ -12,7 +12,7 @@ use async_nats::Client as NatsClient;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_mock::MockAttestor;
 use proven_bitcoin_core::{BitcoinNode, BitcoinNodeOptions, BitcoinNetwork};
-use proven_core::{Core, CoreOptions};
+use proven_core::{Core, CoreOptions, LightCore, LightCoreOptions};
 use proven_ethereum_reth::{RethNode, RethNodeOptions, EthereumNetwork as RethNetwork};
 use proven_ethereum_lighthouse::{LighthouseNode, LighthouseNodeOptions, EthereumNetwork as LighthouseNetwork};
 use proven_governance::NodeSpecialization;
@@ -55,6 +55,7 @@ pub struct Bootstrap {
     // added during initialization
     governance: Option<MockGovernance>,
     network: Option<ProvenNetwork<MockGovernance, MockAttestor>>,
+    light_core: Option<LightCore<MockAttestor, MockGovernance>>,
 
     radix_mainnet_node: Option<RadixNode>,
     radix_mainnet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
@@ -116,7 +117,7 @@ impl Bootstrap {
 
             governance: None,
             network: None,
-
+            light_core: None,
             radix_mainnet_node: None,
             radix_mainnet_node_handle: None,
 
@@ -547,6 +548,10 @@ impl Bootstrap {
         if let Some(radix_stokenet_node) = self.radix_stokenet_node {
             radix_stokenet_node.shutdown().await;
         }
+
+        if let Some(light_core) = self.light_core {
+            light_core.shutdown().await;
+        }
     }
 
     async fn start_network_cluster(&mut self) -> Result<()> {
@@ -564,8 +569,21 @@ impl Bootstrap {
         // Check /etc/hosts to ensure the node's FQDN is properly configured
         check_hostname_resolution(network.fqdn().await?.as_str()).await?;
 
+        let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, self.args.port));
+        let http_server = InsecureHttpServer::new(http_sock_addr);
+
+        let light_core = LightCore::new(LightCoreOptions {
+            network: network.clone(),
+        });
+        let _light_core_handle = light_core.start(http_server).await?;
+
         self.governance = Some(governance);
         self.network = Some(network);
+        self.light_core = Some(light_core);
+
+        // TODO: Wait for at least one other node to be started so NATS can boot in cluster mode
+        // Just sleep to simulate for now
+        tokio::time::sleep(Duration::from_secs(5)).await;
 
         Ok(())
     }
@@ -929,6 +947,10 @@ impl Bootstrap {
             panic!("network not set before core");
         });
 
+        let light_core = self.light_core.as_ref().unwrap_or_else(|| {
+            panic!("light core not fetched before core");
+        });
+
         let challenge_store = NatsStore2::new(NatsStoreOptions {
             bucket: "challenges".to_string(),
             client: nats_client.clone(),
@@ -1078,10 +1100,14 @@ impl Bootstrap {
             application_manager,
             attestor: self.attestor.clone(),
             network: network.clone(),
-            primary_hostnames: vec![network.fqdn().await?].into_iter().collect(),
             runtime_pool_manager,
             session_manager,
         });
+
+        // Shutdown the light core and free the port before starting the full core
+        light_core.shutdown().await;
+        self.light_core = None;
+
         let core_handle = core.start(http_server).await?;
 
         self.core = Some(core);

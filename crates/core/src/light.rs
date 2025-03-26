@@ -2,8 +2,6 @@ use crate::LightContext;
 use crate::error::{Error, Result};
 use crate::handlers::nats_cluster_endpoint_handler;
 
-use std::collections::HashSet;
-
 use axum::Router;
 use axum::http::StatusCode;
 use axum::response::Response;
@@ -26,9 +24,6 @@ where
 {
     /// The network for peer discovery.
     pub network: ProvenNetwork<G, A>,
-
-    /// The primary hostnames for RPC, WS, etc.
-    pub primary_hostnames: HashSet<String>,
 }
 
 /// Core logic for handling user interactions.
@@ -38,7 +33,6 @@ where
     G: Governance,
 {
     network: ProvenNetwork<G, A>,
-    primary_hostnames: HashSet<String>,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
@@ -49,15 +43,9 @@ where
     G: Governance,
 {
     /// Create new core.
-    pub fn new(
-        LightCoreOptions {
-            network,
-            primary_hostnames,
-        }: LightCoreOptions<A, G>,
-    ) -> Self {
+    pub fn new(LightCoreOptions { network }: LightCoreOptions<A, G>) -> Self {
         Self {
             network,
-            primary_hostnames,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -100,11 +88,22 @@ where
             .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
             .layer(CorsLayer::very_permissive());
 
-        let primary_hostnames = self.primary_hostnames.clone();
+        let fqdn = self
+            .network
+            .fqdn()
+            .await
+            .map_err(|e| Error::Network(e.to_string()))?;
+
+        http_server
+            .set_router_for_hostname(fqdn, primary_router)
+            .await
+            .map_err(|e| Error::HttpServer(e.to_string()))?;
+
         let shutdown_token = self.shutdown_token.clone();
+
         let handle = self.task_tracker.spawn(async move {
             let https_handle = http_server
-                .start(primary_hostnames, primary_router, error_404_router)
+                .start(error_404_router)
                 .await
                 .map_err(|e| Error::HttpServer(e.to_string()))?;
 

@@ -4,7 +4,6 @@ use crate::net::{configure_nat, configure_port_forwarding, configure_route};
 use crate::nitro::NitroCli;
 use crate::systemctl;
 
-use std::collections::HashSet;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
 use std::sync::Arc;
@@ -78,7 +77,7 @@ pub async fn start(args: StartArgs) -> Result<()> {
     }));
     let http_server_handle = http_server
         // Always use fallback_router for all requests
-        .start(HashSet::new(), Router::new(), http_redirector)
+        .start(http_redirector)
         .await?;
 
     // Tasks that must be running for the host to function

@@ -1012,7 +1012,6 @@ impl Bootstrap {
             application_manager,
             attestor: self.attestor.clone(),
             network: network.clone(),
-            primary_hostnames: vec![node_config.fqdn()?].into_iter().collect(),
             runtime_pool_manager,
             session_manager,
         });
