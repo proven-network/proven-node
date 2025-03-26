@@ -1,4 +1,4 @@
-use crate::PrimaryContext;
+use crate::FullContext;
 
 use super::parse_bearer_token;
 use crate::rpc::RpcHandler;
@@ -17,13 +17,12 @@ use tracing::error;
 
 pub(crate) async fn http_rpc_handler<AM, RM, SM, A, G>(
     Path(application_id): Path<String>,
-    State(PrimaryContext {
+    State(FullContext {
         application_manager,
-        _attestor: _,
         network: _,
         runtime_pool_manager,
         session_manager,
-    }): State<PrimaryContext<AM, RM, SM, A, G>>,
+    }): State<FullContext<AM, RM, SM, A, G>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse

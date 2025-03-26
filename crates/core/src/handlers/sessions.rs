@@ -1,4 +1,4 @@
-use crate::PrimaryContext;
+use crate::FullContext;
 
 use axum::body::Body;
 use axum::extract::{Path, State};
@@ -28,9 +28,9 @@ pub struct SessionRequest {
 
 pub(crate) async fn create_challenge_handler<AM, RM, SM, A, G>(
     Path(application_id): Path<String>,
-    State(PrimaryContext {
+    State(FullContext {
         session_manager, ..
-    }): State<PrimaryContext<AM, RM, SM, A, G>>,
+    }): State<FullContext<AM, RM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
 where
@@ -74,9 +74,9 @@ where
 
 pub(crate) async fn verify_session_handler<AM, RM, SM, A, G>(
     Path(application_id): Path<String>,
-    State(PrimaryContext {
+    State(FullContext {
         session_manager, ..
-    }): State<PrimaryContext<AM, RM, SM, A, G>>,
+    }): State<FullContext<AM, RM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     data: TypedMultipart<SessionRequest>,
 ) -> impl IntoResponse

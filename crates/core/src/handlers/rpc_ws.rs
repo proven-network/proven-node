@@ -1,5 +1,5 @@
 use super::parse_bearer_token;
-use crate::PrimaryContext;
+use crate::FullContext;
 use crate::rpc::RpcHandler;
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
@@ -27,13 +27,12 @@ async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
 
 pub(crate) async fn ws_rpc_handler<AM, RM, SM, A, G>(
     Path(application_id): Path<String>,
-    State(PrimaryContext {
+    State(FullContext {
         application_manager,
-        _attestor: _,
         network: _,
         runtime_pool_manager,
         session_manager,
-    }): State<PrimaryContext<AM, RM, SM, A, G>>,
+    }): State<FullContext<AM, RM, SM, A, G>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse
