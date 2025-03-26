@@ -17,15 +17,17 @@ use handlers::{
 use std::collections::HashSet;
 
 use axum::Router;
+use axum::body::Body;
+use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{any, delete, get, patch, post, put};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_governance::Governance;
 use proven_http::HttpServer;
-use proven_network::ProvenNetwork;
+use proven_network::{NATS_CLUSTER_ENDPOINT_API_PATH, ProvenNetwork};
 use proven_runtime::{HttpEndpoint, ModuleLoader, ModuleOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
 use tokio::task::JoinHandle;
@@ -171,7 +173,14 @@ where
                 "/rpc/{application_id}",
                 post(http_rpc_handler).with_state(ctx.clone()),
             )
-            .route("/ws/{application_id}", get(ws_rpc_handler).with_state(ctx))
+            .route(
+                "/ws/{application_id}",
+                get(ws_rpc_handler).with_state(ctx.clone()),
+            )
+            .route(
+                NATS_CLUSTER_ENDPOINT_API_PATH,
+                get(nats_cluster_endpoint_handler).with_state(ctx.clone()),
+            )
             .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
             .layer(CorsLayer::very_permissive());
 
@@ -367,4 +376,30 @@ fn normalize_path_parameters(path: &str) -> String {
         })
         .collect::<Vec<String>>()
         .join("/")
+}
+
+async fn nats_cluster_endpoint_handler<AM, RM, SM, A, G>(
+    State(PrimaryContext { network, .. }): State<PrimaryContext<AM, RM, SM, A, G>>,
+) -> impl IntoResponse
+where
+    AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
+    SM: SessionManagement,
+    A: Attestor,
+    G: Governance,
+{
+    let nats_cluster_endpoint = network
+        .nats_cluster_endpoint()
+        .await
+        .map_err(|e| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(format!(
+                    "Failed to get NATS cluster endpoint: {e}"
+                )))
+                .unwrap()
+        })
+        .unwrap();
+
+    nats_cluster_endpoint.to_string()
 }

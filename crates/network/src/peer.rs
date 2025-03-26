@@ -1,3 +1,4 @@
+use crate::NATS_CLUSTER_ENDPOINT_API_PATH;
 use crate::error::{Error, Result};
 
 use std::collections::HashSet;
@@ -24,7 +25,7 @@ impl Peer {
 
     /// Get the nats cluster endpoint of the node.
     pub async fn nats_cluster_endpoint(&self) -> Result<String> {
-        let response = self.request_info("/nats-cluster-endpoint").await?;
+        let response = self.request_info(NATS_CLUSTER_ENDPOINT_API_PATH).await?;
 
         Ok(response)
     }

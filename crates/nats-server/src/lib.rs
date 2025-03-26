@@ -30,19 +30,7 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
 static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
-
-// Cluster configuration template that will be added dynamically when peers are available
-static CLUSTER_TEMPLATE: &str = r#"
-cluster {
-  name: proven_cluster
-  listen: {cluster_listen_addr}
-
-  routes: [
-{cluster_routes}
-  ]
-}
-"#;
-
+static CLUSTER_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster.conf");
 /// Runs a NATS server for inter-node communication.
 #[derive(Clone)]
 pub struct NatsServer<G, A>
@@ -52,7 +40,6 @@ where
 {
     client_listen_addr: SocketAddrV4,
     clients: Arc<Mutex<Vec<Client>>>,
-    cluster_listen_addr: SocketAddrV4,
     debug: bool,
     network: ProvenNetwork<G, A>,
     server_name: String,
@@ -70,13 +57,10 @@ where
     /// The address to listen on.
     pub client_listen_addr: SocketAddrV4,
 
-    /// The address to listen on for cluster communication.
-    pub cluster_listen_addr: SocketAddrV4,
-
     /// Whether to enable debug logging.
     pub debug: bool,
 
-    /// Network for peer discovery
+    /// Network for peer discovery.
     pub network: ProvenNetwork<G, A>,
 
     /// The name of the server.
@@ -96,7 +80,6 @@ where
     pub fn new(
         NatsServerOptions {
             client_listen_addr,
-            cluster_listen_addr,
             debug,
             network,
             server_name,
@@ -106,7 +89,6 @@ where
         Self {
             clients: Arc::new(Mutex::new(Vec::new())),
             client_listen_addr,
-            cluster_listen_addr,
             debug,
             network,
             server_name,
@@ -337,6 +319,8 @@ where
         
         // Log the number of valid peers found
         info!("Found {} valid peers for NATS cluster configuration", valid_peer_count);
+
+        let nats_cluster_endpoint = self.network.nats_cluster_endpoint().await?;
         
         // Start with the basic configuration
         let mut config = CONFIG_TEMPLATE
@@ -344,13 +328,13 @@ where
             .replace("{client_listen_addr}", &self.client_listen_addr.to_string())
             .replace("{store_dir}", &self.store_dir);
         
-        // Only add cluster configuration if there are valid peers
+        // Only add cluster.routes configuration if there are valid peers
         if valid_peer_count > 0 {
-            let cluster_config = CLUSTER_TEMPLATE
-                .replace("{cluster_listen_addr}", &self.cluster_listen_addr.to_string())
-                .replace("{cluster_routes}", &routes);
-            
-            config.push_str(&cluster_config);
+            config.push_str(&CLUSTER_CONFIG_TEMPLATE
+                .replace("{cluster_listen_addr}", &nats_cluster_endpoint.port().unwrap().to_string())
+                .replace("{cluster_node_user}", &nats_cluster_endpoint.username())
+                .replace("{cluster_node_password}", &nats_cluster_endpoint.password().unwrap())
+                .replace("{cluster_routes}", &routes));
         }
 
         info!("{}", config);

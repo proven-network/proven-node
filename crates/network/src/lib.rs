@@ -22,6 +22,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use url::Url;
 
+/// The API path for the nats cluster endpoint.
+pub static NATS_CLUSTER_ENDPOINT_API_PATH: &str = "/v1/node/nats-cluster-endpoint";
+
 /// A signed data structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedData {
@@ -89,6 +92,12 @@ where
     /// The NATS cluster port of this node.
     nats_cluster_port: u16,
 
+    /// The username for the NATS cluster.
+    nats_cluster_username: String,
+
+    /// The password for the NATS cluster.
+    nats_cluster_password: String,
+
     /// The private key of this node.
     private_key: Arc<Mutex<SigningKey>>,
 
@@ -107,7 +116,7 @@ where
     ///
     /// Returns an error if:
     /// - The private key is invalid
-    pub fn new(
+    pub async fn new(
         ProvenNetworkOptions {
             attestor,
             governance,
@@ -128,10 +137,18 @@ where
         // Derive the public key
         let public_key = private_key.verifying_key();
 
+        let random_bytes = attestor
+            .secure_random()
+            .await
+            .map_err(|e| Error::Attestation(format!("Failed to generate random bytes: {}", e)))?;
+        let nats_cluster_password = hex::encode(random_bytes);
+
         Ok(Self {
             attestor,
             governance,
             nats_cluster_port,
+            nats_cluster_username: hex::encode(public_key.as_bytes()),
+            nats_cluster_password,
             private_key: Arc::new(Mutex::new(private_key)),
             public_key,
         })
@@ -140,7 +157,9 @@ where
     /// Attest the nats cluster endpoint.
     pub async fn attested_nats_cluster_endpoint(&self, nonce: Bytes) -> Result<Bytes, Error> {
         let nats_cluster_endpoint = self.nats_cluster_endpoint().await?;
-        let signed_data = self.sign_data(nats_cluster_endpoint.as_bytes()).await?;
+        let signed_data = self
+            .sign_data(nats_cluster_endpoint.to_string().as_bytes())
+            .await?;
 
         let mut payload = Vec::new();
         ciborium::ser::into_writer(&signed_data, &mut payload)
@@ -205,14 +224,16 @@ where
 
     /// Get the nats cluster endpoint of this node.
     #[must_use]
-    pub async fn nats_cluster_endpoint(&self) -> Result<String, Error> {
-        let mut url = Url::parse(self.origin().await?.as_str())?;
+    pub async fn nats_cluster_endpoint(&self) -> Result<Url, Error> {
+        let fqdn = self.fqdn().await?;
+        let mut url = Url::parse(&format!("nats://{}:{}", fqdn, self.nats_cluster_port))?;
 
-        url.set_port(Some(self.nats_cluster_port))
-            .map_err(|_| Error::BadOrigin)?;
-        url.set_scheme("nats").map_err(|_| Error::BadOrigin)?;
+        url.set_username(&self.nats_cluster_username)
+            .map_err(|_| Error::GenerateClusterEndpoint("failed to set username"))?;
+        url.set_password(Some(&self.nats_cluster_password))
+            .map_err(|_| Error::GenerateClusterEndpoint("failed to set password"))?;
 
-        Ok(url.to_string())
+        Ok(url)
     }
 
     /// Get the origin of this node.
@@ -333,6 +354,7 @@ mod tests {
             nats_cluster_port: 6222,
             private_key_hex: private_key.to_string(),
         })
+        .await
         .unwrap();
 
         // Test get_self

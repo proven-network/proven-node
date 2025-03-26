@@ -16,6 +16,10 @@ pub enum Error {
     #[error("the origin is invalid")]
     BadOrigin,
 
+    /// Error when generating the cluster endpoint.
+    #[error("failed to generate cluster endpoint: {0}")]
+    GenerateClusterEndpoint(&'static str),
+
     /// Error from the governance implementation.
     #[error("governance error: {0}")]
     Governance(String),

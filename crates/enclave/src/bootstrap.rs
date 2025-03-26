@@ -600,7 +600,8 @@ impl Bootstrap {
             governance: governance.clone(),
             nats_cluster_port: self.args.nats_cluster_port,
             private_key_hex: self.args.node_key.clone(),
-        })?;
+        })
+        .await?;
 
         self.governance = Some(governance);
         self.network = Some(network);
@@ -750,10 +751,6 @@ impl Bootstrap {
         let nats_server = NatsServer::new(NatsServerOptions {
             debug: self.args.testnet,
             client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4222),
-            cluster_listen_addr: SocketAddrV4::new(
-                Ipv4Addr::UNSPECIFIED,
-                self.args.nats_cluster_port,
-            ),
             network: network.clone(),
             server_name: instance_details.instance_id.clone(),
             store_dir: "/var/lib/nats/nats".to_string(),

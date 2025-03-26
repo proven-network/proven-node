@@ -175,7 +175,7 @@ impl Bootstrap {
 
         self.started = true;
 
-        if let Err(e) = self.get_network_topology().await {
+        if let Err(e) = self.start_network_cluster().await {
             error!("failed to get network topology: {:?}", e);
             self.unwind_services().await;
             return Err(e);
@@ -549,7 +549,7 @@ impl Bootstrap {
         }
     }
 
-    async fn get_network_topology(&mut self) -> Result<()> {
+    async fn start_network_cluster(&mut self) -> Result<()> {
         let governance =
             MockGovernance::from_topology_file(self.args.topology_file.clone(), vec![])
                 .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?;
@@ -559,7 +559,7 @@ impl Bootstrap {
             attestor: self.attestor.clone(),
             nats_cluster_port: self.args.nats_cluster_port,
             private_key_hex: self.args.node_key.clone(),
-        })?;
+        }).await?;
 
         // Check /etc/hosts to ensure the node's FQDN is properly configured
         check_hostname_resolution(network.fqdn().await?.as_str()).await?;
@@ -901,7 +901,6 @@ impl Bootstrap {
 
         let nats_server = NatsServer::new(NatsServerOptions {
             client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_client_port),
-            cluster_listen_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.args.nats_cluster_port),
             debug: self.args.testnet,
             network: network.clone(),
             server_name: network.fqdn().await?,
