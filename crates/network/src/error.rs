@@ -8,6 +8,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Error type for the network implementation.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Attestation error.
+    #[error("attestation error: {0}")]
+    Attestation(String),
+
     /// Bad origin error.
     #[error("the origin is invalid")]
     BadOrigin,

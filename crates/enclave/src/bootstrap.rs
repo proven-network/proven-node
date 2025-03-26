@@ -26,7 +26,7 @@ use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
-use proven_network::{Node, ProvenNetwork, ProvenNetworkOptions};
+use proven_network::{Peer, ProvenNetwork, ProvenNetworkOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
@@ -75,7 +75,7 @@ pub struct Bootstrap {
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
     network: Option<ProvenNetwork<MockGovernance, NsmAttestor>>,
-    node_config: Option<Node>,
+    node_config: Option<Peer>,
 
     proxy: Option<Proxy>,
     proxy_handle: Option<JoinHandle<proven_vsock_proxy::Result<()>>>,
@@ -598,16 +598,12 @@ impl Bootstrap {
         let network = ProvenNetwork::new(ProvenNetworkOptions {
             attestor: self.attestor.clone(),
             governance: governance.clone(),
+            nats_cluster_port: self.args.nats_cluster_port,
             private_key_hex: self.args.node_key.clone(),
         })?;
 
-        let node_config = network.get_self().await?;
-
-        info!("node config: {:?}", node_config);
-
         self.governance = Some(governance);
         self.network = Some(network);
-        self.node_config = Some(node_config);
 
         Ok(())
     }

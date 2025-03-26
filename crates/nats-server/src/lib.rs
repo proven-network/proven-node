@@ -17,7 +17,7 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
-use proven_network::{Node, ProvenNetwork};
+use proven_network::{Peer, ProvenNetwork};
 use regex::Regex;
 use std::net::SocketAddrV4;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -316,7 +316,7 @@ where
     /// # Errors
     ///
     /// This function will return an error if it fails to update the configuration.
-    async fn update_nats_config_with_peers(&self, peers: &[Node]) -> Result<()> {
+    async fn update_nats_config_with_peers(&self, peers: &[Peer]) -> Result<()> {
         // Build routes for cluster configuration
         let mut routes = String::new();
         let mut valid_peer_count = 0;

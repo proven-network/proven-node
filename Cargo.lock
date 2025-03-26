@@ -9403,6 +9403,8 @@ name = "proven-network"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytes",
+ "ciborium",
  "ed25519-dalek",
  "hex",
  "proven-attestation",

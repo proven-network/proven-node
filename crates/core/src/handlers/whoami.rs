@@ -1,10 +1,11 @@
 //! Handler for the /whoami endpoint.
 
+use axum::body::Body;
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::response::{Json, Response};
 use proven_governance::Governance;
 use serde_json::json;
-use tracing::error;
 
 use crate::PrimaryContext;
 use proven_applications::ApplicationManagement;
@@ -24,25 +25,43 @@ where
     A: Attestor,
     G: Governance,
 {
-    match network.get_self().await {
-        Ok(node) => {
-            let response = json!({
-                "node": {
-                    "origin": node.origin(),
-                    "public_key": node.public_key(),
-                    "region": node.region(),
-                    "availability_zone": node.availability_zone(),
-                    "specializations": node.specializations(),
-                }
-            });
-            Ok(Json(response))
+    let origin = network.origin().await.map_err(|e| {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(Body::from(format!("Failed to get origin: {e}")))
+            .unwrap()
+    })?;
+
+    let region = network.region().await.map_err(|e| {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(Body::from(format!("Failed to get region: {e}")))
+            .unwrap()
+    })?;
+
+    let availability_zone = network.availability_zone().await.map_err(|e| {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(Body::from(format!("Failed to get availability zone: {e}")))
+            .unwrap()
+    })?;
+
+    let specializations = network.specializations().await.map_err(|e| {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(Body::from(format!("Failed to get specializations: {e}")))
+            .unwrap()
+    })?;
+
+    let response = json!({
+        "node": {
+            "origin": origin,
+            "public_key": hex::encode(network.public_key().to_bytes()),
+            "region": region,
+            "availability_zone": availability_zone,
+            "specializations": specializations,
         }
-        Err(e) => {
-            error!("Failed to get node information: {}", e);
-            Err(Response::builder()
-                .status(500)
-                .body(format!("Failed to get node information: {}", e).into())
-                .unwrap())
-        }
-    }
+    });
+
+    Ok(Json(response))
 }

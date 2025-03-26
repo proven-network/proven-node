@@ -7,9 +7,9 @@ use url::Url;
 
 /// A node in the network.
 #[derive(Clone, Debug)]
-pub struct Node(TopologyNode);
+pub struct Peer(TopologyNode);
 
-impl Node {
+impl Peer {
     /// Get the availability zone of the node.
     pub fn availability_zone(&self) -> &str {
         &self.0.availability_zone
@@ -60,7 +60,7 @@ impl Node {
     }
 }
 
-impl From<TopologyNode> for Node {
+impl From<TopologyNode> for Peer {
     fn from(node: TopologyNode) -> Self {
         Self(node)
     }

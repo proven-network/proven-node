@@ -22,7 +22,7 @@ use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
-use proven_network::{ProvenNetwork, ProvenNetworkOptions, Node};
+use proven_network::{ProvenNetwork, ProvenNetworkOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
@@ -55,7 +55,6 @@ pub struct Bootstrap {
     // added during initialization
     governance: Option<MockGovernance>,
     network: Option<ProvenNetwork<MockGovernance, MockAttestor>>,
-    node_config: Option<Node>,
 
     radix_mainnet_node: Option<RadixNode>,
     radix_mainnet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
@@ -117,7 +116,6 @@ impl Bootstrap {
 
             governance: None,
             network: None,
-            node_config: None,
 
             radix_mainnet_node: None,
             radix_mainnet_node_handle: None,
@@ -559,32 +557,27 @@ impl Bootstrap {
         let network = ProvenNetwork::new(ProvenNetworkOptions {
             governance: governance.clone(),
             attestor: self.attestor.clone(),
+            nats_cluster_port: self.args.nats_cluster_port,
             private_key_hex: self.args.node_key.clone(),
         })?;
 
-        let node_config = network
-            .get_self()
-            .await?;
-
-        info!("node config: {:?}", node_config);
-
         // Check /etc/hosts to ensure the node's FQDN is properly configured
-        check_hostname_resolution(node_config.fqdn()?.as_str()).await?;
+        check_hostname_resolution(network.fqdn().await?.as_str()).await?;
 
         self.governance = Some(governance);
         self.network = Some(network);
-        self.node_config = Some(node_config);
 
         Ok(())
     }
 
     async fn start_radix_node(&mut self) -> Result<()> {
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not set before radix node step");
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before radix node step");
         });
 
-        if node_config
+        if network
             .specializations()
+            .await?
             .contains(&NodeSpecialization::RadixMainnet)
         {
             let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
@@ -606,8 +599,9 @@ impl Bootstrap {
             info!("radix mainnet node started");
         }
 
-        if node_config
+        if network
             .specializations()
+            .await?
             .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_stokenet_node = RadixNode::new(RadixNodeOptions {
@@ -633,12 +627,13 @@ impl Bootstrap {
     }
 
     async fn start_ethereum_holesky_node(&mut self) -> Result<()> {
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not set before ethereum nodes step");
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before ethereum nodes step");
         });
 
-        if node_config
+        if network
             .specializations()
+            .await?
             .contains(&NodeSpecialization::EthereumHolesky)
         {
             // Start Reth execution client
@@ -683,12 +678,13 @@ impl Bootstrap {
     }
 
     async fn start_ethereum_mainnet_node(&mut self) -> Result<()> {
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not set before ethereum nodes step");
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before ethereum nodes step");
         });
 
-        if node_config
+        if network
             .specializations()
+            .await?
             .contains(&NodeSpecialization::EthereumMainnet)
         {
             // Start Reth execution client
@@ -733,12 +729,13 @@ impl Bootstrap {
     }
 
     async fn start_ethereum_sepolia_node(&mut self) -> Result<()> {
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not set before ethereum nodes step");
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before ethereum nodes step");
         });
 
-        if node_config
+        if network
             .specializations()
+            .await?
             .contains(&NodeSpecialization::EthereumSepolia)
         {
             // Start Reth execution client
@@ -783,12 +780,13 @@ impl Bootstrap {
     }
 
     async fn start_bitcoin_node(&mut self) -> Result<()> {
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not set before bitcoin node step");
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before bitcoin node step");
         });
 
-        if node_config
+        if network
             .specializations()
+            .await?
             .contains(&NodeSpecialization::BitcoinTestnet)
         {
             // Start Bitcoin testnet node
@@ -810,15 +808,17 @@ impl Bootstrap {
     }
 
     async fn start_postgres(&mut self) -> Result<()> {
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not set before postgres step");
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before postgres step");
         });
 
-        if node_config
+        if network
             .specializations()
+            .await?
             .contains(&NodeSpecialization::RadixMainnet)
-            || node_config
+            || network
                 .specializations()
+                .await?
                 .contains(&NodeSpecialization::RadixStokenet)
         {
             let postgres = Postgres::new(PostgresOptions {
@@ -841,12 +841,13 @@ impl Bootstrap {
     }
 
     async fn start_radix_aggregator(&mut self) -> Result<()> {
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not fetched before core");
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before radix aggregator step");
         });
 
-        if node_config
+        if network
             .specializations()
+            .await?
             .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
@@ -867,12 +868,13 @@ impl Bootstrap {
     }
 
     async fn start_radix_gateway(&mut self) -> Result<()> {
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not fetched before core");
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before radix gateway step");
         });
 
-        if node_config
+        if network
             .specializations()
+            .await?
             .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_gateway = RadixGateway::new(RadixGatewayOptions {
@@ -897,16 +899,12 @@ impl Bootstrap {
             panic!("network not set before nats server step");
         });
 
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not fetched before nats server step");
-        });
-
         let nats_server = NatsServer::new(NatsServerOptions {
             client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_client_port),
             cluster_listen_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, self.args.nats_cluster_port),
             debug: self.args.testnet,
             network: network.clone(),
-            server_name: node_config.fqdn()?,
+            server_name: network.fqdn().await?,
             store_dir: "/var/lib/nats/nats".to_string(),
         });
 
@@ -930,10 +928,6 @@ impl Bootstrap {
 
         let network = self.network.as_ref().unwrap_or_else(|| {
             panic!("network not set before core");
-        });
-
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not fetched before core");
         });
 
         let challenge_store = NatsStore2::new(NatsStoreOptions {
@@ -1085,7 +1079,7 @@ impl Bootstrap {
             application_manager,
             attestor: self.attestor.clone(),
             network: network.clone(),
-            primary_hostnames: vec![node_config.fqdn()?].into_iter().collect(),
+            primary_hostnames: vec![network.fqdn().await?].into_iter().collect(),
             runtime_pool_manager,
             session_manager,
         });
