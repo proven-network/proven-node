@@ -145,20 +145,20 @@ alloy-sol-types = "0.8.21"
 alloy-trie = "0.7.9"
 anyhow = "1.0.97"
 asn1-rs = "0.7.1"
-async-compression = "0.4"
+async-compression = "0.4.22"
 async-nats = "0.40.0"
 async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.87"
-aws-config = { version = "1.6.0", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
+aws-config = { version = "1.6.1", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
 aws-nitro-enclaves-nsm-api = { git = "https://github.com/proven-network/aws-nitro-enclaves-nsm-api", branch = "main" }
-aws-sdk-ec2 = { version = "1.118.1", default-features = false }
-aws-sdk-kms = { version = "1.63.0", default-features = false }
-aws-sdk-route53resolver = { version = "1.67.0", default-features = false }
-aws-sdk-s3 = { version = "1.79.0", default-features = false, features = ["rt-tokio"] }
-aws-sdk-secretsmanager = { version = "1.66.0", default-features = false }
-axum = { version = "0.8.1", features = ["ws"] }
-axum-extra = { version = "0.10.0", features = ["typed-header"] }
+aws-sdk-ec2 = { version = "1.120.0", default-features = false }
+aws-sdk-kms = { version = "1.65.0", default-features = false }
+aws-sdk-route53resolver = { version = "1.69.0", default-features = false }
+aws-sdk-s3 = { version = "1.81.0", default-features = false, features = ["rt-tokio"] }
+aws-sdk-secretsmanager = { version = "1.68.0", default-features = false }
+axum = { version = "0.8.3", features = ["ws"] }
+axum-extra = { version = "0.10.1", features = ["typed-header"] }
 axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
 axum_typed_multipart = "0.15.1"
 base32 = "=0.5.1"
@@ -180,7 +180,7 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 ciborium = "0.2"
 cidr = { version = "0.3.1", features = ["serde"] }
-clap = { version = "4.5.32", features = ["derive", "env"] }
+clap = { version = "4.5.34", features = ["derive", "env"] }
 color-print = "0.3.5"
 console = "0.15.11"
 console_static_text = "0.8.3"
@@ -209,7 +209,7 @@ deno_error = "0.5.6"
 deno_fetch = { path = "vendor/deno/ext/fetch" }
 deno_ffi = { path = "vendor/deno/ext/ffi" }
 deno_fs = { path = "vendor/deno/ext/fs" }
-deno_graph = "0.89.3"
+deno_graph = "0.89.4"
 deno_http = { path = "vendor/deno/ext/http" }
 deno_io = { path = "vendor/deno/ext/io" }
 deno_kv = { path = "vendor/deno/ext/kv" }
@@ -295,7 +295,7 @@ hyper-rustls = { version = "0.27.5", default-features = false, features = ["http
 hyper-util = { version = "0.1.10", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.32", features = ["runtime", "http1"] }
 idna = "1.0.3"
-image = { version = "0.25.4", default-features = false }
+image = { version = "0.25.6", default-features = false }
 import_map = { version = "0.21.0", features = ["ext"] }
 indexmap = { version = "2.8.0", features = ["serde"] }
 ipnet = "2.11.0"
@@ -337,7 +337,7 @@ num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
 num-traits = "0.2.19"
-once_cell = "1.21.0"
+once_cell = "1.21.3"
 op-alloy-rpc-types = "=0.9.6"
 openssl = { version = "0.10.71", features = ["vendored"] }
 opentelemetry = "0.27.1"
@@ -442,7 +442,7 @@ rustls = { version = "0.23.25", default-features = false, features = ["logging",
 rustls-pemfile = "2"
 rustls-pki-types = "1.11.0"
 rustls-tokio-stream = "0.5.0"
-rustls-webpki = { version = "0.103.0", default-features = false, features = ["ring"] }
+rustls-webpki = { version = "0.103.1", default-features = false, features = ["ring"] }
 rustyline = "=13.0.0"
 rustyscript = { path = "vendor/rustyscript", features = ["fs", "web"]}
 saffron = "=0.1.0"
