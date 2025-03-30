@@ -37,6 +37,7 @@ mod tests {
             self
         }
 
+        #[cfg(target_os = "linux")]
         fn with_memory_limit(mut self, memory_mb: usize) -> Self {
             self.memory_mb = memory_mb;
             self

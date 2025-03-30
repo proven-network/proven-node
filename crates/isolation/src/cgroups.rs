@@ -5,8 +5,6 @@
 
 #[cfg(target_os = "linux")]
 use std::fs;
-#[cfg(not(target_os = "linux"))]
-use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -42,10 +40,14 @@ impl Default for CgroupMemoryConfig {
 #[derive(Debug)]
 pub struct CgroupsController {
     /// Path to the cgroup
+    #[cfg(target_os = "linux")]
     cgroup_path: PathBuf,
+
     /// Whether the cgroup was successfully created
     is_active: bool,
+
     /// Process ID
+    #[cfg(target_os = "linux")]
     pid: u32,
 }
 
@@ -137,13 +139,9 @@ impl CgroupsController {
 
     /// Create a new cgroups controller for non-Linux platforms (no-op)
     #[cfg(not(target_os = "linux"))]
-    pub fn new(pid: u32, _memory_config: &CgroupMemoryConfig) -> Result<Self> {
+    pub fn new(_pid: u32, _memory_config: &CgroupMemoryConfig) -> Result<Self> {
         warn!("Cgroups are only available on Linux. Memory limits will not be applied.");
-        Ok(Self {
-            cgroup_path: PathBuf::new(),
-            is_active: false,
-            pid,
-        })
+        Ok(Self { is_active: false })
     }
 
     /// Apply memory limits to the cgroup
