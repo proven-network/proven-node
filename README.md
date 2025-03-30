@@ -102,6 +102,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [http-letsencrypt](crates/http-letsencrypt): Implementation of secure HTTPS server using Let's Encrypt and enclave-only storage of certificates provisioned using draft-ietf-acme-tls-alpn-01.
 - [imds](crates/imds): Helper crate to interact with the Instance Metadata Service. Verifies all recieved data via embedded public certificates.
 - [instance-details](crates/instance-details): Helper crate to interact with the EC2 APIs and securely retrieve info about runtime environment.
+- [isolation](crates/isolation): Isolation primitives for spawning untrusted processes (particularly third-party nodes) in a secure manner.
 - [kms](crates/kms): Manages encryption/decryption of plain/cipher text using AWS KMS keys which are scoped to the EIF PCRs.
 - [libsql](crates/libsql): Wrapper around [libsql](https://github.com/tursodatabase/libsql) which provides additional functionality like migration management.
 - [local](crates/local): Binary to bootstrap other components locally. Similar to [enclave](crates/enclave) but for local development.

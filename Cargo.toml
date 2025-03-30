@@ -29,6 +29,7 @@ members = [
     "crates/http-letsencrypt",
     "crates/instance-details",
     "crates/imds",
+    "crates/isolation",
     "crates/kms",
     "crates/libsql",
     "crates/local",
@@ -87,6 +88,7 @@ default-members = [
     "crates/http-letsencrypt",
     "crates/instance-details",
     "crates/imds",
+    "crates/isolation",
     "crates/kms",
     "crates/libsql",
     "crates/local",
@@ -330,7 +332,7 @@ monch = "=0.5.0"
 multi_key_map = "0.3.0"
 napi_sym = { path = "vendor/deno/ext/napi/sym" }
 netif = "0.1.6"
-nix = { version = "0.27.1", features = ["signal", "user"] }
+nix = { version = "0.27.1", features = ["process", "signal", "user", "mount", "sched"] }
 node_resolver = { path = "vendor/deno/resolvers/node" }
 notify = "8.0.0"
 num-bigint = { version = "0.4", features = ["rand"] }
@@ -387,6 +389,7 @@ proven-http-insecure = { path = "crates/http-insecure" }
 proven-http-letsencrypt = { path = "crates/http-letsencrypt" }
 proven-imds = { path = "crates/imds" }
 proven-instance-details = { path = "crates/instance-details" }
+proven-isolation = { path = "crates/isolation" }
 proven-kms = { path = "crates/kms" }
 proven-libsql = { path = "crates/libsql" }
 proven-local = { path = "crates/local" }
@@ -440,9 +443,9 @@ rsa = { version = "0.9.8", default-features = false, features = ["std", "pem", "
 rtnetlink = { git = "https://github.com/mwanner/rtnetlink", branch = "deps-update" }
 rustls = { version = "0.23.25", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
-rustls-pki-types = "1.11.0"
+rustls-pki-types = { version = "1.11.0", features = ["std"] }
 rustls-tokio-stream = "0.5.0"
-rustls-webpki = { version = "0.103.1", default-features = false, features = ["ring"] }
+rustls-webpki = { version = "0.103.1", default-features = false, features = ["ring", "std"] }
 rustyline = "=13.0.0"
 rustyscript = { path = "vendor/rustyscript", features = ["fs", "web"]}
 saffron = "=0.1.0"

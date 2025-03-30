@@ -9238,6 +9238,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-isolation"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "libc",
+ "nix 0.27.1",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "proven-kms"
 version = "0.1.0"
 dependencies = [
