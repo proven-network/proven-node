@@ -155,51 +155,6 @@ impl IsolatedApplication for MemoryStressTest {
     }
 }
 
-/// Monitor the memory usage of a process
-async fn monitor_memory_usage(process: &IsolatedProcess) -> Result<()> {
-    if !process.has_memory_control() {
-        info!("Memory control is not active, cannot monitor memory usage");
-        return Ok(());
-    }
-
-    info!(
-        "Starting memory usage monitoring (limit: {}MB)",
-        MEMORY_LIMIT_MB
-    );
-    info!("{:=^50}", " MEMORY MONITOR ");
-    info!("Time (s) | Usage (MB) | % of Limit");
-    info!("{:-^50}", "");
-
-    let mut interval = interval(Duration::from_secs(1));
-    let start_time = std::time::Instant::now();
-
-    // Monitor for up to 30 seconds
-    for i in 0..30 {
-        interval.tick().await;
-
-        if let Ok(Some(usage_mb)) = process.current_memory_usage_mb() {
-            let percent = (usage_mb / MEMORY_LIMIT_MB as f64) * 100.0;
-            info!("{:7} | {:9.2} | {:9.1}%", i, usage_mb, percent);
-
-            // Check if the process is still running
-            if process.pid().is_none() {
-                info!("Process has exited, stopping monitoring");
-                break;
-            }
-        } else {
-            info!("{:7} | {:9} | {:9}", i, "N/A", "N/A");
-        }
-    }
-
-    info!("{:=^50}", "");
-    info!(
-        "Memory monitoring completed after {} seconds",
-        start_time.elapsed().as_secs()
-    );
-
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing with defaults
@@ -244,17 +199,53 @@ async fn main() -> Result<()> {
     info!("Spawning isolated process...");
     let process = manager.spawn(test).await?;
 
-    // Start monitoring memory usage
     info!("Process is running with PID: {:?}", process.pid());
-    monitor_memory_usage(&process).await?;
 
-    // Wait for the process to exit
-    info!("Waiting for process to complete...");
-    let status = process.wait().await?;
-    info!("Process exited with status: {}", status);
+    // Set up for concurrent monitoring and waiting
+    let mut interval = interval(Duration::from_secs(1));
+    let start_time = std::time::Instant::now();
+    let mut i = 0;
 
-    // Clean up temporary directory
-    drop(temp_dir);
+    // Print the monitoring header
+    info!(
+        "Starting memory usage monitoring (limit: {}MB)",
+        MEMORY_LIMIT_MB
+    );
+    info!("{:=^50}", " MEMORY MONITOR ");
+    info!("Time (s) | Usage (MB) | % of Limit");
+    info!("{:-^50}", "");
+
+    // Loop to monitor memory and check for process exit
+    loop {
+        tokio::select! {
+            _ = interval.tick() => {
+                // Check memory usage
+                if let Ok(Some(usage_mb)) = process.current_memory_usage_mb() {
+                    let percent = (usage_mb / MEMORY_LIMIT_MB as f64) * 100.0;
+                    info!("{:7} | {:9.2} | {:9.1}%", i, usage_mb, percent);
+                } else {
+                    info!("{:7} | {:9} | {:9}", i, "N/A", "N/A");
+                }
+                i += 1;
+            }
+            status = process.wait() => {
+                // Process has exited
+                info!("Process has exited, stopping monitoring");
+                match status {
+                    Ok(exit_status) => info!("Process exited with status: {}", exit_status),
+                    Err(e) => info!("Error waiting for process: {}", e),
+                }
+                break;
+            }
+        }
+    }
+
+    // Print monitoring footer
+    info!("{:=^50}", "");
+    info!(
+        "Memory monitoring completed after {} seconds",
+        start_time.elapsed().as_secs()
+    );
 
     Ok(())
 }

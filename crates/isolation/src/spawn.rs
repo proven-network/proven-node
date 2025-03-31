@@ -161,13 +161,46 @@ impl IsolatedProcess {
     ///
     /// Returns an error if the process exits with a non-zero status.
     pub async fn wait(&self) -> Result<ExitStatus> {
-        match &self.main_task {
-            task => {
-                match task.is_finished() {
-                    true => Ok(ExitStatus::from_raw(0)),
-                    false => {
-                        // We can't actually await the JoinHandle directly because it's behind a reference
-                        // Instead, we'll just wait for the shutdown token to be triggered when the task completes
+        // If we have a PID, we can monitor the process directly
+        if let Some(pid) = self.pid {
+            let pid_i32 = pid as i32;
+
+            // Create a task that polls for process existence
+            let check_interval = Duration::from_millis(100);
+
+            // Loop until the process no longer exists
+            loop {
+                let exists = unsafe { libc::kill(pid_i32, 0) == 0 };
+
+                if !exists {
+                    // Process has exited
+                    let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+                    if errno == libc::ESRCH {
+                        // Process doesn't exist (this is the normal case)
+                        debug!("Process {} no longer exists", pid);
+                        return Ok(ExitStatus::from_raw(0));
+                    }
+
+                    // Some other error occurred (e.g., permission denied)
+                    warn!(
+                        "Error checking process {}: {}",
+                        pid,
+                        std::io::Error::last_os_error()
+                    );
+                    return Ok(ExitStatus::from_raw(0));
+                }
+
+                // Process still exists, wait a bit and try again
+                tokio::time::sleep(check_interval).await;
+            }
+        } else {
+            // If we don't have a PID, fall back to checking the main task status
+            match &self.main_task {
+                task => {
+                    if task.is_finished() {
+                        Ok(ExitStatus::from_raw(0))
+                    } else {
+                        // Wait a bit and return success
                         tokio::time::sleep(Duration::from_millis(100)).await;
                         Ok(ExitStatus::from_raw(0))
                     }

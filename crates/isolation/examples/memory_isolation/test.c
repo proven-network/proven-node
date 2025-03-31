@@ -33,7 +33,7 @@ void print_memory_info() {
 
 // Memory allocation test
 int main() {
-    printf("Memory Isolation Test\n");
+    printf("Memory Isolation Test (PID=%d)\n", getpid());
     printf("--------------------\n");
     
     printf("Initial memory usage:\n");
@@ -48,12 +48,14 @@ int main() {
         int chunk_size = 5 * MB; // 5MB chunks
         
         printf("\nTrying to allocate %dMB chunk #%d...\n", chunk_size / MB, i + 1);
+        fflush(stdout);
         
         // Allocate memory
         void *chunk = malloc(chunk_size);
         if (chunk == NULL) {
             printf("ALLOCATION FAILED: Could not allocate %dMB for chunk #%d\n", chunk_size / MB, i + 1);
             printf("This is expected if memory limits are enforced correctly\n");
+            fflush(stdout);
             break;
         }
         
@@ -66,6 +68,7 @@ int main() {
         printf("Total allocated: %dMB\n", total_allocated / MB);
         printf("Current memory usage:\n");
         print_memory_info();
+        fflush(stdout);
         
         // Sleep briefly to allow monitoring
         sleep(1);
@@ -74,6 +77,7 @@ int main() {
     printf("\nMemory allocation test completed\n");
     printf("Final memory usage:\n");
     print_memory_info();
+    fflush(stdout);
     
     // Clean up allocated memory
     for (int i = 0; i < 100; i++) {
@@ -85,11 +89,15 @@ int main() {
     printf("\nCleaned up memory\n");
     printf("Final memory usage after cleanup:\n");
     print_memory_info();
+    fflush(stdout);
     
     // Sleep for a moment to allow monitoring
     printf("\nSleeping for 10 seconds before exit...\n");
+    fflush(stdout);
     sleep(10);
     
     printf("Memory test complete\n");
+    fflush(stdout);
+    
     return 0;
 } 
