@@ -328,9 +328,9 @@ impl CgroupsController {
                 debug!("Successfully removed cgroup directory");
                 Ok(())
             }
-            Err(e) => {
+            Err(_) => {
                 // Just log this error since it's common for cleanup to fail in Docker
-                warn!("Failed to remove cgroup directory: {}", e);
+                debug!("Cannot remove cgroup directory (likely already cleaned up)");
                 // Return Ok instead of Err since this is a cleanup operation
                 Ok(())
             }
