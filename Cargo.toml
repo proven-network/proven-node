@@ -448,7 +448,7 @@ rustls = { version = "0.23.25", default-features = false, features = ["logging",
 rustls-pemfile = "2"
 rustls-pki-types = { version = "1.11.0", features = ["std"] }
 rustls-tokio-stream = "0.5.0"
-rustls-webpki = { version = "0.103.1", default-features = false, features = ["ring", "std"] }
+rustls-webpki = { version = "=0.102.8", default-features = false, features = ["ring", "std"] }
 rustyline = "=13.0.0"
 rustyscript = { path = "vendor/rustyscript", features = ["fs", "web"]}
 saffron = "=0.1.0"
