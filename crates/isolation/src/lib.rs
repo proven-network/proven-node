@@ -61,9 +61,16 @@
 #![warn(clippy::nursery)]
 #![allow(clippy::redundant_pub_crate)]
 
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use tracing::{debug, warn};
+
 mod cgroups;
 mod error;
 mod namespaces;
+mod network;
 mod spawn;
 #[cfg(test)]
 mod tests;
@@ -71,13 +78,8 @@ mod tests;
 pub use cgroups::{CgroupMemoryConfig, CgroupsController};
 pub use error::{Error, Result};
 pub use namespaces::{IsolationNamespaces, NamespaceOptions};
-pub use spawn::{IsolatedProcess, IsolatedProcessOptions, IsolatedProcessSpawner};
-
-use async_trait::async_trait;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
-use tracing::{debug, warn};
+pub use network::{VethPair, check_root_permissions};
+pub use spawn::{IsolatedProcess, IsolatedProcessOptions, IsolatedProcessSpawner, spawn_process};
 
 /// Trait for applications that can be run in isolation.
 #[async_trait]
@@ -161,6 +163,22 @@ pub trait IsolatedApplication: Send + Sync + 'static {
         Ok(())
     }
 
+    /// Returns a list of TCP ports that should be forwarded from the host to the container
+    ///
+    /// The same port number will be used on both the host and container.
+    /// This is only used when network namespaces are enabled.
+    fn tcp_ports(&self) -> Vec<u16> {
+        Vec::new()
+    }
+
+    /// Returns a list of UDP ports that should be forwarded from the host to the container
+    ///
+    /// The same port number will be used on both the host and container.
+    /// This is only used when network namespaces are enabled.
+    fn udp_ports(&self) -> Vec<u16> {
+        Vec::new()
+    }
+
     /// Returns the working directory for the process
     fn working_dir(&self) -> Option<PathBuf> {
         None
@@ -229,12 +247,15 @@ impl IsolationManager {
         Self { config }
     }
 
-    /// Spawns an isolated application.
+    /// Builds the options for spawning an isolated process.
     ///
     /// # Errors
     ///
-    /// Returns an error if the application fails to start.
-    pub async fn spawn<A: IsolatedApplication>(&self, application: A) -> Result<IsolatedProcess> {
+    /// Returns an error if the options could not be built.
+    async fn build_options<A: IsolatedApplication>(
+        &self,
+        application: A,
+    ) -> Result<IsolatedProcessOptions> {
         let mut options = IsolatedProcessOptions::new(application.executable(), application.args());
 
         // Set the application for output handling and other functionality
@@ -293,62 +314,16 @@ impl IsolationManager {
         debug!("Preparing configuration for {}", application.name());
         application.prepare_config().await?;
 
-        // Save application name for later use
-        let app_name = application.name().to_string();
+        Ok(options)
+    }
 
-        // Spawn the process
-        debug!("Spawning {} process", app_name);
-        let process = spawn::spawn_process(options).await?;
-
-        // Wait for the process to be ready
-        debug!("Waiting for {} to be ready", app_name);
-
-        // Get interval and max checks settings
-        let interval_ms = application.is_ready_check_interval_ms();
-        let max_checks = application.is_ready_check_max();
-
-        // Set up counters for checks
-        let mut check_count = 0;
-
-        debug!("Using readiness check interval of {}ms", interval_ms);
-        if let Some(max) = max_checks {
-            debug!("Maximum number of readiness checks: {}", max);
-        } else {
-            debug!("Unlimited readiness checks");
-        }
-
-        // Wait until ready or max checks reached
-        loop {
-            // Check if we've reached the maximum number of checks
-            if let Some(max) = max_checks {
-                if check_count >= max {
-                    debug!("Reached maximum number of readiness checks ({})", max);
-                    break;
-                }
-            }
-
-            // Perform readiness check
-            match application.is_ready_check(&process).await {
-                Ok(true) => {
-                    debug!("Application reported ready via readiness check");
-                    break;
-                }
-                Ok(false) => {
-                    // Application is not ready yet
-                    debug!("Application not yet ready (check {})", check_count + 1);
-                }
-                Err(e) => {
-                    warn!("Readiness check error: {}", e);
-                }
-            }
-
-            // Wait for the interval before next check
-            check_count += 1;
-            tokio::time::sleep(Duration::from_millis(interval_ms)).await;
-        }
-
-        debug!("{} is ready", app_name);
-
-        Ok(process)
+    /// Spawns an isolated process.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the process could not be spawned.
+    pub async fn spawn<A: IsolatedApplication>(&self, application: A) -> Result<IsolatedProcess> {
+        let mut spawner = IsolatedProcessSpawner::new(self.build_options(application).await?);
+        spawner.spawn().await
     }
 }

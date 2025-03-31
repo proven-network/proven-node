@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
+use std::net::IpAddr;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
@@ -20,10 +21,14 @@ use crate::IsolatedApplication;
 use crate::cgroups::{CgroupMemoryConfig, CgroupsController};
 use crate::error::{Error, Result};
 use crate::namespaces::NamespaceOptions;
+use crate::network::{VethPair, check_root_permissions};
 
 /// Options for spawning an isolated process.
 #[derive(Clone)]
 pub struct IsolatedProcessOptions {
+    /// Application for handling process output.
+    pub application: Option<Arc<dyn IsolatedApplication>>,
+
     /// The arguments to pass to the executable.
     pub args: Vec<String>,
 
@@ -42,9 +47,6 @@ pub struct IsolatedProcessOptions {
     /// Namespace options.
     pub namespaces: NamespaceOptions,
 
-    /// Application for handling process output.
-    pub application: Option<Arc<dyn IsolatedApplication>>,
-
     /// The working directory for the process.
     pub working_dir: Option<PathBuf>,
 }
@@ -52,13 +54,13 @@ pub struct IsolatedProcessOptions {
 impl std::fmt::Debug for IsolatedProcessOptions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IsolatedProcessOptions")
+            .field("application", &format!("Arc<dyn IsolatedApplication>"))
             .field("args", &self.args)
             .field("chroot_dir", &self.chroot_dir)
             .field("env", &self.env)
             .field("executable", &self.executable)
             .field("memory_control", &self.memory_control)
             .field("namespaces", &self.namespaces)
-            .field("application", &format!("Arc<dyn IsolatedApplication>"))
             .field("working_dir", &self.working_dir)
             .finish()
     }
@@ -142,6 +144,9 @@ pub struct IsolatedProcess {
 
     /// Task tracker for all tasks associated with this process
     task_tracker: TaskTracker,
+
+    /// The virtual ethernet pair for network communication between host and container
+    veth_pair: Option<Arc<VethPair>>,
 }
 
 impl IsolatedProcess {
@@ -149,6 +154,11 @@ impl IsolatedProcess {
     #[must_use]
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+
+    /// Get the container's IP address (as reachable from the host)
+    pub fn container_ip(&self) -> Option<IpAddr> {
+        self.veth_pair.as_ref().map(|veth| veth.container_ip())
     }
 
     /// Waits for the process to exit.
@@ -213,6 +223,13 @@ impl IsolatedProcess {
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
+        // Clean up network if active
+        if let Some(ref veth_pair) = self.veth_pair {
+            if let Err(e) = veth_pair.cleanup().await {
+                warn!("Failed to clean up network: {}", e);
+            }
+        }
+
         // Clean up cgroups if active
         if let Some(ref controller) = self.cgroups_controller {
             if let Err(e) = controller.cleanup() {
@@ -258,6 +275,40 @@ impl IsolatedProcess {
             .as_ref()
             .map_or(false, |c| c.is_active())
     }
+
+    /// Clean up resources used by the isolated process
+    ///
+    /// This includes:
+    /// - Cleaning up the veth pair if it exists
+    /// - Removing any temporary files or directories
+    /// - Killing any remaining child processes
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cleanup fails
+    pub async fn cleanup(&self) -> Result<()> {
+        info!("Cleaning up process");
+
+        self.shutdown_token.cancel();
+        self.task_tracker.wait().await;
+
+        // Clean up network if active
+        if let Some(ref veth_pair) = self.veth_pair {
+            if let Err(e) = veth_pair.cleanup().await {
+                warn!("Failed to clean up network: {}", e);
+            }
+        }
+
+        // Clean up cgroups if active
+        if let Some(ref controller) = self.cgroups_controller {
+            if let Err(e) = controller.cleanup() {
+                warn!("Failed to clean up cgroups: {}", e);
+            }
+        }
+
+        info!("Process cleaned up");
+        Ok(())
+    }
 }
 
 /// Spawns isolated processes.
@@ -265,13 +316,24 @@ impl IsolatedProcess {
 pub struct IsolatedProcessSpawner {
     /// Options for the process.
     pub options: IsolatedProcessOptions,
+
+    /// The virtual ethernet pair for network communication between host and container
+    pub veth_pair: Option<Arc<VethPair>>,
 }
 
 impl IsolatedProcessSpawner {
     /// Creates a new `IsolatedProcessSpawner`.
     #[must_use]
     pub fn new(options: IsolatedProcessOptions) -> Self {
-        Self { options }
+        Self {
+            options,
+            veth_pair: None,
+        }
+    }
+
+    /// Get the container's IP address (as reachable from the host)
+    pub fn container_ip(&self) -> Option<IpAddr> {
+        self.veth_pair.as_ref().map(|veth| veth.container_ip())
     }
 
     /// Spawns an isolated process.
@@ -279,7 +341,7 @@ impl IsolatedProcessSpawner {
     /// # Errors
     ///
     /// Returns an error if the process could not be spawned.
-    pub async fn spawn(&self) -> Result<IsolatedProcess> {
+    pub async fn spawn(&mut self) -> Result<IsolatedProcess> {
         let options = self.options.clone();
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
@@ -347,6 +409,30 @@ impl IsolatedProcessSpawner {
         })?;
 
         debug!("Process spawned with PID: {}", pid);
+
+        // Setup network connectivity if network namespace is used
+        let veth_pair = if options.namespaces.use_network {
+            // Check if we have root permissions for network setup
+            if !check_root_permissions()? {
+                warn!("Network namespaces require root permissions for port forwarding setup");
+                None
+            } else {
+                // Set up the veth pair
+                match VethPair::create_for_pid(pid).await {
+                    Ok(veth) => {
+                        let veth = Arc::new(veth);
+                        self.veth_pair = Some(Arc::clone(&veth));
+                        Some(veth)
+                    }
+                    Err(e) => {
+                        warn!("Failed to set up network: {}", e);
+                        None
+                    }
+                }
+            }
+        } else {
+            None
+        };
 
         // Take stdout and stderr before they're moved into closures
         let stdout = child.stdout.take();
@@ -476,6 +562,7 @@ impl IsolatedProcessSpawner {
             pid,
             shutdown_token,
             task_tracker,
+            veth_pair,
         })
     }
 
@@ -501,6 +588,16 @@ impl IsolatedProcessSpawner {
 
         Ok(args)
     }
+
+    /// Cleans up any resources associated with the process spawner
+    pub async fn cleanup(&self) -> Result<()> {
+        if let Some(ref veth_pair) = self.veth_pair {
+            if let Err(e) = veth_pair.cleanup().await {
+                warn!("Failed to clean up veth pair: {}", e);
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Spawn an isolated process with the given options.
@@ -509,6 +606,6 @@ impl IsolatedProcessSpawner {
 ///
 /// Returns an error if the process could not be spawned.
 pub async fn spawn_process(options: IsolatedProcessOptions) -> Result<IsolatedProcess> {
-    let spawner = IsolatedProcessSpawner::new(options);
+    let mut spawner = IsolatedProcessSpawner::new(options);
     spawner.spawn().await
 }

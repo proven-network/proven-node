@@ -15,6 +15,10 @@ pub enum Error {
     #[error("Application error: {0}")]
     Application(String),
 
+    /// Network error
+    #[error("Network error: {0}")]
+    Network(String),
+
     /// IO error.
     #[error("io error: {0} - {1}")]
     Io(&'static str, #[source] io::Error),
