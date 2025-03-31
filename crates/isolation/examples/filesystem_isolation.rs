@@ -11,8 +11,7 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use proven_isolation::{
-    Error, IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager,
-    NamespaceOptions, Result,
+    Error, IsolatedApplication, IsolationConfig, IsolationManager, NamespaceOptions, Result,
 };
 use tokio::fs;
 use tracing::info;
@@ -147,11 +146,6 @@ impl IsolatedApplication for FilesystemTest {
         // Ensure mount namespace is used
         options.use_mount = true;
         options
-    }
-
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool> {
-        // Consider it ready if the process is running
-        Ok(process.pid().is_some())
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {

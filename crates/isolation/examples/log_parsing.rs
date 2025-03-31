@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use proven_isolation::{Error, IsolatedApplication, IsolatedProcess, Result};
+use proven_isolation::{Error, IsolatedApplication, Result};
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -238,11 +238,6 @@ impl IsolatedApplication for LoggerApp {
     /// Handle stderr similarly to stdout but with a different target
     fn handle_stderr(&self, line: &str) {
         self.parse_stderr_line(line);
-    }
-
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool> {
-        // Consider it ready if the process is running
-        Ok(process.pid().is_some())
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {

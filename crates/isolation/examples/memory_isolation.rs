@@ -141,9 +141,8 @@ impl IsolatedApplication for MemoryStressTest {
         5 // Guarantee at least 5MB
     }
 
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool> {
-        // Consider it ready if the process is running
-        Ok(process.pid().is_some())
+    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool> {
+        Ok(true)
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {
@@ -199,7 +198,7 @@ async fn main() -> Result<()> {
     info!("Spawning isolated process...");
     let process = manager.spawn(test).await?;
 
-    info!("Process is running with PID: {:?}", process.pid());
+    info!("Process is running with PID: {}", process.pid());
 
     // Set up for concurrent monitoring and waiting
     let mut interval = interval(Duration::from_secs(1));
@@ -227,6 +226,17 @@ async fn main() -> Result<()> {
                     info!("{:7} | {:9} | {:9}", i, "N/A", "N/A");
                 }
                 i += 1;
+
+                // Try to check if process is still running using the PID
+                // Use kill with signal 0 to check if process exists without sending a signal
+                let exists = unsafe {
+                    libc::kill(process.pid() as libc::pid_t, 0) == 0
+                };
+
+                if !exists {
+                    info!("Process {} no longer exists, stopping monitoring", process.pid());
+                    break;
+                }
             }
             status = process.wait() => {
                 // Process has exited

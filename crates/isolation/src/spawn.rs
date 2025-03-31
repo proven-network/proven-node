@@ -12,7 +12,6 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::task::{JoinHandle, spawn};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
@@ -135,11 +134,8 @@ pub struct IsolatedProcess {
     /// Cgroups controller if active
     cgroups_controller: Option<CgroupsController>,
 
-    /// Main task handle for the process
-    main_task: JoinHandle<()>,
-
     /// Process ID
-    pub pid: Option<u32>,
+    pid: u32,
 
     /// Shutdown token to request termination
     shutdown_token: CancellationToken,
@@ -149,9 +145,9 @@ pub struct IsolatedProcess {
 }
 
 impl IsolatedProcess {
-    /// Returns the process ID, if available.
+    /// Returns the process ID.
     #[must_use]
-    pub fn pid(&self) -> Option<u32> {
+    pub fn pid(&self) -> u32 {
         self.pid
     }
 
@@ -161,51 +157,33 @@ impl IsolatedProcess {
     ///
     /// Returns an error if the process exits with a non-zero status.
     pub async fn wait(&self) -> Result<ExitStatus> {
-        // If we have a PID, we can monitor the process directly
-        if let Some(pid) = self.pid {
-            let pid_i32 = pid as i32;
+        let pid_i32 = self.pid as i32;
+        let check_interval = Duration::from_millis(100);
 
-            // Create a task that polls for process existence
-            let check_interval = Duration::from_millis(100);
+        // Loop until the process no longer exists
+        loop {
+            let exists = unsafe { libc::kill(pid_i32, 0) == 0 };
 
-            // Loop until the process no longer exists
-            loop {
-                let exists = unsafe { libc::kill(pid_i32, 0) == 0 };
-
-                if !exists {
-                    // Process has exited
-                    let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                    if errno == libc::ESRCH {
-                        // Process doesn't exist (this is the normal case)
-                        debug!("Process {} no longer exists", pid);
-                        return Ok(ExitStatus::from_raw(0));
-                    }
-
-                    // Some other error occurred (e.g., permission denied)
-                    warn!(
-                        "Error checking process {}: {}",
-                        pid,
-                        std::io::Error::last_os_error()
-                    );
+            if !exists {
+                // Process has exited
+                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
+                if errno == libc::ESRCH {
+                    // Process doesn't exist (this is the normal case)
+                    debug!("Process {} no longer exists", self.pid);
                     return Ok(ExitStatus::from_raw(0));
                 }
 
-                // Process still exists, wait a bit and try again
-                tokio::time::sleep(check_interval).await;
+                // Some other error occurred (e.g., permission denied)
+                warn!(
+                    "Error checking process {}: {}",
+                    self.pid,
+                    std::io::Error::last_os_error()
+                );
+                return Ok(ExitStatus::from_raw(0));
             }
-        } else {
-            // If we don't have a PID, fall back to checking the main task status
-            match &self.main_task {
-                task => {
-                    if task.is_finished() {
-                        Ok(ExitStatus::from_raw(0))
-                    } else {
-                        // Wait a bit and return success
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                        Ok(ExitStatus::from_raw(0))
-                    }
-                }
-            }
+
+            // Process still exists, wait a bit and try again
+            tokio::time::sleep(check_interval).await;
         }
     }
 
@@ -215,18 +193,13 @@ impl IsolatedProcess {
     ///
     /// Returns an error if the signal could not be sent.
     pub fn signal(&self, signal: Signal) -> Result<()> {
-        if let Some(pid) = self.pid {
-            let pid = Pid::from_raw(pid as i32);
-            signal::kill(pid, signal).map_err(|e| {
-                Error::Io(
-                    "Failed to send signal to process",
-                    std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-                )
-            })?;
-            Ok(())
-        } else {
-            Err(Error::SpawnProcess("No PID available".to_string()))
-        }
+        let pid = Pid::from_raw(self.pid as i32);
+        signal::kill(pid, signal).map_err(|e| {
+            Error::Io(
+                "Failed to send signal to process",
+                std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+            )
+        })
     }
 
     /// Shuts down the process.
@@ -368,10 +341,12 @@ impl IsolatedProcessSpawner {
             .spawn()
             .map_err(|e| Error::Io("Failed to spawn process", e))?;
 
-        // Get the process ID
-        let pid = child.id();
+        // Get the process ID - this should always be available for a successfully spawned process
+        let pid = child.id().ok_or_else(|| {
+            Error::SpawnProcess("No PID available for spawned process".to_string())
+        })?;
 
-        debug!("Process spawned with PID: {:?}", pid);
+        debug!("Process spawned with PID: {}", pid);
 
         // Take stdout and stderr before they're moved into closures
         let stdout = child.stdout.take();
@@ -421,8 +396,9 @@ impl IsolatedProcessSpawner {
         }
 
         // Monitor child process
+        let pid_for_task = pid;
         let shutdown_token_clone = shutdown_token.clone();
-        let main_task = spawn(async move {
+        tokio::task::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
                     match status {
@@ -441,16 +417,12 @@ impl IsolatedProcessSpawner {
                 () = shutdown_token_clone.cancelled() => {
                     info!("Shutdown requested, terminating process...");
 
-                    if let Some(id) = child.id() {
-                        let Ok(raw_pid) = id.try_into() else {
-                            error!("Failed to convert process ID");
-                            return;
-                        };
+                    // Convert to i32 for the kill operation
+                    let raw_pid = pid_for_task as i32;
+                    let pid = Pid::from_raw(raw_pid);
 
-                        let pid = Pid::from_raw(raw_pid);
-                        if let Err(err) = signal::kill(pid, Signal::SIGTERM) {
-                            error!("Failed to send SIGTERM to process: {}", err);
-                        }
+                    if let Err(err) = signal::kill(pid, Signal::SIGTERM) {
+                        error!("Failed to send SIGTERM to process: {}", err);
                     }
 
                     // Wait for the process to exit with a timeout
@@ -480,35 +452,30 @@ impl IsolatedProcessSpawner {
 
         // Create a cgroups controller if memory control is configured
         let cgroups_controller = if let Some(ref memory_config) = options.memory_control {
-            if let Some(pid) = pid {
-                match CgroupsController::new(pid, memory_config) {
-                    Ok(controller) => {
-                        if controller.is_active() {
-                            debug!("Cgroups memory controller activated for process {}", pid);
-                            Some(controller)
-                        } else {
-                            warn!("Cgroups memory controller could not be activated");
-                            None
-                        }
-                    }
-                    Err(e) => {
-                        error!("Failed to create cgroups controller: {}", e);
+            match CgroupsController::new(pid, memory_config) {
+                Ok(controller) => {
+                    if controller.is_active() {
+                        debug!("Cgroups memory controller activated for process {}", pid);
+                        Some(controller)
+                    } else {
+                        warn!("Cgroups memory controller could not be activated");
                         None
                     }
                 }
-            } else {
-                None
+                Err(e) => {
+                    error!("Failed to create cgroups controller: {}", e);
+                    None
+                }
             }
         } else {
             None
         };
 
         Ok(IsolatedProcess {
+            cgroups_controller,
             pid,
             shutdown_token,
             task_tracker,
-            main_task,
-            cgroups_controller,
         })
     }
 

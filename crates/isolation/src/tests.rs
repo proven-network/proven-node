@@ -101,7 +101,7 @@ mod tests {
         let isolation_manager = IsolationManager::new();
 
         let process = isolation_manager.spawn(app).await?;
-        assert!(process.pid.is_some());
+        assert!(process.pid() > 0);
 
         // Echo should exit quickly
         let status = process.wait().await?;
@@ -133,7 +133,7 @@ mod tests {
         let isolation_manager = IsolationManager::with_config(isolation_config);
 
         let process = isolation_manager.spawn(app).await?;
-        assert!(process.pid.is_some());
+        assert!(process.pid() > 0);
 
         // Hostname command should succeed
         let status = process.wait().await?;
@@ -150,7 +150,7 @@ mod tests {
         let isolation_manager = IsolationManager::new();
 
         let process = isolation_manager.spawn(app).await?;
-        assert!(process.pid.is_some());
+        assert!(process.pid() > 0);
 
         // env command should succeed
         let status = process.wait().await?;
@@ -171,7 +171,7 @@ mod tests {
         let isolation_manager = IsolationManager::new();
 
         let process = isolation_manager.spawn(app).await?;
-        assert!(process.pid.is_some());
+        assert!(process.pid() > 0);
 
         // pwd command should succeed
         let status = process.wait().await?;
@@ -188,7 +188,7 @@ mod tests {
         let isolation_manager = IsolationManager::new();
 
         let process = isolation_manager.spawn(app).await?;
-        assert!(process.pid.is_some());
+        assert!(process.pid() > 0);
 
         // Wait a bit
         tokio::time::sleep(Duration::from_millis(500)).await;
