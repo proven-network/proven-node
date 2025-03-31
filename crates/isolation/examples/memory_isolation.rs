@@ -225,7 +225,7 @@ async fn main() -> Result<()> {
         use_memory_limits: true,
         use_mount_namespace: true,
         use_network_namespace: false,
-        use_pid_namespace: true,
+        use_pid_namespace: false, // TODO: Currently cgroups impl not working with pid namespaces
         use_user_namespace: true,
         use_uts_namespace: true,
     };
