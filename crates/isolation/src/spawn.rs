@@ -359,7 +359,6 @@ impl IsolatedProcessSpawner {
         args.extend(options.namespaces.to_unshare_args());
 
         // Instead of directly executing the target program, we'll use /bin/sh as an intermediate
-        // This allows us to set up mounts and other configuration before exec-ing the target
         args.push("--".to_string());
         args.push("/bin/sh".to_string());
         args.push("-c".to_string());
@@ -367,41 +366,110 @@ impl IsolatedProcessSpawner {
         // Build the setup and exec command
         let mut setup_cmd = String::new();
 
+        // If using chroot, set up the chroot environment first
+        if let Some(ref chroot_dir) = options.chroot_dir {
+            // Create basic directory structure
+            setup_cmd.push_str(&format!(
+                "mkdir -p {}/bin {}/lib {}/lib64 {}/usr/lib {}/usr/lib64; ",
+                chroot_dir.display(),
+                chroot_dir.display(),
+                chroot_dir.display(),
+                chroot_dir.display(),
+                chroot_dir.display()
+            ));
+
+            // Copy /bin/sh and its dependencies
+            setup_cmd.push_str(&format!("cp /bin/sh {}/bin/; ", chroot_dir.display()));
+
+            // Copy common library directories
+            setup_cmd.push_str(&format!(
+                "cp -r /lib/* {}/lib/ 2>/dev/null || true; ",
+                chroot_dir.display()
+            ));
+            setup_cmd.push_str(&format!(
+                "cp -r /lib64/* {}/lib64/ 2>/dev/null || true; ",
+                chroot_dir.display()
+            ));
+            setup_cmd.push_str(&format!(
+                "cp -r /usr/lib/* {}/usr/lib/ 2>/dev/null || true; ",
+                chroot_dir.display()
+            ));
+            setup_cmd.push_str(&format!(
+                "cp -r /usr/lib64/* {}/usr/lib64/ 2>/dev/null || true; ",
+                chroot_dir.display()
+            ));
+
+            // Make executables executable
+            setup_cmd.push_str(&format!(
+                "chmod +x {}/bin/* 2>/dev/null || true; ",
+                chroot_dir.display()
+            ));
+        }
+
         // Set up volume mounts if mount namespace is enabled
         if options.namespaces.use_mount {
             for mount in &options.volume_mounts {
+                // If we're using chroot, adjust paths to be relative to the chroot
+                let container_path = if let Some(ref chroot_dir) = options.chroot_dir {
+                    // Strip the leading slash if present and join with chroot dir
+                    let rel_path = mount
+                        .container_path
+                        .strip_prefix("/")
+                        .unwrap_or(&mount.container_path);
+                    chroot_dir.join(rel_path)
+                } else {
+                    mount.container_path.clone()
+                };
+
                 // Create mount point directories
-                setup_cmd.push_str(&format!("mkdir -p {}; ", mount.container_path.display()));
+                setup_cmd.push_str(&format!("mkdir -p {}; ", container_path.display()));
 
                 // Perform bind mount
                 let mount_opts = if mount.read_only { "ro,bind" } else { "bind" };
                 setup_cmd.push_str(&format!(
                     "mount --bind {} {} && mount -o remount,{} {} {}; ",
                     mount.host_path.display(),
-                    mount.container_path.display(),
+                    container_path.display(),
                     mount_opts,
-                    mount.container_path.display(),
-                    mount.container_path.display()
+                    container_path.display(),
+                    container_path.display()
                 ));
+            }
+        }
+
+        // Change to working directory if specified (before chroot)
+        if let Some(ref working_dir) = options.working_dir {
+            if let Some(ref chroot_dir) = options.chroot_dir {
+                // Make working dir relative to chroot
+                let rel_path = working_dir.strip_prefix("/").unwrap_or(working_dir);
+                let full_path = chroot_dir.join(rel_path);
+                setup_cmd.push_str(&format!("cd {} && ", full_path.display()));
+            } else {
+                setup_cmd.push_str(&format!("cd {} && ", working_dir.display()));
             }
         }
 
         // Add chroot if specified
         if let Some(ref chroot_dir) = options.chroot_dir {
-            setup_cmd.push_str(&format!("chroot {} ", chroot_dir.display()));
+            // When using chroot, use /bin/sh to execute the target program
+            setup_cmd.push_str(&format!(
+                "chroot {} /bin/sh -c \"exec {}{}\"",
+                chroot_dir.display(),
+                options.executable.display(),
+                if options.args.is_empty() {
+                    "".to_string()
+                } else {
+                    format!(" {}", options.args.join(" "))
+                }
+            ));
+        } else {
+            // If not using chroot, use exec to replace the shell
+            setup_cmd.push_str(&format!(
+                "exec {} {}",
+                options.executable.display(),
+                options.args.join(" ")
+            ));
         }
-
-        // Change to working directory if specified
-        if let Some(ref working_dir) = options.working_dir {
-            setup_cmd.push_str(&format!("cd {} && ", working_dir.display()));
-        }
-
-        // Finally, exec the target program
-        setup_cmd.push_str(&format!(
-            "exec {} {}",
-            options.executable.display(),
-            options.args.join(" ")
-        ));
 
         // Log the shell script before adding it to args
         debug!("Shell script for setup and exec: {}", setup_cmd);

@@ -15,6 +15,7 @@ use async_trait::async_trait;
 use std::path::PathBuf;
 use tokio::fs;
 use tokio::time::{Duration, sleep};
+use tracing::{debug, error, info, warn};
 
 use proven_isolation::{
     Error, IsolatedApplication, IsolationConfig, IsolationManager, NamespaceOptions, Result,
@@ -25,8 +26,6 @@ use proven_isolation::{
 struct CounterApp {
     /// The path to the persistent storage directory
     storage_dir: PathBuf,
-    /// The path to the counter executable
-    executable_path: PathBuf,
 }
 
 impl CounterApp {
@@ -36,18 +35,26 @@ impl CounterApp {
         let counter_c_path =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/persistent_storage/counter.c");
 
-        // Compile the counter daemon
+        // Create root filesystem structure
+        let root_dir = PathBuf::from("/tmp/counter-storage/root");
+        fs::create_dir_all(&root_dir.join("bin"))
+            .await
+            .map_err(|e| Error::Io("Failed to create bin directory", e))?;
+
+        // Compile the counter program statically
+        let counter_path = root_dir.join("bin/counter");
         let output = tokio::process::Command::new("gcc")
+            .arg("-static")
             .arg("-o")
-            .arg("/tmp/counter-storage/bin/counter")
+            .arg(&counter_path)
             .arg(&counter_c_path)
             .output()
             .await
-            .map_err(|e| Error::Io("Failed to compile counter daemon", e))?;
+            .map_err(|e| Error::Io("Failed to compile counter program", e))?;
 
         if !output.status.success() {
             return Err(Error::Io(
-                "Failed to compile counter daemon",
+                "Failed to compile counter program",
                 std::io::Error::new(std::io::ErrorKind::Other, "Compilation failed"),
             ));
         }
@@ -56,7 +63,6 @@ impl CounterApp {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let counter_path = PathBuf::from("/tmp/counter-storage/bin/counter");
             let mut perms = tokio::fs::metadata(&counter_path)
                 .await
                 .map_err(|e| Error::Io("Failed to get counter metadata", e))?
@@ -68,10 +74,28 @@ impl CounterApp {
                 .map_err(|e| Error::Io("Failed to set counter permissions", e))?;
         }
 
-        Ok(Self {
-            storage_dir,
-            executable_path: PathBuf::from("/tmp/counter-storage/bin/counter"),
-        })
+        Ok(Self { storage_dir })
+    }
+
+    /// Parse a log line and forward to the appropriate tracing macro
+    fn parse_log_line(&self, line: &str) {
+        // Parse the log line based on its prefix
+        if line.starts_with("[INFO]") {
+            let content = line.trim_start_matches("[INFO]").trim();
+            info!(target: "counter-app", "{}", content);
+        } else if line.starts_with("[DEBUG]") {
+            let content = line.trim_start_matches("[DEBUG]").trim();
+            debug!(target: "counter-app", "{}", content);
+        } else if line.starts_with("[WARN]") {
+            let content = line.trim_start_matches("[WARN]").trim();
+            warn!(target: "counter-app", "{}", content);
+        } else if line.starts_with("[ERROR]") {
+            let content = line.trim_start_matches("[ERROR]").trim();
+            error!(target: "counter-app", "{}", content);
+        } else {
+            // For unrecognized log formats, just log as info
+            info!(target: "counter-app", "{}", line);
+        }
     }
 }
 
@@ -82,7 +106,7 @@ impl IsolatedApplication for CounterApp {
     }
 
     fn executable(&self) -> &str {
-        self.executable_path.to_str().unwrap()
+        "/bin/counter"
     }
 
     fn args(&self) -> Vec<String> {
@@ -106,11 +130,23 @@ impl IsolatedApplication for CounterApp {
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
-        vec![VolumeMount::new(&self.storage_dir, &PathBuf::from("/data"))]
+        let data_path = PathBuf::from("/data");
+        vec![
+            // Mount the persistent data directory
+            VolumeMount::new(&self.storage_dir, &data_path),
+        ]
     }
 
     fn chroot_dir(&self) -> Option<PathBuf> {
-        None // No chroot needed
+        Some(PathBuf::from("/tmp/counter-storage/root"))
+    }
+
+    fn handle_stdout(&self, line: &str) {
+        self.parse_log_line(line);
+    }
+
+    fn handle_stderr(&self, line: &str) {
+        error!(target: "counter-app", "{}", line);
     }
 
     async fn prepare_config(&self) -> Result<()> {
@@ -120,18 +156,6 @@ impl IsolatedApplication for CounterApp {
                 .await
                 .map_err(|e| Error::Io("Failed to create storage directory", e))?;
         }
-
-        // Create the bin directory if it doesn't exist
-        let bin_dir = PathBuf::from("/tmp/counter-storage/bin");
-        fs::create_dir_all(&bin_dir)
-            .await
-            .map_err(|e| Error::Io("Failed to create bin directory", e))?;
-
-        // Create the /data directory in the container
-        let data_dir = PathBuf::from("/data");
-        fs::create_dir_all(&data_dir)
-            .await
-            .map_err(|e| Error::Io("Failed to create data directory", e))?;
 
         Ok(())
     }
@@ -150,9 +174,9 @@ async fn main() -> Result<()> {
             .map_err(|e| Error::Io("Failed to create storage directory", e))?;
     }
 
-    // Configure the isolation manager with mount namespace enabled
+    // Configure the isolation manager with mount and chroot enabled
     let config = IsolationConfig {
-        use_chroot: false,
+        use_chroot: true, // Enable chroot for filesystem isolation
         use_ipc_namespace: false,
         use_memory_limits: false,
         use_mount_namespace: true,
@@ -167,7 +191,7 @@ async fn main() -> Result<()> {
 
     // Run the counter application multiple times to demonstrate persistence
     for run in 1..=3 {
-        println!("\nRun #{}", run);
+        info!("Run #{}", run);
 
         let app = CounterApp::new(storage_dir.clone()).await?;
         let process = manager.spawn(app).await?;
@@ -184,7 +208,7 @@ async fn main() -> Result<()> {
             let value = fs::read_to_string(&counter_file)
                 .await
                 .map_err(|e| Error::Io("Failed to read counter file", e))?;
-            println!("Counter value after run {}: {}", run, value.trim());
+            info!("Counter value after run {}: {}", run, value.trim());
         }
 
         // Wait a bit between runs
