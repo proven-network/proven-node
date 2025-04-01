@@ -52,6 +52,20 @@ impl FilesystemTest {
         .await
         .map_err(|e| Error::Io("Failed to create allowed file", e))?;
 
+        // Set appropriate permissions on allowed.txt
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = tokio::fs::metadata(&allowed_file)
+                .await
+                .map_err(|e| Error::Io("Failed to get allowed.txt metadata", e))?
+                .permissions();
+            perms.set_mode(0o644);
+            tokio::fs::set_permissions(&allowed_file, perms)
+                .await
+                .map_err(|e| Error::Io("Failed to set allowed.txt permissions", e))?;
+        }
+
         // Use the externally defined C test program
         let test_c_path =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/filesystem_isolation/test.c");
