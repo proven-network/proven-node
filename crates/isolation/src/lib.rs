@@ -61,7 +61,7 @@
 #![warn(clippy::nursery)]
 #![allow(clippy::redundant_pub_crate)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -80,6 +80,39 @@ pub use error::{Error, Result};
 pub use namespaces::{IsolationNamespaces, NamespaceOptions};
 pub use network::{VethPair, check_root_permissions};
 pub use spawn::{IsolatedProcess, IsolatedProcessOptions, IsolatedProcessSpawner, spawn_process};
+
+/// Represents a volume mount from the host to the container
+#[derive(Debug, Clone)]
+pub struct VolumeMount {
+    /// The path on the host system
+    pub host_path: PathBuf,
+    /// The path inside the container where the volume will be mounted
+    pub container_path: PathBuf,
+    /// Whether the mount should be read-only
+    pub read_only: bool,
+}
+
+impl VolumeMount {
+    /// Creates a new volume mount
+    #[must_use]
+    pub fn new<P: AsRef<Path>>(host_path: P, container_path: P) -> Self {
+        Self {
+            host_path: host_path.as_ref().to_path_buf(),
+            container_path: container_path.as_ref().to_path_buf(),
+            read_only: false,
+        }
+    }
+
+    /// Creates a new read-only volume mount
+    #[must_use]
+    pub fn new_read_only<P: AsRef<Path>>(host_path: P, container_path: P) -> Self {
+        Self {
+            host_path: host_path.as_ref().to_path_buf(),
+            container_path: container_path.as_ref().to_path_buf(),
+            read_only: true,
+        }
+    }
+}
 
 /// Trait for applications that can be run in isolation.
 #[async_trait]
@@ -182,6 +215,16 @@ pub trait IsolatedApplication: Send + Sync + 'static {
     /// Returns the working directory for the process
     fn working_dir(&self) -> Option<PathBuf> {
         None
+    }
+
+    /// Returns the volume mounts that should be available to the application
+    ///
+    /// Each volume mount specifies a path from the host system that should be
+    /// mounted into the container at a specific location.
+    ///
+    /// This is only used when mount namespaces are enabled.
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        Vec::new()
     }
 }
 

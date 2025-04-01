@@ -17,11 +17,11 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
 
-use crate::IsolatedApplication;
 use crate::cgroups::{CgroupMemoryConfig, CgroupsController};
 use crate::error::{Error, Result};
 use crate::namespaces::NamespaceOptions;
 use crate::network::{VethPair, check_root_permissions};
+use crate::{IsolatedApplication, VolumeMount};
 
 /// Options for spawning an isolated process.
 #[derive(Clone)]
@@ -49,6 +49,9 @@ pub struct IsolatedProcessOptions {
 
     /// The working directory for the process.
     pub working_dir: Option<PathBuf>,
+
+    /// Volume mounts to make available to the process
+    pub volume_mounts: Vec<VolumeMount>,
 }
 
 impl std::fmt::Debug for IsolatedProcessOptions {
@@ -62,6 +65,7 @@ impl std::fmt::Debug for IsolatedProcessOptions {
             .field("memory_control", &self.memory_control)
             .field("namespaces", &self.namespaces)
             .field("working_dir", &self.working_dir)
+            .field("volume_mounts", &self.volume_mounts)
             .finish()
     }
 }
@@ -85,6 +89,7 @@ impl IsolatedProcessOptions {
             namespaces: NamespaceOptions::default(),
             application: None,
             working_dir: None,
+            volume_mounts: Vec::new(),
         }
     }
 
@@ -127,6 +132,13 @@ impl IsolatedProcessOptions {
     #[must_use]
     pub fn with_application(mut self, application: Arc<dyn IsolatedApplication>) -> Self {
         self.application = Some(application);
+        self
+    }
+
+    /// Sets the volume mounts for the process
+    #[must_use]
+    pub fn with_volume_mounts(mut self, volume_mounts: Vec<VolumeMount>) -> Self {
+        self.volume_mounts = volume_mounts;
         self
     }
 }
@@ -336,6 +348,70 @@ impl IsolatedProcessSpawner {
         self.veth_pair.as_ref().map(|veth| veth.container_ip())
     }
 
+    /// Build the arguments for the unshare command.
+    ///
+    /// This is only available on Linux.
+    #[cfg(target_os = "linux")]
+    fn build_unshare_args(&self, options: &IsolatedProcessOptions) -> Result<Vec<String>> {
+        let mut args = Vec::new();
+
+        // Add namespace arguments using the options.namespaces.to_unshare_args() helper
+        args.extend(options.namespaces.to_unshare_args());
+
+        // Instead of directly executing the target program, we'll use /bin/sh as an intermediate
+        // This allows us to set up mounts and other configuration before exec-ing the target
+        args.push("--".to_string());
+        args.push("/bin/sh".to_string());
+        args.push("-c".to_string());
+
+        // Build the setup and exec command
+        let mut setup_cmd = String::new();
+
+        // Set up volume mounts if mount namespace is enabled
+        if options.namespaces.use_mount {
+            for mount in &options.volume_mounts {
+                // Create mount point directories
+                setup_cmd.push_str(&format!("mkdir -p {}; ", mount.container_path.display()));
+
+                // Perform bind mount
+                let mount_opts = if mount.read_only { "ro,bind" } else { "bind" };
+                setup_cmd.push_str(&format!(
+                    "mount --bind {} {} && mount -o remount,{} {} {}; ",
+                    mount.host_path.display(),
+                    mount.container_path.display(),
+                    mount_opts,
+                    mount.container_path.display(),
+                    mount.container_path.display()
+                ));
+            }
+        }
+
+        // Add chroot if specified
+        if let Some(ref chroot_dir) = options.chroot_dir {
+            setup_cmd.push_str(&format!("chroot {} ", chroot_dir.display()));
+        }
+
+        // Change to working directory if specified
+        if let Some(ref working_dir) = options.working_dir {
+            setup_cmd.push_str(&format!("cd {} && ", working_dir.display()));
+        }
+
+        // Finally, exec the target program
+        setup_cmd.push_str(&format!(
+            "exec {} {}",
+            options.executable.display(),
+            options.args.join(" ")
+        ));
+
+        // Log the shell script before adding it to args
+        debug!("Shell script for setup and exec: {}", setup_cmd);
+
+        // Add the setup command as a single argument
+        args.push(setup_cmd);
+
+        Ok(args)
+    }
+
     /// Spawns an isolated process.
     ///
     /// # Errors
@@ -354,11 +430,6 @@ impl IsolatedProcessSpawner {
             // Construct the full command
             let mut cmd = Command::new("unshare");
             cmd.args(unshare_args);
-
-            // Set the working directory if specified
-            if let Some(ref working_dir) = options.working_dir {
-                cmd.current_dir(working_dir);
-            }
 
             // Set environment variables
             for (key, value) in &options.env {
@@ -564,29 +635,6 @@ impl IsolatedProcessSpawner {
             task_tracker,
             veth_pair,
         })
-    }
-
-    /// Build the arguments for the unshare command.
-    ///
-    /// This is only available on Linux.
-    #[cfg(target_os = "linux")]
-    fn build_unshare_args(&self, options: &IsolatedProcessOptions) -> Result<Vec<String>> {
-        let mut args = Vec::new();
-
-        // Add namespace arguments using the options.namespaces.to_unshare_args() helper
-        args.extend(options.namespaces.to_unshare_args());
-
-        // Add chroot if specified
-        if let Some(ref chroot_dir) = options.chroot_dir {
-            args.push("chroot".to_string());
-            args.push(chroot_dir.to_string_lossy().to_string());
-        }
-
-        // Add the actual command and arguments
-        args.push(options.executable.to_string_lossy().to_string());
-        args.extend(options.args.clone());
-
-        Ok(args)
     }
 
     /// Cleans up any resources associated with the process spawner
