@@ -18,7 +18,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = IsolatedBitcoinNodeOptions {
         network: BitcoinNetwork::Regtest, // Use regtest for quick startup
         store_dir,
-        rpc_host: None,     // Use default (127.0.0.1)
         rpc_port: None,     // Use default (8332)
         rpc_user: None,     // Use default (proven)
         rpc_password: None, // Use default (proven)

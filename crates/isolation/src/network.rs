@@ -430,6 +430,22 @@ impl VethPair {
         let routes = String::from_utf8_lossy(&output.stdout);
         debug!("Container routing table: {}", routes);
 
+        // Bring up loopback interface
+        let output = Command::new("ip")
+            .args(&["netns", "exec", &ns_name, "ip", "link", "set", "lo", "up"])
+            .output()
+            .map_err(|e| Error::Network(format!("Failed to bring up loopback interface: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(Error::Network(format!(
+                "Failed to bring up loopback interface: {}",
+                stderr
+            )));
+        }
+
+        debug!("Brought up loopback interface in container");
+
         Ok(())
     }
 

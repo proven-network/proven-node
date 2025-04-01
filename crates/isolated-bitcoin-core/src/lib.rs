@@ -41,27 +41,6 @@ impl BitcoinNetwork {
     }
 }
 
-/// Represents an isolated Bitcoin Core node.
-pub struct IsolatedBitcoinNode {
-    /// The isolation process manager
-    isolation_manager: IsolationManager,
-
-    /// The isolated process running Bitcoin Core
-    process: Option<IsolatedProcess>,
-
-    /// The Bitcoin network type
-    network: BitcoinNetwork,
-
-    /// The directory to store data in
-    store_dir: String,
-
-    /// The RPC host and port
-    rpc_host: String,
-    rpc_port: u16,
-    rpc_user: String,
-    rpc_password: String,
-}
-
 /// Options for configuring an `IsolatedBitcoinNode`.
 pub struct IsolatedBitcoinNodeOptions {
     /// The Bitcoin network to connect to.
@@ -69,9 +48,6 @@ pub struct IsolatedBitcoinNodeOptions {
 
     /// The directory to store data in.
     pub store_dir: String,
-
-    /// Optional RPC host (defaults to 127.0.0.1)
-    pub rpc_host: Option<String>,
 
     /// Optional RPC port (defaults to 8332)
     pub rpc_port: Option<u16>,
@@ -95,7 +71,6 @@ struct BitcoinCoreApp {
     executable_path: String,
 
     /// RPC configuration
-    rpc_host: String,
     rpc_port: u16,
     rpc_user: String,
     rpc_password: String,
@@ -108,7 +83,8 @@ impl IsolatedApplication for BitcoinCoreApp {
             format!("--datadir={}", self.store_dir),
             "--server=1".to_string(),
             "--txindex=1".to_string(),
-            format!("--rpcbind={}", self.rpc_host),
+            "--rpcallowip=0.0.0.0/0".to_string(),
+            "--rpcbind=0.0.0.0".to_string(),
             format!("--rpcport={}", self.rpc_port),
             format!("--rpcuser={}", self.rpc_user),
             format!("--rpcpassword={}", self.rpc_password),
@@ -144,10 +120,6 @@ impl IsolatedApplication for BitcoinCoreApp {
     fn namespace_options(&self) -> NamespaceOptions {
         let mut options = NamespaceOptions::default();
 
-        // Keep the network namespace shared to allow RPC access
-        // TODO: Remove this once we have a proper way to handle network namespaces
-        options.use_network = false;
-
         // Disable PID namespace for now to allow shutdown
         // TODO: Remove this once we have a proper way to handle PID namespaces
         options.use_pid = false;
@@ -160,10 +132,14 @@ impl IsolatedApplication for BitcoinCoreApp {
         1024
     }
 
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> proven_isolation::Result<bool> {
+    async fn is_ready_check(&self, process: &IsolatedProcess) -> proven_isolation::Result<bool> {
         // To check if Bitcoin Core is ready, we'll use the RPC interface
         // to call the `getblockchaininfo` method
-        let rpc_url = format!("http://{}:{}", self.rpc_host, self.rpc_port);
+        let rpc_url = if let Some(ip) = process.container_ip() {
+            format!("http://{}:{}", ip, self.rpc_port)
+        } else {
+            format!("http://127.0.0.1:{}", self.rpc_port)
+        };
 
         let client = reqwest::Client::new();
 
@@ -206,6 +182,30 @@ impl IsolatedApplication for BitcoinCoreApp {
 
         Ok(())
     }
+
+    fn tcp_ports(&self) -> Vec<u16> {
+        vec![self.rpc_port]
+    }
+}
+
+/// Represents an isolated Bitcoin Core node.
+pub struct IsolatedBitcoinNode {
+    /// The isolation process manager
+    isolation_manager: IsolationManager,
+
+    /// The isolated process running Bitcoin Core
+    process: Option<IsolatedProcess>,
+
+    /// The Bitcoin network type
+    network: BitcoinNetwork,
+
+    /// The directory to store data in
+    store_dir: String,
+
+    /// The RPC port
+    rpc_port: u16,
+    rpc_user: String,
+    rpc_password: String,
 }
 
 impl IsolatedBitcoinNode {
@@ -217,7 +217,6 @@ impl IsolatedBitcoinNode {
             process: None,
             network: options.network,
             store_dir: options.store_dir,
-            rpc_host: options.rpc_host.unwrap_or_else(|| "127.0.0.1".to_string()),
             rpc_port: options.rpc_port.unwrap_or(8332),
             rpc_user: options.rpc_user.unwrap_or_else(|| "proven".to_string()),
             rpc_password: options.rpc_password.unwrap_or_else(|| "proven".to_string()),
@@ -236,7 +235,6 @@ impl IsolatedBitcoinNode {
             network: self.network,
             store_dir: self.store_dir.clone(),
             executable_path: "bitcoind".to_string(),
-            rpc_host: self.rpc_host.clone(),
             rpc_port: self.rpc_port,
             rpc_user: self.rpc_user.clone(),
             rpc_password: self.rpc_password.clone(),
@@ -277,7 +275,15 @@ impl IsolatedBitcoinNode {
     /// Returns the RPC URL for the Bitcoin Core node.
     #[must_use]
     pub fn get_rpc_url(&self) -> String {
-        format!("http://{}:{}", self.rpc_host, self.rpc_port)
+        if let Some(process) = &self.process {
+            if let Some(container_ip) = process.container_ip() {
+                format!("http://{}:{}", container_ip, self.rpc_port)
+            } else {
+                format!("http://127.0.0.1:{}", self.rpc_port)
+            }
+        } else {
+            format!("http://127.0.0.1:{}", self.rpc_port)
+        }
     }
 
     /// Make an RPC call to the Bitcoin Core node
