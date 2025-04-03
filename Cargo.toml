@@ -184,6 +184,7 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 chrono = { version = "0.4.40", features = ["serde"] }
 ciborium = "0.2"
 cidr = { version = "0.3.1", features = ["serde"] }
+checksum = "0.2.1"
 clap = { version = "4.5.35", features = ["derive", "env"] }
 color-print = "0.3.5"
 console = "0.15.11"

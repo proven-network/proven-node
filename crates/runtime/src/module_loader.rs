@@ -7,6 +7,8 @@ use crate::util::run_in_thread;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use deno_core::error::ModuleLoaderError;
+use deno_core::url::Url;
 use proven_code_package::{CodePackage, ModuleSpecifier};
 use regex::Regex;
 use rustyscript::Module;
@@ -243,7 +245,7 @@ impl rustyscript::module_loader::ImportProvider for ImportProvider {
         specifier: &ModuleSpecifier,
         _referrer: &str,
         _kind: deno_core::ResolutionKind,
-    ) -> Option<Result<ModuleSpecifier, anyhow::Error>> {
+    ) -> Option<Result<Url, ModuleLoaderError>> {
         let to_strip = format!(
             "file://{}/file:",
             std::env::current_dir().unwrap().to_str().unwrap()
@@ -263,7 +265,7 @@ impl rustyscript::module_loader::ImportProvider for ImportProvider {
         _referrer: Option<&ModuleSpecifier>,
         _is_dyn_import: bool,
         _requested_module_type: deno_core::RequestedModuleType,
-    ) -> Option<Result<String, anyhow::Error>> {
+    ) -> Option<Result<String, ModuleLoaderError>> {
         let pwd = std::env::current_dir().unwrap();
         let specifier_with_pwd = specifier.as_str().replace(
             "file:///file:",
