@@ -10,7 +10,7 @@ mod error;
 pub use error::{Error, Result};
 
 use async_trait::async_trait;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, NamespaceOptions};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, error, info};
@@ -115,16 +115,6 @@ impl IsolatedApplication for BitcoinCoreApp {
 
     fn name(&self) -> &str {
         "bitcoind"
-    }
-
-    fn namespace_options(&self) -> NamespaceOptions {
-        let mut options = NamespaceOptions::default();
-
-        // Disable PID namespace for now to allow shutdown
-        // TODO: Remove this once we have a proper way to handle PID namespaces
-        options.use_pid = false;
-
-        options
     }
 
     fn memory_limit_mb(&self) -> usize {

@@ -543,9 +543,30 @@ impl IsolatedProcessSpawner {
             .map_err(|e| Error::Io("Failed to spawn process", e))?;
 
         // Get the process ID - this should always be available for a successfully spawned process
-        let pid = child.id().ok_or_else(|| {
+        let mut pid = child.id().ok_or_else(|| {
             Error::SpawnProcess("No PID available for spawned process".to_string())
         })?;
+
+        // If using PID namespace process will be forked se find process with `pgrep -P [PARENT_PID]`
+        // TODO: Probably a less hacky way to do this
+        if options.namespaces.use_pid {
+            info!("Finding process with pgrep -P {}", pid);
+            let mut pgrep_cmd = Command::new("pgrep");
+
+            pgrep_cmd.arg("-P").arg(pid.to_string());
+
+            let pgrep_output = pgrep_cmd
+                .output()
+                .await
+                .map_err(|e| Error::Io("Failed to run pgrep", e))?;
+
+            let stdout = String::from_utf8_lossy(&pgrep_output.stdout);
+            pid = stdout
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(pid);
+        }
 
         debug!("Process spawned with PID: {}", pid);
 
