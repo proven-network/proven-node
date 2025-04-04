@@ -207,7 +207,7 @@ deno_cache_dir = "0.18.0"
 deno_canvas = { path = "vendor/deno/ext/canvas" }
 deno_config = { version = "0.51.0", features = ["workspace", "sync"] }
 deno_console = { path = "vendor/deno/ext/console" }
-deno_core = "0.341.0"
+deno_core = "0.342.0"
 deno_cron = { path = "vendor/deno/ext/cron" }
 deno_crypto = { path = "vendor/deno/ext/crypto" }
 deno_error = "0.5.6"
@@ -224,7 +224,7 @@ deno_napi = { path = "vendor/deno/ext/napi" }
 deno_native_certs = "0.3.0"
 deno_net = { path = "vendor/deno/ext/net" }
 deno_node = { path = "vendor/deno/ext/node" }
-deno_npm = "0.29.0"
+deno_npm = "0.31.0"
 deno_npm_cache = { path = "vendor/deno/resolvers/npm_cache" }
 deno_os = { path = "vendor/deno/ext/os" }
 deno_package_json = { version = "0.6.0", default-features = false }
