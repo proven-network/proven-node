@@ -439,6 +439,9 @@ impl IsolatedProcessSpawner {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
 
+        // Clone the application for later use
+        let application = options.application.clone();
+
         #[cfg(target_os = "linux")]
         let mut cmd = {
             // Prepare the command to be executed with appropriate isolation
@@ -460,7 +463,7 @@ impl IsolatedProcessSpawner {
         let mut cmd = {
             // On non-Linux platforms, just run the command directly
             warn!(
-                "Linux isolation features (namespaces, chroot, seccomp) are not available on this platform. Running process without isolation."
+                "Linux isolation features (namespaces, chroot, cgroups) are not available on this platform. Running process without isolation."
             );
 
             // Construct the direct command
@@ -549,12 +552,12 @@ impl IsolatedProcessSpawner {
 
         // Start a task to handle stdout from the child process
         if let Some(stdout) = stdout {
-            if let Some(ref application) = options.application {
-                let application = Arc::clone(application);
+            if let Some(ref app) = application {
+                let app = Arc::clone(app);
                 task_tracker.spawn(async move {
                     let mut lines = BufReader::new(stdout).lines();
                     while let Ok(Some(line)) = lines.next_line().await {
-                        application.handle_stdout(&line);
+                        app.handle_stdout(&line);
                     }
                 });
             } else {
@@ -569,12 +572,12 @@ impl IsolatedProcessSpawner {
 
         // Start a task to handle stderr from the child process
         if let Some(stderr) = stderr {
-            if let Some(ref application) = options.application {
-                let application = Arc::clone(application);
+            if let Some(ref app) = application {
+                let app = Arc::clone(app);
                 task_tracker.spawn(async move {
                     let mut lines = BufReader::new(stderr).lines();
                     while let Ok(Some(line)) = lines.next_line().await {
-                        application.handle_stderr(&line);
+                        app.handle_stderr(&line);
                     }
                 });
             } else {
@@ -590,6 +593,7 @@ impl IsolatedProcessSpawner {
         // Monitor child process
         let pid_for_task = pid;
         let shutdown_token_clone = shutdown_token.clone();
+        let app_for_signal = application.clone();
         let join_handle = tokio::task::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
@@ -614,7 +618,7 @@ impl IsolatedProcessSpawner {
                     let pid = Pid::from_raw(raw_pid);
 
                     // Get the shutdown signal from the application if available, otherwise use SIGTERM
-                    let shutdown_signal = options.application.as_ref()
+                    let shutdown_signal = app_for_signal.as_ref()
                         .map(|app| app.shutdown_signal())
                         .unwrap_or(Signal::SIGTERM);
 
@@ -668,16 +672,63 @@ impl IsolatedProcessSpawner {
             None
         };
 
-        Ok((
-            IsolatedProcess {
-                cgroups_controller,
-                pid,
-                shutdown_token,
-                task_tracker,
-                veth_pair,
-            },
-            join_handle,
-        ))
+        // Create the IsolatedProcess instance
+        let process = IsolatedProcess {
+            cgroups_controller,
+            pid,
+            shutdown_token,
+            task_tracker,
+            veth_pair,
+        };
+
+        // If we have an application, perform readiness checks
+        if let Some(ref app) = application {
+            let interval = Duration::from_millis(app.is_ready_check_interval_ms());
+            let max_attempts = app.is_ready_check_max();
+            let mut attempts = 0;
+
+            debug!(
+                "Starting readiness checks with interval: {}ms, max attempts: {:?}",
+                interval.as_millis(),
+                max_attempts
+            );
+
+            loop {
+                // Check if process has exited while we were waiting
+                if unsafe { libc::kill(pid as i32, 0) } != 0 {
+                    return Err(Error::ReadinessCheck(
+                        "Process exited during readiness checks".to_string(),
+                    ));
+                }
+
+                match app.is_ready_check(&process).await {
+                    Ok(true) => {
+                        debug!("Application reported ready after {} attempts", attempts + 1);
+                        break;
+                    }
+
+                    Ok(false) => {
+                        attempts += 1;
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                return Err(Error::ReadinessCheck(format!(
+                                    "Application not ready after {} attempts",
+                                    attempts
+                                )));
+                            }
+                        }
+                        debug!("Application not ready, attempt {}, waiting...", attempts);
+                        tokio::time::sleep(interval).await;
+                    }
+
+                    Err(e) => {
+                        return Err(Error::ReadinessCheck(e.to_string()));
+                    }
+                }
+            }
+        }
+
+        Ok((process, join_handle))
     }
 }
 

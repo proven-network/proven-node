@@ -35,6 +35,10 @@ pub enum Error {
     #[error("Process exited with non-zero status: {0}")]
     ProcessExit(ExitStatus),
 
+    /// Process failed readiness checks
+    #[error("Process failed readiness checks: {0}")]
+    ReadinessCheck(String),
+
     /// Failed to spawn a process
     #[error("Failed to spawn process: {0}")]
     SpawnProcess(String),
