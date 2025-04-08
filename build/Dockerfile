@@ -120,9 +120,9 @@ RUN apk add --no-cache unzip wget
 WORKDIR /tmp
 
 # Download
-RUN wget -q https://github.com/bitcoin/bitcoin/releases/download/v27.0/bitcoin-27.0-aarch64-linux-gnu.tar.gz
-RUN wget -q https://github.com/paradigmxyz/reth/releases/download/v1.3.4/reth-v1.3.4-aarch64-unknown-linux-gnu.tar.gz
-RUN wget -q https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.4/lighthouse-v7.0.0-beta.4-aarch64-unknown-linux-gnu.tar.gz
+RUN wget -q https://bitcoincore.org/bin/bitcoin-core-28.1/bitcoin-28.1-aarch64-linux-gnu.tar.gz
+RUN wget -q https://github.com/paradigmxyz/reth/releases/download/v1.3.8/reth-v1.3.8-aarch64-unknown-linux-gnu.tar.gz
+RUN wget -q https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.5/lighthouse-v7.0.0-beta.5-aarch64-unknown-linux-gnu.tar.gz
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-v1.3.0.2.zip
 RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.11.0/nats-server-v2.11.0-linux-arm64.tar.gz
@@ -130,9 +130,9 @@ RUN wget -q https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.7/d
 RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
 
 # Unzip
-RUN tar -xvzf bitcoin-27.0-aarch64-linux-gnu.tar.gz
-RUN tar -xvzf reth-v1.3.4-aarch64-unknown-linux-gnu.tar.gz
-RUN tar -xvzf lighthouse-v7.0.0-beta.4-aarch64-unknown-linux-gnu.tar.gz
+RUN tar -xvzf bitcoin-28.1-aarch64-linux-gnu.tar.gz
+RUN tar -xvzf reth-v1.3.8-aarch64-unknown-linux-gnu.tar.gz
+RUN tar -xvzf lighthouse-v7.0.0-beta.5-aarch64-unknown-linux-gnu.tar.gz
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN unzip babylon-node-v1.3.0.2.zip
 RUN tar -xvzf nats-server-v2.11.0-linux-arm64.tar.gz
@@ -140,8 +140,8 @@ RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.7.tar.gz
 RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
 
 # Move to /bin
-RUN mv bitcoin-27.0/bin/bitcoind /bin/
-RUN mv bitcoin-27.0/bin/bitcoin-cli /bin/
+RUN mv bitcoin-28.1/bin/bitcoind /bin/
+RUN mv bitcoin-28.1/bin/bitcoin-cli /bin/
 RUN mv reth /bin/
 RUN mv lighthouse /bin/
 RUN mkdir -p /bin/babylon-node
