@@ -8,6 +8,8 @@ services:
         BUILDKIT_INLINE_CACHE: 1
     privileged: true
     cgroup: host
+    security_opt:
+      - seccomp:unconfined
     environment:
       - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_P2P_ADDR=0.0.0.0:10109
       - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_HTTP_ADDR=127.0.0.1:5052
@@ -53,6 +55,8 @@ services:
         BUILDKIT_INLINE_CACHE: 1
     privileged: true
     cgroup: host
+    security_opt:
+      - seccomp:unconfined
     environment:
       - PROVEN_PORT=3202
       - PROVEN_NATS_CLIENT_PORT=4223
@@ -84,6 +88,8 @@ services:
         BUILDKIT_INLINE_CACHE: 1
     privileged: true
     cgroup: host
+    security_opt:
+      - seccomp:unconfined
     environment:
       - PROVEN_PORT=3203
       - PROVEN_NATS_CLIENT_PORT=4224
