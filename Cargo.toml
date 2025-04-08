@@ -156,7 +156,7 @@ async-stream = "0.3"
 async-trait = "0.1.87"
 aws-config = { version = "1.6.1", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
 aws-nitro-enclaves-nsm-api = { git = "https://github.com/proven-network/aws-nitro-enclaves-nsm-api", branch = "main" }
-aws-sdk-ec2 = { version = "1.121.0", default-features = false }
+aws-sdk-ec2 = { version = "1.121.1", default-features = false }
 aws-sdk-kms = { version = "1.65.0", default-features = false }
 aws-sdk-route53resolver = { version = "1.69.0", default-features = false }
 aws-sdk-s3 = { version = "1.82.0", default-features = false, features = ["rt-tokio"] }
@@ -205,9 +205,9 @@ deno_broadcast_channel = { path = "vendor/deno/ext/broadcast_channel" }
 deno_cache = { path = "vendor/deno/ext/cache" }
 deno_cache_dir = "0.18.0"
 deno_canvas = { path = "vendor/deno/ext/canvas" }
-deno_config = { version = "0.51.0", features = ["workspace", "sync"] }
+deno_config = { version = "0.52.0", features = ["workspace", "sync"] }
 deno_console = { path = "vendor/deno/ext/console" }
-deno_core = "0.342.0"
+deno_core = "0.343.0"
 deno_cron = { path = "vendor/deno/ext/cron" }
 deno_crypto = { path = "vendor/deno/ext/crypto" }
 deno_error = "0.5.6"
@@ -267,8 +267,8 @@ encoding_rs = "0.8.35"
 env_logger = "=0.10.0"
 error_reporter = "1"
 eszip = { git = "https://github.com/denoland/eszip" }
-ethereum_ssz = "0.8.3"
-ethereum_ssz_derive = "0.8.3"
+ethereum_ssz = "=0.8.3"
+ethereum_ssz_derive = "=0.8.3"
 eyre = "0.6.12"
 fast-socks5 = "0.10.0"
 faster-hex = "0.10.0"
@@ -302,7 +302,7 @@ hyper_v014 = { package = "hyper", version = "0.14.32", features = ["runtime", "h
 idna = "1.0.3"
 image = { version = "0.25.6", default-features = false }
 import_map = { version = "0.21.0", features = ["ext"] }
-indexmap = { version = "2.8.0", features = ["serde"] }
+indexmap = { version = "2.9.0", features = ["serde"] }
 ipnet = "2.11.0"
 ipnetwork = "0.21.1"
 itertools = "0.14.0"
@@ -318,7 +318,7 @@ libloading = "0.8.6"
 libsql = { version = "0.6.0", default-features = false, features = ["core", "stream"] }
 libsql-ffi = { version = "0.5.0", features = ["session"] }
 libsql-rusqlite = { version = "0.33.0", features = ["limits"] }
-libsui = "0.5.0"
+libsui = "0.7.0"
 libc = "0.2.171"
 libuv-sys-lite = "1.48.3"
 libz-sys = { version = "1.1.21", default-features = false }
@@ -344,7 +344,7 @@ num-integer = "0.1.45"
 num-traits = "0.2.19"
 once_cell = "1.21.3"
 op-alloy-rpc-types = "=0.9.6"
-openssl = { version = "0.10.71", features = ["vendored"] }
+openssl = { version = "0.10.72", features = ["vendored"] }
 opentelemetry = "0.27.1"
 opentelemetry-http = "0.27.0"
 opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json"] }
@@ -366,7 +366,7 @@ pin-project = "1.1.10"
 pin-project-lite = "0.2.13"
 pkcs8 = "0.10.2"
 pretty_assertions = "1.4.1"
-prettyplease = "0.2.30"
+prettyplease = "0.2.32"
 progenitor = "0.9.1"
 progenitor-client = "0.9.1"
 prost = "0.13.5"
@@ -439,7 +439,7 @@ rayon = "1.8.0"
 regex = "1.10.6"
 reqwest = { version = "0.12.15", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] }
 retri = "0.1.0"
-revm = { version = "19.7.0", default-features = false, features = ["std", "serde", "optional_block_gas_limit", "optional_eip3607", "optional_no_base_fee"] }
+revm = { version = "=19.7.0", default-features = false, features = ["std", "serde", "optional_block_gas_limit", "optional_eip3607", "optional_no_base_fee"] }
 ring = "0.17.14"
 ripemd = "0.1.3"
 rlimit = "0.10.2"
@@ -471,7 +471,7 @@ signature = "2.2.0"
 simd-json = "0.15.0"
 slab = "0.4"
 sm3 = "0.4.2"
-smallvec = "1.14.0"
+smallvec = "1.15.0"
 socket2 = { version = "0.5.9", features = ["all"] }
 spki = "0.7.3"
 ssz_types = "0.10.1"
@@ -485,11 +485,11 @@ tempfile = "3.19.1"
 termcolor = "1.1.3"
 test_util = { package = "test_server", path = "vendor/deno/tests/util/server" }
 thiserror = "2.0.12"
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { version = "1.44.2", features = ["full"] }
 tokio-eld = "0.2"
 tokio-metrics = { version = "0.4.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.2", default-features = false, features = ["ring", "tls12"] }
-tokio-rustls-acme = { version = "0.6.0", features = ["axum"] }
+tokio-rustls-acme = { version = "0.7.0", features = ["axum"] }
 tokio-socks = "0.5.1"
 tokio-stream = "0.1.17"
 tokio-tun = "0.13.2"
@@ -502,15 +502,15 @@ tower-service = "0.3.2"
 tracing = "0.1.41"
 tracing-panic = "0.1.2"
 tracing-subscriber = "0.3.19"
-tree_hash = "0.9.1"
-tree_hash_derive = "0.9.1"
+tree_hash = "=0.9.1"
+tree_hash_derive = "=0.9.1"
 twox-hash = "2.1.0"
 typenum = "1.18.0"
 url = { version = "2.5.4", features = ["serde", "expose_internals"] }
 urlpattern = "0.3.0"
 uuid = { version = "1.15.1", features = ["v4"] }
 v8_valueserializer = "0.1.1"
-web-transport-proto = "0.2.3"
+web-transport-proto = "0.2.5"
 webpki-root-certs = "0.26.8"
 webpki-roots = "0.26.8"
 wgpu-core = "24.0.0"
