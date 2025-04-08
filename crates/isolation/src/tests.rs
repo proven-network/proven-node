@@ -225,7 +225,7 @@ mod tests {
         let manager = IsolationManager::with_config(config);
 
         // Spawn the process
-        let process = manager.spawn(app).await?;
+        let (process, _join_handle) = manager.spawn(app).await?;
 
         // Check that memory control is active (may not be if cgroups v2 not available)
         if process.has_memory_control() {
