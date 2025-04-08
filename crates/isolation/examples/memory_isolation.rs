@@ -196,7 +196,7 @@ async fn main() -> Result<()> {
 
     // Spawn the isolated process
     info!("Spawning isolated process...");
-    let process = manager.spawn(test).await?;
+    let (process, _join_handle) = manager.spawn(test).await?;
 
     info!("Process is running with PID: {}", process.pid());
 

@@ -29,7 +29,6 @@ members = [
     "crates/http-letsencrypt",
     "crates/imds",
     "crates/instance-details",
-    "crates/isolated-bitcoin-core",
     "crates/isolation",
     "crates/kms",
     "crates/libsql",
@@ -89,7 +88,6 @@ default-members = [
     "crates/http-letsencrypt",
     "crates/imds",
     "crates/instance-details",
-    "crates/isolated-bitcoin-core",
     "crates/isolation",
     "crates/kms",
     "crates/libsql",
@@ -392,7 +390,6 @@ proven-http-insecure = { path = "crates/http-insecure" }
 proven-http-letsencrypt = { path = "crates/http-letsencrypt" }
 proven-imds = { path = "crates/imds" }
 proven-instance-details = { path = "crates/instance-details" }
-proven-isolated-bitcoin-core = { path = "crates/isolated-bitcoin-core" }
 proven-isolation = { path = "crates/isolation" }
 proven-kms = { path = "crates/kms" }
 proven-libsql = { path = "crates/libsql" }

@@ -199,7 +199,7 @@ async fn main() -> Result<()> {
     );
 
     let start_time = std::time::Instant::now();
-    let process = manager.spawn(server).await?;
+    let (process, _join_handle) = manager.spawn(server).await?;
     let elapsed = start_time.elapsed();
     info!("✅ Server process is now ready! (took {:?})", elapsed);
     info!("Server is running with PID: {}", process.pid());

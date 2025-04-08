@@ -66,6 +66,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use nix::sys::signal::Signal;
+use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
 mod cgroups;
@@ -371,7 +372,10 @@ impl IsolationManager {
     /// # Errors
     ///
     /// Returns an error if the process could not be spawned.
-    pub async fn spawn<A: IsolatedApplication>(&self, application: A) -> Result<IsolatedProcess> {
+    pub async fn spawn<A: IsolatedApplication>(
+        &self,
+        application: A,
+    ) -> Result<(IsolatedProcess, JoinHandle<()>)> {
         let mut spawner = IsolatedProcessSpawner::new(self.build_options(application).await?);
         spawner.spawn().await
     }

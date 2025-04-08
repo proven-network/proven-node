@@ -8,29 +8,23 @@
 mod error;
 
 pub use error::{Error, Result};
-
-use std::fs;
-use std::process::Stdio;
-use std::str;
-
-use nix::sys::signal;
-use nix::sys::signal::Signal;
-use nix::unistd::Pid;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
-use tokio_util::task::TaskTracker;
+
+use std::path::{Path, PathBuf};
+
+use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tracing::{debug, error, info};
 
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+static P2P_PORT: u16 = 18333;
 
-// RPC endpoint (host/port)
-static BITCOIND_RPC_HOST: &str = "127.0.0.1";
-static BITCOIND_RPC_PORT: u16 = 8332;
-static BITCOIND_RPC_USER: &str = "proven";
-static BITCOIND_RPC_PASSWORD: &str = "proven";
+/// Regex pattern for matching Bitcoin Core log timestamps
+static TIMESTAMP_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s+").unwrap());
 
 /// Represents a Bitcoin network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,198 +52,257 @@ impl BitcoinNetwork {
     }
 }
 
-/// Runs a Bitcoin Core node.
-pub struct BitcoinNode {
-    network: BitcoinNetwork,
-    shutdown_token: CancellationToken,
-    store_dir: String,
-    task_tracker: TaskTracker,
-}
-
-/// Options for configuring a `BitcoinNode`.
+/// Options for configuring an `BitcoinNode`.
 pub struct BitcoinNodeOptions {
     /// The Bitcoin network to connect to.
     pub network: BitcoinNetwork,
 
     /// The directory to store data in.
     pub store_dir: String,
+
+    /// Optional RPC port (defaults to 8332)
+    pub rpc_port: Option<u16>,
+
+    /// Optional RPC username (defaults to "proven")
+    pub rpc_user: Option<String>,
+
+    /// Optional RPC password (defaults to "proven")
+    pub rpc_password: Option<String>,
+}
+
+/// Bitcoin Core application implementing the IsolatedApplication trait
+struct BitcoinCoreApp {
+    /// The Bitcoin network type
+    network: BitcoinNetwork,
+
+    /// The directory to store data in
+    store_dir: String,
+
+    /// The path to the bitcoind executable
+    executable_path: String,
+
+    /// RPC configuration
+    rpc_port: u16,
+    rpc_user: String,
+    rpc_password: String,
+}
+
+#[async_trait]
+impl IsolatedApplication for BitcoinCoreApp {
+    fn args(&self) -> Vec<String> {
+        let mut args = vec![
+            format!("--datadir={}", self.store_dir),
+            "--server=1".to_string(),
+            "--txindex=1".to_string(),
+            "--rpcallowip=0.0.0.0/0".to_string(),
+            "--rpcbind=0.0.0.0".to_string(),
+            format!("--port={}", P2P_PORT),
+            format!("--rpcport={}", self.rpc_port),
+            format!("--rpcuser={}", self.rpc_user),
+            format!("--rpcpassword={}", self.rpc_password),
+        ];
+
+        // Add network-specific arguments
+        match self.network {
+            BitcoinNetwork::Mainnet => {}
+            BitcoinNetwork::Testnet => args.push("--testnet".to_string()),
+            BitcoinNetwork::Regtest => args.push("--regtest".to_string()),
+            BitcoinNetwork::Signet => args.push("--signet".to_string()),
+        };
+
+        args
+    }
+
+    fn chroot_dir(&self) -> Option<PathBuf> {
+        Some(PathBuf::from("/tmp/bitcoin-core"))
+    }
+
+    fn executable(&self) -> &str {
+        &self.executable_path
+    }
+
+    fn handle_stderr(&self, line: &str) {
+        let message = TIMESTAMP_REGEX.replace(line, "").into_owned();
+        error!(target: "bitcoind", "{}", message);
+    }
+
+    fn handle_stdout(&self, line: &str) {
+        let message = TIMESTAMP_REGEX.replace(line, "").into_owned();
+        info!(target: "bitcoind", "{}", message);
+    }
+
+    fn name(&self) -> &str {
+        "bitcoind"
+    }
+
+    fn memory_limit_mb(&self) -> usize {
+        // Bitcoin Core can be memory intensive, so allocate 8GB by default
+        8192
+    }
+
+    async fn is_ready_check(&self, process: &IsolatedProcess) -> proven_isolation::Result<bool> {
+        // To check if Bitcoin Core is ready, we'll use the RPC interface
+        // to call the `getblockchaininfo` method
+        let rpc_url = if let Some(ip) = process.container_ip() {
+            format!("http://{}:{}", ip, self.rpc_port)
+        } else {
+            format!("http://127.0.0.1:{}", self.rpc_port)
+        };
+
+        let client = reqwest::Client::new();
+
+        let response = match client
+            .post(&rpc_url)
+            .basic_auth(&self.rpc_user, Some(&self.rpc_password))
+            .json(&serde_json::json!({
+                "jsonrpc": "1.0",
+                "id": "proven",
+                "method": "getblockchaininfo",
+                "params": []
+            }))
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(_) => return Ok(false), // Not ready yet
+        };
+
+        // If we get a 200 response, the node is up and running
+        Ok(response.status().is_success())
+    }
+
+    fn is_ready_check_interval_ms(&self) -> u64 {
+        // Check every 2 seconds
+        2000
+    }
+
+    async fn prepare_config(&self) -> proven_isolation::Result<()> {
+        // Create the data directory if it doesn't exist
+        let data_dir = Path::new(&self.store_dir);
+        if !data_dir.exists() {
+            std::fs::create_dir_all(data_dir).map_err(|e| {
+                proven_isolation::Error::Application(format!(
+                    "Failed to create data directory: {}",
+                    e
+                ))
+            })?;
+        }
+
+        Ok(())
+    }
+
+    fn tcp_ports(&self) -> Vec<u16> {
+        vec![self.rpc_port, P2P_PORT]
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![VolumeMount::new(&self.store_dir, &self.store_dir)]
+    }
+}
+
+/// Represents an isolated Bitcoin Core node.
+pub struct BitcoinNode {
+    /// The isolation process manager
+    isolation_manager: IsolationManager,
+
+    /// The isolated process running Bitcoin Core
+    process: Option<IsolatedProcess>,
+
+    /// The Bitcoin network type
+    network: BitcoinNetwork,
+
+    /// The directory to store data in
+    store_dir: String,
+
+    /// The RPC port
+    rpc_port: u16,
+    rpc_user: String,
+    rpc_password: String,
 }
 
 impl BitcoinNode {
-    /// Creates a new `BitcoinNode`.
+    /// Creates a new `BitcoinNode` with the specified options.
     #[must_use]
-    pub fn new(BitcoinNodeOptions { network, store_dir }: BitcoinNodeOptions) -> Self {
+    pub fn new(options: BitcoinNodeOptions) -> Self {
         Self {
-            network,
-            shutdown_token: CancellationToken::new(),
-            store_dir,
-            task_tracker: TaskTracker::new(),
+            isolation_manager: IsolationManager::new(),
+            process: None,
+            network: options.network,
+            store_dir: options.store_dir,
+            rpc_port: options.rpc_port.unwrap_or(8332),
+            rpc_user: options.rpc_user.unwrap_or_else(|| "proven".to_string()),
+            rpc_password: options.rpc_password.unwrap_or_else(|| "proven".to_string()),
         }
     }
 
-    /// Starts the Bitcoin Core node.
+    /// Starts the Bitcoin Core node in an isolated environment.
     ///
     /// # Errors
     ///
     /// Returns an error if the node fails to start.
-    #[allow(clippy::too_many_lines)]
-    pub async fn start(&self) -> Result<JoinHandle<()>> {
-        debug!("Starting Bitcoin Core node...");
+    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+        debug!("Starting isolated Bitcoin Core node...");
 
-        fs::create_dir_all(&self.store_dir)
-            .map_err(|e| Error::Io("failed to create data directory", e))?;
-
-        // Start bitcoind
-        let network_arg = match self.network {
-            BitcoinNetwork::Mainnet => vec![],
-            BitcoinNetwork::Testnet => vec!["--testnet"],
-            BitcoinNetwork::Regtest => vec!["--regtest"],
-            BitcoinNetwork::Signet => vec!["--signet"],
+        let app = BitcoinCoreApp {
+            network: self.network,
+            store_dir: self.store_dir.clone(),
+            executable_path: "bitcoind".to_string(),
+            rpc_port: self.rpc_port,
+            rpc_user: self.rpc_user.clone(),
+            rpc_password: self.rpc_password.clone(),
         };
 
-        let mut cmd = Command::new("bitcoind");
-        cmd.args([&format!("--datadir={}", self.store_dir)])
-            .args(network_arg)
-            .args([
-                "--server=1",
-                "--txindex=1",
-                &format!("--rpcbind={}", BITCOIND_RPC_HOST),
-                &format!("--rpcport={}", BITCOIND_RPC_PORT),
-                &format!("--rpcuser={}", BITCOIND_RPC_USER),
-                &format!("--rpcpassword={}", BITCOIND_RPC_PASSWORD),
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        let (process, join_handle) = self
+            .isolation_manager
+            .spawn(app)
+            .await
+            .map_err(Error::Isolation)?;
 
-        debug!("Attempting to spawn bitcoind with command: {:?}", cmd);
-        let mut child = match cmd.spawn() {
-            Ok(child) => child,
-            Err(e) => {
-                error!("Failed to spawn bitcoind process: {}", e);
-                error!("Command was: {:?}", cmd);
-                return Err(Error::Io("failed to spawn bitcoind", e));
-            }
-        };
-        info!("Bitcoin Core process spawned successfully");
+        // Store the process for later shutdown
+        self.process = Some(process);
 
-        // Handle stdout
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| Error::StartBitcoind("failed to get stdout".to_string()))?;
-        let stdout_reader = BufReader::new(stdout);
-        let stdout_lines = stdout_reader.lines();
+        info!("Bitcoin Core node started in isolated environment");
 
-        let tracker = self.task_tracker.clone();
-        let _stdout_task = tracker.spawn(async move {
-            let mut lines = stdout_lines;
-            while let Ok(Some(line)) = lines.next_line().await {
-                info!("bitcoind stdout: {line}");
-            }
-        });
-
-        // Handle stderr
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| Error::StartBitcoind("failed to get stderr".to_string()))?;
-        let stderr_reader = BufReader::new(stderr);
-        let stderr_lines = stderr_reader.lines();
-
-        let tracker = self.task_tracker.clone();
-        let _stderr_task = tracker.spawn(async move {
-            let mut lines = stderr_lines;
-            while let Ok(Some(line)) = lines.next_line().await {
-                info!("bitcoind stderr: {line}");
-            }
-        });
-
-        // Monitor child process
-        let shutdown_token = self.shutdown_token.clone();
-        let main_task = self.task_tracker.spawn(async move {
-            tokio::select! {
-                status = child.wait() => {
-                    match status {
-                        Ok(status) => {
-                            if status.success() {
-                                info!("bitcoind exited with status: {status}");
-                            } else {
-                                error!("bitcoind exited with non-zero status: {status}");
-                            }
-                        }
-                        Err(err) => {
-                            error!("failed to wait for bitcoind: {err}");
-                        }
-                    }
-                }
-                () = shutdown_token.cancelled() => {
-                    info!("Stopping bitcoind...");
-                    // Try to stop bitcoind gracefully with SIGTERM
-
-                    if let Some(id) = child.id() {
-                        let Ok(raw_pid) = id.try_into() else {
-                            error!("Failed to convert process ID");
-                            return;
-                        };
-
-                        let pid = Pid::from_raw(raw_pid);
-                        if let Err(err) = signal::kill(pid, Signal::SIGTERM) {
-                            error!("failed to send SIGTERM to bitcoind: {err}");
-                        }
-                    }
-
-                    // Wait for the process to exit
-                    if let Ok(result) = tokio::time::timeout(tokio::time::Duration::from_secs(30), child.wait()).await {
-                        match result {
-                            Ok(status) => {
-                                info!("bitcoind exited with status: {status}");
-                            }
-                            Err(err) => {
-                                error!("failed to wait for bitcoind: {err}");
-                            }
-                        }
-                    } else {
-                        error!("timeout waiting for bitcoind to exit, killing...");
-                        if let Err(err) = child.kill().await {
-                            error!("failed to kill bitcoind: {err}");
-                        }
-                    }
-                }
-            }
-        });
-
-        self.task_tracker.close();
-
-        // Wait for the node to be ready
-        self.wait_until_ready().await?;
-
-        Ok(main_task)
+        Ok(join_handle)
     }
 
     /// Shuts down the Bitcoin Core node.
-    pub async fn shutdown(&self) {
-        info!("Shutting down Bitcoin Core node...");
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the node fails to shutdown.
+    pub async fn shutdown(&mut self) -> Result<()> {
+        info!("Shutting down isolated Bitcoin Core node...");
 
-        // Trigger cancellation
-        self.shutdown_token.cancel();
+        if let Some(process) = self.process.take() {
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("Bitcoin Core node shut down successfully");
+        } else {
+            debug!("No running Bitcoin Core node to shut down");
+        }
 
-        // Wait for tasks to complete
-        self.task_tracker.wait().await;
-
-        info!("Bitcoin Core node shut down.");
+        Ok(())
     }
 
     /// Returns the RPC URL for the Bitcoin Core node.
     #[must_use]
     pub fn get_rpc_url(&self) -> String {
-        format!("http://{BITCOIND_RPC_HOST}:{BITCOIND_RPC_PORT}")
+        if let Some(process) = &self.process {
+            if let Some(container_ip) = process.container_ip() {
+                format!("http://{}:{}", container_ip, self.rpc_port)
+            } else {
+                format!("http://127.0.0.1:{}", self.rpc_port)
+            }
+        } else {
+            format!("http://127.0.0.1:{}", self.rpc_port)
+        }
     }
 
     /// Make an RPC call to the Bitcoin Core node
     ///
     /// # Errors
     ///
-    /// Returns an error if the RPC call fails
+    /// Returns an error if the RPC call fails.
     pub async fn rpc_call<T: Serialize, R: for<'de> Deserialize<'de>>(
         &self,
         method: &str,
@@ -257,73 +310,47 @@ impl BitcoinNode {
     ) -> Result<R> {
         let client = reqwest::Client::new();
 
-        let request_body = json!({
-            "jsonrpc": "1.0",
-            "id": "rust-client",
-            "method": method,
-            "params": params,
-        });
-
         let response = client
             .post(&self.get_rpc_url())
-            .basic_auth(BITCOIND_RPC_USER, Some(BITCOIND_RPC_PASSWORD))
-            .json(&request_body)
+            .basic_auth(&self.rpc_user, Some(&self.rpc_password))
+            .json(&serde_json::json!({
+                "jsonrpc": "1.0",
+                "id": "proven",
+                "method": method,
+                "params": params
+            }))
             .send()
             .await
-            .map_err(|e| Error::Rpc(format!("Request failed: {}", e)))?;
+            .map_err(|e| Error::RpcCall(format!("failed to send request: {}", e)))?;
 
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = response
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response
                 .text()
                 .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            return Err(Error::Rpc(format!("HTTP error {}: {}", status, error_text)));
+                .unwrap_or_else(|_| "could not read response body".to_string());
+
+            return Err(Error::RpcCall(format!(
+                "RPC call failed with status {}: {}",
+                status, text
+            )));
         }
 
-        let response_body: serde_json::Value = response
+        #[derive(Deserialize)]
+        struct RpcResponse<T> {
+            result: T,
+            error: Option<Value>,
+        }
+
+        let rpc_response: RpcResponse<R> = response
             .json()
             .await
-            .map_err(|e| Error::Rpc(format!("Failed to parse response: {}", e)))?;
+            .map_err(|e| Error::RpcCall(format!("failed to parse response: {}", e)))?;
 
-        if let Some(error) = response_body.get("error") {
-            if !error.is_null() {
-                return Err(Error::Rpc(format!("RPC error: {:?}", error)));
-            }
+        if let Some(error) = rpc_response.error {
+            return Err(Error::RpcCall(format!("RPC error: {:#?}", error)));
         }
 
-        serde_json::from_value(response_body["result"].clone())
-            .map_err(|e| Error::Rpc(format!("Failed to parse result: {}", e)))
-    }
-
-    async fn wait_until_ready(&self) -> Result<()> {
-        info!("Waiting for Bitcoin Core node to be ready...");
-
-        let mut retries = 0;
-        let max_retries = 30;
-
-        while retries < max_retries {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-            // Try to make a simple RPC call
-            match self
-                .rpc_call::<Vec<()>, Value>("getblockchaininfo", vec![])
-                .await
-            {
-                Ok(_) => {
-                    info!("Bitcoin Core node is ready with RPC interface accessible.");
-                    return Ok(());
-                }
-                Err(e) => {
-                    debug!("Node not ready yet: {}", e);
-                }
-            }
-
-            retries += 1;
-            debug!("Waiting for Bitcoin Core node to be ready ({retries}/{max_retries})");
-        }
-
-        error!("Timed out waiting for Bitcoin Core node to be ready");
-        Err(Error::NotReady)
+        Ok(rpc_response.result)
     }
 }

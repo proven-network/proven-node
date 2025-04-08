@@ -194,7 +194,7 @@ async fn main() -> Result<()> {
         info!("Run #{}", run);
 
         let app = CounterApp::new(storage_dir.clone()).await?;
-        let process = manager.spawn(app).await?;
+        let (process, _join_handle) = manager.spawn(app).await?;
 
         // Wait for the process to exit
         process.wait().await?;

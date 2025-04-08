@@ -1,6 +1,4 @@
-use proven_isolated_bitcoin_core::{
-    BitcoinNetwork, IsolatedBitcoinNode, IsolatedBitcoinNodeOptions,
-};
+use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use serde_json::Value;
 
 #[tokio::main]
@@ -15,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting Bitcoin Core node in directory: {}", store_dir);
 
     // Create node options with regtest network for faster testing
-    let options = IsolatedBitcoinNodeOptions {
+    let options = BitcoinNodeOptions {
         network: BitcoinNetwork::Regtest, // Use regtest for quick startup
         store_dir,
         rpc_port: None,     // Use default (8332)
@@ -24,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create and start the node
-    let mut node = IsolatedBitcoinNode::new(options);
+    let mut node = BitcoinNode::new(options);
     node.start().await?;
 
     println!("Bitcoin Core node is ready!");

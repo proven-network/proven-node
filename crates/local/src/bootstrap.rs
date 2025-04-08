@@ -474,7 +474,7 @@ impl Bootstrap {
             }
 
             if let Some(bitcoin_node) = &bitcoin_node_option {
-                bitcoin_node.lock().await.shutdown().await;
+                let _ = bitcoin_node.lock().await.shutdown().await;
             }
         });
 
@@ -537,8 +537,8 @@ impl Bootstrap {
             ethereum_mainnet_reth_node.shutdown().await;
         }
 
-        if let Some(bitcoin_node) = self.bitcoin_node {
-            bitcoin_node.shutdown().await;
+        if let Some(mut bitcoin_node) = self.bitcoin_node {
+            let _ = bitcoin_node.shutdown().await;
         }
 
         if let Some(radix_mainnet_node) = self.radix_mainnet_node {
@@ -808,9 +808,12 @@ impl Bootstrap {
             .contains(&NodeSpecialization::BitcoinTestnet)
         {
             // Start Bitcoin testnet node
-            let bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
+            let mut bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
                 network: BitcoinNetwork::Testnet,
                 store_dir: self.args.bitcoin_testnet_store_dir.to_string_lossy().to_string(),
+                rpc_port: None,
+                rpc_user: None,
+                rpc_password: None,
             });
 
             let bitcoin_node_handle = bitcoin_node.start().await

@@ -100,7 +100,7 @@ mod tests {
         );
         let isolation_manager = IsolationManager::new();
 
-        let process = isolation_manager.spawn(app).await?;
+        let (process, _join_handle) = isolation_manager.spawn(app).await?;
         assert!(process.pid() > 0);
 
         // Echo should exit quickly
@@ -132,7 +132,7 @@ mod tests {
 
         let isolation_manager = IsolationManager::with_config(isolation_config);
 
-        let process = isolation_manager.spawn(app).await?;
+        let (process, _join_handle) = isolation_manager.spawn(app).await?;
         assert!(process.pid() > 0);
 
         // Hostname command should succeed
@@ -149,7 +149,7 @@ mod tests {
 
         let isolation_manager = IsolationManager::new();
 
-        let process = isolation_manager.spawn(app).await?;
+        let (process, _join_handle) = isolation_manager.spawn(app).await?;
         assert!(process.pid() > 0);
 
         // env command should succeed
@@ -170,7 +170,7 @@ mod tests {
 
         let isolation_manager = IsolationManager::new();
 
-        let process = isolation_manager.spawn(app).await?;
+        let (process, _join_handle) = isolation_manager.spawn(app).await?;
         assert!(process.pid() > 0);
 
         // pwd command should succeed
@@ -187,7 +187,7 @@ mod tests {
 
         let isolation_manager = IsolationManager::new();
 
-        let process = isolation_manager.spawn(app).await?;
+        let (process, _join_handle) = isolation_manager.spawn(app).await?;
         assert!(process.pid() > 0);
 
         // Wait a bit

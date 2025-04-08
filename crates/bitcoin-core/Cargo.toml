@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+async-trait = { workspace = true }
 futures = { workspace = true }
 nix = { workspace = true }
+once_cell = { workspace = true }
+proven-isolation = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
@@ -15,3 +18,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tracing-subscriber = { workspace = true } 

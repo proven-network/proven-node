@@ -1,6 +1,4 @@
-use proven_isolated_bitcoin_core::{
-    BitcoinNetwork, IsolatedBitcoinNode, IsolatedBitcoinNodeOptions,
-};
+use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting Bitcoin Core node in directory: {}", store_dir);
 
     // Create node options with Signet network
-    let options = IsolatedBitcoinNodeOptions {
+    let options = BitcoinNodeOptions {
         network: BitcoinNetwork::Signet,
         store_dir,
         rpc_port: None,     // Use default (8332)
@@ -23,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create and start the node
-    let mut node = IsolatedBitcoinNode::new(options);
+    let mut node = BitcoinNode::new(options);
     node.start().await?;
 
     println!("Bitcoin Core node is ready!");

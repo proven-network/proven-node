@@ -217,7 +217,7 @@ async fn main() -> Result<()> {
     info!("Readiness will be checked once per second with up to 30 retries");
 
     let start_time = std::time::Instant::now();
-    let process = manager.spawn(server).await?;
+    let (process, _join_handle) = manager.spawn(server).await?;
     let elapsed = start_time.elapsed();
 
     // The spawn method will already have waited for the server to be ready

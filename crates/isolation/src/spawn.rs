@@ -13,6 +13,7 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
@@ -433,7 +434,7 @@ impl IsolatedProcessSpawner {
     /// # Errors
     ///
     /// Returns an error if the process could not be spawned.
-    pub async fn spawn(&mut self) -> Result<IsolatedProcess> {
+    pub async fn spawn(&mut self) -> Result<(IsolatedProcess, JoinHandle<()>)> {
         let options = self.options.clone();
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
@@ -589,7 +590,7 @@ impl IsolatedProcessSpawner {
         // Monitor child process
         let pid_for_task = pid;
         let shutdown_token_clone = shutdown_token.clone();
-        tokio::task::spawn(async move {
+        let join_handle = tokio::task::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
                     match status {
@@ -667,13 +668,16 @@ impl IsolatedProcessSpawner {
             None
         };
 
-        Ok(IsolatedProcess {
-            cgroups_controller,
-            pid,
-            shutdown_token,
-            task_tracker,
-            veth_pair,
-        })
+        Ok((
+            IsolatedProcess {
+                cgroups_controller,
+                pid,
+                shutdown_token,
+                task_tracker,
+                veth_pair,
+            },
+            join_handle,
+        ))
     }
 }
 
@@ -682,7 +686,9 @@ impl IsolatedProcessSpawner {
 /// # Errors
 ///
 /// Returns an error if the process could not be spawned.
-pub async fn spawn_process(options: IsolatedProcessOptions) -> Result<IsolatedProcess> {
+pub async fn spawn_process(
+    options: IsolatedProcessOptions,
+) -> Result<(IsolatedProcess, JoinHandle<()>)> {
     let mut spawner = IsolatedProcessSpawner::new(options);
     spawner.spawn().await
 }
