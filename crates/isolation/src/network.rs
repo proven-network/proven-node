@@ -654,7 +654,7 @@ impl VethPair {
     /// # Errors
     ///
     /// Returns an error if the cleanup fails
-    pub async fn cleanup(&self) -> Result<()> {
+    fn cleanup(&self) -> Result<()> {
         debug!("Cleaning up veth pair: {}", self.host_name);
 
         // Remove port forwarding rules
@@ -750,6 +750,12 @@ impl VethPair {
 
         debug!("Veth pair cleanup complete");
         Ok(())
+    }
+}
+
+impl Drop for VethPair {
+    fn drop(&mut self) {
+        let _ = self.cleanup();
     }
 }
 

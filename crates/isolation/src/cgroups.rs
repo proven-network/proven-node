@@ -299,7 +299,7 @@ impl CgroupsController {
 
     /// Clean up the cgroup
     #[cfg(target_os = "linux")]
-    pub fn cleanup(&self) -> Result<()> {
+    fn cleanup(&self) -> Result<()> {
         if !self.is_active {
             return Ok(());
         }
@@ -339,7 +339,7 @@ impl CgroupsController {
 
     /// Clean up the cgroup (non-Linux platforms)
     #[cfg(not(target_os = "linux"))]
-    pub fn cleanup(&self) -> Result<()> {
+    fn cleanup(&self) -> Result<()> {
         Ok(())
     }
 

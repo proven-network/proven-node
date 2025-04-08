@@ -235,21 +235,8 @@ impl IsolatedProcess {
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
-        // Clean up network if active
-        if let Some(ref veth_pair) = self.veth_pair {
-            if let Err(e) = veth_pair.cleanup().await {
-                warn!("Failed to clean up network: {}", e);
-            }
-        }
-
-        // Clean up cgroups if active
-        if let Some(ref controller) = self.cgroups_controller {
-            if let Err(e) = controller.cleanup() {
-                warn!("Failed to clean up cgroups: {}", e);
-            }
-        }
-
         info!("Process shut down");
+
         Ok(())
     }
 
@@ -287,40 +274,6 @@ impl IsolatedProcess {
             .as_ref()
             .map_or(false, |c| c.is_active())
     }
-
-    /// Clean up resources used by the isolated process
-    ///
-    /// This includes:
-    /// - Cleaning up the veth pair if it exists
-    /// - Removing any temporary files or directories
-    /// - Killing any remaining child processes
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the cleanup fails
-    pub async fn cleanup(&self) -> Result<()> {
-        info!("Cleaning up process");
-
-        self.shutdown_token.cancel();
-        self.task_tracker.wait().await;
-
-        // Clean up network if active
-        if let Some(ref veth_pair) = self.veth_pair {
-            if let Err(e) = veth_pair.cleanup().await {
-                warn!("Failed to clean up network: {}", e);
-            }
-        }
-
-        // Clean up cgroups if active
-        if let Some(ref controller) = self.cgroups_controller {
-            if let Err(e) = controller.cleanup() {
-                warn!("Failed to clean up cgroups: {}", e);
-            }
-        }
-
-        info!("Process cleaned up");
-        Ok(())
-    }
 }
 
 /// Spawns isolated processes.
@@ -341,11 +294,6 @@ impl IsolatedProcessSpawner {
             options,
             veth_pair: None,
         }
-    }
-
-    /// Get the container's IP address (as reachable from the host)
-    pub fn container_ip(&self) -> Option<IpAddr> {
-        self.veth_pair.as_ref().map(|veth| veth.container_ip())
     }
 
     /// Build the arguments for the unshare command.
@@ -598,9 +546,6 @@ impl IsolatedProcessSpawner {
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
-        // Create a cancellation token for the child process
-        let _child_token = shutdown_token.child_token();
-
         // Start a task to handle stdout from the child process
         if let Some(stdout) = stdout {
             if let Some(ref application) = options.application {
@@ -729,16 +674,6 @@ impl IsolatedProcessSpawner {
             task_tracker,
             veth_pair,
         })
-    }
-
-    /// Cleans up any resources associated with the process spawner
-    pub async fn cleanup(&self) -> Result<()> {
-        if let Some(ref veth_pair) = self.veth_pair {
-            if let Err(e) = veth_pair.cleanup().await {
-                warn!("Failed to clean up veth pair: {}", e);
-            }
-        }
-        Ok(())
     }
 }
 
