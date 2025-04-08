@@ -101,12 +101,6 @@ RUN apt-get update && apt-get install -y \
     iftop \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PostgreSQL
-RUN sh -c 'echo "deb https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list' \
-    && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
-    && apt-get update && apt-get install -y postgresql-15 \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install .NET Runtime
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.12 --install-dir /usr/share/dotnet
 RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
