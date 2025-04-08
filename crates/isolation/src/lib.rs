@@ -306,11 +306,12 @@ impl IsolationManager {
         &self,
         application: A,
     ) -> Result<IsolatedProcessOptions> {
-        let mut options = IsolatedProcessOptions::new(application.executable(), application.args());
-
-        // Set the application for output handling and other functionality
-        let application = Arc::new(application);
-        options = options.with_application(application.clone());
+        let application: Arc<dyn IsolatedApplication> = Arc::new(application);
+        let mut options = IsolatedProcessOptions::new(
+            application.clone(),
+            application.executable(),
+            application.args(),
+        );
 
         // Apply configuration from the application
         if let Some(working_dir) = application.working_dir() {

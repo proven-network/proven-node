@@ -28,7 +28,7 @@ use crate::{IsolatedApplication, VolumeMount};
 #[derive(Clone)]
 pub struct IsolatedProcessOptions {
     /// Application for handling process output.
-    pub application: Option<Arc<dyn IsolatedApplication>>,
+    pub application: Arc<dyn IsolatedApplication>,
 
     /// The arguments to pass to the executable.
     pub args: Vec<String>,
@@ -75,10 +75,12 @@ impl IsolatedProcessOptions {
     /// Creates a new `IsolatedProcessOptions`.
     #[must_use]
     pub fn new<P: AsRef<Path>, A: AsRef<OsStr>>(
+        application: Arc<dyn IsolatedApplication>,
         executable: P,
         args: impl IntoIterator<Item = A>,
     ) -> Self {
         Self {
+            application,
             args: args
                 .into_iter()
                 .map(|a| a.as_ref().to_string_lossy().to_string())
@@ -88,7 +90,6 @@ impl IsolatedProcessOptions {
             executable: executable.as_ref().to_path_buf(),
             memory_control: None,
             namespaces: NamespaceOptions::default(),
-            application: None,
             working_dir: None,
             volume_mounts: Vec::new(),
         }
@@ -126,13 +127,6 @@ impl IsolatedProcessOptions {
     #[must_use]
     pub fn with_memory_control(mut self, memory_control: CgroupMemoryConfig) -> Self {
         self.memory_control = Some(memory_control);
-        self
-    }
-
-    /// Sets the output handler for the process.
-    #[must_use]
-    pub fn with_application(mut self, application: Arc<dyn IsolatedApplication>) -> Self {
-        self.application = Some(application);
         self
     }
 
@@ -439,9 +433,6 @@ impl IsolatedProcessSpawner {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
 
-        // Clone the application for later use
-        let application = options.application.clone();
-
         #[cfg(target_os = "linux")]
         let mut cmd = {
             // Prepare the command to be executed with appropriate isolation
@@ -552,48 +543,30 @@ impl IsolatedProcessSpawner {
 
         // Start a task to handle stdout from the child process
         if let Some(stdout) = stdout {
-            if let Some(ref app) = application {
-                let app = Arc::clone(app);
-                task_tracker.spawn(async move {
-                    let mut lines = BufReader::new(stdout).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        app.handle_stdout(&line);
-                    }
-                });
-            } else {
-                task_tracker.spawn(async move {
-                    let mut lines = BufReader::new(stdout).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        info!("process stdout: {}", line);
-                    }
-                });
-            }
+            let app = Arc::clone(&options.application);
+            task_tracker.spawn(async move {
+                let mut lines = BufReader::new(stdout).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    app.handle_stdout(&line);
+                }
+            });
         }
 
         // Start a task to handle stderr from the child process
         if let Some(stderr) = stderr {
-            if let Some(ref app) = application {
-                let app = Arc::clone(app);
-                task_tracker.spawn(async move {
-                    let mut lines = BufReader::new(stderr).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        app.handle_stderr(&line);
-                    }
-                });
-            } else {
-                task_tracker.spawn(async move {
-                    let mut lines = BufReader::new(stderr).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        warn!("process stderr: {}", line);
-                    }
-                });
-            }
+            let app = Arc::clone(&options.application);
+            task_tracker.spawn(async move {
+                let mut lines = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    app.handle_stderr(&line);
+                }
+            });
         }
 
         // Monitor child process
         let pid_for_task = pid;
-        let shutdown_token_clone = shutdown_token.clone();
-        let app_for_signal = application.clone();
+        let shutdown_token_for_task = shutdown_token.clone();
+        let app_for_task = Arc::clone(&options.application);
         let join_handle = tokio::task::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
@@ -610,17 +583,15 @@ impl IsolatedProcessSpawner {
                         }
                     }
                 }
-                () = shutdown_token_clone.cancelled() => {
+                () = shutdown_token_for_task.cancelled() => {
                     info!("Shutdown requested, terminating process...");
 
                     // Convert to i32 for the kill operation
                     let raw_pid = pid_for_task as i32;
                     let pid = Pid::from_raw(raw_pid);
 
-                    // Get the shutdown signal from the application if available, otherwise use SIGTERM
-                    let shutdown_signal = app_for_signal.as_ref()
-                        .map(|app| app.shutdown_signal())
-                        .unwrap_or(Signal::SIGTERM);
+                    // Get the shutdown signal from the application
+                    let shutdown_signal = app_for_task.shutdown_signal();
 
                     if let Err(err) = signal::kill(pid, shutdown_signal) {
                         error!("Failed to send {} to process: {}", shutdown_signal, err);
@@ -681,49 +652,45 @@ impl IsolatedProcessSpawner {
             veth_pair,
         };
 
-        // If we have an application, perform readiness checks
-        if let Some(ref app) = application {
-            let interval = Duration::from_millis(app.is_ready_check_interval_ms());
-            let max_attempts = app.is_ready_check_max();
-            let mut attempts = 0;
+        // Perform readiness checks
+        let interval = Duration::from_millis(options.application.is_ready_check_interval_ms());
+        let max_attempts = options.application.is_ready_check_max();
+        let mut attempts = 0;
 
-            debug!(
-                "Starting readiness checks with interval: {}ms, max attempts: {:?}",
-                interval.as_millis(),
-                max_attempts
-            );
+        debug!(
+            "Starting readiness checks with interval: {}ms, max attempts: {:?}",
+            interval.as_millis(),
+            max_attempts
+        );
 
-            loop {
-                // Check if process has exited while we were waiting
-                if unsafe { libc::kill(pid as i32, 0) } != 0 {
-                    return Err(Error::ReadinessCheck(
-                        "Process exited during readiness checks".to_string(),
-                    ));
+        loop {
+            // Check if process has exited while we were waiting
+            if unsafe { libc::kill(pid as i32, 0) } != 0 {
+                return Err(Error::ReadinessCheck(
+                    "Process exited during readiness checks".to_string(),
+                ));
+            }
+
+            match options.application.is_ready_check(&process).await {
+                Ok(true) => {
+                    debug!("Application reported ready after {} attempts", attempts + 1);
+                    break;
                 }
-
-                match app.is_ready_check(&process).await {
-                    Ok(true) => {
-                        debug!("Application reported ready after {} attempts", attempts + 1);
-                        break;
-                    }
-
-                    Ok(false) => {
-                        attempts += 1;
-                        if let Some(max) = max_attempts {
-                            if attempts >= max {
-                                return Err(Error::ReadinessCheck(format!(
-                                    "Application not ready after {} attempts",
-                                    attempts
-                                )));
-                            }
+                Ok(false) => {
+                    attempts += 1;
+                    if let Some(max) = max_attempts {
+                        if attempts >= max {
+                            return Err(Error::ReadinessCheck(format!(
+                                "Application not ready after {} attempts",
+                                attempts
+                            )));
                         }
-                        debug!("Application not ready, attempt {}, waiting...", attempts);
-                        tokio::time::sleep(interval).await;
                     }
-
-                    Err(e) => {
-                        return Err(Error::ReadinessCheck(e.to_string()));
-                    }
+                    debug!("Application not ready, attempt {}, waiting...", attempts);
+                    tokio::time::sleep(interval).await;
+                }
+                Err(e) => {
+                    return Err(Error::ReadinessCheck(e.to_string()));
                 }
             }
         }
