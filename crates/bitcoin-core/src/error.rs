@@ -10,6 +10,10 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Error type for the isolated-bitcoin-core crate.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Already started.
+    #[error("already started")]
+    AlreadyStarted,
+
     /// IO error.
     #[error("io error ({0}): {1}")]
     Io(&'static str, #[source] io::Error),

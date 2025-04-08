@@ -233,6 +233,10 @@ impl BitcoinNode {
     ///
     /// Returns an error if the node fails to start.
     pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+        if self.process.is_some() {
+            return Err(Error::AlreadyStarted);
+        }
+
         debug!("Starting isolated Bitcoin Core node...");
 
         let app = BitcoinCoreApp {
