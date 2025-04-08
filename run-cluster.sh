@@ -13,6 +13,7 @@ echo "============================"
 # Enable Docker BuildKit
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
+export COMPOSE_BAKE=true
 
 # Build and run the Docker containers
 cd integration-test
