@@ -80,25 +80,26 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     gnupg \
+    iptables \
     jq \
     libssl3 \
     netcat-openbsd \
-    wget \
-    unzip \
     openjdk-17-jre-headless \
+    unzip \
+    wget \
     # Debug tools
-    procps \
-    net-tools \
-    iproute2 \
-    tcpdump \
     dnsutils \
+    iftop \
+    iproute2 \
+    htop \
     iputils-ping \
     lsof \
+    net-tools \
+    procps \
     strace \
-    htop \
+    tcpdump \
     telnet \
     traceroute \
-    iftop \
     && rm -rf /var/lib/apt/lists/*
 
 # Install .NET Runtime
