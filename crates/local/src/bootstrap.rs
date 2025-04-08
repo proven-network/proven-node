@@ -85,7 +85,7 @@ pub struct Bootstrap {
     bitcoin_node_handle: Option<JoinHandle<()>>,
 
     postgres: Option<Postgres>,
-    postgres_handle: Option<JoinHandle<proven_postgres::Result<()>>>,
+    postgres_handle: Option<JoinHandle<()>>,
 
     radix_aggregator: Option<RadixAggregator>,
     radix_aggregator_handle: Option<JoinHandle<proven_radix_aggregator::Result<()>>>,
@@ -383,7 +383,7 @@ impl Bootstrap {
                     } => {},
                     _ = async { 
                         if let Some(handle) = postgres_handle {
-                            if let Ok(Err(e)) = handle.await {
+                            if let Ok(e) = handle.await {
                                 error!("postgres exited: {:?}", e);
                                 return;
                             }
@@ -437,8 +437,8 @@ impl Bootstrap {
                 aggregator.lock().await.shutdown().await;
             }
             
-            if let Some(pg) = &postgres {
-                pg.lock().await.shutdown().await;
+            if let Some(postgres) = &postgres {
+                let _ = postgres.lock().await.shutdown().await;
             }
             
             if let Some(mainnet_node) = &radix_mainnet_node_option {
@@ -509,8 +509,8 @@ impl Bootstrap {
             radix_aggregator.shutdown().await;
         }
 
-        if let Some(postgres) = self.postgres {
-            postgres.shutdown().await;
+        if let Some(mut postgres) = self.postgres {
+            let _ = postgres.shutdown().await;
         }
 
         if let Some(ethereum_sepolia_lighthouse_node) = self.ethereum_sepolia_lighthouse_node {
@@ -840,7 +840,7 @@ impl Bootstrap {
                 .await?
                 .contains(&NodeSpecialization::RadixStokenet)
         {
-            let postgres = Postgres::new(PostgresOptions {
+            let mut postgres = Postgres::new(PostgresOptions {
                 bin_path: self.args.postgres_bin_path.clone(),
                 password: POSTGRES_PASSWORD.to_string(),
                 username: POSTGRES_USERNAME.to_string(),

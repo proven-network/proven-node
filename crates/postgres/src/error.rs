@@ -10,25 +10,21 @@ pub enum Error {
     #[error("already started")]
     AlreadyStarted,
 
-    /// Bad PID.
-    #[error("bad PID")]
-    BadPid,
+    /// Failed to initialize database.
+    #[error("failed to initialize database")]
+    InitDb,
 
     /// IO operation failed.
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),
 
-    /// Process exited with non-zero.
-    #[error("exited with non-zero: {0}")]
-    NonZeroExitCode(std::process::ExitStatus),
+    /// An error occurred in the isolation system.
+    #[error("isolation error: {0}")]
+    Isolation(#[from] proven_isolation::Error),
 
     /// Failed to parse output.
     #[error("failed to parse output")]
     OutputParse,
-
-    /// Failed to parse regex pattern.
-    #[error(transparent)]
-    RegexParse(#[from] regex::Error),
 
     /// Failed to vacuum.
     #[error("vacuum failed")]

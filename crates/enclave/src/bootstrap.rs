@@ -93,7 +93,7 @@ pub struct Bootstrap {
     postgres_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
 
     postgres: Option<Postgres>,
-    postgres_handle: Option<JoinHandle<proven_postgres::Result<()>>>,
+    postgres_handle: Option<JoinHandle<()>>,
 
     radix_aggregator: Option<RadixAggregator>,
     radix_aggregator_handle: Option<JoinHandle<proven_radix_aggregator::Result<()>>>,
@@ -350,7 +350,7 @@ impl Bootstrap {
                     Ok(Err(e)) = postgres_fs_handle => {
                         error!("postgres_external_fs exited: {:?}", e);
                     }
-                    Ok(Err(e)) = postgres_handle => {
+                    Ok(e) = postgres_handle => {
                         error!("postgres exited: {:?}", e);
                     }
                     Ok(Err(e)) = radix_aggregator_handle => {
@@ -386,7 +386,7 @@ impl Bootstrap {
             radix_aggregator.lock().await.shutdown().await;
             radix_node.lock().await.shutdown().await;
             radix_node_fs.lock().await.shutdown().await;
-            postgres.lock().await.shutdown().await;
+            let _ = postgres.lock().await.shutdown().await;
             postgres_fs.lock().await.shutdown().await;
             dnscrypt_proxy.lock().await.shutdown().await;
             proxy.lock().await.shutdown().await;
@@ -429,8 +429,8 @@ impl Bootstrap {
             radix_aggregator.shutdown().await;
         }
 
-        if let Some(postgres) = self.postgres {
-            postgres.shutdown().await;
+        if let Some(mut postgres) = self.postgres {
+            let _ = postgres.shutdown().await;
         }
 
         if let Some(postgres_fs) = self.postgres_fs {
@@ -669,7 +669,7 @@ impl Bootstrap {
     }
 
     async fn start_postgres(&mut self) -> Result<()> {
-        let postgres = Postgres::new(PostgresOptions {
+        let mut postgres = Postgres::new(PostgresOptions {
             bin_path: "/usr/local/pgsql/bin".to_string(),
             password: POSTGRES_PASSWORD.to_string(),
             username: POSTGRES_USERNAME.to_string(),

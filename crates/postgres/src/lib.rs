@@ -9,31 +9,138 @@ mod error;
 
 pub use error::{Error, Result};
 
+use std::path::Path;
 use std::process::Stdio;
 
-use nix::sys::signal::{self, Signal};
-use nix::unistd::Pid;
+use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use proven_isolation::{
+    IsolatedApplication, IsolatedProcess, IsolationManager, Result as IsolationResult, VolumeMount,
+};
 use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
-use tokio::time::{Duration, sleep};
-use tokio_util::sync::CancellationToken;
-use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
+
+/// Regex pattern for matching Postgres log lines
+static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3} (?:UTC|[+-]\d{2}) \[\d+\] (\w+):  (.*)")
+        .expect("Invalid regex pattern")
+});
+
+/// Application struct for running Postgres in isolation
+struct PostgresApp {
+    bin_path: String,
+    executable: String,
+    username: String,
+    store_dir: String,
+}
+
+#[async_trait]
+impl IsolatedApplication for PostgresApp {
+    fn args(&self) -> Vec<String> {
+        vec![
+            "-D".to_string(),
+            self.store_dir.clone(),
+            "-c".to_string(),
+            "maintenance_work_mem=1GB".to_string(),
+        ]
+    }
+
+    fn executable(&self) -> &str {
+        &self.executable
+    }
+
+    fn name(&self) -> &str {
+        "postgres"
+    }
+
+    fn handle_stdout(&self, line: &str) {
+        if let Some(caps) = LOG_PATTERN.captures(line) {
+            let label = caps.get(1).map_or("UNKNOWN", |m| m.as_str());
+            let message = caps.get(2).map_or(line, |m| m.as_str());
+            match label {
+                "DEBUG1" => debug!(target: "postgres", "{}", message),
+                "DEBUG2" => debug!(target: "postgres", "{}", message),
+                "DEBUG3" => debug!(target: "postgres", "{}", message),
+                "DEBUG4" => debug!(target: "postgres", "{}", message),
+                "DEBUG5" => debug!(target: "postgres", "{}", message),
+                "INFO" => info!(target: "postgres", "{}", message),
+                "NOTICE" => info!(target: "postgres", "{}", message),
+                "WARNING" => warn!(target: "postgres", "{}", message),
+                "ERROR" => error!(target: "postgres", "{}", message),
+                "LOG" => info!(target: "postgres", "{}", message),
+                "FATAL" => error!(target: "postgres", "{}", message),
+                "PANIC" => error!(target: "postgres", "{}", message),
+                _ => error!(target: "postgres", "{}", line),
+            }
+        } else {
+            error!(target: "postgres", "{}", line);
+        }
+    }
+
+    fn handle_stderr(&self, line: &str) {
+        self.handle_stdout(line) // Postgres sends all logs to stderr, so handle them the same way
+    }
+
+    async fn is_ready_check(&self, _process: &IsolatedProcess) -> IsolationResult<bool> {
+        let cmd = Command::new(format!("{}/pg_isready", self.bin_path))
+            .arg("-h")
+            .arg("127.0.0.1")
+            .arg("-p")
+            .arg("5432")
+            .arg("-U")
+            .arg(&self.username)
+            .arg("-d")
+            .arg("postgres")
+            .output()
+            .await
+            .map_err(|e| proven_isolation::Error::Application(e.to_string()))?;
+
+        Ok(cmd.status.success())
+    }
+
+    fn is_ready_check_interval_ms(&self) -> u64 {
+        5000 // Check every 5 seconds
+    }
+
+    async fn prepare_config(&self) -> IsolationResult<()> {
+        // Create data directory if it doesn't exist
+        let data_dir = Path::new(&self.store_dir);
+        if !data_dir.exists() {
+            std::fs::create_dir_all(data_dir).map_err(|e| {
+                proven_isolation::Error::Application(format!(
+                    "Failed to create data directory: {}",
+                    e
+                ))
+            })?;
+        }
+
+        Ok(())
+    }
+
+    fn tcp_ports(&self) -> Vec<u16> {
+        vec![5432]
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![VolumeMount::new(&self.store_dir, &self.store_dir)]
+    }
+}
 
 /// Runs a Postgres server to provide storage for Radix Gateway.
 pub struct Postgres {
     bin_path: String,
+    isolation_manager: IsolationManager,
     password: String,
+    process: Option<IsolatedProcess>,
     username: String,
-    shutdown_token: CancellationToken,
     skip_vacuum: bool,
     store_dir: String,
-    task_tracker: TaskTracker,
 }
 
-/// Options for configuring a `Postgres`.
+/// Options for configuring `Postgres`.
 pub struct PostgresOptions {
     /// The path to the directory containing the Postgres binaries.
     pub bin_path: String,
@@ -67,10 +174,10 @@ impl Postgres {
             bin_path,
             password,
             username,
-            shutdown_token: CancellationToken::new(),
             skip_vacuum,
             store_dir,
-            task_tracker: TaskTracker::new(),
+            isolation_manager: IsolationManager::new(),
+            process: None,
         }
     }
 
@@ -84,8 +191,8 @@ impl Postgres {
     /// # Returns
     ///
     /// A `JoinHandle` to the spawned task that runs the Postgres server.
-    pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
-        if self.task_tracker.is_closed() {
+    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+        if self.process.is_some() {
             return Err(Error::AlreadyStarted);
         }
 
@@ -100,109 +207,42 @@ impl Postgres {
                 .map_err(|e| Error::Io("failed to remove postmaster pid", e))?;
         }
 
-        let bin_path = self.bin_path.clone();
-        let shutdown_token = self.shutdown_token.clone();
-        let task_tracker = self.task_tracker.clone();
-        let store_dir = self.store_dir.clone();
+        let app = PostgresApp {
+            bin_path: self.bin_path.clone(),
+            executable: format!("{}/postgres", self.bin_path),
+            username: self.username.clone(),
+            store_dir: self.store_dir.clone(),
+        };
 
-        let server_task = self.task_tracker.spawn(async move {
-            // Start the postgres process
-            let mut cmd = Command::new(format!("{}/postgres", bin_path))
-                .arg("-D")
-                .arg(&store_dir)
-                .arg("-c")
-                .arg("maintenance_work_mem=1GB")
-                .stdout(Stdio::null())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|e| Error::Io("failed to spawn postgres", e))?;
+        let (process, join_handle) = self
+            .isolation_manager
+            .spawn(app)
+            .await
+            .map_err(Error::Isolation)?;
 
-            let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+        self.process = Some(process);
+        if !self.skip_vacuum {
+            if let Err(e) = self.vacuum_database().await {
+                let _ = self.shutdown().await;
 
-            let re = Regex::new(
-                r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3} UTC \[\d+\] (\w+):  (.*)",
-            )?;
-
-            // Spawn a task to read and process the stderr output of the postgres process
-            task_tracker.spawn(async move {
-                let reader = BufReader::new(stderr);
-                let mut lines = reader.lines();
-
-
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if let Some(caps) = re.captures(&line) {
-                        let label = caps.get(1).map_or("UNKNOWN", |m| m.as_str());
-                        let message = caps.get(2).map_or(line.as_str(), |m| m.as_str());
-                        match label {
-                            "DEBUG1" => debug!("{}", message),
-                            "DEBUG2" => debug!("{}", message),
-                            "DEBUG3" => debug!("{}", message),
-                            "DEBUG4" => debug!("{}", message),
-                            "DEBUG5" => debug!("{}", message),
-                            "INFO" => info!("{}", message),
-                            "NOTICE" => info!("{}", message),
-                            "WARNING" => warn!("{}", message),
-                            "ERROR" => error!("{}", message),
-                            "LOG" => info!("{}", message),
-                            "FATAL" => error!("{}", message),
-                            "PANIC" => error!("{}", message),
-                            _ => error!("{}", line),
-                        }
-                    } else {
-                        error!("{}", line);
-                    }
-                }
-            });
-
-            // Wait for the postgres process to exit or for the shutdown token to be cancelled
-            tokio::select! {
-                _ = cmd.wait() => {
-                    let status = cmd.wait().await.map_err(|e| Error::Io("failed to wait for exit", e))?;
-
-                    if !status.success() {
-                        return Err(Error::NonZeroExitCode(status));
-                    }
-
-                    Ok(())
-                }
-                () = shutdown_token.cancelled() => {
-                    let raw_pid: i32 = cmd.id().ok_or(Error::OutputParse)?.try_into().map_err(|_| Error::BadPid)?;
-                    let pid = Pid::from_raw(raw_pid);
-
-                    if let Err(e) = signal::kill(pid, Signal::SIGTERM) {
-                        error!("Failed to send SIGTERM signal: {}", e);
-                    } else {
-                        info!("postgres entered smart shutdown...");
-                    }
-
-                    let _ = cmd.wait().await;
-
-                    Ok(())
-                }
+                return Err(e);
             }
-        });
-
-        self.task_tracker.close();
-
-        self.wait_until_ready().await?;
-
-        if !self.skip_vacuum && self.vacuum_database().await.is_err() {
-            // If vacuuming fails, shutdown the server
-            self.shutdown().await;
-            return Err(Error::VacuumFailed);
         }
 
-        Ok(server_task)
+        Ok(join_handle)
     }
 
     /// Shuts down the server.
-    pub async fn shutdown(&self) {
-        info!("postgres shutting down...");
+    pub async fn shutdown(&mut self) -> Result<()> {
+        if let Some(process) = self.process.take() {
+            info!("postgres shutting down...");
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("postgres shutdown");
+        } else {
+            debug!("no running Postgres server to shut down");
+        }
 
-        self.shutdown_token.cancel();
-        self.task_tracker.wait().await;
-
-        info!("postgres shutdown");
+        Ok(())
     }
 
     async fn initialize_database(&self) -> Result<()> {
@@ -227,7 +267,7 @@ impl Postgres {
         info!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
 
         if !cmd.status.success() {
-            return Err(Error::NonZeroExitCode(cmd.status));
+            return Err(Error::InitDb);
         }
 
         Ok(())
@@ -239,31 +279,6 @@ impl Postgres {
             && std::path::Path::new(&self.store_dir)
                 .join("PG_VERSION")
                 .exists()
-    }
-
-    async fn wait_until_ready(&self) -> Result<()> {
-        loop {
-            info!("checking if postgres is ready...");
-            let cmd = Command::new(format!("{}/pg_isready", self.bin_path))
-                .arg("-h")
-                .arg("127.0.0.1")
-                .arg("-p")
-                .arg("5432")
-                .arg("-U")
-                .arg(&self.username)
-                .arg("-d")
-                .arg("postgres")
-                .output()
-                .await
-                .map_err(|e| Error::Io("failed to spawn pg_isready", e))?;
-
-            if cmd.status.success() {
-                info!("postgres is ready");
-                return Ok(());
-            }
-
-            sleep(Duration::from_secs(5)).await;
-        }
     }
 
     async fn vacuum_database(&self) -> Result<()> {
@@ -307,7 +322,7 @@ impl Postgres {
             e = cmd.wait() => {
                 let exit_status = e.map_err(|e| Error::Io("failed to get vacuum exit status", e))?;
                 if !exit_status.success() {
-                    return Err(Error::NonZeroExitCode(exit_status));
+                    return Err(Error::VacuumFailed);
                 }
             }
             _ = stdout_writer => {},
