@@ -12,10 +12,16 @@ pub use error::{Error, Result};
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, error, info};
+
+/// Regex pattern for matching Bitcoin Core log timestamps
+static TIMESTAMP_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s+").unwrap());
 
 /// Represents a Bitcoin network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,11 +118,13 @@ impl IsolatedApplication for BitcoinCoreApp {
     }
 
     fn handle_stderr(&self, line: &str) {
-        error!(target: "bitcoind", "{}", line);
+        let message = TIMESTAMP_REGEX.replace(line, "").into_owned();
+        error!(target: "bitcoind", "{}", message);
     }
 
     fn handle_stdout(&self, line: &str) {
-        info!(target: "bitcoind", "{}", line);
+        let message = TIMESTAMP_REGEX.replace(line, "").into_owned();
+        info!(target: "bitcoind", "{}", message);
     }
 
     fn name(&self) -> &str {

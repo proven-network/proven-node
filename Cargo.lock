@@ -9179,6 +9179,7 @@ dependencies = [
  "async-trait",
  "futures",
  "nix 0.27.1",
+ "once_cell",
  "proven-isolation",
  "regex",
  "reqwest",
