@@ -16,9 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = BitcoinNodeOptions {
         network: BitcoinNetwork::Regtest, // Use regtest for quick startup
         store_dir,
-        rpc_port: None,     // Use default (8332)
-        rpc_user: None,     // Use default (proven)
-        rpc_password: None, // Use default (proven)
+        rpc_port: None, // Use default (8332)
     };
 
     // Create and start the node

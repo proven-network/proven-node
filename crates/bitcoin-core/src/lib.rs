@@ -22,6 +22,10 @@ use tracing::{debug, error, info};
 
 static P2P_PORT: u16 = 18333;
 
+// Not sensitive
+static RPC_USER: &str = "proven";
+static RPC_PASSWORD: &str = "proven";
+
 /// Regex pattern for matching Bitcoin Core log timestamps
 static TIMESTAMP_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s+").unwrap());
@@ -62,12 +66,6 @@ pub struct BitcoinNodeOptions {
 
     /// Optional RPC port (defaults to 8332)
     pub rpc_port: Option<u16>,
-
-    /// Optional RPC username (defaults to "proven")
-    pub rpc_user: Option<String>,
-
-    /// Optional RPC password (defaults to "proven")
-    pub rpc_password: Option<String>,
 }
 
 /// Bitcoin Core application implementing the IsolatedApplication trait
@@ -83,8 +81,6 @@ struct BitcoinCoreApp {
 
     /// RPC configuration
     rpc_port: u16,
-    rpc_user: String,
-    rpc_password: String,
 }
 
 #[async_trait]
@@ -98,8 +94,8 @@ impl IsolatedApplication for BitcoinCoreApp {
             "--rpcbind=0.0.0.0".to_string(),
             format!("--port={}", P2P_PORT),
             format!("--rpcport={}", self.rpc_port),
-            format!("--rpcuser={}", self.rpc_user),
-            format!("--rpcpassword={}", self.rpc_password),
+            format!("--rpcuser={}", RPC_USER),
+            format!("--rpcpassword={}", RPC_PASSWORD),
         ];
 
         // Add network-specific arguments
@@ -153,7 +149,7 @@ impl IsolatedApplication for BitcoinCoreApp {
 
         let response = match client
             .post(&rpc_url)
-            .basic_auth(&self.rpc_user, Some(&self.rpc_password))
+            .basic_auth(RPC_USER, Some(RPC_PASSWORD))
             .json(&serde_json::json!({
                 "jsonrpc": "1.0",
                 "id": "proven",
@@ -216,8 +212,6 @@ pub struct BitcoinNode {
 
     /// The RPC port
     rpc_port: u16,
-    rpc_user: String,
-    rpc_password: String,
 }
 
 impl BitcoinNode {
@@ -230,8 +224,6 @@ impl BitcoinNode {
             network: options.network,
             store_dir: options.store_dir,
             rpc_port: options.rpc_port.unwrap_or(8332),
-            rpc_user: options.rpc_user.unwrap_or_else(|| "proven".to_string()),
-            rpc_password: options.rpc_password.unwrap_or_else(|| "proven".to_string()),
         }
     }
 
@@ -248,8 +240,6 @@ impl BitcoinNode {
             store_dir: self.store_dir.clone(),
             executable_path: "bitcoind".to_string(),
             rpc_port: self.rpc_port,
-            rpc_user: self.rpc_user.clone(),
-            rpc_password: self.rpc_password.clone(),
         };
 
         let (process, join_handle) = self
@@ -261,7 +251,7 @@ impl BitcoinNode {
         // Store the process for later shutdown
         self.process = Some(process);
 
-        info!("Bitcoin Core node started in isolated environment");
+        info!("Bitcoin Core node started");
 
         Ok(join_handle)
     }
@@ -312,7 +302,7 @@ impl BitcoinNode {
 
         let response = client
             .post(&self.get_rpc_url())
-            .basic_auth(&self.rpc_user, Some(&self.rpc_password))
+            .basic_auth(RPC_USER, Some(RPC_PASSWORD))
             .json(&serde_json::json!({
                 "jsonrpc": "1.0",
                 "id": "proven",

@@ -812,8 +812,6 @@ impl Bootstrap {
                 network: BitcoinNetwork::Testnet,
                 store_dir: self.args.bitcoin_testnet_store_dir.to_string_lossy().to_string(),
                 rpc_port: None,
-                rpc_user: None,
-                rpc_password: None,
             });
 
             let bitcoin_node_handle = bitcoin_node.start().await
