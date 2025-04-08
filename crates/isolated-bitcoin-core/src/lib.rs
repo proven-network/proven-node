@@ -9,8 +9,10 @@ mod error;
 
 pub use error::{Error, Result};
 
+use std::path::{Path, PathBuf};
+
 use async_trait::async_trait;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, error, info};
@@ -101,6 +103,10 @@ impl IsolatedApplication for BitcoinCoreApp {
         args
     }
 
+    fn chroot_dir(&self) -> Option<PathBuf> {
+        Some(PathBuf::from("/tmp/bitcoin-core"))
+    }
+
     fn executable(&self) -> &str {
         &self.executable_path
     }
@@ -160,7 +166,7 @@ impl IsolatedApplication for BitcoinCoreApp {
 
     async fn prepare_config(&self) -> proven_isolation::Result<()> {
         // Create the data directory if it doesn't exist
-        let data_dir = std::path::Path::new(&self.store_dir);
+        let data_dir = Path::new(&self.store_dir);
         if !data_dir.exists() {
             std::fs::create_dir_all(data_dir).map_err(|e| {
                 proven_isolation::Error::Application(format!(
@@ -175,6 +181,10 @@ impl IsolatedApplication for BitcoinCoreApp {
 
     fn tcp_ports(&self) -> Vec<u16> {
         vec![self.rpc_port]
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![VolumeMount::new(&self.store_dir, &self.store_dir)]
     }
 }
 
