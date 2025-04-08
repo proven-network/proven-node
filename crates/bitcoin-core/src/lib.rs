@@ -188,7 +188,7 @@ impl IsolatedApplication for BitcoinCoreApp {
     }
 
     fn tcp_ports(&self) -> Vec<u16> {
-        vec![self.rpc_port, P2P_PORT]
+        vec![P2P_PORT]
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
