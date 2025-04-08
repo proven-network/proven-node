@@ -65,6 +65,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use nix::sys::signal::Signal;
 use tracing::{debug, warn};
 
 mod cgroups;
@@ -196,6 +197,11 @@ pub trait IsolatedApplication: Send + Sync + 'static {
         Ok(())
     }
 
+    /// Returns the signal to use when shutting down the application
+    fn shutdown_signal(&self) -> Signal {
+        Signal::SIGTERM
+    }
+
     /// Returns a list of TCP ports that should be forwarded from the host to the container
     ///
     /// The same port number will be used on both the host and container.
@@ -212,11 +218,6 @@ pub trait IsolatedApplication: Send + Sync + 'static {
         Vec::new()
     }
 
-    /// Returns the working directory for the process
-    fn working_dir(&self) -> Option<PathBuf> {
-        None
-    }
-
     /// Returns the volume mounts that should be available to the application
     ///
     /// Each volume mount specifies a path from the host system that should be
@@ -225,6 +226,11 @@ pub trait IsolatedApplication: Send + Sync + 'static {
     /// This is only used when mount namespaces are enabled.
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         Vec::new()
+    }
+
+    /// Returns the working directory for the process
+    fn working_dir(&self) -> Option<PathBuf> {
+        None
     }
 }
 

@@ -667,8 +667,13 @@ impl IsolatedProcessSpawner {
                     let raw_pid = pid_for_task as i32;
                     let pid = Pid::from_raw(raw_pid);
 
-                    if let Err(err) = signal::kill(pid, Signal::SIGTERM) {
-                        error!("Failed to send SIGTERM to process: {}", err);
+                    // Get the shutdown signal from the application if available, otherwise use SIGTERM
+                    let shutdown_signal = options.application.as_ref()
+                        .map(|app| app.shutdown_signal())
+                        .unwrap_or(Signal::SIGTERM);
+
+                    if let Err(err) = signal::kill(pid, shutdown_signal) {
+                        error!("Failed to send {} to process: {}", shutdown_signal, err);
                     }
 
                     // Wait for the process to exit with a timeout
