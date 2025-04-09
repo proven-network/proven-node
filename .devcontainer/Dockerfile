@@ -3,7 +3,8 @@ FROM mcr.microsoft.com/devcontainers/rust:1-1-bookworm
 # Install nightly Rust and set it as default
 RUN rustup update && \
     rustup toolchain install nightly && \
-    rustup default nightly
+    rustup default nightly && \
+    rustup component add rustfmt --toolchain nightly
 
 # Install build dependencies and debugging tools
 RUN apt-get update && apt-get install -y \
