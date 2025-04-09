@@ -4,7 +4,8 @@ FROM mcr.microsoft.com/devcontainers/rust:1-1-bookworm
 RUN rustup update && \
     rustup toolchain install nightly && \
     rustup default nightly && \
-    rustup component add rustfmt --toolchain nightly
+    rustup component add rustfmt --toolchain nightly && \
+    rustup component add clippy --toolchain nightly
 
 # Install build dependencies and debugging tools
 RUN apt-get update && apt-get install -y \
