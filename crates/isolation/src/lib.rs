@@ -121,7 +121,9 @@ impl VolumeMount {
 #[async_trait]
 pub trait IsolatedApplication: Send + Sync + 'static {
     /// Returns the arguments for the process
-    fn args(&self) -> Vec<String>;
+    fn args(&self) -> Vec<String> {
+        Vec::new()
+    }
 
     /// Returns the root directory for chroot if needed
     fn chroot_dir(&self) -> Option<PathBuf> {
