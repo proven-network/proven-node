@@ -63,6 +63,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use nix::sys::signal::Signal;
@@ -201,6 +202,11 @@ pub trait IsolatedApplication: Send + Sync + 'static {
     /// Returns the signal to use when shutting down the application
     fn shutdown_signal(&self) -> Signal {
         Signal::SIGTERM
+    }
+
+    /// Returns the graceful shutdown timeout
+    fn shutdown_timeout(&self) -> Duration {
+        Duration::from_secs(30)
     }
 
     /// Returns a list of TCP ports that should be forwarded from the host to the container

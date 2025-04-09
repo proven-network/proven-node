@@ -504,6 +504,9 @@ impl IsolatedProcessSpawner {
                 .map_err(|e| Error::Io("Failed to run pgrep", e))?;
 
             let stdout = String::from_utf8_lossy(&pgrep_output.stdout);
+
+            debug!("pgrep output: {}", stdout);
+
             pid = stdout
                 .split_whitespace()
                 .next()
@@ -571,8 +574,9 @@ impl IsolatedProcessSpawner {
 
         // Monitor child process
         let pid_for_task = pid;
+        let shutdown_signal = options.application.shutdown_signal();
+        let shutdown_timeout = options.application.shutdown_timeout();
         let shutdown_token_for_task = shutdown_token.clone();
-        let app_for_task = Arc::clone(&options.application);
         let join_handle = tokio::task::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
@@ -593,34 +597,48 @@ impl IsolatedProcessSpawner {
                     info!("Shutdown requested, terminating process...");
 
                     // Convert to i32 for the kill operation
-                    let raw_pid = pid_for_task as i32;
-                    let pid = Pid::from_raw(raw_pid);
+                    let pid = Pid::from_raw(pid_for_task as i32);
 
-                    // Get the shutdown signal from the application
-                    let shutdown_signal = app_for_task.shutdown_signal();
+                    debug!("Sending {} to process {}", shutdown_signal, pid);
 
                     if let Err(err) = signal::kill(pid, shutdown_signal) {
                         error!("Failed to send {} to process: {}", shutdown_signal, err);
                     }
 
-                    // Wait for the process to exit with a timeout
-                    if let Ok(result) = tokio::time::timeout(
-                        Duration::from_secs(10),
-                        child.wait()
-                    ).await {
-                        match result {
-                            Ok(status) => {
-                                info!("Process exited with status: {}", status);
-                            }
-                            Err(err) => {
-                                error!("Failed to wait for process: {}", err);
-                            }
+                    // Wait for the actual process to exit, not the unshare parent
+                    let check_interval = Duration::from_millis(100);
+                    let start = std::time::Instant::now();
+
+                    loop {
+                        let process_exists = unsafe { libc::kill(pid_for_task as i32, 0) } == 0;
+
+                        if !process_exists {
+                            info!("Process {} has exited after signal", pid_for_task);
+                            break;
                         }
-                    } else {
-                        error!("Timeout waiting for process to exit, killing...");
-                        if let Err(err) = child.kill().await {
-                            error!("Failed to kill process: {}", err);
+
+                        if start.elapsed() > shutdown_timeout {
+                            error!("Timeout waiting for process {} to exit, killing...", pid_for_task);
+
+                            // Try to kill the process forcefully
+                            if let Err(err) = signal::kill(pid, Signal::SIGKILL) {
+                                error!("Failed to kill process {}: {}", pid_for_task, err);
+                            }
+
+                            // As a last resort, try to kill the child process (unshare)
+                            if let Err(err) = child.kill().await {
+                                error!("Failed to kill unshare process: {}", err);
+                            }
+
+                            break;
                         }
+
+                        tokio::time::sleep(check_interval).await;
+                    }
+
+                    // Still wait for the child to avoid zombie processes
+                    if let Err(err) = child.wait().await {
+                        error!("Failed to wait for unshare process: {}", err);
                     }
                 }
             }
