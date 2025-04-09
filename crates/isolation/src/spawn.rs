@@ -520,8 +520,14 @@ impl IsolatedProcessSpawner {
                 warn!("Network namespaces require root permissions for port forwarding setup");
                 None
             } else {
-                // Set up the veth pair
-                match VethPair::create_for_pid(pid).await {
+                // Set up the veth pair with port lists from application
+                match VethPair::new(
+                    pid,
+                    options.application.tcp_port_forwards(),
+                    options.application.udp_port_forwards(),
+                )
+                .await
+                {
                     Ok(veth) => {
                         let veth = Arc::new(veth);
                         self.veth_pair = Some(Arc::clone(&veth));

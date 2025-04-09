@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create node options
     let options = PostgresOptions {
-        bin_path: "/opt/homebrew/bin".to_string(),
+        bin_path: "/usr/local/pgsql/bin".to_string(),
         password: "postgres".to_string(),
         username: "postgres".to_string(),
         skip_vacuum: true,

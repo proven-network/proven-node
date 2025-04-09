@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <signal.h>
@@ -30,6 +31,7 @@ volatile sig_atomic_t running = 1;
  */
 void handle_signal(int signal) {
     printf("\n[SIGNAL] Received signal %d, shutting down\n", signal);
+    fflush(stdout);
     running = 0;
 }
 
@@ -46,8 +48,10 @@ int main(int argc, char *argv[]) {
     printf("\n┌───────────────────────────────────────┐\n");
     printf("│ Port Forward HTTP Server              │\n");
     printf("└───────────────────────────────────────┘\n\n");
+    fflush(stdout);
     
     printf("[SERVER] Starting HTTP server on port %d\n", PORT);
+    fflush(stdout);
     
     /* Create socket */
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -80,6 +84,11 @@ int main(int argc, char *argv[]) {
     
     printf("[SERVER] Ready and listening on port %d\n", PORT);
     printf("[SERVER] Waiting for connections...\n\n");
+    fflush(stdout);
+
+    /* Set up signal handling */
+    signal(SIGINT, handle_signal);
+    signal(SIGTERM, handle_signal);
     
     /* Configure timeout for select() */
     struct timeval timeout;
@@ -101,6 +110,7 @@ int main(int argc, char *argv[]) {
         
         if (activity < 0) {
             perror("[ERROR] Select error");
+            fflush(stdout);
             continue;
         }
         
@@ -112,6 +122,7 @@ int main(int argc, char *argv[]) {
         if (FD_ISSET(server_fd, &read_fds)) {
             if ((client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len)) < 0) {
                 perror("[ERROR] Accept failed");
+                fflush(stdout);
                 continue;
             }
             
@@ -121,6 +132,7 @@ int main(int argc, char *argv[]) {
             request_count++;
             printf("[REQUEST #%d] Client connected: %s:%d\n", 
                    request_count, client_ip, ntohs(client_addr.sin_port));
+            fflush(stdout);
             
             /* Read request (not parsing it for this simple example) */
             read(client_fd, buffer, sizeof(buffer) - 1);
@@ -129,12 +141,14 @@ int main(int argc, char *argv[]) {
             char *first_line = strtok(buffer, "\r\n");
             if (first_line) {
                 printf("[REQUEST #%d] %s\n", request_count, first_line);
+                fflush(stdout);
             }
             
             /* Send response */
             write(client_fd, response, strlen(response));
             printf("[RESPONSE #%d] Sent 200 OK (Content length: %ld bytes)\n\n", 
                    request_count, strlen(response) - strlen("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n"));
+            fflush(stdout);
             
             /* Close connection */
             close(client_fd);
@@ -142,6 +156,7 @@ int main(int argc, char *argv[]) {
     }
     
     printf("[SERVER] Shutting down gracefully\n");
+    fflush(stdout);
     close(server_fd);
     return EXIT_SUCCESS;
 } 

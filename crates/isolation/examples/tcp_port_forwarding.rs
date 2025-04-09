@@ -37,7 +37,7 @@ impl PortForwardServer {
 
         // Get the path to the C source file
         let server_c_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/port_forward/server.c");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/tcp_port_forwarding/server.c");
 
         debug!("Compiling HTTP server from {}", server_c_path.display());
 
@@ -104,7 +104,7 @@ impl IsolatedApplication for PortForwardServer {
     }
 
     /// Return the TCP ports to forward
-    fn tcp_ports(&self) -> Vec<u16> {
+    fn tcp_port_forwards(&self) -> Vec<u16> {
         vec![SERVER_PORT]
     }
 
@@ -204,8 +204,10 @@ async fn main() -> Result<()> {
     info!("✅ Server process is now ready! (took {:?})", elapsed);
     info!("Server is running with PID: {}", process.pid());
 
-    // Make a final request to verify server is working
-    info!("Making final request to verify server");
+    // Make final requests to verify server connectivity
+    info!("Making final requests to verify server and port forwarding");
+
+    // First verify direct container access via veth pair
     let client = reqwest::Client::builder()
         .local_address(Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(
             10, 0, 0, 1,
@@ -214,15 +216,30 @@ async fn main() -> Result<()> {
         .map_err(|e| Error::Application(format!("Failed to create client: {}", e)))?;
 
     let response = client
-        .get("http://10.0.0.2:8080")
+        .get(&format!(
+            "http://{}:{}",
+            process.container_ip().unwrap(),
+            SERVER_PORT
+        ))
         .send()
         .await
-        .map_err(|e| Error::Application(format!("Failed to make final request: {}", e)))?;
+        .map_err(|e| {
+            Error::Application(format!("Failed to make direct container request: {}", e))
+        })?;
+    let text = response.text().await.map_err(|e| {
+        Error::Application(format!("Failed to read direct container response: {}", e))
+    })?;
+    info!("Direct container access response: {}", text);
+
+    // Then verify localhost port forwarding
+    let response = reqwest::get(&format!("http://127.0.0.1:{}", SERVER_PORT))
+        .await
+        .map_err(|e| Error::Application(format!("Failed to make localhost request: {}", e)))?;
     let text = response
         .text()
         .await
-        .map_err(|e| Error::Application(format!("Failed to read final response: {}", e)))?;
-    info!("Final response: {}", text);
+        .map_err(|e| Error::Application(format!("Failed to read localhost response: {}", e)))?;
+    info!("Localhost port forwarding response: {}", text);
 
     // Wait a bit before shutting down
     info!("Server verified working, waiting 5 seconds before shutdown");

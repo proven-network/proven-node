@@ -187,7 +187,7 @@ impl IsolatedApplication for BitcoinCoreApp {
         Ok(())
     }
 
-    fn tcp_ports(&self) -> Vec<u16> {
+    fn tcp_port_forwards(&self) -> Vec<u16> {
         vec![P2P_PORT]
     }
 

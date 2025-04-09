@@ -19,21 +19,35 @@ static IP_COUNTER: AtomicU32 = AtomicU32::new(2); // Start at 2 since 1 is reser
 /// A virtual ethernet pair for network communication between host and container
 #[derive(Debug)]
 pub struct VethPair {
-    /// The name of the host end of the veth pair
-    pub host_name: String,
-    /// The name of the container end of the veth pair
-    pub container_name: String,
-    /// The IP address of the host end
-    pub host_ip: IpAddr,
     /// The IP address of the container end
     pub container_ip: IpAddr,
+
     /// The PID of the container process
     pub container_pid: u32,
+
+    /// The name of the container end of the veth pair
+    pub container_name: String,
+
+    /// The IP address of the host end
+    pub host_ip: IpAddr,
+
+    /// The name of the host end of the veth pair
+    pub host_name: String,
+
+    /// TCP ports to forward from host to container
+    pub tcp_port_forwards: Vec<u16>,
+
+    /// UDP ports to forward from host to container
+    pub udp_port_forwards: Vec<u16>,
 }
 
 impl VethPair {
     /// Create a new veth pair
-    pub fn new(container_pid: u32) -> Self {
+    pub async fn new(
+        pid: u32,
+        tcp_port_forwards: Vec<u16>,
+        udp_port_forwards: Vec<u16>,
+    ) -> Result<Self> {
         let counter = IP_COUNTER.fetch_add(1, Ordering::SeqCst);
         let host_name = format!("veth{}", counter);
         let container_name = format!("veth{}", counter + 1);
@@ -41,31 +55,15 @@ impl VethPair {
         let host_ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
         let container_ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, counter as u8));
 
-        Self {
+        let veth = Self {
             host_name,
             container_name,
             host_ip,
             container_ip,
-            container_pid,
-        }
-    }
-
-    /// Get the container's IP address (as reachable from the host)
-    pub fn container_ip(&self) -> IpAddr {
-        self.container_ip
-    }
-
-    /// Get the host's IP address (as reachable from the container)
-    pub fn host_ip(&self) -> IpAddr {
-        self.host_ip
-    }
-
-    /// Create a new veth pair for an isolated process
-    pub async fn create_for_pid(pid: u32) -> Result<Self> {
-        let veth = Self::new(pid);
-
-        // Clean up any existing interfaces
-        Self::cleanup_existing(&veth.host_name).await?;
+            container_pid: pid,
+            tcp_port_forwards,
+            udp_port_forwards,
+        };
 
         // Create /var/run/netns directory if it doesn't exist
         let output = Command::new("mkdir")
@@ -185,66 +183,14 @@ impl VethPair {
         Ok(veth)
     }
 
-    /// Clean up any existing interfaces with the same name
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the cleanup fails critically
-    async fn cleanup_existing(host_name: &str) -> Result<()> {
-        // List existing interfaces
-        let output = Command::new("ip")
-            .args(&["link", "show"])
-            .output()
-            .map_err(|e| Error::Network(format!("Failed to list interfaces: {}", e)))?;
+    /// Get the container's IP address (as reachable from the host)
+    pub fn container_ip(&self) -> IpAddr {
+        self.container_ip
+    }
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(Error::Network(format!(
-                "Failed to list interfaces: {}",
-                stderr
-            )));
-        }
-
-        // List network namespaces
-        let output = Command::new("ip")
-            .args(&["netns", "list"])
-            .output()
-            .map_err(|e| Error::Network(format!("Failed to list network namespaces: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(Error::Network(format!(
-                "Failed to list network namespaces: {}",
-                stderr
-            )));
-        }
-
-        // Try to delete the interface from the host
-        let output = Command::new("ip")
-            .args(&["link", "delete", host_name])
-            .output()
-            .map_err(|e| Error::Network(format!("Failed to delete interface: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            debug!("Failed to delete interface from host: {}", stderr);
-        }
-
-        // Try to delete any existing container network namespaces
-        let netns_dir = "/var/run/netns";
-        if let Ok(entries) = std::fs::read_dir(netns_dir) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if let Some(name) = entry.file_name().to_str() {
-                        if name.starts_with("container_") {
-                            let _ = std::fs::remove_file(entry.path());
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
+    /// Get the host's IP address (as reachable from the container)
+    pub fn host_ip(&self) -> IpAddr {
+        self.host_ip
     }
 
     /// Set up the container side of the veth pair
@@ -514,7 +460,6 @@ impl VethPair {
             .args(&["-w", "net.ipv4.ip_forward=1"])
             .output()
             .map_err(|e| Error::Network(format!("Failed to enable IPv4 forwarding: {}", e)))?;
-
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
@@ -522,27 +467,298 @@ impl VethPair {
                 stderr
             )));
         }
-
         debug!("Enabled IPv4 forwarding");
 
-        // Verify IPv4 forwarding is enabled
-        let output = Command::new("sysctl")
-            .args(&["net.ipv4.ip_forward"])
-            .output()
-            .map_err(|e| Error::Network(format!("Failed to verify IPv4 forwarding: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(Error::Network(format!(
-                "Failed to verify IPv4 forwarding: {}",
-                stderr
-            )));
+        // Enable route_localnet for loopback and veth to handle NAT'd localhost traffic
+        debug!("Enabling route_localnet");
+        for iface in &["lo", &self.host_name] {
+            let setting = format!("net.ipv4.conf.{}.route_localnet=1", iface);
+            let output = Command::new("sysctl")
+                .args(&["-w", &setting])
+                .output()
+                .map_err(|e| Error::Network(format!("Failed to set {}: {}", setting, e)))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(Error::Network(format!(
+                    "Failed to set {}: {}",
+                    setting, stderr
+                )));
+            }
         }
 
-        let forwarding_status = String::from_utf8_lossy(&output.stdout);
-        debug!("IPv4 forwarding status: {}", forwarding_status);
+        // Container network subnet
+        let container_subnet = "10.0.0.0/24"; // Assuming /24 based on IPs
 
-        // Set up NAT for container network
+        // Set up TCP port forwarding
+        for port in &self.tcp_port_forwards {
+            debug!("Setting up TCP rules for port {}", port);
+
+            // --- NAT Table Rules --- //
+
+            // 1. DNAT for external traffic (e.g., coming from eth0)
+            let output = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-A",
+                    "PREROUTING",
+                    "-p",
+                    "tcp",
+                    "!",
+                    "-i",
+                    "lo", // Match any interface *except* loopback
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "DNAT",
+                    "--to-destination",
+                    &format!("{}:{}", self.container_ip, port),
+                ])
+                .output()
+                .map_err(|e| Error::Network(format!("Failed to set NAT PREROUTING rule: {}", e)))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(Error::Network(format!(
+                    "Failed to set NAT PREROUTING rule: {}",
+                    stderr
+                )));
+            }
+
+            // 2. DNAT for localhost traffic
+            let output = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-A",
+                    "OUTPUT",
+                    "-p",
+                    "tcp",
+                    "-o",
+                    "lo", // Only match locally generated packets going to loopback
+                    "-d",
+                    "127.0.0.1/32",
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "DNAT",
+                    "--to-destination",
+                    &format!("{}:{}", self.container_ip, port),
+                ])
+                .output()
+                .map_err(|e| Error::Network(format!("Failed to set NAT OUTPUT rule: {}", e)))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(Error::Network(format!(
+                    "Failed to set NAT OUTPUT rule: {}",
+                    stderr
+                )));
+            }
+
+            // 3. SNAT for localhost -> container traffic
+            let output = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-A",
+                    "POSTROUTING",
+                    "-p",
+                    "tcp",
+                    "-s",
+                    "127.0.0.1/32", // Source is localhost
+                    "-d",
+                    &self.container_ip.to_string(), // Destination is container
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "SNAT",
+                    "--to-source",
+                    &self.host_ip.to_string(), // Change src to host veth IP
+                ])
+                .output()
+                .map_err(|e| {
+                    Error::Network(format!("Failed to set NAT POSTROUTING SNAT rule: {}", e))
+                })?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(Error::Network(format!(
+                    "Failed to set NAT POSTROUTING SNAT rule: {}",
+                    stderr
+                )));
+            }
+
+            // --- Filter Table Rules (FORWARD Chain) --- //
+
+            // 4. Allow NEW connections forwarding TO container (covers external and localhost)
+            let output = Command::new("iptables")
+                .args(&[
+                    "-A",
+                    "FORWARD",
+                    "-d",
+                    &self.container_ip.to_string(), // Destination is container
+                    "-p",
+                    "tcp",
+                    "--dport",
+                    &port.to_string(),
+                    "-m",
+                    "state",
+                    "--state",
+                    "NEW",
+                    "-j",
+                    "ACCEPT",
+                ])
+                .output()
+                .map_err(|e| {
+                    Error::Network(format!("Failed to set filter FORWARD NEW rule: {}", e))
+                })?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(Error::Network(format!(
+                    "Failed to set filter FORWARD NEW rule: {}",
+                    stderr
+                )));
+            }
+        }
+
+        // Set up UDP port forwarding
+        for port in &self.udp_port_forwards {
+            debug!("Setting up UDP rules for port {}", port);
+
+            // --- NAT Table Rules --- //
+
+            // 1. DNAT for external traffic
+            let output = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-A",
+                    "PREROUTING",
+                    "-p",
+                    "udp",
+                    "!",
+                    "-i",
+                    "lo",
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "DNAT",
+                    "--to-destination",
+                    &format!("{}:{}", self.container_ip, port),
+                ])
+                .output()
+                .map_err(|e| {
+                    Error::Network(format!("Failed to set UDP NAT PREROUTING rule: {}", e))
+                })?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(Error::Network(format!(
+                    "Failed to set UDP NAT PREROUTING rule: {}",
+                    stderr
+                )));
+            }
+
+            // 2. DNAT for localhost traffic
+            let output = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-A",
+                    "OUTPUT",
+                    "-p",
+                    "udp",
+                    "-o",
+                    "lo",
+                    "-d",
+                    "127.0.0.1/32",
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "DNAT",
+                    "--to-destination",
+                    &format!("{}:{}", self.container_ip, port),
+                ])
+                .output()
+                .map_err(|e| Error::Network(format!("Failed to set UDP NAT OUTPUT rule: {}", e)))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(Error::Network(format!(
+                    "Failed to set UDP NAT OUTPUT rule: {}",
+                    stderr
+                )));
+            }
+
+            // 3. SNAT for localhost -> container traffic
+            let output = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-A",
+                    "POSTROUTING",
+                    "-p",
+                    "udp",
+                    "-s",
+                    "127.0.0.1/32",
+                    "-d",
+                    &self.container_ip.to_string(),
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "SNAT",
+                    "--to-source",
+                    &self.host_ip.to_string(),
+                ])
+                .output()
+                .map_err(|e| {
+                    Error::Network(format!(
+                        "Failed to set UDP NAT POSTROUTING SNAT rule: {}",
+                        e
+                    ))
+                })?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(Error::Network(format!(
+                    "Failed to set UDP NAT POSTROUTING SNAT rule: {}",
+                    stderr
+                )));
+            }
+
+            // --- Filter Table Rules (FORWARD Chain) --- //
+            // For basic UDP echo/request-reply, allowing forwarded packets based on destination is often enough.
+            // No state matching needed typically.
+
+            // 4. Allow forwarding TO container (covers external and localhost)
+            let output = Command::new("iptables")
+                .args(&[
+                    "-A",
+                    "FORWARD",
+                    "-d",
+                    &self.container_ip.to_string(),
+                    "-p",
+                    "udp",
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "ACCEPT",
+                ])
+                .output()
+                .map_err(|e| {
+                    Error::Network(format!(
+                        "Failed to set UDP filter FORWARD rule (to container): {}",
+                        e
+                    ))
+                })?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(Error::Network(format!(
+                    "Failed to set UDP filter FORWARD rule (to container): {}",
+                    stderr
+                )));
+            }
+        }
+
+        // --- General NAT & Filter Rules (Not port specific) --- //
+
+        // 5. MASQUERADE for container outbound traffic (POSTROUTING)
+        debug!("Setting up MASQUERADE for container outbound traffic");
         let output = Command::new("iptables")
             .args(&[
                 "-t",
@@ -550,101 +766,92 @@ impl VethPair {
                 "-A",
                 "POSTROUTING",
                 "-s",
-                "10.0.0.0/24",
+                container_subnet,
+                "!",
+                "-d",
+                container_subnet, // Don't masquerade container-to-container traffic if applicable
                 "-j",
                 "MASQUERADE",
             ])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to set up NAT: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(Error::Network(format!("Failed to set up NAT: {}", stderr)));
-        }
-
-        debug!("Set up NAT for container network");
-
-        // Set up port forwarding from host to container
-        let output = Command::new("iptables")
-            .args(&[
-                "-t",
-                "nat",
-                "-A",
-                "PREROUTING",
-                "-p",
-                "tcp",
-                "-i",
-                "eth0",
-                "--dport",
-                "8080",
-                "-j",
-                "DNAT",
-                "--to-destination",
-                &format!("{}:8080", self.container_ip),
-            ])
-            .output()
-            .map_err(|e| Error::Network(format!("Failed to set up port forwarding: {}", e)))?;
-
+            .map_err(|e| {
+                Error::Network(format!(
+                    "Failed to set NAT POSTROUTING MASQUERADE rule: {}",
+                    e
+                ))
+            })?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to set up port forwarding: {}",
+                "Failed to set NAT POSTROUTING MASQUERADE rule: {}",
                 stderr
             )));
         }
 
-        debug!(
-            "Set up port forwarding from eth0:8080 to {}:8080",
-            self.container_ip
-        );
-
-        // Add OUTPUT rule for localhost access
+        // 6. Allow ESTABLISHED/RELATED traffic in FORWARD chain (Handles return traffic)
+        debug!("Allowing ESTABLISHED/RELATED traffic in FORWARD chain");
         let output = Command::new("iptables")
             .args(&[
-                "-t",
-                "nat",
                 "-A",
-                "OUTPUT",
-                "-p",
-                "tcp",
-                "-d",
-                "127.0.0.1",
-                "--dport",
-                "8080",
+                "FORWARD",
+                "-m",
+                "state",
+                "--state",
+                "ESTABLISHED,RELATED",
                 "-j",
-                "DNAT",
-                "--to-destination",
-                &format!("{}:8080", self.container_ip),
+                "ACCEPT",
             ])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to set up localhost forwarding: {}", e)))?;
-
+            .map_err(|e| {
+                Error::Network(format!(
+                    "Failed to set filter FORWARD ESTABLISHED rule: {}",
+                    e
+                ))
+            })?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to set up localhost forwarding: {}",
+                "Failed to set filter FORWARD ESTABLISHED rule: {}",
                 stderr
             )));
         }
-
-        debug!("Set up localhost forwarding to {}:8080", self.container_ip);
 
         // Verify iptables rules
+        debug!("Current iptables rules:");
+
+        // Check NAT table rules
         let output = Command::new("iptables")
             .args(&["-t", "nat", "-L", "-n", "-v"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to list iptables rules: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to list NAT rules: {}", e)))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to list iptables rules: {}",
+                "Failed to list NAT rules: {}",
                 stderr
             )));
         }
 
         let rules = String::from_utf8_lossy(&output.stdout);
-        debug!("Current iptables NAT rules:\n{}", rules);
+        debug!("NAT table rules:\n{}", rules);
+
+        // Check default table rules
+        let output = Command::new("iptables")
+            .args(&["-L", "-n", "-v"])
+            .output()
+            .map_err(|e| Error::Network(format!("Failed to list filter rules: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(Error::Network(format!(
+                "Failed to list filter rules: {}",
+                stderr
+            )));
+        }
+
+        let rules = String::from_utf8_lossy(&output.stdout);
+        debug!("Filter table rules:\n{}", rules);
 
         Ok(())
     }
@@ -657,98 +864,220 @@ impl VethPair {
     fn cleanup(&self) -> Result<()> {
         debug!("Cleaning up veth pair: {}", self.host_name);
 
-        // Remove port forwarding rules
-        let _ = Command::new("iptables")
-            .args(&[
-                "-t",
-                "nat",
-                "-D",
-                "PREROUTING",
-                "-p",
-                "tcp",
-                "-i",
-                "eth0",
-                "--dport",
-                "8080",
-                "-j",
-                "DNAT",
-                "--to-destination",
-                &format!("{}:8080", self.container_ip),
-            ])
-            .output();
+        // Remove port forwarding rules for TCP ports
+        for port in &self.tcp_port_forwards {
+            debug!("Removing TCP rules for port {}", port);
 
-        // Remove localhost forwarding rule
-        let _ = Command::new("iptables")
-            .args(&[
-                "-t",
-                "nat",
-                "-D",
-                "OUTPUT",
-                "-p",
-                "tcp",
-                "-d",
-                "127.0.0.1",
-                "--dport",
-                "8080",
-                "-j",
-                "DNAT",
-                "--to-destination",
-                &format!("{}:8080", self.container_ip),
-            ])
-            .output();
+            // 1. Remove NAT PREROUTING rule (External DNAT)
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-D",
+                    "PREROUTING",
+                    "-p",
+                    "tcp",
+                    "!",
+                    "-i",
+                    "lo",
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "DNAT",
+                    "--to-destination",
+                    &format!("{}:{}", self.container_ip, port),
+                ])
+                .output();
 
-        // Remove NAT rules
-        let _ = Command::new("iptables")
-            .args(&[
-                "-t",
-                "nat",
-                "-D",
-                "POSTROUTING",
-                "-s",
-                "10.0.0.0/24",
-                "-j",
-                "MASQUERADE",
-            ])
-            .output();
+            // 2. Remove NAT OUTPUT rule (Localhost DNAT)
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-D",
+                    "OUTPUT",
+                    "-p",
+                    "tcp",
+                    "-o",
+                    "lo",
+                    "-d",
+                    "127.0.0.1/32",
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "DNAT",
+                    "--to-destination",
+                    &format!("{}:{}", self.container_ip, port),
+                ])
+                .output();
+
+            // 3. Remove NAT POSTROUTING rule (Localhost SNAT)
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-D",
+                    "POSTROUTING",
+                    "-p",
+                    "tcp",
+                    "-s",
+                    "127.0.0.1/32",
+                    "-d",
+                    &self.container_ip.to_string(),
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "SNAT",
+                    "--to-source",
+                    &self.host_ip.to_string(),
+                ])
+                .output();
+
+            // 4. Remove Filter FORWARD NEW rule
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-D",
+                    "FORWARD",
+                    "-d",
+                    &self.container_ip.to_string(),
+                    "-p",
+                    "tcp",
+                    "--dport",
+                    &port.to_string(),
+                    "-m",
+                    "state",
+                    "--state",
+                    "NEW",
+                    "-j",
+                    "ACCEPT",
+                ])
+                .output();
+        }
+
+        // Remove port forwarding rules for UDP ports
+        for port in &self.udp_port_forwards {
+            debug!("Removing UDP rules for port {}", port);
+
+            // 1. Remove NAT PREROUTING rule (External DNAT)
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-D",
+                    "PREROUTING",
+                    "-p",
+                    "udp",
+                    "!",
+                    "-i",
+                    "lo",
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "DNAT",
+                    "--to-destination",
+                    &format!("{}:{}", self.container_ip, port),
+                ])
+                .output();
+
+            // 2. Remove NAT OUTPUT rule (Localhost DNAT)
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-D",
+                    "OUTPUT",
+                    "-p",
+                    "udp",
+                    "-o",
+                    "lo",
+                    "-d",
+                    "127.0.0.1/32",
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "DNAT",
+                    "--to-destination",
+                    &format!("{}:{}", self.container_ip, port),
+                ])
+                .output();
+
+            // 3. Remove NAT POSTROUTING rule (Localhost SNAT)
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-D",
+                    "POSTROUTING",
+                    "-p",
+                    "udp",
+                    "-s",
+                    "127.0.0.1/32",
+                    "-d",
+                    &self.container_ip.to_string(),
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "SNAT",
+                    "--to-source",
+                    &self.host_ip.to_string(),
+                ])
+                .output();
+
+            // 4. Remove Filter FORWARD rule (to container)
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-D",
+                    "FORWARD",
+                    "-d",
+                    &self.container_ip.to_string(),
+                    "-p",
+                    "udp",
+                    "--dport",
+                    &port.to_string(),
+                    "-j",
+                    "ACCEPT",
+                ])
+                .output();
+        }
+
+        // IMPORTANT: Do NOT remove the general MASQUERADE or FORWARD ESTABLISHED,RELATED rules here
+        // as other containers/network setups might depend on them.
+        // Their removal should be handled externally or when the *last* dependency is gone.
 
         // Delete the veth interface - doing this will automatically
         // remove the other end of the pair as well
-        debug!("Deleting veth interface");
+        debug!("Deleting veth interface {}", self.host_name);
         let output = Command::new("ip")
             .args(&["link", "delete", &self.host_name])
             .output()
             .map_err(|e| Error::Network(format!("Failed to delete veth interface: {}", e)))?;
 
         if !output.status.success() {
+            // Log error, but don't fail cleanup if interface is already gone
             let stderr = String::from_utf8_lossy(&output.stderr);
-            debug!("Failed to delete veth interface: {}", stderr);
+            debug!(
+                "Failed to delete veth interface (might be already gone): {}",
+                stderr
+            );
         }
 
-        // Clean up network namespace
+        // Clean up network namespace symlink
         let ns_name = format!("container_{}", self.container_pid);
-        debug!("Removing network namespace: {}", ns_name);
-
-        // First try to delete the namespace
-        let output = Command::new("ip")
-            .args(&["netns", "delete", &ns_name])
-            .output()
-            .map_err(|e| Error::Network(format!("Failed to delete network namespace: {}", e)))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            debug!("Failed to delete network namespace: {}", stderr);
-        }
-
-        // Then remove the symlink if it still exists
         let ns_link = format!("/var/run/netns/{}", ns_name);
         if std::path::Path::new(&ns_link).exists() {
             debug!("Removing network namespace symlink: {}", ns_link);
             if let Err(e) = std::fs::remove_file(&ns_link) {
-                debug!("Failed to remove network namespace symlink: {}", e);
+                // Log error, but don't fail the whole cleanup
+                debug!(
+                    "Failed to remove network namespace symlink {}: {}",
+                    ns_link, e
+                );
             }
         }
+        // Note: We don't delete the actual netns (`ip netns del ...`) as it should be automatically
+        // cleaned up when the process (container) exits and the symlink is removed.
 
-        debug!("Veth pair cleanup complete");
+        debug!("Veth pair cleanup for {} complete", self.host_name);
         Ok(())
     }
 }

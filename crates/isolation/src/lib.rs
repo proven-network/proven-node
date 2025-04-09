@@ -207,7 +207,7 @@ pub trait IsolatedApplication: Send + Sync + 'static {
     ///
     /// The same port number will be used on both the host and container.
     /// This is only used when network namespaces are enabled.
-    fn tcp_ports(&self) -> Vec<u16> {
+    fn tcp_port_forwards(&self) -> Vec<u16> {
         Vec::new()
     }
 
@@ -215,7 +215,7 @@ pub trait IsolatedApplication: Send + Sync + 'static {
     ///
     /// The same port number will be used on both the host and container.
     /// This is only used when network namespaces are enabled.
-    fn udp_ports(&self) -> Vec<u16> {
+    fn udp_port_forwards(&self) -> Vec<u16> {
         Vec::new()
     }
 

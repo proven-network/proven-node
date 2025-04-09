@@ -41,6 +41,10 @@ struct PostgresApp {
 impl IsolatedApplication for PostgresApp {
     fn args(&self) -> Vec<String> {
         vec![
+            "-h".to_string(),
+            "0.0.0.0".to_string(),
+            "-p".to_string(),
+            "5432".to_string(),
             "-D".to_string(),
             self.store_dir.clone(),
             "-c".to_string(),
@@ -84,10 +88,16 @@ impl IsolatedApplication for PostgresApp {
         self.handle_stdout(line) // Postgres sends all logs to stderr, so handle them the same way
     }
 
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> IsolationResult<bool> {
+    async fn is_ready_check(&self, process: &IsolatedProcess) -> IsolationResult<bool> {
+        let ip_address = if let Some(ip) = process.container_ip() {
+            &ip.to_string()
+        } else {
+            "127.0.0.1"
+        };
+
         let cmd = Command::new(format!("{}/pg_isready", self.bin_path))
             .arg("-h")
-            .arg("127.0.0.1")
+            .arg(ip_address)
             .arg("-p")
             .arg("5432")
             .arg("-U")
@@ -118,10 +128,6 @@ impl IsolatedApplication for PostgresApp {
         }
 
         Ok(())
-    }
-
-    fn tcp_ports(&self) -> Vec<u16> {
-        vec![5432]
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
