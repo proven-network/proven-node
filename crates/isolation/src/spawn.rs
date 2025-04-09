@@ -491,27 +491,54 @@ impl IsolatedProcessSpawner {
         })?;
 
         // If using PID namespace process will be forked se find process with `pgrep -P [PARENT_PID]`
-        // TODO: Probably a less hacky way to do this
         if options.namespaces.use_pid {
             info!("Finding process with pgrep -P {}", pid);
-            let mut pgrep_cmd = Command::new("pgrep");
 
-            pgrep_cmd.arg("-P").arg(pid.to_string());
+            // Add retry logic to find the child PID
+            let max_retries = 10;
+            let retry_delay = Duration::from_millis(100);
 
-            let pgrep_output = pgrep_cmd
-                .output()
-                .await
-                .map_err(|e| Error::Io("Failed to run pgrep", e))?;
+            for attempt in 1..=max_retries {
+                let mut pgrep_cmd = Command::new("pgrep");
+                pgrep_cmd.arg("-P").arg(pid.to_string());
 
-            let stdout = String::from_utf8_lossy(&pgrep_output.stdout);
+                let pgrep_output = pgrep_cmd
+                    .output()
+                    .await
+                    .map_err(|e| Error::Io("Failed to run pgrep", e))?;
 
-            debug!("pgrep output: {}", stdout);
+                let stdout = String::from_utf8_lossy(&pgrep_output.stdout);
+                debug!("pgrep output (attempt {}): '{}'", attempt, stdout);
 
-            pid = stdout
-                .split_whitespace()
-                .next()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(pid);
+                if !stdout.trim().is_empty() {
+                    // Try to parse the child PID
+                    if let Some(found_pid) = stdout
+                        .split_whitespace()
+                        .next()
+                        .and_then(|s| s.parse().ok())
+                    {
+                        info!(
+                            "Found child process with PID: {} (after {} attempt(s))",
+                            found_pid, attempt
+                        );
+                        pid = found_pid;
+                        break;
+                    }
+                }
+
+                if attempt < max_retries {
+                    debug!(
+                        "Child process not found yet, retrying in {}ms",
+                        retry_delay.as_millis()
+                    );
+                    tokio::time::sleep(retry_delay).await;
+                } else {
+                    warn!(
+                        "Could not find child process after {} attempts, using parent PID",
+                        max_retries
+                    );
+                }
+            }
         }
 
         debug!("Process spawned with PID: {}", pid);
