@@ -52,8 +52,11 @@ impl VethPair {
         let host_name = format!("veth{}", counter);
         let container_name = format!("veth{}", counter + 1);
 
-        let host_ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
-        let container_ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, counter as u8));
+        // Use a unique subnet for each veth pair to avoid conflicts
+        // Each container gets its own /24 subnet: 10.0.{counter}.0/24
+        let subnet_id = counter;
+        let host_ip = IpAddr::V4(Ipv4Addr::new(10, 0, subnet_id as u8, 1));
+        let container_ip = IpAddr::V4(Ipv4Addr::new(10, 0, subnet_id as u8, 2));
 
         let veth = Self {
             host_name,
@@ -486,8 +489,13 @@ impl VethPair {
             }
         }
 
-        // Container network subnet
-        let container_subnet = "10.0.0.0/24"; // Assuming /24 based on IPs
+        // Extract subnet from the container IP
+        let ip_string = self.container_ip.to_string();
+        let subnet_parts: Vec<&str> = ip_string.split('.').collect();
+        let container_subnet = format!(
+            "{}.{}.{}.0/24",
+            subnet_parts[0], subnet_parts[1], subnet_parts[2]
+        );
 
         // Set up TCP port forwarding
         for port in &self.tcp_port_forwards {
@@ -766,10 +774,10 @@ impl VethPair {
                 "-A",
                 "POSTROUTING",
                 "-s",
-                container_subnet,
+                &container_subnet,
                 "!",
                 "-d",
-                container_subnet, // Don't masquerade container-to-container traffic if applicable
+                &container_subnet, // Don't masquerade container-to-container traffic if applicable
                 "-j",
                 "MASQUERADE",
             ])
@@ -1040,9 +1048,30 @@ impl VethPair {
                 .output();
         }
 
-        // IMPORTANT: Do NOT remove the general MASQUERADE or FORWARD ESTABLISHED,RELATED rules here
-        // as other containers/network setups might depend on them.
-        // Their removal should be handled externally or when the *last* dependency is gone.
+        // Extract subnet from the container IP
+        let ip_string = self.container_ip.to_string();
+        let subnet_parts: Vec<&str> = ip_string.split('.').collect();
+        let container_subnet = format!(
+            "{}.{}.{}.0/24",
+            subnet_parts[0], subnet_parts[1], subnet_parts[2]
+        );
+
+        // Try to remove the MASQUERADE rule for this specific subnet
+        let _ = Command::new("iptables")
+            .args(&[
+                "-t",
+                "nat",
+                "-D",
+                "POSTROUTING",
+                "-s",
+                &container_subnet,
+                "!",
+                "-d",
+                &container_subnet,
+                "-j",
+                "MASQUERADE",
+            ])
+            .output();
 
         // Delete the veth interface - doing this will automatically
         // remove the other end of the pair as well

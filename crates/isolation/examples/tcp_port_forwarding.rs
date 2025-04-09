@@ -208,24 +208,13 @@ async fn main() -> Result<()> {
     info!("Making final requests to verify server and port forwarding");
 
     // First verify direct container access via veth pair
-    let client = reqwest::Client::builder()
-        .local_address(Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(
-            10, 0, 0, 1,
-        ))))
-        .build()
-        .map_err(|e| Error::Application(format!("Failed to create client: {}", e)))?;
-
-    let response = client
-        .get(&format!(
-            "http://{}:{}",
-            process.container_ip().unwrap(),
-            SERVER_PORT
-        ))
-        .send()
-        .await
-        .map_err(|e| {
-            Error::Application(format!("Failed to make direct container request: {}", e))
-        })?;
+    let response = reqwest::get(&format!(
+        "http://{}:{}",
+        process.container_ip().unwrap(),
+        SERVER_PORT
+    ))
+    .await
+    .map_err(|e| Error::Application(format!("Failed to make direct container request: {}", e)))?;
     let text = response.text().await.map_err(|e| {
         Error::Application(format!("Failed to read direct container response: {}", e))
     })?;

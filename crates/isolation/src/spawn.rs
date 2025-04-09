@@ -168,6 +168,11 @@ impl IsolatedProcess {
         self.veth_pair.as_ref().map(|veth| veth.container_ip())
     }
 
+    /// Get the host's IP address (as reachable from the container)
+    pub fn host_ip(&self) -> Option<IpAddr> {
+        self.veth_pair.as_ref().map(|veth| veth.host_ip())
+    }
+
     /// Waits for the process to exit.
     ///
     /// # Errors
