@@ -60,10 +60,10 @@ pub struct Bootstrap {
     light_core: Option<LightCore<MockAttestor, MockGovernance>>,
 
     radix_mainnet_node: Option<RadixNode>,
-    radix_mainnet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
+    radix_mainnet_node_handle: Option<JoinHandle<()>>,
 
     radix_stokenet_node: Option<RadixNode>,
-    radix_stokenet_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
+    radix_stokenet_node_handle: Option<JoinHandle<()>>,
 
     ethereum_mainnet_reth_node: Option<proven_ethereum_reth::RethNode>,
     ethereum_mainnet_reth_node_handle: Option<JoinHandle<()>>,
@@ -90,7 +90,7 @@ pub struct Bootstrap {
     postgres_handle: Option<JoinHandle<()>>,
 
     radix_aggregator: Option<RadixAggregator>,
-    radix_aggregator_handle: Option<JoinHandle<proven_radix_aggregator::Result<()>>>,
+    radix_aggregator_handle: Option<JoinHandle<()>>,
 
     radix_gateway: Option<RadixGateway>,
     radix_gateway_handle: Option<JoinHandle<proven_radix_gateway::Result<()>>>,
@@ -343,7 +343,7 @@ impl Bootstrap {
                 tokio::select! {
                     _ = async { 
                         if let Some(handle) = radix_mainnet_node_handle {
-                            if let Ok(Err(e)) = handle.await {
+                            if let Ok(e) = handle.await {
                                 error!("radix mainnet node exited: {:?}", e);
                                 return;
                             }
@@ -352,7 +352,7 @@ impl Bootstrap {
                     } => {},
                     _ = async { 
                         if let Some(handle) = radix_stokenet_node_handle {
-                            if let Ok(Err(e)) = handle.await {
+                            if let Ok(e) = handle.await {
                                 error!("radix stokenet node exited: {:?}", e);
                                 return;
                             }
@@ -433,7 +433,7 @@ impl Bootstrap {
                     } => {},
                     _ = async { 
                         if let Some(handle) = radix_aggregator_handle {
-                            if let Ok(Err(e)) = handle.await {
+                            if let Ok(e) = handle.await {
                                 error!("radix_aggregator exited: {:?}", e);
                                 return;
                             }
@@ -475,7 +475,7 @@ impl Bootstrap {
             }
             
             if let Some(aggregator) = &radix_aggregator {
-                aggregator.lock().await.shutdown().await;
+                let _ = aggregator.lock().await.shutdown().await;
             }
             
             if let Some(postgres) = &postgres {
@@ -483,11 +483,11 @@ impl Bootstrap {
             }
             
             if let Some(mainnet_node) = &radix_mainnet_node_option {
-                mainnet_node.lock().await.shutdown().await;
+                let _ = mainnet_node.lock().await.shutdown().await;
             }
             
             if let Some(stokenet_node) = &radix_stokenet_node_option {
-                stokenet_node.lock().await.shutdown().await;
+                let _ = stokenet_node.lock().await.shutdown().await;
             }
 
             if let Some(ethereum_mainnet_reth_node) = &ethereum_mainnet_reth_node_option {
@@ -546,8 +546,8 @@ impl Bootstrap {
             radix_gateway.shutdown().await;
         }
 
-        if let Some(radix_aggregator) = self.radix_aggregator {
-            radix_aggregator.shutdown().await;
+        if let Some(mut radix_aggregator) = self.radix_aggregator {
+            let _ = radix_aggregator.shutdown().await;
         }
 
         if let Some(mut postgres) = self.postgres {
@@ -582,12 +582,12 @@ impl Bootstrap {
             let _ = bitcoin_node.shutdown().await;
         }
 
-        if let Some(radix_mainnet_node) = self.radix_mainnet_node {
-            radix_mainnet_node.shutdown().await;
+        if let Some(mut radix_mainnet_node) = self.radix_mainnet_node {
+            let _ = radix_mainnet_node.shutdown().await;
         }
 
-        if let Some(radix_stokenet_node) = self.radix_stokenet_node {
-            radix_stokenet_node.shutdown().await;
+        if let Some(mut radix_stokenet_node) = self.radix_stokenet_node {
+            let _ = radix_stokenet_node.shutdown().await;
         }
 
         if let Some(light_core) = self.light_core {
@@ -640,7 +640,8 @@ impl Bootstrap {
             .await?
             .contains(&NodeSpecialization::RadixMainnet)
         {
-            let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
+            let mut radix_mainnet_node = RadixNode::new(RadixNodeOptions {
+                config_dir: "/tmp/radix-node-mainnet".to_string(),
                 host_ip: self.external_ip.to_string(),
                 network_definition: NetworkDefinition::mainnet(),
                 port: self.args.radix_mainnet_port,
@@ -664,7 +665,8 @@ impl Bootstrap {
             .await?
             .contains(&NodeSpecialization::RadixStokenet)
         {
-            let radix_stokenet_node = RadixNode::new(RadixNodeOptions {
+            let mut radix_stokenet_node = RadixNode::new(RadixNodeOptions {
+                config_dir: "/tmp/radix-node-stokenet".to_string(),
                 host_ip: self.external_ip.to_string(),
                 network_definition: NetworkDefinition::stokenet(),
                 port: self.args.radix_stokenet_port,
@@ -934,12 +936,18 @@ impl Bootstrap {
                 panic!("postgres not set before radix aggregator step");
             });
 
-            let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
+            let radix_stokenet_node = self.radix_stokenet_node.as_ref().unwrap_or_else(|| {
+                panic!("radix node not set before radix aggregator step");
+            });
+
+            let mut radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
                 postgres_ip_address: postgres.ip_address().to_string(),
                 postgres_password: POSTGRES_PASSWORD.to_string(),
                 postgres_port: postgres.port(),
                 postgres_username: POSTGRES_USERNAME.to_string(),
+                radix_node_ip_address: radix_stokenet_node.ip_address().to_string(),
+                radix_node_port: radix_stokenet_node.port(),
             });
 
             let radix_aggregator_handle = radix_aggregator.start().await?;

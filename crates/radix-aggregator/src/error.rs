@@ -18,6 +18,10 @@ pub enum Error {
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),
 
+    /// Isolation error.
+    #[error("isolation error: {0}")]
+    Isolation(#[from] proven_isolation::Error),
+
     /// JSON encode error.
     #[error(transparent)]
     Json(#[from] serde_json::Error),

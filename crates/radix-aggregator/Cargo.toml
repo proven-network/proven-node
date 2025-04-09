@@ -4,10 +4,20 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+async-trait = { workspace = true }
 nix = { workspace = true }
+once_cell = { workspace = true }
+proven-isolation = { workspace = true }
 regex = { workspace = true }
+reqwest = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+proven-postgres = { workspace = true }
+proven-radix-node = { workspace = true }
+radix-common = { workspace = true }
+tracing-subscriber = { workspace = true }

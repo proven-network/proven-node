@@ -9,26 +9,29 @@ mod error;
 
 pub use error::{Error, Result};
 
-use std::process::Stdio;
+use std::{
+    net::{IpAddr, Ipv4Addr},
+    path::{Path, PathBuf},
+};
 
-use nix::sys::signal::{self, Signal};
-use nix::unistd::Pid;
 use radix_common::network::NetworkDefinition;
 use regex::Regex;
 use reqwest::Client;
 use strip_ansi_escapes::strip_str;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
-use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-static CONFIG_PATH: &str = "/var/lib/proven-node/radix-node.config";
-static KEYSTORE_PATH: &str = "/var/lib/proven-node/radix-keystore.ks";
-static KEYSTORE_PASS: &str = "notarealpassword"; // Irrelevant as keyfile never leaves TEE
+use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use proven_isolation::{
+    IsolatedApplication, IsolatedProcess, IsolationManager, Result as IsolationResult, VolumeMount,
+};
 
-static NETWORK_STATUS_URL: &str = "http://127.0.0.1:3333/core/status/network-status";
+// Default filenames
+static CONFIG_FILENAME: &str = "radix-node.config";
+static KEYSTORE_FILENAME: &str = "radix-keystore.ks";
+static KEYSTORE_PASS: &str = "notarealpassword"; // Irrelevant as keyfile never leaves TEE
 
 static MAINNET_SEED_NODES: &[&str] = &[
     "radix://node_rdx1qf2x63qx4jdaxj83kkw2yytehvvmu6r2xll5gcp6c9rancmrfsgfw0vnc65@babylon-mainnet-eu-west-1-node0.radixdlt.com",
@@ -59,21 +62,239 @@ static JAVA_OPTS: &[&str] = &[
     "-DLog4jContextSelector=org.apache.logging.log4j.core.async.AsyncLoggerContextSelector",
 ];
 
-/// Runs a Radix Babylon Node.
-pub struct RadixNode {
+// Java log regexp
+static JAVA_LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)").unwrap()
+});
+
+// Rust log regexp
+static RUST_LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) .+: (.*)").unwrap()
+});
+
+/// Application struct for running Radix Node in isolation
+struct RadixNodeApp {
+    config_dir: String,
     host_ip: String,
     network_definition: NetworkDefinition,
     port: u16,
-    shutdown_token: CancellationToken,
     store_dir: String,
-    task_tracker: TaskTracker,
+}
+
+#[async_trait]
+impl IsolatedApplication for RadixNodeApp {
+    fn args(&self) -> Vec<String> {
+        let config_path = Path::new(&self.config_dir).join(CONFIG_FILENAME);
+        vec![
+            "-config".to_string(),
+            config_path.to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn chroot_dir(&self) -> Option<PathBuf> {
+        Some(PathBuf::from("/tmp/radix-node"))
+    }
+
+    fn env(&self) -> Vec<(String, String)> {
+        vec![
+            (
+                "RADIX_NODE_KEYSTORE_PASSWORD".to_string(),
+                KEYSTORE_PASS.to_string(),
+            ),
+            ("JAVA_OPTS".to_string(), JAVA_OPTS.join(" ")),
+            (
+                "LD_PRELOAD".to_string(),
+                "/bin/babylon-node/libcorerust.so".to_string(),
+            ),
+        ]
+    }
+
+    fn executable(&self) -> &str {
+        "/bin/babylon-node/core-v1.3.0.2/bin/core"
+    }
+
+    fn handle_stdout(&self, line: &str) -> () {
+        if let Some(caps) = JAVA_LOG_REGEX.captures(&line) {
+            let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
+            let message = caps.get(2).map_or(line, |m| m.as_str());
+            match label {
+                "OFF" => info!("{}", message),
+                "FATAL" => error!("{}", message),
+                "ERROR" => error!("{}", message),
+                "WARN" => warn!("{}", message),
+                "INFO" => info!("{}", message),
+                "DEBUG" => debug!("{}", message),
+                "TRACE" => trace!("{}", message),
+                _ => error!("{}", line),
+            }
+        } else if let Some(caps) = RUST_LOG_REGEX.captures(&strip_str(&line)) {
+            let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
+            let message = caps.get(2).map_or(line, |m| m.as_str());
+            match label {
+                "DEBUG" => debug!("{}", message),
+                "ERROR" => error!("{}", message),
+                "INFO" => info!("{}", message),
+                "TRACE" => trace!("{}", message),
+                "WARN" => warn!("{}", message),
+                _ => error!("{}", line),
+            }
+        } else {
+            error!("{}", line);
+        }
+    }
+
+    fn handle_stderr(&self, line: &str) -> () {
+        self.handle_stdout(line);
+    }
+
+    async fn is_ready_check(&self, process: &IsolatedProcess) -> IsolationResult<bool> {
+        let client = Client::new();
+        let payload = format!(
+            "{{\"network\":\"{}\"}}",
+            self.network_definition.logical_name
+        );
+
+        let ip_address = if let Some(ip) = process.container_ip() {
+            ip.to_string()
+        } else {
+            "127.0.0.1".to_string()
+        };
+
+        let url = format!("http://{}:3333/core/status/network-status", ip_address);
+
+        let response = match client
+            .post(&url)
+            .body(payload)
+            .header("Content-Type", "application/json")
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => true,
+            _ => false,
+        };
+
+        Ok(response)
+    }
+
+    fn is_ready_check_interval_ms(&self) -> u64 {
+        5000 // Check every 5 seconds
+    }
+
+    fn name(&self) -> &str {
+        "radix-node"
+    }
+
+    fn memory_limit_mb(&self) -> usize {
+        1024 * 12 // 12GB
+    }
+
+    async fn prepare_config(&self) -> IsolationResult<()> {
+        // Ensure store dir created
+        std::fs::create_dir_all(&self.store_dir).map_err(|e| {
+            proven_isolation::Error::Application(format!("Failed to create store dir: {}", e))
+        })?;
+
+        // Ensure config dir created
+        std::fs::create_dir_all(&self.config_dir).map_err(|e| {
+            proven_isolation::Error::Application(format!("Failed to create config dir: {}", e))
+        })?;
+
+        let config_path = Path::new(&self.config_dir).join(CONFIG_FILENAME);
+        let keystore_path = Path::new(&self.config_dir).join(KEYSTORE_FILENAME);
+
+        let seed_nodes = match self.network_definition.id {
+            1 => MAINNET_SEED_NODES,
+            2 => STOKENET_SEED_NODES,
+            _ => unreachable!(),
+        }
+        .join(",");
+
+        let config = format!(
+            r"
+            network.host_ip={}
+            network.id={}
+            network.p2p.listen_port={}
+            network.p2p.broadcast_port={}
+            network.p2p.seed_nodes={}
+            node.key.path={}
+            db.location={}
+            api.core.bind_address=0.0.0.0
+        ",
+            self.host_ip,
+            self.network_definition.id,
+            self.port,
+            self.port,
+            seed_nodes,
+            keystore_path.to_string_lossy(),
+            self.store_dir
+        );
+
+        let mut config_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&config_path)
+            .map_err(|e| {
+                proven_isolation::Error::Application(format!("Failed to open config file: {}", e))
+            })?;
+
+        std::io::Write::write_all(&mut config_file, config.as_bytes()).map_err(|e| {
+            proven_isolation::Error::Application(format!("Failed to write config file: {}", e))
+        })?;
+
+        // Generate the node key
+        let output = Command::new("/bin/babylon-node/core-v1.3.0.2/bin/keygen")
+            .arg("-k")
+            .arg(keystore_path.to_string_lossy().as_ref())
+            .arg("-p")
+            .arg(KEYSTORE_PASS)
+            .output()
+            .await
+            .map_err(|e| {
+                proven_isolation::Error::Application(format!("Failed to generate node key: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(proven_isolation::Error::Application(format!(
+                "Node key generation process exited with non-zero status: {}, stderr: {}",
+                output.status, stderr
+            )));
+        }
+
+        Ok(())
+    }
+
+    fn tcp_port_forwards(&self) -> Vec<u16> {
+        vec![self.port] // Forward P2P
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![
+            VolumeMount::new(&self.store_dir, &self.store_dir),
+            VolumeMount::new(&self.config_dir, &self.config_dir),
+        ]
+    }
+}
+
+/// Runs a Radix Babylon Node.
+pub struct RadixNode {
+    config_dir: String,
+    host_ip: String,
+    network_definition: NetworkDefinition,
+    port: u16,
+    isolation_manager: IsolationManager,
+    process: Option<IsolatedProcess>,
+    store_dir: String,
 }
 
 /// Options for configuring a `RadixNode`.
 pub struct RadixNodeOptions {
+    /// The directory to store configuration and keystore files in.
+    pub config_dir: String,
+
     /// The host IP address.
     pub host_ip: String,
-
     /// The network definition.
     pub network_definition: NetworkDefinition,
 
@@ -93,15 +314,17 @@ impl RadixNode {
             network_definition,
             port,
             store_dir,
+            config_dir,
         }: RadixNodeOptions,
     ) -> Self {
         Self {
             host_ip,
             network_definition,
             port,
-            shutdown_token: CancellationToken::new(),
+            isolation_manager: IsolationManager::new(),
+            process: None,
             store_dir,
-            task_tracker: TaskTracker::new(),
+            config_dir,
         }
     }
 
@@ -111,251 +334,61 @@ impl RadixNode {
     ///
     /// This function will return an error if the node is already started, if there is an I/O error,
     /// or if the node process exits with a non-zero status code.
-    pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
-        if self.task_tracker.is_closed() {
+    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+        if self.process.is_some() {
             return Err(Error::AlreadyStarted);
         }
 
-        self.generate_node_key().await?;
-        info!("generated node key");
+        info!("Starting Radix Node...");
 
-        self.update_node_config()?;
-        info!("updated node config");
+        let app = RadixNodeApp {
+            host_ip: self.host_ip.clone(),
+            network_definition: self.network_definition.clone(),
+            port: self.port,
+            store_dir: self.store_dir.clone(),
+            config_dir: self.config_dir.clone(),
+        };
 
-        let shutdown_token = self.shutdown_token.clone();
-        let task_tracker = self.task_tracker.clone();
+        let (process, join_handle) = self
+            .isolation_manager
+            .spawn(app)
+            .await
+            .map_err(Error::Isolation)?;
 
-        let server_task = self.task_tracker.spawn(async move {
-            // Start the radix-node process
-            info!("Attempting to spawn radix-node process at: /bin/babylon-node/core-v1.3.0.2/bin/core");
-            debug!("Environment variables: JAVA_OPTS={}, LD_PRELOAD=/bin/babylon-node/libcorerust.so", JAVA_OPTS.join(" "));
-            debug!("Config path: {}", CONFIG_PATH);
-            
-            let mut cmd = Command::new("/bin/babylon-node/core-v1.3.0.2/bin/core")
-                .env("RADIX_NODE_KEYSTORE_PASSWORD", KEYSTORE_PASS)
-                .env("JAVA_OPTS", JAVA_OPTS.join(" "))
-                .env("LD_PRELOAD", "/bin/babylon-node/libcorerust.so")
-                .arg("-config")
-                .arg(CONFIG_PATH)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|e| {
-                    error!("Failed to spawn radix-node process: {}", e);
-                    if let std::io::ErrorKind::NotFound = e.kind() {
-                        error!("The executable '/bin/babylon-node/core-v1.3.0.2/bin/core' was not found. Check if babylon-node files are properly installed.");
-                    } else if let std::io::ErrorKind::PermissionDenied = e.kind() {
-                        error!("Permission denied when trying to execute '/bin/babylon-node/core-v1.3.0.2/bin/core'. Check file permissions.");
-                    }
-                    Error::Io("failed to spawn radix-node process", e)
-                })?;
+        // Store the process for later shutdown
+        self.process = Some(process);
 
-            info!("Successfully spawned radix-node process");
-            let stdout = cmd.stdout.take().ok_or_else(|| {
-                error!("Failed to capture stdout from radix-node process");
-                Error::OutputParse
-            })?;
-            let stderr = cmd.stderr.take().ok_or_else(|| {
-                error!("Failed to capture stderr from radix-node process");
-                Error::OutputParse
-            })?;
+        info!("Radix Node started");
 
-            // Java log regexp
-            let jre = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)")?;
-
-            let rre = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) .+: (.*)")?;
-
-            // Spawn a task to read and process the stdout output of the radix-node process
-            task_tracker.spawn(async move {
-                let reader = BufReader::new(stdout);
-                let mut lines = reader.lines();
-
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if let Some(caps) = jre.captures(&line) {
-                        let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
-                        let message = caps.get(2).map_or(line.as_str(), |m| m.as_str());
-                        match label {
-                            "OFF" => info!("{}", message),
-                            "FATAL" => error!("{}", message),
-                            "ERROR" => error!("{}", message),
-                            "WARN" => warn!("{}", message),
-                            "INFO" => info!("{}", message),
-                            "DEBUG" => debug!("{}", message),
-                            "TRACE" => trace!("{}", message),
-                            _ => error!("{}", line),
-                        }
-                    } else if let Some(caps) = rre.captures(&strip_str(&line)) {
-                        let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
-                        let message = caps.get(2).map_or(line.as_str(), |m| m.as_str());
-                        match label {
-                            "DEBUG" => debug!("{}", message),
-                            "ERROR" => error!("{}", message),
-                            "INFO" => info!("{}", message),
-                            "TRACE" => trace!("{}", message),
-                            "WARN" => warn!("{}", message),
-                            _ => error!("{}", line),
-                        }
-                    } else {
-                        error!("{}", line);
-                    }
-                }
-            });
-
-            // Spawn a task to read and process the stderr output of the radix-node process
-            task_tracker.spawn(async move {
-                let reader = BufReader::new(stderr);
-                let mut lines = reader.lines();
-
-                while let Ok(Some(line)) = lines.next_line().await {
-                    warn!("{}", line);
-                }
-            });
-
-            // Wait for the radix-node process to exit or for the shutdown token to be cancelled
-            tokio::select! {
-                _ = cmd.wait() => {
-                    let status = cmd.wait().await.map_err(|e| Error::Io("failed to wait for exit", e))?;
-
-                    if !status.success() {
-                        return Err(Error::NonZeroExitCode(status));
-                    }
-
-                    Ok(())
-                }
-                () = shutdown_token.cancelled() => {
-                    let raw_pid: i32 = cmd.id().ok_or(Error::OutputParse)?.try_into().map_err(|_| Error::BadPid)?;
-                    let pid = Pid::from_raw(raw_pid);
-                    signal::kill(pid, Signal::SIGTERM)?;
-
-                    let _ = cmd.wait().await;
-
-                    Ok(())
-                }
-            }
-        });
-
-        self.task_tracker.close();
-
-        self.wait_until_ready(&server_task).await?;
-
-        Ok(server_task)
+        Ok(join_handle)
     }
 
     /// Shuts down the server.
-    pub async fn shutdown(&self) {
+    pub async fn shutdown(&mut self) -> Result<()> {
         info!("radix-node shutting down...");
 
-        self.shutdown_token.cancel();
-        self.task_tracker.wait().await;
-
-        info!("radix-node shutdown");
-    }
-
-    async fn generate_node_key(&self) -> Result<()> {
-        info!("Attempting to generate node key using: /bin/babylon-node/core-v1.3.0.2/bin/keygen");
-        let output = Command::new("/bin/babylon-node/core-v1.3.0.2/bin/keygen")
-            .arg("-k")
-            .arg(KEYSTORE_PATH)
-            .arg("-p")
-            .arg(KEYSTORE_PASS)
-            .output()
-            .await
-            .map_err(|e| {
-                error!("Failed to execute node key generation: {}", e);
-                if let std::io::ErrorKind::NotFound = e.kind() {
-                    error!("The keygen executable '/bin/babylon-node/core-v1.3.0.2/bin/keygen' was not found. Check if babylon-node files are properly installed.");
-                } else if let std::io::ErrorKind::PermissionDenied = e.kind() {
-                    error!("Permission denied when trying to execute '/bin/babylon-node/core-v1.3.0.2/bin/keygen'. Check file permissions.");
-                }
-                Error::Io("failed to generate node key", e)
-            })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            error!(
-                "Node key generation process exited with non-zero status: {}",
-                output.status
-            );
-            error!("Stderr output: {}", stderr);
-            return Err(Error::NonZeroExitCode(output.status));
+        if let Some(process) = self.process.take() {
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("radix-node shutdown");
+        } else {
+            debug!("No running radix-node to shut down");
         }
 
         Ok(())
     }
 
-    fn update_node_config(&self) -> Result<()> {
-        // Ensure store dir created
-        std::fs::create_dir_all(&self.store_dir)
-            .map_err(|e| Error::Io("failed to create store dir", e))?;
-
-        let seed_nodes = match self.network_definition.id {
-            1 => MAINNET_SEED_NODES,
-            2 => STOKENET_SEED_NODES,
-            _ => unreachable!(),
-        }
-        .join(",");
-
-        let config = format!(
-            r"
-            network.host_ip={}
-            network.id={}
-            network.p2p.listen_port={}
-            network.p2p.broadcast_port={}
-            network.p2p.seed_nodes={}
-            node.key.path={}
-            db.location={}
-        ",
-            self.host_ip,
-            self.network_definition.id,
-            self.port,
-            self.port,
-            seed_nodes,
-            KEYSTORE_PATH,
-            self.store_dir
-        );
-
-        let mut config_file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(CONFIG_PATH)
-            .map_err(|e| Error::Io("failed to open config file", e))?;
-
-        std::io::Write::write_all(&mut config_file, config.as_bytes())
-            .map_err(|e| Error::Io("failed to write config file", e))?;
-
-        Ok(())
+    /// Returns the IP address of the Radix Node.
+    #[must_use]
+    pub fn ip_address(&self) -> IpAddr {
+        self.process
+            .as_ref()
+            .map(|p| p.container_ip().unwrap())
+            .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
     }
 
-    async fn wait_until_ready(&self, server_task: &JoinHandle<Result<()>>) -> Result<()> {
-        let client = Client::new();
-        let payload = format!(
-            "{{\"network\":\"{}\"}}",
-            self.network_definition.logical_name
-        );
-
-        loop {
-            if server_task.is_finished() {
-                return Err(Error::ExitBeforeReady);
-            }
-
-            info!("checking if radix-node is ready...");
-            let response = client
-                .post(NETWORK_STATUS_URL)
-                .body(payload.clone())
-                .header("Content-Type", "application/json")
-                .send()
-                .await;
-
-            match response {
-                Ok(resp) if resp.status().is_success() => {
-                    info!("radix-node is ready");
-                    return Ok(());
-                }
-                _ => {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                }
-            }
-        }
+    /// Returns the port of the Radix Node.
+    #[must_use]
+    pub fn port(&self) -> u16 {
+        self.port
     }
 }

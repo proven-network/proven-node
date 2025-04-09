@@ -101,11 +101,16 @@ impl IsolatedApplication for PostgresApp {
             "127.0.0.1"
         };
 
+        debug!(
+            "Checking if Postgres is ready on {}:{}",
+            ip_address, self.port
+        );
+
         let cmd = Command::new(format!("{}/pg_isready", self.bin_path))
             .arg("-h")
             .arg(ip_address)
             .arg("-p")
-            .arg("5432")
+            .arg(self.port.to_string())
             .arg("-U")
             .arg(&self.username)
             .arg("-d")

@@ -87,7 +87,7 @@ pub struct Bootstrap {
     radix_node_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
 
     radix_node: Option<RadixNode>,
-    radix_node_handle: Option<JoinHandle<proven_radix_node::Result<()>>>,
+    radix_node_handle: Option<JoinHandle<()>>,
 
     postgres_fs: Option<ExternalFs>,
     postgres_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
@@ -96,7 +96,7 @@ pub struct Bootstrap {
     postgres_handle: Option<JoinHandle<()>>,
 
     radix_aggregator: Option<RadixAggregator>,
-    radix_aggregator_handle: Option<JoinHandle<proven_radix_aggregator::Result<()>>>,
+    radix_aggregator_handle: Option<JoinHandle<()>>,
 
     radix_gateway: Option<RadixGateway>,
     radix_gateway_handle: Option<JoinHandle<proven_radix_gateway::Result<()>>>,
@@ -344,7 +344,7 @@ impl Bootstrap {
                     Ok(Err(e)) = radix_node_fs_handle => {
                         error!("radix_external_fs exited: {:?}", e);
                     }
-                    Ok(Err(e)) = radix_node_handle => {
+                    Ok(e) = radix_node_handle => {
                         error!("radix_node exited: {:?}", e);
                     }
                     Ok(Err(e)) = postgres_fs_handle => {
@@ -353,7 +353,7 @@ impl Bootstrap {
                     Ok(e) = postgres_handle => {
                         error!("postgres exited: {:?}", e);
                     }
-                    Ok(Err(e)) = radix_aggregator_handle => {
+                    Ok(e) = radix_aggregator_handle => {
                         error!("radix_aggregator exited: {:?}", e);
                     }
                     Ok(Err(e)) = radix_gateway_handle => {
@@ -383,8 +383,8 @@ impl Bootstrap {
             nats_server.lock().await.shutdown().await;
             nats_server_fs.lock().await.shutdown().await;
             radix_gateway.lock().await.shutdown().await;
-            radix_aggregator.lock().await.shutdown().await;
-            radix_node.lock().await.shutdown().await;
+            let _ = radix_aggregator.lock().await.shutdown().await;
+            let _ = radix_node.lock().await.shutdown().await;
             radix_node_fs.lock().await.shutdown().await;
             let _ = postgres.lock().await.shutdown().await;
             postgres_fs.lock().await.shutdown().await;
@@ -425,8 +425,8 @@ impl Bootstrap {
             radix_gateway.shutdown().await;
         }
 
-        if let Some(radix_aggregator) = self.radix_aggregator {
-            radix_aggregator.shutdown().await;
+        if let Some(mut radix_aggregator) = self.radix_aggregator {
+            let _ = radix_aggregator.shutdown().await;
         }
 
         if let Some(mut postgres) = self.postgres {
@@ -437,8 +437,8 @@ impl Bootstrap {
             postgres_fs.shutdown().await;
         }
 
-        if let Some(radix_node) = self.radix_node {
-            radix_node.shutdown().await;
+        if let Some(mut radix_node) = self.radix_node {
+            let _ = radix_node.shutdown().await;
         }
 
         if let Some(radix_node_fs) = self.radix_node_fs {
@@ -633,7 +633,8 @@ impl Bootstrap {
         });
 
         let host_ip = instance_details.public_ip.unwrap().to_string();
-        let radix_node = RadixNode::new(RadixNodeOptions {
+        let mut radix_node = RadixNode::new(RadixNodeOptions {
+            config_dir: "/tmp/radix-node-stokenet".to_string(),
             host_ip,
             network_definition: radix_common::network::NetworkDefinition::stokenet(),
             port: self.args.radix_stokenet_port,
@@ -693,12 +694,18 @@ impl Bootstrap {
             panic!("postgres not set before radix aggregator step");
         });
 
-        let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
+        let radix_node = self.radix_node.as_ref().unwrap_or_else(|| {
+            panic!("radix node not set before radix aggregator step");
+        });
+
+        let mut radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
             postgres_database: POSTGRES_DATABASE.to_string(),
             postgres_ip_address: postgres.ip_address().to_string(),
             postgres_password: POSTGRES_PASSWORD.to_string(),
             postgres_port: postgres.port(),
             postgres_username: POSTGRES_USERNAME.to_string(),
+            radix_node_ip_address: radix_node.ip_address().to_string(),
+            radix_node_port: radix_node.port(),
         });
 
         let radix_aggregator_handle = radix_aggregator.start().await?;
