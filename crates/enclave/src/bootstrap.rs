@@ -672,6 +672,7 @@ impl Bootstrap {
         let mut postgres = Postgres::new(PostgresOptions {
             bin_path: "/usr/local/pgsql/bin".to_string(),
             password: POSTGRES_PASSWORD.to_string(),
+            port: 5432,
             username: POSTGRES_USERNAME.to_string(),
             skip_vacuum: self.args.skip_vacuum,
             store_dir: POSTGRES_STORE_DIR.to_string(),
@@ -688,9 +689,15 @@ impl Bootstrap {
     }
 
     async fn start_radix_aggregator(&mut self) -> Result<()> {
+        let postgres = self.postgres.as_ref().unwrap_or_else(|| {
+            panic!("postgres not set before radix aggregator step");
+        });
+
         let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
             postgres_database: POSTGRES_DATABASE.to_string(),
+            postgres_ip_address: postgres.ip_address().to_string(),
             postgres_password: POSTGRES_PASSWORD.to_string(),
+            postgres_port: postgres.port(),
             postgres_username: POSTGRES_USERNAME.to_string(),
         });
 
@@ -705,9 +712,15 @@ impl Bootstrap {
     }
 
     async fn start_radix_gateway(&mut self) -> Result<()> {
+        let postgres = self.postgres.as_ref().unwrap_or_else(|| {
+            panic!("postgres not set before radix gateway step");
+        });
+
         let radix_gateway = RadixGateway::new(RadixGatewayOptions {
             postgres_database: POSTGRES_DATABASE.to_string(),
+            postgres_ip_address: postgres.ip_address().to_string(),
             postgres_password: POSTGRES_PASSWORD.to_string(),
+            postgres_port: postgres.port(),
             postgres_username: POSTGRES_USERNAME.to_string(),
         });
 

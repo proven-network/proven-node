@@ -272,7 +272,10 @@ impl RadixNode {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            error!("Node key generation process exited with non-zero status: {}", output.status);
+            error!(
+                "Node key generation process exited with non-zero status: {}",
+                output.status
+            );
             error!("Stderr output: {}", stderr);
             return Err(Error::NonZeroExitCode(output.status));
         }
@@ -302,7 +305,13 @@ impl RadixNode {
             node.key.path={}
             db.location={}
         ",
-            self.host_ip, self.network_definition.id, self.port, self.port, seed_nodes, KEYSTORE_PATH, self.store_dir
+            self.host_ip,
+            self.network_definition.id,
+            self.port,
+            self.port,
+            seed_nodes,
+            KEYSTORE_PATH,
+            self.store_dir
         );
 
         let mut config_file = std::fs::OpenOptions::new()

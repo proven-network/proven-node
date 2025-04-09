@@ -11,10 +11,12 @@ use std::time::Duration;
 use async_nats::Client as NatsClient;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_mock::MockAttestor;
-use proven_bitcoin_core::{BitcoinNode, BitcoinNodeOptions, BitcoinNetwork};
+use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_core::{Core, CoreOptions, LightCore, LightCoreOptions};
-use proven_ethereum_reth::{RethNode, RethNodeOptions, EthereumNetwork as RethNetwork};
-use proven_ethereum_lighthouse::{LighthouseNode, LighthouseNodeOptions, EthereumNetwork as LighthouseNetwork};
+use proven_ethereum_lighthouse::{
+    EthereumNetwork as LighthouseNetwork, LighthouseNode, LighthouseNodeOptions,
+};
+use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOptions};
 use proven_governance::NodeSpecialization;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
@@ -246,11 +248,14 @@ impl Bootstrap {
         let radix_mainnet_node_handle = self.radix_mainnet_node_handle.take();
         let radix_stokenet_node_handle = self.radix_stokenet_node_handle.take();
         let ethereum_mainnet_reth_node_handle = self.ethereum_mainnet_reth_node_handle.take();
-        let ethereum_mainnet_lighthouse_node_handle = self.ethereum_mainnet_lighthouse_node_handle.take();
+        let ethereum_mainnet_lighthouse_node_handle =
+            self.ethereum_mainnet_lighthouse_node_handle.take();
         let ethereum_holesky_reth_node_handle = self.ethereum_holesky_reth_node_handle.take();
-        let ethereum_holesky_lighthouse_node_handle = self.ethereum_holesky_lighthouse_node_handle.take();
+        let ethereum_holesky_lighthouse_node_handle =
+            self.ethereum_holesky_lighthouse_node_handle.take();
         let ethereum_sepolia_reth_node_handle = self.ethereum_sepolia_reth_node_handle.take();
-        let ethereum_sepolia_lighthouse_node_handle = self.ethereum_sepolia_lighthouse_node_handle.take();
+        let ethereum_sepolia_lighthouse_node_handle =
+            self.ethereum_sepolia_lighthouse_node_handle.take();
         let bitcoin_node_handle = self.bitcoin_node_handle.take();
         let postgres_handle = self.postgres_handle.take();
         let radix_aggregator_handle = self.radix_aggregator_handle.take();
@@ -261,18 +266,54 @@ impl Bootstrap {
         let core_handle = self.core_handle.take().unwrap();
 
         // Optional services
-        let radix_mainnet_node_option = self.radix_mainnet_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let radix_stokenet_node_option = self.radix_stokenet_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let ethereum_mainnet_reth_node_option = self.ethereum_mainnet_reth_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let ethereum_mainnet_lighthouse_node_option = self.ethereum_mainnet_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let ethereum_holesky_reth_node_option = self.ethereum_holesky_reth_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let ethereum_holesky_lighthouse_node_option = self.ethereum_holesky_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let ethereum_sepolia_reth_node_option = self.ethereum_sepolia_reth_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let ethereum_sepolia_lighthouse_node_option = self.ethereum_sepolia_lighthouse_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let bitcoin_node_option = self.bitcoin_node.take().map(|node| Arc::new(Mutex::new(node)));
-        let postgres = self.postgres.take().map(|postgres| Arc::new(Mutex::new(postgres)));
-        let radix_aggregator = self.radix_aggregator.take().map(|aggregator| Arc::new(Mutex::new(aggregator)));
-        let radix_gateway = self.radix_gateway.take().map(|gateway| Arc::new(Mutex::new(gateway)));
+        let radix_mainnet_node_option = self
+            .radix_mainnet_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let radix_stokenet_node_option = self
+            .radix_stokenet_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_mainnet_reth_node_option = self
+            .ethereum_mainnet_reth_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_mainnet_lighthouse_node_option = self
+            .ethereum_mainnet_lighthouse_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_holesky_reth_node_option = self
+            .ethereum_holesky_reth_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_holesky_lighthouse_node_option = self
+            .ethereum_holesky_lighthouse_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_sepolia_reth_node_option = self
+            .ethereum_sepolia_reth_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let ethereum_sepolia_lighthouse_node_option = self
+            .ethereum_sepolia_lighthouse_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let bitcoin_node_option = self
+            .bitcoin_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let postgres = self
+            .postgres
+            .take()
+            .map(|postgres| Arc::new(Mutex::new(postgres)));
+        let radix_aggregator = self
+            .radix_aggregator
+            .take()
+            .map(|aggregator| Arc::new(Mutex::new(aggregator)));
+        let radix_gateway = self
+            .radix_gateway
+            .take()
+            .map(|gateway| Arc::new(Mutex::new(gateway)));
 
         // Mandatory services
         let nats_server = Arc::new(Mutex::new(self.nats_server.take().unwrap()));
@@ -564,7 +605,8 @@ impl Bootstrap {
             attestor: self.attestor.clone(),
             nats_cluster_port: self.args.nats_cluster_port,
             private_key_hex: self.args.node_key.clone(),
-        }).await?;
+        })
+        .await?;
 
         // Check /etc/hosts to ensure the node's FQDN is properly configured
         check_hostname_resolution(network.fqdn().await?.as_str()).await?;
@@ -664,7 +706,9 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_holesky_execution_store_dir.clone(),
             });
 
-            let ethereum_reth_node_handle = ethereum_reth_node.start().await
+            let ethereum_reth_node_handle = ethereum_reth_node
+                .start()
+                .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
             self.ethereum_holesky_reth_node = Some(ethereum_reth_node);
@@ -683,7 +727,9 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_holesky_consensus_store_dir.clone(),
             });
 
-            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
+            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node
+                .start()
+                .await
                 .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
 
             self.ethereum_holesky_lighthouse_node = Some(ethereum_lighthouse_node);
@@ -715,7 +761,9 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_mainnet_execution_store_dir.clone(),
             });
 
-            let ethereum_reth_node_handle = ethereum_reth_node.start().await
+            let ethereum_reth_node_handle = ethereum_reth_node
+                .start()
+                .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
             self.ethereum_mainnet_reth_node = Some(ethereum_reth_node);
@@ -734,7 +782,9 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_mainnet_consensus_store_dir.clone(),
             });
 
-            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
+            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node
+                .start()
+                .await
                 .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
 
             self.ethereum_mainnet_lighthouse_node = Some(ethereum_lighthouse_node);
@@ -766,7 +816,9 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_sepolia_execution_store_dir.clone(),
             });
 
-            let ethereum_reth_node_handle = ethereum_reth_node.start().await
+            let ethereum_reth_node_handle = ethereum_reth_node
+                .start()
+                .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
             self.ethereum_sepolia_reth_node = Some(ethereum_reth_node);
@@ -785,7 +837,9 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_sepolia_consensus_store_dir.clone(),
             });
 
-            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node.start().await
+            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node
+                .start()
+                .await
                 .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
 
             self.ethereum_sepolia_lighthouse_node = Some(ethereum_lighthouse_node);
@@ -810,11 +864,17 @@ impl Bootstrap {
             // Start Bitcoin testnet node
             let mut bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
                 network: BitcoinNetwork::Testnet,
-                store_dir: self.args.bitcoin_testnet_store_dir.to_string_lossy().to_string(),
+                store_dir: self
+                    .args
+                    .bitcoin_testnet_store_dir
+                    .to_string_lossy()
+                    .to_string(),
                 rpc_port: None,
             });
 
-            let bitcoin_node_handle = bitcoin_node.start().await
+            let bitcoin_node_handle = bitcoin_node
+                .start()
+                .await
                 .map_err(|e| Error::Io(format!("Failed to start Bitcoin testnet node: {}", e)))?;
 
             self.bitcoin_node = Some(bitcoin_node);
@@ -843,6 +903,7 @@ impl Bootstrap {
             let mut postgres = Postgres::new(PostgresOptions {
                 bin_path: self.args.postgres_bin_path.clone(),
                 password: POSTGRES_PASSWORD.to_string(),
+                port: self.args.postgres_port,
                 username: POSTGRES_USERNAME.to_string(),
                 skip_vacuum: self.args.skip_vacuum,
                 store_dir: self.args.postgres_store_dir.to_string_lossy().to_string(),
@@ -869,9 +930,15 @@ impl Bootstrap {
             .await?
             .contains(&NodeSpecialization::RadixStokenet)
         {
+            let postgres = self.postgres.as_ref().unwrap_or_else(|| {
+                panic!("postgres not set before radix aggregator step");
+            });
+
             let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
+                postgres_ip_address: postgres.ip_address().to_string(),
                 postgres_password: POSTGRES_PASSWORD.to_string(),
+                postgres_port: postgres.port(),
                 postgres_username: POSTGRES_USERNAME.to_string(),
             });
 
@@ -896,9 +963,15 @@ impl Bootstrap {
             .await?
             .contains(&NodeSpecialization::RadixStokenet)
         {
+            let postgres = self.postgres.as_ref().unwrap_or_else(|| {
+                panic!("postgres not set before radix gateway step");
+            });
+
             let radix_gateway = RadixGateway::new(RadixGatewayOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
+                postgres_ip_address: postgres.ip_address().to_string(),
                 postgres_password: POSTGRES_PASSWORD.to_string(),
+                postgres_port: postgres.port(),
                 postgres_username: POSTGRES_USERNAME.to_string(),
             });
 

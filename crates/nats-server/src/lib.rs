@@ -134,7 +134,7 @@ where
         tokio::fs::create_dir_all(format!("{}/jetstream", self.store_dir.as_str()))
             .await
             .map_err(|e| Error::Io("failed to create jetstream directory", e))?;
-        
+
         // Initialize topology from network
         self.update_topology().await?;
 
@@ -229,7 +229,7 @@ where
 
         Ok(server_task)
     }
-    
+
     /// Updates topology from network and updates NATS configuration.
     ///
     /// # Errors
@@ -248,7 +248,7 @@ where
             }
         }
     }
-    
+
     /// Starts a task that periodically updates the topology from network.
     ///
     /// # Errors
@@ -257,10 +257,10 @@ where
     fn start_topology_update_task(&self) -> Result<()> {
         let server_name = self.server_name.clone();
         let shutdown_token = self.shutdown_token.clone();
-        
+
         // We need self reference for updating config
         let self_clone = self.clone();
-        
+
         self.task_tracker.spawn(async move {
             let update_interval = Duration::from_secs(PEER_DISCOVERY_INTERVAL);
             let mut interval = tokio::time::interval(update_interval);
@@ -289,10 +289,10 @@ where
                 }
             }
         });
-        
+
         Ok(())
     }
-    
+
     /// Updates the NATS server configuration with peer nodes from the topology.
     ///
     /// # Arguments
@@ -320,25 +320,36 @@ where
                 }
             }
         }
-        
+
         // Log the number of valid peers found
-        info!("Found {} valid peers for NATS cluster configuration", valid_peer_count);
+        info!(
+            "Found {} valid peers for NATS cluster configuration",
+            valid_peer_count
+        );
 
         let nats_cluster_endpoint = self.network.nats_cluster_endpoint().await?;
-        
+
         // Start with the basic configuration
         let mut config = CONFIG_TEMPLATE
             .replace("{server_name}", &self.server_name)
             .replace("{client_listen_addr}", &self.client_listen_addr.to_string())
             .replace("{store_dir}", &self.store_dir);
-        
+
         // Only add cluster.routes configuration if there are valid peers
         if valid_peer_count > 0 {
-            config.push_str(&CLUSTER_CONFIG_TEMPLATE
-                .replace("{cluster_port}", &nats_cluster_endpoint.port().unwrap().to_string())
-                .replace("{cluster_node_user}", &nats_cluster_endpoint.username())
-                .replace("{cluster_node_password}", &nats_cluster_endpoint.password().unwrap())
-                .replace("{cluster_routes}", &routes.trim()));
+            config.push_str(
+                &CLUSTER_CONFIG_TEMPLATE
+                    .replace(
+                        "{cluster_port}",
+                        &nats_cluster_endpoint.port().unwrap().to_string(),
+                    )
+                    .replace("{cluster_node_user}", &nats_cluster_endpoint.username())
+                    .replace(
+                        "{cluster_node_password}",
+                        &nats_cluster_endpoint.password().unwrap(),
+                    )
+                    .replace("{cluster_routes}", &routes.trim()),
+            );
         }
 
         info!("{}", config);

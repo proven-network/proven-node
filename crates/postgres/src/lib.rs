@@ -9,7 +9,8 @@ mod error;
 
 pub use error::{Error, Result};
 
-use std::path::Path;
+use std::net::{IpAddr, Ipv4Addr};
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use async_trait::async_trait;
@@ -35,6 +36,7 @@ struct PostgresApp {
     executable: String,
     username: String,
     store_dir: String,
+    port: u16,
 }
 
 #[async_trait]
@@ -44,12 +46,16 @@ impl IsolatedApplication for PostgresApp {
             "-h".to_string(),
             "0.0.0.0".to_string(),
             "-p".to_string(),
-            "5432".to_string(),
+            self.port.to_string(),
             "-D".to_string(),
             self.store_dir.clone(),
             "-c".to_string(),
             "maintenance_work_mem=1GB".to_string(),
         ]
+    }
+
+    fn chroot_dir(&self) -> Option<PathBuf> {
+        Some(PathBuf::from("/tmp/postgres"))
     }
 
     fn executable(&self) -> &str {
@@ -115,6 +121,10 @@ impl IsolatedApplication for PostgresApp {
         5000 // Check every 5 seconds
     }
 
+    fn memory_limit_mb(&self) -> usize {
+        1024 * 5 // 5GB
+    }
+
     async fn prepare_config(&self) -> IsolationResult<()> {
         // Create data directory if it doesn't exist
         let data_dir = Path::new(&self.store_dir);
@@ -144,6 +154,7 @@ pub struct Postgres {
     username: String,
     skip_vacuum: bool,
     store_dir: String,
+    port: u16,
 }
 
 /// Options for configuring `Postgres`.
@@ -153,6 +164,9 @@ pub struct PostgresOptions {
 
     /// The password for the Postgres user.
     pub password: String,
+
+    /// The port to run Postgres on.
+    pub port: u16,
 
     /// The username for the Postgres user.
     pub username: String,
@@ -174,16 +188,18 @@ impl Postgres {
             username,
             skip_vacuum,
             store_dir,
+            port,
         }: PostgresOptions,
     ) -> Self {
         Self {
             bin_path,
+            isolation_manager: IsolationManager::new(),
             password,
+            port,
+            process: None,
             username,
             skip_vacuum,
             store_dir,
-            isolation_manager: IsolationManager::new(),
-            process: None,
         }
     }
 
@@ -204,6 +220,9 @@ impl Postgres {
 
         if !self.is_initialized() {
             self.initialize_database().await?;
+        } else {
+            // Ensure pg_hba.conf is properly configured even for existing databases
+            self.configure_pg_hba().await?;
         }
 
         // ensure postmaster.pid does not exist
@@ -218,6 +237,7 @@ impl Postgres {
             executable: format!("{}/postgres", self.bin_path),
             username: self.username.clone(),
             store_dir: self.store_dir.clone(),
+            port: self.port,
         };
 
         let (process, join_handle) = self
@@ -251,6 +271,21 @@ impl Postgres {
         Ok(())
     }
 
+    /// Returns the IP address of the Postgres server.
+    #[must_use]
+    pub fn ip_address(&self) -> IpAddr {
+        self.process
+            .as_ref()
+            .map(|p| p.container_ip().unwrap())
+            .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+    }
+
+    /// Returns the port of the Postgres server.
+    #[must_use]
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
     async fn initialize_database(&self) -> Result<()> {
         // Write password to a file in tmp for use by initdb
         let password_file = std::path::Path::new("/tmp/pgpass");
@@ -275,6 +310,29 @@ impl Postgres {
         if !cmd.status.success() {
             return Err(Error::InitDb);
         }
+
+        // Configure pg_hba.conf to allow connections from all hosts
+        self.configure_pg_hba().await?;
+
+        Ok(())
+    }
+
+    async fn configure_pg_hba(&self) -> Result<()> {
+        let pg_hba_path = std::path::Path::new(&self.store_dir).join("pg_hba.conf");
+
+        // Create a pg_hba.conf that allows connections from anywhere
+        let pg_hba_content = format!(
+            "# TYPE  DATABASE        USER            ADDRESS                 METHOD\n\
+             local   all             all                                     trust\n\
+             host    all             all             0.0.0.0/0               md5\n\
+             host    all             all             ::/0                    md5\n"
+        );
+
+        tokio::fs::write(&pg_hba_path, pg_hba_content)
+            .await
+            .map_err(|e| Error::Io("failed to write pg_hba.conf", e))?;
+
+        info!("Updated pg_hba.conf to allow connections from all hosts");
 
         Ok(())
     }

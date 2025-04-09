@@ -63,6 +63,10 @@ struct Args {
     )]
     postgres_bin_path: String,
 
+    /// Postgres port
+    #[arg(long, default_value_t = 5432, env = "PROVEN_POSTGRES_PORT")]
+    postgres_port: u16,
+
     /// Postgres store directory
     #[arg(
         long,

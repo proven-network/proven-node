@@ -35,6 +35,8 @@ static MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations";
 /// Configures and runs Radix Gateway's data aggregator.
 pub struct RadixAggregator {
     postgres_database: String,
+    postgres_ip_address: String,
+    postgres_port: u16,
     postgres_username: String,
     postgres_password: String,
     shutdown_token: CancellationToken,
@@ -46,11 +48,17 @@ pub struct RadixAggregatorOptions {
     /// The name of the Postgres database.
     pub postgres_database: String,
 
-    /// The username to use when connecting to the Postgres database.
-    pub postgres_username: String,
+    /// The IP address of the Postgres server.
+    pub postgres_ip_address: String,
 
     /// The password to use when connecting to the Postgres database.
     pub postgres_password: String,
+
+    /// The port of the Postgres server.
+    pub postgres_port: u16,
+
+    /// The username to use when connecting to the Postgres database.
+    pub postgres_username: String,
 }
 
 impl RadixAggregator {
@@ -59,14 +67,18 @@ impl RadixAggregator {
     pub fn new(
         RadixAggregatorOptions {
             postgres_database,
-            postgres_username,
+            postgres_ip_address,
             postgres_password,
+            postgres_port,
+            postgres_username,
         }: RadixAggregatorOptions,
     ) -> Self {
         Self {
             postgres_database,
-            postgres_username,
+            postgres_ip_address,
             postgres_password,
+            postgres_port,
+            postgres_username,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -258,8 +270,12 @@ impl RadixAggregator {
 
     async fn update_config(&self) -> Result<()> {
         let connection_string = format!(
-            "Host=127.0.0.1:5432;Database={};Username={};Password={}",
-            self.postgres_database, self.postgres_username, self.postgres_password
+            "Host={};Port={};Database={};Username={};Password={}",
+            self.postgres_ip_address,
+            self.postgres_port,
+            self.postgres_database,
+            self.postgres_username,
+            self.postgres_password
         );
 
         let config = json!({

@@ -31,8 +31,10 @@ static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi";
 /// Configures and runs a local Radix Gateway.
 pub struct RadixGateway {
     postgres_database: String,
-    postgres_username: String,
+    postgres_ip_address: String,
     postgres_password: String,
+    postgres_port: u16,
+    postgres_username: String,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
@@ -42,8 +44,14 @@ pub struct RadixGatewayOptions {
     /// The name of the Postgres database.
     pub postgres_database: String,
 
+    /// The IP address of the Postgres server.
+    pub postgres_ip_address: String,
+
     /// The password for the Postgres database.
     pub postgres_password: String,
+
+    /// The port of the Postgres server.
+    pub postgres_port: u16,
 
     /// The username for the Postgres database.
     pub postgres_username: String,
@@ -55,13 +63,17 @@ impl RadixGateway {
     pub fn new(
         RadixGatewayOptions {
             postgres_database,
+            postgres_ip_address,
             postgres_password,
+            postgres_port,
             postgres_username,
         }: RadixGatewayOptions,
     ) -> Self {
         Self {
             postgres_database,
+            postgres_ip_address,
             postgres_password,
+            postgres_port,
             postgres_username,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
@@ -194,8 +206,12 @@ impl RadixGateway {
 
     async fn update_config(&self) -> Result<()> {
         let connection_string = format!(
-            "Host=127.0.0.1:5432;Database={};Username={};Password={}",
-            self.postgres_database, self.postgres_username, self.postgres_password
+            "Host={};Port={};Database={};Username={};Password={}",
+            self.postgres_ip_address,
+            self.postgres_port,
+            self.postgres_database,
+            self.postgres_username,
+            self.postgres_password
         );
 
         let config = json!({

@@ -14,6 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = PostgresOptions {
         bin_path: "/usr/local/pgsql/bin".to_string(),
         password: "postgres".to_string(),
+        port: 5432,
         username: "postgres".to_string(),
         skip_vacuum: true,
         store_dir,
