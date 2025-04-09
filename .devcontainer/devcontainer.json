@@ -1,6 +1,9 @@
 {
-	"name": "Rust",
-	"image": "mcr.microsoft.com/devcontainers/rust:1-1-bookworm",
+	"name": "Proven Node Development",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": ".."
+	},
 	"runArgs": ["--privileged", "--cgroupns=host"],
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
@@ -11,5 +14,6 @@
 			"nvmVersion": "latest"
 		}
 	},
-	"remoteUser": "root"
+	"remoteUser": "root",
+	"postCreateCommand": "echo 'Development container is ready with all dependencies installed.'"
 }
