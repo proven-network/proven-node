@@ -15,5 +15,13 @@
 		}
 	},
 	"remoteUser": "root",
-	"postCreateCommand": "echo 'Development container is ready with all dependencies installed.'"
+	"postCreateCommand": "echo 'Development container is ready with all dependencies installed.'",
+	"appPort": [
+		"30001:30001/tcp",
+		"30304:30304/tcp",
+		"30304:30304/udp",
+		"10109:10109/tcp",
+		"10109:10109/udp",
+		"10110:10110/udp"
+	]
 }
