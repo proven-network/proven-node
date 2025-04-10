@@ -274,7 +274,7 @@ pub struct IsolationConfig {
 impl Default for IsolationConfig {
     fn default() -> Self {
         Self {
-            use_chroot: false, // Disabled by default as it requires more setup
+            use_chroot: true,
             use_ipc_namespace: true,
             use_memory_limits: true,
             use_mount_namespace: true,
