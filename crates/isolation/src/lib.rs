@@ -332,6 +332,8 @@ impl IsolationManager {
             }
         }
 
+        options = options.with_volume_mounts(application.volume_mounts());
+
         // Configure namespaces
         let mut namespace_options = application.namespace_options();
         if !self.config.use_user_namespace {
