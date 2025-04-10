@@ -75,9 +75,13 @@ struct Args {
     )]
     postgres_store_dir: PathBuf,
 
+    /// Radix Mainnet HTTP port
+    #[arg(long, default_value_t = 3333, env = "PROVEN_RADIX_MAINNET_HTTP_PORT")]
+    radix_mainnet_http_port: u16,
+
     /// Radix Mainnet port
-    #[arg(long, default_value_t = 30000, env = "PROVEN_RADIX_MAINNET_PORT")]
-    radix_mainnet_port: u16,
+    #[arg(long, default_value_t = 30000, env = "PROVEN_RADIX_MAINNET_P2P_PORT")]
+    radix_mainnet_p2p_port: u16,
 
     /// Radix Mainnet store directory
     #[arg(
@@ -87,9 +91,13 @@ struct Args {
     )]
     radix_mainnet_store_dir: PathBuf,
 
+    /// Radix Stokenet HTTP port
+    #[arg(long, default_value_t = 3334, env = "PROVEN_RADIX_STOKENET_HTTP_PORT")]
+    radix_stokenet_http_port: u16,
+
     /// Radix Stokenet port
-    #[arg(long, default_value_t = 30001, env = "PROVEN_RADIX_STOKENET_PORT")]
-    radix_stokenet_port: u16,
+    #[arg(long, default_value_t = 30001, env = "PROVEN_RADIX_STOKENET_P2P_PORT")]
+    radix_stokenet_p2p_port: u16,
 
     /// Radix Stokenet store directory
     #[arg(

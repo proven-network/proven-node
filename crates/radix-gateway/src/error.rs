@@ -18,6 +18,10 @@ pub enum Error {
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),
 
+    /// Isolation error occurred.
+    #[error("isolation error: {0}")]
+    Isolation(#[from] proven_isolation::Error),
+
     /// Process exited with non-zero.
     #[error("exited with non-zero: {0}")]
     NonZeroExitCode(std::process::ExitStatus),
@@ -29,8 +33,4 @@ pub enum Error {
     /// Failed to parse regex pattern.
     #[error(transparent)]
     RegexParse(#[from] regex::Error),
-
-    /// Failed to send signal to dnscrypt-proxy.
-    #[error(transparent)]
-    Signal(#[from] nix::Error),
 }

@@ -76,8 +76,9 @@ static RUST_LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
 struct RadixNodeApp {
     config_dir: String,
     host_ip: String,
+    http_port: u16,
     network_definition: NetworkDefinition,
-    port: u16,
+    p2p_port: u16,
     store_dir: String,
 }
 
@@ -160,7 +161,10 @@ impl IsolatedApplication for RadixNodeApp {
             "127.0.0.1".to_string()
         };
 
-        let url = format!("http://{}:3333/core/status/network-status", ip_address);
+        let url = format!(
+            "http://{}:{}/core/status/network-status",
+            ip_address, self.http_port
+        );
 
         let response = match client
             .post(&url)
@@ -219,14 +223,16 @@ impl IsolatedApplication for RadixNodeApp {
             node.key.path={}
             db.location={}
             api.core.bind_address=0.0.0.0
+            api.core.port={}
         ",
             self.host_ip,
             self.network_definition.id,
-            self.port,
-            self.port,
+            self.p2p_port,
+            self.p2p_port,
             seed_nodes,
             keystore_path.to_string_lossy(),
-            self.store_dir
+            self.store_dir,
+            self.http_port
         );
 
         let mut config_file = std::fs::OpenOptions::new()
@@ -266,7 +272,7 @@ impl IsolatedApplication for RadixNodeApp {
     }
 
     fn tcp_port_forwards(&self) -> Vec<u16> {
-        vec![self.port] // Forward P2P
+        vec![self.p2p_port] // Forward P2P
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
@@ -281,8 +287,9 @@ impl IsolatedApplication for RadixNodeApp {
 pub struct RadixNode {
     config_dir: String,
     host_ip: String,
+    http_port: u16,
     network_definition: NetworkDefinition,
-    port: u16,
+    p2p_port: u16,
     isolation_manager: IsolationManager,
     process: Option<IsolatedProcess>,
     store_dir: String,
@@ -295,11 +302,15 @@ pub struct RadixNodeOptions {
 
     /// The host IP address.
     pub host_ip: String,
+
+    /// The HTTP port to listen on.
+    pub http_port: u16,
+
     /// The network definition.
     pub network_definition: NetworkDefinition,
 
     /// The port to listen on.
-    pub port: u16,
+    pub p2p_port: u16,
 
     /// The directory to store data in.
     pub store_dir: String,
@@ -311,16 +322,18 @@ impl RadixNode {
     pub fn new(
         RadixNodeOptions {
             host_ip,
+            http_port,
             network_definition,
-            port,
+            p2p_port,
             store_dir,
             config_dir,
         }: RadixNodeOptions,
     ) -> Self {
         Self {
             host_ip,
+            http_port,
             network_definition,
-            port,
+            p2p_port,
             isolation_manager: IsolationManager::new(),
             process: None,
             store_dir,
@@ -343,8 +356,9 @@ impl RadixNode {
 
         let app = RadixNodeApp {
             host_ip: self.host_ip.clone(),
+            http_port: self.http_port,
             network_definition: self.network_definition.clone(),
-            port: self.port,
+            p2p_port: self.p2p_port,
             store_dir: self.store_dir.clone(),
             config_dir: self.config_dir.clone(),
         };
@@ -377,6 +391,12 @@ impl RadixNode {
         Ok(())
     }
 
+    /// Returns the HTTP port of the Radix Node.
+    #[must_use]
+    pub fn http_port(&self) -> u16 {
+        self.http_port
+    }
+
     /// Returns the IP address of the Radix Node.
     #[must_use]
     pub fn ip_address(&self) -> IpAddr {
@@ -388,7 +408,7 @@ impl RadixNode {
 
     /// Returns the port of the Radix Node.
     #[must_use]
-    pub fn port(&self) -> u16 {
-        self.port
+    pub fn p2p_port(&self) -> u16 {
+        self.p2p_port
     }
 }

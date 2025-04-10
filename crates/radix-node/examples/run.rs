@@ -18,8 +18,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create and start the node
     let mut node = RadixNode::new(RadixNodeOptions {
         host_ip: fetch_external_ip().await,
+        http_port: 3333,
         network_definition: NetworkDefinition::stokenet(),
-        port: 30001,
+        p2p_port: 30001,
         store_dir,
         config_dir,
     });

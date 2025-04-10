@@ -24,8 +24,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting Radix Node...");
     let mut radix_node = RadixNode::new(RadixNodeOptions {
         host_ip: fetch_external_ip().await,
+        http_port: 3333,
         network_definition: NetworkDefinition::stokenet(),
-        port: 30001,
+        p2p_port: 30001,
         store_dir: "../radix-node/test-data".to_string(),
         config_dir: "../radix-node/test-data".to_string(),
     });
@@ -40,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         postgres_port: postgres.port(),
         postgres_username: "postgres".to_string(),
         radix_node_ip_address: radix_node.ip_address().to_string(),
-        radix_node_port: 3333,
+        radix_node_port: radix_node.http_port(),
     });
     let _ = aggregator.start().await?;
     println!("Radix Aggregator is ready!");

@@ -9426,12 +9426,14 @@ dependencies = [
 name = "proven-radix-gateway"
 version = "0.1.0"
 dependencies = [
- "nix 0.27.1",
+ "async-trait",
+ "once_cell",
+ "proven-isolation",
  "regex",
+ "reqwest",
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "tokio-util",
  "tracing",
 ]
 

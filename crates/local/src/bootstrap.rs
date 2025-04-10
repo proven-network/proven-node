@@ -93,7 +93,7 @@ pub struct Bootstrap {
     radix_aggregator_handle: Option<JoinHandle<()>>,
 
     radix_gateway: Option<RadixGateway>,
-    radix_gateway_handle: Option<JoinHandle<proven_radix_gateway::Result<()>>>,
+    radix_gateway_handle: Option<JoinHandle<()>>,
 
     nats_client: Option<NatsClient>,
     nats_server: Option<NatsServer<MockGovernance, MockAttestor>>,
@@ -442,7 +442,7 @@ impl Bootstrap {
                     } => {},
                     _ = async { 
                         if let Some(handle) = radix_gateway_handle {
-                            if let Ok(Err(e)) = handle.await {
+                            if let Ok(e) = handle.await {
                                 error!("radix_gateway exited: {:?}", e);
                                 return;
                             }
@@ -471,7 +471,7 @@ impl Bootstrap {
             nats_server.lock().await.shutdown().await;
             
             if let Some(gateway) = &radix_gateway {
-                gateway.lock().await.shutdown().await;
+                let _ = gateway.lock().await.shutdown().await;
             }
             
             if let Some(aggregator) = &radix_aggregator {
@@ -542,8 +542,8 @@ impl Bootstrap {
             nats_server.shutdown().await;
         }
 
-        if let Some(radix_gateway) = self.radix_gateway {
-            radix_gateway.shutdown().await;
+        if let Some(mut radix_gateway) = self.radix_gateway {
+            let _ = radix_gateway.shutdown().await;
         }
 
         if let Some(mut radix_aggregator) = self.radix_aggregator {
@@ -643,8 +643,9 @@ impl Bootstrap {
             let mut radix_mainnet_node = RadixNode::new(RadixNodeOptions {
                 config_dir: "/tmp/radix-node-mainnet".to_string(),
                 host_ip: self.external_ip.to_string(),
+                http_port: self.args.radix_mainnet_http_port,
                 network_definition: NetworkDefinition::mainnet(),
-                port: self.args.radix_mainnet_port,
+                p2p_port: self.args.radix_mainnet_p2p_port,
                 store_dir: self
                     .args
                     .radix_mainnet_store_dir
@@ -668,8 +669,9 @@ impl Bootstrap {
             let mut radix_stokenet_node = RadixNode::new(RadixNodeOptions {
                 config_dir: "/tmp/radix-node-stokenet".to_string(),
                 host_ip: self.external_ip.to_string(),
+                http_port: self.args.radix_stokenet_http_port,
                 network_definition: NetworkDefinition::stokenet(),
-                port: self.args.radix_stokenet_port,
+                p2p_port: self.args.radix_stokenet_p2p_port,
                 store_dir: self
                     .args
                     .radix_stokenet_store_dir
@@ -947,7 +949,7 @@ impl Bootstrap {
                 postgres_port: postgres.port(),
                 postgres_username: POSTGRES_USERNAME.to_string(),
                 radix_node_ip_address: radix_stokenet_node.ip_address().to_string(),
-                radix_node_port: radix_stokenet_node.port(),
+                radix_node_port: radix_stokenet_node.http_port(),
             });
 
             let radix_aggregator_handle = radix_aggregator.start().await?;
@@ -975,12 +977,18 @@ impl Bootstrap {
                 panic!("postgres not set before radix gateway step");
             });
 
-            let radix_gateway = RadixGateway::new(RadixGatewayOptions {
+            let radix_stokenet_node = self.radix_stokenet_node.as_ref().unwrap_or_else(|| {
+                panic!("radix node not set before radix gateway step");
+            });
+
+            let mut radix_gateway = RadixGateway::new(RadixGatewayOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
                 postgres_ip_address: postgres.ip_address().to_string(),
                 postgres_password: POSTGRES_PASSWORD.to_string(),
                 postgres_port: postgres.port(),
                 postgres_username: POSTGRES_USERNAME.to_string(),
+                radix_node_ip_address: radix_stokenet_node.ip_address().to_string(),
+                radix_node_port: radix_stokenet_node.http_port(),
             });
 
             let radix_gateway_handle = radix_gateway.start().await?;
