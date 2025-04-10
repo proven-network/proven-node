@@ -157,6 +157,12 @@ impl IsolatedApplication for CounterApp {
                 .map_err(|e| Error::Io("Failed to create storage directory", e))?;
         }
 
+        // Create the data directory inside the chroot environment
+        let data_dir_in_chroot = PathBuf::from("/tmp/counter-storage/root/data");
+        fs::create_dir_all(&data_dir_in_chroot)
+            .await
+            .map_err(|e| Error::Io("Failed to create data directory in chroot", e))?;
+
         Ok(())
     }
 }
