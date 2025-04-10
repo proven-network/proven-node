@@ -332,6 +332,24 @@ impl IsolatedProcessSpawner {
             // Copy /bin/sh and its dependencies
             setup_cmd.push_str(&format!("cp /bin/sh {}/bin/; ", chroot_dir.display()));
 
+            // Copy the application executable to the chroot
+            if let Ok(exec_path) = which::which(&options.executable) {
+                // Create the directory structure for the executable
+                setup_cmd.push_str(&format!("mkdir -p {}/usr/bin/; ", chroot_dir.display()));
+                // Copy the executable
+                setup_cmd.push_str(&format!("cp {} {}/usr/bin/; ", exec_path.display(), chroot_dir.display()));
+                // Make it executable
+                setup_cmd.push_str(&format!("chmod +x {}/usr/bin/{}; ", 
+                    chroot_dir.display(), 
+                    exec_path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("app")).to_string_lossy()));
+            } else {
+                // Fallback to looking in common directories if which fails
+                setup_cmd.push_str(&format!("cp $(which {0} 2>/dev/null || echo /usr/bin/{0}) {1}/usr/bin/ 2>/dev/null || cp $(find /usr/bin -name {0} | head -1) {1}/usr/bin/ 2>/dev/null || cp $(find /bin -name {0} | head -1) {1}/usr/bin/ 2>/dev/null || true; ", 
+                    options.executable.display(), 
+                    chroot_dir.display()));
+                setup_cmd.push_str(&format!("chmod +x {}/usr/bin/* 2>/dev/null || true; ", chroot_dir.display()));
+            }
+
             // Copy common library directories
             setup_cmd.push_str(&format!(
                 "cp -r /lib/* {}/lib/ 2>/dev/null || true; ",
@@ -402,11 +420,16 @@ impl IsolatedProcessSpawner {
 
         // Add chroot if specified
         if let Some(ref chroot_dir) = options.chroot_dir {
-            // When using chroot, use /bin/sh to execute the target program
+            // Modify the executable path to use /usr/bin/[executable name] inside the chroot
+            let exec_name = Path::new(&options.executable)
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new("app"))
+                .to_string_lossy();
+            
             setup_cmd.push_str(&format!(
-                "chroot {} /bin/sh -c \"exec {}{}\"",
+                "exec chroot {} /usr/bin/{}{}",
                 chroot_dir.display(),
-                options.executable.display(),
+                exec_name,
                 if options.args.is_empty() {
                     "".to_string()
                 } else {
