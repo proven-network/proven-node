@@ -314,6 +314,9 @@ impl IsolatedProcessSpawner {
         // Build the setup and exec command
         let mut setup_cmd = String::new();
 
+        // Sleep for 5s to allow the network to be setup before executing the target program
+        setup_cmd.push_str(&format!("sleep 5; "));
+
         // If using chroot, set up the chroot environment first
         if let Some(ref chroot_dir) = options.chroot_dir {
             // Create basic directory structure
@@ -484,6 +487,9 @@ impl IsolatedProcessSpawner {
         cmd.stderr(Stdio::piped());
 
         debug!("Spawning process: {:?}", cmd);
+
+        // Track the start time to compensate for the network setup sleep
+        let start_time = std::time::Instant::now();
 
         // Spawn the command
         let mut child = cmd
@@ -707,6 +713,17 @@ impl IsolatedProcessSpawner {
             task_tracker,
             veth_pair,
         };
+
+        // We might need to compensate for the network setup sleep before starting the readiness checks
+        let compensation = Duration::from_secs(5) - (std::time::Instant::now() - start_time);
+
+        if compensation > Duration::from_millis(0) {
+            debug!(
+                "Sleeping for {}ms before starting readiness checks",
+                compensation.as_millis()
+            );
+            tokio::time::sleep(compensation).await;
+        }
 
         // Perform readiness checks
         let interval = Duration::from_millis(options.application.is_ready_check_interval_ms());
