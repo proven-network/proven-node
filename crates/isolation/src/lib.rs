@@ -45,7 +45,7 @@
 //!     };
 //!
 //!     let manager = IsolationManager::new();
-//!     let process = manager.spawn(app).await?;
+//!     let (process, _) = manager.spawn(app).await?;
 //!
 //!     // App is now running and ready
 //!
