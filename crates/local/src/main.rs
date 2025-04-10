@@ -92,7 +92,7 @@ struct Args {
     radix_mainnet_store_dir: PathBuf,
 
     /// Radix Stokenet HTTP port
-    #[arg(long, default_value_t = 3334, env = "PROVEN_RADIX_STOKENET_HTTP_PORT")]
+    #[arg(long, default_value_t = 3343, env = "PROVEN_RADIX_STOKENET_HTTP_PORT")]
     radix_stokenet_http_port: u16,
 
     /// Radix Stokenet port
