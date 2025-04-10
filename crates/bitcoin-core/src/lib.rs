@@ -87,7 +87,7 @@ struct BitcoinCoreApp {
 impl IsolatedApplication for BitcoinCoreApp {
     fn args(&self) -> Vec<String> {
         let mut args = vec![
-            format!("--datadir={}", self.store_dir),
+            "--datadir=/data".to_string(),
             "--server=1".to_string(),
             "--txindex=1".to_string(),
             "--rpcallowip=0.0.0.0/0".to_string(),
@@ -192,7 +192,7 @@ impl IsolatedApplication for BitcoinCoreApp {
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
-        vec![VolumeMount::new(&self.store_dir, &self.store_dir)]
+        vec![VolumeMount::new(&self.store_dir, &"/data".to_string())]
     }
 }
 
