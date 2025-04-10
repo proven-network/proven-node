@@ -341,7 +341,7 @@ impl Bootstrap {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = radix_mainnet_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("radix mainnet node exited: {:?}", e);
@@ -350,7 +350,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = radix_stokenet_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("radix stokenet node exited: {:?}", e);
@@ -359,7 +359,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = ethereum_mainnet_reth_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("ethereum mainnet reth node exited: {:?}", e);
@@ -368,7 +368,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = ethereum_mainnet_lighthouse_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("ethereum mainnet lighthouse node exited: {:?}", e);
@@ -377,7 +377,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = ethereum_holesky_reth_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("ethereum holesky reth node exited: {:?}", e);
@@ -386,7 +386,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = ethereum_holesky_lighthouse_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("ethereum holesky lighthouse node exited: {:?}", e);
@@ -395,7 +395,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = ethereum_sepolia_reth_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("ethereum sepolia reth node exited: {:?}", e);
@@ -404,7 +404,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = ethereum_sepolia_lighthouse_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("ethereum sepolia lighthouse node exited: {:?}", e);
@@ -413,7 +413,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = bitcoin_node_handle {
                             if let Ok(e) = handle.await {
                                 error!("bitcoin node exited: {:?}", e);
@@ -422,7 +422,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = postgres_handle {
                             if let Ok(e) = handle.await {
                                 error!("postgres exited: {:?}", e);
@@ -431,7 +431,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = radix_aggregator_handle {
                             if let Ok(e) = handle.await {
                                 error!("radix_aggregator exited: {:?}", e);
@@ -440,7 +440,7 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    _ = async { 
+                    _ = async {
                         if let Some(handle) = radix_gateway_handle {
                             if let Ok(e) = handle.await {
                                 error!("radix_gateway exited: {:?}", e);
@@ -469,23 +469,23 @@ impl Bootstrap {
             // Shutdown services in reverse order
             core.lock().await.shutdown().await;
             nats_server.lock().await.shutdown().await;
-            
+
             if let Some(gateway) = &radix_gateway {
                 let _ = gateway.lock().await.shutdown().await;
             }
-            
+
             if let Some(aggregator) = &radix_aggregator {
                 let _ = aggregator.lock().await.shutdown().await;
             }
-            
+
             if let Some(postgres) = &postgres {
                 let _ = postgres.lock().await.shutdown().await;
             }
-            
+
             if let Some(mainnet_node) = &radix_mainnet_node_option {
                 let _ = mainnet_node.lock().await.shutdown().await;
             }
-            
+
             if let Some(stokenet_node) = &radix_stokenet_node_option {
                 let _ = stokenet_node.lock().await.shutdown().await;
             }
@@ -493,7 +493,7 @@ impl Bootstrap {
             if let Some(ethereum_mainnet_reth_node) = &ethereum_mainnet_reth_node_option {
                 ethereum_mainnet_reth_node.lock().await.shutdown().await;
             }
-            
+
             if let Some(ethereum_mainnet_lighthouse_node) = &ethereum_mainnet_lighthouse_node_option {
                 ethereum_mainnet_lighthouse_node.lock().await.shutdown().await;
             }
@@ -501,7 +501,7 @@ impl Bootstrap {
             if let Some(ethereum_holesky_reth_node) = &ethereum_holesky_reth_node_option {
                 ethereum_holesky_reth_node.lock().await.shutdown().await;
             }
-            
+
             if let Some(ethereum_holesky_lighthouse_node) = &ethereum_holesky_lighthouse_node_option {
                 ethereum_holesky_lighthouse_node.lock().await.shutdown().await;
             }
@@ -509,7 +509,7 @@ impl Bootstrap {
             if let Some(ethereum_sepolia_reth_node) = &ethereum_sepolia_reth_node_option {
                 ethereum_sepolia_reth_node.lock().await.shutdown().await;
             }
-            
+
             if let Some(ethereum_sepolia_lighthouse_node) = &ethereum_sepolia_lighthouse_node_option {
                 ethereum_sepolia_lighthouse_node.lock().await.shutdown().await;
             }

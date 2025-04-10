@@ -378,7 +378,7 @@ impl IsolatedProcessSpawner {
                 // Fallback to looking in common directories if which fails
                 setup_cmd.push_str(&format!("mkdir -p {}/usr/bin/; ", chroot_dir.display()));
                 setup_cmd.push_str(&format!("cp $(which {0} || echo /usr/bin/{0}) {1}/usr/bin/ || cp $(find /usr/bin -name {0} | head -1) {1}/usr/bin/ || cp $(find /bin -name {0} | head -1) {1}/usr/bin/ || true; ", 
-                    options.executable.display(), 
+                    options.executable.display(),
                     chroot_dir.display()));
                 setup_cmd.push_str(&format!(
                     "chmod +x {}/usr/bin/* || true; ",

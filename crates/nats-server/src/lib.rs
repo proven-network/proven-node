@@ -264,7 +264,7 @@ where
         self.task_tracker.spawn(async move {
             let update_interval = Duration::from_secs(PEER_DISCOVERY_INTERVAL);
             let mut interval = tokio::time::interval(update_interval);
-            
+
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
