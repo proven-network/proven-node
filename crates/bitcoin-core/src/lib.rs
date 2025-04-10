@@ -70,17 +70,17 @@ pub struct BitcoinNodeOptions {
 
 /// Bitcoin Core application implementing the IsolatedApplication trait
 struct BitcoinCoreApp {
-    /// The Bitcoin network type
-    network: BitcoinNetwork,
-
-    /// The directory to store data in
-    store_dir: String,
-
     /// The path to the bitcoind executable
     executable_path: String,
 
+    /// The Bitcoin network type
+    network: BitcoinNetwork,
+
     /// RPC configuration
     rpc_port: u16,
+
+    /// The directory to store data in
+    store_dir: String,
 }
 
 #[async_trait]
@@ -240,9 +240,9 @@ impl BitcoinNode {
         debug!("Starting isolated Bitcoin Core node...");
 
         let app = BitcoinCoreApp {
+            executable_path: "/usr/local/bin/bitcoind".to_string(),
             network: self.network,
             store_dir: self.store_dir.clone(),
-            executable_path: "bitcoind".to_string(),
             rpc_port: self.rpc_port,
         };
 

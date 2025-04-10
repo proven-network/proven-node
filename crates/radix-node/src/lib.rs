@@ -85,10 +85,11 @@ struct RadixNodeApp {
 #[async_trait]
 impl IsolatedApplication for RadixNodeApp {
     fn args(&self) -> Vec<String> {
-        let config_path = Path::new(&self.config_dir).join(CONFIG_FILENAME);
+        let config_path = Path::new("/config").join(CONFIG_FILENAME);
+
         vec![
             "-config".to_string(),
-            config_path.to_string_lossy().into_owned(),
+            config_path.to_string_lossy().to_string(),
         ]
     }
 
@@ -106,6 +107,18 @@ impl IsolatedApplication for RadixNodeApp {
             (
                 "LD_PRELOAD".to_string(),
                 "/bin/babylon-node/libcorerust.so".to_string(),
+            ),
+            (
+                "JAVA_HOME".to_string(),
+                "/usr/lib/jvm/java-17-openjdk-arm64".to_string(),
+            ),
+            (
+                "PATH".to_string(),
+                "/usr/lib/jvm/java-17-openjdk-arm64/bin:/usr/bin:/bin".to_string(),
+            ),
+            (
+                "LD_LIBRARY_PATH".to_string(),
+                "/usr/lib/jvm/java-17-openjdk-arm64/lib".to_string(),
             ),
         ]
     }
@@ -204,7 +217,7 @@ impl IsolatedApplication for RadixNodeApp {
         })?;
 
         let config_path = Path::new(&self.config_dir).join(CONFIG_FILENAME);
-        let keystore_path = Path::new(&self.config_dir).join(KEYSTORE_FILENAME);
+        let keystore_path = Path::new("/config").join(KEYSTORE_FILENAME);
 
         let seed_nodes = match self.network_definition.id {
             1 => MAINNET_SEED_NODES,
@@ -221,7 +234,7 @@ impl IsolatedApplication for RadixNodeApp {
             network.p2p.broadcast_port={}
             network.p2p.seed_nodes={}
             node.key.path={}
-            db.location={}
+            db.location=/data
             api.core.bind_address=0.0.0.0
             api.core.port={}
         ",
@@ -231,7 +244,6 @@ impl IsolatedApplication for RadixNodeApp {
             self.p2p_port,
             seed_nodes,
             keystore_path.to_string_lossy(),
-            self.store_dir,
             self.http_port
         );
 
@@ -249,9 +261,10 @@ impl IsolatedApplication for RadixNodeApp {
         })?;
 
         // Generate the node key
+        let keystore_path_local = Path::new(&self.config_dir).join(KEYSTORE_FILENAME);
         let output = Command::new("/bin/babylon-node/core-v1.3.0.2/bin/keygen")
             .arg("-k")
-            .arg(keystore_path.to_string_lossy().as_ref())
+            .arg(keystore_path_local.to_string_lossy().as_ref())
             .arg("-p")
             .arg(KEYSTORE_PASS)
             .output()
@@ -277,8 +290,13 @@ impl IsolatedApplication for RadixNodeApp {
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
-            VolumeMount::new(&self.store_dir, &self.store_dir),
-            VolumeMount::new(&self.config_dir, &self.config_dir),
+            VolumeMount::new(&self.store_dir, &"/data".to_string()),
+            VolumeMount::new(&self.config_dir, &"/config".to_string()),
+            VolumeMount::new("/bin/babylon-node", "/bin/babylon-node"),
+            VolumeMount::new(
+                "/etc/java-17-openjdk/security",
+                "/etc/java-17-openjdk/security",
+            ),
         ]
     }
 }

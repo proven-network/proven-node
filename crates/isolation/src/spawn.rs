@@ -321,62 +321,101 @@ impl IsolatedProcessSpawner {
         if let Some(ref chroot_dir) = options.chroot_dir {
             // Create basic directory structure
             setup_cmd.push_str(&format!(
-                "mkdir -p {}/bin {}/lib {}/lib64 {}/usr/lib {}/usr/lib64; ",
+                "mkdir -p {}/bin {}/lib {}/usr/bin {}/usr/lib {}/tmp; ",
                 chroot_dir.display(),
                 chroot_dir.display(),
                 chroot_dir.display(),
                 chroot_dir.display(),
                 chroot_dir.display()
             ));
-
-            // Copy /bin/sh and its dependencies
-            setup_cmd.push_str(&format!("cp /bin/sh {}/bin/; ", chroot_dir.display()));
 
             // Copy the application executable to the chroot
             if let Ok(exec_path) = which::which(&options.executable) {
                 // Create the directory structure for the executable
-                setup_cmd.push_str(&format!("mkdir -p {}/usr/bin/; ", chroot_dir.display()));
-                // Copy the executable
-                setup_cmd.push_str(&format!("cp {} {}/usr/bin/; ", exec_path.display(), chroot_dir.display()));
+                setup_cmd.push_str(&format!(
+                    "mkdir -p {}/$(dirname {}); ",
+                    chroot_dir.display(),
+                    options.executable.display()
+                ));
+
+                // Copy the executable with preserving links
+                setup_cmd.push_str(&format!(
+                    "cp -a {} {}/{} || true; ",
+                    exec_path.display(),
+                    chroot_dir.display(),
+                    options.executable.display()
+                ));
+
+                // Also try to copy the entire directory structure if it's a complex application
+                setup_cmd.push_str(&format!(
+                    "cp -a $(dirname {})/* {}/$(dirname {})/ || true; ",
+                    options.executable.display(),
+                    chroot_dir.display(),
+                    options.executable.display()
+                ));
+
                 // Make it executable
-                setup_cmd.push_str(&format!("chmod +x {}/usr/bin/{}; ", 
-                    chroot_dir.display(), 
-                    exec_path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("app")).to_string_lossy()));
+                setup_cmd.push_str(&format!(
+                    "chmod +x {}/{} || true; ",
+                    chroot_dir.display(),
+                    options.executable.display()
+                ));
+
+                // Also look for .so files in the same directory
+                setup_cmd.push_str(&format!(
+                    "if [ -d $(dirname {}) ]; then \
+                        for lib in $(find $(dirname {}) -name \"*.so*\"); do \
+                            mkdir -p {}/$(dirname $lib); \
+                            cp -aL $lib {}/$(dirname $lib)/ || true; \
+                        done; \
+                    fi; ",
+                    options.executable.display(),
+                    options.executable.display(),
+                    chroot_dir.display(),
+                    chroot_dir.display()
+                ));
             } else {
                 // Fallback to looking in common directories if which fails
-                setup_cmd.push_str(&format!("cp $(which {0} 2>/dev/null || echo /usr/bin/{0}) {1}/usr/bin/ 2>/dev/null || cp $(find /usr/bin -name {0} | head -1) {1}/usr/bin/ 2>/dev/null || cp $(find /bin -name {0} | head -1) {1}/usr/bin/ 2>/dev/null || true; ", 
+                setup_cmd.push_str(&format!("mkdir -p {}/usr/bin/; ", chroot_dir.display()));
+                setup_cmd.push_str(&format!("cp $(which {0} || echo /usr/bin/{0}) {1}/usr/bin/ || cp $(find /usr/bin -name {0} | head -1) {1}/usr/bin/ || cp $(find /bin -name {0} | head -1) {1}/usr/bin/ || true; ", 
                     options.executable.display(), 
                     chroot_dir.display()));
-                setup_cmd.push_str(&format!("chmod +x {}/usr/bin/* 2>/dev/null || true; ", chroot_dir.display()));
+                setup_cmd.push_str(&format!(
+                    "chmod +x {}/usr/bin/* || true; ",
+                    chroot_dir.display()
+                ));
             }
 
-            // Copy common library directories
+            // Copy essential command-line utilities used by many applications
+            setup_cmd.push_str(&format!("for cmd in tr xargs sh uname echo cat grep sed awk; do cp $(which $cmd) {}/bin/ || cp $(which $cmd) {}/usr/bin/ || true; done; ",
+                chroot_dir.display(), chroot_dir.display()));
+
+            // Copy SSL certificates (needed by many applications for TLS)
             setup_cmd.push_str(&format!(
-                "cp -r /lib/* {}/lib/ 2>/dev/null || true; ",
-                chroot_dir.display()
-            ));
-            setup_cmd.push_str(&format!(
-                "cp -r /lib64/* {}/lib64/ 2>/dev/null || true; ",
-                chroot_dir.display()
-            ));
-            setup_cmd.push_str(&format!(
-                "cp -r /usr/lib/* {}/usr/lib/ 2>/dev/null || true; ",
-                chroot_dir.display()
-            ));
-            setup_cmd.push_str(&format!(
-                "cp -r /usr/lib64/* {}/usr/lib64/ 2>/dev/null || true; ",
+                "mkdir -p {}/etc/ssl/certs; cp -r /etc/ssl/certs/* {}/etc/ssl/certs/ || true; ",
+                chroot_dir.display(),
                 chroot_dir.display()
             ));
 
-            // Make executables executable
+            // Create /etc/nsswitch.conf for proper name resolution
             setup_cmd.push_str(&format!(
-                "chmod +x {}/bin/* 2>/dev/null || true; ",
+                "mkdir -p {}/etc; echo 'hosts: files dns' > {}/etc/nsswitch.conf; ",
+                chroot_dir.display(),
                 chroot_dir.display()
             ));
-        }
 
-        // Set up volume mounts if mount namespace is enabled
-        if options.namespaces.use_mount {
+            // Mount the host library directories as read-only
+            setup_cmd.push_str(&format!(
+                "mount --bind -o ro /lib {}/lib || true; ",
+                chroot_dir.display()
+            ));
+
+            setup_cmd.push_str(&format!(
+                "mount --bind -o ro /usr/lib {}/usr/lib || true; ",
+                chroot_dir.display()
+            ));
+
+            // Set up volume mounts
             for mount in &options.volume_mounts {
                 // If we're using chroot, adjust paths to be relative to the chroot
                 let container_path = if let Some(ref chroot_dir) = options.chroot_dir {
@@ -393,17 +432,27 @@ impl IsolatedProcessSpawner {
                 // Create mount point directories
                 setup_cmd.push_str(&format!("mkdir -p {}; ", container_path.display()));
 
-                // Perform bind mount
-                let mount_opts = if mount.read_only { "ro,bind" } else { "bind" };
-                setup_cmd.push_str(&format!(
-                    "mount --bind {} {} && mount -o remount,{} {} {}; ",
-                    mount.host_path.display(),
-                    container_path.display(),
-                    mount_opts,
-                    container_path.display(),
-                    container_path.display()
-                ));
+                // Mount the volume
+                if mount.read_only {
+                    setup_cmd.push_str(&format!(
+                        "mount --bind -o ro {} {} || true; ",
+                        mount.host_path.display(),
+                        container_path.display()
+                    ));
+                } else {
+                    setup_cmd.push_str(&format!(
+                        "mount --bind {} {} || true; ",
+                        mount.host_path.display(),
+                        container_path.display()
+                    ));
+                }
             }
+
+            // Make executables executable
+            setup_cmd.push_str(&format!(
+                "chmod +x {}/bin/* || true; ",
+                chroot_dir.display()
+            ));
         }
 
         // Change to working directory if specified (before chroot)
@@ -420,16 +469,14 @@ impl IsolatedProcessSpawner {
 
         // Add chroot if specified
         if let Some(ref chroot_dir) = options.chroot_dir {
-            // Modify the executable path to use /usr/bin/[executable name] inside the chroot
-            let exec_name = Path::new(&options.executable)
-                .file_name()
-                .unwrap_or_else(|| std::ffi::OsStr::new("app"))
-                .to_string_lossy();
-            
+            // Use the full path inside the chroot
+            let exec_path = options.executable.to_string_lossy();
+
+            // Use chroot + exec with the host's chroot binary
             setup_cmd.push_str(&format!(
-                "exec chroot {} /usr/bin/{}{}",
+                "exec /usr/sbin/chroot {} {} {}",
                 chroot_dir.display(),
-                exec_name,
+                exec_path,
                 if options.args.is_empty() {
                     "".to_string()
                 } else {
