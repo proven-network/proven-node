@@ -584,6 +584,30 @@ impl IsolatedProcessSpawner {
             None
         };
 
+        // Create resolv.conf for DNS resolution inside chroot if network namespace is used
+        if let (Some(veth), Some(chroot_dir)) =
+            (veth_pair.as_ref(), options.application.chroot_dir())
+        {
+            let etc_dir = chroot_dir.join("etc");
+            let resolv_conf_path = etc_dir.join("resolv.conf");
+
+            // Create /etc directory if it doesn't exist
+            if let Err(e) = std::fs::create_dir_all(&etc_dir) {
+                warn!("Failed to create /etc directory in chroot: {}", e);
+            } else {
+                // Point to the host's veth IP - DNS requests will be forwarded to actual DNS servers via iptables
+                let resolv_conf_content = format!("nameserver {}\n", veth.host_ip());
+                if let Err(e) = std::fs::write(&resolv_conf_path, resolv_conf_content) {
+                    warn!("Failed to write resolv.conf in chroot: {}", e);
+                } else {
+                    debug!(
+                        "Created resolv.conf in chroot pointing to {} (DNS queries will be forwarded to host's DNS servers)",
+                        veth.host_ip()
+                    );
+                }
+            }
+        }
+
         // Take stdout and stderr before they're moved into closures
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();

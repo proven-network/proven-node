@@ -379,7 +379,7 @@ impl VethPair {
         let routes = String::from_utf8_lossy(&output.stdout);
         debug!("Container routing table: {}", routes);
 
-        // Bring up loopback interface
+        // Bring up loopback interface in container
         let output = Command::new("ip")
             .args(&["netns", "exec", &ns_name, "ip", "link", "set", "lo", "up"])
             .output()
@@ -395,7 +395,123 @@ impl VethPair {
 
         debug!("Brought up loopback interface in container");
 
+        // Set up DNS forwarding
+        self.setup_dns_forwarding()?;
+
         Ok(())
+    }
+
+    /// Set up DNS forwarding from container to the host's DNS servers
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if setup fails
+    fn setup_dns_forwarding(&self) -> Result<()> {
+        debug!("Setting up DNS forwarding for container");
+
+        // Read the host's resolv.conf to get nameservers
+        let resolv_conf = match std::fs::read_to_string("/etc/resolv.conf") {
+            Ok(content) => content,
+            Err(e) => {
+                debug!("Failed to read host's resolv.conf: {}", e);
+                return Err(Error::Network(format!("Failed to configure DNS: {}", e)));
+            }
+        };
+
+        // Extract nameserver IPs using regex
+        let nameservers = resolv_conf
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.starts_with("nameserver") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        return Some(parts[1].to_string());
+                    }
+                }
+                None
+            })
+            .collect::<Vec<String>>();
+
+        if nameservers.is_empty() {
+            debug!("No nameservers found in host's resolv.conf");
+            return Err(Error::Network(
+                "No nameservers found in host's resolv.conf".to_string(),
+            ));
+        }
+
+        debug!("Found nameservers: {:?}", nameservers);
+
+        // Add iptables rules to forward DNS queries to each nameserver
+        for nameserver in nameservers {
+            // Forward UDP DNS queries (port 53)
+            let output = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-A",
+                    "PREROUTING",
+                    "-s",
+                    &self.container_ip.to_string(),
+                    "-p",
+                    "udp",
+                    "--dport",
+                    "53",
+                    "-j",
+                    "DNAT",
+                    "--to",
+                    &format!("{}:53", nameserver),
+                ])
+                .output()
+                .map_err(|e| Error::Network(format!("Failed to set up DNS forwarding: {}", e)))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                debug!(
+                    "Failed to set up UDP DNS forwarding to {}: {}",
+                    nameserver, stderr
+                );
+                continue; // Try the next nameserver if this one fails
+            }
+
+            // Forward TCP DNS queries (less common but sometimes used)
+            let output = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-A",
+                    "PREROUTING",
+                    "-s",
+                    &self.container_ip.to_string(),
+                    "-p",
+                    "tcp",
+                    "--dport",
+                    "53",
+                    "-j",
+                    "DNAT",
+                    "--to",
+                    &format!("{}:53", nameserver),
+                ])
+                .output()
+                .map_err(|e| {
+                    Error::Network(format!("Failed to set up TCP DNS forwarding: {}", e))
+                })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                debug!(
+                    "Failed to set up TCP DNS forwarding to {}: {}",
+                    nameserver, stderr
+                );
+            } else {
+                debug!("Set up DNS forwarding to {}", nameserver);
+                return Ok(()); // Success with this nameserver, stop here
+            }
+        }
+
+        debug!("Failed to set up DNS forwarding to any nameserver");
+
+        Ok(()) // Return Ok even if we couldn't set up forwarding, to avoid breaking other functionality
     }
 
     /// Set up the host side of the veth pair
@@ -872,6 +988,9 @@ impl VethPair {
     fn cleanup(&self) -> Result<()> {
         debug!("Cleaning up veth pair: {}", self.host_name);
 
+        // Clean up DNS forwarding rules
+        self.cleanup_dns_forwarding();
+
         // Remove port forwarding rules for TCP ports
         for port in &self.tcp_port_forwards {
             debug!("Removing TCP rules for port {}", port);
@@ -1108,6 +1227,85 @@ impl VethPair {
 
         debug!("Veth pair cleanup for {} complete", self.host_name);
         Ok(())
+    }
+
+    /// Clean up DNS forwarding rules
+    fn cleanup_dns_forwarding(&self) {
+        debug!("Cleaning up DNS forwarding rules for container");
+
+        // Read the host's resolv.conf to get nameservers
+        let resolv_conf = match std::fs::read_to_string("/etc/resolv.conf") {
+            Ok(content) => content,
+            Err(e) => {
+                debug!("Failed to read host's resolv.conf: {}", e);
+                return;
+            }
+        };
+
+        // Extract nameserver IPs using regex
+        let nameservers = resolv_conf
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.starts_with("nameserver") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        return Some(parts[1].to_string());
+                    }
+                }
+                None
+            })
+            .collect::<Vec<String>>();
+
+        if nameservers.is_empty() {
+            debug!("No nameservers found in host's resolv.conf");
+            return;
+        }
+
+        debug!("Found nameservers: {:?}", nameservers);
+
+        // Remove iptables rules to forward DNS queries to each nameserver
+        for nameserver in nameservers {
+            // Forward UDP DNS queries (port 53)
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-D",
+                    "PREROUTING",
+                    "-s",
+                    &self.container_ip.to_string(),
+                    "-p",
+                    "udp",
+                    "--dport",
+                    "53",
+                    "-j",
+                    "DNAT",
+                    "--to",
+                    &format!("{}:53", nameserver),
+                ])
+                .output();
+
+            // Forward TCP DNS queries (less common but sometimes used)
+            let _ = Command::new("iptables")
+                .args(&[
+                    "-t",
+                    "nat",
+                    "-D",
+                    "PREROUTING",
+                    "-s",
+                    &self.container_ip.to_string(),
+                    "-p",
+                    "tcp",
+                    "--dport",
+                    "53",
+                    "-j",
+                    "DNAT",
+                    "--to",
+                    &format!("{}:53", nameserver),
+                ])
+                .output();
+        }
     }
 }
 
