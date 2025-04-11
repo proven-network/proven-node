@@ -434,6 +434,14 @@ impl IsolatedProcessSpawner {
                 chroot_dir.display()
             ));
 
+            // Create tmpfs for /tmp
+            // TODO: Make this configurable based on application needs
+            setup_cmd.push_str(&format!(
+                "mkdir -p {}/tmp; mount -t tmpfs -o size=256m tmpfs {}/tmp || true; ",
+                chroot_dir.display(),
+                chroot_dir.display()
+            ));
+
             // Set up volume mounts
             for mount in &options.volume_mounts {
                 // If we're using chroot, adjust paths to be relative to the chroot
