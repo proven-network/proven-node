@@ -48,7 +48,7 @@ impl IsolatedApplication for PostgresApp {
             "-p".to_string(),
             self.port.to_string(),
             "-D".to_string(),
-            self.store_dir.clone(),
+            "/data".to_string(),
             "-c".to_string(),
             "maintenance_work_mem=1GB".to_string(),
         ]
@@ -147,7 +147,7 @@ impl IsolatedApplication for PostgresApp {
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
-            VolumeMount::new(&self.store_dir, &self.store_dir),
+            VolumeMount::new(&self.store_dir, &"/data".to_string()),
             VolumeMount::new("/usr/local/pgsql", "/usr/local/pgsql"),
         ]
     }
