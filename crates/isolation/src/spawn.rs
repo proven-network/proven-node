@@ -415,6 +415,17 @@ impl IsolatedProcessSpawner {
                 chroot_dir.display()
             ));
 
+            // Mount /dev/null, /dev/zero, /dev/random, /dev/urandom
+            setup_cmd.push_str(&format!("mkdir -p {}/dev; ", chroot_dir.display()));
+
+            for dev in ["null", "zero", "random", "urandom"] {
+                setup_cmd.push_str(&format!(
+                    "touch {0}/dev/{1}; mount --bind /dev/{1} {0}/dev/{1} || true; ",
+                    chroot_dir.display(),
+                    dev
+                ));
+            }
+
             // Set up volume mounts
             for mount in &options.volume_mounts {
                 // If we're using chroot, adjust paths to be relative to the chroot
