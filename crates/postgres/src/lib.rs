@@ -146,7 +146,10 @@ impl IsolatedApplication for PostgresApp {
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
-        vec![VolumeMount::new(&self.store_dir, &self.store_dir)]
+        vec![
+            VolumeMount::new(&self.store_dir, &self.store_dir),
+            VolumeMount::new("/usr/local/pgsql", "/usr/local/pgsql"),
+        ]
     }
 }
 
