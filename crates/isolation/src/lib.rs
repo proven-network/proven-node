@@ -28,14 +28,6 @@
 //!     fn name(&self) -> &str {
 //!         &self.name
 //!     }
-//!
-//!     async fn is_ready_check(
-//!         &self,
-//!         _process: &proven_isolation::IsolatedProcess,
-//!     ) -> Result<bool> {
-//!         // In a real application, this might check an HTTP endpoint
-//!         Ok(true)
-//!     }
 //! }
 //!
 //! async fn run() -> Result<()> {
