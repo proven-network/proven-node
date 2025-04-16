@@ -1,18 +1,11 @@
 use thiserror::Error;
 
-/// The result type for this crate.
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Already started.
     #[error("already started")]
     AlreadyStarted,
-
-    /// HTTP request failed.
-    #[error("HTTP request failed: {0}")]
-    HttpRequest(String),
 
     /// IO operation failed.
     #[error("{0}: {1}")]
@@ -21,14 +14,6 @@ pub enum Error {
     /// Error from the isolation crate.
     #[error("isolation error: {0}")]
     Isolation(#[from] proven_isolation::Error),
-
-    /// Process exited with non-zero.
-    #[error("exited with non-zero: {0}")]
-    NonZeroExitCode(std::process::ExitStatus),
-
-    /// Failed to parse output.
-    #[error("failed to parse output")]
-    OutputParse,
 
     /// Failed to parse regex pattern.
     #[error(transparent)]

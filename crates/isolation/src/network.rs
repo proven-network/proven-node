@@ -1329,7 +1329,7 @@ pub fn check_root_permissions() -> Result<bool> {
     let uid = String::from_utf8_lossy(&output.stdout)
         .trim()
         .parse::<u32>()
-        .map_err(|e| Error::Application(format!("Failed to parse uid: {}", e)))?;
+        .map_err(|e| Error::ParseInt(format!("Failed to parse uid: {}", e)))?;
 
     Ok(uid == 0)
 }

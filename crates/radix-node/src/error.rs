@@ -1,22 +1,11 @@
 use thiserror::Error;
 
-/// The result type for this crate.
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Already started.
     #[error("already started")]
     AlreadyStarted,
-
-    /// Bad PID.
-    #[error("bad PID")]
-    BadPid,
-
-    /// Exit before ready.
-    #[error("node exited before ready")]
-    ExitBeforeReady,
 
     /// IO operation failed.
     #[error("{0}: {1}")]
@@ -25,6 +14,10 @@ pub enum Error {
     /// Isolation error.
     #[error("isolation error: {0}")]
     Isolation(#[from] proven_isolation::Error),
+
+    /// Key generation failed.
+    #[error("key generation failed: {0}")]
+    KeyGeneration(String),
 
     /// Process exited with non-zero.
     #[error("exited with non-zero: {0}")]
@@ -37,8 +30,4 @@ pub enum Error {
     /// Failed to parse regex pattern.
     #[error(transparent)]
     RegexParse(#[from] regex::Error),
-
-    /// Failed to send signal to dnscrypt-proxy.
-    #[error(transparent)]
-    Signal(#[from] nix::Error),
 }

@@ -4,9 +4,6 @@ use std::io;
 
 use thiserror::Error;
 
-/// Result type for the isolated-bitcoin-core crate.
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Error type for the isolated-bitcoin-core crate.
 #[derive(Debug, Error)]
 pub enum Error {

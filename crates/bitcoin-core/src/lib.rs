@@ -7,9 +7,10 @@
 
 mod error;
 
-pub use error::{Error, Result};
+pub use error::Error;
 use tokio::task::JoinHandle;
 
+use std::error::Error as StdError;
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -132,7 +133,7 @@ impl IsolatedApplication for BitcoinCoreApp {
         8192
     }
 
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> proven_isolation::Result<bool> {
+    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         // To check if Bitcoin Core is ready, we'll use the RPC interface
         // to call the `getblockchaininfo` method
         let rpc_url = if let Some(ip) = process.container_ip() {
@@ -166,21 +167,6 @@ impl IsolatedApplication for BitcoinCoreApp {
     fn is_ready_check_interval_ms(&self) -> u64 {
         // Check every 2 seconds
         2000
-    }
-
-    async fn prepare_config(&self) -> proven_isolation::Result<()> {
-        // Create the data directory if it doesn't exist
-        let data_dir = Path::new(&self.store_dir);
-        if !data_dir.exists() {
-            std::fs::create_dir_all(data_dir).map_err(|e| {
-                proven_isolation::Error::Application(format!(
-                    "Failed to create data directory: {}",
-                    e
-                ))
-            })?;
-        }
-
-        Ok(())
     }
 
     fn tcp_port_forwards(&self) -> Vec<u16> {
@@ -231,12 +217,14 @@ impl BitcoinNode {
     /// # Errors
     ///
     /// Returns an error if the node fails to start.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
         if self.process.is_some() {
             return Err(Error::AlreadyStarted);
         }
 
         debug!("Starting isolated Bitcoin Core node...");
+
+        self.prepare_config().await?;
 
         let app = BitcoinCoreApp {
             executable_path: "/apps/bitcoin/v28.1/bitcoind".to_string(),
@@ -264,7 +252,7 @@ impl BitcoinNode {
     /// # Errors
     ///
     /// Returns an error if the node fails to shutdown.
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
         info!("Shutting down isolated Bitcoin Core node...");
 
         if let Some(process) = self.process.take() {
@@ -300,7 +288,7 @@ impl BitcoinNode {
         &self,
         method: &str,
         params: T,
-    ) -> Result<R> {
+    ) -> Result<R, Error> {
         let client = reqwest::Client::new();
 
         let response = client
@@ -345,5 +333,16 @@ impl BitcoinNode {
         }
 
         Ok(rpc_response.result)
+    }
+
+    async fn prepare_config(&self) -> Result<(), Error> {
+        // Create the data directory if it doesn't exist
+        let data_dir = Path::new(&self.store_dir);
+        if !data_dir.exists() {
+            std::fs::create_dir_all(data_dir)
+                .map_err(|e| Error::Io("Failed to create data directory", e))?;
+        }
+
+        Ok(())
     }
 }

@@ -7,15 +7,14 @@
 
 mod error;
 
-pub use error::{Error, Result};
+pub use error::Error;
 
+use std::error::Error as StdError;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{
-    IsolatedApplication, IsolatedProcess, IsolationManager, Result as IsolationResult, VolumeMount,
-};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
 use regex::Regex;
 use serde_json::json;
 use tokio::task::JoinHandle;
@@ -30,15 +29,7 @@ static GATEWAY_API_PATH: &str = "/apps/radix-gateway/v1.9.2/GatewayApi/GatewayAp
 static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+): (.*)").unwrap());
 
 /// Application struct for running the Radix Gateway in isolation
-struct RadixGatewayApp {
-    postgres_database: String,
-    postgres_ip_address: String,
-    postgres_password: String,
-    postgres_port: u16,
-    postgres_username: String,
-    radix_node_ip_address: String,
-    radix_node_port: u16,
-}
+struct RadixGatewayApp;
 
 #[async_trait]
 impl IsolatedApplication for RadixGatewayApp {
@@ -48,10 +39,6 @@ impl IsolatedApplication for RadixGatewayApp {
 
     fn executable(&self) -> &str {
         GATEWAY_API_PATH
-    }
-
-    fn name(&self) -> &str {
-        "radix-gateway"
     }
 
     fn handle_stdout(&self, line: &str) {
@@ -77,7 +64,7 @@ impl IsolatedApplication for RadixGatewayApp {
         error!(target: "radix-gateway", "{}", line);
     }
 
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> IsolationResult<bool> {
+    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         // Check if the service is responding on port 8081
         let client = reqwest::Client::new();
         match client.get("http://127.0.0.1:8081/health").send().await {
@@ -90,95 +77,12 @@ impl IsolatedApplication for RadixGatewayApp {
         5000 // Check every 5 seconds
     }
 
-    async fn prepare_config(&self) -> IsolationResult<()> {
-        let connection_string = format!(
-            "Host={};Port={};Database={};Username={};Password={}",
-            self.postgres_ip_address,
-            self.postgres_port,
-            self.postgres_database,
-            self.postgres_username,
-            self.postgres_password
-        );
-
-        let core_api_address = format!(
-            "http://{}:{}/core",
-            self.radix_node_ip_address, self.radix_node_port
-        );
-
-        let config = json!({
-            "urls": "http://0.0.0.0:8081",
-            "Logging": {
-                "LogLevel": {
-                    "Default": "Information",
-                    "Microsoft.Hosting.Lifetime": "Information",
-                    "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
-                    "Microsoft.EntityFrameworkCore.Infrastructure": "Warning",
-                    "Npgsql": "Warning",
-                    "System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler": "Warning",
-                    "System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler": "Warning",
-                    "System.Net.Http.HttpClient.ICoreNodeHealthChecker.LogicalHandler": "Warning",
-                    "System.Net.Http.HttpClient.ICoreNodeHealthChecker.ClientHandler": "Warning"
-                },
-                "Console": {
-                    "FormatterName": "Simple",
-                    "FormatterOptions": {
-                        "SingleLine": true,
-                        "IncludeScopes": false
-                    }
-                }
-            },
-            "PrometheusMetricsPort": 1235,
-            "EnableSwagger": false,
-            "ConnectionStrings": {
-                "NetworkGatewayReadOnly": connection_string,
-                "NetworkGatewayReadWrite": connection_string
-            },
-            "GatewayApi": {
-                "AcceptableLedgerLag": {
-                    "ReadRequestAcceptableDbLedgerLagSeconds": 720,
-                    "ConstructionRequestsAcceptableDbLedgerLagSeconds": 720,
-                    "PreventReadRequestsIfDbLedgerIsBehind": true,
-                    "PreventConstructionRequestsIfDbLedgerIsBehind": true
-                },
-                "Endpoint": {
-                "MaxPageSize": 100,
-                "DefaultPageSize": 100
-                },
-                "Network": {
-                    "NetworkName": "stokenet",
-                    "DisableCoreApiHttpsCertificateChecks": true,
-                    "MaxAllowedStateVersionLagToBeConsideredSynced": 100,
-                    "IgnoreNonSyncedNodes": true,
-                    "CoreApiNodes": [
-                        {
-                            "Name": "babylon-node",
-                            "CoreApiAddress": core_api_address,
-                            "Enabled": true,
-                            "RequestWeighting": 1
-                        }
-                    ]
-                }
-            }
-        });
-
-        // Write gateway config
-        let config_str = serde_json::to_string_pretty(&config)
-            .map_err(|e| proven_isolation::Error::Application(e.to_string()))?;
-
-        tokio::fs::write(GATEWAY_API_CONFIG_PATH, config_str)
-            .await
-            .map_err(|e| {
-                proven_isolation::Error::Application(format!(
-                    "Failed to write gateway config: {}",
-                    e
-                ))
-            })?;
-
-        Ok(())
-    }
-
     fn memory_limit_mb(&self) -> usize {
         1024 // 1GB should be sufficient for the gateway
+    }
+
+    fn name(&self) -> &str {
+        "radix-gateway"
     }
 
     fn tcp_port_forwards(&self) -> Vec<u16> {
@@ -267,26 +171,18 @@ impl RadixGateway {
     ///
     /// Returns an `Error::AlreadyStarted` if the server is already running.
     /// Returns an `Error::Isolation` if there is an error starting the isolated process.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
         if self.process.is_some() {
             return Err(Error::AlreadyStarted);
         }
 
         info!("Starting radix-gateway...");
 
-        let app = RadixGatewayApp {
-            postgres_database: self.postgres_database.clone(),
-            postgres_ip_address: self.postgres_ip_address.clone(),
-            postgres_password: self.postgres_password.clone(),
-            postgres_port: self.postgres_port,
-            postgres_username: self.postgres_username.clone(),
-            radix_node_ip_address: self.radix_node_ip_address.clone(),
-            radix_node_port: self.radix_node_port,
-        };
+        self.prepare_config().await?;
 
         let (process, join_handle) = self
             .isolation_manager
-            .spawn(app)
+            .spawn(RadixGatewayApp)
             .await
             .map_err(Error::Isolation)?;
 
@@ -303,7 +199,7 @@ impl RadixGateway {
     /// # Errors
     ///
     /// This function will return an error if there is an issue shutting down the isolated process.
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
         info!("radix-gateway shutting down...");
 
         if let Some(process) = self.process.take() {
@@ -312,6 +208,87 @@ impl RadixGateway {
         } else {
             debug!("No running radix-gateway to shut down");
         }
+
+        Ok(())
+    }
+
+    async fn prepare_config(&self) -> Result<(), Error> {
+        let connection_string = format!(
+            "Host={};Port={};Database={};Username={};Password={}",
+            self.postgres_ip_address,
+            self.postgres_port,
+            self.postgres_database,
+            self.postgres_username,
+            self.postgres_password
+        );
+
+        let core_api_address = format!(
+            "http://{}:{}/core",
+            self.radix_node_ip_address, self.radix_node_port
+        );
+
+        let config = json!({
+            "urls": "http://0.0.0.0:8081",
+            "Logging": {
+                "LogLevel": {
+                    "Default": "Information",
+                    "Microsoft.Hosting.Lifetime": "Information",
+                    "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+                    "Microsoft.EntityFrameworkCore.Infrastructure": "Warning",
+                    "Npgsql": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreNodeHealthChecker.LogicalHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreNodeHealthChecker.ClientHandler": "Warning"
+                },
+                "Console": {
+                    "FormatterName": "Simple",
+                    "FormatterOptions": {
+                        "SingleLine": true,
+                        "IncludeScopes": false
+                    }
+                }
+            },
+            "PrometheusMetricsPort": 1235,
+            "EnableSwagger": false,
+            "ConnectionStrings": {
+                "NetworkGatewayReadOnly": connection_string,
+                "NetworkGatewayReadWrite": connection_string
+            },
+            "GatewayApi": {
+                "AcceptableLedgerLag": {
+                    "ReadRequestAcceptableDbLedgerLagSeconds": 720,
+                    "ConstructionRequestsAcceptableDbLedgerLagSeconds": 720,
+                    "PreventReadRequestsIfDbLedgerIsBehind": true,
+                    "PreventConstructionRequestsIfDbLedgerIsBehind": true
+                },
+                "Endpoint": {
+                "MaxPageSize": 100,
+                "DefaultPageSize": 100
+                },
+                "Network": {
+                    "NetworkName": "stokenet",
+                    "DisableCoreApiHttpsCertificateChecks": true,
+                    "MaxAllowedStateVersionLagToBeConsideredSynced": 100,
+                    "IgnoreNonSyncedNodes": true,
+                    "CoreApiNodes": [
+                        {
+                            "Name": "babylon-node",
+                            "CoreApiAddress": core_api_address,
+                            "Enabled": true,
+                            "RequestWeighting": 1
+                        }
+                    ]
+                }
+            }
+        });
+
+        // Write gateway config
+        let config_str = serde_json::to_string_pretty(&config)?;
+
+        tokio::fs::write(GATEWAY_API_CONFIG_PATH, config_str)
+            .await
+            .map_err(|e| Error::Io("Failed to write gateway config", e))?;
 
         Ok(())
     }

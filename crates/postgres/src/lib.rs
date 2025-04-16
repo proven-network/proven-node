@@ -7,17 +7,16 @@
 
 mod error;
 
-pub use error::{Error, Result};
+pub use error::Error;
 
+use std::error::Error as StdError;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 use std::process::Stdio;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{
-    IsolatedApplication, IsolatedProcess, IsolationManager, Result as IsolationResult, VolumeMount,
-};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
 use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -88,7 +87,7 @@ impl IsolatedApplication for PostgresApp {
         self.handle_stdout(line) // Postgres sends all logs to stderr, so handle them the same way
     }
 
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> IsolationResult<bool> {
+    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         let ip_address = if let Some(ip) = process.container_ip() {
             &ip.to_string()
         } else {
@@ -111,7 +110,7 @@ impl IsolatedApplication for PostgresApp {
             .arg("postgres")
             .output()
             .await
-            .map_err(|e| proven_isolation::Error::Application(e.to_string()))?;
+            .map_err(|e| Error::Io("failed to spawn pg_isready", e))?;
 
         Ok(cmd.status.success())
     }
@@ -122,21 +121,6 @@ impl IsolatedApplication for PostgresApp {
 
     fn memory_limit_mb(&self) -> usize {
         1024 * 5 // 5GB
-    }
-
-    async fn prepare_config(&self) -> IsolationResult<()> {
-        // Create data directory if it doesn't exist
-        let data_dir = Path::new(&self.store_dir);
-        if !data_dir.exists() {
-            std::fs::create_dir_all(data_dir).map_err(|e| {
-                proven_isolation::Error::Application(format!(
-                    "Failed to create data directory: {}",
-                    e
-                ))
-            })?;
-        }
-
-        Ok(())
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
@@ -209,10 +193,12 @@ impl Postgres {
     /// # Returns
     ///
     /// A `JoinHandle` to the spawned task that runs the Postgres server.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
         if self.process.is_some() {
             return Err(Error::AlreadyStarted);
         }
+
+        self.prepare_config().await?;
 
         if !self.is_initialized() {
             self.initialize_database().await?;
@@ -253,7 +239,7 @@ impl Postgres {
     }
 
     /// Shuts down the server.
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
         if let Some(process) = self.process.take() {
             info!("postgres shutting down...");
             process.shutdown().await.map_err(Error::Isolation)?;
@@ -281,7 +267,7 @@ impl Postgres {
     }
 
     // TODO: Initialization should probably be done inside isolation as well
-    async fn initialize_database(&self) -> Result<()> {
+    async fn initialize_database(&self) -> Result<(), Error> {
         // Write password to a file in tmp for use by initdb
         let password_file = std::path::Path::new("/tmp/pgpass");
         tokio::fs::write(password_file, self.password.clone())
@@ -312,7 +298,7 @@ impl Postgres {
         Ok(())
     }
 
-    async fn configure_pg_hba(&self) -> Result<()> {
+    async fn configure_pg_hba(&self) -> Result<(), Error> {
         let pg_hba_path = std::path::Path::new(&self.store_dir).join("pg_hba.conf");
 
         // Create a pg_hba.conf that allows connections from anywhere
@@ -340,7 +326,18 @@ impl Postgres {
                 .exists()
     }
 
-    async fn vacuum_database(&self) -> Result<()> {
+    async fn prepare_config(&self) -> Result<(), Error> {
+        // Create data directory if it doesn't exist
+        let data_dir = Path::new(&self.store_dir);
+        if !data_dir.exists() {
+            std::fs::create_dir_all(data_dir)
+                .map_err(|e| Error::Io("Failed to create data directory", e))?;
+        }
+
+        Ok(())
+    }
+
+    async fn vacuum_database(&self) -> Result<(), Error> {
         info!("vacuuming database...");
 
         let mut cmd = Command::new("/apps/postgres/v17.4/bin/vacuumdb")

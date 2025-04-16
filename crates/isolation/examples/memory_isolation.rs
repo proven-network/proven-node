@@ -11,9 +11,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use proven_isolation::{
-    Error, IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager, Result,
-};
+use proven_isolation::{Error, IsolatedApplication, IsolationConfig, IsolationManager, Result};
 use tokio::fs;
 use tokio::time::interval;
 use tracing::info;
@@ -139,10 +137,6 @@ impl IsolatedApplication for MemoryStressTest {
 
     fn memory_min_mb(&self) -> usize {
         5 // Guarantee at least 5MB
-    }
-
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool> {
-        Ok(true)
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {

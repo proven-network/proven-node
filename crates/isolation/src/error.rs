@@ -11,10 +11,6 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Errors that can occur during isolation operations.
 #[derive(Debug, Error)]
 pub enum Error {
-    /// Application-specific error
-    #[error("Application error: {0}")]
-    Application(String),
-
     /// Network error
     #[error("Network error: {0}")]
     Network(String),

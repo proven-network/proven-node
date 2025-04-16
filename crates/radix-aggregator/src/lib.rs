@@ -8,16 +8,15 @@
 
 mod error;
 
-pub use error::{Error, Result};
+pub use error::Error;
 
+use std::error::Error as StdError;
 use std::path::PathBuf;
 use std::process::Stdio;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{
-    IsolatedApplication, IsolatedProcess, IsolationManager, Result as IsolationResult, VolumeMount,
-};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
 use regex::Regex;
 use serde_json::json;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -38,15 +37,7 @@ static MIGRATIONS_PATH: &str = "/apps/radix-gateway/v1.9.2/DatabaseMigrations/Da
 static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+): (.*)").unwrap());
 
 /// Application struct for running the Radix Aggregator in isolation
-struct RadixAggregatorApp {
-    postgres_database: String,
-    postgres_ip_address: String,
-    postgres_port: u16,
-    postgres_username: String,
-    postgres_password: String,
-    radix_node_ip_address: String,
-    radix_node_port: u16,
-}
+struct RadixAggregatorApp;
 
 #[async_trait]
 impl IsolatedApplication for RadixAggregatorApp {
@@ -85,7 +76,7 @@ impl IsolatedApplication for RadixAggregatorApp {
         error!(target: "radix-aggregator", "{}", line);
     }
 
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> IsolationResult<bool> {
+    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         // Check if the service is responding on port 8080
         let client = reqwest::Client::new();
         match client.get("http://127.0.0.1:8080/health").send().await {
@@ -96,86 +87,6 @@ impl IsolatedApplication for RadixAggregatorApp {
 
     fn is_ready_check_interval_ms(&self) -> u64 {
         5000 // Check every 5 seconds
-    }
-
-    async fn prepare_config(&self) -> IsolationResult<()> {
-        // Update aggregator config
-        let connection_string = format!(
-            "Host={};Port={};Database={};Username={};Password={}",
-            self.postgres_ip_address,
-            self.postgres_port,
-            self.postgres_database,
-            self.postgres_username,
-            self.postgres_password
-        );
-
-        let core_api_address = format!(
-            "http://{}:{}/core",
-            self.radix_node_ip_address, self.radix_node_port
-        );
-
-        let config = json!({
-            "urls": "http://0.0.0.0:8080",
-            "Logging": {
-                "LogLevel": {
-                    "Default": "Information",
-                    "Microsoft.AspNetCore": "Warning",
-                    "Microsoft.Hosting.Lifetime": "Information",
-                    "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
-                    "Microsoft.EntityFrameworkCore.Infrastructure": "Warning",
-                    "Npgsql": "Warning",
-                    "System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler": "Warning",
-                    "System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler": "Warning"
-                },
-                "Console": {
-                    "FormatterName": "Simple",
-                    "FormatterOptions": {
-                        "SingleLine": true,
-                        "IncludeScopes": false
-                    }
-                }
-            },
-            "PrometheusMetricsPort": 1234,
-            "EnableSwagger": false,
-            "ConnectionStrings": {
-                "NetworkGatewayReadOnly": connection_string,
-                "NetworkGatewayReadWrite": connection_string
-            },
-            "DataAggregator": {
-                "Network": {
-                    "NetworkName": "stokenet",
-                    "DisableCoreApiHttpsCertificateChecks": true,
-                    "CoreApiNodes": [
-                        {
-                            "Name": "babylon-node",
-                            "CoreApiAddress": core_api_address,
-                            "Enabled": true,
-                            "RequestWeighting": 1
-                        }
-                    ]
-                }
-            }
-        });
-
-        // Write aggregator config
-        let config_str = serde_json::to_string_pretty(&config)
-            .map_err(|e| proven_isolation::Error::Application(e.to_string()))?;
-
-        tokio::fs::write(AGGREGATOR_CONFIG_PATH, config_str)
-            .await
-            .map_err(|e| {
-                proven_isolation::Error::Application(format!(
-                    "Failed to write aggregator config: {}",
-                    e
-                ))
-            })?;
-
-        // Run migrations
-        self.run_migrations()
-            .await
-            .map_err(|e| proven_isolation::Error::Application(e.to_string()))?;
-
-        Ok(())
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
@@ -196,91 +107,6 @@ impl IsolatedApplication for RadixAggregatorApp {
 
     fn working_dir(&self) -> Option<PathBuf> {
         Some(PathBuf::from(AGGREGATOR_DIR))
-    }
-}
-
-impl RadixAggregatorApp {
-    async fn run_migrations(&self) -> Result<()> {
-        let connection_string = format!(
-            "Host={};Port={};Database={};Username={};Password={};Include Error Detail=true",
-            self.postgres_ip_address,
-            self.postgres_port,
-            self.postgres_database,
-            self.postgres_username,
-            self.postgres_password
-        );
-
-        let config = json!({
-            "Logging": {
-                "LogLevel": {
-                    "Default": "Information",
-                    "Microsoft.AspNetCore": "Warning",
-                    "Microsoft.Hosting.Lifetime": "Information",
-                    "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
-                    "Microsoft.EntityFrameworkCore.Infrastructure": "Warning",
-                    "Npgsql": "Warning",
-                    "System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler": "Warning",
-                    "System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler": "Warning"
-                },
-                "Console": {
-                    "FormatterName": "Simple",
-                    "FormatterOptions": {
-                        "SingleLine": true,
-                        "IncludeScopes": false
-                    }
-                }
-            },
-            "ConnectionStrings": {
-                "NetworkGatewayMigrations": connection_string
-            }
-        });
-
-        // Write migrations config
-        let config_str = serde_json::to_string_pretty(&config)?;
-        tokio::fs::write(MIGRATIONS_CONFIG_PATH, config_str)
-            .await
-            .map_err(|e| Error::Io("failed to write migrations config", e))?;
-
-        let mut cmd = Command::new(MIGRATIONS_PATH)
-            .current_dir(MIGRATIONS_DIR)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| Error::Io("failed to spawn migrations runner", e))?;
-
-        let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
-        let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
-
-        let stdout_writer = tokio::spawn(async move {
-            let reader = BufReader::new(stdout);
-            let mut lines = reader.lines();
-
-            while let Ok(Some(line)) = lines.next_line().await {
-                info!("{}", line);
-            }
-        });
-
-        let stderr_writer = tokio::spawn(async move {
-            let reader = BufReader::new(stderr);
-            let mut lines = reader.lines();
-
-            while let Ok(Some(line)) = lines.next_line().await {
-                info!("{}", line);
-            }
-        });
-
-        tokio::select! {
-            e = cmd.wait() => {
-                let exit_status = e.map_err(|e| Error::Io("failed to get migrations exit status", e))?;
-                if !exit_status.success() {
-                    return Err(Error::NonZeroExitCode(exit_status));
-                }
-            }
-            _ = stdout_writer => {},
-            _ = stderr_writer => {},
-        }
-
-        Ok(())
     }
 }
 
@@ -358,26 +184,21 @@ impl RadixAggregator {
     /// # Returns
     ///
     /// A `JoinHandle` to the spawned task.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
         if self.process.is_some() {
             return Err(Error::AlreadyStarted);
         }
 
         info!("Starting radix-aggregator...");
 
-        let app = RadixAggregatorApp {
-            postgres_database: self.postgres_database.clone(),
-            postgres_ip_address: self.postgres_ip_address.clone(),
-            postgres_port: self.postgres_port,
-            postgres_username: self.postgres_username.clone(),
-            postgres_password: self.postgres_password.clone(),
-            radix_node_ip_address: self.radix_node_ip_address.clone(),
-            radix_node_port: self.radix_node_port,
-        };
+        self.prepare_config().await?;
+
+        // Run migrations
+        self.run_migrations().await?;
 
         let (process, join_handle) = self
             .isolation_manager
-            .spawn(app)
+            .spawn(RadixAggregatorApp)
             .await
             .map_err(Error::Isolation)?;
 
@@ -394,7 +215,7 @@ impl RadixAggregator {
     /// # Errors
     ///
     /// This function will return an error if there is an issue shutting down the isolated process.
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
         info!("radix-aggregator shutting down...");
 
         if let Some(process) = self.process.take() {
@@ -402,6 +223,158 @@ impl RadixAggregator {
             info!("radix-aggregator shutdown");
         } else {
             debug!("No running radix-aggregator to shut down");
+        }
+
+        Ok(())
+    }
+
+    async fn prepare_config(&self) -> Result<(), Error> {
+        // Update aggregator config
+        let connection_string = format!(
+            "Host={};Port={};Database={};Username={};Password={}",
+            self.postgres_ip_address,
+            self.postgres_port,
+            self.postgres_database,
+            self.postgres_username,
+            self.postgres_password
+        );
+
+        let core_api_address = format!(
+            "http://{}:{}/core",
+            self.radix_node_ip_address, self.radix_node_port
+        );
+
+        let config = json!({
+            "urls": "http://0.0.0.0:8080",
+            "Logging": {
+                "LogLevel": {
+                    "Default": "Information",
+                    "Microsoft.AspNetCore": "Warning",
+                    "Microsoft.Hosting.Lifetime": "Information",
+                    "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+                    "Microsoft.EntityFrameworkCore.Infrastructure": "Warning",
+                    "Npgsql": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler": "Warning"
+                },
+                "Console": {
+                    "FormatterName": "Simple",
+                    "FormatterOptions": {
+                        "SingleLine": true,
+                        "IncludeScopes": false
+                    }
+                }
+            },
+            "PrometheusMetricsPort": 1234,
+            "EnableSwagger": false,
+            "ConnectionStrings": {
+                "NetworkGatewayReadOnly": connection_string,
+                "NetworkGatewayReadWrite": connection_string
+            },
+            "DataAggregator": {
+                "Network": {
+                    "NetworkName": "stokenet",
+                    "DisableCoreApiHttpsCertificateChecks": true,
+                    "CoreApiNodes": [
+                        {
+                            "Name": "babylon-node",
+                            "CoreApiAddress": core_api_address,
+                            "Enabled": true,
+                            "RequestWeighting": 1
+                        }
+                    ]
+                }
+            }
+        });
+
+        // Write aggregator config
+        let config_str = serde_json::to_string_pretty(&config)?;
+
+        tokio::fs::write(AGGREGATOR_CONFIG_PATH, config_str)
+            .await
+            .map_err(|e| Error::Io("Failed to write aggregator config", e))?;
+
+        Ok(())
+    }
+
+    async fn run_migrations(&self) -> Result<(), Error> {
+        let connection_string = format!(
+            "Host={};Port={};Database={};Username={};Password={};Include Error Detail=true",
+            self.postgres_ip_address,
+            self.postgres_port,
+            self.postgres_database,
+            self.postgres_username,
+            self.postgres_password
+        );
+
+        let config = json!({
+            "Logging": {
+                "LogLevel": {
+                    "Default": "Information",
+                    "Microsoft.AspNetCore": "Warning",
+                    "Microsoft.Hosting.Lifetime": "Information",
+                    "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+                    "Microsoft.EntityFrameworkCore.Infrastructure": "Warning",
+                    "Npgsql": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.LogicalHandler": "Warning",
+                    "System.Net.Http.HttpClient.ICoreApiProvider.ClientHandler": "Warning"
+                },
+                "Console": {
+                    "FormatterName": "Simple",
+                    "FormatterOptions": {
+                        "SingleLine": true,
+                        "IncludeScopes": false
+                    }
+                }
+            },
+            "ConnectionStrings": {
+                "NetworkGatewayMigrations": connection_string
+            }
+        });
+
+        // Write migrations config
+        let config_str = serde_json::to_string_pretty(&config)?;
+        tokio::fs::write(MIGRATIONS_CONFIG_PATH, config_str)
+            .await
+            .map_err(|e| Error::Io("failed to write migrations config", e))?;
+
+        let mut cmd = Command::new(MIGRATIONS_PATH)
+            .current_dir(MIGRATIONS_DIR)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| Error::Io("failed to spawn migrations runner", e))?;
+
+        let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
+        let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+
+        let stdout_writer = tokio::spawn(async move {
+            let reader = BufReader::new(stdout);
+            let mut lines = reader.lines();
+
+            while let Ok(Some(line)) = lines.next_line().await {
+                info!("{}", line);
+            }
+        });
+
+        let stderr_writer = tokio::spawn(async move {
+            let reader = BufReader::new(stderr);
+            let mut lines = reader.lines();
+
+            while let Ok(Some(line)) = lines.next_line().await {
+                info!("{}", line);
+            }
+        });
+
+        tokio::select! {
+            e = cmd.wait() => {
+                let exit_status = e.map_err(|e| Error::Io("failed to get migrations exit status", e))?;
+                if !exit_status.success() {
+                    return Err(Error::NonZeroExitCode(exit_status));
+                }
+            }
+            _ = stdout_writer => {},
+            _ = stderr_writer => {},
         }
 
         Ok(())

@@ -1,8 +1,5 @@
 use thiserror::Error;
 
-/// The result type for this crate.
-pub type Result<T> = std::result::Result<T, Error>;
-
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
 pub enum Error {
@@ -21,6 +18,10 @@ pub enum Error {
     /// Isolation error occurred.
     #[error("isolation error: {0}")]
     Isolation(#[from] proven_isolation::Error),
+
+    /// JSON error occurred.
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
 
     /// Process exited with non-zero.
     #[error("exited with non-zero: {0}")]

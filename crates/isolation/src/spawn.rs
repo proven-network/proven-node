@@ -541,7 +541,7 @@ impl IsolatedProcessSpawner {
 
         // If using PID namespace process will be forked se find process with `pgrep -P [PARENT_PID]`
         if options.namespaces.use_pid {
-            info!("Finding process with pgrep -P {}", pid);
+            debug!("Finding process with pgrep -P {}", pid);
 
             // Add retry logic to find the child PID
             let max_retries = 10;
@@ -566,7 +566,7 @@ impl IsolatedProcessSpawner {
                         .next()
                         .and_then(|s| s.parse().ok())
                     {
-                        info!(
+                        debug!(
                             "Found child process with PID: {} (after {} attempt(s))",
                             found_pid, attempt
                         );

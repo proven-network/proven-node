@@ -7,16 +7,13 @@
 //!
 //! The server will delay its startup to show the readiness check mechanism in action.
 
-use std::path::{Path, PathBuf};
+use std::error::Error as StdError;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use proven_isolation::{
-    Error, IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager,
-    NamespaceOptions, Result,
-};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager};
 use reqwest::StatusCode;
-use tokio::fs;
 use tracing::info;
 
 /// The port that the server will listen on
@@ -24,8 +21,8 @@ const SERVER_PORT: u16 = 8080;
 
 /// Application that runs an HTTP server with delayed startup
 struct ReadinessCheckServer {
-    /// The executable path
-    executable_path: PathBuf,
+    /// The path to the test bin directory
+    test_bin_dir: PathBuf,
 
     /// Time to wait before server startup (in seconds)
     startup_delay: u32,
@@ -33,80 +30,11 @@ struct ReadinessCheckServer {
 
 impl ReadinessCheckServer {
     /// Create a new readiness check server
-    async fn new(root_dir: &Path, startup_delay: u32) -> Result<Self> {
-        // Create a minimal filesystem inside the root directory
-        let bin_dir = root_dir.join("bin");
-        fs::create_dir_all(&bin_dir)
-            .await
-            .map_err(|e| Error::Io("Failed to create bin directory", e))?;
-
-        // Get the path to the C source file
-        let server_c_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/readiness_check/server.c");
-
-        // Compile the HTTP server
-        let output = tokio::process::Command::new("gcc")
-            .arg("-o")
-            .arg(bin_dir.join("http_server"))
-            .arg(&server_c_path)
-            .output()
-            .await
-            .map_err(|e| Error::Io("Failed to compile HTTP server", e))?;
-
-        if !output.status.success() {
-            return Err(Error::Io(
-                "Failed to compile HTTP server",
-                std::io::Error::new(std::io::ErrorKind::Other, "Compilation failed"),
-            ));
-        }
-
-        // Make the program executable
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let server_path = bin_dir.join("http_server");
-            let mut perms = tokio::fs::metadata(&server_path)
-                .await
-                .map_err(|e| Error::Io("Failed to get server metadata", e))?
-                .permissions();
-
-            perms.set_mode(0o755);
-            tokio::fs::set_permissions(&server_path, perms)
-                .await
-                .map_err(|e| Error::Io("Failed to set server permissions", e))?;
-        }
-
-        // Debug the file system structure
-        println!("Contents of root directory:");
-        let mut entries = fs::read_dir(root_dir)
-            .await
-            .map_err(|e| Error::Io("Failed to read root directory", e))?;
-
-        while let Some(entry) = entries
-            .next_entry()
-            .await
-            .map_err(|e| Error::Io("Failed to read directory entry", e))?
-        {
-            println!("- {}", entry.path().display());
-        }
-
-        println!("Contents of bin directory:");
-        let mut bin_entries = fs::read_dir(&bin_dir)
-            .await
-            .map_err(|e| Error::Io("Failed to read bin directory", e))?;
-
-        while let Some(entry) = bin_entries
-            .next_entry()
-            .await
-            .map_err(|e| Error::Io("Failed to read directory entry", e))?
-        {
-            println!("- {}", entry.path().display());
-        }
-
-        Ok(Self {
-            executable_path: bin_dir.join("http_server"),
+    fn new(test_bin_dir: PathBuf, startup_delay: u32) -> Self {
+        Self {
+            test_bin_dir,
             startup_delay,
-        })
+        }
     }
 }
 
@@ -118,19 +46,21 @@ impl IsolatedApplication for ReadinessCheckServer {
     }
 
     fn executable(&self) -> &str {
-        self.executable_path.to_str().unwrap_or("/bin/http_server")
+        "/bin/http_server"
     }
 
     fn name(&self) -> &str {
         "readiness-check-server"
     }
 
-    fn namespace_options(&self) -> NamespaceOptions {
-        // Use no isolation for this example
-        NamespaceOptions::none()
+    fn volume_mounts(&self) -> Vec<proven_isolation::VolumeMount> {
+        vec![
+            // Mount the test bin directory
+            proven_isolation::VolumeMount::new(&self.test_bin_dir, &PathBuf::from("/bin")),
+        ]
     }
 
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool> {
+    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         // Check if the HTTP server is ready by making a request
         static ATTEMPT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
         let attempt = ATTEMPT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -175,7 +105,7 @@ impl IsolatedApplication for ReadinessCheckServer {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     // Initialize tracing with defaults
     tracing_subscriber::fmt().init();
 
@@ -185,15 +115,23 @@ async fn main() -> Result<()> {
         "The HTTP server will intentionally delay startup for 5 seconds to demonstrate the readiness check"
     );
 
-    // Set up temporary directory
-    let temp_dir =
-        tempfile::tempdir().map_err(|e| Error::Io("Failed to create temporary directory", e))?;
+    // Create dir for test binary
+    let test_bin_dir = tempfile::tempdir().expect("Failed to create test bin directory");
+    let test_bin_dir_path = test_bin_dir.into_path();
 
-    let root_dir = temp_dir.path().to_path_buf();
-    info!("📁 Server root directory: {}", root_dir.display());
+    // Compile the HTTP server statically and copy to test bin dir
+    let server_c_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/readiness_check/server.c");
+    let server_path = test_bin_dir_path.join("http_server");
 
-    // Create the server with a 3 second startup delay (reduced for faster testing)
-    let server = ReadinessCheckServer::new(&root_dir, 3).await?;
+    tokio::process::Command::new("gcc")
+        .arg("-static")
+        .arg("-o")
+        .arg(&server_path)
+        .arg(&server_c_path)
+        .output()
+        .await
+        .expect("Failed to compile HTTP server");
 
     // Configure the isolation manager with no isolation
     let config = IsolationConfig {
@@ -211,12 +149,15 @@ async fn main() -> Result<()> {
 
     let manager = IsolationManager::with_config(config);
 
+    // Create the server with a 3 second startup delay
+    let server = ReadinessCheckServer::new(test_bin_dir_path, 3);
+
     // Spawn the isolated process
     info!("🔄 Spawning server process and waiting for it to become ready...");
     info!("Readiness will be checked once per second with up to 30 retries");
 
     let start_time = std::time::Instant::now();
-    let (process, _join_handle) = manager.spawn(server).await?;
+    let (process, _join_handle) = manager.spawn(server).await.expect("Failed to spawn server");
     let elapsed = start_time.elapsed();
 
     // The spawn method will already have waited for the server to be ready
@@ -224,18 +165,15 @@ async fn main() -> Result<()> {
     info!("✅ Server process is now ready! (took {:?})", elapsed);
     info!("Server is running with PID: {:?}", process.pid());
 
-    // Make an HTTP request to the server to demonstrate it's working
+    // Make an HTTP request to the server to demonstrate it's working after the readiness check
     info!("📡 Making a request to the server...");
     let url = format!("http://127.0.0.1:{}", SERVER_PORT);
     let response = reqwest::get(&url)
         .await
-        .map_err(|e| Error::Application(format!("Failed to connect to server: {}", e)))?;
+        .expect("Failed to connect to server");
 
     info!("📨 Server response: {:?}", response.status());
-    let body = response
-        .text()
-        .await
-        .map_err(|e| Error::Application(format!("Failed to read response: {}", e)))?;
+    let body = response.text().await.expect("Failed to read response");
     info!("📄 Response body: \"{}\"", body);
 
     // Wait a bit before shutting down
@@ -244,11 +182,7 @@ async fn main() -> Result<()> {
 
     // Shutdown the server by ending the process
     info!("🛑 Shutting down server...");
-    process.shutdown().await?;
-
-    // Clean up temporary directory
-    drop(temp_dir);
+    process.shutdown().await.expect("Failed to shutdown server");
 
     info!("✅ Example completed successfully");
-    Ok(())
 }

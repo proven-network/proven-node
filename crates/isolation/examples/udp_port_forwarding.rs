@@ -6,15 +6,14 @@
 //! 3. Ensuring we can access the UDP server from the host
 
 use std::net::{SocketAddr, UdpSocket};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use proven_isolation::{
-    Error, IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager,
-    NamespaceOptions, Result,
+    IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager, NamespaceOptions,
+    VolumeMount,
 };
-use tokio::fs;
 use tracing::{debug, info};
 
 /// The port that the UDP server will listen on
@@ -28,64 +27,14 @@ const UDP_BUFFER_SIZE: usize = 1024;
 
 /// Application that runs a UDP echo server in an isolated namespace with port forwarding
 struct UdpEchoServer {
-    /// The executable path
-    executable_path: PathBuf,
+    /// The path to the test bin directory
+    test_bin_dir: PathBuf,
 }
 
 impl UdpEchoServer {
     /// Create a new server with port forwarding
-    async fn new(root_dir: &Path) -> Result<Self> {
-        // Create a minimal filesystem inside the root directory
-        let bin_dir = root_dir.join("bin");
-        fs::create_dir_all(&bin_dir)
-            .await
-            .map_err(|e| Error::Io("Failed to create bin directory", e))?;
-
-        // Get the path to the C source file
-        let server_c_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/udp_port_forwarding/server.c");
-
-        debug!("Compiling UDP echo server from {}", server_c_path.display());
-
-        // Compile the UDP server
-        let output = tokio::process::Command::new("gcc")
-            .arg("-o")
-            .arg(bin_dir.join("udp_server"))
-            .arg(&server_c_path)
-            .output()
-            .await
-            .map_err(|e| Error::Io("Failed to compile UDP server", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(Error::Io(
-                "Failed to compile UDP server",
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Compilation failed: {}", stderr),
-                ),
-            ));
-        }
-
-        // Make the program executable
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let server_path = bin_dir.join("udp_server");
-            let mut perms = tokio::fs::metadata(&server_path)
-                .await
-                .map_err(|e| Error::Io("Failed to get server metadata", e))?
-                .permissions();
-
-            perms.set_mode(0o755);
-            tokio::fs::set_permissions(&server_path, perms)
-                .await
-                .map_err(|e| Error::Io("Failed to set server permissions", e))?;
-        }
-
-        Ok(Self {
-            executable_path: bin_dir.join("udp_server"),
-        })
+    fn new(test_bin_dir: PathBuf) -> Self {
+        Self { test_bin_dir }
     }
 }
 
@@ -96,11 +45,7 @@ impl IsolatedApplication for UdpEchoServer {
     }
 
     fn executable(&self) -> &str {
-        self.executable_path.to_str().unwrap_or("/bin/udp_server")
-    }
-
-    fn name(&self) -> &str {
-        "udp-echo-server"
+        "/bin/udp_server"
     }
 
     fn namespace_options(&self) -> NamespaceOptions {
@@ -109,12 +54,10 @@ impl IsolatedApplication for UdpEchoServer {
         options
     }
 
-    /// Return the UDP ports to forward
-    fn udp_port_forwards(&self) -> Vec<u16> {
-        vec![SERVER_PORT]
-    }
-
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool> {
+    async fn is_ready_check(
+        &self,
+        process: &IsolatedProcess,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         // Check if the UDP server is ready by sending a test packet
         static ATTEMPT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
         let attempt = ATTEMPT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -139,7 +82,7 @@ impl IsolatedApplication for UdpEchoServer {
         );
 
         // Create socket for testing server
-        let test_result = || -> std::result::Result<bool, std::io::Error> {
+        let test_result = || -> std::io::Result<bool> {
             let socket = UdpSocket::bind("0.0.0.0:0")?;
             socket.connect(addr)?;
             socket.set_read_timeout(Some(Duration::from_secs(1)))?;
@@ -190,12 +133,25 @@ impl IsolatedApplication for UdpEchoServer {
     }
 
     fn is_ready_check_max(&self) -> Option<u32> {
-        Some(20) // Allow up to 20 seconds for readiness
+        Some(20) // Check up to 20 times
+    }
+
+    fn name(&self) -> &str {
+        "udp-echo-server"
+    }
+
+    /// Return the UDP ports to forward
+    fn udp_port_forwards(&self) -> Vec<u16> {
+        vec![SERVER_PORT]
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![VolumeMount::new(&self.test_bin_dir, &PathBuf::from("/bin"))]
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     // Initialize tracing with defaults
     tracing_subscriber::fmt::init();
 
@@ -204,15 +160,30 @@ async fn main() -> Result<()> {
         "This example demonstrates running a UDP server in isolation and accessing it from the host"
     );
 
-    // Set up temporary directory
-    let temp_dir =
-        tempfile::tempdir().map_err(|e| Error::Io("Failed to create temporary directory", e))?;
+    // Create dir for test binary
+    let test_bin_dir = tempfile::tempdir().expect("Failed to create test bin directory");
+    let test_bin_dir_path = test_bin_dir.into_path();
 
-    let root_dir = temp_dir.path().to_path_buf();
-    info!("📁 Server root directory: {}", root_dir.display());
+    // Compile the UDP server statically and copy to test bin dir
+    let server_c_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/udp_port_forwarding/server.c");
+    let server_path = test_bin_dir_path.join("udp_server");
 
-    // Create the server
-    let server = UdpEchoServer::new(&root_dir).await?;
+    debug!("Compiling UDP echo server from {}", server_c_path.display());
+
+    let output = tokio::process::Command::new("gcc")
+        .arg("-static")
+        .arg("-o")
+        .arg(&server_path)
+        .arg(&server_c_path)
+        .output()
+        .await
+        .expect("Failed to compile UDP server");
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!("Failed to compile UDP server: {}", stderr);
+    }
 
     // Configure the isolation manager
     let config = IsolationConfig {
@@ -229,6 +200,9 @@ async fn main() -> Result<()> {
 
     let manager = IsolationManager::with_config(config);
 
+    // Create the server
+    let server = UdpEchoServer::new(test_bin_dir_path);
+
     // Spawn the isolated process
     info!("🔄 Spawning server process and waiting for it to become ready...");
     info!(
@@ -237,7 +211,7 @@ async fn main() -> Result<()> {
     );
 
     let start_time = std::time::Instant::now();
-    let (process, _join_handle) = manager.spawn(server).await?;
+    let (process, _join_handle) = manager.spawn(server).await.expect("Failed to spawn server");
     let elapsed = start_time.elapsed();
     info!("✅ Server process is now ready! (took {:?})", elapsed);
     info!("Server is running with PID: {}", process.pid());
@@ -252,22 +226,21 @@ async fn main() -> Result<()> {
         container_ip, SERVER_PORT
     );
 
-    let socket = UdpSocket::bind("0.0.0.0:0")
-        .map_err(|e| Error::Application(format!("Failed to bind socket: {}", e)))?;
+    let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind socket");
     socket
         .connect(SocketAddr::new(container_ip, SERVER_PORT))
-        .map_err(|e| Error::Application(format!("Failed to connect to container: {}", e)))?;
+        .expect("Failed to connect to container");
 
     // Send a test message
     socket
         .send(UDP_TEST_MESSAGE.as_bytes())
-        .map_err(|e| Error::Application(format!("Failed to send message to container: {}", e)))?;
+        .expect("Failed to send message to container");
 
     // Wait for response
     let mut buf = [0; UDP_BUFFER_SIZE];
     let len = socket
         .recv(&mut buf)
-        .map_err(|e| Error::Application(format!("Failed to receive from container: {}", e)))?;
+        .expect("Failed to receive from container");
 
     let received = String::from_utf8_lossy(&buf[..len]);
     info!("Direct container response: {}", received);
@@ -278,25 +251,24 @@ async fn main() -> Result<()> {
         SERVER_PORT
     );
 
-    let socket = UdpSocket::bind("0.0.0.0:0")
-        .map_err(|e| Error::Application(format!("Failed to bind socket: {}", e)))?;
+    let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind socket");
     socket
         .connect(SocketAddr::new(
             std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
             SERVER_PORT,
         ))
-        .map_err(|e| Error::Application(format!("Failed to connect to localhost: {}", e)))?;
+        .expect("Failed to connect to localhost");
 
     // Send a test message
     socket
         .send(UDP_TEST_MESSAGE.as_bytes())
-        .map_err(|e| Error::Application(format!("Failed to send message to localhost: {}", e)))?;
+        .expect("Failed to send message to localhost");
 
     // Wait for response
     let mut buf = [0; UDP_BUFFER_SIZE];
     let len = socket
         .recv(&mut buf)
-        .map_err(|e| Error::Application(format!("Failed to receive from localhost: {}", e)))?;
+        .expect("Failed to receive from localhost");
 
     let received = String::from_utf8_lossy(&buf[..len]);
     info!("Localhost port forwarding response: {}", received);
@@ -307,7 +279,7 @@ async fn main() -> Result<()> {
 
     // Shut down the server
     info!("🛑 Shutting down server...");
-    process.shutdown().await?;
+    process.shutdown().await.expect("Failed to shutdown server");
 
-    Ok(())
+    info!("✅ Example completed successfully");
 }

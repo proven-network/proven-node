@@ -7,8 +7,9 @@
 
 mod error;
 
-pub use error::{Error, Result};
+pub use error::Error;
 
+use std::error::Error as StdError;
 use std::fs;
 use std::net::SocketAddrV4;
 use std::path::PathBuf;
@@ -164,7 +165,7 @@ impl IsolatedApplication for RethApp {
         8192
     }
 
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> proven_isolation::Result<bool> {
+    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         let http_url = if let Some(ip) = process.container_ip() {
             format!("http://{}:{}", ip, self.http_addr.port())
         } else {
@@ -207,19 +208,6 @@ impl IsolatedApplication for RethApp {
     fn is_ready_check_interval_ms(&self) -> u64 {
         // Check every 10 seconds
         10000
-    }
-
-    async fn prepare_config(&self) -> proven_isolation::Result<()> {
-        // Create the data directory if it doesn't exist
-        if !self.store_dir.exists() {
-            fs::create_dir_all(&self.store_dir).map_err(|e| {
-                proven_isolation::Error::Application(format!(
-                    "Failed to create data directory: {}",
-                    e
-                ))
-            })?;
-        }
-        Ok(())
     }
 
     fn tcp_port_forwards(&self) -> Vec<u16> {
@@ -301,7 +289,15 @@ impl RethNode {
     /// Start the Reth node.
     ///
     /// Returns a handle to the task that is running the node.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
+        if self.process.is_some() {
+            return Err(Error::AlreadyStarted);
+        }
+
+        info!("Starting Reth node...");
+
+        self.prepare_config().await?;
+
         let app = RethApp {
             executable_path: "/apps/ethereum-reth/v0.1.0-alpha.13/reth".to_string(),
             discovery_addr: self.discovery_addr,
@@ -324,7 +320,7 @@ impl RethNode {
     }
 
     /// Shuts down the Reth node.
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
         info!("Reth node shutting down...");
 
         if let Some(process) = self.process.take() {
@@ -334,6 +330,15 @@ impl RethNode {
             debug!("No running Reth node to shut down");
         }
 
+        Ok(())
+    }
+
+    async fn prepare_config(&self) -> Result<(), Error> {
+        // Create the data directory if it doesn't exist
+        if !self.store_dir.exists() {
+            fs::create_dir_all(&self.store_dir)
+                .map_err(|e| Error::Io("Failed to create data directory", e))?;
+        }
         Ok(())
     }
 }

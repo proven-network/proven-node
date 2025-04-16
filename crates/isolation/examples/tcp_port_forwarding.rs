@@ -5,16 +5,14 @@
 //! 2. Working with an application that binds to a port
 //! 3. Ensuring we can access the HTTP server from the host
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use proven_isolation::{
-    Error, IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager,
-    NamespaceOptions, Result,
+    IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager, VolumeMount,
 };
 use reqwest::StatusCode;
-use tokio::fs;
 use tracing::{debug, info};
 
 /// The port that the server will listen on
@@ -22,64 +20,14 @@ const SERVER_PORT: u16 = 8080;
 
 /// Application that runs an HTTP server in an isolated namespace with port forwarding
 struct PortForwardServer {
-    /// The executable path
-    executable_path: PathBuf,
+    /// The path to the test bin directory
+    test_bin_dir: PathBuf,
 }
 
 impl PortForwardServer {
     /// Create a new server with port forwarding
-    async fn new(root_dir: &Path) -> Result<Self> {
-        // Create a minimal filesystem inside the root directory
-        let bin_dir = root_dir.join("bin");
-        fs::create_dir_all(&bin_dir)
-            .await
-            .map_err(|e| Error::Io("Failed to create bin directory", e))?;
-
-        // Get the path to the C source file
-        let server_c_path =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/tcp_port_forwarding/server.c");
-
-        debug!("Compiling HTTP server from {}", server_c_path.display());
-
-        // Compile the HTTP server
-        let output = tokio::process::Command::new("gcc")
-            .arg("-o")
-            .arg(bin_dir.join("http_server"))
-            .arg(&server_c_path)
-            .output()
-            .await
-            .map_err(|e| Error::Io("Failed to compile HTTP server", e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(Error::Io(
-                "Failed to compile HTTP server",
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Compilation failed: {}", stderr),
-                ),
-            ));
-        }
-
-        // Make the program executable
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let server_path = bin_dir.join("http_server");
-            let mut perms = tokio::fs::metadata(&server_path)
-                .await
-                .map_err(|e| Error::Io("Failed to get server metadata", e))?
-                .permissions();
-
-            perms.set_mode(0o755);
-            tokio::fs::set_permissions(&server_path, perms)
-                .await
-                .map_err(|e| Error::Io("Failed to set server permissions", e))?;
-        }
-
-        Ok(Self {
-            executable_path: bin_dir.join("http_server"),
-        })
+    fn new(test_bin_dir: PathBuf) -> Self {
+        Self { test_bin_dir }
     }
 }
 
@@ -90,25 +38,13 @@ impl IsolatedApplication for PortForwardServer {
     }
 
     fn executable(&self) -> &str {
-        self.executable_path.to_str().unwrap_or("/bin/http_server")
+        "/bin/http_server"
     }
 
-    fn name(&self) -> &str {
-        "port-forward-server"
-    }
-
-    fn namespace_options(&self) -> NamespaceOptions {
-        let mut options = NamespaceOptions::default();
-        options.use_network = true; // Always use network namespace for this example
-        options
-    }
-
-    /// Return the TCP ports to forward
-    fn tcp_port_forwards(&self) -> Vec<u16> {
-        vec![SERVER_PORT]
-    }
-
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool> {
+    async fn is_ready_check(
+        &self,
+        process: &IsolatedProcess,
+    ) -> Result<bool, Box<dyn std::error::Error>> {
         // Check if the HTTP server is ready by making a request
         static ATTEMPT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
         let attempt = ATTEMPT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -153,27 +89,54 @@ impl IsolatedApplication for PortForwardServer {
     }
 
     fn is_ready_check_max(&self) -> Option<u32> {
-        Some(20) // Allow up to 20 seconds for readiness
+        Some(20) // Check up to 20 times
+    }
+
+    fn name(&self) -> &str {
+        "port-forward-server"
+    }
+
+    fn tcp_port_forwards(&self) -> Vec<u16> {
+        vec![SERVER_PORT]
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![VolumeMount::new(&self.test_bin_dir, &PathBuf::from("/bin"))]
     }
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
     // Initialize tracing with defaults
     tracing_subscriber::fmt::init();
 
     info!("🚀 Starting isolated HTTP server example");
     info!("This example demonstrates running a server in isolation and accessing it from the host");
 
-    // Set up temporary directory
-    let temp_dir =
-        tempfile::tempdir().map_err(|e| Error::Io("Failed to create temporary directory", e))?;
+    // Create dir for test binary
+    let test_bin_dir = tempfile::tempdir().expect("Failed to create test bin directory");
+    let test_bin_dir_path = test_bin_dir.into_path();
 
-    let root_dir = temp_dir.path().to_path_buf();
-    info!("📁 Server root directory: {}", root_dir.display());
+    // Compile the HTTP server statically and copy to test bin dir
+    let server_c_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/tcp_port_forwarding/server.c");
+    let server_path = test_bin_dir_path.join("http_server");
 
-    // Create the server
-    let server = PortForwardServer::new(&root_dir).await?;
+    debug!("Compiling HTTP server from {}", server_c_path.display());
+
+    let output = tokio::process::Command::new("gcc")
+        .arg("-static")
+        .arg("-o")
+        .arg(&server_path)
+        .arg(&server_c_path)
+        .output()
+        .await
+        .expect("Failed to compile HTTP server");
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        panic!("Failed to compile HTTP server: {}", stderr);
+    }
 
     // Configure the isolation manager
     let config = IsolationConfig {
@@ -190,6 +153,9 @@ async fn main() -> Result<()> {
 
     let manager = IsolationManager::with_config(config);
 
+    // Create the server
+    let server = PortForwardServer::new(test_bin_dir_path);
+
     // Spawn the isolated process
     info!("🔄 Spawning server process and waiting for it to become ready...");
     info!(
@@ -198,7 +164,7 @@ async fn main() -> Result<()> {
     );
 
     let start_time = std::time::Instant::now();
-    let (process, _join_handle) = manager.spawn(server).await?;
+    let (process, _join_handle) = manager.spawn(server).await.expect("Failed to spawn server");
     let elapsed = start_time.elapsed();
     info!("✅ Server process is now ready! (took {:?})", elapsed);
     info!("Server is running with PID: {}", process.pid());
@@ -213,20 +179,23 @@ async fn main() -> Result<()> {
         SERVER_PORT
     ))
     .await
-    .map_err(|e| Error::Application(format!("Failed to make direct container request: {}", e)))?;
-    let text = response.text().await.map_err(|e| {
-        Error::Application(format!("Failed to read direct container response: {}", e))
-    })?;
+    .expect("Failed to make direct container request");
+
+    let text = response
+        .text()
+        .await
+        .expect("Failed to read direct container response");
     info!("Direct container access response: {}", text);
 
     // Then verify localhost port forwarding
     let response = reqwest::get(&format!("http://127.0.0.1:{}", SERVER_PORT))
         .await
-        .map_err(|e| Error::Application(format!("Failed to make localhost request: {}", e)))?;
+        .expect("Failed to make localhost request");
+
     let text = response
         .text()
         .await
-        .map_err(|e| Error::Application(format!("Failed to read localhost response: {}", e)))?;
+        .expect("Failed to read localhost response");
     info!("Localhost port forwarding response: {}", text);
 
     // Wait a bit before shutting down
@@ -235,7 +204,7 @@ async fn main() -> Result<()> {
 
     // Shut down the server
     info!("🛑 Shutting down server...");
-    process.shutdown().await?;
+    process.shutdown().await.expect("Failed to shutdown server");
 
-    Ok(())
+    info!("✅ Example completed successfully");
 }

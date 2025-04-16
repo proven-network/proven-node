@@ -7,8 +7,9 @@
 
 mod error;
 
-pub use error::{Error, Result};
+pub use error::Error;
 
+use std::error::Error as StdError;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
 
@@ -22,9 +23,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{
-    IsolatedApplication, IsolatedProcess, IsolationManager, Result as IsolationResult, VolumeMount,
-};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
 
 // Default filenames
 static CONFIG_FILENAME: &str = "radix-node.config";
@@ -73,7 +72,6 @@ static RUST_LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
 /// Application struct for running Radix Node in isolation
 struct RadixNodeApp {
     config_dir: String,
-    host_ip: String,
     http_port: u16,
     network_definition: NetworkDefinition,
     p2p_port: u16,
@@ -151,7 +149,7 @@ impl IsolatedApplication for RadixNodeApp {
         self.handle_stdout(line);
     }
 
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> IsolationResult<bool> {
+    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         let client = Client::new();
         let payload = format!(
             "{{\"network\":\"{}\"}}",
@@ -193,83 +191,6 @@ impl IsolatedApplication for RadixNodeApp {
 
     fn memory_limit_mb(&self) -> usize {
         1024 * 12 // 12GB
-    }
-
-    async fn prepare_config(&self) -> IsolationResult<()> {
-        // Ensure store dir created
-        std::fs::create_dir_all(&self.store_dir).map_err(|e| {
-            proven_isolation::Error::Application(format!("Failed to create store dir: {}", e))
-        })?;
-
-        // Ensure config dir created
-        std::fs::create_dir_all(&self.config_dir).map_err(|e| {
-            proven_isolation::Error::Application(format!("Failed to create config dir: {}", e))
-        })?;
-
-        let config_path = Path::new(&self.config_dir).join(CONFIG_FILENAME);
-        let keystore_path = Path::new("/config").join(KEYSTORE_FILENAME);
-
-        let seed_nodes = match self.network_definition.id {
-            1 => MAINNET_SEED_NODES,
-            2 => STOKENET_SEED_NODES,
-            _ => unreachable!(),
-        }
-        .join(",");
-
-        let config = format!(
-            r"network.host_ip={}
-network.id={}
-network.p2p.listen_port={}
-network.p2p.broadcast_port={}
-network.p2p.seed_nodes={}
-node.key.path={}
-db.location=/data
-api.core.bind_address=0.0.0.0
-api.core.port={}",
-            self.host_ip,
-            self.network_definition.id,
-            self.p2p_port,
-            self.p2p_port,
-            seed_nodes,
-            keystore_path.to_string_lossy(),
-            self.http_port
-        );
-
-        let mut config_file = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&config_path)
-            .map_err(|e| {
-                proven_isolation::Error::Application(format!("Failed to open config file: {}", e))
-            })?;
-
-        std::io::Write::write_all(&mut config_file, config.as_bytes()).map_err(|e| {
-            proven_isolation::Error::Application(format!("Failed to write config file: {}", e))
-        })?;
-
-        // Generate the node key
-        let keystore_path_local = Path::new(&self.config_dir).join(KEYSTORE_FILENAME);
-        let output = Command::new("/apps/radix-node/v1.3.0.2/core-v1.3.0.2/bin/keygen")
-            .arg("-k")
-            .arg(keystore_path_local.to_string_lossy().as_ref())
-            .arg("-p")
-            .arg(KEYSTORE_PASS)
-            .output()
-            .await
-            .map_err(|e| {
-                proven_isolation::Error::Application(format!("Failed to generate node key: {}", e))
-            })?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(proven_isolation::Error::Application(format!(
-                "Node key generation process exited with non-zero status: {}, stderr: {}",
-                output.status, stderr
-            )));
-        }
-
-        Ok(())
     }
 
     fn tcp_port_forwards(&self) -> Vec<u16> {
@@ -353,15 +274,16 @@ impl RadixNode {
     ///
     /// This function will return an error if the node is already started, if there is an I/O error,
     /// or if the node process exits with a non-zero status code.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>> {
+    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
         if self.process.is_some() {
             return Err(Error::AlreadyStarted);
         }
 
         info!("Starting Radix Node...");
 
+        self.prepare_config().await?;
+
         let app = RadixNodeApp {
-            host_ip: self.host_ip.clone(),
             http_port: self.http_port,
             network_definition: self.network_definition.clone(),
             p2p_port: self.p2p_port,
@@ -384,7 +306,7 @@ impl RadixNode {
     }
 
     /// Shuts down the server.
-    pub async fn shutdown(&mut self) -> Result<()> {
+    pub async fn shutdown(&mut self) -> Result<(), Error> {
         info!("radix-node shutting down...");
 
         if let Some(process) = self.process.take() {
@@ -416,5 +338,72 @@ impl RadixNode {
     #[must_use]
     pub fn p2p_port(&self) -> u16 {
         self.p2p_port
+    }
+
+    async fn prepare_config(&self) -> Result<(), Error> {
+        // Ensure store dir created
+        std::fs::create_dir_all(&self.store_dir)
+            .map_err(|e| Error::Io("Failed to create store dir", e))?;
+
+        // Ensure config dir created
+        std::fs::create_dir_all(&self.config_dir)
+            .map_err(|e| Error::Io("Failed to create config dir", e))?;
+
+        let config_path = Path::new(&self.config_dir).join(CONFIG_FILENAME);
+        let keystore_path = Path::new("/config").join(KEYSTORE_FILENAME);
+
+        let seed_nodes = match self.network_definition.id {
+            1 => MAINNET_SEED_NODES,
+            2 => STOKENET_SEED_NODES,
+            _ => unreachable!(),
+        }
+        .join(",");
+
+        let config = format!(
+            r"network.host_ip={}
+network.id={}
+network.p2p.listen_port={}
+network.p2p.broadcast_port={}
+network.p2p.seed_nodes={}
+node.key.path={}
+db.location=/data
+api.core.bind_address=0.0.0.0
+api.core.port={}",
+            self.host_ip,
+            self.network_definition.id,
+            self.p2p_port,
+            self.p2p_port,
+            seed_nodes,
+            keystore_path.to_string_lossy(),
+            self.http_port
+        );
+
+        let mut config_file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&config_path)
+            .map_err(|e| Error::Io("Failed to open config file", e))?;
+
+        std::io::Write::write_all(&mut config_file, config.as_bytes())
+            .map_err(|e| Error::Io("Failed to write config file", e))?;
+
+        // Generate the node key
+        let keystore_path_local = Path::new(&self.config_dir).join(KEYSTORE_FILENAME);
+        let output = Command::new("/apps/radix-node/v1.3.0.2/core-v1.3.0.2/bin/keygen")
+            .arg("-k")
+            .arg(keystore_path_local.to_string_lossy().as_ref())
+            .arg("-p")
+            .arg(KEYSTORE_PASS)
+            .output()
+            .await
+            .map_err(|e| Error::Io("Failed to generate node key", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(Error::KeyGeneration(stderr.to_string()));
+        }
+
+        Ok(())
     }
 }
