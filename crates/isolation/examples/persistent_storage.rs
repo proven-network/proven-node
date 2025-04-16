@@ -135,10 +135,8 @@ async fn main() {
             .expect("Failed to spawn counter app");
 
         // Wait for the process to exit
-        process
-            .wait()
-            .await
-            .expect("Failed to wait for counter app");
+        let exit_status = process.wait().await;
+        println!("exit status: {:?}", exit_status);
 
         // Clean up the process
         process

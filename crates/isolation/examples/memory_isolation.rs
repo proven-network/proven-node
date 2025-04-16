@@ -231,13 +231,11 @@ async fn main() -> Result<()> {
                     break;
                 }
             }
-            status = process.wait() => {
+            exit_status = process.wait() => {
                 // Process has exited
                 info!("Process has exited, stopping monitoring");
-                match status {
-                    Ok(exit_status) => info!("Process exited with status: {}", exit_status),
-                    Err(e) => info!("Error waiting for process: {}", e),
-                }
+                info!("Process exited with status: {}", exit_status);
+
                 break;
             }
         }

@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::net::IpAddr;
-use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{ExitStatus, Stdio};
 use std::sync::Arc;
@@ -13,6 +12,7 @@ use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -139,6 +139,9 @@ pub struct IsolatedProcess {
     /// Cgroups controller if active
     cgroups_controller: Option<CgroupsController>,
 
+    /// Exit status of the process
+    exit_status: Arc<Mutex<Option<ExitStatus>>>,
+
     /// Process ID
     pid: u32,
 
@@ -169,35 +172,16 @@ impl IsolatedProcess {
         self.veth_pair.as_ref().map(|veth| veth.host_ip())
     }
 
-    /// Waits for the process to exit.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the process exits with a non-zero status.
-    pub async fn wait(&self) -> Result<ExitStatus> {
-        let pid_i32 = self.pid as i32;
-        let check_interval = Duration::from_millis(100);
+    /// Waits for the process to exit
+    pub async fn wait(&self) -> ExitStatus {
+        let check_interval = Duration::from_millis(1000);
 
-        // Loop until the process no longer exists
+        // Loop until there's an exit status
         loop {
-            let exists = unsafe { libc::kill(pid_i32, 0) == 0 };
+            let exit_status = self.exit_status.lock().await;
 
-            if !exists {
-                // Process has exited
-                let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
-                if errno == libc::ESRCH {
-                    // Process doesn't exist (this is the normal case)
-                    debug!("Process {} no longer exists", self.pid);
-                    return Ok(ExitStatus::from_raw(0));
-                }
-
-                // Some other error occurred (e.g., permission denied)
-                warn!(
-                    "Error checking process {}: {}",
-                    self.pid,
-                    std::io::Error::last_os_error()
-                );
-                return Ok(ExitStatus::from_raw(0));
+            if let Some(exit_status) = exit_status.as_ref() {
+                return exit_status.clone();
             }
 
             // Process still exists, wait a bit and try again
@@ -681,11 +665,15 @@ impl IsolatedProcessSpawner {
             });
         }
 
+        // Exit status wrapped in a mutex to share between task and main thread
+        let exit_status = Arc::new(Mutex::new(None));
+
         // Monitor child process
         let pid_for_task = pid;
         let shutdown_signal = options.application.shutdown_signal();
         let shutdown_timeout = options.application.shutdown_timeout();
         let shutdown_token_for_task = shutdown_token.clone();
+        let exit_status_for_task = exit_status.clone();
         let join_handle = tokio::task::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
@@ -696,6 +684,8 @@ impl IsolatedProcessSpawner {
                             } else {
                                 error!("Process exited with non-zero status: {}", status);
                             }
+
+                            *exit_status_for_task.lock().await = Some(status);
                         }
                         Err(err) => {
                             error!("Failed to wait for process: {}", err);
@@ -784,6 +774,7 @@ impl IsolatedProcessSpawner {
         // Create the IsolatedProcess instance
         let process = IsolatedProcess {
             cgroups_controller,
+            exit_status,
             pid,
             shutdown_token,
             task_tracker,

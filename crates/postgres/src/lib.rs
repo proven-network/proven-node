@@ -396,11 +396,19 @@ impl Postgres {
             .await
             .map_err(Error::Isolation)?;
 
-        process.wait().await.map_err(Error::Isolation)?;
+        let exit_status = process.wait().await;
 
-        // TODO: Need to write proper exit code checking in upstream isolation crate at a later date
+        println!("exit status: {:?}", exit_status);
 
-        Ok(())
+        if exit_status.success() {
+            info!("database initialization completed");
+
+            Ok(())
+        } else {
+            error!("database initialization failed");
+
+            Err(Error::DatabaseInit)
+        }
     }
 
     async fn configure_pg_hba(&self) -> Result<(), Error> {
@@ -458,12 +466,16 @@ impl Postgres {
             .await
             .map_err(Error::Isolation)?;
 
-        process.wait().await.map_err(Error::Isolation)?;
+        let exit_status = process.wait().await;
 
-        // TODO: Need to write proper exit code checking in upstream isolation crate at a later date
+        if exit_status.success() {
+            info!("vacuuming database completed");
 
-        info!("vacuuming database completed");
+            Ok(())
+        } else {
+            error!("vacuuming database failed");
 
-        Ok(())
+            Err(Error::Vacuum)
+        }
     }
 }
