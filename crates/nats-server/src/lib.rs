@@ -31,6 +31,7 @@ use tracing::{debug, error, info, trace, warn};
 
 static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
 static CLUSTER_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster.conf");
+static NATS_SERVER_PATH: &str = "/apps/nats/v2.11.0/nats-server";
 
 const PEER_DISCOVERY_INTERVAL: u64 = 300; // 5 minutes
 
@@ -149,7 +150,7 @@ where
                 args.extend_from_slice(&["-DV"]);
             }
 
-            let mut cmd = Command::new("/apps/nats/v2.11.0/nats-server");
+            let mut cmd = Command::new(NATS_SERVER_PATH);
             for arg in args {
                 cmd.arg(arg);
             }
@@ -364,7 +365,7 @@ where
 
         // Run "nats-server --signal reload" to reload the configuration if it is running (task_tracker closed)
         if self.task_tracker.is_closed() {
-            let output = Command::new("nats-server")
+            let output = Command::new(NATS_SERVER_PATH)
                 .arg("--signal")
                 .arg("reload")
                 .output()
