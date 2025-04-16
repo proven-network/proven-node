@@ -625,7 +625,7 @@ impl Bootstrap {
 
         // TODO: Wait for at least one other node to be started so NATS can boot in cluster mode
         // Just sleep to simulate for now
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(20)).await;
 
         Ok(())
     }

@@ -149,7 +149,7 @@ where
                 args.extend_from_slice(&["-DV"]);
             }
 
-            let mut cmd = Command::new("nats-server");
+            let mut cmd = Command::new("/apps/nats/v2.11.0/nats-server");
             for arg in args {
                 cmd.arg(arg);
             }

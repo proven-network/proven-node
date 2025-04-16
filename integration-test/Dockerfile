@@ -6,12 +6,14 @@ RUN git clone https://github.com/radixdlt/babylon-gateway.git
 WORKDIR /babylon-gateway
 RUN git checkout v1.9.2
 
-WORKDIR /babylon-gateway/apps/DataAggregator
-RUN dotnet publish -c Release -o /bin/DataAggregator
-WORKDIR /babylon-gateway/apps/DatabaseMigrations
-RUN dotnet publish -c Release -o /bin/DatabaseMigrations
-WORKDIR /babylon-gateway/apps/GatewayApi
-RUN dotnet publish -c Release -o /bin/GatewayApi
+# Build Gateway applications
+RUN mkdir -p /apps/radix-gateway/v1.9.2 && \
+    cd /babylon-gateway/apps/DataAggregator && \
+    dotnet publish -c Release -o /apps/radix-gateway/v1.9.2/DataAggregator && \
+    cd /babylon-gateway/apps/DatabaseMigrations && \
+    dotnet publish -c Release -o /apps/radix-gateway/v1.9.2/DatabaseMigrations && \
+    cd /babylon-gateway/apps/GatewayApi && \
+    dotnet publish -c Release -o /apps/radix-gateway/v1.9.2/GatewayApi
 
 # Build postgres which can handle root user
 FROM debian:bookworm-20240904-slim AS postgres
@@ -41,9 +43,10 @@ RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/mai
 RUN sed -i 's/if (geteuid() == 0)/if (false)/g' src/bin/initdb/initdb.c
 
 # Build and install
-RUN ./configure
-RUN make -j$(nproc)
-RUN make install
+RUN mkdir -p /apps/postgres/v17.4 && \
+    ./configure --prefix=/apps/postgres/v17.4 && \
+    make -j$(nproc) && \
+    make install
 
 # Build proven
 FROM rustlang/rust:nightly-bookworm-slim AS builder
@@ -107,46 +110,47 @@ RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime a
 RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 
 # Create necessary directories
-RUN mkdir -p /tmp/proven/kv/application /tmp/proven/kv/persona /etc/proven
+RUN mkdir -p /tmp/proven/kv/application /tmp/proven/kv/persona /etc/proven /apps
 
 # Download and install Bitcoin Core
 WORKDIR /downloads
-RUN wget https://bitcoincore.org/bin/bitcoin-core-28.1/bitcoin-28.1-aarch64-linux-gnu.tar.gz \
+RUN mkdir -p /apps/bitcoin/v28.1 && \
+    wget https://bitcoincore.org/bin/bitcoin-core-28.1/bitcoin-28.1-aarch64-linux-gnu.tar.gz \
     && tar -xzf bitcoin-28.1-aarch64-linux-gnu.tar.gz \
-    && install -m 0755 -o root -g root -t /usr/local/bin bitcoin-28.1/bin/bitcoind bitcoin-28.1/bin/bitcoin-cli
+    && install -m 0755 -o root -g root -t /apps/bitcoin/v28.1 bitcoin-28.1/bin/bitcoind bitcoin-28.1/bin/bitcoin-cli
 
 # Download and install Reth Ethereum client
-RUN wget https://github.com/paradigmxyz/reth/releases/download/v1.3.8/reth-v1.3.8-aarch64-unknown-linux-gnu.tar.gz \
+RUN mkdir -p /apps/ethereum-reth/v1.3.8 && \
+    wget https://github.com/paradigmxyz/reth/releases/download/v1.3.8/reth-v1.3.8-aarch64-unknown-linux-gnu.tar.gz \
     && tar -xzf reth-v1.3.8-aarch64-unknown-linux-gnu.tar.gz \
-    && install -m 0755 -o root -g root -t /usr/local/bin reth
+    && install -m 0755 -o root -g root -t /apps/ethereum-reth/v1.3.8 reth
 
 # Download and install Lighthouse for Ethereum PoS consensus
-RUN wget https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.5/lighthouse-v7.0.0-beta.5-aarch64-unknown-linux-gnu.tar.gz \
+RUN mkdir -p /apps/ethereum-lighthouse/v7.0.0-beta.5 && \
+    wget https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.5/lighthouse-v7.0.0-beta.5-aarch64-unknown-linux-gnu.tar.gz \
     && tar -xzf lighthouse-v7.0.0-beta.5-aarch64-unknown-linux-gnu.tar.gz \
-    && install -m 0755 -o root -g root -t /usr/local/bin lighthouse
+    && install -m 0755 -o root -g root -t /apps/ethereum-lighthouse/v7.0.0-beta.5 lighthouse
 
 # Download and install NATS server
-RUN wget https://github.com/nats-io/nats-server/releases/download/v2.11.0/nats-server-v2.11.0-linux-arm64.tar.gz \
+RUN mkdir -p /apps/nats/v2.11.0 && \
+    wget https://github.com/nats-io/nats-server/releases/download/v2.11.0/nats-server-v2.11.0-linux-arm64.tar.gz \
     && tar -xzf nats-server-v2.11.0-linux-arm64.tar.gz \
-    && install -m 0755 -o root -g root -t /usr/local/bin nats-server-v2.11.0-linux-arm64/nats-server
+    && install -m 0755 -o root -g root -t /apps/nats/v2.11.0 nats-server-v2.11.0-linux-arm64/nats-server
 
 # Download and install Babylon Node
-RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip \
+RUN mkdir -p /apps/radix-node/v1.3.0.2 && \
+    wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip \
     && wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-v1.3.0.2.zip \
     && unzip babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip \
     && unzip babylon-node-v1.3.0.2.zip \
-    && mkdir -p /bin/babylon-node \
-    && mv core-v1.3.0.2 /bin/babylon-node/ \
-    && mv libcorerust.so /bin/babylon-node/ \
-    && rm -f *.zip
+    && mv core-v1.3.0.2 /apps/radix-node/v1.3.0.2/ \
+    && mv libcorerust.so /apps/radix-node/v1.3.0.2/
 
-# Copy .NET applications
-COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
-COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
-COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
+# Copy .NET applications from builder
+COPY --from=dotnet-builder /apps/radix-gateway/v1.9.2 /apps/radix-gateway/v1.9.2
 
 # Copy postgres binaries
-COPY --from=postgres /usr/local/pgsql /usr/local/pgsql
+COPY --from=postgres /apps/postgres/v17.4 /apps/postgres/v17.4
 
 # Copy the built binary from the builder stage
 COPY --from=builder /tmp/build/proven-local /usr/local/bin/
