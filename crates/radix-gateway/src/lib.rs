@@ -21,9 +21,10 @@ use serde_json::json;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
 
-static GATEWAY_API_CONFIG_PATH: &str = "/bin/GatewayApi/appsettings.Production.json";
-static GATEWAY_API_DIR: &str = "/bin/GatewayApi";
-static GATEWAY_API_PATH: &str = "/bin/GatewayApi/GatewayApi";
+static GATEWAY_API_CONFIG_PATH: &str =
+    "/apps/radix-gateway/v1.9.2/GatewayApi/appsettings.Production.json";
+static GATEWAY_API_DIR: &str = "/apps/radix-gateway/v1.9.2/GatewayApi";
+static GATEWAY_API_PATH: &str = "/apps/radix-gateway/v1.9.2/GatewayApi/GatewayApi";
 
 /// Regex pattern for matching Gateway log lines
 static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+): (.*)").unwrap());
@@ -41,6 +42,10 @@ struct RadixGatewayApp {
 
 #[async_trait]
 impl IsolatedApplication for RadixGatewayApp {
+    fn env(&self) -> Vec<(String, String)> {
+        vec![("DOTNET_ROOT".to_string(), "/usr/share/dotnet".to_string())]
+    }
+
     fn executable(&self) -> &str {
         GATEWAY_API_PATH
     }
@@ -181,7 +186,10 @@ impl IsolatedApplication for RadixGatewayApp {
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
-        vec![VolumeMount::new(GATEWAY_API_DIR, GATEWAY_API_DIR)]
+        vec![
+            VolumeMount::new(GATEWAY_API_DIR, GATEWAY_API_DIR),
+            VolumeMount::new("/usr/share/dotnet", "/usr/share/dotnet"),
+        ]
     }
 
     fn working_dir(&self) -> Option<PathBuf> {
