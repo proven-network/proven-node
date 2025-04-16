@@ -12,13 +12,12 @@ pub use error::Error;
 use std::error::Error as StdError;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
-use std::process::Stdio;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
 use regex::Regex;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tempfile::TempDir;
 use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
@@ -131,6 +130,113 @@ impl IsolatedApplication for PostgresApp {
     }
 }
 
+/// Isolated application for initializing Postgres database
+struct PostgresInitApp {
+    username: String,
+    pass_dir: String,
+    store_dir: String,
+}
+
+#[async_trait]
+impl IsolatedApplication for PostgresInitApp {
+    fn args(&self) -> Vec<String> {
+        vec![
+            "-D".to_string(),
+            "/data".to_string(),
+            "-U".to_string(),
+            self.username.clone(),
+            "--pwfile".to_string(),
+            "/pass/pgpass".to_string(),
+        ]
+    }
+
+    fn executable(&self) -> &str {
+        "/apps/postgres/v17.4/bin/initdb"
+    }
+
+    fn name(&self) -> &str {
+        "postgres-init"
+    }
+
+    fn handle_stdout(&self, line: &str) {
+        info!(target: "postgres-init", "{}", line);
+    }
+
+    fn handle_stderr(&self, line: &str) {
+        error!(target: "postgres-init", "{}", line);
+    }
+
+    fn memory_limit_mb(&self) -> usize {
+        1024 // 1GB should be plenty for initialization
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![
+            VolumeMount::new(&self.pass_dir, &"/pass".to_string()),
+            VolumeMount::new(&self.store_dir, &"/data".to_string()),
+            VolumeMount::new("/apps/postgres/v17.4", "/apps/postgres/v17.4"),
+        ]
+    }
+}
+
+/// Isolated application for running vacuum on Postgres database
+struct PostgresVacuumApp {
+    host: IpAddr,
+    password: String,
+    port: u16,
+    username: String,
+}
+
+#[async_trait]
+impl IsolatedApplication for PostgresVacuumApp {
+    fn args(&self) -> Vec<String> {
+        vec![
+            "-U".to_string(),
+            self.username.clone(),
+            "--host".to_string(),
+            self.host.to_string(),
+            "--port".to_string(),
+            self.port.to_string(),
+            "--no-password".to_string(),
+            "--all".to_string(),
+            "--parallel=4".to_string(),
+            "--buffer-usage-limit".to_string(),
+            "4GB".to_string(),
+        ]
+    }
+
+    fn env(&self) -> Vec<(String, String)> {
+        vec![("PGPASSWORD".to_string(), self.password.clone())]
+    }
+
+    fn executable(&self) -> &str {
+        "/apps/postgres/v17.4/bin/vacuumdb"
+    }
+
+    fn name(&self) -> &str {
+        "postgres-vacuum"
+    }
+
+    fn handle_stdout(&self, line: &str) {
+        info!(target: "postgres-vacuum", "{}", line);
+    }
+
+    fn handle_stderr(&self, line: &str) {
+        self.handle_stdout(line);
+    }
+
+    fn memory_limit_mb(&self) -> usize {
+        1024 * 5 // 5GB to match main postgres process
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![VolumeMount::new(
+            "/apps/postgres/v17.4",
+            "/apps/postgres/v17.4",
+        )]
+    }
+}
+
 /// Runs a Postgres server to provide storage for Radix Gateway.
 pub struct Postgres {
     isolation_manager: IsolationManager,
@@ -201,11 +307,12 @@ impl Postgres {
         self.prepare_config().await?;
 
         if !self.is_initialized() {
+            info!("initializing database...");
             self.initialize_database().await?;
-        } else {
-            // Ensure pg_hba.conf is properly configured even for existing databases
-            self.configure_pg_hba().await?;
         }
+
+        // Ensure pg_hba.conf is properly configured even for existing databases
+        self.configure_pg_hba().await?;
 
         // ensure postmaster.pid does not exist
         let postmaster_pid = std::path::Path::new(&self.store_dir).join("postmaster.pid");
@@ -266,34 +373,32 @@ impl Postgres {
         self.port
     }
 
-    // TODO: Initialization should probably be done inside isolation as well
     async fn initialize_database(&self) -> Result<(), Error> {
-        // Write password to a file in tmp for use by initdb
-        let password_file = std::path::Path::new("/tmp/pgpass");
-        tokio::fs::write(password_file, self.password.clone())
+        // Create a temporary directory for pgpass file
+        let pass_dir =
+            TempDir::new().map_err(|e| Error::Io("failed to create temporary directory", e))?;
+
+        // Write password to a file in the temporary directory
+        let password_file = pass_dir.path().join("pgpass");
+        tokio::fs::write(&password_file, &self.password)
             .await
             .map_err(|e| Error::Io("failed to write password file", e))?;
 
-        let cmd = Command::new("/apps/postgres/v17.4/bin/initdb")
-            .arg("-D")
-            .arg(&self.store_dir)
-            .arg("-U")
-            .arg(self.username.clone())
-            .arg("--pwfile")
-            .arg(password_file)
-            .output()
+        let init_app = PostgresInitApp {
+            username: self.username.clone(),
+            pass_dir: pass_dir.path().to_string_lossy().into_owned(),
+            store_dir: self.store_dir.clone(),
+        };
+
+        let (process, _join_handle) = self
+            .isolation_manager
+            .spawn(init_app)
             .await
-            .map_err(|e| Error::Io("failed to spawn initdb", e))?;
+            .map_err(Error::Isolation)?;
 
-        info!("stdout: {}", String::from_utf8_lossy(&cmd.stdout));
-        info!("stderr: {}", String::from_utf8_lossy(&cmd.stderr));
+        process.wait().await.map_err(Error::Isolation)?;
 
-        if !cmd.status.success() {
-            return Err(Error::InitDb);
-        }
-
-        // Configure pg_hba.conf to allow connections from all hosts
-        self.configure_pg_hba().await?;
+        // TODO: Need to write proper exit code checking in upstream isolation crate at a later date
 
         Ok(())
     }
@@ -340,50 +445,24 @@ impl Postgres {
     async fn vacuum_database(&self) -> Result<(), Error> {
         info!("vacuuming database...");
 
-        let mut cmd = Command::new("/apps/postgres/v17.4/bin/vacuumdb")
-            .arg("-U")
-            .arg(&self.username)
-            .arg("--all")
-            .arg("--verbose")
-            .arg("--parallel=4")
-            .arg("--buffer-usage-limit")
-            .arg("4GB")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| Error::Io("failed to spawn vacuumdb", e))?;
+        let vacuum_app = PostgresVacuumApp {
+            host: self.ip_address(),
+            password: self.password.clone(),
+            port: self.port,
+            username: self.username.clone(),
+        };
 
-        let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
-        let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+        let (process, _join_handle) = self
+            .isolation_manager
+            .spawn(vacuum_app)
+            .await
+            .map_err(Error::Isolation)?;
 
-        let stdout_writer = tokio::spawn(async move {
-            let reader = BufReader::new(stdout);
-            let mut lines = reader.lines();
+        process.wait().await.map_err(Error::Isolation)?;
 
-            while let Ok(Some(line)) = lines.next_line().await {
-                info!("{}", line);
-            }
-        });
+        // TODO: Need to write proper exit code checking in upstream isolation crate at a later date
 
-        let stderr_writer = tokio::spawn(async move {
-            let reader = BufReader::new(stderr);
-            let mut lines = reader.lines();
-
-            while let Ok(Some(line)) = lines.next_line().await {
-                info!("{}", line);
-            }
-        });
-
-        tokio::select! {
-            e = cmd.wait() => {
-                let exit_status = e.map_err(|e| Error::Io("failed to get vacuum exit status", e))?;
-                if !exit_status.success() {
-                    return Err(Error::VacuumFailed);
-                }
-            }
-            _ = stdout_writer => {},
-            _ = stderr_writer => {},
-        }
+        info!("vacuuming database completed");
 
         Ok(())
     }

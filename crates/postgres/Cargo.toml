@@ -8,6 +8,7 @@ async-trait = { workspace = true }
 once_cell = { workspace = true }
 proven-isolation = { workspace = true }
 regex = { workspace = true }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

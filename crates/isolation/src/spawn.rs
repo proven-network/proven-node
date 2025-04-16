@@ -342,6 +342,17 @@ impl IsolatedProcessSpawner {
             options.chroot_dir.display()
         ));
 
+        // Create mock /etc/passwd and /etc/group
+        setup_cmd.push_str(&format!(
+            "echo 'root:x:0:0:root:/usr/sbin/nologin' > {}/etc/passwd; ",
+            options.chroot_dir.display()
+        ));
+
+        setup_cmd.push_str(&format!(
+            "echo 'root:x:0:root' > {}/etc/group; ",
+            options.chroot_dir.display()
+        ));
+
         // Mount the host library directories as read-only
         setup_cmd.push_str(&format!(
             "mount --bind -o ro /lib {}/lib || true; ",

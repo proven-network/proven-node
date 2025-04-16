@@ -9396,6 +9396,7 @@ dependencies = [
  "once_cell",
  "proven-isolation",
  "regex",
+ "tempfile",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",

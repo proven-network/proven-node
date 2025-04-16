@@ -7,10 +7,6 @@ pub enum Error {
     #[error("already started")]
     AlreadyStarted,
 
-    /// Failed to initialize database.
-    #[error("failed to initialize database")]
-    InitDb,
-
     /// IO operation failed.
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),
@@ -18,12 +14,4 @@ pub enum Error {
     /// An error occurred in the isolation system.
     #[error("isolation error: {0}")]
     Isolation(#[from] proven_isolation::Error),
-
-    /// Failed to parse output.
-    #[error("failed to parse output")]
-    OutputParse,
-
-    /// Failed to vacuum.
-    #[error("vacuum failed")]
-    VacuumFailed,
 }
