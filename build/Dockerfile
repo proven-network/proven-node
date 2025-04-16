@@ -8,12 +8,14 @@ RUN git clone https://github.com/radixdlt/babylon-gateway.git
 WORKDIR /babylon-gateway
 RUN git checkout v1.9.2
 
-WORKDIR /babylon-gateway/apps/DataAggregator
-RUN dotnet publish -c Release -o /bin/DataAggregator
-WORKDIR /babylon-gateway/apps/DatabaseMigrations
-RUN dotnet publish -c Release -o /bin/DatabaseMigrations
-WORKDIR /babylon-gateway/apps/GatewayApi
-RUN dotnet publish -c Release -o /bin/GatewayApi
+# Build Gateway applications
+RUN mkdir -p /apps/radix-gateway/v1.9.2 && \
+    cd /babylon-gateway/apps/DataAggregator && \
+    dotnet publish -c Release -o /apps/radix-gateway/v1.9.2/DataAggregator && \
+    cd /babylon-gateway/apps/DatabaseMigrations && \
+    dotnet publish -c Release -o /apps/radix-gateway/v1.9.2/DatabaseMigrations && \
+    cd /babylon-gateway/apps/GatewayApi && \
+    dotnet publish -c Release -o /apps/radix-gateway/v1.9.2/GatewayApi
 
 # --------------------
 # POSTGRES BUILD STEPS
@@ -45,9 +47,10 @@ RUN sed -i 's/do_check_root = true/do_check_root = false/g' src/backend/main/mai
 RUN sed -i 's/if (geteuid() == 0)/if (false)/g' src/bin/initdb/initdb.c
 
 # Build and install
-RUN ./configure
-RUN make -j$(nproc)
-RUN make install
+RUN mkdir -p /apps/postgres/v17.4 && \
+    ./configure --prefix=/apps/postgres/v17.4 && \
+    make -j$(nproc) && \
+    make install
 
 # --------------
 # GO BUILD STEPS
@@ -64,10 +67,11 @@ WORKDIR /gocryptfs
 RUN git checkout v2.5.1
 RUN ./build-without-openssl.bash
 
-# Move gocryptfs to /bin
-RUN cp /gocryptfs/gocryptfs /bin/
-RUN chown root:root /bin/gocryptfs
-RUN chmod 0755      /bin/gocryptfs
+# Move gocryptfs to apps directory
+RUN mkdir -p /apps/gocryptfs/v2.5.1 && \
+    cp /gocryptfs/gocryptfs /apps/gocryptfs/v2.5.1/ && \
+    chown root:root /apps/gocryptfs/v2.5.1/gocryptfs && \
+    chmod 0755 /apps/gocryptfs/v2.5.1/gocryptfs
 
 # ----------------
 # RUST BUILD STEPS
@@ -102,10 +106,11 @@ WORKDIR /proven-node
 RUN git checkout ${COMMIT}
 RUN cargo build --release --package proven-enclave
 
-# Move proven-enclave to /bin
-RUN cp /proven-node/target/release/proven-enclave /bin/
-RUN chown root:root /bin/proven-enclave
-RUN chmod 0755      /bin/proven-enclave
+# Move proven-enclave to apps directory
+RUN mkdir -p /apps/proven/enclave && \
+    cp /proven-node/target/release/proven-enclave /apps/proven/enclave/ && \
+    chown root:root /apps/proven/enclave/proven-enclave && \
+    chmod 0755 /apps/proven/enclave/proven-enclave
 
 # Remove target dir to speed up snapshot
 RUN rm -rf /proven-node/target
@@ -139,17 +144,24 @@ RUN tar -xvzf nats-server-v2.11.0-linux-arm64.tar.gz
 RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.7.tar.gz
 RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
 
-# Move to /bin
-RUN mv bitcoin-28.1/bin/bitcoind /bin/
-RUN mv bitcoin-28.1/bin/bitcoin-cli /bin/
-RUN mv reth /bin/
-RUN mv lighthouse /bin/
-RUN mkdir -p /bin/babylon-node
-RUN mv core-v1.3.0.2 /bin/babylon-node
-RUN mv libcorerust.so /bin/babylon-node
-RUN mv nats-server-v2.11.0-linux-arm64/nats-server /bin/
-RUN mv linux-arm64/dnscrypt-proxy /bin/
-RUN mv librespeed-cli /bin/
+# Move to /apps with versioned directories
+RUN mkdir -p /apps/bitcoin/v28.1 \
+    /apps/ethereum-reth/v1.3.8 \
+    /apps/ethereum-lighthouse/v7.0.0-beta.5 \
+    /apps/radix-node/v1.3.0.2 \
+    /apps/nats/v2.11.0 \
+    /apps/dnscrypt-proxy/v2.1.7 \
+    /apps/librespeed/v1.0.11
+
+RUN mv bitcoin-28.1/bin/bitcoind /apps/bitcoin/v28.1/ && \
+    mv bitcoin-28.1/bin/bitcoin-cli /apps/bitcoin/v28.1/ && \
+    mv reth /apps/ethereum-reth/v1.3.8/ && \
+    mv lighthouse /apps/ethereum-lighthouse/v7.0.0-beta.5/ && \
+    mv core-v1.3.0.2 /apps/radix-node/v1.3.0.2/ && \
+    mv libcorerust.so /apps/radix-node/v1.3.0.2/ && \
+    mv nats-server-v2.11.0-linux-arm64/nats-server /apps/nats/v2.11.0/ && \
+    mv linux-arm64/dnscrypt-proxy /apps/dnscrypt-proxy/v2.1.7/ && \
+    mv librespeed-cli /apps/librespeed/v1.0.11/
 
 # -----------
 # FINAL IMAGE
@@ -174,20 +186,21 @@ RUN rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* /var/log/apt/* /var/lo
 RUN curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --runtime aspnetcore --version 8.0.12 --install-dir /usr/share/dotnet
 RUN ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 
-COPY --from=dotnet-builder /bin/DataAggregator /bin/DataAggregator
-COPY --from=dotnet-builder /bin/DatabaseMigrations /bin/DatabaseMigrations
-COPY --from=dotnet-builder /bin/GatewayApi /bin/GatewayApi
-COPY --from=postgres-builder /usr/local/pgsql /usr/local/pgsql
-COPY --from=go-builder /bin/gocryptfs /bin/
-COPY --from=rust-builder /bin/proven-enclave /bin/
-COPY --from=extra-binaries /bin/bitcoind /bin/
-COPY --from=extra-binaries /bin/bitcoin-cli /bin/
-COPY --from=extra-binaries /bin/reth /bin/
-COPY --from=extra-binaries /bin/lighthouse /bin/
-COPY --from=extra-binaries /bin/babylon-node /bin/babylon-node
-COPY --from=extra-binaries /bin/nats-server /bin/
-COPY --from=extra-binaries /bin/dnscrypt-proxy /bin/
-COPY --from=extra-binaries /bin/librespeed-cli /bin/
+# Create apps directory structure
+RUN mkdir -p /apps
+
+# Copy all applications from their respective builders
+COPY --from=dotnet-builder /apps/radix-gateway/v1.9.2 /apps/radix-gateway/v1.9.2
+COPY --from=postgres-builder /apps/postgres/v17.4 /apps/postgres/v17.4
+COPY --from=go-builder /apps/gocryptfs/v2.5.1 /apps/gocryptfs/v2.5.1
+COPY --from=rust-builder /apps/proven/enclave /apps/proven/enclave
+COPY --from=extra-binaries /apps/bitcoin/v28.1 /apps/bitcoin/v28.1
+COPY --from=extra-binaries /apps/ethereum-reth/v1.3.8 /apps/ethereum-reth/v1.3.8
+COPY --from=extra-binaries /apps/ethereum-lighthouse/v7.0.0-beta.5 /apps/ethereum-lighthouse/v7.0.0-beta.5
+COPY --from=extra-binaries /apps/radix-node/v1.3.0.2 /apps/radix-node/v1.3.0.2
+COPY --from=extra-binaries /apps/nats/v2.11.0 /apps/nats/v2.11.0
+COPY --from=extra-binaries /apps/dnscrypt-proxy/v2.1.7 /apps/dnscrypt-proxy/v2.1.7
+COPY --from=extra-binaries /apps/librespeed/v1.0.11 /apps/librespeed/v1.0.11
 COPY --from=openjdk:17-jdk-slim /usr/local/openjdk-17/lib/security/cacerts /etc/ssl/certs/java/cacerts
 
 # Run with increased file descriptor limit
