@@ -672,7 +672,6 @@ impl Bootstrap {
 
     async fn start_postgres(&mut self) -> Result<()> {
         let mut postgres = Postgres::new(PostgresOptions {
-            bin_path: "/usr/local/pgsql/bin".to_string(),
             password: POSTGRES_PASSWORD.to_string(),
             port: 5432,
             username: POSTGRES_USERNAME.to_string(),

@@ -126,7 +126,6 @@ mod tests {
             use_mount_namespace: false,
             use_uts_namespace: true,
             use_ipc_namespace: false,
-            use_chroot: false,
             use_memory_limits: false,
         };
 
@@ -218,7 +217,6 @@ mod tests {
             use_mount_namespace: true,
             use_uts_namespace: true,
             use_ipc_namespace: true,
-            use_chroot: false,
             use_memory_limits: true,
         };
 

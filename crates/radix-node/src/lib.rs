@@ -9,10 +9,8 @@ mod error;
 
 pub use error::{Error, Result};
 
-use std::{
-    net::{IpAddr, Ipv4Addr},
-    path::{Path, PathBuf},
-};
+use std::net::{IpAddr, Ipv4Addr};
+use std::path::Path;
 
 use radix_common::network::NetworkDefinition;
 use regex::Regex;
@@ -48,7 +46,7 @@ static STOKENET_SEED_NODES: &[&str] = &[
 ];
 
 static JAVA_OPTS: &[&str] = &[
-    "-Djava.library.path=/bin/babylon-node",
+    "-Djava.library.path=/apps/radix-node/v1.3.0.2",
     "--enable-preview",
     "-server",
     "-Xms2g",
@@ -93,10 +91,6 @@ impl IsolatedApplication for RadixNodeApp {
         ]
     }
 
-    fn chroot_dir(&self) -> Option<PathBuf> {
-        Some(PathBuf::from("/tmp/radix-node"))
-    }
-
     fn env(&self) -> Vec<(String, String)> {
         vec![
             (
@@ -104,10 +98,6 @@ impl IsolatedApplication for RadixNodeApp {
                 KEYSTORE_PASS.to_string(),
             ),
             ("JAVA_OPTS".to_string(), JAVA_OPTS.join(" ")),
-            (
-                "LD_PRELOAD".to_string(),
-                "/bin/babylon-node/libcorerust.so".to_string(),
-            ),
             (
                 "JAVA_HOME".to_string(),
                 "/usr/lib/jvm/java-17-openjdk-arm64".to_string(),
@@ -124,7 +114,7 @@ impl IsolatedApplication for RadixNodeApp {
     }
 
     fn executable(&self) -> &str {
-        "/bin/babylon-node/core-v1.3.0.2/bin/core"
+        "/apps/radix-node/v1.3.0.2/core-v1.3.0.2/bin/core"
     }
 
     fn handle_stdout(&self, line: &str) -> () {
@@ -227,17 +217,15 @@ impl IsolatedApplication for RadixNodeApp {
         .join(",");
 
         let config = format!(
-            r"
-            network.host_ip={}
-            network.id={}
-            network.p2p.listen_port={}
-            network.p2p.broadcast_port={}
-            network.p2p.seed_nodes={}
-            node.key.path={}
-            db.location=/data
-            api.core.bind_address=0.0.0.0
-            api.core.port={}
-        ",
+            r"network.host_ip={}
+network.id={}
+network.p2p.listen_port={}
+network.p2p.broadcast_port={}
+network.p2p.seed_nodes={}
+node.key.path={}
+db.location=/data
+api.core.bind_address=0.0.0.0
+api.core.port={}",
             self.host_ip,
             self.network_definition.id,
             self.p2p_port,
@@ -262,7 +250,7 @@ impl IsolatedApplication for RadixNodeApp {
 
         // Generate the node key
         let keystore_path_local = Path::new(&self.config_dir).join(KEYSTORE_FILENAME);
-        let output = Command::new("/bin/babylon-node/core-v1.3.0.2/bin/keygen")
+        let output = Command::new("/apps/radix-node/v1.3.0.2/core-v1.3.0.2/bin/keygen")
             .arg("-k")
             .arg(keystore_path_local.to_string_lossy().as_ref())
             .arg("-p")
@@ -292,7 +280,7 @@ impl IsolatedApplication for RadixNodeApp {
         vec![
             VolumeMount::new(&self.store_dir, &"/data".to_string()),
             VolumeMount::new(&self.config_dir, &"/config".to_string()),
-            VolumeMount::new("/bin/babylon-node", "/bin/babylon-node"),
+            VolumeMount::new("/apps/radix-node/v1.3.0.2", "/apps/radix-node/v1.3.0.2"),
             VolumeMount::new(
                 "/etc/java-17-openjdk/security",
                 "/etc/java-17-openjdk/security",

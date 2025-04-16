@@ -10,7 +10,7 @@ mod error;
 pub use error::{Error, Result};
 use tokio::task::JoinHandle;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -109,10 +109,6 @@ impl IsolatedApplication for BitcoinCoreApp {
         args
     }
 
-    fn chroot_dir(&self) -> Option<PathBuf> {
-        Some(PathBuf::from("/tmp/bitcoin-core"))
-    }
-
     fn executable(&self) -> &str {
         &self.executable_path
     }
@@ -192,7 +188,10 @@ impl IsolatedApplication for BitcoinCoreApp {
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
-        vec![VolumeMount::new(&self.store_dir, &"/data".to_string())]
+        vec![
+            VolumeMount::new(&self.store_dir, &"/data".to_string()),
+            VolumeMount::new("/apps/bitcoin/v28.1", "/apps/bitcoin/v28.1"),
+        ]
     }
 }
 
@@ -240,7 +239,7 @@ impl BitcoinNode {
         debug!("Starting isolated Bitcoin Core node...");
 
         let app = BitcoinCoreApp {
-            executable_path: "/usr/local/bin/bitcoind".to_string(),
+            executable_path: "/apps/bitcoin/v28.1/bitcoind".to_string(),
             network: self.network,
             store_dir: self.store_dir.clone(),
             rpc_port: self.rpc_port,

@@ -905,7 +905,6 @@ impl Bootstrap {
                 .contains(&NodeSpecialization::RadixStokenet)
         {
             let mut postgres = Postgres::new(PostgresOptions {
-                bin_path: self.args.postgres_bin_path.clone(),
                 password: POSTGRES_PASSWORD.to_string(),
                 port: self.args.postgres_port,
                 username: POSTGRES_USERNAME.to_string(),

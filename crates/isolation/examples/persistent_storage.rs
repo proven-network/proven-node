@@ -137,10 +137,6 @@ impl IsolatedApplication for CounterApp {
         ]
     }
 
-    fn chroot_dir(&self) -> Option<PathBuf> {
-        Some(PathBuf::from("/tmp/counter-storage/root"))
-    }
-
     fn handle_stdout(&self, line: &str) {
         self.parse_log_line(line);
     }
@@ -182,7 +178,6 @@ async fn main() -> Result<()> {
 
     // Configure the isolation manager with mount and chroot enabled
     let config = IsolationConfig {
-        use_chroot: true, // Enable chroot for filesystem isolation
         use_ipc_namespace: false,
         use_memory_limits: false,
         use_mount_namespace: true,

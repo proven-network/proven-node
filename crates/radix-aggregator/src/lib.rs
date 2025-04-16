@@ -25,12 +25,14 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
 
-static AGGREGATOR_CONFIG_PATH: &str = "/bin/DataAggregator/appsettings.Production.json";
-static AGGREGATOR_DIR: &str = "/bin/DataAggregator";
-static AGGREGATOR_PATH: &str = "/bin/DataAggregator/DataAggregator";
-static MIGRATIONS_CONFIG_PATH: &str = "/bin/DatabaseMigrations/appsettings.Production.json";
-static MIGRATIONS_DIR: &str = "/bin/DatabaseMigrations";
-static MIGRATIONS_PATH: &str = "/bin/DatabaseMigrations/DatabaseMigrations";
+static AGGREGATOR_CONFIG_PATH: &str =
+    "/apps/radix-gateway/v1.9.2/DataAggregator/appsettings.Production.json";
+static AGGREGATOR_DIR: &str = "/apps/radix-gateway/v1.9.2/DataAggregator";
+static AGGREGATOR_PATH: &str = "/apps/radix-gateway/v1.9.2/DataAggregator/DataAggregator";
+static MIGRATIONS_CONFIG_PATH: &str =
+    "/apps/radix-gateway/v1.9.2/DatabaseMigrations/appsettings.Production.json";
+static MIGRATIONS_DIR: &str = "/apps/radix-gateway/v1.9.2/DatabaseMigrations";
+static MIGRATIONS_PATH: &str = "/apps/radix-gateway/v1.9.2/DatabaseMigrations/DatabaseMigrations";
 
 /// Regex pattern for matching Radix Aggregator log lines
 static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+): (.*)").unwrap());
@@ -48,10 +50,6 @@ struct RadixAggregatorApp {
 
 #[async_trait]
 impl IsolatedApplication for RadixAggregatorApp {
-    fn chroot_dir(&self) -> Option<PathBuf> {
-        Some(PathBuf::from("/tmp/radix-aggregator"))
-    }
-
     fn executable(&self) -> &str {
         AGGREGATOR_PATH
     }
@@ -176,10 +174,24 @@ impl IsolatedApplication for RadixAggregatorApp {
         Ok(())
     }
 
+    fn env(&self) -> Vec<(String, String)> {
+        vec![
+            // Path to the .NET installation directory detected from the system
+            ("DOTNET_ROOT".to_string(), "/usr/share/dotnet".to_string()),
+            // Make sure dotnet is in the path
+            (
+                "PATH".to_string(),
+                "/usr/share/dotnet:/usr/bin:/bin".to_string(),
+            ),
+        ]
+    }
+
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
             VolumeMount::new(AGGREGATOR_DIR, AGGREGATOR_DIR),
             VolumeMount::new(MIGRATIONS_DIR, MIGRATIONS_DIR),
+            VolumeMount::new("/apps/radix-gateway/v1.9.2", "/apps/radix-gateway/v1.9.2"),
+            VolumeMount::new("/usr/share/dotnet", "/usr/share/dotnet"),
         ]
     }
 

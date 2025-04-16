@@ -125,11 +125,6 @@ pub trait IsolatedApplication: Send + Sync + 'static {
         Vec::new()
     }
 
-    /// Returns the root directory for chroot if needed
-    fn chroot_dir(&self) -> Option<PathBuf> {
-        None
-    }
-
     /// Returns any environment variables that should be set
     fn env(&self) -> Vec<(String, String)> {
         Vec::new()
@@ -246,9 +241,6 @@ pub trait IsolatedApplication: Send + Sync + 'static {
 /// Configuration for an isolated application.
 #[derive(Debug, Clone)]
 pub struct IsolationConfig {
-    /// Whether to use a chroot
-    pub use_chroot: bool,
-
     /// Whether to use IPC namespaces
     pub use_ipc_namespace: bool,
 
@@ -274,7 +266,6 @@ pub struct IsolationConfig {
 impl Default for IsolationConfig {
     fn default() -> Self {
         Self {
-            use_chroot: true,
             use_ipc_namespace: true,
             use_memory_limits: true,
             use_mount_namespace: true,
@@ -324,12 +315,6 @@ impl IsolationManager {
         // Apply configuration from the application
         if let Some(working_dir) = application.working_dir() {
             options = options.with_working_dir(working_dir);
-        }
-
-        if let Some(chroot_dir) = application.chroot_dir() {
-            if self.config.use_chroot {
-                options = options.with_chroot(chroot_dir);
-            }
         }
 
         options = options.with_volume_mounts(application.volume_mounts());

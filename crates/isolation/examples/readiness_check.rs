@@ -197,7 +197,6 @@ async fn main() -> Result<()> {
 
     // Configure the isolation manager with no isolation
     let config = IsolationConfig {
-        use_chroot: false,
         use_ipc_namespace: false,
         use_memory_limits: false,
         use_mount_namespace: false,

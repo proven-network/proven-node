@@ -41,10 +41,6 @@ struct RadixGatewayApp {
 
 #[async_trait]
 impl IsolatedApplication for RadixGatewayApp {
-    fn chroot_dir(&self) -> Option<PathBuf> {
-        Some(PathBuf::from("/tmp/radix-gateway"))
-    }
-
     fn executable(&self) -> &str {
         GATEWAY_API_PATH
     }

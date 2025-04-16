@@ -1,6 +1,7 @@
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use radix_common::network::NetworkDefinition;
 use tracing::info;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing for better logging

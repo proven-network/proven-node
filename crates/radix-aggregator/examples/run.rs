@@ -11,7 +11,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Starting Postgres...");
     let mut postgres = Postgres::new(PostgresOptions {
-        bin_path: "/usr/local/pgsql/bin".to_string(),
         password: "postgres".to_string(),
         port: 5432,
         username: "postgres".to_string(),
@@ -28,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         network_definition: NetworkDefinition::stokenet(),
         p2p_port: 30001,
         store_dir: "../radix-node/test-data".to_string(),
-        config_dir: "../radix-node/test-data".to_string(),
+        config_dir: "../radix-node/test-config".to_string(),
     });
     let _ = radix_node.start().await?;
     println!("Radix Node is ready!");
@@ -55,13 +54,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     aggregator.shutdown().await?;
     println!("Aggregator shutdown complete");
 
-    println!("Shutting down Postgres...");
-    postgres.shutdown().await?;
-    println!("Postgres shutdown complete");
-
     println!("Shutting down Radix Node...");
     radix_node.shutdown().await?;
     println!("Radix Node shutdown complete");
+
+    println!("Shutting down Postgres...");
+    postgres.shutdown().await?;
+    println!("Postgres shutdown complete");
 
     Ok(())
 }

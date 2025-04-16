@@ -9201,6 +9201,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "which 6.0.3",
 ]
 

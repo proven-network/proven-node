@@ -174,7 +174,6 @@ async fn main() -> Result<()> {
 
     // Configure the isolation manager with memory limits
     let config = IsolationConfig {
-        use_chroot: false,
         use_ipc_namespace: true,
         use_memory_limits: true,
         use_mount_namespace: true,

@@ -10,7 +10,7 @@ mod error;
 pub use error::{Error, Result};
 
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 
 use async_trait::async_trait;
@@ -32,8 +32,6 @@ static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| {
 
 /// Application struct for running Postgres in isolation
 struct PostgresApp {
-    bin_path: String,
-    executable: String,
     username: String,
     store_dir: String,
     port: u16,
@@ -54,12 +52,8 @@ impl IsolatedApplication for PostgresApp {
         ]
     }
 
-    fn chroot_dir(&self) -> Option<PathBuf> {
-        Some(PathBuf::from("/tmp/postgres"))
-    }
-
     fn executable(&self) -> &str {
-        &self.executable
+        "/apps/postgres/v17.4/bin/postgres"
     }
 
     fn name(&self) -> &str {
@@ -106,7 +100,7 @@ impl IsolatedApplication for PostgresApp {
             ip_address, self.port
         );
 
-        let cmd = Command::new(format!("{}/pg_isready", self.bin_path))
+        let cmd = Command::new("/apps/postgres/v17.4/bin/pg_isready")
             .arg("-h")
             .arg(ip_address)
             .arg("-p")
@@ -148,14 +142,13 @@ impl IsolatedApplication for PostgresApp {
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
             VolumeMount::new(&self.store_dir, &"/data".to_string()),
-            VolumeMount::new("/usr/local/pgsql", "/usr/local/pgsql"),
+            VolumeMount::new("/apps/postgres/v17.4", "/apps/postgres/v17.4"),
         ]
     }
 }
 
 /// Runs a Postgres server to provide storage for Radix Gateway.
 pub struct Postgres {
-    bin_path: String,
     isolation_manager: IsolationManager,
     password: String,
     process: Option<IsolatedProcess>,
@@ -167,9 +160,6 @@ pub struct Postgres {
 
 /// Options for configuring `Postgres`.
 pub struct PostgresOptions {
-    /// The path to the directory containing the Postgres binaries.
-    pub bin_path: String,
-
     /// The password for the Postgres user.
     pub password: String,
 
@@ -191,7 +181,6 @@ impl Postgres {
     #[must_use]
     pub fn new(
         PostgresOptions {
-            bin_path,
             password,
             username,
             skip_vacuum,
@@ -200,7 +189,6 @@ impl Postgres {
         }: PostgresOptions,
     ) -> Self {
         Self {
-            bin_path,
             isolation_manager: IsolationManager::new(),
             password,
             port,
@@ -241,8 +229,6 @@ impl Postgres {
         }
 
         let app = PostgresApp {
-            bin_path: self.bin_path.clone(),
-            executable: format!("{}/postgres", self.bin_path),
             username: self.username.clone(),
             store_dir: self.store_dir.clone(),
             port: self.port,
@@ -294,6 +280,7 @@ impl Postgres {
         self.port
     }
 
+    // TODO: Initialization should probably be done inside isolation as well
     async fn initialize_database(&self) -> Result<()> {
         // Write password to a file in tmp for use by initdb
         let password_file = std::path::Path::new("/tmp/pgpass");
@@ -301,7 +288,7 @@ impl Postgres {
             .await
             .map_err(|e| Error::Io("failed to write password file", e))?;
 
-        let cmd = Command::new(format!("{}/initdb", self.bin_path))
+        let cmd = Command::new("/apps/postgres/v17.4/bin/initdb")
             .arg("-D")
             .arg(&self.store_dir)
             .arg("-U")
@@ -356,7 +343,7 @@ impl Postgres {
     async fn vacuum_database(&self) -> Result<()> {
         info!("vacuuming database...");
 
-        let mut cmd = Command::new(format!("{}/vacuumdb", self.bin_path))
+        let mut cmd = Command::new("/apps/postgres/v17.4/bin/vacuumdb")
             .arg("-U")
             .arg(&self.username)
             .arg("--all")
