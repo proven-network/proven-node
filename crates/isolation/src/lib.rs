@@ -143,7 +143,7 @@ pub async fn spawn<A: IsolatedApplication>(
     options = options.with_volume_mounts(application.volume_mounts());
 
     // Configure namespaces based on application preferences
-    let mut namespace_options = application.namespace_options();
+    let mut namespace_options = NamespaceOptions::default();
     if !application.use_user_namespace() {
         namespace_options.use_user = false;
     }

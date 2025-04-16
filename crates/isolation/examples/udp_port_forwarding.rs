@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, NamespaceOptions, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use tracing::{debug, info};
 
 /// The port that the UDP server will listen on
@@ -43,12 +43,6 @@ impl IsolatedApplication for UdpEchoServer {
 
     fn executable(&self) -> &str {
         "/bin/udp_server"
-    }
-
-    fn namespace_options(&self) -> NamespaceOptions {
-        let mut options = NamespaceOptions::default();
-        options.use_network = true; // Always use network namespace for this example
-        options
     }
 
     async fn is_ready_check(

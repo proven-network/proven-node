@@ -1,5 +1,4 @@
 use crate::IsolatedProcess;
-use crate::NamespaceOptions;
 use crate::VolumeMount;
 
 use std::error::Error as StdError;
@@ -75,23 +74,18 @@ pub trait IsolatedApplication: Send + Sync + 'static {
         0
     }
 
-    /// Returns whether to use memory limits via cgroups
-    /// Default is true
-    fn use_memory_limits(&self) -> bool {
-        true
-    }
-
     /// Returns the name of the application
     fn name(&self) -> &str;
-
-    /// Returns the namespaces options for the application
-    fn namespace_options(&self) -> NamespaceOptions {
-        NamespaceOptions::default()
-    }
 
     /// Returns whether to use IPC namespaces
     /// Default is true
     fn use_ipc_namespace(&self) -> bool {
+        true
+    }
+
+    /// Returns whether to use memory limits via cgroups
+    /// Default is true
+    fn use_memory_limits(&self) -> bool {
         true
     }
 
