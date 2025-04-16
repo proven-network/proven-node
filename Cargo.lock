@@ -9004,7 +9004,8 @@ dependencies = [
 name = "proven-ethereum-reth"
 version = "0.1.0"
 dependencies = [
- "nix 0.27.1",
+ "async-trait",
+ "proven-isolation",
  "regex",
  "reqwest",
  "serde_json",
@@ -9013,6 +9014,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -12,6 +12,10 @@ pub enum Error {
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),
 
+    /// Error from the isolation crate.
+    #[error("isolation error: {0}")]
+    Isolation(#[from] proven_isolation::Error),
+
     /// HTTP request error
     #[error("HTTP request error: {0}")]
     HttpRequest(String),
@@ -19,12 +23,4 @@ pub enum Error {
     /// JSON serialization/deserialization error
     #[error("JSON error: {0}")]
     Json(String),
-
-    /// Process error
-    #[error("Process error: {0}")]
-    Process(String),
-
-    /// Timeout error
-    #[error("Timeout error: {0}")]
-    Timeout(String),
 }

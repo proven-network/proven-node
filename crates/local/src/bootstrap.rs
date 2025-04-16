@@ -491,7 +491,7 @@ impl Bootstrap {
             }
 
             if let Some(ethereum_mainnet_reth_node) = &ethereum_mainnet_reth_node_option {
-                ethereum_mainnet_reth_node.lock().await.shutdown().await;
+                let _ = ethereum_mainnet_reth_node.lock().await.shutdown().await;
             }
 
             if let Some(ethereum_mainnet_lighthouse_node) = &ethereum_mainnet_lighthouse_node_option {
@@ -499,7 +499,7 @@ impl Bootstrap {
             }
 
             if let Some(ethereum_holesky_reth_node) = &ethereum_holesky_reth_node_option {
-                ethereum_holesky_reth_node.lock().await.shutdown().await;
+                let _ = ethereum_holesky_reth_node.lock().await.shutdown().await;
             }
 
             if let Some(ethereum_holesky_lighthouse_node) = &ethereum_holesky_lighthouse_node_option {
@@ -507,7 +507,7 @@ impl Bootstrap {
             }
 
             if let Some(ethereum_sepolia_reth_node) = &ethereum_sepolia_reth_node_option {
-                ethereum_sepolia_reth_node.lock().await.shutdown().await;
+                let _ = ethereum_sepolia_reth_node.lock().await.shutdown().await;
             }
 
             if let Some(ethereum_sepolia_lighthouse_node) = &ethereum_sepolia_lighthouse_node_option {
@@ -558,24 +558,24 @@ impl Bootstrap {
             let _ = ethereum_sepolia_lighthouse_node.shutdown().await;
         }
 
-        if let Some(ethereum_sepolia_reth_node) = self.ethereum_sepolia_reth_node {
-            ethereum_sepolia_reth_node.shutdown().await;
+        if let Some(mut ethereum_sepolia_reth_node) = self.ethereum_sepolia_reth_node {
+            let _ = ethereum_sepolia_reth_node.shutdown().await;
         }
 
         if let Some(mut ethereum_holesky_lighthouse_node) = self.ethereum_holesky_lighthouse_node {
             let _ = ethereum_holesky_lighthouse_node.shutdown().await;
         }
 
-        if let Some(ethereum_holesky_reth_node) = self.ethereum_holesky_reth_node {
-            ethereum_holesky_reth_node.shutdown().await;
+        if let Some(mut ethereum_holesky_reth_node) = self.ethereum_holesky_reth_node {
+            let _ = ethereum_holesky_reth_node.shutdown().await;
         }
 
         if let Some(mut ethereum_mainnet_lighthouse_node) = self.ethereum_mainnet_lighthouse_node {
             let _ = ethereum_mainnet_lighthouse_node.shutdown().await;
         }
 
-        if let Some(ethereum_mainnet_reth_node) = self.ethereum_mainnet_reth_node {
-            ethereum_mainnet_reth_node.shutdown().await;
+        if let Some(mut ethereum_mainnet_reth_node) = self.ethereum_mainnet_reth_node {
+            let _ = ethereum_mainnet_reth_node.shutdown().await;
         }
 
         if let Some(mut bitcoin_node) = self.bitcoin_node {
@@ -701,7 +701,7 @@ impl Bootstrap {
             .contains(&NodeSpecialization::EthereumHolesky)
         {
             // Start Reth execution client
-            let ethereum_reth_node = RethNode::new(RethNodeOptions {
+            let mut ethereum_reth_node = RethNode::new(RethNodeOptions {
                 discovery_addr: self.args.ethereum_holesky_execution_discovery_addr,
                 http_addr: self.args.ethereum_holesky_execution_http_addr,
                 metrics_addr: self.args.ethereum_holesky_execution_metrics_addr,
@@ -756,7 +756,7 @@ impl Bootstrap {
             .contains(&NodeSpecialization::EthereumMainnet)
         {
             // Start Reth execution client
-            let ethereum_reth_node = RethNode::new(RethNodeOptions {
+            let mut ethereum_reth_node = RethNode::new(RethNodeOptions {
                 discovery_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30303),
                 http_addr: self.args.ethereum_mainnet_execution_http_addr,
                 metrics_addr: self.args.ethereum_mainnet_execution_metrics_addr,
@@ -811,7 +811,7 @@ impl Bootstrap {
             .contains(&NodeSpecialization::EthereumSepolia)
         {
             // Start Reth execution client
-            let ethereum_reth_node = RethNode::new(RethNodeOptions {
+            let mut ethereum_reth_node = RethNode::new(RethNodeOptions {
                 discovery_addr: self.args.ethereum_sepolia_execution_discovery_addr,
                 http_addr: self.args.ethereum_sepolia_execution_http_addr,
                 metrics_addr: self.args.ethereum_sepolia_execution_metrics_addr,
