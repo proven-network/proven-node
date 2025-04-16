@@ -16,7 +16,7 @@ use std::process::Stdio;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use regex::Regex;
 use serde_json::json;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -112,7 +112,6 @@ impl IsolatedApplication for RadixAggregatorApp {
 
 /// Configures and runs Radix Gateway's data aggregator.
 pub struct RadixAggregator {
-    isolation_manager: IsolationManager,
     postgres_database: String,
     postgres_ip_address: String,
     postgres_port: u16,
@@ -162,7 +161,6 @@ impl RadixAggregator {
         }: RadixAggregatorOptions,
     ) -> Self {
         Self {
-            isolation_manager: IsolationManager::new(),
             postgres_database,
             postgres_ip_address,
             postgres_password,
@@ -196,9 +194,7 @@ impl RadixAggregator {
         // Run migrations
         self.run_migrations().await?;
 
-        let (process, join_handle) = self
-            .isolation_manager
-            .spawn(RadixAggregatorApp)
+        let (process, join_handle) = proven_isolation::spawn(RadixAggregatorApp)
             .await
             .map_err(Error::Isolation)?;
 

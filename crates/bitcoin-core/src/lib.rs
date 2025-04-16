@@ -15,7 +15,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -183,9 +183,6 @@ impl IsolatedApplication for BitcoinCoreApp {
 
 /// Represents an isolated Bitcoin Core node.
 pub struct BitcoinNode {
-    /// The isolation process manager
-    isolation_manager: IsolationManager,
-
     /// The isolated process running Bitcoin Core
     process: Option<IsolatedProcess>,
 
@@ -204,7 +201,6 @@ impl BitcoinNode {
     #[must_use]
     pub fn new(options: BitcoinNodeOptions) -> Self {
         Self {
-            isolation_manager: IsolationManager::new(),
             process: None,
             network: options.network,
             store_dir: options.store_dir,
@@ -233,9 +229,7 @@ impl BitcoinNode {
             rpc_port: self.rpc_port,
         };
 
-        let (process, join_handle) = self
-            .isolation_manager
-            .spawn(app)
+        let (process, join_handle) = proven_isolation::spawn(app)
             .await
             .map_err(Error::Isolation)?;
 

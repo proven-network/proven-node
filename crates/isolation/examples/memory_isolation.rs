@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use proven_isolation::{Error, IsolatedApplication, IsolationConfig, IsolationManager, Result};
+use proven_isolation::{Error, IsolatedApplication, Result};
 use tokio::fs;
 use tokio::time::interval;
 use tracing::info;
@@ -166,21 +166,6 @@ async fn main() -> Result<()> {
     // Create the memory stress test
     let test = MemoryStressTest::new(&work_dir).await?;
 
-    // Configure the isolation manager with memory limits
-    let config = IsolationConfig {
-        use_ipc_namespace: true,
-        use_memory_limits: true,
-        use_mount_namespace: true,
-        use_network_namespace: false,
-        use_pid_namespace: true,
-        use_user_namespace: true,
-        use_uts_namespace: true,
-    };
-
-    info!("Running with isolation config: {:?}", config);
-
-    let manager = IsolationManager::with_config(config);
-
     // Check if memory control is likely to be available
     info!(
         "Memory limits are enabled in config, attempting to enforce {}MB limit",
@@ -189,7 +174,7 @@ async fn main() -> Result<()> {
 
     // Spawn the isolated process
     info!("Spawning isolated process...");
-    let (process, _join_handle) = manager.spawn(test).await?;
+    let (process, _join_handle) = proven_isolation::spawn(test).await?;
 
     info!("Process is running with PID: {}", process.pid());
 

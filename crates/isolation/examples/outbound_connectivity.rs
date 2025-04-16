@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
-use proven_isolation::{Error, IsolatedApplication, IsolationConfig, IsolationManager, Result};
+use proven_isolation::{Error, IsolatedApplication, Result};
 use tokio::fs;
 use tokio::time::Duration;
 use tracing::{debug, info};
@@ -116,25 +116,9 @@ async fn main() -> Result<()> {
     // Create the test application
     let test_app = OutboundConnectivityTest::new(&root_dir).await?;
 
-    // Configure the isolation manager
-    let config = IsolationConfig {
-        use_ipc_namespace: true,
-        use_memory_limits: false,
-        use_mount_namespace: true,
-        use_network_namespace: true, // This is important for network isolation
-        use_pid_namespace: false,
-        use_user_namespace: true,
-        use_uts_namespace: true,
-    };
-
-    info!("⚙️ Running with isolation config: {:?}", config);
-
-    let manager = IsolationManager::with_config(config);
-
-    // Spawn the isolated process
     info!("🔄 Spawning test process and waiting for it to become ready...");
 
-    let (process, _join_handle) = manager.spawn(test_app).await?;
+    let (process, _join_handle) = proven_isolation::spawn(test_app).await?;
 
     // Wait a bit before shutting down
     info!("Waiting 5 seconds before shutdown");

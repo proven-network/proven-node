@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::str;
 
 use async_trait::async_trait;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use reqwest::Client;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
@@ -236,9 +236,6 @@ impl IsolatedApplication for RethApp {
 
 /// Runs a Reth execution client.
 pub struct RethNode {
-    /// The isolation process manager
-    isolation_manager: IsolationManager,
-
     /// The isolated process running Reth
     process: Option<IsolatedProcess>,
 
@@ -275,7 +272,6 @@ impl RethNode {
         }: RethNodeOptions,
     ) -> Self {
         Self {
-            isolation_manager: IsolationManager::new(),
             process: None,
             discovery_addr,
             http_addr,
@@ -308,9 +304,7 @@ impl RethNode {
             store_dir: self.store_dir.clone(),
         };
 
-        let (process, join_handle) = self
-            .isolation_manager
-            .spawn(app)
+        let (process, join_handle) = proven_isolation::spawn(app)
             .await
             .map_err(Error::Isolation)?;
 

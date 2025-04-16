@@ -9,9 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use proven_isolation::{
-    IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager, VolumeMount,
-};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use reqwest::StatusCode;
 use tracing::{debug, info};
 
@@ -138,21 +136,6 @@ async fn main() {
         panic!("Failed to compile HTTP server: {}", stderr);
     }
 
-    // Configure the isolation manager
-    let config = IsolationConfig {
-        use_ipc_namespace: true,
-        use_memory_limits: false,
-        use_mount_namespace: true,
-        use_network_namespace: true,
-        use_pid_namespace: false,
-        use_user_namespace: true,
-        use_uts_namespace: true,
-    };
-
-    info!("⚙️ Running with isolation config: {:?}", config);
-
-    let manager = IsolationManager::with_config(config);
-
     // Create the server
     let server = PortForwardServer::new(test_bin_dir_path);
 
@@ -164,7 +147,9 @@ async fn main() {
     );
 
     let start_time = std::time::Instant::now();
-    let (process, _join_handle) = manager.spawn(server).await.expect("Failed to spawn server");
+    let (process, _join_handle) = proven_isolation::spawn(server)
+        .await
+        .expect("Failed to spawn server");
     let elapsed = start_time.elapsed();
     info!("✅ Server process is now ready! (took {:?})", elapsed);
     info!("Server is running with PID: {}", process.pid());

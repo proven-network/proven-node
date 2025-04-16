@@ -15,7 +15,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use regex::Regex;
 use tempfile::TempDir;
 use tokio::process::Command;
@@ -239,7 +239,6 @@ impl IsolatedApplication for PostgresVacuumApp {
 
 /// Runs a Postgres server to provide storage for Radix Gateway.
 pub struct Postgres {
-    isolation_manager: IsolationManager,
     password: String,
     process: Option<IsolatedProcess>,
     username: String,
@@ -279,7 +278,6 @@ impl Postgres {
         }: PostgresOptions,
     ) -> Self {
         Self {
-            isolation_manager: IsolationManager::new(),
             password,
             port,
             process: None,
@@ -327,9 +325,7 @@ impl Postgres {
             port: self.port,
         };
 
-        let (process, join_handle) = self
-            .isolation_manager
-            .spawn(app)
+        let (process, join_handle) = proven_isolation::spawn(app)
             .await
             .map_err(Error::Isolation)?;
 
@@ -390,9 +386,7 @@ impl Postgres {
             store_dir: self.store_dir.clone(),
         };
 
-        let (process, _join_handle) = self
-            .isolation_manager
-            .spawn(init_app)
+        let (process, _join_handle) = proven_isolation::spawn(init_app)
             .await
             .map_err(Error::Isolation)?;
 
@@ -460,9 +454,7 @@ impl Postgres {
             username: self.username.clone(),
         };
 
-        let (process, _join_handle) = self
-            .isolation_manager
-            .spawn(vacuum_app)
+        let (process, _join_handle) = proven_isolation::spawn(vacuum_app)
             .await
             .map_err(Error::Isolation)?;
 

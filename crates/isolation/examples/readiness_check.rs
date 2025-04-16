@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationConfig, IsolationManager};
+use proven_isolation::{IsolatedApplication, IsolatedProcess};
 use reqwest::StatusCode;
 use tracing::info;
 
@@ -133,21 +133,7 @@ async fn main() {
         .await
         .expect("Failed to compile HTTP server");
 
-    // Configure the isolation manager with no isolation
-    let config = IsolationConfig {
-        use_ipc_namespace: false,
-        use_memory_limits: false,
-        use_mount_namespace: false,
-        use_network_namespace: false,
-        use_pid_namespace: false,
-        use_user_namespace: false,
-        use_uts_namespace: false,
-    };
-
-    info!("⚙️ Running with isolation config: {:?}", config);
     info!("The server is configured to delay startup for 3 seconds");
-
-    let manager = IsolationManager::with_config(config);
 
     // Create the server with a 3 second startup delay
     let server = ReadinessCheckServer::new(test_bin_dir_path, 3);
@@ -157,7 +143,9 @@ async fn main() {
     info!("Readiness will be checked once per second with up to 30 retries");
 
     let start_time = std::time::Instant::now();
-    let (process, _join_handle) = manager.spawn(server).await.expect("Failed to spawn server");
+    let (process, _join_handle) = proven_isolation::spawn(server)
+        .await
+        .expect("Failed to spawn server");
     let elapsed = start_time.elapsed();
 
     // The spawn method will already have waited for the server to be ready

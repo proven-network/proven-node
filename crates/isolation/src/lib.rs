@@ -7,7 +7,7 @@
 //!
 //! ```rust,no_run
 //! use async_trait::async_trait;
-//! use proven_isolation::{IsolatedApplication, IsolationManager, Result};
+//! use proven_isolation::{IsolatedApplication, Result, spawn};
 //! use std::path::PathBuf;
 //!
 //! struct MyApp {
@@ -36,8 +36,7 @@
 //!         executable: "path/to/app".to_string(),
 //!     };
 //!
-//!     let manager = IsolationManager::new();
-//!     let (process, _) = manager.spawn(app).await?;
+//!     let (process, _) = spawn(app).await?;
 //!
 //!     // App is now running and ready
 //!
@@ -74,140 +73,115 @@ pub use network::{VethPair, check_root_permissions};
 pub use spawn::{IsolatedProcess, IsolatedProcessOptions, IsolatedProcessSpawner, spawn_process};
 pub use volume_mount::VolumeMount;
 
-/// Configuration for an isolated application.
-#[derive(Debug, Clone)]
-pub struct IsolationConfig {
-    /// Whether to use IPC namespaces
-    pub use_ipc_namespace: bool,
+/// Spawns an isolated process for the given application.
+///
+/// This is the main entry point for the isolation API. It takes an application that
+/// implements the `IsolatedApplication` trait and spawns it in an isolated environment.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use async_trait::async_trait;
+/// use proven_isolation::{IsolatedApplication, Result, spawn};
+/// use std::path::PathBuf;
+///
+/// struct MyApp {
+///     name: String,
+///     executable: String,
+/// }
+///
+/// #[async_trait]
+/// impl IsolatedApplication for MyApp {
+///     fn args(&self) -> Vec<String> {
+///         vec!["--config=/etc/config.json".to_string()]
+///     }
+///
+///     fn executable(&self) -> &str {
+///         &self.executable
+///     }
+///
+///     fn name(&self) -> &str {
+///         &self.name
+///     }
+/// }
+///
+/// async fn run() -> Result<()> {
+///     let app = MyApp {
+///         name: "my-app".to_string(),
+///         executable: "path/to/app".to_string(),
+///     };
+///
+///     let (process, _) = spawn(app).await?;
+///
+///     // App is now running and ready
+///
+///     // Shut down when done
+///     process.shutdown().await?;
+///
+///     Ok(())
+/// }
+/// ```
+///
+/// # Errors
+///
+/// Returns an error if the process could not be spawned or if the readiness checks fail.
+pub async fn spawn<A: IsolatedApplication>(
+    application: A,
+) -> Result<(IsolatedProcess, JoinHandle<()>)> {
+    let application: Arc<dyn IsolatedApplication> = Arc::new(application);
+    let mut options = IsolatedProcessOptions::new(
+        application.clone(),
+        application.executable(),
+        application.args(),
+    );
 
-    /// Whether to use memory limits
-    pub use_memory_limits: bool,
-
-    /// Whether to use mount namespaces
-    pub use_mount_namespace: bool,
-
-    /// Whether to use network namespaces
-    pub use_network_namespace: bool,
-
-    /// Whether to use PID namespaces
-    pub use_pid_namespace: bool,
-
-    /// Whether to use user namespaces
-    pub use_user_namespace: bool,
-
-    /// Whether to use UTS namespaces
-    pub use_uts_namespace: bool,
-}
-
-impl Default for IsolationConfig {
-    fn default() -> Self {
-        Self {
-            use_ipc_namespace: true,
-            use_memory_limits: true,
-            use_mount_namespace: true,
-            use_network_namespace: true,
-            use_pid_namespace: true,
-            use_user_namespace: true,
-            use_uts_namespace: true,
-        }
-    }
-}
-
-/// Manages isolated applications.
-#[derive(Default)]
-pub struct IsolationManager {
-    config: IsolationConfig,
-}
-
-impl IsolationManager {
-    /// Creates a new isolation manager with default configuration.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Creates a new isolation manager with the specified configuration.
-    #[must_use]
-    pub fn with_config(config: IsolationConfig) -> Self {
-        Self { config }
-    }
-
-    /// Builds the options for spawning an isolated process.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the options could not be built.
-    async fn build_options<A: IsolatedApplication>(
-        &self,
-        application: A,
-    ) -> Result<IsolatedProcessOptions> {
-        let application: Arc<dyn IsolatedApplication> = Arc::new(application);
-        let mut options = IsolatedProcessOptions::new(
-            application.clone(),
-            application.executable(),
-            application.args(),
-        );
-
-        // Apply configuration from the application
-        if let Some(working_dir) = application.working_dir() {
-            options = options.with_working_dir(working_dir);
-        }
-
-        options = options.with_volume_mounts(application.volume_mounts());
-
-        // Configure namespaces
-        let mut namespace_options = application.namespace_options();
-        if !self.config.use_user_namespace {
-            namespace_options.use_user = false;
-        }
-        if !self.config.use_pid_namespace {
-            namespace_options.use_pid = false;
-        }
-        if !self.config.use_network_namespace {
-            namespace_options.use_network = false;
-        }
-        if !self.config.use_mount_namespace {
-            namespace_options.use_mount = false;
-        }
-        if !self.config.use_uts_namespace {
-            namespace_options.use_uts = false;
-        }
-        if !self.config.use_ipc_namespace {
-            namespace_options.use_ipc = false;
-        }
-        options = options.with_namespaces(namespace_options);
-
-        // Set environment variables
-        for (key, value) in application.env() {
-            options = options.with_env(key, value);
-        }
-
-        // Configure memory limits
-        if self.config.use_memory_limits {
-            let memory_config = CgroupMemoryConfig {
-                name: application.name().to_string(),
-                limit_mb: application.memory_limit_mb(),
-                min_mb: application.memory_min_mb(),
-            };
-            options = options.with_memory_control(memory_config);
-        }
-
-        // Wait for application to be ready for configuration
-        debug!("Preparing configuration for {}", application.name());
-
-        Ok(options)
+    // Apply configuration from the application
+    if let Some(working_dir) = application.working_dir() {
+        options = options.with_working_dir(working_dir);
     }
 
-    /// Spawns an isolated process.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the process could not be spawned.
-    pub async fn spawn<A: IsolatedApplication>(
-        &self,
-        application: A,
-    ) -> Result<(IsolatedProcess, JoinHandle<()>)> {
-        let mut spawner = IsolatedProcessSpawner::new(self.build_options(application).await?);
-        spawner.spawn().await
+    options = options.with_volume_mounts(application.volume_mounts());
+
+    // Configure namespaces based on application preferences
+    let mut namespace_options = application.namespace_options();
+    if !application.use_user_namespace() {
+        namespace_options.use_user = false;
     }
+    if !application.use_pid_namespace() {
+        namespace_options.use_pid = false;
+    }
+    if !application.use_network_namespace() {
+        namespace_options.use_network = false;
+    }
+    if !application.use_mount_namespace() {
+        namespace_options.use_mount = false;
+    }
+    if !application.use_uts_namespace() {
+        namespace_options.use_uts = false;
+    }
+    if !application.use_ipc_namespace() {
+        namespace_options.use_ipc = false;
+    }
+    options = options.with_namespaces(namespace_options);
+
+    // Set environment variables
+    for (key, value) in application.env() {
+        options = options.with_env(key, value);
+    }
+
+    // Configure memory limits if enabled
+    if application.use_memory_limits() {
+        let memory_config = CgroupMemoryConfig {
+            name: application.name().to_string(),
+            limit_mb: application.memory_limit_mb(),
+            min_mb: application.memory_min_mb(),
+        };
+        options = options.with_memory_control(memory_config);
+    }
+
+    // Wait for application to be ready for configuration
+    debug!("Preparing configuration for {}", application.name());
+
+    let mut spawner = IsolatedProcessSpawner::new(options);
+    spawner.spawn().await
 }

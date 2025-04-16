@@ -75,12 +75,54 @@ pub trait IsolatedApplication: Send + Sync + 'static {
         0
     }
 
+    /// Returns whether to use memory limits via cgroups
+    /// Default is true
+    fn use_memory_limits(&self) -> bool {
+        true
+    }
+
     /// Returns the name of the application
     fn name(&self) -> &str;
 
     /// Returns the namespaces options for the application
     fn namespace_options(&self) -> NamespaceOptions {
         NamespaceOptions::default()
+    }
+
+    /// Returns whether to use IPC namespaces
+    /// Default is true
+    fn use_ipc_namespace(&self) -> bool {
+        true
+    }
+
+    /// Returns whether to use mount namespaces
+    /// Default is true
+    fn use_mount_namespace(&self) -> bool {
+        true
+    }
+
+    /// Returns whether to use network namespaces
+    /// Default is true
+    fn use_network_namespace(&self) -> bool {
+        true
+    }
+
+    /// Returns whether to use PID namespaces
+    /// Default is true
+    fn use_pid_namespace(&self) -> bool {
+        true
+    }
+
+    /// Returns whether to use user namespaces
+    /// Default is true
+    fn use_user_namespace(&self) -> bool {
+        true
+    }
+
+    /// Returns whether to use UTS namespaces
+    /// Default is true
+    fn use_uts_namespace(&self) -> bool {
+        true
     }
 
     /// Returns the signal to use when shutting down the application

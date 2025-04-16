@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::str;
 
 use async_trait::async_trait;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use reqwest::Client;
 use serde_json;
 use tokio::task::JoinHandle;
@@ -254,9 +254,6 @@ impl IsolatedApplication for LighthouseApp {
 
 /// Runs a Lighthouse consensus client.
 pub struct LighthouseNode {
-    /// The isolation process manager
-    isolation_manager: IsolationManager,
-
     /// The isolated process running Lighthouse
     process: Option<IsolatedProcess>,
 
@@ -297,7 +294,6 @@ impl LighthouseNode {
         }: LighthouseNodeOptions,
     ) -> Self {
         Self {
-            isolation_manager: IsolationManager::new(),
             process: None,
             execution_rpc_addr,
             host_ip,
@@ -336,9 +332,7 @@ impl LighthouseNode {
             store_dir: self.store_dir.clone(),
         };
 
-        let (process, join_handle) = self
-            .isolation_manager
-            .spawn(app)
+        let (process, join_handle) = proven_isolation::spawn(app)
             .await
             .map_err(Error::Isolation)?;
 

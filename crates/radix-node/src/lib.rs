@@ -23,7 +23,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 
 // Default filenames
 static CONFIG_FILENAME: &str = "radix-node.config";
@@ -217,7 +217,6 @@ pub struct RadixNode {
     http_port: u16,
     network_definition: NetworkDefinition,
     p2p_port: u16,
-    isolation_manager: IsolationManager,
     process: Option<IsolatedProcess>,
     store_dir: String,
 }
@@ -261,7 +260,6 @@ impl RadixNode {
             http_port,
             network_definition,
             p2p_port,
-            isolation_manager: IsolationManager::new(),
             process: None,
             store_dir,
             config_dir,
@@ -291,9 +289,7 @@ impl RadixNode {
             config_dir: self.config_dir.clone(),
         };
 
-        let (process, join_handle) = self
-            .isolation_manager
-            .spawn(app)
+        let (process, join_handle) = proven_isolation::spawn(app)
             .await
             .map_err(Error::Isolation)?;
 

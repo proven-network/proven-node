@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, IsolationManager, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use regex::Regex;
 use serde_json::json;
 use tokio::task::JoinHandle;
@@ -103,7 +103,6 @@ impl IsolatedApplication for RadixGatewayApp {
 
 /// Configures and runs a local Radix Gateway.
 pub struct RadixGateway {
-    isolation_manager: IsolationManager,
     postgres_database: String,
     postgres_ip_address: String,
     postgres_password: String,
@@ -153,7 +152,6 @@ impl RadixGateway {
         }: RadixGatewayOptions,
     ) -> Self {
         Self {
-            isolation_manager: IsolationManager::new(),
             postgres_database,
             postgres_ip_address,
             postgres_password,
@@ -180,9 +178,7 @@ impl RadixGateway {
 
         self.prepare_config().await?;
 
-        let (process, join_handle) = self
-            .isolation_manager
-            .spawn(RadixGatewayApp)
+        let (process, join_handle) = proven_isolation::spawn(RadixGatewayApp)
             .await
             .map_err(Error::Isolation)?;
 

@@ -18,7 +18,7 @@ use tokio::process::Command;
 use tokio::time::{Duration, sleep};
 use tracing::{debug, error, info, warn};
 
-use proven_isolation::{IsolatedApplication, IsolationManager, VolumeMount};
+use proven_isolation::{IsolatedApplication, VolumeMount};
 
 /// A simple counter application that maintains state between runs
 struct CounterApp {
@@ -104,9 +104,6 @@ async fn main() {
     // Create a persistent storage directory
     let storage_dir = tempfile::tempdir().expect("Failed to create storage directory");
 
-    // Create the isolation manager with our config
-    let manager = IsolationManager::new();
-
     let storage_dir_path = storage_dir.into_path();
     let test_bin_dir_path = test_bin_dir.into_path();
 
@@ -129,8 +126,7 @@ async fn main() {
         info!("Run #{}", run);
 
         let app = CounterApp::new(storage_dir_path.clone(), test_bin_dir_path.clone());
-        let (process, _join_handle) = manager
-            .spawn(app)
+        let (process, _join_handle) = proven_isolation::spawn(app)
             .await
             .expect("Failed to spawn counter app");
 
