@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nix = { workspace = true }
+async-trait = { workspace = true }
+proven-isolation = { workspace = true }
 regex = { workspace = true }
 strip-ansi-escapes = { workspace = true }
 thiserror = { workspace = true }

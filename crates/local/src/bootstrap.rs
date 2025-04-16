@@ -495,7 +495,7 @@ impl Bootstrap {
             }
 
             if let Some(ethereum_mainnet_lighthouse_node) = &ethereum_mainnet_lighthouse_node_option {
-                ethereum_mainnet_lighthouse_node.lock().await.shutdown().await;
+                let _ = ethereum_mainnet_lighthouse_node.lock().await.shutdown().await;
             }
 
             if let Some(ethereum_holesky_reth_node) = &ethereum_holesky_reth_node_option {
@@ -503,7 +503,7 @@ impl Bootstrap {
             }
 
             if let Some(ethereum_holesky_lighthouse_node) = &ethereum_holesky_lighthouse_node_option {
-                ethereum_holesky_lighthouse_node.lock().await.shutdown().await;
+                let _ = ethereum_holesky_lighthouse_node.lock().await.shutdown().await;
             }
 
             if let Some(ethereum_sepolia_reth_node) = &ethereum_sepolia_reth_node_option {
@@ -511,7 +511,7 @@ impl Bootstrap {
             }
 
             if let Some(ethereum_sepolia_lighthouse_node) = &ethereum_sepolia_lighthouse_node_option {
-                ethereum_sepolia_lighthouse_node.lock().await.shutdown().await;
+                let _ = ethereum_sepolia_lighthouse_node.lock().await.shutdown().await;
             }
 
             if let Some(bitcoin_node) = &bitcoin_node_option {
@@ -554,24 +554,24 @@ impl Bootstrap {
             let _ = postgres.shutdown().await;
         }
 
-        if let Some(ethereum_sepolia_lighthouse_node) = self.ethereum_sepolia_lighthouse_node {
-            ethereum_sepolia_lighthouse_node.shutdown().await;
+        if let Some(mut ethereum_sepolia_lighthouse_node) = self.ethereum_sepolia_lighthouse_node {
+            let _ = ethereum_sepolia_lighthouse_node.shutdown().await;
         }
 
         if let Some(ethereum_sepolia_reth_node) = self.ethereum_sepolia_reth_node {
             ethereum_sepolia_reth_node.shutdown().await;
         }
 
-        if let Some(ethereum_holesky_lighthouse_node) = self.ethereum_holesky_lighthouse_node {
-            ethereum_holesky_lighthouse_node.shutdown().await;
+        if let Some(mut ethereum_holesky_lighthouse_node) = self.ethereum_holesky_lighthouse_node {
+            let _ = ethereum_holesky_lighthouse_node.shutdown().await;
         }
 
         if let Some(ethereum_holesky_reth_node) = self.ethereum_holesky_reth_node {
             ethereum_holesky_reth_node.shutdown().await;
         }
 
-        if let Some(ethereum_mainnet_lighthouse_node) = self.ethereum_mainnet_lighthouse_node {
-            ethereum_mainnet_lighthouse_node.shutdown().await;
+        if let Some(mut ethereum_mainnet_lighthouse_node) = self.ethereum_mainnet_lighthouse_node {
+            let _ = ethereum_mainnet_lighthouse_node.shutdown().await;
         }
 
         if let Some(ethereum_mainnet_reth_node) = self.ethereum_mainnet_reth_node {
@@ -721,7 +721,7 @@ impl Bootstrap {
             info!("ethereum reth node (holesky) started");
 
             // Start Lighthouse consensus client
-            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+            let mut ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
                 execution_rpc_addr: self.args.ethereum_holesky_execution_rpc_addr,
                 host_ip: self.external_ip.to_string(),
                 http_addr: self.args.ethereum_holesky_consensus_http_addr,
@@ -776,7 +776,7 @@ impl Bootstrap {
             info!("ethereum reth node (mainnet) started");
 
             // Start Lighthouse consensus client
-            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+            let mut ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
                 execution_rpc_addr: self.args.ethereum_mainnet_execution_rpc_addr,
                 host_ip: self.external_ip.to_string(),
                 http_addr: self.args.ethereum_mainnet_consensus_http_addr,
@@ -831,7 +831,7 @@ impl Bootstrap {
             info!("ethereum reth node (sepolia) started");
 
             // Start Lighthouse consensus client
-            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+            let mut ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
                 execution_rpc_addr: self.args.ethereum_sepolia_execution_rpc_addr,
                 host_ip: self.external_ip.to_string(),
                 http_addr: self.args.ethereum_sepolia_consensus_http_addr,
