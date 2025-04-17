@@ -8,17 +8,25 @@
 mod error;
 
 pub use error::Error;
+use regex::Regex;
 
-use std::error::Error as StdError;
 use std::fs;
 use std::path::PathBuf;
+use std::{error::Error as StdError, sync::RwLock};
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use reqwest::Client;
 use serde_json;
+use strip_ansi_escapes::strip_str;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace, warn};
+
+// Rust log regexp
+static LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s+(\w+)\s+(.*)").unwrap()
+});
 
 /// Represents an Ethereum network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +100,9 @@ struct LighthouseApp {
 
     /// The HTTP API port
     http_port: u16,
+
+    /// The last seen log level
+    last_log_level: RwLock<String>,
 
     /// The metrics port
     metrics_port: u16,
@@ -174,12 +185,34 @@ impl IsolatedApplication for LighthouseApp {
         &self.executable_path
     }
 
-    fn handle_stderr(&self, line: &str) {
-        error!(target: "lighthouse", "{}", line);
+    fn handle_stderr(&self, line: &str) -> () {
+        self.handle_stdout(line);
     }
 
     fn handle_stdout(&self, line: &str) {
-        info!(target: "lighthouse", "{}", line);
+        if let Some(caps) = LOG_REGEX.captures(&strip_str(&line)) {
+            let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
+            let message = caps.get(2).map_or(line, |m| m.as_str());
+            *self.last_log_level.write().unwrap() = label.to_string();
+            match label {
+                "DEBU" => debug!(target: "lighthouse", "{}", message),
+                "ERRO" => error!(target: "lighthouse", "{}", message),
+                "INFO" => info!(target: "lighthouse", "{}", message),
+                "TRAC" => trace!(target: "lighthouse", "{}", message),
+                "WARN" => warn!(target: "lighthouse", "{}", message),
+                _ => error!(target: "lighthouse", "{}", line),
+            }
+        } else {
+            // Use the last log level for continuation lines
+            match self.last_log_level.read().unwrap().as_str() {
+                "DEBU" => debug!(target: "lighthouse", "{}", line),
+                "ERRO" => error!(target: "lighthouse", "{}", line),
+                "INFO" => info!(target: "lighthouse", "{}", line),
+                "TRAC" => trace!(target: "lighthouse", "{}", line),
+                "WARN" => warn!(target: "lighthouse", "{}", line),
+                _ => error!(target: "lighthouse", "{}", line),
+            }
+        }
     }
 
     fn name(&self) -> &str {
@@ -340,6 +373,7 @@ impl LighthouseNode {
             execution_rpc_port: self.execution_rpc_port,
             host_ip: self.host_ip.clone(),
             http_port: self.http_port,
+            last_log_level: RwLock::new("INFO".to_string()),
             metrics_port: self.metrics_port,
             network: self.network,
             p2p_port: self.p2p_port,

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-trait = { workspace = true }
+once_cell = { workspace = true }
 proven-isolation = { workspace = true }
 regex = { workspace = true }
 strip-ansi-escapes = { workspace = true }
