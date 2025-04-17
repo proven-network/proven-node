@@ -194,7 +194,7 @@ impl IsolatedApplication for RethApp {
 
     fn memory_limit_mb(&self) -> usize {
         // Reth can be memory intensive, allocate 8GB by default
-        8192
+        8 * 1024
     }
 
     /// Checks if the Reth node is ready (returns true if it has at least one peer)

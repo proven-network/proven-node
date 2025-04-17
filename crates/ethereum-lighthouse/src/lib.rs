@@ -187,8 +187,8 @@ impl IsolatedApplication for LighthouseApp {
     }
 
     fn memory_limit_mb(&self) -> usize {
-        // Lighthouse can be memory intensive, allocate 8GB by default
-        8192
+        // Lighthouse can be memory intensive, allocate 16GB by default
+        16 * 1024
     }
 
     async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
