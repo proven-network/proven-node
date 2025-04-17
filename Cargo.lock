@@ -8989,6 +8989,7 @@ name = "proven-ethereum-lighthouse"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "proven-ethereum-reth",
  "proven-isolation",
  "regex",
  "reqwest",

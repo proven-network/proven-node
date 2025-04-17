@@ -11,9 +11,7 @@ pub use error::Error;
 
 use std::error::Error as StdError;
 use std::fs;
-use std::net::SocketAddrV4;
 use std::path::PathBuf;
-use std::str;
 
 use async_trait::async_trait;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
@@ -47,23 +45,29 @@ impl EthereumNetwork {
 
 /// Options for configuring a `LighthouseNode`.
 pub struct LighthouseNodeOptions {
-    /// The execution client RPC endpoint.
-    pub execution_rpc_addr: SocketAddrV4,
+    /// The execution client RPC IP address.
+    pub execution_rpc_ip_address: String,
+
+    /// The execution client RPC JWT hex.
+    pub execution_rpc_jwt_hex: String,
+
+    /// The execution client RPC port.
+    pub execution_rpc_port: u16,
 
     /// The host IP address.
     pub host_ip: String,
 
-    /// The HTTP API socket address.
-    pub http_addr: SocketAddrV4,
+    /// The HTTP API port.
+    pub http_port: u16,
 
-    /// The metrics socket address.
-    pub metrics_addr: SocketAddrV4,
+    /// The metrics port.
+    pub metrics_port: u16,
 
     /// The Ethereum network to connect to.
     pub network: EthereumNetwork,
 
-    /// The P2P networking socket address.
-    pub p2p_addr: SocketAddrV4,
+    /// The P2P networking port.
+    pub p2p_port: u16,
 
     /// The directory to store data in.
     pub store_dir: PathBuf,
@@ -74,23 +78,29 @@ struct LighthouseApp {
     /// The path to the lighthouse executable
     executable_path: String,
 
-    /// The execution client RPC endpoint
-    execution_rpc_addr: SocketAddrV4,
+    /// The execution client RPC IP address
+    execution_rpc_ip_address: String,
+
+    /// The execution client RPC JWT hex
+    execution_rpc_jwt_hex: String,
+
+    /// The execution client RPC port
+    execution_rpc_port: u16,
 
     /// The host IP address
     host_ip: String,
 
-    /// The HTTP API socket address
-    http_addr: SocketAddrV4,
+    /// The HTTP API port
+    http_port: u16,
 
-    /// The metrics socket address
-    metrics_addr: SocketAddrV4,
+    /// The metrics port
+    metrics_port: u16,
 
     /// The Ethereum network type
     network: EthereumNetwork,
 
-    /// The P2P networking socket address
-    p2p_addr: SocketAddrV4,
+    /// The P2P networking port
+    p2p_port: u16,
 
     /// The directory to store data in
     store_dir: PathBuf,
@@ -119,36 +129,32 @@ impl IsolatedApplication for LighthouseApp {
         args.push("--execution-endpoint".to_string());
         args.push(format!(
             "http://{}:{}",
-            self.execution_rpc_addr.ip(),
-            self.execution_rpc_addr.port()
+            self.execution_rpc_ip_address, self.execution_rpc_port
         ));
 
         // Add JWT secret
-        args.push("--jwt-secrets".to_string());
-        args.push(format!(
-            "/tmp/proven/ethereum-{}/reth/jwt.hex",
-            self.network.as_str()
-        ));
+        args.push("--execution-jwt-secret-key".to_string());
+        args.push(self.execution_rpc_jwt_hex.clone());
 
         // Add P2P networking args
         args.push("--listen-address".to_string());
-        args.push(self.p2p_addr.ip().to_string());
+        args.push("0.0.0.0".to_string());
         args.push("--port".to_string());
-        args.push(self.p2p_addr.port().to_string());
+        args.push(self.p2p_port.to_string());
 
         // Add HTTP API args
         args.push("--http".to_string());
         args.push("--http-address".to_string());
-        args.push(self.http_addr.ip().to_string());
+        args.push("0.0.0.0".to_string());
         args.push("--http-port".to_string());
-        args.push(self.http_addr.port().to_string());
+        args.push(self.http_port.to_string());
 
         // Add metrics args
         args.push("--metrics".to_string());
         args.push("--metrics-address".to_string());
-        args.push(self.metrics_addr.ip().to_string());
+        args.push("0.0.0.0".to_string());
         args.push("--metrics-port".to_string());
-        args.push(self.metrics_addr.port().to_string());
+        args.push(self.metrics_port.to_string());
 
         // Add checkpoint sync URL
         args.push("--checkpoint-sync-url".to_string());
@@ -187,9 +193,9 @@ impl IsolatedApplication for LighthouseApp {
 
     async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         let http_url = if let Some(ip) = process.container_ip() {
-            format!("http://{}:{}", ip, self.http_addr.port())
+            format!("http://{}:{}", ip, self.http_port)
         } else {
-            format!("http://127.0.0.1:{}", self.http_addr.port())
+            format!("http://127.0.0.1:{}", self.http_port)
         };
 
         let client = Client::new();
@@ -230,15 +236,11 @@ impl IsolatedApplication for LighthouseApp {
     }
 
     fn tcp_port_forwards(&self) -> Vec<u16> {
-        vec![
-            self.p2p_addr.port(),
-            self.http_addr.port(),
-            self.metrics_addr.port(),
-        ]
+        vec![self.p2p_port, self.http_port, self.metrics_port]
     }
 
     fn udp_port_forwards(&self) -> Vec<u16> {
-        vec![self.p2p_addr.port()]
+        vec![self.p2p_port]
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
@@ -257,23 +259,29 @@ pub struct LighthouseNode {
     /// The isolated process running Lighthouse
     process: Option<IsolatedProcess>,
 
-    /// The execution client RPC endpoint
-    execution_rpc_addr: SocketAddrV4,
+    /// The execution client RPC IP address
+    execution_rpc_ip_address: String,
+
+    /// The execution client RPC JWT hex
+    execution_rpc_jwt_hex: String,
+
+    /// The execution client RPC port
+    execution_rpc_port: u16,
 
     /// The host IP address
     host_ip: String,
 
-    /// The HTTP API socket address
-    http_addr: SocketAddrV4,
+    /// The HTTP API port
+    http_port: u16,
 
-    /// The metrics socket address
-    metrics_addr: SocketAddrV4,
+    /// The metrics port
+    metrics_port: u16,
 
     /// The Ethereum network type
     network: EthereumNetwork,
 
-    /// The P2P networking socket address
-    p2p_addr: SocketAddrV4,
+    /// The P2P networking port
+    p2p_port: u16,
 
     /// The directory to store data in
     store_dir: PathBuf,
@@ -284,23 +292,27 @@ impl LighthouseNode {
     #[must_use]
     pub fn new(
         LighthouseNodeOptions {
-            execution_rpc_addr,
+            execution_rpc_ip_address,
+            execution_rpc_jwt_hex,
+            execution_rpc_port,
             host_ip,
-            http_addr,
-            metrics_addr,
+            http_port,
+            metrics_port,
             network,
-            p2p_addr,
+            p2p_port,
             store_dir,
         }: LighthouseNodeOptions,
     ) -> Self {
         Self {
             process: None,
-            execution_rpc_addr,
+            execution_rpc_ip_address,
+            execution_rpc_jwt_hex,
+            execution_rpc_port,
             host_ip,
-            http_addr,
-            metrics_addr,
+            http_port,
+            metrics_port,
             network,
-            p2p_addr,
+            p2p_port,
             store_dir,
         }
     }
@@ -323,12 +335,14 @@ impl LighthouseNode {
 
         let app = LighthouseApp {
             executable_path: "/apps/ethereum-lighthouse/v7.0.0-beta.5/lighthouse".to_string(),
-            execution_rpc_addr: self.execution_rpc_addr,
+            execution_rpc_ip_address: self.execution_rpc_ip_address.clone(),
+            execution_rpc_jwt_hex: self.execution_rpc_jwt_hex.clone(),
+            execution_rpc_port: self.execution_rpc_port,
             host_ip: self.host_ip.clone(),
-            http_addr: self.http_addr,
-            metrics_addr: self.metrics_addr,
+            http_port: self.http_port,
+            metrics_port: self.metrics_port,
             network: self.network,
-            p2p_addr: self.p2p_addr,
+            p2p_port: self.p2p_port,
             store_dir: self.store_dir.clone(),
         };
 

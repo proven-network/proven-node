@@ -27,8 +27,8 @@ echo "Local IP: $LOCAL_IP"
 # Set up port forwarding
 upnpc -a "$LOCAL_IP" 30001 30001 TCP "Proven Node - Radix"
 # Reth ports
-upnpc -a "$LOCAL_IP" 30304 30304 TCP "Proven Node - Ethereum P2P"
-upnpc -a "$LOCAL_IP" 30304 30304 UDP "Proven Node - Ethereum P2P UDP"
+upnpc -a "$LOCAL_IP" 30304 30304 TCP "Proven Node - Reth P2P"
+upnpc -a "$LOCAL_IP" 30304 30304 UDP "Proven Node - Reth P2P UDP"
 # Lighthouse ports
 upnpc -a "$LOCAL_IP" 10109 10109 TCP "Proven Node - Lighthouse libp2p"
 upnpc -a "$LOCAL_IP" 10109 10109 UDP "Proven Node - Lighthouse discovery"

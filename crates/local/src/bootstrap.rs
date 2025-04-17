@@ -702,11 +702,11 @@ impl Bootstrap {
         {
             // Start Reth execution client
             let mut ethereum_reth_node = RethNode::new(RethNodeOptions {
-                discovery_addr: self.args.ethereum_holesky_execution_discovery_addr,
-                http_addr: self.args.ethereum_holesky_execution_http_addr,
-                metrics_addr: self.args.ethereum_holesky_execution_metrics_addr,
+                discovery_port: self.args.ethereum_holesky_execution_discovery_port,
+                http_port: self.args.ethereum_holesky_execution_http_port,
+                metrics_port: self.args.ethereum_holesky_execution_metrics_port,
                 network: RethNetwork::Holesky,
-                rpc_addr: self.args.ethereum_holesky_execution_rpc_addr,
+                rpc_port: self.args.ethereum_holesky_execution_rpc_port,
                 store_dir: self.args.ethereum_holesky_execution_store_dir.clone(),
             });
 
@@ -715,6 +715,8 @@ impl Bootstrap {
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
+            let execution_rpc_ip_address = ethereum_reth_node.ip_address().to_string();
+
             self.ethereum_holesky_reth_node = Some(ethereum_reth_node);
             self.ethereum_holesky_reth_node_handle = Some(ethereum_reth_node_handle);
 
@@ -722,12 +724,13 @@ impl Bootstrap {
 
             // Start Lighthouse consensus client
             let mut ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
-                execution_rpc_addr: self.args.ethereum_holesky_execution_rpc_addr,
+                execution_rpc_ip_address,
+                execution_rpc_port: self.args.ethereum_holesky_execution_rpc_port,
                 host_ip: self.external_ip.to_string(),
-                http_addr: self.args.ethereum_holesky_consensus_http_addr,
-                metrics_addr: self.args.ethereum_holesky_consensus_metrics_addr,
+                http_port: self.args.ethereum_holesky_consensus_http_port,
+                metrics_port: self.args.ethereum_holesky_consensus_metrics_port,
                 network: LighthouseNetwork::Holesky,
-                p2p_addr: self.args.ethereum_holesky_consensus_p2p_addr,
+                p2p_port: self.args.ethereum_holesky_consensus_p2p_port,
                 store_dir: self.args.ethereum_holesky_consensus_store_dir.clone(),
             });
 
@@ -757,11 +760,11 @@ impl Bootstrap {
         {
             // Start Reth execution client
             let mut ethereum_reth_node = RethNode::new(RethNodeOptions {
-                discovery_addr: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 30303),
-                http_addr: self.args.ethereum_mainnet_execution_http_addr,
-                metrics_addr: self.args.ethereum_mainnet_execution_metrics_addr,
+                discovery_port: self.args.ethereum_mainnet_execution_discovery_port,
+                http_port: self.args.ethereum_mainnet_execution_http_port,
+                metrics_port: self.args.ethereum_mainnet_execution_metrics_port,
                 network: RethNetwork::Mainnet,
-                rpc_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8545),
+                rpc_port: self.args.ethereum_mainnet_execution_rpc_port,
                 store_dir: self.args.ethereum_mainnet_execution_store_dir.clone(),
             });
 
@@ -770,6 +773,8 @@ impl Bootstrap {
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
+            let execution_rpc_ip_address = ethereum_reth_node.ip_address().to_string();
+
             self.ethereum_mainnet_reth_node = Some(ethereum_reth_node);
             self.ethereum_mainnet_reth_node_handle = Some(ethereum_reth_node_handle);
 
@@ -777,12 +782,13 @@ impl Bootstrap {
 
             // Start Lighthouse consensus client
             let mut ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
-                execution_rpc_addr: self.args.ethereum_mainnet_execution_rpc_addr,
+                execution_rpc_ip_address,
+                execution_rpc_port: self.args.ethereum_mainnet_execution_rpc_port,
                 host_ip: self.external_ip.to_string(),
-                http_addr: self.args.ethereum_mainnet_consensus_http_addr,
-                metrics_addr: self.args.ethereum_mainnet_consensus_metrics_addr,
+                http_port: self.args.ethereum_mainnet_consensus_http_port,
+                metrics_port: self.args.ethereum_mainnet_consensus_metrics_port,
                 network: LighthouseNetwork::Mainnet,
-                p2p_addr: self.args.ethereum_mainnet_consensus_p2p_addr,
+                p2p_port: self.args.ethereum_mainnet_consensus_p2p_port,
                 store_dir: self.args.ethereum_mainnet_consensus_store_dir.clone(),
             });
 
@@ -812,11 +818,11 @@ impl Bootstrap {
         {
             // Start Reth execution client
             let mut ethereum_reth_node = RethNode::new(RethNodeOptions {
-                discovery_addr: self.args.ethereum_sepolia_execution_discovery_addr,
-                http_addr: self.args.ethereum_sepolia_execution_http_addr,
-                metrics_addr: self.args.ethereum_sepolia_execution_metrics_addr,
+                discovery_port: self.args.ethereum_sepolia_execution_discovery_port,
+                http_port: self.args.ethereum_sepolia_execution_http_port,
+                metrics_port: self.args.ethereum_sepolia_execution_metrics_port,
                 network: RethNetwork::Sepolia,
-                rpc_addr: self.args.ethereum_sepolia_execution_rpc_addr,
+                rpc_port: self.args.ethereum_sepolia_execution_rpc_port,
                 store_dir: self.args.ethereum_sepolia_execution_store_dir.clone(),
             });
 
@@ -825,6 +831,8 @@ impl Bootstrap {
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
+            let execution_rpc_ip_address = ethereum_reth_node.ip_address().to_string();
+
             self.ethereum_sepolia_reth_node = Some(ethereum_reth_node);
             self.ethereum_sepolia_reth_node_handle = Some(ethereum_reth_node_handle);
 
@@ -832,12 +840,13 @@ impl Bootstrap {
 
             // Start Lighthouse consensus client
             let mut ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
-                execution_rpc_addr: self.args.ethereum_sepolia_execution_rpc_addr,
+                execution_rpc_ip_address,
+                execution_rpc_port: self.args.ethereum_sepolia_execution_rpc_port,
                 host_ip: self.external_ip.to_string(),
-                http_addr: self.args.ethereum_sepolia_consensus_http_addr,
-                metrics_addr: self.args.ethereum_sepolia_consensus_metrics_addr,
+                http_port: self.args.ethereum_sepolia_consensus_http_port,
+                metrics_port: self.args.ethereum_sepolia_consensus_metrics_port,
                 network: LighthouseNetwork::Sepolia,
-                p2p_addr: self.args.ethereum_sepolia_consensus_p2p_addr,
+                p2p_port: self.args.ethereum_sepolia_consensus_p2p_port,
                 store_dir: self.args.ethereum_sepolia_consensus_store_dir.clone(),
             });
 

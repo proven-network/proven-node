@@ -16,4 +16,5 @@ reqwest = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+proven-ethereum-reth = { workspace = true }
 tracing-subscriber = { workspace = true }

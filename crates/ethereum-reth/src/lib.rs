@@ -9,11 +9,10 @@ mod error;
 
 pub use error::Error;
 
-use std::error::Error as StdError;
 use std::fs;
-use std::net::SocketAddrV4;
+use std::net::Ipv4Addr;
 use std::path::PathBuf;
-use std::str;
+use std::{error::Error as StdError, net::IpAddr};
 
 use async_trait::async_trait;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
@@ -47,19 +46,19 @@ impl EthereumNetwork {
 /// Options for configuring a `RethNode`.
 pub struct RethNodeOptions {
     /// The peer discovery socket address.
-    pub discovery_addr: SocketAddrV4,
+    pub discovery_port: u16,
 
     /// The HTTP RPC socket address.
-    pub http_addr: SocketAddrV4,
+    pub http_port: u16,
 
     /// The metrics socket address.
-    pub metrics_addr: SocketAddrV4,
+    pub metrics_port: u16,
 
     /// The Ethereum network to connect to.
     pub network: EthereumNetwork,
 
     /// The RPC socket address.
-    pub rpc_addr: SocketAddrV4,
+    pub rpc_port: u16,
 
     /// The directory to store data in.
     pub store_dir: PathBuf,
@@ -70,20 +69,20 @@ struct RethApp {
     /// The path to the reth executable
     executable_path: String,
 
-    /// The peer discovery socket address
-    discovery_addr: SocketAddrV4,
+    /// The peer discovery port
+    discovery_port: u16,
 
-    /// The HTTP RPC socket address
-    http_addr: SocketAddrV4,
+    /// The HTTP RPC port
+    http_port: u16,
 
-    /// The metrics socket address
-    metrics_addr: SocketAddrV4,
+    /// The metrics port
+    metrics_port: u16,
 
     /// The Ethereum network type
     network: EthereumNetwork,
 
-    /// The RPC socket address
-    rpc_addr: SocketAddrV4,
+    /// The RPC port
+    rpc_port: u16,
 
     /// The directory to store data in
     store_dir: PathBuf,
@@ -111,18 +110,18 @@ impl IsolatedApplication for RethApp {
         // Configure Auth server
         args.extend([
             "--authrpc.addr".to_string(),
-            self.rpc_addr.ip().to_string(),
+            "0.0.0.0".to_string(),
             "--authrpc.port".to_string(),
-            self.rpc_addr.port().to_string(),
+            self.rpc_port.to_string(),
         ]);
 
         // Enable HTTP-RPC server with configured address
         args.extend([
             "--http".to_string(),
             "--http.addr".to_string(),
-            self.http_addr.ip().to_string(),
+            "0.0.0.0".to_string(),
             "--http.port".to_string(),
-            self.http_addr.port().to_string(),
+            self.http_port.to_string(),
             "--http.api".to_string(),
             "eth,net,web3,txpool".to_string(),
         ]);
@@ -130,15 +129,15 @@ impl IsolatedApplication for RethApp {
         // Configure peer discovery
         args.extend([
             "--discovery.addr".to_string(),
-            self.discovery_addr.ip().to_string(),
+            "0.0.0.0".to_string(),
             "--discovery.port".to_string(),
-            self.discovery_addr.port().to_string(),
+            self.discovery_port.to_string(),
         ]);
 
         // Configure metrics
         args.extend([
             "--metrics".to_string(),
-            format!("{}:{}", self.metrics_addr.ip(), self.metrics_addr.port()),
+            format!("0.0.0.0:{}", self.metrics_port),
         ]);
 
         args
@@ -167,9 +166,9 @@ impl IsolatedApplication for RethApp {
 
     async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         let http_url = if let Some(ip) = process.container_ip() {
-            format!("http://{}:{}", ip, self.http_addr.port())
+            format!("http://{}:{}", ip, self.http_port)
         } else {
-            format!("http://127.0.0.1:{}", self.http_addr.port())
+            format!("http://127.0.0.1:{}", self.http_port)
         };
 
         let client = Client::new();
@@ -212,24 +211,21 @@ impl IsolatedApplication for RethApp {
 
     fn tcp_port_forwards(&self) -> Vec<u16> {
         vec![
-            self.discovery_addr.port(),
-            self.http_addr.port(),
-            self.metrics_addr.port(),
-            self.rpc_addr.port(),
+            self.discovery_port,
+            self.http_port,
+            self.metrics_port,
+            self.rpc_port,
         ]
     }
 
     fn udp_port_forwards(&self) -> Vec<u16> {
-        vec![self.discovery_addr.port()]
+        vec![self.discovery_port]
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
             VolumeMount::new(self.store_dir.to_str().unwrap(), "/data"),
-            VolumeMount::new(
-                "/apps/ethereum-reth/v0.1.0-alpha.13",
-                "/apps/ethereum-reth/v0.1.0-alpha.13",
-            ),
+            VolumeMount::new("/apps/ethereum-reth/v1.3.8", "/apps/ethereum-reth/v1.3.8"),
         ]
     }
 }
@@ -239,20 +235,20 @@ pub struct RethNode {
     /// The isolated process running Reth
     process: Option<IsolatedProcess>,
 
-    /// The peer discovery socket address
-    discovery_addr: SocketAddrV4,
+    /// The peer discovery port
+    discovery_port: u16,
 
-    /// The HTTP RPC socket address
-    http_addr: SocketAddrV4,
+    /// The HTTP RPC port
+    http_port: u16,
 
-    /// The metrics socket address
-    metrics_addr: SocketAddrV4,
+    /// The metrics port
+    metrics_port: u16,
 
     /// The Ethereum network type
     network: EthereumNetwork,
 
-    /// The RPC socket address
-    rpc_addr: SocketAddrV4,
+    /// The RPC port
+    rpc_port: u16,
 
     /// The directory to store data in
     store_dir: PathBuf,
@@ -263,21 +259,21 @@ impl RethNode {
     #[must_use]
     pub fn new(
         RethNodeOptions {
-            discovery_addr,
-            http_addr,
-            metrics_addr,
+            discovery_port,
+            http_port,
+            metrics_port,
             network,
-            rpc_addr,
+            rpc_port,
             store_dir,
         }: RethNodeOptions,
     ) -> Self {
         Self {
             process: None,
-            discovery_addr,
-            http_addr,
-            metrics_addr,
+            discovery_port,
+            http_port,
+            metrics_port,
             network,
-            rpc_addr,
+            rpc_port,
             store_dir,
         }
     }
@@ -295,12 +291,12 @@ impl RethNode {
         self.prepare_config().await?;
 
         let app = RethApp {
-            executable_path: "/apps/ethereum-reth/v0.1.0-alpha.13/reth".to_string(),
-            discovery_addr: self.discovery_addr,
-            http_addr: self.http_addr,
-            metrics_addr: self.metrics_addr,
+            executable_path: "/apps/ethereum-reth/v1.3.8/reth".to_string(),
+            discovery_port: self.discovery_port,
+            http_port: self.http_port,
+            metrics_port: self.metrics_port,
             network: self.network,
-            rpc_addr: self.rpc_addr,
+            rpc_port: self.rpc_port,
             store_dir: self.store_dir.clone(),
         };
 
@@ -325,6 +321,30 @@ impl RethNode {
         }
 
         Ok(())
+    }
+
+    /// Returns the IP address of the Postgres server.
+    #[must_use]
+    pub fn ip_address(&self) -> IpAddr {
+        self.process
+            .as_ref()
+            .map(|p| p.container_ip().unwrap())
+            .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+    }
+
+    /// Returns the JWT hex value for auth RPC.
+    pub async fn jwt_hex(&self) -> Result<String, Error> {
+        let jwt_hex = tokio::fs::read_to_string(self.store_dir.join("jwt.hex"))
+            .await
+            .map_err(|e| Error::Io("Failed to read jwt.hex", e))?;
+
+        Ok(jwt_hex)
+    }
+
+    /// Returns the port of the Postgres server.
+    #[must_use]
+    pub fn rpc_port(&self) -> u16 {
+        self.rpc_port
     }
 
     async fn prepare_config(&self) -> Result<(), Error> {

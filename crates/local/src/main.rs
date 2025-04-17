@@ -14,7 +14,7 @@ mod node;
 use bootstrap::Bootstrap;
 use error::Result;
 
-use std::{net::SocketAddrV4, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
 use tracing::{Level, info};
@@ -110,26 +110,26 @@ struct Args {
     /// Ethereum Holesky Consensus HTTP address
     #[arg(
         long,
-        default_value = "127.0.0.1:5052",
-        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_HTTP_ADDR"
+        default_value = "5052",
+        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_HTTP_PORT"
     )]
-    ethereum_holesky_consensus_http_addr: SocketAddrV4,
+    ethereum_holesky_consensus_http_port: u16,
 
     /// Ethereum Holesky Consensus metrics address
     #[arg(
         long,
-        default_value = "127.0.0.1:5054",
-        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_METRICS_ADDR"
+        default_value = "5054",
+        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_METRICS_PORT"
     )]
-    ethereum_holesky_consensus_metrics_addr: SocketAddrV4,
+    ethereum_holesky_consensus_metrics_port: u16,
 
     /// Ethereum Holesky Consensus P2P address
     #[arg(
         long,
-        default_value = "0.0.0.0:9919",
-        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_P2P_ADDR"
+        default_value = "9919",
+        env = "PROVEN_ETHEREUM_HOLESKY_CONSENSUS_P2P_PORT"
     )]
-    ethereum_holesky_consensus_p2p_addr: SocketAddrV4,
+    ethereum_holesky_consensus_p2p_port: u16,
 
     /// Ethereum Holesky Consensus store directory
     #[arg(
@@ -142,34 +142,34 @@ struct Args {
     /// Ethereum Holesky Execution discovery address
     #[arg(
         long,
-        default_value = "0.0.0.0:30305",
-        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_DISCOVERY_ADDR"
+        default_value = "30305",
+        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_DISCOVERY_PORT"
     )]
-    ethereum_holesky_execution_discovery_addr: SocketAddrV4,
+    ethereum_holesky_execution_discovery_port: u16,
 
     /// Ethereum Holesky Execution HTTP address
     #[arg(
         long,
-        default_value = "127.0.0.1:8547",
-        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_HTTP_ADDR"
+        default_value = "8547",
+        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_HTTP_PORT"
     )]
-    ethereum_holesky_execution_http_addr: SocketAddrV4,
+    ethereum_holesky_execution_http_port: u16,
 
     /// Ethereum Holesky Execution metrics address
     #[arg(
         long,
-        default_value = "127.0.0.1:9420",
-        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_METRICS_ADDR"
+        default_value = "9420",
+        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_METRICS_PORT"
     )]
-    ethereum_holesky_execution_metrics_addr: SocketAddrV4,
+    ethereum_holesky_execution_metrics_port: u16,
 
     /// Ethereum Holesky Execution RPC address
     #[arg(
         long,
-        default_value = "127.0.0.1:8553",
-        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_RPC_ADDR"
+        default_value = "8553",
+        env = "PROVEN_ETHEREUM_HOLESKY_EXECUTION_RPC_PORT"
     )]
-    ethereum_holesky_execution_rpc_addr: SocketAddrV4,
+    ethereum_holesky_execution_rpc_port: u16,
 
     /// Ethereum Holesky store directory
     #[arg(
@@ -182,26 +182,26 @@ struct Args {
     /// Ethereum Mainnet Consensus HTTP address
     #[arg(
         long,
-        default_value = "127.0.0.1:5052",
-        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_HTTP_ADDR"
+        default_value = "5052",
+        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_HTTP_PORT"
     )]
-    ethereum_mainnet_consensus_http_addr: SocketAddrV4,
+    ethereum_mainnet_consensus_http_port: u16,
 
     /// Ethereum Mainnet Consensus metrics address
     #[arg(
         long,
-        default_value = "127.0.0.1:5054",
-        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_METRICS_ADDR"
+        default_value = "5054",
+        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_METRICS_PORT"
     )]
-    ethereum_mainnet_consensus_metrics_addr: SocketAddrV4,
+    ethereum_mainnet_consensus_metrics_port: u16,
 
     /// Ethereum Mainnet Consensus P2P address
     #[arg(
         long,
-        default_value = "0.0.0.0:9919",
-        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_P2P_ADDR"
+        default_value = "9919",
+        env = "PROVEN_ETHEREUM_MAINNET_CONSENSUS_P2P_PORT"
     )]
-    ethereum_mainnet_consensus_p2p_addr: SocketAddrV4,
+    ethereum_mainnet_consensus_p2p_port: u16,
 
     /// Ethereum Mainnet Consensus store directory
     #[arg(
@@ -214,33 +214,34 @@ struct Args {
     /// Ethereum Mainnet Execution discovery address
     #[arg(
         long,
-        default_value = "0.0.0.0:30303",
-        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_DISCOVERY_ADDR"
+        default_value = "30303",
+        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_DISCOVERY_PORT"
     )]
-    ethereum_mainnet_execution_discovery_addr: SocketAddrV4,
+    ethereum_mainnet_execution_discovery_port: u16,
 
     /// Ethereum Mainnet Execution HTTP address
     #[arg(
         long,
-        default_value = "127.0.0.1:8545",
-        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_HTTP_ADDR"
+        default_value = "8545",
+        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_HTTP_PORT"
     )]
-    ethereum_mainnet_execution_http_addr: SocketAddrV4,
+    ethereum_mainnet_execution_http_port: u16,
 
     /// Ethereum Mainnet Execution metrics address
     #[arg(
         long,
-        default_value = "127.0.0.1:9418",
-        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_METRICS_ADDR"
+        default_value = "9418",
+        env = "PROVEN_ETHEREUM_MAINNET_EXE  CUTION_METRICS_PORT"
     )]
-    ethereum_mainnet_execution_metrics_addr: SocketAddrV4,
+    ethereum_mainnet_execution_metrics_port: u16,
+
     /// Ethereum Mainnet Execution RPC address
     #[arg(
         long,
-        default_value = "127.0.0.1:8551",
-        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_RPC_ADDR"
+        default_value = "8551",
+        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_RPC_PORT"
     )]
-    ethereum_mainnet_execution_rpc_addr: SocketAddrV4,
+    ethereum_mainnet_execution_rpc_port: u16,
 
     /// Ethereum Mainnet store directory
     #[arg(
@@ -253,26 +254,26 @@ struct Args {
     /// Ethereum Sepolia Consensus HTTP address
     #[arg(
         long,
-        default_value = "127.0.0.1:5052",
-        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_HTTP_ADDR"
+        default_value = "5052",
+        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_HTTP_PORT"
     )]
-    ethereum_sepolia_consensus_http_addr: SocketAddrV4,
+    ethereum_sepolia_consensus_http_port: u16,
 
     /// Ethereum Sepolia Consensus metrics address
     #[arg(
         long,
-        default_value = "127.0.0.1:5054",
-        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_METRICS_ADDR"
+        default_value = "5054",
+        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_METRICS_PORT"
     )]
-    ethereum_sepolia_consensus_metrics_addr: SocketAddrV4,
+    ethereum_sepolia_consensus_metrics_port: u16,
 
     /// Ethereum Sepolia Consensus P2P address
     #[arg(
         long,
-        default_value = "0.0.0.0:9919",
-        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_P2P_ADDR"
+        default_value = "9919",
+        env = "PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_P2P_PORT"
     )]
-    ethereum_sepolia_consensus_p2p_addr: SocketAddrV4,
+    ethereum_sepolia_consensus_p2p_port: u16,
 
     /// Ethereum Sepolia Consensus store directory
     #[arg(
@@ -285,34 +286,34 @@ struct Args {
     /// Ethereum Sepolia Execution discovery address
     #[arg(
         long,
-        default_value = "0.0.0.0:30304",
-        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_DISCOVERY_ADDR"
+        default_value = "30304",
+        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_DISCOVERY_PORT"
     )]
-    ethereum_sepolia_execution_discovery_addr: SocketAddrV4,
+    ethereum_sepolia_execution_discovery_port: u16,
 
     /// Ethereum Sepolia Execution HTTP address
     #[arg(
         long,
-        default_value = "127.0.0.1:8546",
-        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_HTTP_ADDR"
+        default_value = "8546",
+        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_HTTP_PORT"
     )]
-    ethereum_sepolia_execution_http_addr: SocketAddrV4,
+    ethereum_sepolia_execution_http_port: u16,
 
     /// Ethereum Sepolia Execution metrics address
     #[arg(
         long,
-        default_value = "127.0.0.1:9419",
-        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_METRICS_ADDR"
+        default_value = "9419",
+        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_METRICS_PORT"
     )]
-    ethereum_sepolia_execution_metrics_addr: SocketAddrV4,
+    ethereum_sepolia_execution_metrics_port: u16,
 
     /// Ethereum Sepolia Execution RPC address
     #[arg(
         long,
-        default_value = "127.0.0.1:8552",
-        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_RPC_ADDR"
+        default_value = "8552",
+        env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_RPC_PORT"
     )]
-    ethereum_sepolia_execution_rpc_addr: SocketAddrV4,
+    ethereum_sepolia_execution_rpc_port: u16,
 
     /// Ethereum Sepolia store directory
     #[arg(
