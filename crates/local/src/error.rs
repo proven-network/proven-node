@@ -12,6 +12,10 @@ pub enum Error {
     #[error(transparent)]
     Core(#[from] proven_core::Error),
 
+    /// Ethereum Reth error
+    #[error(transparent)]
+    EthereumReth(#[from] proven_ethereum_reth::Error),
+
     /// Could not set global default subscriber.
     #[error("could not set global default subscriber: {0}")]
     SetTracing(#[from] tracing::dispatcher::SetGlobalDefaultError),
