@@ -1,6 +1,8 @@
 # Exclude build artifacts
 target/
 **/target/
+target-devcontainer/
+**/target-devcontainer/
 
 # Exclude crates test data
 crates/**/test-data/

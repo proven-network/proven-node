@@ -1,4 +1,5 @@
 /target
+/target-devcontainer
 /kernel/build
 /kernel/output
 .vscode

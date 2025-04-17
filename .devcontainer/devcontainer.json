@@ -14,6 +14,9 @@
 			"nvmVersion": "latest"
 		}
 	},
+	"containerEnv": {
+		"CARGO_TARGET_DIR": "${containerWorkspaceFolder}/target-devcontainer"
+	},
 	"remoteUser": "root",
 	"postCreateCommand": "echo 'Development container is ready with all dependencies installed.'",
 	"appPort": [
