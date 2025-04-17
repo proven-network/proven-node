@@ -2,6 +2,10 @@
 target/
 **/target/
 
+# Exclude crates test data
+crates/**/test-data/
+crates/**/test-config/
+
 # Exclude Rust package cache
 **/.cargo/registry/
 **/.cargo/git/
@@ -66,4 +70,14 @@ integration-test/*
 # Don't exclude important project files
 !Cargo.toml
 !Cargo.lock
-!vendor/** 
+!vendor/**
+
+# Exclude additional files
+**/.git
+**/.vscode
+.dockerignore
+Dockerfile*
+docker-compose*.yml
+.env
+.env.*
+!integration-test/topology.json

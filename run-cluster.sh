@@ -13,13 +13,12 @@ echo "============================"
 # Enable Docker BuildKit
 export DOCKER_BUILDKIT=1
 export COMPOSE_DOCKER_CLI_BUILD=1
-export COMPOSE_BAKE=true
 
 # Build and run the Docker containers
 cd integration-test
 
 echo "Building containers..."
-docker-compose build --build-arg BUILDKIT_INLINE_CACHE=1
+docker-compose build
 
 echo "Starting node cluster"
 # Run only the node containers, not the test-client

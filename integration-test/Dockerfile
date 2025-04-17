@@ -2,9 +2,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS dotnet-builder
 WORKDIR /
 
-RUN git clone https://github.com/radixdlt/babylon-gateway.git
+# Clone only the specific tag with depth 1
+RUN git clone --depth 1 --branch v1.9.2 https://github.com/radixdlt/babylon-gateway.git
+
 WORKDIR /babylon-gateway
-RUN git checkout v1.9.2
 
 # Build Gateway applications
 RUN mkdir -p /apps/radix-gateway/v1.9.2 && \

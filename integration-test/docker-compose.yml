@@ -4,20 +4,18 @@ services:
     build:
       context: ..
       dockerfile: integration-test/Dockerfile
-      args:
-        BUILDKIT_INLINE_CACHE: 1
     privileged: true
     cgroup: host
     security_opt:
       - seccomp:unconfined
     environment:
-      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_P2P_ADDR=0.0.0.0:10109
-      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_HTTP_ADDR=127.0.0.1:5052
-      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_METRICS_ADDR=127.0.0.1:5054
+      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_P2P_PORT=10109
+      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_HTTP_PORT=5052
+      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_METRICS_PORT=5054
       - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_STORE_DIR=/tmp/proven/ethereum-sepolia/lighthouse
-      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_DISCOVERY_ADDR=0.0.0.0:30304
-      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_HTTP_ADDR=127.0.0.1:8546
-      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_RPC_ADDR=127.0.0.1:8545
+      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_DISCOVERY_PORT=30304
+      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_HTTP_PORT=8546
+      - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_RPC_PORT=8545
       - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_STORE_DIR=/tmp/proven/ethereum-sepolia/reth
       - PROVEN_PORT=3201
       - PROVEN_NATS_CLIENT_PORT=4222
@@ -51,8 +49,6 @@ services:
     build:
       context: ..
       dockerfile: integration-test/Dockerfile
-      args:
-        BUILDKIT_INLINE_CACHE: 1
     privileged: true
     cgroup: host
     security_opt:
@@ -84,8 +80,6 @@ services:
     build:
       context: ..
       dockerfile: integration-test/Dockerfile
-      args:
-        BUILDKIT_INLINE_CACHE: 1
     privileged: true
     cgroup: host
     security_opt:
@@ -114,8 +108,6 @@ services:
     build:
       context: ..
       dockerfile: integration-test/Dockerfile.test
-      args:
-        BUILDKIT_INLINE_CACHE: 1
     depends_on:
       - bulbasaur
       - charmander
