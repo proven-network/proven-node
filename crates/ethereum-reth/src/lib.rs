@@ -164,6 +164,7 @@ impl IsolatedApplication for RethApp {
         8192
     }
 
+    /// Checks if the Reth node is ready (returns true if it has at least one peer)
     async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
         let http_url = if let Some(ip) = process.container_ip() {
             format!("http://{}:{}", ip, self.http_port)
@@ -174,9 +175,10 @@ impl IsolatedApplication for RethApp {
         let client = Client::new();
         match client
             .post(&http_url)
+            .header("Content-Type", "application/json")
             .json(&serde_json::json!({
                 "jsonrpc": "2.0",
-                "method": "eth_syncing",
+                "method": "net_peerCount",
                 "params": [],
                 "id": 1
             }))
@@ -187,11 +189,14 @@ impl IsolatedApplication for RethApp {
                 if response.status() == 200 {
                     match response.json::<serde_json::Value>().await {
                         Ok(json) => {
-                            // If result is false, the node is synced
-                            // If result is an object, the node is still syncing
                             if let Some(result) = json.get("result") {
-                                if result.is_boolean() {
-                                    return Ok(!result.as_bool().unwrap_or(true));
+                                // Result is a hex string, convert it to a number
+                                if let Some(hex) = result.as_str() {
+                                    if let Ok(peer_count) =
+                                        u64::from_str_radix(hex.trim_start_matches("0x"), 16)
+                                    {
+                                        return Ok(peer_count > 0);
+                                    }
                                 }
                             }
                         }
