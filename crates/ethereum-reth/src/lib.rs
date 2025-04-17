@@ -8,6 +8,7 @@
 mod error;
 
 pub use error::Error;
+use regex::Regex;
 
 use std::fs;
 use std::net::Ipv4Addr;
@@ -15,10 +16,17 @@ use std::path::PathBuf;
 use std::{error::Error as StdError, net::IpAddr};
 
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
 use reqwest::Client;
+use std::sync::RwLock;
+use strip_ansi_escapes::strip_str;
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace, warn};
+
+// Rust log regexp
+static LOG_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) (.*)").unwrap());
 
 /// Represents an Ethereum network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +82,9 @@ struct RethApp {
 
     /// The HTTP RPC port
     http_port: u16,
+
+    /// The last seen log level
+    last_log_level: RwLock<String>,
 
     /// The metrics port
     metrics_port: u16,
@@ -147,12 +158,34 @@ impl IsolatedApplication for RethApp {
         &self.executable_path
     }
 
-    fn handle_stderr(&self, line: &str) {
-        error!(target: "reth", "{}", line);
+    fn handle_stderr(&self, line: &str) -> () {
+        self.handle_stdout(line);
     }
 
     fn handle_stdout(&self, line: &str) {
-        info!(target: "reth", "{}", line);
+        if let Some(caps) = LOG_REGEX.captures(&strip_str(&line)) {
+            let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
+            let message = caps.get(2).map_or(line, |m| m.as_str());
+            *self.last_log_level.write().unwrap() = label.to_string();
+            match label {
+                "DEBUG" => debug!(target: "reth", "{}", message),
+                "ERROR" => error!(target: "reth", "{}", message),
+                "INFO" => info!(target: "reth", "{}", message),
+                "TRACE" => trace!(target: "reth", "{}", message),
+                "WARN" => warn!(target: "reth", "{}", message),
+                _ => error!(target: "reth", "{}", line),
+            }
+        } else {
+            // Use the last log level for continuation lines
+            match self.last_log_level.read().unwrap().as_str() {
+                "DEBUG" => debug!(target: "reth", "{}", line),
+                "ERROR" => error!(target: "reth", "{}", line),
+                "INFO" => info!(target: "reth", "{}", line),
+                "TRACE" => trace!(target: "reth", "{}", line),
+                "WARN" => warn!(target: "reth", "{}", line),
+                _ => error!(target: "reth", "{}", line),
+            }
+        }
     }
 
     fn name(&self) -> &str {
@@ -299,6 +332,7 @@ impl RethNode {
             executable_path: "/apps/ethereum-reth/v1.3.8/reth".to_string(),
             discovery_port: self.discovery_port,
             http_port: self.http_port,
+            last_log_level: RwLock::new("INFO".to_string()),
             metrics_port: self.metrics_port,
             network: self.network,
             rpc_port: self.rpc_port,
