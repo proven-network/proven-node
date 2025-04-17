@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         metrics_port: 9001,
         network: EthereumNetwork::Holesky,
         rpc_port: 8551,
-        store_dir: PathBuf::from("./test-data"),
+        store_dir: PathBuf::from("/tmp/ethereum-reth-holesky"),
     });
     node.start().await?;
     info!("Reth node is ready!");

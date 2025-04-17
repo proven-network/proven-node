@@ -8,8 +8,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Create directories for storing Radix Node data and configuration
-    let store_dir = "./test-data".to_string();
-    let config_dir = "./test-config".to_string();
+    let store_dir = "/tmp/radix-node-stokenet-data".to_string();
+    let config_dir = "/tmp/radix-node-stokenet-config".to_string();
 
     println!(
         "Starting Radix Node with data in '{}' and config in '{}'",

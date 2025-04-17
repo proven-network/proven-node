@@ -4,10 +4,6 @@ target/
 target-devcontainer/
 **/target-devcontainer/
 
-# Exclude crates test data
-crates/**/test-data/
-crates/**/test-config/
-
 # Exclude Rust package cache
 **/.cargo/registry/
 **/.cargo/git/

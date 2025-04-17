@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         metrics_port: 9001,
         network: RethNetwork::Holesky,
         rpc_port: 8551,
-        store_dir: PathBuf::from("../ethereum-reth/test-data"),
+        store_dir: PathBuf::from("/tmp/ethereum-reth-holesky"),
     });
     reth_node.start().await?;
     info!("Reth node is ready!");
@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         metrics_port: 5054,
         network: EthereumNetwork::Holesky,
         p2p_port: 10109,
-        store_dir: PathBuf::from("./test-data"),
+        store_dir: PathBuf::from("/tmp/ethereum-lighthouse-holesky"),
     });
     lighthouse_node.start().await?;
     info!("Lighthouse node is ready!");

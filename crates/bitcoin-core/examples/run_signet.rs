@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a directory for storing Bitcoin Core data
     // Note: For a persistent node, you might want to use a fixed directory instead of a temporary one
-    let store_dir = "./test-data".to_string();
+    let store_dir = "/tmp/bitcoin-core-signet".to_string();
 
     println!("Starting Bitcoin Core node in directory: {}", store_dir);
 

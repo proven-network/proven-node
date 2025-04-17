@@ -6,7 +6,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Create a directory for storing Postgres data
-    let store_dir = "./test-data".to_string();
+    let store_dir = "/tmp/postgres-data".to_string();
 
     println!("Starting Postgres node in directory: {}", store_dir);
 
