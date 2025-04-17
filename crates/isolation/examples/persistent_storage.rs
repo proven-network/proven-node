@@ -70,16 +70,16 @@ impl IsolatedApplication for CounterApp {
         "/bin/counter"
     }
 
-    fn name(&self) -> &str {
-        "counter-app"
-    }
-
     fn handle_stdout(&self, line: &str) {
         self.parse_log_line(line);
     }
 
     fn handle_stderr(&self, line: &str) {
         error!(target: "counter-app", "{}", line);
+    }
+
+    fn name(&self) -> &str {
+        "counter-app"
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {

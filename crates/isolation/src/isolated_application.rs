@@ -1,12 +1,22 @@
-use crate::IsolatedProcess;
 use crate::VolumeMount;
 
 use std::error::Error as StdError;
+use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use nix::sys::signal::Signal;
+
+/// Information needed for readiness checks
+#[derive(Clone)]
+pub struct ReadyCheckInfo {
+    /// The IP address of the container
+    pub ip_address: IpAddr,
+
+    /// The process ID
+    pub pid: u32,
+}
 
 /// Trait for applications that can be run in isolation.
 #[async_trait]
@@ -24,20 +34,22 @@ pub trait IsolatedApplication: Send + Sync + 'static {
     /// Returns the executable path
     fn executable(&self) -> &str;
 
-    /// Handles a line of output from stdout
-    fn handle_stdout(&self, line: &str) {
-        tracing::info!("{}: {}", self.name(), line);
-    }
-
     /// Handles a line of output from stderr
     fn handle_stderr(&self, line: &str) {
-        tracing::warn!("{}: {}", self.name(), line);
+        let name = self.name().to_string();
+        tracing::warn!("[{}] {}", name, line);
+    }
+
+    /// Handles a line of output from stdout
+    fn handle_stdout(&self, line: &str) {
+        let name = self.name().to_string();
+        tracing::info!("[{}] {}", name, line);
     }
 
     /// Performs a readiness check for the application
     ///
     /// This can be used to check HTTP endpoints, files, or any other criteria.
-    /// The process parameter provides access to the running process.
+    /// The info parameter provides access to container information needed for checks.
     ///
     /// Return true if the application is ready, false otherwise.
     ///
@@ -45,8 +57,8 @@ pub trait IsolatedApplication: Send + Sync + 'static {
     ///
     /// This function is allowed to return errors, which will be propagated
     /// to the caller.
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
-        Ok(true) // By default, assume the application is ready immediately
+    async fn is_ready_check(&self, _info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+        Ok(true)
     }
 
     /// Returns how often to run the readiness check in milliseconds

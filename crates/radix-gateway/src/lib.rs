@@ -14,7 +14,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
 use serde_json::json;
 use tokio::task::JoinHandle;
@@ -64,10 +64,14 @@ impl IsolatedApplication for RadixGatewayApp {
         error!(target: "radix-gateway", "{}", line);
     }
 
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
         // Check if the service is responding on port 8081
         let client = reqwest::Client::new();
-        match client.get("http://127.0.0.1:8081/health").send().await {
+        match client
+            .get(format!("http://{}:8081/health", info.ip_address))
+            .send()
+            .await
+        {
             Ok(response) => Ok(response.status().is_success()),
             Err(_) => Ok(false), // Not ready yet
         }

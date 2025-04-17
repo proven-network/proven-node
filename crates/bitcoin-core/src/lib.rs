@@ -15,7 +15,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -133,14 +133,10 @@ impl IsolatedApplication for BitcoinCoreApp {
         8192
     }
 
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
         // To check if Bitcoin Core is ready, we'll use the RPC interface
         // to call the `getblockchaininfo` method
-        let rpc_url = if let Some(ip) = process.container_ip() {
-            format!("http://{}:{}", ip, self.rpc_port)
-        } else {
-            format!("http://127.0.0.1:{}", self.rpc_port)
-        };
+        let rpc_url = format!("http://{}:{}", info.ip_address, self.rpc_port);
 
         let client = reqwest::Client::new();
 

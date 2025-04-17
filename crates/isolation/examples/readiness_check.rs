@@ -9,11 +9,13 @@
 
 use std::error::Error as StdError;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use proven_isolation::{IsolatedApplication, IsolatedProcess};
+use proven_isolation::{IsolatedApplication, ReadyCheckInfo};
 use reqwest::StatusCode;
+use tokio::process::Command;
 use tracing::info;
 
 /// The port that the server will listen on
@@ -49,23 +51,12 @@ impl IsolatedApplication for ReadinessCheckServer {
         "/bin/http_server"
     }
 
-    fn name(&self) -> &str {
-        "readiness-check-server"
-    }
-
-    fn volume_mounts(&self) -> Vec<proven_isolation::VolumeMount> {
-        vec![
-            // Mount the test bin directory
-            proven_isolation::VolumeMount::new(&self.test_bin_dir, &PathBuf::from("/bin")),
-        ]
-    }
-
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
         // Check if the HTTP server is ready by making a request
-        static ATTEMPT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
-        let attempt = ATTEMPT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        static ATTEMPT: AtomicU32 = AtomicU32::new(1);
+        let attempt = ATTEMPT.fetch_add(1, Ordering::SeqCst);
 
-        let url = format!("http://127.0.0.1:{}", SERVER_PORT);
+        let url = format!("http://{}:{}", info.ip_address, SERVER_PORT);
         println!("Readiness check attempt {}: Connecting to {}", attempt, url);
 
         match reqwest::get(&url).await {
@@ -102,6 +93,17 @@ impl IsolatedApplication for ReadinessCheckServer {
     fn is_ready_check_max(&self) -> Option<u32> {
         Some(30) // Allow up to 30 seconds for readiness
     }
+
+    fn name(&self) -> &str {
+        "readiness-check-server"
+    }
+
+    fn volume_mounts(&self) -> Vec<proven_isolation::VolumeMount> {
+        vec![
+            // Mount the test bin directory
+            proven_isolation::VolumeMount::new(&self.test_bin_dir, &PathBuf::from("/bin")),
+        ]
+    }
 }
 
 #[tokio::main]
@@ -124,7 +126,7 @@ async fn main() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/readiness_check/server.c");
     let server_path = test_bin_dir_path.join("http_server");
 
-    tokio::process::Command::new("gcc")
+    Command::new("gcc")
         .arg("-static")
         .arg("-o")
         .arg(&server_path)
@@ -142,7 +144,7 @@ async fn main() {
     info!("🔄 Spawning server process and waiting for it to become ready...");
     info!("Readiness will be checked once per second with up to 30 retries");
 
-    let start_time = std::time::Instant::now();
+    let start_time = Instant::now();
     let (process, _join_handle) = proven_isolation::spawn(server)
         .await
         .expect("Failed to spawn server");
@@ -152,17 +154,6 @@ async fn main() {
     // using our is_ready_check implementation
     info!("✅ Server process is now ready! (took {:?})", elapsed);
     info!("Server is running with PID: {:?}", process.pid());
-
-    // Make an HTTP request to the server to demonstrate it's working after the readiness check
-    info!("📡 Making a request to the server...");
-    let url = format!("http://127.0.0.1:{}", SERVER_PORT);
-    let response = reqwest::get(&url)
-        .await
-        .expect("Failed to connect to server");
-
-    info!("📨 Server response: {:?}", response.status());
-    let body = response.text().await.expect("Failed to read response");
-    info!("📄 Response body: \"{}\"", body);
 
     // Wait a bit before shutting down
     info!("⏳ Waiting 2 seconds before shutting down...");

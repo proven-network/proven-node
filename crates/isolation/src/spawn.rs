@@ -1,9 +1,18 @@
 //! Process spawning functionality for isolated applications.
 
+use crate::ReadyCheckInfo;
+use crate::cgroups::{CgroupMemoryConfig, CgroupsController};
+use crate::error::Error;
+use crate::namespaces::NamespaceOptions;
+use crate::network::{VethPair, check_root_permissions};
+use crate::volume_mount::VolumeMount;
+
 use std::collections::HashMap;
-use std::ffi::OsStr;
+use std::error::Error as StdError;
+use std::future::Future;
 use std::net::IpAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::pin::Pin;
 use std::process::{ExitStatus, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,23 +27,10 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
 
-use crate::cgroups::{CgroupMemoryConfig, CgroupsController};
-use crate::error::{Error, Result};
-use crate::namespaces::NamespaceOptions;
-use crate::network::{VethPair, check_root_permissions};
-use crate::{IsolatedApplication, VolumeMount};
-
 /// Options for spawning an isolated process.
-#[derive(Clone)]
 pub struct IsolatedProcessOptions {
-    /// Application for handling process output.
-    pub application: Arc<dyn IsolatedApplication>,
-
     /// The arguments to pass to the executable.
     pub args: Vec<String>,
-
-    /// The root directory for chroot.
-    pub chroot_dir: PathBuf,
 
     /// Environment variables to set.
     pub env: HashMap<String, String>,
@@ -42,96 +38,52 @@ pub struct IsolatedProcessOptions {
     /// The executable to run.
     pub executable: PathBuf,
 
+    /// Readiness check function
+    pub is_ready_check: Box<
+        dyn for<'a> FnMut(
+                ReadyCheckInfo,
+            )
+                -> Pin<Box<dyn Future<Output = Result<bool, Box<dyn StdError>>> + Send>>
+            + Send
+            + Sync
+            + 'static,
+    >,
+
+    /// How often to run readiness check in milliseconds
+    pub is_ready_check_interval_ms: u64,
+
+    /// Maximum number of readiness checks
+    pub is_ready_check_max: Option<u32>,
+
     /// Memory control configuration using cgroups.
     pub memory_control: Option<CgroupMemoryConfig>,
 
     /// Namespace options.
     pub namespaces: NamespaceOptions,
 
-    /// The working directory for the process.
-    pub working_dir: Option<PathBuf>,
+    /// Handler for stderr lines
+    pub stderr_handler: Box<dyn FnMut(&str) + Send + Sync + 'static>,
+
+    /// Handler for stdout lines
+    pub stdout_handler: Box<dyn FnMut(&str) + Send + Sync + 'static>,
+
+    /// Signal to use for shutdown
+    pub shutdown_signal: Signal,
+
+    /// Timeout for graceful shutdown
+    pub shutdown_timeout: Duration,
+
+    /// TCP ports to forward
+    pub tcp_ports: Vec<u16>,
+
+    /// UDP ports to forward
+    pub udp_ports: Vec<u16>,
 
     /// Volume mounts to make available to the process
     pub volume_mounts: Vec<VolumeMount>,
-}
 
-impl std::fmt::Debug for IsolatedProcessOptions {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("IsolatedProcessOptions")
-            .field("application", &format!("Arc<dyn IsolatedApplication>"))
-            .field("args", &self.args)
-            .field("chroot_dir", &self.chroot_dir)
-            .field("env", &self.env)
-            .field("executable", &self.executable)
-            .field("memory_control", &self.memory_control)
-            .field("namespaces", &self.namespaces)
-            .field("working_dir", &self.working_dir)
-            .field("volume_mounts", &self.volume_mounts)
-            .finish()
-    }
-}
-
-impl IsolatedProcessOptions {
-    /// Creates a new `IsolatedProcessOptions`.
-    #[must_use]
-    pub fn new<P: AsRef<Path>, A: AsRef<OsStr>>(
-        application: Arc<dyn IsolatedApplication>,
-        executable: P,
-        args: impl IntoIterator<Item = A>,
-    ) -> Self {
-        // Generate a random string for the chroot directory
-        let chroot_dir = format!("/tmp/chroot/{}", uuid::Uuid::new_v4().to_string());
-
-        Self {
-            application,
-            args: args
-                .into_iter()
-                .map(|a| a.as_ref().to_string_lossy().to_string())
-                .collect(),
-            chroot_dir: PathBuf::from(chroot_dir),
-            env: HashMap::new(),
-            executable: executable.as_ref().to_path_buf(),
-            memory_control: None,
-            namespaces: NamespaceOptions::default(),
-            working_dir: None,
-            volume_mounts: Vec::new(),
-        }
-    }
-
-    /// Sets the working directory for the process.
-    #[must_use]
-    pub fn with_working_dir<P: AsRef<Path>>(mut self, working_dir: P) -> Self {
-        self.working_dir = Some(working_dir.as_ref().to_path_buf());
-        self
-    }
-
-    /// Sets an environment variable for the process.
-    #[must_use]
-    pub fn with_env<K: Into<String>, V: Into<String>>(mut self, key: K, value: V) -> Self {
-        self.env.insert(key.into(), value.into());
-        self
-    }
-
-    /// Sets the namespace options for the process.
-    #[must_use]
-    pub fn with_namespaces(mut self, namespaces: NamespaceOptions) -> Self {
-        self.namespaces = namespaces;
-        self
-    }
-
-    /// Sets the memory control configuration for the process.
-    #[must_use]
-    pub fn with_memory_control(mut self, memory_control: CgroupMemoryConfig) -> Self {
-        self.memory_control = Some(memory_control);
-        self
-    }
-
-    /// Sets the volume mounts for the process
-    #[must_use]
-    pub fn with_volume_mounts(mut self, volume_mounts: Vec<VolumeMount>) -> Self {
-        self.volume_mounts = volume_mounts;
-        self
-    }
+    /// The working directory for the process.
+    pub working_dir: Option<PathBuf>,
 }
 
 /// Represents a running isolated process.
@@ -194,7 +146,7 @@ impl IsolatedProcess {
     /// # Errors
     ///
     /// Returns an error if the signal could not be sent.
-    pub fn signal(&self, signal: Signal) -> Result<()> {
+    pub fn signal(&self, signal: Signal) -> Result<(), Error> {
         let pid = Pid::from_raw(self.pid as i32);
         signal::kill(pid, signal).map_err(|e| {
             Error::Io(
@@ -209,7 +161,7 @@ impl IsolatedProcess {
     /// # Errors
     ///
     /// Returns an error if the process could not be shut down.
-    pub async fn shutdown(&self) -> Result<()> {
+    pub async fn shutdown(&self) -> Result<(), Error> {
         info!("Shutting down process");
 
         self.shutdown_token.cancel();
@@ -225,7 +177,7 @@ impl IsolatedProcess {
     /// # Errors
     ///
     /// Returns an error if the memory usage could not be retrieved.
-    pub fn current_memory_usage(&self) -> Result<Option<usize>> {
+    pub fn current_memory_usage(&self) -> Result<Option<usize>, Error> {
         if let Some(ref controller) = self.cgroups_controller {
             controller.current_memory_usage()
         } else {
@@ -238,7 +190,7 @@ impl IsolatedProcess {
     /// # Errors
     ///
     /// Returns an error if the memory usage could not be retrieved.
-    pub fn current_memory_usage_mb(&self) -> Result<Option<f64>> {
+    pub fn current_memory_usage_mb(&self) -> Result<Option<f64>, Error> {
         if let Some(bytes) = self.current_memory_usage()? {
             // Convert bytes to MB
             let mb = bytes as f64 / (1024.0 * 1024.0);
@@ -257,21 +209,142 @@ impl IsolatedProcess {
 }
 
 /// Spawns isolated processes.
-#[derive(Debug)]
 pub struct IsolatedProcessSpawner {
-    /// Options for the process.
-    pub options: IsolatedProcessOptions,
+    /// The arguments to pass to the executable.
+    pub args: Vec<String>,
+
+    /// The root directory for chroot.
+    pub chroot_dir: PathBuf,
+
+    /// Environment variables to set.
+    pub env: HashMap<String, String>,
+
+    /// The executable to run.
+    pub executable: PathBuf,
+
+    /// Readiness check function
+    pub is_ready_check: Box<
+        dyn for<'a> FnMut(
+                ReadyCheckInfo,
+            )
+                -> Pin<Box<dyn Future<Output = Result<bool, Box<dyn StdError>>> + Send>>
+            + Send
+            + Sync
+            + 'static,
+    >,
+
+    /// How often to run readiness check in milliseconds
+    pub is_ready_check_interval_ms: u64,
+
+    /// Maximum number of readiness checks
+    pub is_ready_check_max: Option<u32>,
+
+    /// Memory control configuration using cgroups.
+    pub memory_control: Option<CgroupMemoryConfig>,
+
+    /// Namespace options.
+    pub namespaces: NamespaceOptions,
+
+    /// Handler for stderr lines
+    pub stderr_handler: Box<dyn FnMut(&str) + Send + Sync + 'static>,
+
+    /// Handler for stdout lines
+    pub stdout_handler: Box<dyn FnMut(&str) + Send + Sync + 'static>,
+
+    /// Signal to use for shutdown
+    pub shutdown_signal: Signal,
+
+    /// Timeout for graceful shutdown
+    pub shutdown_timeout: Duration,
+
+    /// TCP ports to forward
+    pub tcp_ports: Vec<u16>,
+
+    /// UDP ports to forward
+    pub udp_ports: Vec<u16>,
 
     /// The virtual ethernet pair for network communication between host and container
     pub veth_pair: Option<Arc<VethPair>>,
+
+    /// Volume mounts to make available to the process
+    pub volume_mounts: Vec<VolumeMount>,
+
+    /// The working directory for the process.
+    pub working_dir: Option<PathBuf>,
+}
+
+impl std::fmt::Debug for IsolatedProcessSpawner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IsolatedProcessSpawner")
+            .field("args", &self.args)
+            .field("chroot_dir", &self.chroot_dir)
+            .field("env", &self.env)
+            .field("executable", &self.executable)
+            .field("is_ready_check", &"<function>")
+            .field(
+                "is_ready_check_interval_ms",
+                &self.is_ready_check_interval_ms,
+            )
+            .field("is_ready_check_max", &self.is_ready_check_max)
+            .field("memory_control", &self.memory_control)
+            .field("namespaces", &self.namespaces)
+            .field("stderr_handler", &"<function>")
+            .field("stdout_handler", &"<function>")
+            .field("shutdown_signal", &self.shutdown_signal)
+            .field("shutdown_timeout", &self.shutdown_timeout)
+            .field("tcp_ports", &self.tcp_ports)
+            .field("udp_ports", &self.udp_ports)
+            .field("veth_pair", &self.veth_pair)
+            .field("volume_mounts", &self.volume_mounts)
+            .field("working_dir", &self.working_dir)
+            .finish()
+    }
 }
 
 impl IsolatedProcessSpawner {
     /// Creates a new `IsolatedProcessSpawner`.
     #[must_use]
-    pub fn new(options: IsolatedProcessOptions) -> Self {
+    pub fn new(
+        IsolatedProcessOptions {
+            args,
+            env,
+            executable,
+            memory_control,
+            namespaces,
+            working_dir,
+            volume_mounts,
+            tcp_ports,
+            udp_ports,
+            shutdown_signal,
+            shutdown_timeout,
+            stdout_handler,
+            stderr_handler,
+            is_ready_check,
+            is_ready_check_interval_ms,
+            is_ready_check_max,
+        }: IsolatedProcessOptions,
+    ) -> Self {
+        // Generate a random string for the chroot directory
+        let chroot_dir = format!("/tmp/chroot/{}", uuid::Uuid::new_v4().to_string());
+
         Self {
-            options,
+            args,
+            chroot_dir: PathBuf::from(chroot_dir),
+            env,
+            executable,
+            memory_control,
+            namespaces,
+            working_dir,
+            volume_mounts,
+            tcp_ports,
+            udp_ports,
+            shutdown_signal,
+            shutdown_timeout,
+            stdout_handler,
+            stderr_handler,
+            is_ready_check,
+            is_ready_check_interval_ms,
+            is_ready_check_max,
             veth_pair: None,
         }
     }
@@ -280,11 +353,11 @@ impl IsolatedProcessSpawner {
     ///
     /// This is only available on Linux.
     #[cfg(target_os = "linux")]
-    fn build_unshare_args(&self, options: &IsolatedProcessOptions) -> Result<Vec<String>> {
+    fn build_unshare_args(&self) -> Result<Vec<String>, Error> {
         let mut args = Vec::new();
 
         // Add namespace arguments using the options.namespaces.to_unshare_args() helper
-        args.extend(options.namespaces.to_unshare_args());
+        args.extend(self.namespaces.to_unshare_args());
 
         // Instead of directly executing the target program, we'll use /bin/sh as an intermediate
         args.push("--".to_string());
@@ -300,61 +373,61 @@ impl IsolatedProcessSpawner {
         // Create basic directory structure
         setup_cmd.push_str(&format!(
             "mkdir -p {}/bin {}/lib {}/usr/bin {}/usr/lib {}/tmp; ",
-            options.chroot_dir.display(),
-            options.chroot_dir.display(),
-            options.chroot_dir.display(),
-            options.chroot_dir.display(),
-            options.chroot_dir.display()
+            self.chroot_dir.display(),
+            self.chroot_dir.display(),
+            self.chroot_dir.display(),
+            self.chroot_dir.display(),
+            self.chroot_dir.display()
         ));
 
         // Copy essential command-line utilities used by many applications
         setup_cmd.push_str(&format!("for cmd in tr xargs sh uname echo cat grep sed awk; do cp $(which $cmd) {}/bin/ || cp $(which $cmd) {}/usr/bin/ || true; done; ",
-            options.chroot_dir.display(),
-            options.chroot_dir.display()));
+            self.chroot_dir.display(),
+            self.chroot_dir.display()));
 
         // Copy SSL certificates (needed by many applications for TLS)
         setup_cmd.push_str(&format!(
             "mkdir -p {}/etc/ssl/certs; cp -r /etc/ssl/certs/* {}/etc/ssl/certs/ || true; ",
-            options.chroot_dir.display(),
-            options.chroot_dir.display()
+            self.chroot_dir.display(),
+            self.chroot_dir.display()
         ));
 
         // Create /etc/nsswitch.conf for proper name resolution
         setup_cmd.push_str(&format!(
             "mkdir -p {}/etc; echo 'hosts: files dns' > {}/etc/nsswitch.conf; ",
-            options.chroot_dir.display(),
-            options.chroot_dir.display()
+            self.chroot_dir.display(),
+            self.chroot_dir.display()
         ));
 
         // Create mock /etc/passwd and /etc/group
         setup_cmd.push_str(&format!(
             "echo 'root:x:0:0:root:/usr/sbin/nologin' > {}/etc/passwd; ",
-            options.chroot_dir.display()
+            self.chroot_dir.display()
         ));
 
         setup_cmd.push_str(&format!(
             "echo 'root:x:0:root' > {}/etc/group; ",
-            options.chroot_dir.display()
+            self.chroot_dir.display()
         ));
 
         // Mount the host library directories as read-only
         setup_cmd.push_str(&format!(
             "mount --bind -o ro /lib {}/lib || true; ",
-            options.chroot_dir.display()
+            self.chroot_dir.display()
         ));
 
         setup_cmd.push_str(&format!(
             "mount --bind -o ro /usr/lib {}/usr/lib || true; ",
-            options.chroot_dir.display()
+            self.chroot_dir.display()
         ));
 
         // Mount /dev/null, /dev/zero, /dev/random, /dev/urandom
-        setup_cmd.push_str(&format!("mkdir -p {}/dev; ", options.chroot_dir.display()));
+        setup_cmd.push_str(&format!("mkdir -p {}/dev; ", self.chroot_dir.display()));
 
         for dev in ["null", "zero", "random", "urandom"] {
             setup_cmd.push_str(&format!(
                 "touch {0}/dev/{1}; mount --bind /dev/{1} {0}/dev/{1} || true; ",
-                options.chroot_dir.display(),
+                self.chroot_dir.display(),
                 dev
             ));
         }
@@ -362,48 +435,48 @@ impl IsolatedProcessSpawner {
         // Create /dev/mqueue
         setup_cmd.push_str(&format!(
             "mkdir -p {}/dev/mqueue; mount -t mqueue none {}/dev/mqueue || true; ",
-            options.chroot_dir.display(),
-            options.chroot_dir.display()
+            self.chroot_dir.display(),
+            self.chroot_dir.display()
         ));
 
         // Create /dev/pts
         setup_cmd.push_str(&format!(
             "mkdir -p {}/dev/pts; mount -t devpts devpts {}/dev/pts || true; ",
-            options.chroot_dir.display(),
-            options.chroot_dir.display()
+            self.chroot_dir.display(),
+            self.chroot_dir.display()
         ));
 
         // Create tmpfs for /dev/shm
         // TODO: Make this configurable based on application needs
         setup_cmd.push_str(&format!(
             "mkdir -p {}/dev/shm; mount -t tmpfs -o size=256m tmpfs {}/dev/shm || true; ",
-            options.chroot_dir.display(),
-            options.chroot_dir.display()
+            self.chroot_dir.display(),
+            self.chroot_dir.display()
         ));
 
         // Create tmpfs for /tmp
         // TODO: Make this configurable based on application needs
         setup_cmd.push_str(&format!(
             "mkdir -p {}/tmp; mount -t tmpfs -o size=4g,mode=1777 tmpfs {}/tmp || true; ",
-            options.chroot_dir.display(),
-            options.chroot_dir.display()
+            self.chroot_dir.display(),
+            self.chroot_dir.display()
         ));
 
         // Create /proc
         setup_cmd.push_str(&format!(
             "mkdir -p {}/proc; mount -t proc proc {}/proc || true; ",
-            options.chroot_dir.display(),
-            options.chroot_dir.display()
+            self.chroot_dir.display(),
+            self.chroot_dir.display()
         ));
 
         // Set up volume mounts
-        for mount in &options.volume_mounts {
+        for mount in &self.volume_mounts {
             // Strip the leading slash if present and join with chroot dir
             let rel_path = mount
                 .container_path
                 .strip_prefix("/")
                 .unwrap_or(&mount.container_path);
-            let container_path = options.chroot_dir.join(rel_path);
+            let container_path = self.chroot_dir.join(rel_path);
 
             // Create mount point directories
             setup_cmd.push_str(&format!("mkdir -p {}; ", container_path.display()));
@@ -425,37 +498,37 @@ impl IsolatedProcessSpawner {
         }
 
         // Set env variables
-        for (key, value) in &options.env {
+        for (key, value) in &self.env {
             setup_cmd.push_str(&format!("export {}=\"{}\"; ", key, value));
         }
 
         // Use the full path inside the chroot
-        let exec_path = options.executable.to_string_lossy();
+        let exec_path = self.executable.to_string_lossy();
 
         // Execute the command inside the chroot (with working directory if specified)
-        if let Some(ref working_dir) = options.working_dir {
+        if let Some(ref working_dir) = self.working_dir {
             // Change to the working directory before executing the command
             setup_cmd.push_str(&format!(
                 "exec /usr/sbin/chroot {} sh -c \"cd {} && exec {}{}\"",
-                options.chroot_dir.display(),
+                self.chroot_dir.display(),
                 working_dir.display(),
                 exec_path,
-                if options.args.is_empty() {
+                if self.args.is_empty() {
                     "".to_string()
                 } else {
-                    format!(" {}", options.args.join(" "))
+                    format!(" {}", self.args.join(" "))
                 }
             ));
         } else {
             // Execute the command directly
             setup_cmd.push_str(&format!(
                 "exec /usr/sbin/chroot {} {}{}",
-                options.chroot_dir.display(),
+                self.chroot_dir.display(),
                 exec_path,
-                if options.args.is_empty() {
+                if self.args.is_empty() {
                     "".to_string()
                 } else {
-                    format!(" {}", options.args.join(" "))
+                    format!(" {}", self.args.join(" "))
                 }
             ));
         }
@@ -474,15 +547,14 @@ impl IsolatedProcessSpawner {
     /// # Errors
     ///
     /// Returns an error if the process could not be spawned.
-    pub async fn spawn(&mut self) -> Result<(IsolatedProcess, JoinHandle<()>)> {
-        let options = self.options.clone();
+    pub async fn spawn(&mut self) -> Result<(IsolatedProcess, JoinHandle<()>), Error> {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
 
         #[cfg(target_os = "linux")]
         let mut cmd = {
             // Prepare the command to be executed with appropriate isolation
-            let unshare_args = self.build_unshare_args(&options)?;
+            let unshare_args = self.build_unshare_args()?;
 
             // Construct the full command
             let mut cmd = Command::new("unshare");
@@ -499,16 +571,16 @@ impl IsolatedProcessSpawner {
             );
 
             // Construct the direct command
-            let mut cmd = Command::new(&options.executable);
-            cmd.args(&options.args);
+            let mut cmd = Command::new(&self.executable);
+            cmd.args(&self.args);
 
             // Set the working directory if specified
-            if let Some(ref working_dir) = options.working_dir {
+            if let Some(ref working_dir) = self.working_dir {
                 cmd.current_dir(working_dir);
             }
 
             // Set environment variables
-            for (key, value) in &options.env {
+            for (key, value) in &self.env {
                 cmd.env(key, value);
             }
 
@@ -529,13 +601,13 @@ impl IsolatedProcessSpawner {
             .spawn()
             .map_err(|e| Error::Io("Failed to spawn process", e))?;
 
-        // Get the process ID - this should always be available for a successfully spawned process
+        // Get the process ID
         let mut pid = child.id().ok_or_else(|| {
             Error::SpawnProcess("No PID available for spawned process".to_string())
         })?;
 
-        // If using PID namespace process will be forked se find process with `pgrep -P [PARENT_PID]`
-        if options.namespaces.use_pid {
+        // If using PID namespace process will be forked so find process with `pgrep -P [PARENT_PID]`
+        if self.namespaces.use_pid {
             debug!("Finding process with pgrep -P {}", pid);
 
             // Add retry logic to find the child PID
@@ -588,45 +660,34 @@ impl IsolatedProcessSpawner {
         debug!("Process spawned with PID: {}", pid);
 
         // Setup network connectivity if network namespace is used
-        let veth_pair = if options.namespaces.use_network {
+        if self.namespaces.use_network {
             // Check if we have root permissions for network setup
             if !check_root_permissions()? {
                 warn!("Network namespaces require root permissions for port forwarding setup");
-                None
             } else {
-                // Set up the veth pair with port lists from application
-                match VethPair::new(
-                    pid,
-                    options.application.tcp_port_forwards(),
-                    options.application.udp_port_forwards(),
-                )
-                .await
-                {
+                // Set up the veth pair with port lists
+                match VethPair::new(pid, self.tcp_ports.clone(), self.udp_ports.clone()).await {
                     Ok(veth) => {
                         let veth = Arc::new(veth);
                         self.veth_pair = Some(Arc::clone(&veth));
-                        Some(veth)
                     }
                     Err(e) => {
                         warn!("Failed to set up network: {}", e);
-                        None
                     }
                 }
             }
-        } else {
-            None
-        };
+        }
 
         // Create resolv.conf for DNS resolution inside chroot if network namespace is used
-        if let Some(veth) = veth_pair.as_ref() {
-            let etc_dir = options.chroot_dir.join("etc");
+        if let Some(veth) = self.veth_pair.as_ref() {
+            let etc_dir = self.chroot_dir.join("etc");
             let resolv_conf_path = etc_dir.join("resolv.conf");
 
             // Create /etc directory if it doesn't exist
             if let Err(e) = std::fs::create_dir_all(&etc_dir) {
                 warn!("Failed to create /etc directory in chroot: {}", e);
             } else {
-                // Point to the host's veth IP - DNS requests will be forwarded to actual DNS servers via iptables
+                // Point to the host's veth IP
                 let resolv_conf_content = format!("nameserver {}\n", veth.host_ip());
                 if let Err(e) = std::fs::write(&resolv_conf_path, resolv_conf_content) {
                     warn!("Failed to write resolv.conf in chroot: {}", e);
@@ -645,22 +706,22 @@ impl IsolatedProcessSpawner {
 
         // Start a task to handle stdout from the child process
         if let Some(stdout) = stdout {
-            let app = Arc::clone(&options.application);
+            let mut stdout_handler = std::mem::replace(&mut self.stdout_handler, Box::new(|_| {}));
             task_tracker.spawn(async move {
                 let mut lines = BufReader::new(stdout).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    app.handle_stdout(&line);
+                    stdout_handler(&line);
                 }
             });
         }
 
         // Start a task to handle stderr from the child process
         if let Some(stderr) = stderr {
-            let app = Arc::clone(&options.application);
+            let mut stderr_handler = std::mem::replace(&mut self.stderr_handler, Box::new(|_| {}));
             task_tracker.spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    app.handle_stderr(&line);
+                    stderr_handler(&line);
                 }
             });
         }
@@ -670,10 +731,11 @@ impl IsolatedProcessSpawner {
 
         // Monitor child process
         let pid_for_task = pid;
-        let shutdown_signal = options.application.shutdown_signal();
-        let shutdown_timeout = options.application.shutdown_timeout();
+        let shutdown_signal = self.shutdown_signal;
+        let shutdown_timeout = self.shutdown_timeout;
         let shutdown_token_for_task = shutdown_token.clone();
         let exit_status_for_task = exit_status.clone();
+        let chroot_dir = self.chroot_dir.clone();
         let join_handle = tokio::task::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
@@ -741,7 +803,7 @@ impl IsolatedProcessSpawner {
                     }
 
                     // Remove the chroot directory
-                    if let Err(err) = std::fs::remove_dir_all(&options.chroot_dir) {
+                    if let Err(err) = std::fs::remove_dir_all(&chroot_dir) {
                         error!("Failed to remove chroot directory: {}", err);
                     }
                 }
@@ -751,7 +813,7 @@ impl IsolatedProcessSpawner {
         task_tracker.close();
 
         // Create a cgroups controller if memory control is configured
-        let cgroups_controller = if let Some(ref memory_config) = options.memory_control {
+        let cgroups_controller = if let Some(ref memory_config) = self.memory_control {
             match CgroupsController::new(pid, memory_config) {
                 Ok(controller) => {
                     if controller.is_active() {
@@ -778,7 +840,7 @@ impl IsolatedProcessSpawner {
             pid,
             shutdown_token,
             task_tracker,
-            veth_pair,
+            veth_pair: self.veth_pair.clone(),
         };
 
         // We might need to compensate for the network setup sleep before starting the readiness checks
@@ -793,8 +855,8 @@ impl IsolatedProcessSpawner {
         }
 
         // Perform readiness checks
-        let interval = Duration::from_millis(options.application.is_ready_check_interval_ms());
-        let max_attempts = options.application.is_ready_check_max();
+        let interval = Duration::from_millis(self.is_ready_check_interval_ms);
+        let max_attempts = self.is_ready_check_max;
         let mut attempts = 0;
 
         debug!(
@@ -811,7 +873,39 @@ impl IsolatedProcessSpawner {
                 ));
             }
 
-            match options.application.is_ready_check(&process).await {
+            // Wait for container IP if using network namespace
+            let ready_check_info = if self.namespaces.use_network {
+                match self.veth_pair.as_ref().map(|v| v.container_ip()) {
+                    Some(ip) => ReadyCheckInfo {
+                        ip_address: ip,
+                        pid,
+                    },
+                    None => {
+                        attempts += 1;
+                        if let Some(max) = max_attempts {
+                            if attempts >= max {
+                                return Err(Error::ReadinessCheck(
+                                    "Container IP not available after max attempts".to_string(),
+                                ));
+                            }
+                        }
+                        debug!(
+                            "Container IP not available yet, attempt {}, waiting...",
+                            attempts
+                        );
+                        tokio::time::sleep(interval).await;
+                        continue;
+                    }
+                }
+            } else {
+                // If not using network namespace, use localhost
+                ReadyCheckInfo {
+                    ip_address: std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+                    pid,
+                }
+            };
+
+            match (self.is_ready_check)(ready_check_info).await {
                 Ok(true) => {
                     debug!("Application reported ready after {} attempts", attempts + 1);
                     break;
@@ -837,16 +931,4 @@ impl IsolatedProcessSpawner {
 
         Ok((process, join_handle))
     }
-}
-
-/// Spawn an isolated process with the given options.
-///
-/// # Errors
-///
-/// Returns an error if the process could not be spawned.
-pub async fn spawn_process(
-    options: IsolatedProcessOptions,
-) -> Result<(IsolatedProcess, JoinHandle<()>)> {
-    let mut spawner = IsolatedProcessSpawner::new(options);
-    spawner.spawn().await
 }

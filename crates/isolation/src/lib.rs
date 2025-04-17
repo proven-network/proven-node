@@ -53,9 +53,8 @@
 #![allow(clippy::redundant_pub_crate)]
 
 use std::sync::Arc;
-
 use tokio::task::JoinHandle;
-use tracing::{debug, warn};
+use tracing::warn;
 
 mod cgroups;
 mod error;
@@ -67,10 +66,10 @@ mod volume_mount;
 
 pub use cgroups::{CgroupMemoryConfig, CgroupsController};
 pub use error::{Error, Result};
-pub use isolated_application::IsolatedApplication;
+pub use isolated_application::{IsolatedApplication, ReadyCheckInfo};
 pub use namespaces::{IsolationNamespaces, NamespaceOptions};
 pub use network::{VethPair, check_root_permissions};
-pub use spawn::{IsolatedProcess, IsolatedProcessOptions, IsolatedProcessSpawner, spawn_process};
+pub use spawn::{IsolatedProcess, IsolatedProcessOptions, IsolatedProcessSpawner};
 pub use volume_mount::VolumeMount;
 
 /// Spawns an isolated process for the given application.
@@ -128,20 +127,6 @@ pub use volume_mount::VolumeMount;
 pub async fn spawn<A: IsolatedApplication>(
     application: A,
 ) -> Result<(IsolatedProcess, JoinHandle<()>)> {
-    let application: Arc<dyn IsolatedApplication> = Arc::new(application);
-    let mut options = IsolatedProcessOptions::new(
-        application.clone(),
-        application.executable(),
-        application.args(),
-    );
-
-    // Apply configuration from the application
-    if let Some(working_dir) = application.working_dir() {
-        options = options.with_working_dir(working_dir);
-    }
-
-    options = options.with_volume_mounts(application.volume_mounts());
-
     // Configure namespaces based on application preferences
     let mut namespace_options = NamespaceOptions::default();
     if !application.use_user_namespace() {
@@ -162,25 +147,50 @@ pub async fn spawn<A: IsolatedApplication>(
     if !application.use_ipc_namespace() {
         namespace_options.use_ipc = false;
     }
-    options = options.with_namespaces(namespace_options);
-
-    // Set environment variables
-    for (key, value) in application.env() {
-        options = options.with_env(key, value);
-    }
 
     // Configure memory limits if enabled
-    if application.use_memory_limits() {
-        let memory_config = CgroupMemoryConfig {
+    let memory_control = if application.use_memory_limits() {
+        Some(CgroupMemoryConfig {
             name: application.name().to_string(),
             limit_mb: application.memory_limit_mb(),
             min_mb: application.memory_min_mb(),
-        };
-        options = options.with_memory_control(memory_config);
-    }
+        })
+    } else {
+        None
+    };
 
-    // Wait for application to be ready for configuration
-    debug!("Preparing configuration for {}", application.name());
+    let app = Arc::new(application);
+
+    let options = IsolatedProcessOptions {
+        args: app.args(),
+        env: app.env().into_iter().collect(),
+        executable: app.executable().into(),
+        memory_control,
+        namespaces: namespace_options,
+        is_ready_check: {
+            let app = Arc::clone(&app);
+            Box::new(move |info| {
+                let app = Arc::clone(&app);
+                Box::pin(async move { app.is_ready_check(info).await })
+            })
+        },
+        is_ready_check_interval_ms: app.is_ready_check_interval_ms(),
+        is_ready_check_max: app.is_ready_check_max(),
+        shutdown_signal: app.shutdown_signal(),
+        shutdown_timeout: app.shutdown_timeout(),
+        stdout_handler: {
+            let app = Arc::clone(&app);
+            Box::new(move |line| app.handle_stdout(line))
+        },
+        stderr_handler: {
+            let app = Arc::clone(&app);
+            Box::new(move |line| app.handle_stderr(line))
+        },
+        tcp_ports: app.tcp_port_forwards(),
+        udp_ports: app.udp_port_forwards(),
+        volume_mounts: app.volume_mounts(),
+        working_dir: app.working_dir(),
+    };
 
     let mut spawner = IsolatedProcessSpawner::new(options);
     spawner.spawn().await

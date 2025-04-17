@@ -5,12 +5,12 @@
 //! 2. Working with an application that binds to a port
 //! 3. Ensuring we can access the UDP server from the host
 
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
+use proven_isolation::{IsolatedApplication, ReadyCheckInfo, VolumeMount};
 use tracing::{debug, info};
 
 /// The port that the UDP server will listen on
@@ -47,7 +47,7 @@ impl IsolatedApplication for UdpEchoServer {
 
     async fn is_ready_check(
         &self,
-        process: &IsolatedProcess,
+        info: ReadyCheckInfo,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         // Check if the UDP server is ready by sending a test packet
         static ATTEMPT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
@@ -61,11 +61,7 @@ impl IsolatedApplication for UdpEchoServer {
         }
 
         // Use the container's IP from the process
-        let addr = if let Some(ip) = process.container_ip() {
-            SocketAddr::new(ip, SERVER_PORT)
-        } else {
-            return Ok(false);
-        };
+        let addr = SocketAddr::new(info.ip_address, SERVER_PORT);
 
         debug!(
             "Readiness check attempt {}: Connecting to {}",
@@ -186,7 +182,7 @@ async fn main() {
         SERVER_PORT
     );
 
-    let start_time = std::time::Instant::now();
+    let start_time = Instant::now();
     let (process, _join_handle) = proven_isolation::spawn(server)
         .await
         .expect("Failed to spawn server");
@@ -232,7 +228,7 @@ async fn main() {
     let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind socket");
     socket
         .connect(SocketAddr::new(
-            std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
             SERVER_PORT,
         ))
         .expect("Failed to connect to localhost");

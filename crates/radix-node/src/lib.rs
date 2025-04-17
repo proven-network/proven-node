@@ -23,7 +23,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 
 // Default filenames
 static CONFIG_FILENAME: &str = "radix-node.config";
@@ -149,22 +149,16 @@ impl IsolatedApplication for RadixNodeApp {
         self.handle_stdout(line);
     }
 
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
         let client = Client::new();
         let payload = format!(
             "{{\"network\":\"{}\"}}",
             self.network_definition.logical_name
         );
 
-        let ip_address = if let Some(ip) = process.container_ip() {
-            ip.to_string()
-        } else {
-            "127.0.0.1".to_string()
-        };
-
         let url = format!(
             "http://{}:{}/core/status/network-status",
-            ip_address, self.http_port
+            info.ip_address, self.http_port
         );
 
         let response = match client

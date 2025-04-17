@@ -6,10 +6,10 @@
 //! 3. Ensuring we can access the HTTP server from the host
 
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
+use proven_isolation::{IsolatedApplication, ReadyCheckInfo};
 use reqwest::StatusCode;
 use tracing::{debug, info};
 
@@ -41,18 +41,14 @@ impl IsolatedApplication for PortForwardServer {
 
     async fn is_ready_check(
         &self,
-        process: &IsolatedProcess,
+        info: ReadyCheckInfo,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         // Check if the HTTP server is ready by making a request
         static ATTEMPT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
         let attempt = ATTEMPT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-        // Use the container's IP from the process
-        let url = if let Some(ip) = process.container_ip() {
-            format!("http://{}:{}", ip, SERVER_PORT)
-        } else {
-            format!("http://127.0.0.1:{}", SERVER_PORT)
-        };
+        // Use the container's IP from the info
+        let url = format!("http://{}:{}", info.ip_address, SERVER_PORT);
         debug!("Readiness check attempt {}: Connecting to {}", attempt, url);
 
         match reqwest::get(&url).await {
@@ -98,8 +94,11 @@ impl IsolatedApplication for PortForwardServer {
         vec![SERVER_PORT]
     }
 
-    fn volume_mounts(&self) -> Vec<VolumeMount> {
-        vec![VolumeMount::new(&self.test_bin_dir, &PathBuf::from("/bin"))]
+    fn volume_mounts(&self) -> Vec<proven_isolation::VolumeMount> {
+        vec![proven_isolation::VolumeMount::new(
+            &self.test_bin_dir,
+            &PathBuf::from("/bin"),
+        )]
     }
 }
 
@@ -146,7 +145,7 @@ async fn main() {
         SERVER_PORT
     );
 
-    let start_time = std::time::Instant::now();
+    let start_time = Instant::now();
     let (process, _join_handle) = proven_isolation::spawn(server)
         .await
         .expect("Failed to spawn server");

@@ -15,7 +15,7 @@ use std::path::Path;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
 use tempfile::TempDir;
 use tokio::process::Command;
@@ -86,12 +86,8 @@ impl IsolatedApplication for PostgresApp {
         self.handle_stdout(line) // Postgres sends all logs to stderr, so handle them the same way
     }
 
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
-        let ip_address = if let Some(ip) = process.container_ip() {
-            &ip.to_string()
-        } else {
-            "127.0.0.1"
-        };
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+        let ip_address = info.ip_address.to_string();
 
         debug!(
             "Checking if Postgres is ready on {}:{}",

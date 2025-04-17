@@ -16,7 +16,7 @@ use std::process::Stdio;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
 use serde_json::json;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -49,10 +49,6 @@ impl IsolatedApplication for RadixAggregatorApp {
         AGGREGATOR_PATH
     }
 
-    fn name(&self) -> &str {
-        "radix-aggregator"
-    }
-
     fn handle_stdout(&self, line: &str) {
         // Use the static log pattern to parse log lines
         if let Some(caps) = LOG_PATTERN.captures(line) {
@@ -76,10 +72,15 @@ impl IsolatedApplication for RadixAggregatorApp {
         error!(target: "radix-aggregator", "{}", line);
     }
 
-    async fn is_ready_check(&self, _process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
         // Check if the service is responding on port 8080
         let client = reqwest::Client::new();
-        match client.get("http://127.0.0.1:8080/health").send().await {
+
+        match client
+            .get(format!("http://{}:8080/health", info.ip_address))
+            .send()
+            .await
+        {
             Ok(response) => Ok(response.status().is_success()),
             Err(_) => Ok(false), // Not ready yet
         }
@@ -89,12 +90,8 @@ impl IsolatedApplication for RadixAggregatorApp {
         5000 // Check every 5 seconds
     }
 
-    fn volume_mounts(&self) -> Vec<VolumeMount> {
-        vec![
-            VolumeMount::new(AGGREGATOR_DIR, AGGREGATOR_DIR),
-            VolumeMount::new(MIGRATIONS_DIR, MIGRATIONS_DIR),
-            VolumeMount::new("/usr/share/dotnet", "/usr/share/dotnet"),
-        ]
+    fn name(&self) -> &str {
+        "radix-aggregator"
     }
 
     fn memory_limit_mb(&self) -> usize {
@@ -107,6 +104,14 @@ impl IsolatedApplication for RadixAggregatorApp {
 
     fn working_dir(&self) -> Option<PathBuf> {
         Some(PathBuf::from(AGGREGATOR_DIR))
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![
+            VolumeMount::new(AGGREGATOR_DIR, AGGREGATOR_DIR),
+            VolumeMount::new(MIGRATIONS_DIR, MIGRATIONS_DIR),
+            VolumeMount::new("/usr/share/dotnet", "/usr/share/dotnet"),
+        ]
     }
 }
 

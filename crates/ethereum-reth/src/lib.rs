@@ -17,7 +17,7 @@ use std::{error::Error as StdError, net::IpAddr};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
-use proven_isolation::{IsolatedApplication, IsolatedProcess, VolumeMount};
+use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use reqwest::Client;
 use std::sync::RwLock;
 use strip_ansi_escapes::strip_str;
@@ -198,12 +198,8 @@ impl IsolatedApplication for RethApp {
     }
 
     /// Checks if the Reth node is ready (returns true if it has at least one peer)
-    async fn is_ready_check(&self, process: &IsolatedProcess) -> Result<bool, Box<dyn StdError>> {
-        let http_url = if let Some(ip) = process.container_ip() {
-            format!("http://{}:{}", ip, self.http_port)
-        } else {
-            format!("http://127.0.0.1:{}", self.http_port)
-        };
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+        let http_url = format!("http://{}:{}", info.ip_address, self.http_port);
 
         let client = Client::new();
         match client
