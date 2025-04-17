@@ -248,12 +248,7 @@ impl IsolatedApplication for RethApp {
     }
 
     fn tcp_port_forwards(&self) -> Vec<u16> {
-        vec![
-            self.discovery_port,
-            self.http_port,
-            self.metrics_port,
-            self.rpc_port,
-        ]
+        vec![self.discovery_port]
     }
 
     fn udp_port_forwards(&self) -> Vec<u16> {

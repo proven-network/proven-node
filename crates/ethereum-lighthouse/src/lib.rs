@@ -236,7 +236,7 @@ impl IsolatedApplication for LighthouseApp {
     }
 
     fn tcp_port_forwards(&self) -> Vec<u16> {
-        vec![self.p2p_port, self.http_port, self.metrics_port]
+        vec![self.p2p_port]
     }
 
     fn udp_port_forwards(&self) -> Vec<u16> {
