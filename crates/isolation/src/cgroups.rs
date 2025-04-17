@@ -6,6 +6,8 @@
 #[cfg(target_os = "linux")]
 use std::fs;
 #[cfg(target_os = "linux")]
+use std::io::ErrorKind;
+#[cfg(target_os = "linux")]
 use std::path::{Path, PathBuf};
 use tracing::warn;
 #[cfg(target_os = "linux")]
@@ -46,12 +48,38 @@ pub struct CgroupsController {
     /// Whether the cgroup was successfully created
     is_active: bool,
 
-    /// Process ID
+    /// Process ID of the isolated process
     #[cfg(target_os = "linux")]
     pid: u32,
 }
 
+// Helper function to attempt enabling memory controller delegation
+#[cfg(target_os = "linux")]
+fn try_enable_memory_delegation(cgroup_path: &Path) -> Result<()> {
+    match fs::write(cgroup_path.join("cgroup.subtree_control"), "+memory") {
+        Ok(_) => {
+            debug!(
+                "Successfully enabled memory controller delegation in {}",
+                cgroup_path.display()
+            );
+            Ok(())
+        }
+        Err(e) => {
+            debug!(
+                "Failed to enable memory controller delegation in {} (may be okay/already enabled): {}",
+                cgroup_path.display(),
+                e
+            );
+            // Return error to indicate it might need the process move strategy
+            Err(Error::Io("Failed to write +memory to subtree_control", e))
+        }
+    }
+}
+
 impl CgroupsController {
+    #[cfg(target_os = "linux")]
+    const CONTAINER_MAIN_CGROUP: &'static str = "container_main";
+
     /// Create a new cgroups controller for the specified process
     #[cfg(target_os = "linux")]
     pub fn new(pid: u32, memory_config: &CgroupMemoryConfig) -> Result<Self> {
@@ -89,78 +117,147 @@ impl CgroupsController {
             });
         }
 
-        // Detect Docker environment - check if we're in a Docker container
-        let docker_cgroup = Path::new("/sys/fs/cgroup/docker");
-        let parent_cgroup = if docker_cgroup.exists() {
-            debug!("Docker cgroup detected, using Docker hierarchy");
-            docker_cgroup.to_path_buf()
-        } else {
-            debug!("Using root cgroup hierarchy");
-            Path::new("/sys/fs/cgroup").to_path_buf()
+        let parent_cgroup_path = Path::new("/sys/fs/cgroup");
+        debug!(
+            "Using container cgroup root: {}",
+            parent_cgroup_path.display()
+        );
+
+        // Try enabling delegation, if fails, move all root procs to a new cgroup and retry
+        let delegation_enabled = match try_enable_memory_delegation(parent_cgroup_path) {
+            Ok(_) => true, // Succeeded on first try
+            Err(_) => {
+                // Failed, likely due to internal processes
+                debug!(
+                    "Initial attempt to enable memory delegation failed, attempting process move..."
+                );
+
+                let intermediate_group_path = parent_cgroup_path.join(Self::CONTAINER_MAIN_CGROUP);
+                match fs::create_dir(&intermediate_group_path) {
+                    Ok(_) => {
+                        debug!(
+                            "Created intermediate cgroup: {}",
+                            intermediate_group_path.display()
+                        );
+                        // Move processes only if we just created the group
+                        move_all_procs(parent_cgroup_path, &intermediate_group_path);
+                    }
+                    Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                        debug!(
+                            "Intermediate cgroup already exists: {}",
+                            intermediate_group_path.display()
+                        );
+                        // Assume processes were moved previously or don't need moving now
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to create intermediate cgroup {}: {}. Cannot attempt process move.",
+                            intermediate_group_path.display(),
+                            e
+                        );
+                        // Fall through, retry delegation might still work if it was already enabled
+                    }
+                }
+
+                // Retry enabling delegation
+                match try_enable_memory_delegation(parent_cgroup_path) {
+                    Ok(_) => true, // Succeeded on second try
+                    Err(_) => {
+                        warn!(
+                            "Failed to enable memory delegation even after attempting process move."
+                        );
+                        false // Failed both times
+                    }
+                }
+            }
         };
 
-        // Verify that memory controller is enabled in parent cgroup
-        match fs::read_to_string(parent_cgroup.join("cgroup.subtree_control")) {
-            Ok(content) => {
-                if !content.contains("memory") {
-                    debug!("Memory controller not enabled in parent cgroup, attempting to enable");
-                    if let Err(e) =
-                        fs::write(parent_cgroup.join("cgroup.subtree_control"), "+memory")
-                    {
-                        warn!("Failed to enable memory controller in parent cgroup: {}", e);
-                        // Continue anyway, might still work
-                    }
-                } else {
-                    debug!("Memory controller is already enabled in parent cgroup");
-                }
-            }
-            Err(e) => {
-                warn!("Failed to read parent cgroup subtree_control: {}", e);
-                // Continue anyway, might still work
-            }
+        if !delegation_enabled {
+            warn!(
+                "Memory controller delegation could not be enabled. Memory limits might not be enforced."
+            );
+            // Proceed anyway, but applying limits will likely fail later
         }
 
-        // Create a unique cgroup name for this process
-        let cgroup_name = format!("proven_isolation_{}_{}", memory_config.name, pid);
-        let cgroup_path = parent_cgroup.join(&cgroup_name);
+        // Create a unique cgroup name for the *isolated* process under the root
+        let isolation_cgroup_name = format!("proven_isolation_{}_{}", memory_config.name, pid);
+        let isolation_cgroup_path = parent_cgroup_path.join(&isolation_cgroup_name);
 
-        debug!("Creating cgroup at {}", cgroup_path.display());
+        debug!(
+            "Creating isolation cgroup at {}",
+            isolation_cgroup_path.display()
+        );
 
-        // Create the cgroup directory
-        match fs::create_dir_all(&cgroup_path) {
+        // Create the isolation cgroup directory
+        match fs::create_dir(&isolation_cgroup_path) {
             Ok(_) => {
                 debug!(
-                    "Setting memory limits: max={}MB, min={}MB",
-                    memory_config.limit_mb, memory_config.min_mb
+                    "Applying memory limits to {}: max={}MB, min={}MB",
+                    isolation_cgroup_path.display(),
+                    memory_config.limit_mb,
+                    memory_config.min_mb
                 );
 
-                // Set memory limits
-                Self::apply_memory_limits(&cgroup_path, memory_config)?;
+                // Set memory limits in the new isolation cgroup
+                match Self::apply_memory_limits(&isolation_cgroup_path, memory_config) {
+                    Ok(_) => {
+                        // Limits applied, proceed to add process
+                        debug!("Memory limits applied successfully.");
+                        if let Err(e) =
+                            fs::write(isolation_cgroup_path.join("cgroup.procs"), pid.to_string())
+                        {
+                            error!(
+                                "Failed to add isolated process {} to cgroup {}: {}",
+                                pid,
+                                isolation_cgroup_path.display(),
+                                e
+                            );
+                            // Critical failure, cleanup isolation group and return Err
+                            let _ = fs::remove_dir(&isolation_cgroup_path);
+                            return Err(Error::Io(
+                                "Failed to add isolated process to its cgroup",
+                                e,
+                            ));
+                        }
 
-                // Add the process to the cgroup
-                debug!("Adding process {} to cgroup {}", pid, cgroup_path.display());
-                if let Err(e) = fs::write(cgroup_path.join("cgroup.procs"), pid.to_string()) {
-                    error!("Failed to add process {} to cgroup: {}", pid, e);
-                    // Try to clean up the cgroup
-                    let _ = fs::remove_dir_all(&cgroup_path);
-                    return Err(Error::Io("Failed to add process to cgroup", e));
+                        info!(
+                            "Successfully created cgroup {} and applied memory limit of {}MB to process {}",
+                            isolation_cgroup_path.display(),
+                            memory_config.limit_mb,
+                            pid
+                        );
+
+                        Ok(Self {
+                            cgroup_path: isolation_cgroup_path,
+                            is_active: true, // Limits were applied successfully
+                            pid,
+                        })
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to apply memory limits to {}: {}. Limits will not be enforced.",
+                            isolation_cgroup_path.display(),
+                            e
+                        );
+                        // Attempt cleanup of the isolation group, return inactive controller
+                        let _ = fs::remove_dir(&isolation_cgroup_path);
+                        Ok(Self {
+                            cgroup_path: isolation_cgroup_path, // Store path for potential partial info
+                            is_active: false,
+                            pid,
+                        })
+                    }
                 }
-
-                info!(
-                    "Successfully applied memory limit of {}MB to process {}",
-                    memory_config.limit_mb, pid
-                );
-
-                Ok(Self {
-                    cgroup_path,
-                    is_active: true,
-                    pid,
-                })
             }
-            Err(e) => {
-                warn!("Failed to create cgroup directory: {}", e);
+            Err(create_err) => {
+                warn!(
+                    "Failed to create isolation cgroup directory {}: {}",
+                    isolation_cgroup_path.display(),
+                    create_err
+                );
+                // Could not create the directory, return inactive controller
                 Ok(Self {
-                    cgroup_path,
+                    cgroup_path: isolation_cgroup_path,
                     is_active: false,
                     pid,
                 })
@@ -299,53 +396,102 @@ impl CgroupsController {
 
     /// Clean up the cgroup
     #[cfg(target_os = "linux")]
-    fn cleanup(&self) -> Result<()> {
-        if !self.is_active {
-            return Ok(());
+    fn cleanup(&self) {
+        if !self.cgroup_path.exists() {
+            debug!(
+                "Isolation cgroup {} already removed.",
+                self.cgroup_path.display()
+            );
+            return; // Nothing to cleanup if path doesn't exist
         }
 
-        debug!("Cleaning up cgroup at {}", self.cgroup_path.display());
+        debug!(
+            "Cleaning up isolation cgroup at {}",
+            self.cgroup_path.display()
+        );
 
-        // Determine parent cgroup
-        let parent_cgroup_path = if let Some(parent) = self.cgroup_path.parent() {
-            parent.to_path_buf()
-        } else {
-            Path::new("/sys/fs/cgroup").to_path_buf()
-        };
-
-        // Try to move the process to the parent cgroup
-        if let Err(e) = fs::write(
-            parent_cgroup_path.join("cgroup.procs"),
-            self.pid.to_string(),
-        ) {
-            // This can fail if process already exited, so just log a warning
-            debug!("Failed to move process to parent cgroup: {}", e);
-        }
-
-        // Try to remove the cgroup directory
-        match fs::remove_dir_all(&self.cgroup_path) {
+        // Try to remove the isolation cgroup directory
+        match fs::remove_dir(&self.cgroup_path) {
             Ok(_) => {
-                debug!("Successfully removed cgroup directory");
-                Ok(())
+                debug!("Successfully removed isolation cgroup directory");
             }
-            Err(_) => {
-                // Just log this error since it's common for cleanup to fail in Docker
-                debug!("Cannot remove cgroup directory (likely already cleaned up)");
-                // Return Ok instead of Err since this is a cleanup operation
-                Ok(())
+            Err(e) => {
+                warn!(
+                    "Failed to remove isolation cgroup directory {}: {}. Manual cleanup might be needed.",
+                    self.cgroup_path.display(),
+                    e
+                );
             }
         }
     }
 
     /// Clean up the cgroup (non-Linux platforms)
     #[cfg(not(target_os = "linux"))]
-    fn cleanup(&self) -> Result<()> {
-        Ok(())
+    fn cleanup(&self) {
+        // No-op
     }
 
     /// Check if the cgroup controller is active
     pub fn is_active(&self) -> bool {
         self.is_active
+    }
+}
+
+#[cfg(target_os = "linux")]
+/// Attempts to move all processes from a source cgroup to a destination cgroup.
+fn move_all_procs(source_cgroup: &Path, dest_cgroup: &Path) {
+    let source_procs_path = source_cgroup.join("cgroup.procs");
+    let dest_procs_path = dest_cgroup.join("cgroup.procs");
+
+    match fs::read_to_string(&source_procs_path) {
+        Ok(pids_str) => {
+            let pids: Vec<&str> = pids_str.lines().collect();
+            if pids.is_empty() {
+                debug!(
+                    "No processes found in source cgroup {}",
+                    source_cgroup.display()
+                );
+                return;
+            }
+            debug!(
+                "Attempting to move {} processes from {} to {}",
+                pids.len(),
+                source_cgroup.display(),
+                dest_cgroup.display()
+            );
+
+            for pid_str in pids {
+                if pid_str.trim().is_empty() {
+                    continue;
+                }
+                match fs::write(&dest_procs_path, pid_str) {
+                    Ok(_) => {
+                        // Successfully moved
+                        debug!("Moved PID {} to {}", pid_str, dest_cgroup.display());
+                    }
+                    Err(e) if e.raw_os_error() == Some(nix::libc::ESRCH) => {
+                        // Process likely exited between read and write, ignore.
+                        debug!("PID {} likely exited before move, skipping.", pid_str);
+                    }
+                    Err(e) => {
+                        // Other errors (permissions, etc.) - log warning and continue
+                        warn!(
+                            "Failed to move PID {} to {}: {}",
+                            pid_str,
+                            dest_cgroup.display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            warn!(
+                "Failed to read processes from source cgroup {}: {}",
+                source_cgroup.display(),
+                e
+            );
+        }
     }
 }
 

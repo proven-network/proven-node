@@ -5,7 +5,7 @@ services:
       context: ..
       dockerfile: integration-test/Dockerfile
     privileged: true
-    cgroup: host
+    cgroup: private
     security_opt:
       - seccomp:unconfined
     environment:
@@ -50,7 +50,7 @@ services:
       context: ..
       dockerfile: integration-test/Dockerfile
     privileged: true
-    cgroup: host
+    cgroup: private
     security_opt:
       - seccomp:unconfined
     environment:
@@ -81,7 +81,7 @@ services:
       context: ..
       dockerfile: integration-test/Dockerfile
     privileged: true
-    cgroup: host
+    cgroup: private
     security_opt:
       - seccomp:unconfined
     environment:

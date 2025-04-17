@@ -4,7 +4,7 @@
 		"dockerfile": "Dockerfile",
 		"context": ".."
 	},
-	"runArgs": ["--privileged", "--cgroupns=host"],
+	"runArgs": ["--privileged", "--cgroupns=private"],
 	"features": {
 		"ghcr.io/devcontainers/features/node:1": {
 			"nodeGypDependencies": true,
