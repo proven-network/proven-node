@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "build": "esbuild static/{iframe,webauthn,ws-worker}.ts --bundle --outdir=static",
+    "build": "esbuild static/*.ts --bundle --outdir=static",
     "test:iframe": "node test/server.js"
   },
   "dependencies": {
@@ -13,6 +13,6 @@
   "devDependencies": {
     "@radixdlt/radix-dapp-toolkit": "2.2.1",
     "@types/elliptic": "6.4.18",
-    "esbuild": "0.25.0"
+    "esbuild": "0.25.2"
   }
 }
