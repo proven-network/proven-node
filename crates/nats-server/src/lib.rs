@@ -91,7 +91,7 @@ impl IsolatedApplication for NatsServerApp {
     fn args(&self) -> Vec<String> {
         let mut args = vec![
             "--config".to_string(),
-            "/config/nats-server.conf".to_string(),
+            format!("{}/nats-server.conf", self.config_dir),
         ];
 
         if self.debug {
@@ -162,8 +162,8 @@ impl IsolatedApplication for NatsServerApp {
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
-            VolumeMount::new(self.config_dir.clone(), "/config".to_string()),
-            VolumeMount::new(self.store_dir.clone(), "/data".to_string()),
+            VolumeMount::new(self.config_dir.clone(), self.config_dir.clone()),
+            VolumeMount::new(self.store_dir.clone(), self.store_dir.clone()),
             VolumeMount::new(self.bin_dir.clone(), "/apps/nats/v2.11.0".to_string()),
         ]
     }
@@ -396,7 +396,7 @@ where
         let mut config = CONFIG_TEMPLATE
             .replace("{server_name}", &self.server_name)
             .replace("{client_listen_addr}", "0.0.0.0:4222") // Listen on all interfaces inside the container
-            .replace("{store_dir}", "/data");
+            .replace("{store_dir}", &self.store_dir);
 
         // Only add cluster.routes configuration if there are valid peers
         if valid_peer_count > 0 {
