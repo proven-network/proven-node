@@ -5,12 +5,22 @@ edition = "2024"
 
 [dependencies]
 async-nats = { workspace = true }
+async-trait = { workspace = true }
 nix = { workspace = true }
+once_cell = { workspace = true }
 proven-attestation = { workspace = true }
 proven-governance = { workspace = true }
+proven-isolation = { workspace = true }
 proven-network = { workspace = true }
 regex = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+ed25519-dalek = { workspace = true }
+proven-attestation-mock = { workspace = true }
+proven-governance-mock = { workspace = true }
+rand = { workspace = true }
+tracing-subscriber = { workspace = true }
+which = { workspace = true }

@@ -7,26 +7,23 @@
 
 mod error;
 
-pub use error::{Error, Result};
+pub use error::Error;
 
-use std::process::Stdio;
+use std::error::Error as StdError;
 use std::sync::Arc;
 
 use async_nats::Client;
-use nix::sys::signal::{self, Signal};
-use nix::unistd::Pid;
+use async_trait::async_trait;
+use nix::sys::signal::Signal;
+use once_cell::sync::Lazy;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
+use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use proven_network::{Peer, ProvenNetwork};
 use regex::Regex;
-use std::net::SocketAddrV4;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
-use tokio_util::sync::CancellationToken;
-use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
 static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
@@ -34,24 +31,11 @@ static CLUSTER_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster.conf")
 
 const PEER_DISCOVERY_INTERVAL: u64 = 300; // 5 minutes
 
-/// Runs a NATS server for inter-node communication.
-#[derive(Clone)]
-pub struct NatsServer<G, A>
-where
-    G: Governance,
-    A: Attestor,
-{
-    bin_dir: Option<String>,
-    client_listen_addr: SocketAddrV4,
-    clients: Arc<Mutex<Vec<Client>>>,
-    config_dir: String,
-    debug: bool,
-    network: ProvenNetwork<G, A>,
-    server_name: String,
-    store_dir: String,
-    shutdown_token: CancellationToken,
-    task_tracker: TaskTracker,
-}
+/// Regex pattern for matching NATS server log lines
+static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\[\d+\] \d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6} (\[[A-Z]+\]) (.*)")
+        .expect("Invalid regex pattern")
+});
 
 /// Options for configuring a `NatsServer`.
 pub struct NatsServerOptions<G, A>
@@ -62,8 +46,8 @@ where
     /// Optional path to the NATS server binary if it is not in the PATH.
     pub bin_dir: Option<String>,
 
-    /// The address to listen on.
-    pub client_listen_addr: SocketAddrV4,
+    /// The port to listen for client connections on.
+    pub client_listen_port: u16,
 
     /// The directory to store configuration in.
     pub config_dir: String,
@@ -81,17 +65,156 @@ where
     pub store_dir: String,
 }
 
+/// NATS server application implementing the IsolatedApplication trait
+struct NatsServerApp {
+    /// The path to the nats-server executable
+    bin_dir: String,
+
+    /// The configuration directory inside the container
+    config_dir: String,
+
+    /// The client listen port
+    client_listen_port: u16,
+
+    /// Whether to enable debug logging
+    debug: bool,
+
+    /// The path to the nats-server executable
+    executable_path: String,
+
+    /// The store directory
+    store_dir: String,
+}
+
+#[async_trait]
+impl IsolatedApplication for NatsServerApp {
+    fn args(&self) -> Vec<String> {
+        let mut args = vec![
+            "--config".to_string(),
+            "/config/nats-server.conf".to_string(),
+        ];
+
+        if self.debug {
+            args.extend_from_slice(&["-DV".to_string()]);
+        }
+
+        args
+    }
+
+    fn executable(&self) -> &str {
+        &self.executable_path
+    }
+
+    fn handle_stderr(&self, line: &str) {
+        if let Some(caps) = LOG_PATTERN.captures(line) {
+            let label = caps.get(1).map_or("[UKW]", |m| m.as_str());
+            let message = caps.get(2).map_or(line, |m| m.as_str());
+            match label {
+                "[INF]" => info!(target: "nats-server", "{}", message),
+                "[DBG]" => debug!(target: "nats-server", "{}", message),
+                "[WRN]" => warn!(target: "nats-server", "{}", message),
+                "[ERR]" => error!(target: "nats-server", "{}", message),
+                "[FTL]" => error!(target: "nats-server", "{}", message),
+                "[TRC]" => trace!(target: "nats-server", "{}", message),
+                _ => error!(target: "nats-server", "{}", line),
+            }
+        } else {
+            error!(target: "nats-server", "{}", line);
+        }
+    }
+
+    fn handle_stdout(&self, line: &str) {
+        self.handle_stderr(line)
+    }
+
+    fn name(&self) -> &str {
+        "nats-server"
+    }
+
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+        // Try to connect to the NATS server with async-nats
+        let server_url = format!("nats://{}:{}", info.ip_address, self.client_listen_port);
+        match async_nats::connect(&server_url).await {
+            Ok(client) => {
+                // Connection successful, server is ready
+                // We can drop the client right away as we only wanted to test the connection
+                drop(client);
+                Ok(true)
+            }
+            Err(_) => {
+                // Connection failed, server not ready yet
+                Ok(false)
+            }
+        }
+    }
+
+    fn is_ready_check_interval_ms(&self) -> u64 {
+        1000 // Check every second
+    }
+
+    fn memory_limit_mb(&self) -> usize {
+        512 // 512MB should be enough for a NATS server
+    }
+
+    fn shutdown_signal(&self) -> Signal {
+        Signal::SIGUSR2 // SIGUSR2 puts server into "lame duck" mode
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![
+            VolumeMount::new(self.config_dir.clone(), "/config".to_string()),
+            VolumeMount::new(self.store_dir.clone(), "/data".to_string()),
+            VolumeMount::new(self.bin_dir.clone(), "/apps/nats/v2.11.0".to_string()),
+        ]
+    }
+}
+
+/// Represents an isolated NATS server with network discovery.
+#[derive(Clone)]
+pub struct NatsServer<G, A>
+where
+    G: Governance,
+    A: Attestor,
+{
+    /// Optional path to the NATS server binary
+    bin_dir: Option<String>,
+
+    /// The client listen port
+    client_listen_port: u16,
+
+    /// Connected clients
+    clients: Arc<Mutex<Vec<Client>>>,
+
+    /// The config directory
+    config_dir: String,
+
+    /// Enable debug logging
+    debug: bool,
+
+    /// Network for peer discovery
+    network: ProvenNetwork<G, A>,
+
+    /// The isolated process running NATS server
+    process: Arc<Mutex<Option<IsolatedProcess>>>,
+
+    /// The server name
+    server_name: String,
+
+    /// The store directory
+    store_dir: String,
+}
+
 impl<G, A> NatsServer<G, A>
 where
     G: Governance,
     A: Attestor,
 {
-    /// Creates a new instance of `NatsServer`.
+    /// Creates a new `NatsServer` with the specified options.
     #[must_use]
     pub fn new(
         NatsServerOptions {
             bin_dir,
-            client_listen_addr,
+            client_listen_port,
             config_dir,
             debug,
             network,
@@ -100,34 +223,39 @@ where
         }: NatsServerOptions<G, A>,
     ) -> Self {
         Self {
-            bin_dir,
+            process: Arc::new(Mutex::new(None)),
             clients: Arc::new(Mutex::new(Vec::new())),
-            client_listen_addr,
-            config_dir,
+            bin_dir,
+            client_listen_port,
+            server_name,
             debug,
             network,
-            server_name,
+            config_dir,
             store_dir,
-            shutdown_token: CancellationToken::new(),
-            task_tracker: TaskTracker::new(),
         }
     }
 
-    /// Starts the NATS server.
-    ///
-    /// # Returns
-    ///
-    /// A `JoinHandle` that can be used to await the completion of the server task.
+    /// Gets the path to the NATS server executable
+    fn get_nats_server_path(&self) -> String {
+        match &self.bin_dir {
+            Some(dir) => format!("{}/nats-server", dir),
+            None => "/apps/nats/v2.10.5/nats-server".to_string(),
+        }
+    }
+
+    /// Starts the NATS server in an isolated environment.
     ///
     /// # Errors
     ///
-    /// This function will return an error if the server is already started, if there is an issue
-    /// with spawning the server process, or if it fails to create the necessary directories.
-    pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
-        if self.task_tracker.is_closed() {
+    /// Returns an error if the server fails to start.
+    pub async fn start(&self) -> Result<JoinHandle<()>, Error> {
+        if self.process.lock().await.is_some() {
             return Err(Error::AlreadyStarted);
         }
 
+        debug!("Starting isolated NATS server...");
+
+        // Create necessary directories
         tokio::fs::create_dir_all(format!("{}/jetstream", self.store_dir.as_str()))
             .await
             .map_err(|e| Error::Io("failed to create jetstream directory", e))?;
@@ -135,102 +263,33 @@ where
         // Initialize topology from network
         self.update_topology().await?;
 
-        let shutdown_token = self.shutdown_token.clone();
-        let task_tracker = self.task_tracker.clone();
-        let debug = self.debug;
+        // Get the executable path
+        let nats_server_path = self.get_nats_server_path();
 
-        let config_dir = format!("{}/nats-server.conf", self.config_dir);
-        let bin_dir = self
-            .bin_dir
-            .as_deref()
-            .map(|d| format!("{}/", d))
-            .unwrap_or_default();
-        let server_task = self.task_tracker.spawn(async move {
-            let mut args = vec!["--config", &config_dir];
+        // Prepare the NATS server application
+        let app = NatsServerApp {
+            bin_dir: self.bin_dir.clone().unwrap(),
+            client_listen_port: self.client_listen_port,
+            debug: self.debug,
+            config_dir: self.config_dir.clone(),
+            executable_path: nats_server_path,
+            store_dir: self.store_dir.clone(),
+        };
 
-            if debug {
-                args.extend_from_slice(&["-DV"]);
-            }
+        // Spawn the isolated process
+        let (process, join_handle) = proven_isolation::spawn(app)
+            .await
+            .map_err(Error::Isolation)?;
 
-            let mut cmd = Command::new(format!("{}nats-server", bin_dir));
-            for arg in args {
-                cmd.arg(arg);
-            }
-
-            // Start the nats-server process
-            let mut cmd = cmd
-                .stdout(Stdio::null())
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|e| Error::Io("failed to spawn nats-server", e))?;
-
-            let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
-
-            let re = Regex::new(
-                r"\[\d+\] \d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6} (\[[A-Z]+\]) (.*)",
-            )?;
-
-            // Spawn a task to read and process the stderr output of the nats-server process
-            task_tracker.spawn(async move {
-                let reader = BufReader::new(stderr);
-                let mut lines = reader.lines();
-
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if let Some(caps) = re.captures(&line) {
-                        let label = caps.get(1).map_or("[UKW]", |m| m.as_str());
-                        let message = caps.get(2).map_or(line.as_str(), |m| m.as_str());
-                        match label {
-                            "[INF]" => info!("{}", message),
-                            "[DBG]" => debug!("{}", message),
-                            "[WRN]" => warn!("{}", message),
-                            "[ERR]" => error!("{}", message),
-                            "[FTL]" => error!("{}", message),
-                            "[TRC]" => trace!("{}", message),
-                            _ => error!("{}", line),
-                        }
-                    } else {
-                        error!("{}", line);
-                    }
-                }
-            });
-
-            // Wait for the nats-server process to exit or for the shutdown token to be cancelled
-            tokio::select! {
-                status = cmd.wait() => {
-                    let status = status.map_err(|e| Error::Io("failed to get exit status", e))?;
-
-                    if !status.success() {
-                        return Err(Error::NonZeroExitCode(status));
-                    }
-
-                    Ok(())
-                }
-                () = shutdown_token.cancelled() => {
-                    let raw_pid: i32 = cmd.id().ok_or(Error::OutputParse)?.try_into().map_err(|_| Error::BadPid)?;
-                    let pid = Pid::from_raw(raw_pid);
-
-                    if let Err(e) = signal::kill(pid, Signal::SIGUSR2) {
-                        error!("Failed to send SIGUSR2 signal: {}", e);
-                    } else {
-                        info!("nats server entered lame duck mode. waiting for connections to close...");
-                    }
-
-                    let _ = cmd.wait().await;
-
-                    Ok(())
-                }
-            }
-        });
-
-        // TODO: Do a better ready check here
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        // Store the process for later access
+        *self.process.lock().await = Some(process);
 
         // Start periodic topology update task
         self.start_topology_update_task()?;
 
-        self.task_tracker.close();
+        info!("NATS server started");
 
-        Ok(server_task)
+        Ok(join_handle)
     }
 
     /// Updates topology from network and updates NATS configuration.
@@ -238,7 +297,7 @@ where
     /// # Errors
     ///
     /// This function will return an error if it fails to get the topology or update the configuration.
-    async fn update_topology(&self) -> Result<()> {
+    async fn update_topology(&self) -> Result<(), Error> {
         info!("Fetching peers from network...");
         match self.network.get_peers().await {
             Ok(peers) => {
@@ -257,39 +316,43 @@ where
     /// # Errors
     ///
     /// This function will return an error if it fails to start the task.
-    fn start_topology_update_task(&self) -> Result<()> {
+    fn start_topology_update_task(&self) -> Result<(), Error> {
         let server_name = self.server_name.clone();
-        let shutdown_token = self.shutdown_token.clone();
 
         // We need self reference for updating config
         let self_clone = self.clone();
+        let process = self.process.clone();
 
-        self.task_tracker.spawn(async move {
+        tokio::spawn(async move {
             let update_interval = Duration::from_secs(PEER_DISCOVERY_INTERVAL);
             let mut interval = tokio::time::interval(update_interval);
 
             loop {
-                tokio::select! {
-                    _ = interval.tick() => {
-                        info!("[{}] Checking for topology updates...", server_name);
-                        match self_clone.network.get_peers().await {
-                            Ok(peers) => {
-                                info!("[{}] Retrieved {} peers from network", server_name, peers.len());
-                                // Update config with new peers
-                                if let Err(e) = self_clone.update_nats_config_with_peers(&peers).await {
-                                    error!("[{}] Failed to update NATS config: {}", server_name, e);
-                                }
-                            }
-                            Err(e) => {
-                                error!("[{}] Failed to get peers from network: {}", server_name, e);
-                            }
-                        }
-                    }
-                    _ = shutdown_token.cancelled() => {
-                        info!("[{}] Stopping topology update task", server_name);
+                if let Some(process) = &*process.lock().await {
+                    if !process.running().await {
                         break;
                     }
                 }
+
+                info!("[{}] Checking for topology updates...", server_name);
+                match self_clone.network.get_peers().await {
+                    Ok(peers) => {
+                        info!(
+                            "[{}] Retrieved {} peers from network",
+                            server_name,
+                            peers.len()
+                        );
+                        // Update config with new peers
+                        if let Err(e) = self_clone.update_nats_config_with_peers(&peers).await {
+                            error!("[{}] Failed to update NATS config: {}", server_name, e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("[{}] Failed to get peers from network: {}", server_name, e);
+                    }
+                }
+
+                interval.tick().await;
             }
         });
 
@@ -305,7 +368,7 @@ where
     /// # Errors
     ///
     /// This function will return an error if it fails to update the configuration.
-    async fn update_nats_config_with_peers(&self, peers: &[Peer]) -> Result<()> {
+    async fn update_nats_config_with_peers(&self, peers: &[Peer]) -> Result<(), Error> {
         // Build routes for cluster configuration
         let mut routes = String::new();
         let mut valid_peer_count = 0;
@@ -335,8 +398,8 @@ where
         // Start with the basic configuration
         let mut config = CONFIG_TEMPLATE
             .replace("{server_name}", &self.server_name)
-            .replace("{client_listen_addr}", &self.client_listen_addr.to_string())
-            .replace("{store_dir}", &self.store_dir);
+            .replace("{client_listen_addr}", "0.0.0.0:4222") // Listen on all interfaces inside the container
+            .replace("{store_dir}", "/data");
 
         // Only add cluster.routes configuration if there are valid peers
         if valid_peer_count > 0 {
@@ -359,28 +422,23 @@ where
 
         tokio::fs::create_dir_all(&self.config_dir)
             .await
-            .map_err(|e| Error::Io("failed to create /etc/nats", e))?;
+            .map_err(|e| Error::Io("failed to create config directory", e))?;
 
         tokio::fs::write(format!("{}/nats-server.conf", self.config_dir), config)
             .await
             .map_err(|e| Error::Io("failed to write nats-server.conf", e))?;
 
-        // Run "nats-server --signal reload" to reload the configuration if it is running (task_tracker closed)
-        if self.task_tracker.is_closed() {
-            let bin_dir = self
-                .bin_dir
-                .as_deref()
-                .map(|d| format!("{}/", d))
-                .unwrap_or_default();
-            let output = Command::new(format!("{}nats-server", bin_dir))
-                .arg("--signal")
-                .arg("reload")
-                .output()
-                .await
-                .map_err(|e| Error::Io("failed to reload nats-server", e))?;
-
-            if !output.status.success() {
-                return Err(Error::NonZeroExitCode(output.status));
+        // Reload the configuration if the server is running
+        let process_guard = self.process.lock().await;
+        if let Some(process) = &*process_guard {
+            // Send SIGHUP to reload configuration
+            if let Err(e) = process.signal(Signal::SIGHUP) {
+                warn!(
+                    "Failed to send SIGHUP signal to reload NATS configuration: {}",
+                    e
+                );
+            } else {
+                info!("NATS configuration reload signal sent");
             }
         }
 
@@ -388,43 +446,62 @@ where
     }
 
     /// Shuts down the NATS server.
-    pub async fn shutdown(&self) {
-        info!("nats server shutting down...");
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server fails to shutdown.
+    pub async fn shutdown(&self) -> Result<(), Error> {
+        info!("Shutting down isolated NATS server...");
 
-        info!("flushing existing clients...");
+        // Flush existing clients
+        info!("Flushing existing clients...");
         let clients = self.clients.lock().await.clone();
         for client in &clients {
             if let Err(err) = client.flush().await {
-                error!("failed to flush client: {}", err);
+                error!("Failed to flush client: {}", err);
             }
         }
 
-        self.shutdown_token.cancel();
-        self.task_tracker.wait().await;
+        // Get the process and shut it down
+        let mut process_guard = self.process.lock().await;
+        if let Some(process) = process_guard.take() {
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("NATS server shut down successfully");
+        } else {
+            debug!("No running NATS server to shut down");
+        }
 
-        info!("nats server shutdown");
+        Ok(())
+    }
+
+    /// Returns the client URL for the NATS server.
+    #[must_use]
+    pub async fn get_client_url(&self) -> String {
+        match &*self.process.lock().await {
+            Some(process) => {
+                if let Some(container_ip) = process.container_ip() {
+                    return format!("nats://{}:{}", container_ip, self.client_listen_port);
+                } else {
+                    return format!("nats://127.0.0.1:{}", self.client_listen_port);
+                }
+            }
+            None => format!("nats://127.0.0.1:{}", self.client_listen_port),
+        }
     }
 
     /// Builds a NATS client.
     ///
-    /// # Returns
-    ///
-    /// A `Result` containing the built `Client` if successful, or an `Error` if the client failed to connect.
-    ///
     /// # Errors
     ///
-    /// This function will return an error if the client fails to connect to the NATS server.
-    pub async fn build_client(&self) -> Result<Client> {
+    /// Returns an error if the client fails to connect.
+    pub async fn build_client(&self) -> Result<Client, Error> {
         let connect_options = async_nats::ConnectOptions::new()
             .name(format!("client-{}", self.server_name))
             .ignore_discovered_servers();
 
-        let client = async_nats::connect_with_options(
-            &format!("nats://{}", self.client_listen_addr),
-            connect_options,
-        )
-        .await
-        .map_err(Error::ClientFailedToConnect)?;
+        let client = async_nats::connect_with_options(self.get_client_url().await, connect_options)
+            .await
+            .map_err(Error::ClientFailedToConnect)?;
 
         self.clients.lock().await.push(client.clone());
 

@@ -4,7 +4,7 @@ use super::node::{EnclaveNode, EnclaveNodeCore, Services};
 use super::speedtest::SpeedTest;
 
 use std::convert::TryInto;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -107,7 +107,7 @@ pub struct Bootstrap {
 
     nats_client: Option<NatsClient>,
     nats_server: Option<NatsServer<MockGovernance, NsmAttestor>>,
-    nats_server_handle: Option<JoinHandle<proven_nats_server::Result<()>>>,
+    nats_server_handle: Option<JoinHandle<()>>,
 
     core: Option<EnclaveNodeCore>,
     core_handle: Option<JoinHandle<proven_core::Result<()>>>,
@@ -363,7 +363,7 @@ impl Bootstrap {
                     Ok(Err(e)) = nats_server_fs_handle => {
                         error!("nats_external_fs exited: {:?}", e);
                     }
-                    Ok(Err(e)) = nats_server_handle => {
+                    Ok(e) = nats_server_handle => {
                         error!("nats_server exited: {:?}", e);
                     }
                     Ok(Err(e)) = core_handle => {
@@ -381,7 +381,7 @@ impl Bootstrap {
             }
 
             core.lock().await.shutdown().await;
-            nats_server.lock().await.shutdown().await;
+            let _ =nats_server.lock().await.shutdown().await;
             nats_server_fs.lock().await.shutdown().await;
             let _ = radix_gateway.lock().await.shutdown().await;
             let _ = radix_aggregator.lock().await.shutdown().await;
@@ -415,7 +415,7 @@ impl Bootstrap {
         }
 
         if let Some(nats_server) = self.nats_server {
-            nats_server.shutdown().await;
+            let _ = nats_server.shutdown().await;
         }
 
         if let Some(nats_server_fs) = self.nats_server_fs {
@@ -787,7 +787,7 @@ impl Bootstrap {
 
         let nats_server = NatsServer::new(NatsServerOptions {
             bin_dir: Some("/apps/nats/v2.11.0".to_string()),
-            client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4222),
+            client_listen_port: 4222,
             config_dir: "/tmp/nats-config".to_string(),
             debug: self.args.testnet,
             network: network.clone(),

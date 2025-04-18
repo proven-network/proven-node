@@ -124,6 +124,11 @@ impl IsolatedProcess {
         self.veth_pair.as_ref().map(|veth| veth.host_ip())
     }
 
+    /// Returns true if the process is running
+    pub async fn running(&self) -> bool {
+        self.exit_status.lock().await.is_none()
+    }
+
     /// Waits for the process to exit
     pub async fn wait(&self) -> ExitStatus {
         let check_interval = Duration::from_millis(1000);
