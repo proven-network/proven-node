@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::{convert::Infallible, net::SocketAddrV4};
+use std::convert::Infallible;
 
 use bytes::Bytes;
 use proven_applications::{Application, ApplicationManager};
@@ -27,12 +27,11 @@ use proven_radix_gateway::RadixGateway;
 use proven_radix_node::RadixNode;
 use proven_store_s3::{S3Store, S3Store1, S3Store2, S3Store3};
 use proven_vsock_proxy::Proxy;
-use proven_vsock_rpc::{AddPeerRequest, AddPeerResponse};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{error, info};
+use tracing::info;
 
 pub type EnclaveNodeCore = Core<
     ApplicationManager<
@@ -137,24 +136,6 @@ impl EnclaveNode {
             services,
             shutdown_token,
             task_tracker,
-        }
-    }
-
-    pub async fn add_peer(&self, args: AddPeerRequest) -> AddPeerResponse {
-        let result = self
-            .services
-            .nats_server
-            .lock()
-            .await
-            .add_peer(SocketAddrV4::new(args.peer_ip, args.peer_port));
-
-        match result {
-            Ok(()) => AddPeerResponse { success: true },
-            Err(e) => {
-                error!("failed to add peer: {:?}", e);
-
-                AddPeerResponse { success: false }
-            }
         }
     }
 

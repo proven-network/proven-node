@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use async_nats::Client as NatsClient;
 use bytes::Bytes;
+use ed25519_dalek::SigningKey;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
@@ -592,6 +593,16 @@ impl Bootstrap {
     }
 
     async fn get_network_topology(&mut self) -> Result<()> {
+        // Parse the private key and calculate public key
+        let private_key_bytes = hex::decode(self.args.node_key.trim()).map_err(|e| {
+            Error::PrivateKey(format!("Failed to decode private key as hex: {}", e))
+        })?;
+
+        // We need exactly 32 bytes for ed25519 private key
+        let private_key = SigningKey::try_from(private_key_bytes.as_slice()).map_err(|_| {
+            Error::PrivateKey("Failed to create SigningKey: invalid key length".to_string())
+        })?;
+
         // TODO: use helios in production
         let governance = MockGovernance::new(Vec::new(), Vec::new());
 
@@ -599,7 +610,7 @@ impl Bootstrap {
             attestor: self.attestor.clone(),
             governance: governance.clone(),
             nats_cluster_port: self.args.nats_cluster_port,
-            private_key_hex: self.args.node_key.clone(),
+            private_key,
         })
         .await?;
 
@@ -775,8 +786,10 @@ impl Bootstrap {
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
-            debug: self.args.testnet,
+            bin_dir: Some("/apps/nats/v2.11.0".to_string()),
             client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4222),
+            config_dir: "/tmp/nats-config".to_string(),
+            debug: self.args.testnet,
             network: network.clone(),
             server_name: instance_details.instance_id.clone(),
             store_dir: "/var/lib/nats/nats".to_string(),

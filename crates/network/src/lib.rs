@@ -14,7 +14,8 @@ pub use error::Error;
 pub use peer::Peer;
 
 use bytes::Bytes;
-use ed25519_dalek::{SigningKey, VerifyingKey, ed25519::signature::SignerMut};
+use ed25519_dalek::ed25519::signature::SignerMut;
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use hex;
 use proven_attestation::{AttestationParams, Attestor};
 use proven_governance::{Governance, NodeSpecialization};
@@ -71,8 +72,8 @@ where
     /// The NATS cluster port on the local machine.
     pub nats_cluster_port: u16,
 
-    /// The private key in hex format.
-    pub private_key_hex: String,
+    /// The private key of the current node.
+    pub private_key: SigningKey,
 }
 
 /// Proven Network implementation.
@@ -121,19 +122,9 @@ where
             attestor,
             governance,
             nats_cluster_port,
-            private_key_hex,
+            private_key,
         }: ProvenNetworkOptions<G, A>,
     ) -> Result<Self, Error> {
-        // Parse the private key and calculate public key
-        let private_key_bytes = hex::decode(private_key_hex.trim()).map_err(|e| {
-            Error::PrivateKey(format!("Failed to decode private key as hex: {}", e))
-        })?;
-
-        // We need exactly 32 bytes for ed25519 private key
-        let private_key = SigningKey::try_from(private_key_bytes.as_slice()).map_err(|_| {
-            Error::PrivateKey("Failed to create SigningKey: invalid key length".to_string())
-        })?;
-
         // Derive the public key
         let public_key = private_key.verifying_key();
 
@@ -194,7 +185,6 @@ where
     /// - Failed to get topology from governance
     /// - Failed to get self node
     pub async fn get_peers(&self) -> Result<Vec<Peer>, Error> {
-        let self_node = self.get_self().await?;
         let all_nodes = self
             .governance
             .get_topology()
@@ -204,7 +194,7 @@ where
         // Filter out the self node
         Ok(all_nodes
             .into_iter()
-            .filter(|node| node.public_key != self_node.public_key())
+            .filter(|node| node.public_key != hex::encode(self.public_key.as_bytes()))
             .map(Peer::from)
             .collect())
     }
@@ -323,15 +313,15 @@ mod tests {
     #[tokio::test]
     async fn test_network() {
         // Private key (use a test key that's fixed)
-        let private_key = "0000000000000000000000000000000000000000000000000000000000000001";
+        let private_key_hex = "0000000000000000000000000000000000000000000000000000000000000001";
         // Public key is derived from private key (known derivation for the test key)
-        let public_key = "4cb5abf6ad79fbf5abbccafcc269d85cd2651ed4b885b5869f241aedf0a5ba29";
+        let public_key_hex = "4cb5abf6ad79fbf5abbccafcc269d85cd2651ed4b885b5869f241aedf0a5ba29";
 
         // Create nodes
         let node1 = TopologyNode {
             availability_zone: "az1".to_string(),
             origin: "http://node1.example.com".to_string(),
-            public_key: public_key.to_string(),
+            public_key: public_key_hex.to_string(),
             region: "region1".to_string(),
             specializations: HashSet::new(),
         };
@@ -352,14 +342,22 @@ mod tests {
             attestor: MockAttestor,
             governance: mock_governance,
             nats_cluster_port: 6222,
-            private_key_hex: private_key.to_string(),
+            private_key: SigningKey::from_bytes(
+                &hex::decode(private_key_hex)
+                    .unwrap()
+                    .try_into()
+                    .expect("Private key hex must be 32 bytes"),
+            ),
         })
         .await
         .unwrap();
 
         // Test get_self
         let self_node = network.get_self().await.unwrap();
-        assert_eq!(self_node.public_key(), public_key);
+        assert_eq!(
+            self_node.public_key(),
+            hex::encode(network.public_key().as_bytes())
+        );
 
         // Test get_peers
         let peers = network.get_peers().await.unwrap();

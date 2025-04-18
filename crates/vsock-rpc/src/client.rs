@@ -1,7 +1,4 @@
-use crate::common::{
-    AddPeerRequest, AddPeerResponse, InitializeRequest, InitializeResponse, Request, Response,
-    ShutdownResponse,
-};
+use crate::common::{InitializeRequest, InitializeResponse, Request, Response, ShutdownResponse};
 use crate::error::{Error, Result};
 
 use std::net::Shutdown;
@@ -30,20 +27,6 @@ impl RpcClient {
     /// or if there is an I/O error during communication.
     pub async fn initialize(&self, args: InitializeRequest) -> Result<InitializeResponse> {
         if let Response::Initialize(response) = self.send(Request::Initialize(args)).await? {
-            Ok(response)
-        } else {
-            Err(Error::BadResponseType)
-        }
-    }
-
-    /// Sends an add peer command to the server.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the server responds with an unexpected response type
-    /// or if there is an I/O error during communication.
-    pub async fn add_peer(&self, args: AddPeerRequest) -> Result<AddPeerResponse> {
-        if let Response::AddPeer(response) = self.send(Request::AddPeer(args)).await? {
             Ok(response)
         } else {
             Err(Error::BadResponseType)

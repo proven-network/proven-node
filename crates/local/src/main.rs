@@ -51,6 +51,14 @@ struct Args {
     #[arg(long, default_value_t = 6222, env = "PROVEN_NATS_CLUSTER_PORT")]
     nats_cluster_port: u16,
 
+    /// NATS store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/nats",
+        env = "PROVEN_NATS_STORE_DIR"
+    )]
+    nats_store_dir: PathBuf,
+
     /// Private key provided directly as an environment variable
     #[arg(long, env = "PROVEN_NODE_KEY", required = true)]
     node_key: String,
@@ -332,8 +340,8 @@ struct Args {
     testnet: bool,
 
     /// Path to the topology file
-    #[arg(long, default_value = "/etc/proven/topology.json")]
-    topology_file: PathBuf,
+    #[arg(long, env = "PROVEN_TOPOLOGY_FILE")]
+    topology_file: Option<PathBuf>,
 }
 
 #[tokio::main(worker_threads = 8)]

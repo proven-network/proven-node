@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_nats::Client as NatsClient;
+use ed25519_dalek::SigningKey;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_mock::MockAttestor;
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
@@ -596,17 +597,31 @@ impl Bootstrap {
     }
 
     async fn start_network_cluster(&mut self) -> Result<()> {
-        let governance =
-            MockGovernance::from_topology_file(self.args.topology_file.clone(), vec![])
-                .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?;
+        // Parse the private key and calculate public key
+        let private_key_bytes = hex::decode(self.args.node_key.trim()).map_err(|e| {
+            Error::PrivateKey(format!("Failed to decode private key as hex: {}", e))
+        })?;
+
+        // We need exactly 32 bytes for ed25519 private key
+        let private_key = SigningKey::try_from(private_key_bytes.as_slice()).map_err(|_| {
+            Error::PrivateKey("Failed to create SigningKey: invalid key length".to_string())
+        })?;
+
+        let governance = match self.args.topology_file {
+            Some(ref topology_file) => MockGovernance::from_topology_file(topology_file, vec![])
+                .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?,
+            None => MockGovernance::for_single_node(private_key.clone()),
+        };
 
         let network = ProvenNetwork::new(ProvenNetworkOptions {
             governance: governance.clone(),
             attestor: self.attestor.clone(),
             nats_cluster_port: self.args.nats_cluster_port,
-            private_key_hex: self.args.node_key.clone(),
+            private_key,
         })
         .await?;
+
+        let peer_count = network.get_peers().await?.len();
 
         // Check /etc/hosts to ensure the node's FQDN is properly configured
         check_hostname_resolution(network.fqdn().await?.as_str()).await?;
@@ -623,9 +638,11 @@ impl Bootstrap {
         self.network = Some(network);
         self.light_core = Some(light_core);
 
-        // TODO: Wait for at least one other node to be started so NATS can boot in cluster mode
-        // Just sleep to simulate for now
-        tokio::time::sleep(Duration::from_secs(20)).await;
+        if peer_count > 0 {
+            // TODO: Wait for at least one other node to be started so NATS can boot in cluster mode
+            // Just sleep to simulate for now
+            tokio::time::sleep(Duration::from_secs(20)).await;
+        }
 
         Ok(())
     }
@@ -1021,11 +1038,13 @@ impl Bootstrap {
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
+            bin_dir: None,
             client_listen_addr: SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.args.nats_client_port),
+            config_dir: "/tmp/nats-config".to_string(),
             debug: self.args.testnet,
             network: network.clone(),
             server_name: network.fqdn().await?,
-            store_dir: "/var/lib/nats/nats".to_string(),
+            store_dir: self.args.nats_store_dir.to_string_lossy().to_string(),
         });
 
         let nats_server_handle = nats_server.start().await?;

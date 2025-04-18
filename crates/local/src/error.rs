@@ -36,6 +36,10 @@ pub enum Error {
     #[error(transparent)]
     Postgres(#[from] proven_postgres::Error),
 
+    /// Error related to private key operations.
+    #[error("private key error: {0}")]
+    PrivateKey(String),
+
     /// Proven network error.
     #[error(transparent)]
     ProvenNetwork(#[from] proven_network::Error),

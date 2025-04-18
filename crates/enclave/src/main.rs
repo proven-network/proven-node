@@ -87,11 +87,6 @@ async fn handle_requests_loop(rpc_server: &RpcServer, enclave: EnclaveNode) -> R
                     ack(InitializeResponse { success: false }).await?;
                 }
 
-                RpcCall::AddPeer(args, ack) => {
-                    let response = enclave.lock().await.add_peer(args).await;
-                    ack(response).await?;
-                }
-
                 RpcCall::Shutdown(ack) => {
                     enclave.lock().await.shutdown().await;
 

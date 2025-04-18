@@ -84,13 +84,13 @@ fn show_hosts_file_instructions(hostname: &str) {
     #[cfg(target_family = "unix")]
     error!(
         "Please add {} to {} or configure DNS properly",
-        style(format!("0.0.0.0 {}", hostname)).cyan(),
+        style(format!("127.0.0.1 {}", hostname)).cyan(),
         style("/etc/hosts").blue(),
     );
     #[cfg(target_family = "windows")]
     error!(
         "Please add {} to {} or configure DNS properly",
-        style(format!("0.0.0.0 {}", hostname)).cyan(),
+        style(format!("127.0.0.1 {}", hostname)).cyan(),
         style(r"C:\Windows\System32\drivers\etc\hosts").blue()
     );
 }

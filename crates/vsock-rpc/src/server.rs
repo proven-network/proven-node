@@ -6,15 +6,11 @@ use std::pin::Pin;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_vsock::{VsockAddr, VsockListener, VsockStream};
 
-use crate::common::{
-    AddPeerRequest, AddPeerResponse, InitializeRequest, InitializeResponse, Request, Response,
-    ShutdownResponse,
-};
+use crate::common::{InitializeRequest, InitializeResponse, Request, Response, ShutdownResponse};
 
 type AcknowledgerFut = Pin<Box<dyn Future<Output = Result<()>> + Send>>;
 type AcknowledgerFn<Res> = Box<dyn FnOnce(Res) -> AcknowledgerFut + Send>;
 type InitializeAcknowledger = AcknowledgerFn<InitializeResponse>;
-type AddPeerAcknowledger = AcknowledgerFn<AddPeerResponse>;
 type ShutdownAcknowledger = AcknowledgerFn<ShutdownResponse>;
 
 /// RPC calls that can be made to the server.
@@ -22,9 +18,6 @@ type ShutdownAcknowledger = AcknowledgerFn<ShutdownResponse>;
 pub enum RpcCall {
     /// Initializes the enclave (after booting).
     Initialize(InitializeRequest, InitializeAcknowledger),
-
-    /// Tell enclave about a new peer.
-    AddPeer(AddPeerRequest, AddPeerAcknowledger),
 
     /// Tell enclave to shut down.
     Shutdown(ShutdownAcknowledger),
@@ -70,10 +63,6 @@ impl RpcServer {
 
         Ok(match command {
             Request::Initialize(args) => RpcCall::Initialize(
-                args,
-                Box::new(move |response| Box::pin(send_response(stream, response))),
-            ),
-            Request::AddPeer(args) => RpcCall::AddPeer(
                 args,
                 Box::new(move |response| Box::pin(send_response(stream, response))),
             ),

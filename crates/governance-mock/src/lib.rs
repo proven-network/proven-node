@@ -11,6 +11,7 @@ use std::path::Path;
 use std::vec::Vec;
 
 use async_trait::async_trait;
+use ed25519_dalek::SigningKey;
 use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +38,20 @@ impl MockGovernance {
     #[must_use]
     pub fn new(nodes: Vec<TopologyNode>, versions: Vec<Version>) -> Self {
         Self { nodes, versions }
+    }
+
+    /// Create a new mock governance implementation with a single node.
+    #[must_use]
+    pub fn for_single_node(private_key: SigningKey) -> Self {
+        let node = TopologyNode {
+            availability_zone: "local".to_string(),
+            origin: "http://proven.local:3200".to_string(),
+            public_key: hex::encode(private_key.verifying_key().to_bytes()),
+            region: "local".to_string(),
+            specializations: HashSet::new(),
+        };
+
+        Self::new(vec![node], vec![])
     }
 
     /// Create a new mock governance instance from a topology file

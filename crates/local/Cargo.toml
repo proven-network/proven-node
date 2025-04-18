@@ -9,6 +9,8 @@ bytes = { workspace = true }
 ciborium = { workspace = true }
 clap = { workspace = true }
 console = { workspace = true }
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
 hickory-resolver = { workspace = true }
 proven-applications = { workspace = true }
 proven-attestation = { workspace = true }

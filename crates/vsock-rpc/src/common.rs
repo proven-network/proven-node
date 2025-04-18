@@ -1,8 +1,6 @@
-mod add_peer;
 mod initialize;
 mod shutdown;
 
-pub use add_peer::*;
 pub use initialize::*;
 pub use shutdown::*;
 
@@ -13,9 +11,6 @@ use serde::{Deserialize, Serialize};
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Request {
-    /// Add a new peer to the server.
-    AddPeer(AddPeerRequest),
-
     /// Initialize the server.
     Initialize(InitializeRequest),
 
@@ -28,10 +23,6 @@ pub enum Request {
 pub enum Response {
     /// Unhandled by running enclave.
     Unhandled,
-
-    /// Response to an add peer request.
-    #[from]
-    AddPeer(AddPeerResponse),
 
     /// Response to an initialize request.
     #[from]

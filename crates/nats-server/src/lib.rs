@@ -31,7 +31,6 @@ use tracing::{debug, error, info, trace, warn};
 
 static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
 static CLUSTER_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster.conf");
-static NATS_SERVER_PATH: &str = "/apps/nats/v2.11.0/nats-server";
 
 const PEER_DISCOVERY_INTERVAL: u64 = 300; // 5 minutes
 
@@ -42,8 +41,10 @@ where
     G: Governance,
     A: Attestor,
 {
+    bin_dir: Option<String>,
     client_listen_addr: SocketAddrV4,
     clients: Arc<Mutex<Vec<Client>>>,
+    config_dir: String,
     debug: bool,
     network: ProvenNetwork<G, A>,
     server_name: String,
@@ -58,8 +59,14 @@ where
     G: Governance,
     A: Attestor,
 {
+    /// Optional path to the NATS server binary if it is not in the PATH.
+    pub bin_dir: Option<String>,
+
     /// The address to listen on.
     pub client_listen_addr: SocketAddrV4,
+
+    /// The directory to store configuration in.
+    pub config_dir: String,
 
     /// Whether to enable debug logging.
     pub debug: bool,
@@ -83,7 +90,9 @@ where
     #[must_use]
     pub fn new(
         NatsServerOptions {
+            bin_dir,
             client_listen_addr,
+            config_dir,
             debug,
             network,
             server_name,
@@ -91,8 +100,10 @@ where
         }: NatsServerOptions<G, A>,
     ) -> Self {
         Self {
+            bin_dir,
             clients: Arc::new(Mutex::new(Vec::new())),
             client_listen_addr,
+            config_dir,
             debug,
             network,
             server_name,
@@ -100,21 +111,6 @@ where
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
-    }
-
-    /// Adds a peer to the NATS server.
-    ///
-    /// # Arguments
-    ///
-    /// * `peer_ip` - The IP address of the peer to add.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the peer cannot be added.
-    pub fn add_peer(&self, peer_ip: SocketAddrV4) -> Result<()> {
-        println!("Adding peer: {peer_ip}");
-
-        Ok(())
     }
 
     /// Starts the NATS server.
@@ -143,14 +139,20 @@ where
         let task_tracker = self.task_tracker.clone();
         let debug = self.debug;
 
+        let config_dir = format!("{}/nats-server.conf", self.config_dir);
+        let bin_dir = self
+            .bin_dir
+            .as_deref()
+            .map(|d| format!("{}/", d))
+            .unwrap_or_default();
         let server_task = self.task_tracker.spawn(async move {
-            let mut args = vec!["--config", "/etc/nats/nats-server.conf"];
+            let mut args = vec!["--config", &config_dir];
 
             if debug {
                 args.extend_from_slice(&["-DV"]);
             }
 
-            let mut cmd = Command::new(NATS_SERVER_PATH);
+            let mut cmd = Command::new(format!("{}nats-server", bin_dir));
             for arg in args {
                 cmd.arg(arg);
             }
@@ -355,17 +357,22 @@ where
 
         info!("{}", config);
 
-        tokio::fs::create_dir_all("/etc/nats")
+        tokio::fs::create_dir_all(&self.config_dir)
             .await
             .map_err(|e| Error::Io("failed to create /etc/nats", e))?;
 
-        tokio::fs::write("/etc/nats/nats-server.conf", config)
+        tokio::fs::write(format!("{}/nats-server.conf", self.config_dir), config)
             .await
             .map_err(|e| Error::Io("failed to write nats-server.conf", e))?;
 
         // Run "nats-server --signal reload" to reload the configuration if it is running (task_tracker closed)
         if self.task_tracker.is_closed() {
-            let output = Command::new(NATS_SERVER_PATH)
+            let bin_dir = self
+                .bin_dir
+                .as_deref()
+                .map(|d| format!("{}/", d))
+                .unwrap_or_default();
+            let output = Command::new(format!("{}nats-server", bin_dir))
                 .arg("--signal")
                 .arg("reload")
                 .output()

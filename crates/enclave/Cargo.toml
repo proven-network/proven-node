@@ -8,8 +8,10 @@ async-nats = { workspace = true }
 bytes = { workspace = true }
 ciborium = { workspace = true }
 cidr = { workspace = true }
+ed25519-dalek = { workspace = true }
 fdlimit = { workspace = true }
 futures = { workspace = true }
+hex = { workspace = true }
 proven-applications = { workspace = true }
 proven-attestation = { workspace = true }
 proven-attestation-nsm = { workspace = true }
