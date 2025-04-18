@@ -297,26 +297,14 @@ pub async fn op_set_application_string<AS: Store1>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
-
-    use proven_sessions::{Identity, RadixIdentityDetails};
+    use crate::{ExecutionRequest, ExecutionResult, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_application_bytes_store() {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_application_bytes_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { .. }) => {}
@@ -334,17 +322,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_application_key_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { .. }) => {}
@@ -362,17 +340,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_application_string_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { .. }) => {}

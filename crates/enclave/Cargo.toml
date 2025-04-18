@@ -19,6 +19,7 @@ proven-external-fs = { workspace = true }
 proven-governance = { workspace = true }
 proven-governance-mock = { workspace = true }
 proven-http-letsencrypt = { workspace = true }
+proven-identity = { workspace = true }
 proven-imds = { workspace = true }
 proven-instance-details = { workspace = true }
 proven-kms = { workspace = true }
@@ -33,7 +34,6 @@ proven-radix-gateway = { workspace = true }
 proven-radix-nft-verifier-gateway = { workspace = true }
 proven-radix-node = { workspace = true }
 proven-runtime = { workspace = true }
-proven-sessions = { workspace = true }
 proven-sql = { workspace = true }
 proven-sql-streamed = { workspace = true }
 proven-store = { workspace = true }

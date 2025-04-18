@@ -152,7 +152,6 @@ mod tests {
     use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
 
     use bytes::Bytes;
-    use proven_sessions::{Identity, RadixIdentityDetails};
     use serde::Deserialize;
 
     #[tokio::test]
@@ -161,17 +160,7 @@ mod tests {
             RuntimeOptions::for_test_code("handler/test_fetch_with_allowed_origins");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         let result = worker.execute(request).await;
 
@@ -186,17 +175,7 @@ mod tests {
             RuntimeOptions::for_test_code("handler/test_fetch_with_disallowed_origins");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Error { .. }) => {
@@ -244,17 +223,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok {
@@ -288,17 +257,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#testNested").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request =
+            ExecutionRequest::for_rpc_with_session_test("file:///main.ts#testNested", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok {

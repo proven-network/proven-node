@@ -524,9 +524,7 @@ pub async fn op_set_nft_string<NS: Store2, RNV: RadixNftVerifier>(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
-
-    use proven_sessions::{Identity, RadixIdentityDetails};
+    use crate::{ExecutionRequest, ExecutionResult, RuntimeOptions, Worker};
 
     #[tokio::test]
     async fn test_nft_bytes_store() {
@@ -534,7 +532,7 @@ mod tests {
         runtime_options
             .radix_nft_verifier
             .insert_ownership(
-                "my_account",
+                "my_account_1",
                 "resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi",
                 "#420#",
             )
@@ -542,17 +540,7 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { .. }) => {}
@@ -570,17 +558,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Error { .. }) => {
@@ -610,17 +588,7 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -641,17 +609,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request =
+            ExecutionRequest::for_rpc_with_session_test_no_accounts("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -674,7 +633,7 @@ mod tests {
         runtime_options
             .radix_nft_verifier
             .insert_ownership(
-                "my_account",
+                "my_account_1",
                 "resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi",
                 "#420#",
             )
@@ -682,17 +641,7 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         if let Err(err) = result {
@@ -705,17 +654,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -746,17 +685,7 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -777,17 +706,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request =
+            ExecutionRequest::for_rpc_with_session_test_no_accounts("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -810,7 +730,7 @@ mod tests {
         runtime_options
             .radix_nft_verifier
             .insert_ownership(
-                "my_account",
+                "my_account_1",
                 "resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi",
                 "#420#",
             )
@@ -818,17 +738,7 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         if let Err(err) = result {
@@ -841,17 +751,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -882,17 +782,7 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec!["my_account".to_string()],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -913,17 +803,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request =
+            ExecutionRequest::for_rpc_with_session_test_no_accounts("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {

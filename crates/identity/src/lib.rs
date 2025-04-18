@@ -6,11 +6,13 @@
 
 mod error;
 mod identity;
+mod ledger_identity;
 mod session;
 
 pub use error::Error;
 pub use identity::Identity;
-pub use identity::radix::RadixIdentityDetails;
+pub use ledger_identity::LedgerIdentity;
+pub use ledger_identity::radix::RadixIdentityDetails;
 pub use session::Session;
 
 use std::collections::HashSet;
@@ -23,9 +25,10 @@ use proven_radix_rola::{Rola, RolaOptions, SignedChallenge, Type as SignedChalle
 use proven_store::{Store, Store1, Store2};
 use radix_common::network::NetworkDefinition;
 use rand::{Rng, thread_rng};
+use uuid::Uuid;
 
-/// Options for creating a new `SessionManager`
-pub struct SessionManagerOptions<'a, A, CS, SS>
+/// Options for creating a new `IdentityManager`
+pub struct IdentityManagerOptions<'a, A, CS, SS>
 where
     A: Attestor,
     CS: Store2,
@@ -47,8 +50,23 @@ where
     pub radix_network_definition: &'a NetworkDefinition,
 }
 
+/// Options for creating a new anonymous session.
+pub struct CreateAnonymousSessionOptions<'a> {
+    /// The application ID.
+    pub application_id: &'a str,
+
+    /// Challenge used in remote attestation.
+    pub nonce: &'a Bytes,
+
+    /// The origin of the request.
+    pub origin: &'a str,
+
+    /// The verifying key of the client.
+    pub verifying_key: &'a VerifyingKey,
+}
+
 /// Options for creating a new session.
-pub struct CreateSessionOptions<'a> {
+pub struct IdentifySessionViaRadixOptions<'a> {
     /// The application ID.
     pub application_id: &'a str,
 
@@ -73,7 +91,7 @@ pub struct CreateSessionOptions<'a> {
 
 /// Trait for managing user sessions.
 #[async_trait]
-pub trait SessionManagement
+pub trait IdentityManagement
 where
     Self: Clone + Send + Sync + 'static,
 {
@@ -88,26 +106,48 @@ where
 
     /// Creates a new instance of the session manager.
     fn new(
-        options: SessionManagerOptions<Self::Attestor, Self::ChallengeStore, Self::SessionStore>,
+        options: IdentityManagerOptions<Self::Attestor, Self::ChallengeStore, Self::SessionStore>,
     ) -> Self;
 
-    /// Creates a new challenge to use for session creation.
-    async fn create_challenge(&self, application_id: &str, origin: &str) -> Result<String, Error>;
+    /// Creates a new anonymous session.
+    async fn create_anonymous_session(
+        &self,
+        options: CreateAnonymousSessionOptions<'_>,
+    ) -> Result<Bytes, Error>;
 
-    /// Creates a new session.
-    async fn create_session(&self, params: CreateSessionOptions<'_>) -> Result<Bytes, Error>;
+    /// Creates a new ROLA challenge to use for session identifiction.
+    async fn create_rola_challenge(
+        &self,
+        application_id: &str,
+        origin: &str,
+    ) -> Result<String, Error>;
 
-    /// Gets a session by its ID.
+    /// Gets an identity by ID.
+    async fn get_identity(&self, identity_id: &str) -> Result<Option<Identity>, Error>;
+
+    /// Gets an identity by Radix identity address.
+    async fn get_identity_by_radix_identity_address(
+        &self,
+        radix_identity_address: &str,
+    ) -> Result<Option<Identity>, Error>;
+
+    /// Gets a session by ID.
     async fn get_session(
         &self,
         application_id: &str,
         session_id: &str,
     ) -> Result<Option<Session>, Error>;
+
+    /// Identifies a session via ROLA.
+    async fn identify_session_via_rola(
+        &self,
+        options: IdentifySessionViaRadixOptions<'_>,
+    ) -> Result<Bytes, Error>;
 }
 
 /// Manages all user sessions (created via ROLA) and their associated data.
 #[derive(Clone)]
-pub struct SessionManager<A, CS, SS>
+pub struct IdentityManager<A, CS, SS>
 where
     A: Attestor,
     CS: Store2,
@@ -120,8 +160,23 @@ where
     radix_network_definition: NetworkDefinition,
 }
 
+impl<A, CS, SS> IdentityManager<A, CS, SS>
+where
+    A: Attestor,
+    CS: Store2,
+    SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
+{
+    #[allow(clippy::unused_self)]
+    fn create_identity_from_ledger_identity(
+        &self,
+        _ledger_identity: LedgerIdentity,
+    ) -> Result<Identity, Error> {
+        unimplemented!()
+    }
+}
+
 #[async_trait]
-impl<A, CS, SS> SessionManagement for SessionManager<A, CS, SS>
+impl<A, CS, SS> IdentityManagement for IdentityManager<A, CS, SS>
 where
     A: Attestor,
     CS: Store2,
@@ -132,13 +187,13 @@ where
     type SessionStore = SS;
 
     fn new(
-        SessionManagerOptions {
+        IdentityManagerOptions {
             attestor,
             challenge_store,
             sessions_store,
             radix_gateway_origin,
             radix_network_definition,
-        }: SessionManagerOptions<A, CS, SS>,
+        }: IdentityManagerOptions<A, CS, SS>,
     ) -> Self {
         Self {
             attestor,
@@ -149,7 +204,54 @@ where
         }
     }
 
-    async fn create_challenge(&self, application_id: &str, origin: &str) -> Result<String, Error> {
+    async fn create_anonymous_session(
+        &self,
+        CreateAnonymousSessionOptions {
+            application_id,
+            nonce,
+            origin,
+            verifying_key,
+        }: CreateAnonymousSessionOptions<'_>,
+    ) -> Result<Bytes, Error> {
+        let session_uuid = Uuid::new_v4();
+        let session_id_bytes = session_uuid.as_bytes();
+        let session_id = session_uuid.to_string();
+
+        let server_signing_key = SigningKey::generate(&mut thread_rng());
+        let server_public_key = server_signing_key.verifying_key();
+
+        let session = Session::Anonymous {
+            origin: origin.to_string(),
+            session_id: session_id.clone(),
+            signing_key: server_signing_key.clone(),
+            verifying_key: *verifying_key,
+        };
+
+        self.sessions_store
+            .scope(application_id)
+            .put(session_id.clone(), session.clone())
+            .await
+            .map_err(|e| Error::SessionStore(e.to_string()))?;
+
+        match self
+            .attestor
+            .attest(AttestationParams {
+                nonce: Some(nonce),
+                user_data: Some(&Bytes::from(session_id_bytes.to_vec())),
+                public_key: Some(&Bytes::from(server_public_key.to_bytes().to_vec())),
+            })
+            .await
+        {
+            Ok(attestation) => Ok(attestation),
+            Err(e) => Err(Error::Attestation(e.to_string())),
+        }
+    }
+
+    async fn create_rola_challenge(
+        &self,
+        application_id: &str,
+        origin: &str,
+    ) -> Result<String, Error> {
         let mut challenge = String::new();
 
         for _ in 0..32 {
@@ -166,9 +268,37 @@ where
         Ok(challenge)
     }
 
-    async fn create_session(
+    async fn get_identity(&self, _identity_id: &str) -> Result<Option<Identity>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_identity_by_radix_identity_address(
         &self,
-        CreateSessionOptions {
+        _radix_identity_address: &str,
+    ) -> Result<Option<Identity>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_session(
+        &self,
+        application_id: &str,
+        session_id: &str,
+    ) -> Result<Option<Session>, Error> {
+        match self
+            .sessions_store
+            .scope(application_id.to_string())
+            .get(session_id.to_string())
+            .await
+        {
+            Ok(Some(session)) => Ok(Some(session)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(Error::SessionStore(e.to_string())),
+        }
+    }
+
+    async fn identify_session_via_rola(
+        &self,
+        IdentifySessionViaRadixOptions {
             application_id,
             application_name,
             dapp_definition_address,
@@ -176,7 +306,7 @@ where
             origin,
             signed_challenges,
             verifying_key,
-        }: CreateSessionOptions<'_>,
+        }: IdentifySessionViaRadixOptions<'_>,
     ) -> Result<Bytes, Error> {
         let rola = Rola::new(RolaOptions {
             application_name: application_name.unwrap_or_default(),
@@ -242,16 +372,28 @@ where
             identity_address: identity_addresses[0].clone(),
         };
 
-        let session = Session {
-            identities: vec![Identity::Radix(radix_identity)],
+        let identity = self
+            .get_identity_by_radix_identity_address(&radix_identity.identity_address)
+            .await?
+            .unwrap_or_else(|| {
+                self.create_identity_from_ledger_identity(LedgerIdentity::Radix(
+                    radix_identity.clone(),
+                ))
+                .expect("Failed to create identity")
+            });
+
+        let session = Session::Identified {
+            identity,
+            ledger_identity: LedgerIdentity::Radix(radix_identity),
+            origin: origin.to_string(),
             session_id: hex::encode(session_id_bytes),
-            signing_key: server_signing_key.as_bytes().to_vec(),
-            verifying_key: verifying_key.as_bytes().to_vec(),
+            signing_key: server_signing_key.clone(),
+            verifying_key: *verifying_key,
         };
 
         self.sessions_store
             .scope(application_id)
-            .put(session.session_id.clone(), session.clone())
+            .put(session.session_id(), session.clone())
             .await
             .map_err(|e| Error::SessionStore(e.to_string()))?;
 
@@ -266,23 +408,6 @@ where
         {
             Ok(attestation) => Ok(attestation),
             Err(e) => Err(Error::Attestation(e.to_string())),
-        }
-    }
-
-    async fn get_session(
-        &self,
-        application_id: &str,
-        session_id: &str,
-    ) -> Result<Option<Session>, Error> {
-        match self
-            .sessions_store
-            .scope(application_id.to_string())
-            .get(session_id.to_string())
-            .await
-        {
-            Ok(Some(session)) => Ok(Some(session)),
-            Ok(None) => Ok(None),
-            Err(e) => Err(Error::SessionStore(e.to_string())),
         }
     }
 }

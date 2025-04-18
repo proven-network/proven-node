@@ -18,9 +18,9 @@ ed25519-dalek = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
 proven-code-package = { workspace = true }
+proven-identity = { workspace = true }
 proven-locks = { workspace = true }
 proven-radix-nft-verifier = { workspace = true }
-proven-sessions = { workspace = true }
 proven-sql = { workspace = true }
 proven-store = { workspace = true }
 radix-common = { workspace = true }

@@ -4,10 +4,11 @@ use proven_runtime::{
 
 use std::sync::Arc;
 
+use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::future::join_all;
 use proven_code_package::CodePackage;
+use proven_identity::{Identity, LedgerIdentity, RadixIdentityDetails, Session};
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
-use proven_sessions::{Identity, RadixIdentityDetails};
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 use radix_common::network::NetworkDefinition;
@@ -60,20 +61,46 @@ async fn main() -> Result<(), Error> {
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 
+    let random_signing_key = SigningKey::generate(&mut rand::thread_rng());
+    let random_verifying_key = VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng()));
+
     for _ in 0..EXECUTIONS {
         let worker = Arc::clone(&worker);
         let durations = Arc::clone(&durations);
+        let random_signing_key = random_signing_key.clone();
         let handle = tokio::spawn(async move {
-            let request = ExecutionRequest::RpcWithUserContext {
+            let request = ExecutionRequest::Rpc {
                 application_id: "application_id".to_string(),
                 args: vec![json!(10), json!(20)],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-                identities: vec![Identity::Radix(RadixIdentityDetails {
-                    account_addresses: vec![],
-                    dapp_definition_address: "dapp_definition_address".to_string(),
-                    expected_origin: "origin".to_string(),
-                    identity_address: "my_identity".to_string(),
-                })],
+                session: Session::Identified {
+                    identity: Identity {
+                        identity_id: "identity_id".to_string(),
+                        ledger_identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
+                            account_addresses: vec![
+                                "my_account_1".to_string(),
+                                "my_account_2".to_string(),
+                            ],
+                            dapp_definition_address: "dapp_definition_address".to_string(),
+                            expected_origin: "origin".to_string(),
+                            identity_address: "my_identity".to_string(),
+                        })],
+                        passkeys: vec![],
+                    },
+                    ledger_identity: LedgerIdentity::Radix(RadixIdentityDetails {
+                        account_addresses: vec![
+                            "my_account_1".to_string(),
+                            "my_account_2".to_string(),
+                        ],
+                        dapp_definition_address: "dapp_definition_address".to_string(),
+                        expected_origin: "origin".to_string(),
+                        identity_address: "my_identity".to_string(),
+                    }),
+                    origin: "origin".to_string(),
+                    session_id: "session_id".to_string(),
+                    signing_key: random_signing_key,
+                    verifying_key: random_verifying_key,
+                },
             };
 
             let start = Instant::now();

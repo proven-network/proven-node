@@ -1,0 +1,18 @@
+{
+  "scripts": {
+    "build": "esbuild static/{iframe,webauthn,ws-worker}.ts --bundle --outdir=static",
+    "test:iframe": "node test/server.js"
+  },
+  "dependencies": {
+    "@auth0/cose": "1.0.2",
+    "@simplewebauthn/browser": "13.1.0",
+    "cbor-x": "1.6.0",
+    "elliptic": "6.6.1",
+    "@peculiar/x509": "1.12.3"
+  },
+  "devDependencies": {
+    "@radixdlt/radix-dapp-toolkit": "2.2.1",
+    "@types/elliptic": "6.4.18",
+    "esbuild": "0.25.0"
+  }
+}

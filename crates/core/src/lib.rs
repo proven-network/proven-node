@@ -16,16 +16,16 @@ pub use light::{LightCore, LightCoreOptions};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
+use proven_identity::IdentityManagement;
 use proven_network::ProvenNetwork;
 use proven_runtime::RuntimePoolManagement;
-use proven_sessions::SessionManagement;
 
 #[derive(Clone)]
 pub(crate) struct FullContext<AM, RM, SM, A, G>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {

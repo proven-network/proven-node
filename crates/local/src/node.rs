@@ -10,6 +10,7 @@ use proven_core::Core;
 use proven_ethereum_lighthouse::LighthouseNode;
 use proven_ethereum_reth::RethNode;
 use proven_governance_mock::MockGovernance;
+use proven_identity::{IdentityManager, Session};
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_postgres::Postgres;
@@ -18,7 +19,6 @@ use proven_radix_gateway::RadixGateway;
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_radix_node::RadixNode;
 use proven_runtime::RuntimePoolManager;
-use proven_sessions::{Session, SessionManager};
 use proven_sql_streamed::{
     Request as SqlRequest, StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3,
 };
@@ -81,7 +81,7 @@ pub type LocalNodeCore = Core<
         >,
         GatewayRadixNftVerifier,
     >,
-    SessionManager<
+    IdentityManager<
         MockAttestor,
         NatsStore2,
         NatsStore1<

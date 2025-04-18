@@ -19,13 +19,14 @@ use tokio::sync::oneshot;
 ///
 /// # Example
 /// ```rust
+/// use ed25519_dalek::{SigningKey, VerifyingKey};
 /// use proven_code_package::CodePackage;
+/// use proven_identity::{Identity, LedgerIdentity, RadixIdentityDetails, Session};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Runtime,
 ///     RuntimeOptions, Worker,
 /// };
-/// use proven_sessions::{Identity, RadixIdentityDetails};
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 /// use radix_common::network::NetworkDefinition;
@@ -54,16 +55,40 @@ use tokio::sync::oneshot;
 ///     .expect("Failed to create worker");
 ///
 ///     worker
-///         .execute(ExecutionRequest::RpcWithUserContext {
+///         .execute(ExecutionRequest::Rpc {
 ///             application_id: "application_id".to_string(),
 ///             args: vec![json!(10), json!(20)],
 ///             handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-///             identities: vec![Identity::Radix(RadixIdentityDetails {
-///                 account_addresses: vec![],
-///                 dapp_definition_address: "dapp_definition_address".to_string(),
-///                 expected_origin: "origin".to_string(),
-///                 identity_address: "my_identity".to_string(),
-///             })],
+///             session: Session::Identified {
+///                 identity: Identity {
+///                     identity_id: "identity_id".to_string(),
+///                     ledger_identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
+///                         account_addresses: vec![
+///                             "my_account_1".to_string(),
+///                             "my_account_2".to_string(),
+///                         ],
+///                         dapp_definition_address: "dapp_definition_address".to_string(),
+///                         expected_origin: "origin".to_string(),
+///                         identity_address: "my_identity".to_string(),
+///                     })],
+///                     passkeys: vec![],
+///                 },
+///                 ledger_identity: LedgerIdentity::Radix(RadixIdentityDetails {
+///                     account_addresses: vec![
+///                         "my_account_1".to_string(),
+///                         "my_account_2".to_string(),
+///                     ],
+///                     dapp_definition_address: "dapp_definition_address".to_string(),
+///                     expected_origin: "origin".to_string(),
+///                     identity_address: "my_identity".to_string(),
+///                 }),
+///                 origin: "origin".to_string(),
+///                 session_id: "session_id".to_string(),
+///                 signing_key: SigningKey::generate(&mut rand::thread_rng()),
+///                 verifying_key: VerifyingKey::from(&SigningKey::generate(
+///                     &mut rand::thread_rng(),
+///                 )),
+///             },
 ///         })
 ///         .await;
 /// }
@@ -180,27 +205,12 @@ where
 mod tests {
     use super::*;
 
-    use crate::HandlerSpecifier;
-
-    use proven_sessions::{Identity, RadixIdentityDetails};
-    use serde_json::json;
-
     #[tokio::test]
     async fn test_worker_execute_in_tokio() {
         let runtime_options = RuntimeOptions::for_test_code("test_runtime_execute");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![json!(10), json!(20)],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         if let Err(err) = result {

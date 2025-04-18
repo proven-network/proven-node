@@ -101,10 +101,9 @@ extension!(
 
 #[cfg(test)]
 mod tests {
-    use crate::{ExecutionRequest, ExecutionResult, HandlerSpecifier, RuntimeOptions, Worker};
+    use crate::{ExecutionRequest, ExecutionResult, RuntimeOptions, Worker};
 
     use ed25519_dalek::Verifier;
-    use proven_sessions::{Identity, RadixIdentityDetails};
     use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
 
     #[tokio::test]
@@ -112,17 +111,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_signing");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { output, .. }) => {
@@ -160,17 +149,7 @@ mod tests {
             RuntimeOptions::for_test_code("crypto/test_ed25519_signing_radix_transaction");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { output, .. }) => {
@@ -206,17 +185,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_storage");
         let mut worker = Worker::new(runtime_options.clone()).await.unwrap();
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#save").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#save", vec![]);
 
         let verifying_key = match worker.execute(request.clone()).await {
             Ok(ExecutionResult::Ok { output, .. }) => {
@@ -232,17 +201,7 @@ mod tests {
             }
         };
 
-        let request = ExecutionRequest::RpcWithUserContext {
-            application_id: "application_id".to_string(),
-            args: vec![],
-            handler_specifier: HandlerSpecifier::parse("file:///main.ts#load").unwrap(),
-            identities: vec![Identity::Radix(RadixIdentityDetails {
-                account_addresses: vec![],
-                dapp_definition_address: "dapp_definition_address".to_string(),
-                expected_origin: "origin".to_string(),
-                identity_address: "my_identity".to_string(),
-            })],
-        };
+        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#load", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { output, .. }) => {

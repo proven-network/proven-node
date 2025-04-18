@@ -10,8 +10,8 @@ use serde_json::json;
 use crate::FullContext;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
+use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
-use proven_sessions::SessionManagement;
 
 /// Handler for the `/whoami` endpoint.
 /// Returns the node information from network.get_self().
@@ -21,7 +21,7 @@ pub async fn whoami_handler<AM, RM, SM, A, G>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {

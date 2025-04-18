@@ -11,8 +11,8 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
+use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
-use proven_sessions::SessionManagement;
 use tracing::{error, info};
 
 async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
@@ -39,7 +39,7 @@ pub(crate) async fn ws_rpc_handler<AM, RM, SM, A, G>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {

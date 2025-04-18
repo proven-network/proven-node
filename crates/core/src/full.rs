@@ -1,7 +1,10 @@
 use crate::error::{Error, Result};
 use crate::handlers::{
-    ApplicationHttpContext, application_http_handler, create_challenge_handler, http_rpc_handler,
-    nats_cluster_endpoint_handler, verify_session_handler, whoami_handler, ws_rpc_handler,
+    ApplicationHttpContext, application_http_handler, create_rola_challenge_handler,
+    create_session_handler, http_rpc_handler, iframe_js_handler, nats_cluster_endpoint_handler,
+    verify_rola_handler, webauthn_iframe_handler, webauthn_js_handler,
+    webauthn_registration_finish_handler, webauthn_registration_start_handler, whoami_handler,
+    ws_rpc_handler, ws_worker_js_handler,
 };
 use crate::{FullContext, LightContext};
 
@@ -16,9 +19,9 @@ use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_governance::Governance;
 use proven_http::HttpServer;
+use proven_identity::IdentityManagement;
 use proven_network::{NATS_CLUSTER_ENDPOINT_API_PATH, ProvenNetwork};
 use proven_runtime::{HttpEndpoint, ModuleLoader, ModuleOptions, RuntimePoolManagement};
-use proven_sessions::SessionManagement;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -30,7 +33,7 @@ pub struct CoreOptions<AM, RM, SM, A, G>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -55,7 +58,7 @@ pub struct Core<AM, RM, SM, A, G>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -72,7 +75,7 @@ impl<AM, RM, SM, A, G> Core<AM, RM, SM, A, G>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: SessionManagement,
+    SM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -130,15 +133,47 @@ where
 
         let primary_router = Router::new()
             .route("/", get(|| async { redirect_response }))
+            .route(
+                "/auth/create_session",
+                post(create_session_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/auth/rola/challenge",
+                get(create_rola_challenge_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/auth/rola/verify",
+                post(verify_rola_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/login",
+                get(webauthn_iframe_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/login.js",
+                get(webauthn_js_handler),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/iframe.js",
+                get(iframe_js_handler),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/webauthn.js",
+                get(webauthn_js_handler),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/ws-worker.js",
+                get(ws_worker_js_handler),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/start",
+                get(webauthn_registration_start_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/auth/webauthn/finish",
+                post(webauthn_registration_finish_handler).with_state(full_ctx.clone()),
+            )
             .route("/whoami", get(whoami_handler).with_state(full_ctx.clone()))
-            .route(
-                "/sessions/{application_id}/challenge",
-                get(create_challenge_handler).with_state(full_ctx.clone()),
-            )
-            .route(
-                "/sessions/{application_id}/verify",
-                post(verify_session_handler).with_state(full_ctx.clone()),
-            )
             .route(
                 "/rpc/{application_id}",
                 post(http_rpc_handler).with_state(full_ctx.clone()),

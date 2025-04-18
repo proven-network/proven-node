@@ -24,6 +24,7 @@ use proven_kms::Kms;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
+use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{Peer, ProvenNetwork, ProvenNetworkOptions};
@@ -33,7 +34,6 @@ use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
-use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
@@ -826,7 +826,7 @@ impl Bootstrap {
             persist: true,
         });
 
-        let session_manager = SessionManager::new(SessionManagerOptions {
+        let session_manager = IdentityManager::new(IdentityManagerOptions {
             attestor: self.attestor.clone(),
             challenge_store,
             sessions_store,

@@ -27,6 +27,7 @@ members = [
     "crates/http",
     "crates/http-insecure",
     "crates/http-letsencrypt",
+    "crates/identity",
     "crates/imds",
     "crates/instance-details",
     "crates/isolation",
@@ -52,7 +53,6 @@ members = [
     "crates/radix-rola",
     "crates/radix-stream",
     "crates/runtime",
-    "crates/sessions",
     "crates/sql",
     "crates/sql-direct",
     "crates/sql-streamed",
@@ -111,7 +111,6 @@ default-members = [
     "crates/radix-rola",
     "crates/radix-stream",
     "crates/runtime",
-    "crates/sessions",
     "crates/sql",
     "crates/sql-direct",
     "crates/sql-streamed",
@@ -259,7 +258,7 @@ dyn-clone = "1.0.19"
 dynasmrt = "=1.2.3"
 ecb = "0.1.2"
 ecdsa = "0.16.9"
-ed25519-dalek = { version = "2.1.1", features = ["rand_core", "signature"] }
+ed25519-dalek = { version = "2.1.1", features = ["rand_core", "serde", "signature"] }
 ed448-goldilocks = "0.9.0"
 elliptic-curve = { version = "0.13.8", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 encoding_rs = "0.8.35"
@@ -389,6 +388,7 @@ proven-host = { path = "crates/host" }
 proven-http = { path = "crates/http" }
 proven-http-insecure = { path = "crates/http-insecure" }
 proven-http-letsencrypt = { path = "crates/http-letsencrypt" }
+proven-identity = { path = "crates/identity" }
 proven-imds = { path = "crates/imds" }
 proven-instance-details = { path = "crates/instance-details" }
 proven-isolation = { path = "crates/isolation" }
@@ -414,7 +414,6 @@ proven-radix-node = { path = "crates/radix-node" }
 proven-radix-rola = { path = "crates/radix-rola" }
 proven-radix-stream = { path = "crates/radix-stream" }
 proven-runtime = { path = "crates/runtime" }
-proven-sessions = { path = "crates/sessions" }
 proven-sql = { path = "crates/sql" }
 proven-sql-direct = { path = "crates/sql-direct" }
 proven-sql-streamed = { path = "crates/sql-streamed" }
@@ -509,6 +508,7 @@ urlpattern = "0.3.0"
 uuid = { version = "1.15.1", features = ["v4"] }
 v8_valueserializer = "0.1.1"
 web-transport-proto = "0.2.5"
+webauthn-rs = { version = "0.5.1", features = ["danger-allow-state-serialisation"] }
 webpki-root-certs = "0.26.8"
 webpki-roots = "0.26.8"
 wgpu-core = "=24.0.0"

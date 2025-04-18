@@ -20,6 +20,7 @@ use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOpt
 use proven_governance::NodeSpecialization;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
+use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
@@ -31,7 +32,6 @@ use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
-use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_fs::{FsStore, FsStore1, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
@@ -1068,7 +1068,7 @@ impl Bootstrap {
             persist: true,
         });
 
-        let session_manager = SessionManager::new(SessionManagerOptions {
+        let session_manager = IdentityManager::new(IdentityManagerOptions {
             attestor: self.attestor.clone(),
             challenge_store,
             sessions_store,

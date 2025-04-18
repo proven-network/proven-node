@@ -1,13 +1,13 @@
 use bytes::Bytes;
 use coset::{CborSerializable, Label};
 use ed25519_dalek::ed25519::signature::SignerMut;
-use ed25519_dalek::{Signature, SigningKey, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, Verifier};
 use proven_applications::ApplicationManagement;
 use proven_code_package::CodePackage;
+use proven_identity::Session;
 use proven_runtime::{
     ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
 };
-use proven_sessions::{Identity, Session};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -47,10 +47,8 @@ where
     aad: Vec<u8>,
     application_id: String,
     _application_manager: AM,
-    identities: Vec<Identity>,
     runtime_pool_manager: RM,
-    signing_key: SigningKey,
-    verifying_key: VerifyingKey,
+    session: Session,
 }
 
 type Args = Vec<serde_json::Value>;
@@ -72,7 +70,7 @@ pub enum Response {
     ExecuteSuccess(ExecutionResult),
     ExecuteFailure(String),
     Ok,
-    WhoAmI(Vec<Identity>),
+    WhoAmI(String),
 }
 
 impl<AM, RM> RpcHandler<AM, RM>
@@ -86,30 +84,14 @@ where
         application_id: String,
         session: Session,
     ) -> Result<Self, RpcHandlerError> {
-        let signing_key_bytes: [u8; 32] = session
-            .signing_key
-            .try_into()
-            .map_err(|_| RpcHandlerError::SigningKey)?;
-        let signing_key = SigningKey::from_bytes(&signing_key_bytes);
-
-        let verifying_key_bytes: [u8; 32] = session
-            .verifying_key
-            .try_into()
-            .map_err(|_| RpcHandlerError::VerifyingKey)?;
-
-        let verifying_key = VerifyingKey::from_bytes(&verifying_key_bytes)
-            .map_err(|_| RpcHandlerError::VerifyingKey)?;
-
-        let aad = hex::decode(session.session_id).map_err(|_| RpcHandlerError::Session)?;
+        let aad = hex::decode(session.session_id()).map_err(|_| RpcHandlerError::Session)?;
 
         Ok(Self {
             aad,
             application_id,
             _application_manager: application_manager,
-            identities: session.identities,
             runtime_pool_manager,
-            signing_key,
-            verifying_key,
+            session,
         })
     }
 
@@ -129,7 +111,7 @@ where
         sign1
             .verify_signature(&self.aad, |signature_bytes, pt| {
                 Signature::from_slice(signature_bytes)
-                    .map(|signature| self.verifying_key.verify(pt, &signature))?
+                    .map(|signature| self.session.verifying_key().verify(pt, &signature))?
             })
             .map_err(|_| RpcHandlerError::Signature)?;
 
@@ -138,11 +120,11 @@ where
 
         let response = match method {
             Request::Execute(module, handler_specifier_string, args) => {
-                let execution_request = ExecutionRequest::RpcWithUserContext {
+                let execution_request = ExecutionRequest::Rpc {
                     application_id: self.application_id.clone(),
                     args,
                     handler_specifier: HandlerSpecifier::parse(&handler_specifier_string).unwrap(),
-                    identities: self.identities.clone(),
+                    session: self.session.clone(),
                 };
 
                 match self
@@ -158,11 +140,11 @@ where
                 }
             }
             Request::ExecuteHash(code_package_hash, handler_specifier_string, args) => {
-                let execution_request = ExecutionRequest::RpcWithUserContext {
+                let execution_request = ExecutionRequest::Rpc {
                     application_id: self.application_id.clone(),
                     args,
                     handler_specifier: HandlerSpecifier::parse(&handler_specifier_string).unwrap(),
-                    identities: self.identities.clone(),
+                    session: self.session.clone(),
                 };
 
                 match self
@@ -176,7 +158,7 @@ where
                 }
             }
             Request::Watch(_) => Ok(Response::Ok),
-            Request::WhoAmI => Ok(Response::WhoAmI(self.identities.clone())),
+            Request::WhoAmI => Ok(Response::WhoAmI(self.session.session_id().to_string())),
         }?;
 
         let mut payload = Vec::new();
@@ -197,7 +179,9 @@ where
         let resp_sign1 = sign1_builder
             .protected(protected_header)
             .payload(payload)
-            .create_signature(&self.aad, |pt| self.signing_key.sign(pt).to_vec())
+            .create_signature(&self.aad, |pt| {
+                self.session.signing_key().clone().sign(pt).to_vec()
+            })
             .build();
 
         resp_sign1
