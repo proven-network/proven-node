@@ -4,7 +4,9 @@ use crate::ReadyCheckInfo;
 use crate::cgroups::{CgroupMemoryConfig, CgroupsController};
 use crate::error::Error;
 use crate::namespaces::NamespaceOptions;
-use crate::network::{VethPair, check_root_permissions};
+use crate::network::VethPair;
+#[cfg(target_os = "linux")]
+use crate::network::check_root_permissions;
 use crate::volume_mount::VolumeMount;
 
 use std::collections::HashMap;
@@ -599,6 +601,7 @@ impl IsolatedProcessSpawner {
         debug!("Spawning process: {:?}", cmd);
 
         // Track the start time to compensate for the network setup sleep
+        #[cfg(target_os = "linux")]
         let start_time = std::time::Instant::now();
 
         // Spawn the command
@@ -607,11 +610,13 @@ impl IsolatedProcessSpawner {
             .map_err(|e| Error::Io("Failed to spawn process", e))?;
 
         // Get the process ID
+        #[allow(unused_mut)]
         let mut pid = child.id().ok_or_else(|| {
             Error::SpawnProcess("No PID available for spawned process".to_string())
         })?;
 
         // If using PID namespace process will be forked so find process with `pgrep -P [PARENT_PID]`
+        #[cfg(target_os = "linux")]
         if self.namespaces.use_pid {
             debug!("Finding process with pgrep -P {}", pid);
 
@@ -665,6 +670,7 @@ impl IsolatedProcessSpawner {
         debug!("Process spawned with PID: {}", pid);
 
         // Setup network connectivity if network namespace is used
+        #[cfg(target_os = "linux")]
         if self.namespaces.use_network {
             // Check if we have root permissions for network setup
             if !check_root_permissions()? {
@@ -684,6 +690,7 @@ impl IsolatedProcessSpawner {
         }
 
         // Create resolv.conf for DNS resolution inside chroot if network namespace is used
+        #[cfg(target_os = "linux")]
         if let Some(veth) = self.veth_pair.as_ref() {
             let etc_dir = self.chroot_dir.join("etc");
             let resolv_conf_path = etc_dir.join("resolv.conf");
@@ -740,7 +747,9 @@ impl IsolatedProcessSpawner {
         let shutdown_timeout = self.shutdown_timeout;
         let shutdown_token_for_task = shutdown_token.clone();
         let exit_status_for_task = exit_status.clone();
+        #[cfg(target_os = "linux")]
         let chroot_dir = self.chroot_dir.clone();
+
         let join_handle = tokio::task::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
@@ -808,6 +817,7 @@ impl IsolatedProcessSpawner {
                     }
 
                     // Remove the chroot directory
+                    #[cfg(target_os = "linux")]
                     if let Err(err) = std::fs::remove_dir_all(&chroot_dir) {
                         error!("Failed to remove chroot directory: {}", err);
                     }
@@ -849,8 +859,10 @@ impl IsolatedProcessSpawner {
         };
 
         // We might need to compensate for the network setup sleep before starting the readiness checks
+        #[cfg(target_os = "linux")]
         let compensation = Duration::from_secs(5) - (std::time::Instant::now() - start_time);
 
+        #[cfg(target_os = "linux")]
         if compensation > Duration::from_millis(0) {
             debug!(
                 "Sleeping for {}ms before starting readiness checks",
@@ -879,6 +891,7 @@ impl IsolatedProcessSpawner {
             }
 
             // Wait for container IP if using network namespace
+            #[cfg(target_os = "linux")]
             let ready_check_info = if self.namespaces.use_network {
                 match self.veth_pair.as_ref().map(|v| v.container_ip()) {
                     Some(ip) => ReadyCheckInfo {
@@ -908,6 +921,12 @@ impl IsolatedProcessSpawner {
                     ip_address: std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
                     pid,
                 }
+            };
+
+            #[cfg(not(target_os = "linux"))]
+            let ready_check_info = ReadyCheckInfo {
+                ip_address: std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+                pid,
             };
 
             match (self.is_ready_check)(ready_check_info).await {
