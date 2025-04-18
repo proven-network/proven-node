@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create and start the server
-    let server = NatsServer::new(options);
+    let server = NatsServer::new(options).expect("Failed to create server");
     server.start().await?;
 
     println!("NATS server is ready!");

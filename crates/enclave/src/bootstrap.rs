@@ -793,7 +793,7 @@ impl Bootstrap {
             network: network.clone(),
             server_name: instance_details.instance_id.clone(),
             store_dir: "/var/lib/nats/nats".to_string(),
-        });
+        })?;
 
         let nats_server_handle = nats_server.start().await?;
         let nats_client = nats_server.build_client().await?;

@@ -1045,7 +1045,7 @@ impl Bootstrap {
             network: network.clone(),
             server_name: network.fqdn().await?,
             store_dir: self.args.nats_store_dir.to_string_lossy().to_string(),
-        });
+        })?;
 
         let nats_server_handle = nats_server.start().await?;
         let nats_client = nats_server.build_client().await?;

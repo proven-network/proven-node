@@ -176,8 +176,8 @@ where
     G: Governance,
     A: Attestor,
 {
-    /// Optional path to the NATS server binary
-    bin_dir: Option<String>,
+    /// Path to the directory containing the NATS server binary
+    bin_dir: String,
 
     /// The client listen port
     client_listen_port: u16,
@@ -221,26 +221,26 @@ where
             server_name,
             store_dir,
         }: NatsServerOptions<G, A>,
-    ) -> Self {
-        Self {
-            process: Arc::new(Mutex::new(None)),
-            clients: Arc::new(Mutex::new(Vec::new())),
+    ) -> Result<Self, Error> {
+        let bin_dir = match bin_dir {
+            Some(dir) => dir,
+            None => match which::which("nats-server") {
+                Ok(path) => path.parent().unwrap().to_str().unwrap().to_string(),
+                Err(_) => return Err(Error::BinaryNotFound),
+            },
+        };
+
+        Ok(Self {
             bin_dir,
+            clients: Arc::new(Mutex::new(Vec::new())),
             client_listen_port,
-            server_name,
+            config_dir,
             debug,
             network,
-            config_dir,
+            process: Arc::new(Mutex::new(None)),
+            server_name,
             store_dir,
-        }
-    }
-
-    /// Gets the path to the NATS server executable
-    fn get_nats_server_path(&self) -> String {
-        match &self.bin_dir {
-            Some(dir) => format!("{}/nats-server", dir),
-            None => "/apps/nats/v2.10.5/nats-server".to_string(),
-        }
+        })
     }
 
     /// Starts the NATS server in an isolated environment.
@@ -263,16 +263,13 @@ where
         // Initialize topology from network
         self.update_topology().await?;
 
-        // Get the executable path
-        let nats_server_path = self.get_nats_server_path();
-
         // Prepare the NATS server application
         let app = NatsServerApp {
-            bin_dir: self.bin_dir.clone().unwrap(),
+            bin_dir: self.bin_dir.clone(),
             client_listen_port: self.client_listen_port,
             debug: self.debug,
             config_dir: self.config_dir.clone(),
-            executable_path: nats_server_path,
+            executable_path: format!("{}/nats-server", self.bin_dir),
             store_dir: self.store_dir.clone(),
         };
 

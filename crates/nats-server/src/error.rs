@@ -12,6 +12,10 @@ pub enum Error {
     #[error("already started")]
     AlreadyStarted,
 
+    /// Binary not found.
+    #[error("binary not found")]
+    BinaryNotFound,
+
     /// Failed to connect to nats server.
     #[error("failed to connect to nats server: {0}")]
     ClientFailedToConnect(#[from] async_nats::ConnectError),

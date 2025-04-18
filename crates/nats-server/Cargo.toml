@@ -16,6 +16,7 @@ regex = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+which = { workspace = true }
 
 [dev-dependencies]
 ed25519-dalek = { workspace = true }
@@ -23,4 +24,3 @@ proven-attestation-mock = { workspace = true }
 proven-governance-mock = { workspace = true }
 rand = { workspace = true }
 tracing-subscriber = { workspace = true }
-which = { workspace = true }
