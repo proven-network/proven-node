@@ -610,7 +610,10 @@ impl Bootstrap {
         let governance = match self.args.topology_file {
             Some(ref topology_file) => MockGovernance::from_topology_file(topology_file, vec![])
                 .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?,
-            None => MockGovernance::for_single_node(private_key.clone()),
+            None => MockGovernance::for_single_node(
+                format!("http://localhost:{}", self.args.port),
+                private_key.clone(),
+            ),
         };
 
         let network = ProvenNetwork::new(ProvenNetworkOptions {

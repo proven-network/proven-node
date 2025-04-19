@@ -17,7 +17,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let private_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
 
     // Create test network components
-    let governance = MockGovernance::for_single_node(private_key.clone());
+    let governance =
+        MockGovernance::for_single_node(format!("http://localhost:{}", 3300), private_key.clone());
     let attestor = MockAttestor::default();
     let network = ProvenNetwork::new(ProvenNetworkOptions {
         attestor,

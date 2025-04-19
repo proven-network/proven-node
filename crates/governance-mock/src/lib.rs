@@ -42,10 +42,10 @@ impl MockGovernance {
 
     /// Create a new mock governance implementation with a single node.
     #[must_use]
-    pub fn for_single_node(private_key: SigningKey) -> Self {
+    pub fn for_single_node(origin: String, private_key: SigningKey) -> Self {
         let node = TopologyNode {
             availability_zone: "local".to_string(),
-            origin: "http://proven.local:3200".to_string(),
+            origin,
             public_key: hex::encode(private_key.verifying_key().to_bytes()),
             region: "local".to_string(),
             specializations: HashSet::new(),
