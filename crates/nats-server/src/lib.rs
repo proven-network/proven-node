@@ -160,6 +160,10 @@ impl IsolatedApplication for NatsServerApp {
         Signal::SIGUSR2 // SIGUSR2 puts server into "lame duck" mode
     }
 
+    fn shutdown_timeout(&self) -> Duration {
+        Duration::from_secs(40) // "lame duck" mode might take 30 seconds to evict clients
+    }
+
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
             VolumeMount::new(self.config_dir.clone(), self.config_dir.clone()),
@@ -181,9 +185,6 @@ where
 
     /// The client listen port
     client_listen_port: u16,
-
-    /// Connected clients
-    clients: Arc<Mutex<Vec<Client>>>,
 
     /// The config directory
     config_dir: String,
@@ -232,7 +233,6 @@ where
 
         Ok(Self {
             bin_dir,
-            clients: Arc::new(Mutex::new(Vec::new())),
             client_listen_port,
             config_dir,
             debug,
@@ -450,15 +450,6 @@ where
     pub async fn shutdown(&self) -> Result<(), Error> {
         info!("Shutting down isolated NATS server...");
 
-        // Flush existing clients
-        info!("Flushing existing clients...");
-        let clients = self.clients.lock().await.clone();
-        for client in &clients {
-            if let Err(err) = client.flush().await {
-                error!("Failed to flush client: {}", err);
-            }
-        }
-
         // Get the process and shut it down
         let mut process_guard = self.process.lock().await;
         if let Some(process) = process_guard.take() {
@@ -499,8 +490,6 @@ where
         let client = async_nats::connect_with_options(self.get_client_url().await, connect_options)
             .await
             .map_err(Error::ClientFailedToConnect)?;
-
-        self.clients.lock().await.push(client.clone());
 
         Ok(client)
     }
