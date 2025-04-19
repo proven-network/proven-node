@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::future::Future;
 use std::net::IpAddr;
+use std::os::unix::process::ExitStatusExt;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::{ExitStatus, Stdio};
@@ -172,6 +173,7 @@ impl IsolatedProcess {
         info!("Shutting down process");
 
         self.shutdown_token.cancel();
+        self.wait().await;
         self.task_tracker.wait().await;
 
         info!("Process shut down");
@@ -804,6 +806,11 @@ impl IsolatedProcessSpawner {
                             if let Err(err) = child.kill().await {
                                 error!("Failed to kill unshare process: {}", err);
                             }
+
+                            // Set the exit status
+                            *exit_status_for_task.lock().await = Some(ExitStatus::from_raw(
+                                libc::CLD_KILLED,
+                            ));
 
                             break;
                         }
