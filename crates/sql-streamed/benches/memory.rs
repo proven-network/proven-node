@@ -47,6 +47,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_with_input(BenchmarkId::new("writes", "memory"), &connection, |b, s| {
         b.to_async(&rt).iter(|| async {
+            let _guard = rt.enter();
             s.execute(
                 "INSERT INTO users (email) VALUES (?1)".to_string(),
                 vec![SqlParam::Text("alice@example.com".to_string())],
