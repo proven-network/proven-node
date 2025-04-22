@@ -3521,9 +3521,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.89.4"
+version = "0.90.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d12e08a843ed1dbef68de3720092e67dcb958eae59ec2f26a459597c2c76be0"
+checksum = "63892e3d2eaf61633ecc1046340f862f295e7ad04d75522517e9a2505a158c4e"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -3657,7 +3657,7 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_node",
- "deno_npm 0.32.0",
+ "deno_npm",
  "deno_path_util",
  "deno_resolver",
  "deno_runtime",
@@ -3677,19 +3677,6 @@ dependencies = [
  "thiserror 2.0.12",
  "twox-hash 2.1.0",
  "url",
-]
-
-[[package]]
-name = "deno_lockfile"
-version = "0.26.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d191fba7b3e2071f584c248b3aefeae185b57a8fa3c8985185e1d8b248835b92"
-dependencies = [
- "async-trait",
- "deno_semver",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -3862,27 +3849,6 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.31.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "343a30beea9bee6241affc3b1f7cb583c66bb8abbab281169cb18d9cc3344077"
-dependencies = [
- "async-trait",
- "capacity_builder",
- "deno_error",
- "deno_lockfile 0.26.1",
- "deno_semver",
- "futures",
- "indexmap 2.9.0",
- "log",
- "monch",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "url",
-]
-
-[[package]]
-name = "deno_npm"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b062c0da960b2acf1b6b92900122dbe86726ba40944d31f474f15ee3f272e3f6"
@@ -3890,7 +3856,7 @@ dependencies = [
  "async-trait",
  "capacity_builder",
  "deno_error",
- "deno_lockfile 0.27.1",
+ "deno_lockfile",
  "deno_semver",
  "futures",
  "indexmap 2.9.0",
@@ -4032,7 +3998,7 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_media_type",
- "deno_npm 0.32.0",
+ "deno_npm",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
@@ -4577,7 +4543,8 @@ dependencies = [
 [[package]]
 name = "dns-stamp-parser"
 version = "3.0.1"
-source = "git+https://github.com/LinkTed/dns-stamp-parser#6e15a077ae756169b605b332c7056ff49dbcc4eb"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1826f6bc7bdd2008d4c2191d1249dc6a8b4e30f0df858027292751fefb1fc06"
 dependencies = [
  "base64 0.22.1",
  "bitflags 2.9.0",
@@ -4850,8 +4817,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.84.0"
-source = "git+https://github.com/denoland/eszip#e9159682f5e9b8d1ac77de20593a69b234f7be4e"
+version = "0.86.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c3c0fdd7740f1d1704003ebd1170b4b610a0c28dfa760ff997466af268fe717"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4859,7 +4827,7 @@ dependencies = [
  "deno_ast",
  "deno_error",
  "deno_graph",
- "deno_npm 0.31.1",
+ "deno_npm",
  "deno_semver",
  "futures",
  "hashlink",
@@ -7537,9 +7505,9 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "483325d4bfef65699214858f097d504eb812c38ce7077d165f301ec406c3066e"
+checksum = "fc0e7987b28514adf555dc1f9a5c30dfc3e50750bbaffb1aec41ca7b23dcd8e4"
 dependencies = [
  "anyhow",
  "bitflags 2.9.0",
@@ -8938,7 +8906,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_graph",
- "deno_npm 0.32.0",
+ "deno_npm",
  "deno_permissions",
  "deno_semver",
  "eszip",
@@ -10690,8 +10658,9 @@ dependencies = [
 
 [[package]]
 name = "rtnetlink"
-version = "0.14.1"
-source = "git+https://github.com/mwanner/rtnetlink?branch=deps-update#1e03aeb447c5955fb92ba6c636b7560fe3b2600e"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cb5850b5aa2c9c0ae44f157694bbe85107a2e13d76eb3178d0e3ee96c410f57"
 dependencies = [
  "futures",
  "log",
@@ -11025,7 +10994,7 @@ dependencies = [
  "deno_napi",
  "deno_net",
  "deno_node",
- "deno_npm 0.32.0",
+ "deno_npm",
  "deno_package_json",
  "deno_path_util",
  "deno_permissions",
