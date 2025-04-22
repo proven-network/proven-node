@@ -16,8 +16,8 @@ use tempfile::tempdir;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-static EXECUTIONS: usize = 300_000;
-static NUM_WORKERS: u32 = 20;
+static EXECUTIONS: usize = 1_000_000;
+static NUM_WORKERS: u32 = 40;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -61,18 +61,37 @@ async fn main() -> Result<(), Error> {
     let random_signing_key = SigningKey::generate(&mut rand::thread_rng());
     let random_verifying_key = VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng()));
 
-    // Warm up pool with a full execution
-    Arc::clone(&pool)
-        .execute(
-            module_loader,
-            ExecutionRequest::Rpc {
-                application_id: "application_id".to_string(),
-                args: vec![json!(10), json!(20)],
-                handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-                session: Session::Identified {
-                    identity: Identity {
-                        identity_id: "identity_id".to_string(),
-                        ledger_identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
+    let mut warmup_handles = vec![];
+
+    // Warm up pool with full executions
+    for _ in 0..NUM_WORKERS {
+        let pool = Arc::clone(&pool);
+        let module_loader = module_loader.clone();
+        let random_signing_key = random_signing_key.clone();
+        let random_verifying_key = random_verifying_key.clone();
+
+        let warmup_handle = tokio::spawn(async move {
+            pool.execute(
+                module_loader.clone(),
+                ExecutionRequest::Rpc {
+                    application_id: "application_id".to_string(),
+                    args: vec![json!(10), json!(20)],
+                    handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
+                    session: Session::Identified {
+                        identity: Identity {
+                            identity_id: "identity_id".to_string(),
+                            ledger_identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
+                                account_addresses: vec![
+                                    "my_account_1".to_string(),
+                                    "my_account_2".to_string(),
+                                ],
+                                dapp_definition_address: "dapp_definition_address".to_string(),
+                                expected_origin: "origin".to_string(),
+                                identity_address: "my_identity".to_string(),
+                            })],
+                            passkeys: vec![],
+                        },
+                        ledger_identity: LedgerIdentity::Radix(RadixIdentityDetails {
                             account_addresses: vec![
                                 "my_account_1".to_string(),
                                 "my_account_2".to_string(),
@@ -80,27 +99,21 @@ async fn main() -> Result<(), Error> {
                             dapp_definition_address: "dapp_definition_address".to_string(),
                             expected_origin: "origin".to_string(),
                             identity_address: "my_identity".to_string(),
-                        })],
-                        passkeys: vec![],
+                        }),
+                        origin: "origin".to_string(),
+                        session_id: "session_id".to_string(),
+                        signing_key: random_signing_key.clone(),
+                        verifying_key: random_verifying_key,
                     },
-                    ledger_identity: LedgerIdentity::Radix(RadixIdentityDetails {
-                        account_addresses: vec![
-                            "my_account_1".to_string(),
-                            "my_account_2".to_string(),
-                        ],
-                        dapp_definition_address: "dapp_definition_address".to_string(),
-                        expected_origin: "origin".to_string(),
-                        identity_address: "my_identity".to_string(),
-                    }),
-                    origin: "origin".to_string(),
-                    session_id: "session_id".to_string(),
-                    signing_key: random_signing_key.clone(),
-                    verifying_key: random_verifying_key,
                 },
-            },
-        )
-        .await
-        .unwrap();
+            )
+            .await
+            .unwrap();
+        });
+        warmup_handles.push(warmup_handle);
+    }
+
+    futures::future::join_all(warmup_handles).await;
 
     for _ in 0..EXECUTIONS {
         let pool = Arc::clone(&pool);
@@ -171,11 +184,16 @@ async fn main() -> Result<(), Error> {
     } else {
         durations_vec[EXECUTIONS / 2]
     };
+    let executions_per_second = EXECUTIONS as f64 / duration.as_secs_f64();
 
     println!("Min execution time: {:?}", min_duration);
     println!("Max execution time: {:?}", max_duration);
     println!("Average execution time: {:?}", average_duration);
     println!("Median execution time: {:?}", median_duration);
+    println!(
+        "Executions per second: {}",
+        (executions_per_second * 100.0).round() / 100.0
+    );
 
     Ok(())
 }

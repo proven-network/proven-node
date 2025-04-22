@@ -268,94 +268,114 @@ where
         let handle = tokio::spawn(async move {
             'outer: while let Some((module_loader, request, sender)) = queue_receiver.recv().await {
                 let code_package_hash = module_loader.code_package_hash();
-                let mut worker_map = pool.workers.lock().await;
 
-                if let Some(workers) = worker_map.get_mut(&code_package_hash) {
-                    if let Some(mut worker) = workers.pop() {
-                        drop(worker_map); // Unlock the worker map
+                // --- Check for existing worker ---
+                let worker_opt = {
+                    let mut worker_map = pool.workers.lock().await;
+                    if let Some(workers) = worker_map.get_mut(&code_package_hash) {
+                        workers.pop()
+                    } else {
+                        None
+                    }
+                };
 
+                if let Some(mut worker) = worker_opt {
+                    // Found existing worker, spawn execution
+                    let pool_clone = Arc::clone(&pool);
+                    tokio::spawn(async move {
                         let result = worker.execute(request).await;
 
-                        let mut worker_map = pool.workers.lock().await;
+                        // Return worker
+                        let mut worker_map = pool_clone.workers.lock().await;
                         worker_map
                             .entry(code_package_hash.clone())
                             .or_default()
                             .push(worker);
-
                         drop(worker_map);
-
-                        pool.last_used
+                        pool_clone
+                            .last_used
                             .lock()
                             .await
                             .insert(code_package_hash, Instant::now());
 
-                        sender.send(result).unwrap();
-                        continue 'outer;
-                    }
+                        // Send result back (ignore error)
+                        let _ = sender.send(result);
+                    });
+                    continue 'outer; // Continue processing queue immediately
                 }
-                drop(worker_map);
 
+                // --- Try to create new worker ---
                 if pool.total_workers.load(Ordering::SeqCst) < pool.max_workers
-                    || pool.kill_idle_worker().await
+                    || pool.kill_idle_worker(&code_package_hash).await
                 {
                     pool.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                    match Worker::<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>::new(RuntimeOptions {
-                        application_sql_store: pool.application_sql_store.clone(),
-                        application_store: pool.application_store.clone(),
-                        file_system_store: pool.file_system_store.clone(),
-                        module_loader: module_loader.clone(),
-                        nft_sql_store: pool.nft_sql_store.clone(),
-                        nft_store: pool.nft_store.clone(),
-                        personal_sql_store: pool.personal_sql_store.clone(),
-                        personal_store: pool.personal_store.clone(),
-                        radix_gateway_origin: pool.radix_gateway_origin.clone(),
-                        radix_network_definition: pool.radix_network_definition.clone(),
-                        radix_nft_verifier: pool.radix_nft_verifier.clone(),
-                    })
-                    .await
-                    {
-                        Ok(mut worker) => {
-                            let result = worker.execute(request).await;
+                    let worker_result =
+                        Worker::<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>::new(RuntimeOptions {
+                            application_sql_store: pool.application_sql_store.clone(),
+                            application_store: pool.application_store.clone(),
+                            file_system_store: pool.file_system_store.clone(),
+                            module_loader: module_loader.clone(),
+                            nft_sql_store: pool.nft_sql_store.clone(),
+                            nft_store: pool.nft_store.clone(),
+                            personal_sql_store: pool.personal_sql_store.clone(),
+                            personal_store: pool.personal_store.clone(),
+                            radix_gateway_origin: pool.radix_gateway_origin.clone(),
+                            radix_network_definition: pool.radix_network_definition.clone(),
+                            radix_nft_verifier: pool.radix_nft_verifier.clone(),
+                        })
+                        .await;
 
-                            if matches!(
-                                result,
-                                Err(Error::RuntimeError(rustyscript::Error::HeapExhausted))
-                            ) {
-                                // Remove the worker from the pool if the heap is exhausted (can't recover)
-                                pool.total_workers.fetch_sub(1, Ordering::SeqCst);
-                            } else {
-                                pool.workers
+                    match worker_result {
+                        Ok(mut worker) => {
+                            // Created worker successfully, spawn execution
+                            let pool_clone = Arc::clone(&pool);
+                            tokio::spawn(async move {
+                                let result = worker.execute(request).await;
+
+                                if matches!(
+                                    result,
+                                    Err(Error::RuntimeError(rustyscript::Error::HeapExhausted))
+                                ) {
+                                    pool_clone.total_workers.fetch_sub(1, Ordering::SeqCst);
+                                    // Don't return worker
+                                } else {
+                                    // Return worker
+                                    let mut worker_map = pool_clone.workers.lock().await;
+                                    worker_map
+                                        .entry(code_package_hash.clone())
+                                        .or_default()
+                                        .push(worker);
+                                    drop(worker_map);
+                                    pool_clone
+                                        .last_used
+                                        .lock()
+                                        .await
+                                        .insert(code_package_hash.clone(), Instant::now());
+                                }
+
+                                // Insert into known_hashes (assuming creation means it's new or needed)
+                                pool_clone
+                                    .known_hashes
                                     .lock()
                                     .await
-                                    .entry(code_package_hash.clone())
-                                    .or_default()
-                                    .push(worker);
-                            }
+                                    .insert(code_package_hash, module_loader);
 
-                            pool.last_used
-                                .lock()
-                                .await
-                                .insert(code_package_hash.clone(), Instant::now());
-
-                            pool.known_hashes
-                                .lock()
-                                .await
-                                .insert(code_package_hash.clone(), module_loader);
-
-                            sender.send(result).unwrap();
-                            continue 'outer;
-                        }
-                        Err(Error::RuntimeError(rustyscript::Error::HeapExhausted)) => {
-                            // Remove the worker from the pool if the heap is exhausted (can't recover)
-                            pool.total_workers.fetch_sub(1, Ordering::SeqCst);
+                                // Send result back (ignore error)
+                                let _ = sender.send(result);
+                            });
+                            continue 'outer; // Continue processing queue immediately
                         }
                         Err(e) => {
-                            sender.send(Err(e)).unwrap();
+                            // Handles HeapExhausted and others
+                            pool.total_workers.fetch_sub(1, Ordering::SeqCst);
+                            // Send error back immediately
+                            let _ = sender.send(Err(e));
                             continue 'outer;
                         }
                     }
                 } else {
+                    // Could not find or create worker, queue request (pushes to overflow if needed)
                     pool.queue_request(module_loader, request, sender, true)
                         .await;
                 }
@@ -371,8 +391,6 @@ where
             let duration = Duration::from_millis(100);
             loop {
                 sleep(duration).await;
-
-                // Collect items to requeue outside the lock
                 let items_to_requeue = {
                     let mut overflow_queue = pool.overflow_queue.lock().await;
                     let mut items = VecDeque::with_capacity(overflow_queue.len());
@@ -381,14 +399,11 @@ where
                     }
                     items
                 };
-
-                // Requeue items without holding the overflow_queue lock
                 for (runtime_options, request, tx) in items_to_requeue {
                     pool.queue_request(runtime_options, request, tx, true).await;
                 }
             }
         });
-
         self.overflow_processor.lock().await.replace(handle);
     }
 
@@ -416,86 +431,120 @@ where
         request: ExecutionRequest,
     ) -> Result<ExecutionResult> {
         let code_package_hash = module_loader.code_package_hash();
-        let (sender, reciever) = oneshot::channel();
+        let (sender, receiver) = oneshot::channel();
 
-        let mut worker_map = self.workers.lock().await;
+        // --- Check for existing worker ---
+        let worker_opt = {
+            let mut worker_map = self.workers.lock().await;
+            if let Some(workers) = worker_map.get_mut(&code_package_hash) {
+                workers.pop()
+            } else {
+                None
+            }
+        };
 
-        if let Some(workers) = worker_map.get_mut(&code_package_hash) {
-            if let Some(mut worker) = workers.pop() {
-                drop(worker_map); // Unlock the worker map
-
+        if let Some(mut worker) = worker_opt {
+            // Found existing worker, spawn execution
+            let pool_clone = Arc::clone(&self);
+            tokio::spawn(async move {
                 let result = worker.execute(request).await;
 
-                let mut worker_map = self.workers.lock().await;
+                // Return worker
+                let mut worker_map = pool_clone.workers.lock().await;
                 worker_map
                     .entry(code_package_hash.clone())
                     .or_default()
                     .push(worker);
-
                 drop(worker_map);
-
-                self.last_used
+                pool_clone
+                    .last_used
                     .lock()
                     .await
-                    .insert(code_package_hash.to_string(), Instant::now());
+                    .insert(code_package_hash, Instant::now());
 
-                return result;
-            }
-        }
-        drop(worker_map);
-
-        if self.total_workers.load(Ordering::SeqCst) < self.max_workers
-            || self.maybe_kill_idle_worker().await
-        {
-            self.total_workers.fetch_add(1, Ordering::SeqCst);
-
-            let mut worker = Worker::<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>::new(RuntimeOptions {
-                application_sql_store: self.application_sql_store.clone(),
-                application_store: self.application_store.clone(),
-                file_system_store: self.file_system_store.clone(),
-                module_loader: module_loader.clone(),
-                nft_sql_store: self.nft_sql_store.clone(),
-                nft_store: self.nft_store.clone(),
-                personal_sql_store: self.personal_sql_store.clone(),
-                personal_store: self.personal_store.clone(),
-                radix_gateway_origin: self.radix_gateway_origin.clone(),
-                radix_network_definition: self.radix_network_definition.clone(),
-                radix_nft_verifier: self.radix_nft_verifier.clone(),
-            })
-            .await?;
-            let result = worker.execute(request).await;
-
-            if matches!(
-                result,
-                Err(Error::RuntimeError(rustyscript::Error::HeapExhausted))
-            ) {
-                // Remove the worker from the pool if the heap is exhausted (can't recover)
-                self.total_workers.fetch_sub(1, Ordering::SeqCst);
-            } else {
-                self.workers
-                    .lock()
-                    .await
-                    .entry(code_package_hash.to_string())
-                    .or_default()
-                    .push(worker);
-            }
-
-            self.last_used
-                .lock()
-                .await
-                .insert(code_package_hash.to_string(), Instant::now());
-
-            self.known_hashes
-                .lock()
-                .await
-                .insert(code_package_hash.clone(), module_loader);
-
-            result
+                // Send result back (ignore error)
+                let _ = sender.send(result);
+            });
         } else {
-            self.queue_request(module_loader, request, sender, false)
-                .await;
-            reciever.await.unwrap()
+            // --- Try to create new worker ---
+            if self.total_workers.load(Ordering::SeqCst) < self.max_workers
+                || self.maybe_kill_idle_worker(&code_package_hash).await
+            {
+                self.total_workers.fetch_add(1, Ordering::SeqCst);
+
+                let worker_result =
+                    Worker::<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>::new(RuntimeOptions {
+                        application_sql_store: self.application_sql_store.clone(),
+                        application_store: self.application_store.clone(),
+                        file_system_store: self.file_system_store.clone(),
+                        module_loader: module_loader.clone(),
+                        nft_sql_store: self.nft_sql_store.clone(),
+                        nft_store: self.nft_store.clone(),
+                        personal_sql_store: self.personal_sql_store.clone(),
+                        personal_store: self.personal_store.clone(),
+                        radix_gateway_origin: self.radix_gateway_origin.clone(),
+                        radix_network_definition: self.radix_network_definition.clone(),
+                        radix_nft_verifier: self.radix_nft_verifier.clone(),
+                    })
+                    .await;
+
+                match worker_result {
+                    Ok(mut worker) => {
+                        // Created worker successfully, spawn execution
+                        let pool_clone = Arc::clone(&self);
+                        tokio::spawn(async move {
+                            let result = worker.execute(request).await;
+
+                            if matches!(
+                                result,
+                                Err(Error::RuntimeError(rustyscript::Error::HeapExhausted))
+                            ) {
+                                pool_clone.total_workers.fetch_sub(1, Ordering::SeqCst);
+                                // Don't return worker
+                            } else {
+                                // Return worker
+                                let mut worker_map = pool_clone.workers.lock().await;
+                                worker_map
+                                    .entry(code_package_hash.clone())
+                                    .or_default()
+                                    .push(worker);
+                                drop(worker_map);
+                                pool_clone
+                                    .last_used
+                                    .lock()
+                                    .await
+                                    .insert(code_package_hash.clone(), Instant::now());
+                            }
+
+                            // Insert into known_hashes
+                            pool_clone
+                                .known_hashes
+                                .lock()
+                                .await
+                                .insert(code_package_hash, module_loader);
+
+                            // Send result back (ignore error)
+                            let _ = sender.send(result);
+                        });
+                    }
+                    Err(e) => {
+                        // Handles HeapExhausted and others
+                        self.total_workers.fetch_sub(1, Ordering::SeqCst);
+                        // Send error back immediately
+                        let _ = sender.send(Err(e));
+                    }
+                }
+            } else {
+                // Could not find or create worker, queue request
+                self.queue_request(module_loader, request, sender, false)
+                    .await;
+            }
         }
+
+        // Await the result from the spawned task or the queued task
+        receiver
+            .await
+            .unwrap_or_else(|_| Err(Error::ChannelCommunicationError))
     }
 
     /// Executes a request using precomputed hash options.
@@ -521,48 +570,63 @@ where
         code_package_hash: String,
         request: ExecutionRequest,
     ) -> Result<ExecutionResult> {
-        let known_hashes = self.known_hashes.lock().await;
-        if let Some(module_loader) = known_hashes.get(&code_package_hash) {
-            let module_loader = module_loader.clone();
-            let (sender, reciever) = oneshot::channel();
+        let (sender, receiver) = oneshot::channel();
 
+        // Need module loader first to check worker map or create worker
+        let known_hashes_guard = self.known_hashes.lock().await;
+        let module_loader_opt = known_hashes_guard.get(&code_package_hash).cloned();
+        drop(known_hashes_guard);
+
+        if module_loader_opt.is_none() {
+            return Err(Error::HashUnknown);
+        }
+        let module_loader = module_loader_opt.unwrap();
+
+        // --- Check for existing worker ---
+        let worker_opt = {
             let mut worker_map = self.workers.lock().await;
-
             if let Some(workers) = worker_map.get_mut(&code_package_hash) {
-                if let Some(mut worker) = workers.pop() {
-                    drop(worker_map); // Unlock the worker map
-
-                    let result = worker.execute(request).await;
-
-                    let mut worker_map = self.workers.lock().await;
-                    worker_map
-                        .entry(code_package_hash.clone())
-                        .or_default()
-                        .push(worker);
-
-                    drop(worker_map);
-
-                    self.last_used
-                        .lock()
-                        .await
-                        .insert(code_package_hash.to_string(), Instant::now());
-
-                    return result;
-                }
+                workers.pop()
+            } else {
+                None
             }
-            drop(worker_map);
+        };
 
+        if let Some(mut worker) = worker_opt {
+            // Found existing worker, spawn execution
+            let pool_clone = Arc::clone(&self);
+            tokio::spawn(async move {
+                let result = worker.execute(request).await;
+
+                // Return worker
+                let mut worker_map = pool_clone.workers.lock().await;
+                worker_map
+                    .entry(code_package_hash.clone())
+                    .or_default()
+                    .push(worker);
+                drop(worker_map);
+                pool_clone
+                    .last_used
+                    .lock()
+                    .await
+                    .insert(code_package_hash, Instant::now());
+
+                // Send result back (ignore error)
+                let _ = sender.send(result);
+            });
+        } else {
+            // --- Try to create new worker ---
             if self.total_workers.load(Ordering::SeqCst) < self.max_workers
-                || self.maybe_kill_idle_worker().await
+                || self.maybe_kill_idle_worker(&code_package_hash).await
             {
                 self.total_workers.fetch_add(1, Ordering::SeqCst);
 
-                let mut worker =
+                let worker_result =
                     Worker::<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>::new(RuntimeOptions {
                         application_sql_store: self.application_sql_store.clone(),
                         application_store: self.application_store.clone(),
                         file_system_store: self.file_system_store.clone(),
-                        module_loader,
+                        module_loader: module_loader.clone(),
                         nft_sql_store: self.nft_sql_store.clone(),
                         nft_store: self.nft_store.clone(),
                         personal_sql_store: self.personal_sql_store.clone(),
@@ -571,38 +635,61 @@ where
                         radix_network_definition: self.radix_network_definition.clone(),
                         radix_nft_verifier: self.radix_nft_verifier.clone(),
                     })
-                    .await?;
-                let result = worker.execute(request).await;
+                    .await;
 
-                if matches!(
-                    result,
-                    Err(Error::RuntimeError(rustyscript::Error::HeapExhausted))
-                ) {
-                    // Remove the worker from the pool if the heap is exhausted (can't recover)
-                    self.total_workers.fetch_sub(1, Ordering::SeqCst);
-                } else {
-                    self.workers
-                        .lock()
-                        .await
-                        .entry(code_package_hash.to_string())
-                        .or_default()
-                        .push(worker);
+                match worker_result {
+                    Ok(mut worker) => {
+                        // Created worker successfully, spawn execution
+                        let pool_clone = Arc::clone(&self);
+                        tokio::spawn(async move {
+                            let result = worker.execute(request).await;
+
+                            if matches!(
+                                result,
+                                Err(Error::RuntimeError(rustyscript::Error::HeapExhausted))
+                            ) {
+                                pool_clone.total_workers.fetch_sub(1, Ordering::SeqCst);
+                                // Don't return worker
+                            } else {
+                                // Return worker
+                                let mut worker_map = pool_clone.workers.lock().await;
+                                worker_map
+                                    .entry(code_package_hash.clone())
+                                    .or_default()
+                                    .push(worker);
+                                drop(worker_map);
+                                pool_clone
+                                    .last_used
+                                    .lock()
+                                    .await
+                                    .insert(code_package_hash.clone(), Instant::now());
+                            }
+
+                            // No need to insert into known_hashes, it was already there
+
+                            // Send result back (ignore error)
+                            let _ = sender.send(result);
+                        });
+                    }
+                    Err(e) => {
+                        // Handles HeapExhausted and others
+                        self.total_workers.fetch_sub(1, Ordering::SeqCst);
+                        // Send error back immediately
+                        let _ = sender.send(Err(e));
+                    }
                 }
-
-                self.last_used
-                    .lock()
-                    .await
-                    .insert(code_package_hash.to_string(), Instant::now());
-
-                result
             } else {
+                // Could not find or create worker, queue request
+                // Need to pass the original module_loader again
                 self.queue_request(module_loader, request, sender, false)
                     .await;
-                reciever.await.unwrap()
             }
-        } else {
-            Err(Error::HashUnknown)
         }
+
+        // Await the result from the spawned task or the queued task
+        receiver
+            .await
+            .unwrap_or_else(|_| Err(Error::ChannelCommunicationError))
     }
 
     async fn queue_request(
@@ -631,56 +718,63 @@ where
             }
             Err(e) => {
                 eprintln!("Failed to reserve slot in queue: {e:?}");
+                // Ensure we send an error back if queueing fails
+                let _ = tx.send(Err(Error::ChannelCommunicationError));
             }
         }
     }
 
-    async fn maybe_kill_idle_worker(&self) -> bool {
-        // Only allow killing workers every `try_kill_interval` duration
+    async fn maybe_kill_idle_worker(&self, needed_hash: &str) -> bool {
         let mut last_killed_guard = self.last_killed.lock().await;
         if let Some(last_killed) = last_killed_guard.as_ref() {
             if last_killed.elapsed() < self.try_kill_interval {
                 drop(last_killed_guard);
                 return false;
             }
-            *last_killed_guard = Some(Instant::now());
-            drop(last_killed_guard);
         }
-
-        self.kill_idle_worker().await
+        *last_killed_guard = Some(Instant::now());
+        drop(last_killed_guard);
+        self.kill_idle_worker(needed_hash).await
     }
 
-    async fn kill_idle_worker(&self) -> bool {
+    async fn kill_idle_worker(&self, needed_hash: &str) -> bool {
         let last_used = self.last_used.lock().await.clone();
 
-        // Find the module type that was used the least recently
-        let oldest_module = last_used
-            .iter()
-            .min_by_key(|entry| entry.1)
-            .map(|(module, _)| module.clone());
+        // Get and sort LRU entries
+        let mut last_used_entries: Vec<_> =
+            last_used.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        last_used_entries.sort_by_key(|&(_, time)| time);
+        drop(last_used); // Drop clone early
 
-        if let Some(module) = oldest_module {
-            let mut workers = self.workers.lock().await;
-            if let Some(worker_list) = workers.get_mut(&module) {
+        let mut workers = self.workers.lock().await; // Lock workers map once
+
+        for (module_key, _) in last_used_entries {
+            // *** Check if this is the hash we currently need ***
+            if module_key == needed_hash {
+                continue; // Skip killing this worker type, check next LRU
+            }
+
+            if let Some(worker_list) = workers.get_mut(&module_key) {
                 if worker_list.pop().is_some() {
-                    // Remove the module from the pool if there are no workers left
-                    if worker_list.is_empty() {
-                        workers.remove(&module);
-                        self.last_used.lock().await.remove(&module);
+                    let was_empty = worker_list.is_empty(); // Check before potential remove below
+                    if was_empty {
+                        workers.remove(&module_key);
+                        // Also remove from last_used map (need to re-lock unfortunately)
+                        self.last_used.lock().await.remove(&module_key);
                     }
-
-                    drop(workers);
-
+                    // drop(workers); // Drop map lock before fetch_sub?
                     self.total_workers.fetch_sub(1, Ordering::SeqCst);
-
-                    return true;
+                    return true; // Found and killed a *different* idle worker
                 }
-                workers.remove(&module);
-                drop(workers);
+                // If list was empty, remove it
+                workers.remove(&module_key);
+                self.last_used.lock().await.remove(&module_key);
+            } else {
+                // If not in workers map, remove stale last_used entry
+                self.last_used.lock().await.remove(&module_key);
             }
         }
-
-        false
+        false // No suitable idle worker found to kill
     }
 }
 
@@ -802,7 +896,7 @@ mod tests {
             )
             .await;
 
-        let killed = pool.kill_idle_worker().await;
+        let killed = pool.kill_idle_worker("test_runtime_execute").await;
         assert!(killed);
     }
 }
