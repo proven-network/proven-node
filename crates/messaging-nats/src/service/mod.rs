@@ -359,6 +359,7 @@ mod tests {
             "test_on_caught_up_called",
             NatsStreamOptions {
                 client: client.clone(),
+                num_replicas: 1,
             },
         );
 

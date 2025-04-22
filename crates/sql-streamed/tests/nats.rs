@@ -29,6 +29,7 @@ async fn setup(
         stream_name,
         NatsStreamOptions {
             client: client.clone(),
+            num_replicas: 1,
         },
     );
 
@@ -125,6 +126,7 @@ async fn test_nats_snapshotting() {
             stream_name,
             NatsStreamOptions {
                 client: client.clone(),
+                num_replicas: 1,
             },
         );
 

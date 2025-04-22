@@ -30,6 +30,7 @@ async fn setup(
         stream_name,
         NatsStreamOptions {
             client: client.clone(),
+            num_replicas: 1,
         },
     );
 

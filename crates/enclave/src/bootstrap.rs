@@ -884,6 +884,7 @@ impl Bootstrap {
                     "APPLICATION_MANAGER_SQL",
                     NatsStreamOptions {
                         client: nats_client.clone(),
+                        num_replicas: 1,
                     },
                 ),
                 NatsServiceOptions {
@@ -921,6 +922,7 @@ impl Bootstrap {
                 "APPLICATION_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
+                    num_replicas: 1,
                 },
             ),
             NatsServiceOptions {
@@ -957,6 +959,7 @@ impl Bootstrap {
                 "PERSONAL_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
+                    num_replicas: 1,
                 },
             ),
             NatsServiceOptions {
@@ -993,6 +996,7 @@ impl Bootstrap {
                 "NFT_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
+                    num_replicas: 1,
                 },
             ),
             NatsServiceOptions {

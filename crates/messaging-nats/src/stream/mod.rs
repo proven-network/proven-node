@@ -30,6 +30,9 @@ use proven_messaging::stream::{
 pub struct NatsStreamOptions {
     /// The NATS client.
     pub client: AsyncNatsClient,
+
+    /// The number of replicas for the stream.
+    pub num_replicas: usize,
 }
 impl StreamOptions for NatsStreamOptions {}
 
@@ -123,6 +126,7 @@ where
                 name: stream_name.clone().into(),
                 allow_direct: true,
                 allow_rollup: true,
+                num_replicas: options.num_replicas,
                 ..Default::default()
             })
             .await
@@ -581,7 +585,10 @@ mod tests {
         // Create stream
         let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
             "test_stream",
-            NatsStreamOptions { client },
+            NatsStreamOptions {
+                client,
+                num_replicas: 1,
+            },
         );
 
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");
@@ -622,7 +629,10 @@ mod tests {
         // Create stream
         let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
             "test_delete_stream",
-            NatsStreamOptions { client },
+            NatsStreamOptions {
+                client,
+                num_replicas: 1,
+            },
         );
 
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");
@@ -668,7 +678,13 @@ mod tests {
         cleanup_stream(&client, "test_rollup").await;
 
         // Create stream
-        let stream = NatsStream::new("test_rollup", NatsStreamOptions { client });
+        let stream = NatsStream::new(
+            "test_rollup",
+            NatsStreamOptions {
+                client,
+                num_replicas: 1,
+            },
+        );
 
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");
 
@@ -717,7 +733,10 @@ mod tests {
         // Create stream
         let stream = NatsStream::new(
             "test_rollup_with_outdated_seq",
-            NatsStreamOptions { client },
+            NatsStreamOptions {
+                client,
+                num_replicas: 1,
+            },
         );
 
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");

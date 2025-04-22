@@ -610,6 +610,7 @@ mod tests {
             "test_client_request_response",
             NatsStreamOptions {
                 client: client.clone(),
+                num_replicas: 1,
             },
         );
 
@@ -681,6 +682,7 @@ mod tests {
             "test_client_timeout",
             NatsStreamOptions {
                 client: client.clone(),
+                num_replicas: 1,
             },
         );
 
@@ -722,6 +724,7 @@ mod tests {
             "test_client_stream_response",
             NatsStreamOptions {
                 client: client.clone(),
+                num_replicas: 1,
             },
         );
 
@@ -807,6 +810,7 @@ mod tests {
             "test_client_empty_stream_response",
             NatsStreamOptions {
                 client: client.clone(),
+                num_replicas: 1,
             },
         );
 
