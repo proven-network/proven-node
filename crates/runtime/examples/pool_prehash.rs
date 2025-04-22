@@ -16,7 +16,8 @@ use tempfile::tempdir;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-static EXECUTIONS: usize = 100;
+static EXECUTIONS: usize = 300_000;
+static NUM_WORKERS: u32 = 20;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -24,7 +25,7 @@ async fn main() -> Result<(), Error> {
         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
         application_store: MemoryStore2::new(),
         file_system_store: MemoryStore::new(),
-        max_workers: 100,
+        max_workers: NUM_WORKERS,
         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
         nft_store: MemoryStore3::new(),
         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
