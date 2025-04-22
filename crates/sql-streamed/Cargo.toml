@@ -32,6 +32,11 @@ harness = false
 path = "benches/nats.rs"
 
 [[bench]]
+name = "nats-cluster"
+harness = false
+path = "benches/nats-cluster.rs"
+
+[[bench]]
 name = "memory"
 harness = false
 path = "benches/memory.rs"
