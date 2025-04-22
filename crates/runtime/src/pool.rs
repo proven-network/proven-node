@@ -371,13 +371,25 @@ where
             let duration = Duration::from_millis(100);
             loop {
                 sleep(duration).await;
-                let mut overflow_queue = self.overflow_queue.lock().await;
-                while let Some((runtime_options, request, tx)) = overflow_queue.pop_front() {
-                    self.queue_request(runtime_options, request, tx, true).await;
+
+                // Collect items to requeue outside the lock
+                let items_to_requeue = {
+                    let mut overflow_queue = pool.overflow_queue.lock().await;
+                    let mut items = VecDeque::with_capacity(overflow_queue.len());
+                    while let Some(item) = overflow_queue.pop_front() {
+                        items.push_back(item);
+                    }
+                    items
+                };
+
+                // Requeue items without holding the overflow_queue lock
+                for (runtime_options, request, tx) in items_to_requeue {
+                    pool.queue_request(runtime_options, request, tx, true).await;
                 }
             }
         });
-        pool.overflow_processor.lock().await.replace(handle);
+
+        self.overflow_processor.lock().await.replace(handle);
     }
 
     /// Executes a request using the specified runtime options.
