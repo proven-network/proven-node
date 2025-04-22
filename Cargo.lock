@@ -1758,9 +1758,9 @@ dependencies = [
 
 [[package]]
 name = "axum_typed_multipart"
-version = "0.15.1"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "760cf4fe5d984ade7a516ef405df575e6c9fcfab49f20dc64589daa9a447b60a"
+checksum = "8b3a068a4636d1f08fb86d9d7b86c400bb21fba315c957c28a960239cdf19f34"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1779,9 +1779,9 @@ dependencies = [
 
 [[package]]
 name = "axum_typed_multipart_macros"
-version = "0.15.1"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eeffbb473f8141b23eff5deb5ea76d24b23eddefe1a25c3841cc4a3c373b7b53"
+checksum = "abc6886ec1cf5a7e06c3163c2655d576996f0e5c6bdb05fbb2bb002b1872dd6a"
 dependencies = [
  "darling",
  "heck 0.5.0",
@@ -2025,9 +2025,9 @@ dependencies = [
 
 [[package]]
 name = "blake3"
-version = "1.8.1"
+version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "389a099b34312839e16420d499a9cad9650541715937ffbdd40d36f49e77eeb3"
+checksum = "3888aaa89e4b2a40fca9848e400f6a658a5a3978de7be858e209cafa8be9a4a0"
 dependencies = [
  "arrayref",
  "arrayvec",
@@ -2466,9 +2466,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.36"
+version = "4.5.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2df961d8c8a0d08aa9945718ccf584145eee3f3aa06cddbeac12933781102e04"
+checksum = "eccb054f56cbd38340b380d4a8e69ef1f02f1af43db2f0cc817a4774d80ae071"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -2476,9 +2476,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.36"
+version = "4.5.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "132dbda40fb6753878316a489d5a1242a8ef2f0d9e47ba01c951ea8aa7d013a5"
+checksum = "efd9466fac8543255d3b1fcad4762c5e116ffe808c8a3043d4263cd4fd4862a2"
 dependencies = [
  "anstream",
  "anstyle",
@@ -2728,9 +2728,9 @@ dependencies = [
 
 [[package]]
 name = "cranelift"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e482b051275b415cf7627bb6b26e9902ce6aec058b443266c2a1e7a0de148960"
+checksum = "6d07c374d4da962eca0833c1d14621d5b4e32e68c8ca185b046a3b6b924ad334"
 dependencies = [
  "cranelift-codegen",
  "cranelift-frontend",
@@ -2739,39 +2739,42 @@ dependencies = [
 
 [[package]]
 name = "cranelift-assembler-x64"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e4b56ebe316895d3fa37775d0a87b0c889cc933f5c8b253dbcc7c7bcb7fe7e4"
+checksum = "263cc79b8a23c29720eb596d251698f604546b48c34d0d84f8fd2761e5bf8888"
 dependencies = [
  "cranelift-assembler-x64-meta",
 ]
 
 [[package]]
 name = "cranelift-assembler-x64-meta"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95cabbc01dfbd7dcd6c329ca44f0212910309c221797ac736a67a5bc8857fe1b"
+checksum = "5b4a113455f8c0e13e3b3222a9c38d6940b958ff22573108be083495c72820e1"
+dependencies = [
+ "cranelift-srcgen",
+]
 
 [[package]]
 name = "cranelift-bforest"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76ffe46df300a45f1dc6f609dc808ce963f0e3a2e971682c479a2d13e3b9b8ef"
+checksum = "58f96dca41c5acf5d4312c1d04b3391e21a312f8d64ce31a2723a3bb8edd5d4d"
 dependencies = [
  "cranelift-entity",
 ]
 
 [[package]]
 name = "cranelift-bitset"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b265bed7c51e1921fdae6419791d31af77d33662ee56d7b0fa0704dc8d231cab"
+checksum = "7d821ed698dd83d9c012447eb63a5406c1e9c23732a2f674fb5b5015afd42202"
 
 [[package]]
 name = "cranelift-codegen"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e606230a7e3a6897d603761baee0d19f88d077f17b996bb5089488a29ae96e41"
+checksum = "06c52fdec4322cb8d5545a648047819aaeaa04e630f88d3a609c0d3c1a00e9a0"
 dependencies = [
  "bumpalo",
  "cranelift-assembler-x64",
@@ -2794,43 +2797,44 @@ dependencies = [
 
 [[package]]
 name = "cranelift-codegen-meta"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a63bffafc23bc60969ad528e138788495999d935f0adcfd6543cb151ca8637d"
+checksum = "af2c215e0c9afa8069aafb71d22aa0e0dde1048d9a5c3c72a83cacf9b61fcf4a"
 dependencies = [
- "cranelift-assembler-x64",
+ "cranelift-assembler-x64-meta",
  "cranelift-codegen-shared",
+ "cranelift-srcgen",
 ]
 
 [[package]]
 name = "cranelift-codegen-shared"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af50281b67324b58e843170a6a5943cf6d387c06f7eeacc9f5696e4ab7ae7d7e"
+checksum = "97524b2446fc26a78142132d813679dda19f620048ebc9a9fbb0ac9f2d320dcb"
 
 [[package]]
 name = "cranelift-control"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c20c1b38d1abfbcebb0032e497e71156c0e3b8dcb3f0a92b9863b7bcaec290c"
+checksum = "8e32e900aee81f9e3cc493405ef667a7812cb5c79b5fc6b669e0a2795bda4b22"
 dependencies = [
  "arbitrary",
 ]
 
 [[package]]
 name = "cranelift-entity"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c2c67d95507c51b4a1ff3f3555fe4bfec36b9e13c1b684ccc602736f5d5f4a2"
+checksum = "d16a2e28e0fa6b9108d76879d60fe1cc95ba90e1bcf52bac96496371044484ee"
 dependencies = [
  "cranelift-bitset",
 ]
 
 [[package]]
 name = "cranelift-frontend"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e002691cc69c38b54fc7ec93e5be5b744f627d027031d991cc845d1d512d0ce"
+checksum = "328181a9083d99762d85954a16065d2560394a862b8dc10239f39668df528b95"
 dependencies = [
  "cranelift-codegen",
  "log",
@@ -2840,15 +2844,15 @@ dependencies = [
 
 [[package]]
 name = "cranelift-isle"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e93588ed1796cbcb0e2ad160403509e2c5d330d80dd6e0014ac6774c7ebac496"
+checksum = "e916f36f183e377e9a3ed71769f2721df88b72648831e95bb9fa6b0cd9b1c709"
 
 [[package]]
 name = "cranelift-module"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff19784c6de05116e63e6a34791012bd927b2a4eac56233039c46f1b6a4edac8"
+checksum = "40c18ccb8e4861cf49cec79998af73b772a2b47212d12d3d63bf57cc4293a1e3"
 dependencies = [
  "anyhow",
  "cranelift-codegen",
@@ -2857,14 +2861,20 @@ dependencies = [
 
 [[package]]
 name = "cranelift-native"
-version = "0.118.0"
+version = "0.119.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5b09bdd6407bf5d89661b80cf926ce731c9e8cc184bf49102267a2369a8358e"
+checksum = "fc852cf04128877047dc2027aa1b85c64f681dc3a6a37ff45dcbfa26e4d52d2f"
 dependencies = [
  "cranelift-codegen",
  "libc",
  "target-lexicon",
 ]
+
+[[package]]
+name = "cranelift-srcgen"
+version = "0.119.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47e1a86340a16e74b4285cc86ac69458fa1c8e7aaff313da4a89d10efd3535ee"
 
 [[package]]
 name = "crc"
@@ -3270,9 +3280,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.52.0"
+version = "0.53.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0e3242175b68ade08756db0eed2e9d0806e7a47c714e1abb451d3605cd96fb8"
+checksum = "7ceb8fc4ae517f599e5eb2ad19b56507f9be266cbde7230ff3e88a07141c0e85"
 dependencies = [
  "boxed_error",
  "capacity_builder",
@@ -3646,7 +3656,7 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_node",
- "deno_npm",
+ "deno_npm 0.32.0",
  "deno_path_util",
  "deno_resolver",
  "deno_runtime",
@@ -3673,6 +3683,19 @@ name = "deno_lockfile"
 version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d191fba7b3e2071f584c248b3aefeae185b57a8fa3c8985185e1d8b248835b92"
+dependencies = [
+ "async-trait",
+ "deno_semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+]
+
+[[package]]
+name = "deno_lockfile"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2089709ffe9ae01616a4933ebd385b4a6d244927165306025e03318d6fdb08f8"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -3844,7 +3867,28 @@ dependencies = [
  "async-trait",
  "capacity_builder",
  "deno_error",
- "deno_lockfile",
+ "deno_lockfile 0.26.1",
+ "deno_semver",
+ "futures",
+ "indexmap 2.9.0",
+ "log",
+ "monch",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "url",
+]
+
+[[package]]
+name = "deno_npm"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b062c0da960b2acf1b6b92900122dbe86726ba40944d31f474f15ee3f272e3f6"
+dependencies = [
+ "async-trait",
+ "capacity_builder",
+ "deno_error",
+ "deno_lockfile 0.27.1",
  "deno_semver",
  "futures",
  "indexmap 2.9.0",
@@ -3986,7 +4030,7 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_media_type",
- "deno_npm",
+ "deno_npm 0.32.0",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
@@ -4801,7 +4845,7 @@ dependencies = [
  "deno_ast",
  "deno_error",
  "deno_graph",
- "deno_npm",
+ "deno_npm 0.31.1",
  "deno_semver",
  "futures",
  "hashlink",
@@ -8880,7 +8924,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_graph",
- "deno_npm",
+ "deno_npm 0.32.0",
  "deno_permissions",
  "deno_semver",
  "eszip",
@@ -10967,7 +11011,7 @@ dependencies = [
  "deno_napi",
  "deno_net",
  "deno_node",
- "deno_npm",
+ "deno_npm 0.32.0",
  "deno_package_json",
  "deno_path_util",
  "deno_permissions",
@@ -12793,9 +12837,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-metrics"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb2bb07a8451c4c6fa8b3497ad198510d8b8dffa5df5cfb97a64102a58b113c8"
+checksum = "d8f31d08cb2f2f7b8d225a61a121b3245d604958f4841c1a87bd18df2db3bc75"
 dependencies = [
  "futures-util",
  "pin-project-lite",
