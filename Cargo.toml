@@ -200,7 +200,7 @@ deno_ast = { version = "0.46.5", features = ["transpiling"] }
 deno_bench_util = { path = "vendor/deno/bench_util" }
 deno_broadcast_channel = { path = "vendor/deno/ext/broadcast_channel" }
 deno_cache = { path = "vendor/deno/ext/cache" }
-deno_cache_dir = "0.18.0"
+deno_cache_dir = "0.19.0"
 deno_canvas = { path = "vendor/deno/ext/canvas" }
 deno_config = { version = "0.53.0", features = ["workspace", "sync"] }
 deno_console = { path = "vendor/deno/ext/console" }
@@ -246,6 +246,7 @@ denokv_proto = "0.10.0"
 denokv_remote = "0.10.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
 denokv_sqlite = { default-features = false, path = "vendor/denokv/sqlite" }
+denort_helper = { path = "vendor/deno/ext/rt_helper" }
 der = "0.7.9"
 derive_more = { version = "=1.0.0", features = ["display", "from"] }
 digest = "0.10.7"
