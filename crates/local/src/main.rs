@@ -17,8 +17,7 @@ use error::Result;
 use std::path::PathBuf;
 
 use clap::Parser;
-use tracing::{Level, info};
-use tracing_subscriber::FmtSubscriber;
+use tracing::info;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -346,11 +345,8 @@ struct Args {
 
 #[tokio::main(worker_threads = 8)]
 async fn main() -> Result<()> {
-    tracing::subscriber::set_global_default(
-        FmtSubscriber::builder()
-            .with_max_level(Level::DEBUG)
-            .finish(),
-    )?;
+    // Initialize tracing for better logging
+    tracing_subscriber::fmt::init();
 
     let args = Args::parse();
 
