@@ -56,6 +56,7 @@ pub struct Bootstrap {
     external_ip: IpAddr,
 
     // added during initialization
+    num_replicas: usize,
     governance: Option<MockGovernance>,
     network: Option<ProvenNetwork<MockGovernance, MockAttestor>>,
     light_core: Option<LightCore<MockAttestor, MockGovernance>>,
@@ -118,6 +119,7 @@ impl Bootstrap {
             attestor: MockAttestor,
             external_ip,
 
+            num_replicas: 3,
             governance: None,
             network: None,
             light_core: None,
@@ -185,6 +187,12 @@ impl Bootstrap {
             return Err(e);
         }
 
+        if let Err(e) = self.start_nats_server().await {
+            error!("failed to start nats server: {:?}", e);
+            self.unwind_services().await;
+            return Err(e);
+        }
+
         if let Err(e) = self.start_radix_node().await {
             error!("failed to start radix-node: {:?}", e);
             self.unwind_services().await;
@@ -229,12 +237,6 @@ impl Bootstrap {
 
         if let Err(e) = self.start_radix_gateway().await {
             error!("failed to start radix-gateway: {:?}", e);
-            self.unwind_services().await;
-            return Err(e);
-        }
-
-        if let Err(e) = self.start_nats_server().await {
-            error!("failed to start nats server: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
@@ -321,6 +323,7 @@ impl Bootstrap {
         let core = Arc::new(Mutex::new(self.core.take().unwrap()));
 
         let node_services = Services {
+            nats_server: nats_server.clone(),
             radix_mainnet_node: radix_mainnet_node_option.clone(),
             radix_stokenet_node: radix_stokenet_node_option.clone(),
             ethereum_holesky_reth_node: ethereum_holesky_reth_node_option.clone(),
@@ -333,7 +336,6 @@ impl Bootstrap {
             postgres: postgres.clone(),
             radix_aggregator: radix_aggregator.clone(),
             radix_gateway: radix_gateway.clone(),
-            nats_server: nats_server.clone(),
             core: core.clone(),
         };
 
@@ -342,6 +344,9 @@ impl Bootstrap {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
+                    Ok(e) = nats_server_handle => {
+                        error!("nats_server exited: {:?}", e);
+                    }
                     _ = async {
                         if let Some(handle) = radix_mainnet_node_handle {
                             if let Ok(e) = handle.await {
@@ -450,9 +455,6 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    Ok(e) = nats_server_handle => {
-                        error!("nats_server exited: {:?}", e);
-                    }
                     Ok(Err(e)) = core_handle => {
                         error!("core exited: {:?}", e);
                     }
@@ -539,10 +541,6 @@ impl Bootstrap {
             core.shutdown().await;
         }
 
-        if let Some(nats_server) = self.nats_server {
-            let _ = nats_server.shutdown().await;
-        }
-
         if let Some(mut radix_gateway) = self.radix_gateway {
             let _ = radix_gateway.shutdown().await;
         }
@@ -591,6 +589,10 @@ impl Bootstrap {
             let _ = radix_stokenet_node.shutdown().await;
         }
 
+        if let Some(nats_server) = self.nats_server {
+            let _ = nats_server.shutdown().await;
+        }
+
         if let Some(light_core) = self.light_core {
             light_core.shutdown().await;
         }
@@ -608,12 +610,22 @@ impl Bootstrap {
         })?;
 
         let governance = match self.args.topology_file {
-            Some(ref topology_file) => MockGovernance::from_topology_file(topology_file, vec![])
-                .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?,
-            None => MockGovernance::for_single_node(
-                format!("http://localhost:{}", self.args.port),
-                private_key.clone(),
-            ),
+            Some(ref topology_file) => {
+                info!(
+                    "using replication factor 3 with topology from file: {}",
+                    topology_file.display()
+                );
+                MockGovernance::from_topology_file(topology_file, vec![])
+                    .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?
+            }
+            None => {
+                info!("using replication factor 1 as no topology file provided");
+                self.num_replicas = 1;
+                MockGovernance::for_single_node(
+                    format!("http://localhost:{}", self.args.port),
+                    private_key.clone(),
+                )
+            }
         };
 
         let network = ProvenNetwork::new(ProvenNetworkOptions {
@@ -646,6 +658,33 @@ impl Bootstrap {
             // Just sleep to simulate for now
             tokio::time::sleep(Duration::from_secs(20)).await;
         }
+
+        Ok(())
+    }
+
+    async fn start_nats_server(&mut self) -> Result<()> {
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before nats server step");
+        });
+
+        let nats_server = NatsServer::new(NatsServerOptions {
+            bin_dir: None,
+            client_listen_port: self.args.nats_client_port,
+            config_dir: "/tmp/nats-config".to_string(),
+            debug: self.args.testnet,
+            network: network.clone(),
+            server_name: network.fqdn().await?,
+            store_dir: self.args.nats_store_dir.to_string_lossy().to_string(),
+        })?;
+
+        let nats_server_handle = nats_server.start().await?;
+        let nats_client = nats_server.build_client().await?;
+
+        self.nats_server = Some(nats_server);
+        self.nats_server_handle = Some(nats_server_handle);
+        self.nats_client = Some(nats_client);
+
+        info!("nats server started");
 
         Ok(())
     }
@@ -1035,33 +1074,6 @@ impl Bootstrap {
         Ok(())
     }
 
-    async fn start_nats_server(&mut self) -> Result<()> {
-        let network = self.network.as_ref().unwrap_or_else(|| {
-            panic!("network not set before nats server step");
-        });
-
-        let nats_server = NatsServer::new(NatsServerOptions {
-            bin_dir: None,
-            client_listen_port: self.args.nats_client_port,
-            config_dir: "/tmp/nats-config".to_string(),
-            debug: self.args.testnet,
-            network: network.clone(),
-            server_name: network.fqdn().await?,
-            store_dir: self.args.nats_store_dir.to_string_lossy().to_string(),
-        })?;
-
-        let nats_server_handle = nats_server.start().await?;
-        let nats_client = nats_server.build_client().await?;
-
-        self.nats_server = Some(nats_server);
-        self.nats_server_handle = Some(nats_server_handle);
-        self.nats_client = Some(nats_client);
-
-        info!("nats server started");
-
-        Ok(())
-    }
-
     #[allow(clippy::too_many_lines)]
     async fn start_core(&mut self) -> Result<()> {
         let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
@@ -1113,7 +1125,7 @@ impl Bootstrap {
                     "APPLICATION_MANAGER_SQL",
                     NatsStreamOptions {
                         client: nats_client.clone(),
-                        num_replicas: 1,
+                        num_replicas: self.num_replicas,
                     },
                 ),
                 NatsServiceOptions {
@@ -1140,7 +1152,7 @@ impl Bootstrap {
                 "APPLICATION_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
-                    num_replicas: 1,
+                    num_replicas: self.num_replicas,
                 },
             ),
             NatsServiceOptions {
@@ -1166,7 +1178,7 @@ impl Bootstrap {
                 "PERSONAL_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
-                    num_replicas: 1,
+                    num_replicas: self.num_replicas,
                 },
             ),
             NatsServiceOptions {
@@ -1192,7 +1204,7 @@ impl Bootstrap {
                 "NFT_SQL",
                 NatsStreamOptions {
                     client: nats_client.clone(),
-                    num_replicas: 1,
+                    num_replicas: self.num_replicas,
                 },
             ),
             NatsServiceOptions {
