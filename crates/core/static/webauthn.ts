@@ -1,9 +1,8 @@
 import {
   base64UrlToUint8Array,
   uint8ArrayToBase64Url,
-  uint8ArrayToHex,
 } from "./helpers/uint8array";
-// import { HDKey } from "micro-key-producer/slip10.js"; // Removed
+import { bytesToHex } from "@noble/curves/abstract/utils";
 import * as ed from "@noble/ed25519";
 import { hkdf } from "@noble/hashes/hkdf";
 import { sha256 } from "@noble/hashes/sha2";
@@ -112,7 +111,7 @@ class WebAuthnClient {
             );
             console.log(
               "Using Master Secret (from PRF - hex):",
-              uint8ArrayToHex(masterSecretBytes)
+              bytesToHex(masterSecretBytes)
             );
 
             // Define the context for the key derivation
@@ -130,14 +129,14 @@ class WebAuthnClient {
               derivedKeyLengthBytes // Output length (32 for Ed25519 seed)
             );
             console.log(
-              ` Derived Seed via HKDF (hex): ${uint8ArrayToHex(derivedSeed)}`
+              ` Derived Seed via HKDF (hex): ${bytesToHex(derivedSeed)}`
             );
 
             // 2. Use the HKDF-derived seed to generate the Ed25519 public key
             const derivedPublicKeyBytes =
               await ed.getPublicKeyAsync(derivedSeed);
             console.log(
-              ` Derived Public Key (hex): ${uint8ArrayToHex(derivedPublicKeyBytes)}`
+              ` Derived Public Key (hex): ${bytesToHex(derivedPublicKeyBytes)}`
             );
           }
         } else {
