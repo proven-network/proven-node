@@ -5,7 +5,6 @@
   },
   "dependencies": {
     "@auth0/cose": "1.0.2",
-    "@simplewebauthn/browser": "13.1.0",
     "cbor-x": "1.6.0",
     "elliptic": "6.6.1",
     "@peculiar/x509": "1.12.3"

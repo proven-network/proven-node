@@ -17,6 +17,10 @@ use webauthn_rs::prelude::*;
 
 use axum::extract::Path;
 
+// Base64URL representation of 32 bytes of '1'
+// TODO: Tie this to a network parameter or something
+const PRF_EVAL_FIRST_B64URL: &str = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
+
 const IFRAME_HTML: &str = include_str!("../../static/iframe.html");
 const IFRAME_JS: &str = include_str!("../../static/iframe.js");
 const WEBAUTHN_JS: &str = include_str!("../../static/webauthn.js");
@@ -93,10 +97,75 @@ where
 
     // Just serialize the state to /tmp with serde_json for testing
     let state_json = serde_json::to_string(&state).unwrap();
-    let registration_state = state_json.as_bytes();
-    std::fs::write("/tmp/registration_state.json", registration_state).unwrap();
+    std::fs::write("/tmp/registration_state.json", state_json.as_bytes()).unwrap();
 
-    Json(ccr)
+    // Convert CCR to Value for modification
+    let mut ccr_val = match serde_json::to_value(&ccr) {
+        Ok(val) => val,
+        Err(e) => {
+            eprintln!("Failed to serialize CCR to JSON value: {}", e);
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Failed to prepare registration options".to_string())
+                .unwrap();
+        }
+    };
+
+    // Navigate into ccr_val["publicKey"]["extensions"] and insert PRF
+    let prf_inserted = ccr_val
+        .pointer_mut("/publicKey/extensions")
+        .and_then(|ext_val| ext_val.as_object_mut())
+        .map(|extensions_obj| {
+            // Create and insert the PRF extension
+            let prf_val = serde_json::json!({
+                "eval": { "first": PRF_EVAL_FIRST_B64URL }
+            });
+            extensions_obj.insert("prf".to_string(), prf_val);
+            true // Indicate success
+        })
+        .unwrap_or_else(|| {
+            // If /publicKey/extensions doesn't exist, try to create it
+            ccr_val
+                .pointer_mut("/publicKey")
+                .and_then(|pk_val| pk_val.as_object_mut())
+                .map(|pk_obj| {
+                    // Create extensions object with PRF
+                    let extensions = serde_json::json!({
+                        "prf": {
+                            "eval": { "first": PRF_EVAL_FIRST_B64URL }
+                        }
+                    });
+                    pk_obj.insert("extensions".to_string(), extensions);
+                    true
+                })
+                .unwrap_or(false)
+        });
+
+    if !prf_inserted {
+        eprintln!("Failed to insert PRF extension into publicKey.extensions");
+        return Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body("Failed to structure registration options".to_string())
+            .unwrap();
+    }
+
+    // Serialize the modified CCR directly (no additional wrapping needed)
+    let final_response_json = match serde_json::to_string(&ccr_val) {
+        Ok(json_str) => json_str,
+        Err(e) => {
+            eprintln!("Failed to serialize modified CCR: {}", e);
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Failed to serialize registration options".to_string())
+                .unwrap();
+        }
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "application/json")
+        .body(final_response_json)
+        .unwrap()
 }
 
 pub(crate) async fn webauthn_registration_finish_handler<AM, RM, SM, A, G>(
