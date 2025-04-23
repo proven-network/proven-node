@@ -5,13 +5,16 @@
   },
   "dependencies": {
     "@auth0/cose": "1.0.2",
+    "@noble/ed25519": "^2.2.3",
+    "@noble/hashes": "1.8.0",
+    "@peculiar/x509": "1.12.3",
     "cbor-x": "1.6.0",
-    "elliptic": "6.6.1",
-    "@peculiar/x509": "1.12.3"
+    "elliptic": "6.6.1"
   },
   "devDependencies": {
     "@radixdlt/radix-dapp-toolkit": "2.2.1",
     "@types/elliptic": "6.4.18",
-    "esbuild": "0.25.2"
+    "esbuild": "0.25.3",
+    "prettier": "3.5.3"
   }
 }
