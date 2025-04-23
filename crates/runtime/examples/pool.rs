@@ -17,6 +17,7 @@ use tokio::sync::Mutex;
 use tokio::time::Instant;
 
 static EXECUTIONS: usize = 100;
+static NUM_WORKERS: u32 = 40;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -24,7 +25,7 @@ async fn main() -> Result<(), Error> {
         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
         application_store: MemoryStore2::new(),
         file_system_store: MemoryStore::new(),
-        max_workers: 10,
+        max_workers: NUM_WORKERS,
         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
         nft_store: MemoryStore3::new(),
         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
@@ -103,12 +104,14 @@ async fn main() -> Result<(), Error> {
                 },
             };
 
-            let start = Instant::now();
-            let result = pool.execute(module_loader, request).await;
-            let duration = start.elapsed();
-            durations.lock().await.push(duration);
-
-            assert!(matches!(result, Ok(ExecutionResult::Ok { .. })));
+            match pool.execute(module_loader, request).await {
+                Ok(ExecutionResult::Ok { duration, .. }) => {
+                    durations.lock().await.push(duration);
+                }
+                _ => {
+                    panic!("Execution failed");
+                }
+            }
         });
         handles.push(handle);
     }
@@ -131,11 +134,15 @@ async fn main() -> Result<(), Error> {
     } else {
         durations_vec[EXECUTIONS / 2]
     };
-
+    let executions_per_second = EXECUTIONS as f64 / duration.as_secs_f64();
     println!("Min execution time: {:?}", min_duration);
     println!("Max execution time: {:?}", max_duration);
     println!("Average execution time: {:?}", average_duration);
     println!("Median execution time: {:?}", median_duration);
+    println!(
+        "Executions per second: {}",
+        (executions_per_second * 100.0).round() / 100.0
+    );
 
     Ok(())
 }

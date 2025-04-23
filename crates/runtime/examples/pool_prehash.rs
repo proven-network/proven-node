@@ -156,12 +156,14 @@ async fn main() -> Result<(), Error> {
                 },
             };
 
-            let start = Instant::now();
-            let result = pool.execute_prehashed(code_package_hash, request).await;
-            let duration = start.elapsed();
-            durations.lock().await.push(duration);
-
-            assert!(matches!(result, Ok(ExecutionResult::Ok { .. })));
+            match pool.execute_prehashed(code_package_hash, request).await {
+                Ok(ExecutionResult::Ok { duration, .. }) => {
+                    durations.lock().await.push(duration);
+                }
+                _ => {
+                    panic!("Execution failed");
+                }
+            }
         });
         handles.push(handle);
     }
