@@ -153,7 +153,7 @@ async-stream = "0.3.6"
 async-trait = "0.1.87"
 aws-config = { version = "1.6.1", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
 aws-nitro-enclaves-nsm-api = { git = "https://github.com/proven-network/aws-nitro-enclaves-nsm-api", branch = "main" }
-aws-sdk-ec2 = { version = "1.121.1", default-features = false }
+aws-sdk-ec2 = { version = "1.122.0", default-features = false }
 aws-sdk-kms = { version = "1.65.0", default-features = false }
 aws-sdk-route53resolver = { version = "1.69.0", default-features = false }
 aws-sdk-s3 = { version = "1.82.0", default-features = false, features = ["rt-tokio"] }
@@ -200,7 +200,7 @@ deno_ast = { version = "0.46.5", features = ["transpiling"] }
 deno_bench_util = { path = "vendor/deno/bench_util" }
 deno_broadcast_channel = { path = "vendor/deno/ext/broadcast_channel" }
 deno_cache = { path = "vendor/deno/ext/cache" }
-deno_cache_dir = "0.19.0"
+deno_cache_dir = "0.19.1"
 deno_canvas = { path = "vendor/deno/ext/canvas" }
 deno_config = { version = "0.53.0", features = ["workspace", "sync"] }
 deno_console = { path = "vendor/deno/ext/console" }
@@ -247,7 +247,7 @@ denokv_remote = "0.10.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
 denokv_sqlite = { default-features = false, path = "vendor/denokv/sqlite" }
 denort_helper = { path = "vendor/deno/ext/rt_helper" }
-der = "0.7.9"
+der = "0.7.10"
 derive_more = { version = "=1.0.0", features = ["display", "from"] }
 digest = "0.10.7"
 dlopen2 = "0.7.0"
@@ -317,7 +317,7 @@ libloading = "0.8.6"
 libsql = { version = "0.6.0", default-features = false, features = ["core", "stream"] }
 libsql-ffi = { version = "0.5.0", features = ["session"] }
 libsql-rusqlite = { version = "0.33.0", features = ["limits"] }
-libsui = "0.7.0"
+libsui = "0.10.0"
 libc = "0.2.172"
 libuv-sys-lite = "1.48.3"
 libz-sys = { version = "1.1.21", default-features = false }
@@ -491,7 +491,7 @@ tokio-rustls-acme = { version = "0.7.0", features = ["axum"] }
 tokio-socks = "0.5.1"
 tokio-stream = "0.1.17"
 tokio-tun = "0.13.2"
-tokio-util = { version = "0.7.14", features = ["rt"] }
+tokio-util = { version = "0.7.15", features = ["rt"] }
 tokio-vsock = "0.7.1"
 toml = "0.8.20"
 tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }

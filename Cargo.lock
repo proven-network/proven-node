@@ -1247,9 +1247,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-ec2"
-version = "1.121.1"
+version = "1.122.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1da132c5b212d7f3d0662dd42b618505424eba492b8290ef292f56e2d30ee51c"
+checksum = "f6c3ef2470307bdeb6471d66d5c28aee1e1b10d7f752d0fd9da6cccc5791f9b3"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -3238,9 +3238,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.19.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad153476505553d2320280d656ff4f53d23c2f74cdf4965fa59cfb2c9768a1b0"
+checksum = "575901be287b3f10fdae69b4f119ab3f8a9d5bf2212a57c9bd1cd2ab0451c067"
 dependencies = [
  "async-trait",
  "base32",
@@ -4346,9 +4346,9 @@ dependencies = [
 
 [[package]]
 name = "der"
-version = "0.7.9"
+version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f55bf8e7b65898637379c1b74eb1551107c8294ed26d855ceb9fd1a09cfc9bc0"
+checksum = "e7c1832837b905bbfb5101e07cc24c8deddf52f93225eee6ead5f4d63d53ddcb"
 dependencies = [
  "const-oid",
  "der_derive",
@@ -7102,9 +7102,9 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.7.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7550a110415b4780bf6064d280f2dc5b761fb80d9af92258a72e5dc82ca6f05a"
+checksum = "6744db763b6e19aff65ebac2c85cf71358b3aae385828fcf0d1e02878ab7767b"
 dependencies = [
  "editpe",
  "image",
@@ -12929,16 +12929,16 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.14"
+version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b9590b93e6fcc1739458317cccd391ad3955e2bde8913edf6f95f9e65a8f034"
+checksum = "66a539a9ad6d5d281510d5bd368c973d636c02dbf8a67300bfb6b950696ad7df"
 dependencies = [
  "bytes",
  "futures-core",
  "futures-io",
  "futures-sink",
  "futures-util",
- "hashbrown 0.14.5",
+ "hashbrown 0.15.2",
  "pin-project-lite",
  "slab",
  "tokio",
