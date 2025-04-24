@@ -7,22 +7,25 @@
 mod error;
 
 pub use error::{Error, Result};
-use nsm_nitro_enclave_utils::driver::Driver;
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use nsm_nitro_enclave_utils::api::nsm::{Request, Response};
+use nsm_nitro_enclave_utils::api::nsm::{AttestationDoc, Request, Response};
 use nsm_nitro_enclave_utils::api::{DecodePrivateKey, SecretKey};
+use nsm_nitro_enclave_utils::driver::Driver;
 use nsm_nitro_enclave_utils::driver::dev::DevNitro;
 use nsm_nitro_enclave_utils::pcr::{PcrIndex, Pcrs as DriverPcrs};
-use proven_attestation::{AttestationParams, Attestor, Pcrs};
+use nsm_nitro_enclave_utils::time::Time;
+use nsm_nitro_enclave_utils::verify::AttestationDocVerifierExt;
+use proven_attestation::{AttestationParams, Attestor, Pcrs, VerifiedAttestation};
 use rand::RngCore;
 use serde_bytes::ByteBuf;
 
 static END_CERT: &[u8] = include_bytes!("../mock_chain/end-certificate.der");
 static INT_CERTS: &[&[u8]] = &[include_bytes!("../mock_chain/int-certificate.der")];
+static ROOT_CERT: &[u8] = include_bytes!("../mock_chain/root-certificate.der");
 static SIGNING_KEY: &[u8] = include_bytes!("../mock_chain/end-signing-key.der");
 
 /// Noop attestation provider for local development.
@@ -95,5 +98,23 @@ impl Attestor for MockAttestor {
         rng.fill_bytes(&mut random);
 
         Ok(Bytes::from(random))
+    }
+
+    fn verify(&self, attestation: Bytes) -> Result<VerifiedAttestation> {
+        let doc = AttestationDoc::from_cose(&attestation, ROOT_CERT, Time::default())?;
+
+        Ok(VerifiedAttestation {
+            nonce: doc.nonce.map(ByteBuf::into_vec).map(Bytes::from),
+            pcrs: Pcrs {
+                pcr0: doc.pcrs.get(&0).unwrap().to_vec().into(),
+                pcr1: doc.pcrs.get(&1).unwrap().to_vec().into(),
+                pcr2: doc.pcrs.get(&2).unwrap().to_vec().into(),
+                pcr3: doc.pcrs.get(&3).unwrap().to_vec().into(),
+                pcr4: doc.pcrs.get(&4).unwrap().to_vec().into(),
+                pcr8: doc.pcrs.get(&8).unwrap().to_vec().into(),
+            },
+            public_key: doc.public_key.map(ByteBuf::into_vec).map(Bytes::from),
+            user_data: doc.user_data.map(ByteBuf::into_vec).map(Bytes::from),
+        })
     }
 }

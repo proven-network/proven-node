@@ -9,7 +9,6 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-
 /// Parameters for attestation.
 pub struct AttestationParams {
     /// Optional challenge to include in the attestation.
@@ -44,6 +43,22 @@ pub struct Pcrs {
     pub pcr8: Bytes,
 }
 
+/// Verified attestation.
+pub struct VerifiedAttestation {
+    /// An optional cryptographic nonce provided by the attestation consumer as a proof of
+    /// authenticity.
+    pub nonce: Option<Bytes>,
+
+    /// The PCRs.
+    pub pcrs: Pcrs,
+
+    /// An optional DER-encoded key the attestation consumer can use to encrypt data with
+    pub public_key: Option<Bytes>,
+
+    /// Additional signed user data, as defined by protocol.
+    pub user_data: Option<Bytes>,
+}
+
 /// Marker trait for `Attestor` errors.
 pub trait AttestorError: Clone + Debug + Error + Send + Sync {}
 
@@ -64,4 +79,7 @@ where
 
     /// Generate secure random bytes.
     async fn secure_random(&self) -> Result<Bytes, Self::Error>;
+
+    /// Verify an attestation document.
+    fn verify(&self, attestation: Bytes) -> Result<VerifiedAttestation, Self::Error>;
 }
