@@ -38,82 +38,6 @@ struct Args {
     )]
     bitcoin_testnet_store_dir: PathBuf,
 
-    /// Proven HTTP port
-    #[arg(long, default_value_t = 3200, env = "PROVEN_PORT")]
-    port: u16,
-
-    /// NATS port
-    #[arg(long, default_value_t = 4222, env = "PROVEN_NATS_CLIENT_PORT")]
-    nats_client_port: u16,
-
-    /// NATS cluster port
-    #[arg(long, default_value_t = 6222, env = "PROVEN_NATS_CLUSTER_PORT")]
-    nats_cluster_port: u16,
-
-    /// NATS store directory
-    #[arg(
-        long,
-        default_value = "/tmp/proven/nats",
-        env = "PROVEN_NATS_STORE_DIR"
-    )]
-    nats_store_dir: PathBuf,
-
-    /// Private key provided directly as an environment variable
-    #[arg(long, env = "PROVEN_NODE_KEY", required = true)]
-    node_key: String,
-
-    /// Postgres binary directory path
-    #[arg(
-        long,
-        default_value = "/usr/local/pgsql/bin",
-        env = "POSTGRES_BIN_PATH"
-    )]
-    postgres_bin_path: String,
-
-    /// Postgres port
-    #[arg(long, default_value_t = 5432, env = "PROVEN_POSTGRES_PORT")]
-    postgres_port: u16,
-
-    /// Postgres store directory
-    #[arg(
-        long,
-        default_value = "/tmp/proven/postgres",
-        env = "POSTGRES_STORE_DIR"
-    )]
-    postgres_store_dir: PathBuf,
-
-    /// Radix Mainnet HTTP port
-    #[arg(long, default_value_t = 3333, env = "PROVEN_RADIX_MAINNET_HTTP_PORT")]
-    radix_mainnet_http_port: u16,
-
-    /// Radix Mainnet port
-    #[arg(long, default_value_t = 30000, env = "PROVEN_RADIX_MAINNET_P2P_PORT")]
-    radix_mainnet_p2p_port: u16,
-
-    /// Radix Mainnet store directory
-    #[arg(
-        long,
-        default_value = "/tmp/proven/radix-node-mainnet",
-        env = "PROVEN_RADIX_MAINNET_STORE_DIR"
-    )]
-    radix_mainnet_store_dir: PathBuf,
-
-    /// Radix Stokenet HTTP port
-    #[arg(long, default_value_t = 3343, env = "PROVEN_RADIX_STOKENET_HTTP_PORT")]
-    radix_stokenet_http_port: u16,
-
-    /// Radix Stokenet port
-    #[arg(long, default_value_t = 30001, env = "PROVEN_RADIX_STOKENET_P2P_PORT")]
-    radix_stokenet_p2p_port: u16,
-
-    /// Radix Stokenet store directory
-    #[arg(
-        long,
-        default_value = "/tmp/proven/radix-node-stokenet",
-        env = "PROVEN_RADIX_STOKENET_STORE_DIR"
-    )]
-    radix_stokenet_store_dir: PathBuf,
-
     /// Ethereum Holesky Consensus HTTP address
     #[arg(
         long,
@@ -329,6 +253,82 @@ struct Args {
         env = "PROVEN_ETHEREUM_SEPOLIA_EXECUTION_STORE_DIR"
     )]
     ethereum_sepolia_execution_store_dir: PathBuf,
+
+    /// Proven HTTP port
+    #[arg(long, default_value_t = 3200, env = "PROVEN_PORT")]
+    port: u16,
+
+    /// NATS port
+    #[arg(long, default_value_t = 4222, env = "PROVEN_NATS_CLIENT_PORT")]
+    nats_client_port: u16,
+
+    /// NATS cluster port
+    #[arg(long, default_value_t = 6222, env = "PROVEN_NATS_CLUSTER_PORT")]
+    nats_cluster_port: u16,
+
+    /// NATS store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/nats",
+        env = "PROVEN_NATS_STORE_DIR"
+    )]
+    nats_store_dir: PathBuf,
+
+    /// Private key provided directly as an environment variable
+    #[arg(long, env = "PROVEN_NODE_KEY", required = true)]
+    node_key: String,
+
+    /// Postgres binary directory path
+    #[arg(
+        long,
+        default_value = "/usr/local/pgsql/bin",
+        env = "POSTGRES_BIN_PATH"
+    )]
+    postgres_bin_path: String,
+
+    /// Postgres port
+    #[arg(long, default_value_t = 5432, env = "PROVEN_POSTGRES_PORT")]
+    postgres_port: u16,
+
+    /// Postgres store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/postgres",
+        env = "POSTGRES_STORE_DIR"
+    )]
+    postgres_store_dir: PathBuf,
+
+    /// Radix Mainnet HTTP port
+    #[arg(long, default_value_t = 3333, env = "PROVEN_RADIX_MAINNET_HTTP_PORT")]
+    radix_mainnet_http_port: u16,
+
+    /// Radix Mainnet port
+    #[arg(long, default_value_t = 30000, env = "PROVEN_RADIX_MAINNET_P2P_PORT")]
+    radix_mainnet_p2p_port: u16,
+
+    /// Radix Mainnet store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/radix-node-mainnet",
+        env = "PROVEN_RADIX_MAINNET_STORE_DIR"
+    )]
+    radix_mainnet_store_dir: PathBuf,
+
+    /// Radix Stokenet HTTP port
+    #[arg(long, default_value_t = 3343, env = "PROVEN_RADIX_STOKENET_HTTP_PORT")]
+    radix_stokenet_http_port: u16,
+
+    /// Radix Stokenet port
+    #[arg(long, default_value_t = 30001, env = "PROVEN_RADIX_STOKENET_P2P_PORT")]
+    radix_stokenet_p2p_port: u16,
+
+    /// Radix Stokenet store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/radix-node-stokenet",
+        env = "PROVEN_RADIX_STOKENET_STORE_DIR"
+    )]
+    radix_stokenet_store_dir: PathBuf,
 
     /// Skip vacuuming the database
     #[arg(long, env = "PROVEN_SKIP_VACUUM")]
