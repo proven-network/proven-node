@@ -1,11 +1,11 @@
 [package]
 name = "proven-radix-nft-verifier-gateway"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-deno_error = { workspace = true }
-proven-radix-gateway-sdk = { workspace = true }
-proven-radix-nft-verifier = { workspace = true }
-thiserror = { workspace = true }
+async-trait.workspace = true
+deno_error.workspace = true
+proven-radix-gateway-sdk.workspace = true
+proven-radix-nft-verifier.workspace = true
+thiserror.workspace = true

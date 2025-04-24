@@ -1,18 +1,18 @@
 
 [package]
 name = "proven-sql-direct"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-deno_error = { workspace = true }
-futures = { workspace = true }
-paste = { workspace = true }
-proven-libsql = { workspace = true }
-proven-sql = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+async-trait.workspace = true
+deno_error.workspace = true
+futures.workspace = true
+paste.workspace = true
+proven-libsql.workspace = true
+proven-sql.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile.workspace = true

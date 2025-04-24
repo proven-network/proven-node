@@ -1,15 +1,15 @@
 [package]
 name = "proven-http-insecure"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-axum = { workspace = true }
-parking_lot = { workspace = true }
-proven-http = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tokio-util = { workspace = true }
-tower = { workspace = true }
-tracing = { workspace = true }
+async-trait.workspace = true
+axum.workspace = true
+parking_lot.workspace = true
+proven-http.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tower.workspace = true
+tracing.workspace = true

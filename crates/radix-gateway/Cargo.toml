@@ -1,15 +1,15 @@
 [package]
 name = "proven-radix-gateway"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-once_cell = { workspace = true }
-proven-isolation = { workspace = true }
-regex = { workspace = true }
-reqwest = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }
+async-trait.workspace = true
+once_cell.workspace = true
+proven-isolation.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true

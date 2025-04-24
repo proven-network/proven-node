@@ -1,20 +1,20 @@
 [package]
 name = "proven-identity"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-bytes = { workspace = true }
-ciborium = { workspace = true }
-ed25519-dalek = { workspace = true }
-hex = { workspace = true }
-proven-attestation = { workspace = true }
-proven-radix-rola = { workspace = true }
-proven-store = { workspace = true }
-radix-common = { workspace = true }
-rand = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
-uuid = { workspace = true }
-webauthn-rs = { workspace = true }
+async-trait.workspace = true
+bytes.workspace = true
+ciborium.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+proven-attestation.workspace = true
+proven-radix-rola.workspace = true
+proven-store.workspace = true
+radix-common.workspace = true
+rand.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+webauthn-rs.workspace = true

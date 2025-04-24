@@ -1,16 +1,16 @@
 [package]
 name = "proven-store-nats"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-nats = { workspace = true }
-async-trait = { workspace = true }
-bytes = { workspace = true }
-ciborium = { workspace = true }
-deno_error = { workspace = true }
-futures = { workspace = true }
-paste = { workspace = true }
-proven-store = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+async-nats.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+ciborium.workspace = true
+deno_error.workspace = true
+futures.workspace = true
+paste.workspace = true
+proven-store.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

@@ -1,13 +1,13 @@
 [package]
 name = "proven-attestation-nsm"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-bytes = { workspace = true }
-nsm-nitro-enclave-utils = { workspace = true }
-proven-attestation = { workspace = true }
-serde_bytes = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+async-trait.workspace = true
+bytes.workspace = true
+nsm-nitro-enclave-utils.workspace = true
+proven-attestation.workspace = true
+serde_bytes.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

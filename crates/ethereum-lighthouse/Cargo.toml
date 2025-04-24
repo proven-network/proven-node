@@ -1,21 +1,21 @@
 [package]
 name = "proven-ethereum-lighthouse"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-once_cell = { workspace = true }
-proven-isolation = { workspace = true }
-regex = { workspace = true }
-strip-ansi-escapes = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tokio-util = { workspace = true }
-tracing = { workspace = true }
-reqwest = { workspace = true }
-serde_json = { workspace = true }
+async-trait.workspace = true
+once_cell.workspace = true
+proven-isolation.workspace = true
+regex.workspace = true
+strip-ansi-escapes.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
-proven-ethereum-reth = { workspace = true }
-tracing-subscriber = { workspace = true }
+proven-ethereum-reth.workspace = true
+tracing-subscriber.workspace = true

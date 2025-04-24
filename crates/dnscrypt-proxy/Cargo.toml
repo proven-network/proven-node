@@ -1,15 +1,15 @@
 [package]
 name = "proven-dnscrypt-proxy"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-aws-config = { workspace = true }
-aws-sdk-route53resolver = { workspace = true }
-dns-stamp-parser = { workspace = true }
-nix = { workspace = true }
-regex = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tokio-util = { workspace = true }
-tracing = { workspace = true }
+aws-config.workspace = true
+aws-sdk-route53resolver.workspace = true
+dns-stamp-parser.workspace = true
+nix.workspace = true
+regex.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true

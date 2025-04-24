@@ -1,52 +1,52 @@
 [package]
 name = "proven-local"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-nats = { workspace = true }
-bytes = { workspace = true }
-ciborium = { workspace = true }
-clap = { workspace = true }
-console = { workspace = true }
-ed25519-dalek = { workspace = true }
-hex = { workspace = true }
-hickory-resolver = { workspace = true }
-proven-applications = { workspace = true }
-proven-attestation = { workspace = true }
-proven-attestation-mock = { workspace = true }
-proven-bitcoin-core = { workspace = true }
-proven-core = { workspace = true }
-proven-ethereum-reth = { workspace = true }
-proven-ethereum-lighthouse = { workspace = true }
-proven-governance = { workspace = true }
-proven-governance-mock = { workspace = true }
-proven-http-insecure = { workspace = true }
-proven-identity = { workspace = true }
-proven-messaging = { workspace = true }
-proven-messaging-nats = { workspace = true }
-proven-nats-server = { workspace = true }
-proven-network = { workspace = true }
-proven-postgres = { workspace = true }
-proven-radix-aggregator = { workspace = true }
-proven-radix-gateway = { workspace = true }
-proven-radix-nft-verifier-gateway = { workspace = true }
-proven-radix-node = { workspace = true }
-proven-runtime = { workspace = true }
-proven-sql-streamed = { workspace = true }
-proven-store = { workspace = true }
-proven-store-fs = { workspace = true }
-proven-store-memory = { workspace = true }
-proven-store-nats = { workspace = true }
-radix-common = { workspace = true }
-reqwest = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tokio-util = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+async-nats.workspace = true
+bytes.workspace = true
+ciborium.workspace = true
+clap.workspace = true
+console.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+hickory-resolver.workspace = true
+proven-applications.workspace = true
+proven-attestation.workspace = true
+proven-attestation-mock.workspace = true
+proven-bitcoin-core.workspace = true
+proven-core.workspace = true
+proven-ethereum-reth.workspace = true
+proven-ethereum-lighthouse.workspace = true
+proven-governance.workspace = true
+proven-governance-mock.workspace = true
+proven-http-insecure.workspace = true
+proven-identity.workspace = true
+proven-messaging.workspace = true
+proven-messaging-nats.workspace = true
+proven-nats-server.workspace = true
+proven-network.workspace = true
+proven-postgres.workspace = true
+proven-radix-aggregator.workspace = true
+proven-radix-gateway.workspace = true
+proven-radix-nft-verifier-gateway.workspace = true
+proven-radix-node.workspace = true
+proven-runtime.workspace = true
+proven-sql-streamed.workspace = true
+proven-store.workspace = true
+proven-store-fs.workspace = true
+proven-store-memory.workspace = true
+proven-store-nats.workspace = true
+radix-common.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [lints.rust]
 long_running_const_eval = "allow"

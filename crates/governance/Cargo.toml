@@ -1,9 +1,9 @@
 [package]
 name = "proven-governance"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-serde = { workspace = true }
-tokio = { workspace = true }
+async-trait.workspace = true
+serde.workspace = true
+tokio.workspace = true

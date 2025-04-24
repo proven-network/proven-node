@@ -1,13 +1,13 @@
 [package]
 name = "proven-store-memory"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-bytes = { workspace = true }
-deno_error = { workspace = true }
-paste = { workspace = true }
-proven-store = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+async-trait.workspace = true
+bytes.workspace = true
+deno_error.workspace = true
+paste.workspace = true
+proven-store.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

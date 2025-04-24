@@ -1,14 +1,14 @@
 [package]
 name = "proven-vsock-rpc"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-ciborium = { workspace = true }
-cidr = { workspace = true }
-derive_more = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tokio-vsock = { workspace = true }
-tracing = { workspace = true }
+ciborium.workspace = true
+cidr.workspace = true
+derive_more.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-vsock.workspace = true
+tracing.workspace = true

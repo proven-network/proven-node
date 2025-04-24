@@ -1,16 +1,16 @@
 [package]
 name = "proven-attestation-mock"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-bytes = { workspace = true }
-nsm-nitro-enclave-utils = { workspace = true }
-proven-attestation = { workspace = true }
-rand = { workspace = true }
-serde_bytes = { workspace = true }
-thiserror = { workspace = true }
+async-trait.workspace = true
+bytes.workspace = true
+nsm-nitro-enclave-utils.workspace = true
+proven-attestation.workspace = true
+rand.workspace = true
+serde_bytes.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio.workspace = true

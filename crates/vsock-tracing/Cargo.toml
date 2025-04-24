@@ -1,12 +1,12 @@
 [package]
 name = "proven-vsock-tracing"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-thiserror = { workspace = true }
-tokio = { workspace = true }
-tokio-util = { workspace = true }
-tokio-vsock = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tokio-vsock.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

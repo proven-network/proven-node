@@ -1,28 +1,28 @@
 [package]
 name = "proven-radix-gateway-sdk"
 edition = "2024"
-version = "0.1.0"
+version.workspace = true
 build = "build.rs"
 
 [lib]
 doctest = false
 
 [dependencies]
-chrono = { workspace = true }
-futures = { workspace = true }
-http = { workspace = true }
-lazy_static = { workspace = true }
-progenitor-client = { workspace = true }
-reqwest = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
+chrono.workspace = true
+futures.workspace = true
+http.workspace = true
+lazy_static.workspace = true
+progenitor-client.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio.workspace = true
 
 [build-dependencies]
-prettyplease = { workspace = true }
-progenitor = { workspace = true }
-serde_yaml = { workspace = true }
-syn = { workspace = true }
+prettyplease.workspace = true
+progenitor.workspace = true
+serde_yaml.workspace = true
+syn.workspace = true

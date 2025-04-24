@@ -1,18 +1,18 @@
 [package]
 name = "proven-radix-rola"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-bech32 = { workspace = true }
-futures = { workspace = true }
-hex = { workspace = true }
-proven-radix-gateway-sdk = { workspace = true }
-radix-common = { workspace = true }
-reqwest = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
-tracing = { workspace = true }
+bech32.workspace = true
+futures.workspace = true
+hex.workspace = true
+proven-radix-gateway-sdk.workspace = true
+radix-common.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio.workspace = true

@@ -1,14 +1,14 @@
 [package]
 name = "proven-governance-mock"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-trait = { workspace = true }
-ed25519-dalek = { workspace = true }
-hex = { workspace = true }
-proven-governance = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+async-trait.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+proven-governance.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

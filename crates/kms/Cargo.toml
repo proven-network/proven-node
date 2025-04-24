@@ -1,20 +1,20 @@
 [package]
 name = "proven-kms"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
-aes = { workspace = true }
-anyhow = { workspace = true }
-asn1-rs = { workspace = true }
-aws-config = { workspace = true }
-aws-sdk-kms = { workspace = true }
-block-padding = { workspace = true }
-bytes = { workspace = true }
-cbc = { workspace = true }
-proven-attestation = { workspace = true }
-proven-attestation-nsm = { workspace = true }
-rand = { workspace = true }
-rsa = { workspace = true }
-sha2 = { workspace = true }
-thiserror = { workspace = true }
+aes.workspace = true
+anyhow.workspace = true
+asn1-rs.workspace = true
+aws-config.workspace = true
+aws-sdk-kms.workspace = true
+block-padding.workspace = true
+bytes.workspace = true
+cbc.workspace = true
+proven-attestation.workspace = true
+proven-attestation-nsm.workspace = true
+rand.workspace = true
+rsa.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
