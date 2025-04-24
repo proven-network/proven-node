@@ -40,9 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create server options
     let options = NatsServerOptions {
         bin_dir: Some(bin_dir),
-        client_listen_port: 4222,
+        client_port: 4222,
         config_dir,
         debug: true,
+        http_port: 8222,
         network,
         server_name: "nats-example".to_string(),
         store_dir,

@@ -270,6 +270,10 @@ struct Args {
     #[arg(long, default_value_t = 6222, env = "PROVEN_NATS_CLUSTER_PORT")]
     nats_cluster_port: u16,
 
+    /// NATS HTTP port
+    #[arg(long, default_value_t = 8222, env = "PROVEN_NATS_HTTP_PORT")]
+    nats_http_port: u16,
+
     /// NATS store directory
     #[arg(
         long,

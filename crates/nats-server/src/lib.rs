@@ -48,13 +48,16 @@ where
     pub bin_dir: Option<PathBuf>,
 
     /// The port to listen for client connections on.
-    pub client_listen_port: u16,
+    pub client_port: u16,
 
     /// The directory to store configuration in.
     pub config_dir: PathBuf,
 
     /// Whether to enable debug logging.
     pub debug: bool,
+
+    /// The port to listen for http connections on.
+    pub http_port: u16,
 
     /// Network for peer discovery.
     pub network: ProvenNetwork<G, A>,
@@ -75,7 +78,7 @@ struct NatsServerApp {
     config_dir: PathBuf,
 
     /// The client listen port
-    client_listen_port: u16,
+    client_port: u16,
 
     /// Whether to enable debug logging
     debug: bool,
@@ -137,7 +140,7 @@ impl IsolatedApplication for NatsServerApp {
 
     async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
         // Try to connect to the NATS server with async-nats
-        let server_url = format!("nats://{}:{}", info.ip_address, self.client_listen_port);
+        let server_url = format!("nats://{}:{}", info.ip_address, self.client_port);
         match async_nats::connect(&server_url).await {
             Ok(client) => {
                 // Connection successful, server is ready
@@ -188,13 +191,16 @@ where
     bin_dir: PathBuf,
 
     /// The client listen port
-    client_listen_port: u16,
+    client_port: u16,
 
     /// The config directory
     config_dir: PathBuf,
 
     /// Enable debug logging
     debug: bool,
+
+    /// The http listen port
+    http_port: u16,
 
     /// Network for peer discovery
     network: ProvenNetwork<G, A>,
@@ -219,9 +225,10 @@ where
     pub fn new(
         NatsServerOptions {
             bin_dir,
-            client_listen_port,
+            client_port,
             config_dir,
             debug,
+            http_port,
             network,
             server_name,
             store_dir,
@@ -237,9 +244,10 @@ where
 
         Ok(Self {
             bin_dir,
-            client_listen_port,
+            client_port,
             config_dir,
             debug,
+            http_port,
             network,
             process: Arc::new(Mutex::new(None)),
             server_name,
@@ -270,7 +278,7 @@ where
         // Prepare the NATS server application
         let app = NatsServerApp {
             bin_dir: self.bin_dir.clone(),
-            client_listen_port: self.client_listen_port,
+            client_port: self.client_port,
             debug: self.debug,
             config_dir: self.config_dir.clone(),
             executable_path: self
@@ -403,7 +411,8 @@ where
         // Start with the basic configuration
         let mut config = CONFIG_TEMPLATE
             .replace("{server_name}", &self.server_name)
-            .replace("{client_listen_addr}", "0.0.0.0:4222") // Listen on all interfaces inside the container
+            .replace("{client_addr}", &format!("0.0.0.0:{}", self.client_port))
+            .replace("{http_addr}", &format!("0.0.0.0:{}", self.http_port))
             .replace("{store_dir}", &self.store_dir.to_string_lossy());
 
         // Only add cluster.routes configuration if there are valid peers
@@ -476,12 +485,12 @@ where
         match &*self.process.lock().await {
             Some(process) => {
                 if let Some(container_ip) = process.container_ip() {
-                    return format!("nats://{}:{}", container_ip, self.client_listen_port);
+                    return format!("nats://{}:{}", container_ip, self.client_port);
                 } else {
-                    return format!("nats://127.0.0.1:{}", self.client_listen_port);
+                    return format!("nats://127.0.0.1:{}", self.client_port);
                 }
             }
-            None => format!("nats://127.0.0.1:{}", self.client_listen_port),
+            None => format!("nats://127.0.0.1:{}", self.client_port),
         }
     }
 

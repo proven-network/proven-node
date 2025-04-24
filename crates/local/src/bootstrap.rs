@@ -670,9 +670,10 @@ impl Bootstrap {
 
         let nats_server = NatsServer::new(NatsServerOptions {
             bin_dir: self.args.nats_bin_dir.clone(),
-            client_listen_port: self.args.nats_client_port,
+            client_port: self.args.nats_client_port,
             config_dir: PathBuf::from("/tmp/nats-config"),
             debug: self.args.testnet,
+            http_port: self.args.nats_http_port,
             network: network.clone(),
             server_name: network.fqdn().await?,
             store_dir: self.args.nats_store_dir.clone(),

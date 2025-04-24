@@ -790,9 +790,10 @@ impl Bootstrap {
 
         let nats_server = NatsServer::new(NatsServerOptions {
             bin_dir: Some(PathBuf::from("/apps/nats/v2.11.0")),
-            client_listen_port: 4222,
+            client_port: 4222,
             config_dir: PathBuf::from("/tmp/nats-config"),
             debug: self.args.testnet,
+            http_port: 8222,
             network: network.clone(),
             server_name: instance_details.instance_id.clone(),
             store_dir: PathBuf::from("/var/lib/nats/nats"),
