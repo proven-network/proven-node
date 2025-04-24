@@ -30,20 +30,20 @@ pub static NATS_CLUSTER_ENDPOINT_API_PATH: &str = "/v1/node/nats-cluster-endpoin
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AttestedData {
     /// The attestation of the data (signature is included in the attestation)
-    attestation: Bytes,
+    pub attestation: Bytes,
 
     /// The data.
-    data: Bytes,
+    pub data: Bytes,
 }
 
 /// A signed data structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedData {
     /// The data.
-    data: Bytes,
+    pub data: Bytes,
 
     /// The signature of the data.
-    signature: Bytes,
+    pub signature: Bytes,
 }
 
 /// Options for creating a ProvenNetwork instance.
