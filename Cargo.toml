@@ -4,6 +4,7 @@ authors = ["Proven Labs Pte Ltd"]
 edition = "2021"
 license = "FSL-1.1-MIT"
 repository = "https://github.com/proven-network/proven-node"
+version = "0.1.0"
 
 [workspace]
 resolver = "2"
