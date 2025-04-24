@@ -254,7 +254,7 @@ impl IsolatedApplication for RethApp {
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
             VolumeMount::new(self.store_dir.to_str().unwrap(), "/data"),
-            VolumeMount::new("/apps/ethereum-reth/v1.3.8", "/apps/ethereum-reth/v1.3.8"),
+            VolumeMount::new("/apps/ethereum-reth/v1.3.12", "/apps/ethereum-reth/v1.3.12"),
         ]
     }
 }
@@ -320,7 +320,7 @@ impl RethNode {
         self.prepare_config().await?;
 
         let app = RethApp {
-            executable_path: "/apps/ethereum-reth/v1.3.8/reth".to_string(),
+            executable_path: "/apps/ethereum-reth/v1.3.12/reth".to_string(),
             discovery_port: self.discovery_port,
             http_port: self.http_port,
             last_log_level: RwLock::new("INFO".to_string()),

@@ -126,8 +126,8 @@ WORKDIR /tmp
 
 # Download
 RUN wget -q https://bitcoincore.org/bin/bitcoin-core-28.1/bitcoin-28.1-aarch64-linux-gnu.tar.gz
-RUN wget -q https://github.com/paradigmxyz/reth/releases/download/v1.3.8/reth-v1.3.8-aarch64-unknown-linux-gnu.tar.gz
-RUN wget -q https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.5/lighthouse-v7.0.0-beta.5-aarch64-unknown-linux-gnu.tar.gz
+RUN wget -q https://github.com/paradigmxyz/reth/releases/download/v1.3.12/reth-v1.3.12-aarch64-unknown-linux-gnu.tar.gz
+RUN wget -q https://github.com/sigp/lighthouse/releases/download/v7.0.0/lighthouse-v7.0.0-aarch64-unknown-linux-gnu.tar.gz
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-v1.3.0.2.zip
 RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.11.0/nats-server-v2.11.0-linux-arm64.tar.gz
@@ -136,8 +136,8 @@ RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.1
 
 # Unzip
 RUN tar -xvzf bitcoin-28.1-aarch64-linux-gnu.tar.gz
-RUN tar -xvzf reth-v1.3.8-aarch64-unknown-linux-gnu.tar.gz
-RUN tar -xvzf lighthouse-v7.0.0-beta.5-aarch64-unknown-linux-gnu.tar.gz
+RUN tar -xvzf reth-v1.3.12-aarch64-unknown-linux-gnu.tar.gz
+RUN tar -xvzf lighthouse-v7.0.0-aarch64-unknown-linux-gnu.tar.gz
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN unzip babylon-node-v1.3.0.2.zip
 RUN tar -xvzf nats-server-v2.11.0-linux-arm64.tar.gz
@@ -146,8 +146,8 @@ RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
 
 # Move to /apps with versioned directories
 RUN mkdir -p /apps/bitcoin/v28.1 \
-    /apps/ethereum-reth/v1.3.8 \
-    /apps/ethereum-lighthouse/v7.0.0-beta.5 \
+    /apps/ethereum-reth/v1.3.12 \
+    /apps/ethereum-lighthouse/v7.0.0 \
     /apps/radix-node/v1.3.0.2 \
     /apps/nats/v2.11.0 \
     /apps/dnscrypt-proxy/v2.1.7 \
@@ -155,8 +155,8 @@ RUN mkdir -p /apps/bitcoin/v28.1 \
 
 RUN mv bitcoin-28.1/bin/bitcoind /apps/bitcoin/v28.1/ && \
     mv bitcoin-28.1/bin/bitcoin-cli /apps/bitcoin/v28.1/ && \
-    mv reth /apps/ethereum-reth/v1.3.8/ && \
-    mv lighthouse /apps/ethereum-lighthouse/v7.0.0-beta.5/ && \
+    mv reth /apps/ethereum-reth/v1.3.12/ && \
+    mv lighthouse /apps/ethereum-lighthouse/v7.0.0/ && \
     mv core-v1.3.0.2 /apps/radix-node/v1.3.0.2/ && \
     mv libcorerust.so /apps/radix-node/v1.3.0.2/ && \
     mv nats-server-v2.11.0-linux-arm64/nats-server /apps/nats/v2.11.0/ && \
@@ -195,8 +195,8 @@ COPY --from=postgres-builder /apps/postgres/v17.4 /apps/postgres/v17.4
 COPY --from=go-builder /apps/gocryptfs/v2.5.1 /apps/gocryptfs/v2.5.1
 COPY --from=rust-builder /apps/proven/enclave /apps/proven/enclave
 COPY --from=extra-binaries /apps/bitcoin/v28.1 /apps/bitcoin/v28.1
-COPY --from=extra-binaries /apps/ethereum-reth/v1.3.8 /apps/ethereum-reth/v1.3.8
-COPY --from=extra-binaries /apps/ethereum-lighthouse/v7.0.0-beta.5 /apps/ethereum-lighthouse/v7.0.0-beta.5
+COPY --from=extra-binaries /apps/ethereum-reth/v1.3.12 /apps/ethereum-reth/v1.3.12
+COPY --from=extra-binaries /apps/ethereum-lighthouse/v7.0.0 /apps/ethereum-lighthouse/v7.0.0
 COPY --from=extra-binaries /apps/radix-node/v1.3.0.2 /apps/radix-node/v1.3.0.2
 COPY --from=extra-binaries /apps/nats/v2.11.0 /apps/nats/v2.11.0
 COPY --from=extra-binaries /apps/dnscrypt-proxy/v2.1.7 /apps/dnscrypt-proxy/v2.1.7

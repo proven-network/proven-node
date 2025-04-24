@@ -277,8 +277,8 @@ impl IsolatedApplication for LighthouseApp {
         vec![
             VolumeMount::new(self.store_dir.to_str().unwrap(), "/data"),
             VolumeMount::new(
-                "/apps/ethereum-lighthouse/v7.0.0-beta.5",
-                "/apps/ethereum-lighthouse/v7.0.0-beta.5",
+                "/apps/ethereum-lighthouse/v7.0.0",
+                "/apps/ethereum-lighthouse/v7.0.0",
             ),
         ]
     }
@@ -364,7 +364,7 @@ impl LighthouseNode {
         self.prepare_config().await?;
 
         let app = LighthouseApp {
-            executable_path: "/apps/ethereum-lighthouse/v7.0.0-beta.5/lighthouse".to_string(),
+            executable_path: "/apps/ethereum-lighthouse/v7.0.0/lighthouse".to_string(),
             execution_rpc_ip_address: self.execution_rpc_ip_address.clone(),
             execution_rpc_jwt_hex: self.execution_rpc_jwt_hex.clone(),
             execution_rpc_port: self.execution_rpc_port,

@@ -121,16 +121,16 @@ RUN mkdir -p /apps/bitcoin/v28.1 && \
     && install -m 0755 -o root -g root -t /apps/bitcoin/v28.1 bitcoin-28.1/bin/bitcoind bitcoin-28.1/bin/bitcoin-cli
 
 # Download and install Reth Ethereum client
-RUN mkdir -p /apps/ethereum-reth/v1.3.8 && \
-    wget https://github.com/paradigmxyz/reth/releases/download/v1.3.8/reth-v1.3.8-aarch64-unknown-linux-gnu.tar.gz \
-    && tar -xzf reth-v1.3.8-aarch64-unknown-linux-gnu.tar.gz \
-    && install -m 0755 -o root -g root -t /apps/ethereum-reth/v1.3.8 reth
+RUN mkdir -p /apps/ethereum-reth/v1.3.12 && \
+    wget https://github.com/paradigmxyz/reth/releases/download/v1.3.12/reth-v1.3.12-aarch64-unknown-linux-gnu.tar.gz \
+    && tar -xzf reth-v1.3.12-aarch64-unknown-linux-gnu.tar.gz \
+    && install -m 0755 -o root -g root -t /apps/ethereum-reth/v1.3.12 reth
 
 # Download and install Lighthouse for Ethereum PoS consensus
-RUN mkdir -p /apps/ethereum-lighthouse/v7.0.0-beta.5 && \
-    wget https://github.com/sigp/lighthouse/releases/download/v7.0.0-beta.5/lighthouse-v7.0.0-beta.5-aarch64-unknown-linux-gnu.tar.gz \
-    && tar -xzf lighthouse-v7.0.0-beta.5-aarch64-unknown-linux-gnu.tar.gz \
-    && install -m 0755 -o root -g root -t /apps/ethereum-lighthouse/v7.0.0-beta.5 lighthouse
+RUN mkdir -p /apps/ethereum-lighthouse/v7.0.0 && \
+    wget https://github.com/sigp/lighthouse/releases/download/v7.0.0/lighthouse-v7.0.0-aarch64-unknown-linux-gnu.tar.gz \
+    && tar -xzf lighthouse-v7.0.0-aarch64-unknown-linux-gnu.tar.gz \
+    && install -m 0755 -o root -g root -t /apps/ethereum-lighthouse/v7.0.0 lighthouse
 
 # Download and install NATS server
 RUN mkdir -p /apps/nats/v2.11.0 && \
