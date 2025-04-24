@@ -11,3 +11,6 @@ proven-attestation = { workspace = true }
 rand = { workspace = true }
 serde_bytes = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

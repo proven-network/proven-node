@@ -8912,6 +8912,7 @@ dependencies = [
  "rand 0.8.5",
  "serde_bytes",
  "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]

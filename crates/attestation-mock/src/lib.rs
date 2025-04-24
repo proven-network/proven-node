@@ -118,3 +118,41 @@ impl Attestor for MockAttestor {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proven_attestation::AttestationParams;
+
+    #[tokio::test]
+    async fn test_roundtrip() {
+        let attestor = MockAttestor::new();
+
+        let nonce = Some(Bytes::from_static(b"test_nonce"));
+        let public_key = Some(Bytes::from_static(b"test_public_key"));
+        let user_data = Some(Bytes::from_static(b"test_user_data"));
+
+        let params = AttestationParams {
+            nonce: nonce.clone(),
+            public_key: public_key.clone(),
+            user_data: user_data.clone(),
+        };
+
+        let attestation_doc_bytes = attestor.attest(params).await.unwrap();
+
+        let verified_attestation = attestor.verify(attestation_doc_bytes).unwrap();
+
+        assert_eq!(verified_attestation.nonce, nonce);
+        assert_eq!(verified_attestation.public_key, public_key);
+        assert_eq!(verified_attestation.user_data, user_data);
+
+        // Verify Pcrs separately as they are generated internally
+        let expected_pcrs = attestor.pcrs().await.unwrap();
+        assert_eq!(verified_attestation.pcrs.pcr0, expected_pcrs.pcr0);
+        assert_eq!(verified_attestation.pcrs.pcr1, expected_pcrs.pcr1);
+        assert_eq!(verified_attestation.pcrs.pcr2, expected_pcrs.pcr2);
+        assert_eq!(verified_attestation.pcrs.pcr3, expected_pcrs.pcr3);
+        assert_eq!(verified_attestation.pcrs.pcr4, expected_pcrs.pcr4);
+        assert_eq!(verified_attestation.pcrs.pcr8, expected_pcrs.pcr8);
+    }
+}
