@@ -116,7 +116,7 @@ impl Bootstrap {
 
         Ok(Self {
             args,
-            attestor: MockAttestor,
+            attestor: MockAttestor::new(),
             external_ip,
 
             num_replicas: 3,

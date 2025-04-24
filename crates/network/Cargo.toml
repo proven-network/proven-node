@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+base64 = { workspace = true }
 bytes = { workspace = true }
-ciborium = { workspace = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
 proven-attestation = { workspace = true }

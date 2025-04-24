@@ -21,7 +21,7 @@ use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
-use proven_kms::Kms;
+use proven_kms::{Kms, KmsOptions};
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
@@ -119,10 +119,12 @@ pub struct Bootstrap {
 }
 
 impl Bootstrap {
-    pub fn new(args: InitializeRequest) -> Self {
-        Self {
+    pub fn new(args: InitializeRequest) -> Result<Self> {
+        let attestor = NsmAttestor::new()?;
+
+        Ok(Self {
             args,
-            attestor: NsmAttestor::new(),
+            attestor,
 
             governance: None,
             imds_identity: None,
@@ -167,7 +169,7 @@ impl Bootstrap {
             started: false,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
-        }
+        })
     }
 
     #[allow(clippy::too_many_lines)]
@@ -1080,7 +1082,12 @@ async fn get_or_init_encrypted_key(
         secret_name: secret_id,
     })
     .await;
-    let kms = Kms::new(key_id, region.clone()).await;
+    let kms = Kms::new(KmsOptions {
+        attestor: NsmAttestor::new()?,
+        key_id,
+        region,
+    })
+    .await;
 
     let key_opt = store.get(key_name.clone()).await?;
     let key: [u8; 32] = if let Some(encrypted_key) = key_opt {

@@ -148,7 +148,7 @@ where
         .map(|nonce| async move {
             attestor
                 .attest(AttestationParams {
-                    nonce: Some(&nonce),
+                    nonce: Some(nonce),
                     user_data: None,
                     public_key: None,
                 })

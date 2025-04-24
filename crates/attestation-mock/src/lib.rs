@@ -6,75 +6,94 @@
 
 mod error;
 
-use bytes::Bytes;
-use coset::CborSerializable;
 pub use error::{Error, Result};
+use nsm_nitro_enclave_utils::driver::Driver;
 
-use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use proven_attestation::{AttestationParams, Attestor};
+use bytes::Bytes;
+use nsm_nitro_enclave_utils::api::nsm::{Request, Response};
+use nsm_nitro_enclave_utils::api::{DecodePrivateKey, SecretKey};
+use nsm_nitro_enclave_utils::driver::dev::DevNitro;
+use nsm_nitro_enclave_utils::pcr::{PcrIndex, Pcrs as DriverPcrs};
+use proven_attestation::{AttestationParams, Attestor, Pcrs};
 use rand::RngCore;
-use serde::Serialize;
+use serde_bytes::ByteBuf;
+
+static END_CERT: &[u8] = include_bytes!("../mock_chain/end-certificate.der");
+static INT_CERTS: &[&[u8]] = &[include_bytes!("../mock_chain/int-certificate.der")];
+static SIGNING_KEY: &[u8] = include_bytes!("../mock_chain/end-signing-key.der");
 
 /// Noop attestation provider for local development.
-#[derive(Clone, Debug, Default)]
-pub struct MockAttestor;
+#[derive(Clone)]
+pub struct MockAttestor {
+    driver: Arc<DevNitro>,
+    pcrs: Pcrs,
+}
 
-#[derive(Clone, Debug, Default, Serialize)]
-struct Attestation {
-    pcrs: BTreeMap<u8, Bytes>,
-    nonce: Bytes,
-    user_data: Bytes,
-    public_key: Bytes,
+impl MockAttestor {
+    /// Create a new mock attestor.
+    #[must_use]
+    pub fn new() -> Self {
+        let int_certs = INT_CERTS
+            .iter()
+            .map(|cert| ByteBuf::from(*cert))
+            .collect::<Vec<ByteBuf>>();
+
+        let end_cert = ByteBuf::from(END_CERT);
+
+        let signing_key = SecretKey::from_pkcs8_der(&SIGNING_KEY).unwrap();
+
+        let driver_pcrs = DriverPcrs::rand();
+
+        let pcrs = Pcrs {
+            pcr0: driver_pcrs.get(PcrIndex::Zero).to_vec().into(),
+            pcr1: driver_pcrs.get(PcrIndex::One).to_vec().into(),
+            pcr2: driver_pcrs.get(PcrIndex::Two).to_vec().into(),
+            pcr3: driver_pcrs.get(PcrIndex::Three).to_vec().into(),
+            pcr4: driver_pcrs.get(PcrIndex::Four).to_vec().into(),
+            pcr8: driver_pcrs.get(PcrIndex::Eight).to_vec().into(),
+        };
+
+        let driver = nsm_nitro_enclave_utils::driver::dev::DevNitro::builder(signing_key, end_cert)
+            .pcrs(driver_pcrs)
+            .ca_bundle(int_certs)
+            .build();
+
+        Self {
+            driver: Arc::new(driver),
+            pcrs,
+        }
+    }
 }
 
 #[async_trait]
 impl Attestor for MockAttestor {
     type Error = Error;
 
-    async fn attest(&self, params: AttestationParams<'_>) -> Result<Bytes> {
-        // use zerod pcrs in dev mode
-        let mut pcrs: BTreeMap<u8, Bytes> = BTreeMap::new();
-        for i in 0..=4 {
-            pcrs.insert(i, Bytes::from(vec![0; 32]));
+    async fn attest(&self, params: AttestationParams) -> Result<Bytes> {
+        let attestation = self.driver.process_request(Request::Attestation {
+            nonce: params.nonce.map(ByteBuf::from),
+            public_key: params.public_key.map(ByteBuf::from),
+            user_data: params.user_data.map(ByteBuf::from),
+        });
+
+        match attestation {
+            Response::Attestation { document } => Ok(document.into()),
+            _ => Err(Error::InvalidResponse),
         }
-        pcrs.insert(8, Bytes::from(vec![0; 32]));
+    }
 
-        let attestation = Attestation {
-            pcrs,
-            nonce: params.nonce.cloned().unwrap_or_default(),
-            user_data: params.user_data.cloned().unwrap_or_default(),
-            public_key: params.public_key.cloned().unwrap_or_default(),
-        };
-
-        let mut payload = Vec::new();
-        ciborium::ser::into_writer(&attestation, &mut payload).map_err(|_| Error::Cbor)?;
-
-        let sign1 = coset::CoseSign1Builder::new()
-            .payload(payload)
-            .create_signature(b"", |_| vec![0; 64])
-            .build();
-
-        let attestation_document = Bytes::from(sign1.to_vec()?);
-
-        Ok(attestation_document)
+    async fn pcrs(&self) -> Result<Pcrs> {
+        Ok(self.pcrs.clone())
     }
 
     async fn secure_random(&self) -> Result<Bytes> {
         let mut rng = rand::rngs::OsRng;
         let mut random = vec![0; 32];
         rng.fill_bytes(&mut random);
+
         Ok(Bytes::from(random))
-    }
-}
-
-impl TryInto<Bytes> for Attestation {
-    type Error = Error;
-
-    fn try_into(self) -> Result<Bytes> {
-        let mut payload = Vec::new();
-        ciborium::ser::into_writer(&self, &mut payload).map_err(|_| Error::Cbor)?;
-        Ok(Bytes::from(payload))
     }
 }

@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create test network components
     let governance =
         MockGovernance::for_single_node(format!("http://localhost:{}", 3300), private_key.clone());
-    let attestor = MockAttestor::default();
+    let attestor = MockAttestor::new();
     let network = ProvenNetwork::new(ProvenNetworkOptions {
         attestor,
         governance,

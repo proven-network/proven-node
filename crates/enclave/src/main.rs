@@ -49,7 +49,12 @@ async fn main() -> Result<()> {
 async fn handle_initial_request(rpc_server: &RpcServer) -> Result<()> {
     match rpc_server.accept().await {
         Ok(RpcCall::Initialize(args, ack)) => {
-            let bootstrap = Bootstrap::new(args);
+            let bootstrap = if let Ok(bootstrap) = Bootstrap::new(args) {
+                bootstrap
+            } else {
+                ack(InitializeResponse { success: false }).await?;
+                return Ok(());
+            };
 
             match bootstrap.initialize().await {
                 Ok(enclave) => {
@@ -73,6 +78,7 @@ async fn handle_initial_request(rpc_server: &RpcServer) -> Result<()> {
             error!("Failed to accept initial request: {:?}", e);
         }
     }
+
     Ok(())
 }
 

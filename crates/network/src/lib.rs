@@ -26,6 +26,16 @@ use url::Url;
 /// The API path for the nats cluster endpoint.
 pub static NATS_CLUSTER_ENDPOINT_API_PATH: &str = "/v1/node/nats-cluster-endpoint";
 
+/// An attested and signed data structure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttestedData {
+    /// The attestation of the data (signature is included in the attestation)
+    attestation: Bytes,
+
+    /// The data.
+    data: Bytes,
+}
+
 /// A signed data structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedData {
@@ -34,26 +44,6 @@ pub struct SignedData {
 
     /// The signature of the data.
     signature: Bytes,
-}
-
-impl TryFrom<Bytes> for SignedData {
-    type Error = Error;
-
-    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
-        ciborium::de::from_reader(bytes.as_ref())
-            .map_err(|e| Error::PrivateKey(format!("Failed to deserialize signed data: {}", e)))
-    }
-}
-
-impl TryInto<Bytes> for SignedData {
-    type Error = Error;
-
-    fn try_into(self) -> Result<Bytes, Self::Error> {
-        let mut payload = Vec::new();
-        ciborium::ser::into_writer(&self, &mut payload)
-            .map_err(|e| Error::PrivateKey(format!("Failed to serialize signed data: {}", e)))?;
-        Ok(Bytes::from(payload))
-    }
 }
 
 /// Options for creating a ProvenNetwork instance.
@@ -146,29 +136,16 @@ where
     }
 
     /// Attest the nats cluster endpoint.
-    pub async fn attested_nats_cluster_endpoint(&self, nonce: Bytes) -> Result<Bytes, Error> {
+    pub async fn attested_nats_cluster_endpoint(
+        &self,
+        nonce: Bytes,
+    ) -> Result<AttestedData, Error> {
         let nats_cluster_endpoint = self.nats_cluster_endpoint().await?;
-        let signed_data = self
-            .sign_data(nats_cluster_endpoint.to_string().as_bytes())
-            .await?;
+        let nats_cluster_endpoint_bytes = nats_cluster_endpoint.to_string().as_bytes().to_vec();
 
-        let mut payload = Vec::new();
-        ciborium::ser::into_writer(&signed_data, &mut payload)
-            .map_err(|_| Error::PrivateKey("Failed to serialize signed data".to_string()))?;
-
-        let payload = Bytes::from(payload);
-
-        let attestation = self
-            .attestor
-            .attest(AttestationParams {
-                nonce: Some(&nonce),
-                public_key: Some(&self.public_key_bytes()),
-                user_data: Some(&payload),
-            })
-            .await
-            .map_err(|e| Error::Attestation(e.to_string()))?;
-
-        Ok(attestation)
+        Ok(self
+            .attest_data(&nonce, &nats_cluster_endpoint_bytes)
+            .await?)
     }
 
     /// Get the availability zone of this node.
@@ -284,6 +261,30 @@ where
         Ok(node.clone().into())
     }
 
+    /// Attest the provided data.
+    async fn attest_data(
+        &self,
+        nonce: &Bytes,
+        data_to_attest: &[u8],
+    ) -> Result<AttestedData, Error> {
+        let signed_data = self.sign_data(data_to_attest).await?;
+
+        let attestation = self
+            .attestor
+            .attest(AttestationParams {
+                nonce: Some(nonce.clone()),
+                public_key: Some(self.public_key_bytes()),
+                user_data: Some(signed_data.signature.clone()),
+            })
+            .await
+            .map_err(|e| Error::Attestation(e.to_string()))?;
+
+        Ok(AttestedData {
+            attestation,
+            data: Bytes::from(data_to_attest.to_vec()),
+        })
+    }
+
     /// Sign data with the private key.
     async fn sign_data(&self, data: &[u8]) -> Result<SignedData, Error> {
         let signature = self
@@ -339,7 +340,7 @@ mod tests {
 
         // Create network
         let network = ProvenNetwork::new(ProvenNetworkOptions {
-            attestor: MockAttestor,
+            attestor: MockAttestor::new(),
             governance: mock_governance,
             nats_cluster_port: 6222,
             private_key: SigningKey::from_bytes(

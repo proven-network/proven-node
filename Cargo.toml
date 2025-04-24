@@ -152,7 +152,6 @@ async-once-cell = "0.5.4"
 async-stream = "0.3.6"
 async-trait = "0.1.87"
 aws-config = { version = "1.6.1", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
-aws-nitro-enclaves-nsm-api = { git = "https://github.com/proven-network/aws-nitro-enclaves-nsm-api", branch = "main" }
 aws-sdk-ec2 = { version = "1.122.0", default-features = false }
 aws-sdk-kms = { version = "1.65.0", default-features = false }
 aws-sdk-route53resolver = { version = "1.69.0", default-features = false }
@@ -337,6 +336,7 @@ netif = "0.1.6"
 nix = { version = "=0.27.1", features = ["process", "signal", "user", "mount", "sched"] }
 node_resolver = { path = "vendor/deno/resolvers/node" }
 notify = "8.0.0"
+nsm-nitro-enclave-utils = { version = "0.1.2", features = ["pki", "rand", "verify"] }
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"

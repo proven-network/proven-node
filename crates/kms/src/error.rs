@@ -10,6 +10,10 @@ pub enum Error {
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),
 
+    /// Attestation error.
+    #[error("attestation error: {0}")]
+    Attestation(String),
+
     /// IO error.
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -21,10 +25,6 @@ pub enum Error {
     /// KMS response missing ciphertext blob.
     #[error("KMS response missing ciphertext blob")]
     MissingCiphertext,
-
-    /// NSM error.
-    #[error(transparent)]
-    Nsm(#[from] proven_attestation_nsm::Error),
 
     /// RSA error.
     #[error(transparent)]

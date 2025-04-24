@@ -1,4 +1,4 @@
-use aws_nitro_enclaves_nsm_api::api::ErrorCode;
+use nsm_nitro_enclave_utils::api::nsm::ErrorCode;
 use proven_attestation::AttestorError;
 use thiserror::Error;
 

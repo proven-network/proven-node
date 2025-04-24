@@ -19,30 +19,56 @@ use aws_sdk_kms::primitives::Blob;
 use aws_sdk_kms::types::{KeyEncryptionMechanism, RecipientInfo};
 use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor};
-use proven_attestation_nsm::NsmAttestor;
 use rand::rngs::OsRng;
 use rsa::pkcs8::EncodePublicKey;
 use rsa::{RsaPrivateKey, RsaPublicKey};
 
-/// Manages encryption/decryption of plain/cipher text using AWS KMS keys.
-pub struct Kms {
-    client: Client,
-    key_id: String,
-    nsm_attestor: NsmAttestor,
+/// Options for the KMS client.
+pub struct KmsOptions<A>
+where
+    A: Attestor,
+{
+    /// The attestor to use for attestation.
+    pub attestor: A,
+
+    /// The ID of the KMS key to use.
+    pub key_id: String,
+
+    /// The region of the KMS key.
+    pub region: String,
 }
 
-impl Kms {
+/// Manages encryption/decryption of plain/cipher text using AWS KMS keys.
+pub struct Kms<A>
+where
+    A: Attestor,
+{
+    attestor: A,
+    client: Client,
+    key_id: String,
+}
+
+impl<A> Kms<A>
+where
+    A: Attestor,
+{
     /// Creates a new instance of `Kms`.
-    pub async fn new(key_id: String, region: String) -> Self {
+    pub async fn new(
+        KmsOptions {
+            attestor,
+            key_id,
+            region,
+        }: KmsOptions<A>,
+    ) -> Self {
         let config = aws_config::from_env()
             .region(Region::new(region))
             .load()
             .await;
 
         Self {
+            attestor,
             client: Client::new(&config),
             key_id,
-            nsm_attestor: NsmAttestor::new(),
         }
     }
 
@@ -98,13 +124,14 @@ impl Kms {
         let (private_key, public_key) = Self::generate_keypair()?;
 
         let attestation_document = self
-            .nsm_attestor
+            .attestor
             .attest(AttestationParams {
                 nonce: None,
-                public_key: Some(&Bytes::from(public_key.to_public_key_der()?.to_vec())),
+                public_key: Some(Bytes::from(public_key.to_public_key_der()?.to_vec())),
                 user_data: None,
             })
-            .await?;
+            .await
+            .map_err(|e| Error::Attestation(e.to_string()))?;
 
         let recipient = RecipientInfo::builder()
             .key_encryption_algorithm(KeyEncryptionMechanism::RsaesOaepSha256)

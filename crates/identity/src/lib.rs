@@ -236,9 +236,9 @@ where
         match self
             .attestor
             .attest(AttestationParams {
-                nonce: Some(nonce),
-                user_data: Some(&Bytes::from(session_id_bytes.to_vec())),
-                public_key: Some(&Bytes::from(server_public_key.to_bytes().to_vec())),
+                nonce: Some(nonce.clone()),
+                user_data: Some(Bytes::from(session_id_bytes.to_vec())),
+                public_key: Some(Bytes::from(server_public_key.to_bytes().to_vec())),
             })
             .await
         {
@@ -400,9 +400,9 @@ where
         match self
             .attestor
             .attest(AttestationParams {
-                nonce: Some(nonce),
-                user_data: Some(&Bytes::from(session_id_bytes.to_vec())),
-                public_key: Some(&Bytes::from(server_public_key.to_bytes().to_vec())),
+                nonce: Some(nonce.clone()),
+                user_data: Some(Bytes::from(session_id_bytes.to_vec())),
+                public_key: Some(Bytes::from(server_public_key.to_bytes().to_vec())),
             })
             .await
         {

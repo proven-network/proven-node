@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 async-trait = { workspace = true }
-aws-nitro-enclaves-nsm-api = { workspace = true }
 bytes = { workspace = true }
+nsm-nitro-enclave-utils = { workspace = true }
 proven-attestation = { workspace = true }
 serde_bytes = { workspace = true }
 thiserror = { workspace = true }
