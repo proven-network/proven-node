@@ -1,4 +1,4 @@
-.PHONY: all build install install-service
+.PHONY: all build install install-service cloc
 
 all: build install
 
@@ -15,3 +15,14 @@ install-service:
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable proven.service
 	@echo "Enabled proven.service"
+
+cloc:
+	cloc \
+		--exclude-ext=js,mjs \
+		--not-match-d='node_modules' \
+		--not-match-d='target' \
+		--not-match-d='vendor' \
+		--not-match-f='Cargo.lock' \
+		--not-match-f='codegen.rs' \
+		--not-match-f='package-lock.json' \
+		.
