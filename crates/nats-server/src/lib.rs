@@ -80,6 +80,9 @@ struct NatsServerApp {
     /// The client listen port
     client_port: u16,
 
+    /// The cluster listen port
+    cluster_port: u16,
+
     /// Whether to enable debug logging
     debug: bool,
 
@@ -169,6 +172,10 @@ impl IsolatedApplication for NatsServerApp {
 
     fn shutdown_timeout(&self) -> Duration {
         Duration::from_secs(40) // "lame duck" mode might take 30 seconds to evict clients
+    }
+
+    fn tcp_port_forwards(&self) -> Vec<u16> {
+        vec![self.cluster_port]
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
@@ -275,10 +282,13 @@ where
         // Initialize topology from network
         self.update_topology().await?;
 
+        let cluster_port = self.network.nats_cluster_endpoint().await?.port().unwrap();
+
         // Prepare the NATS server application
         let app = NatsServerApp {
             bin_dir: self.bin_dir.clone(),
             client_port: self.client_port,
+            cluster_port,
             debug: self.debug,
             config_dir: self.config_dir.clone(),
             executable_path: self
