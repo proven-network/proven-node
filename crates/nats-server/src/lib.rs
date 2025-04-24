@@ -289,6 +289,9 @@ where
             store_dir: self.store_dir.clone(),
         };
 
+        // Small sleep as config seems to have intermittent issues with being partially written
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
         // Spawn the isolated process
         let (process, join_handle) = proven_isolation::spawn(app)
             .await
