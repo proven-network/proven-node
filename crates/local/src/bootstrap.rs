@@ -5,6 +5,7 @@ use crate::net::fetch_external_ip;
 use crate::node::{LocalNode, LocalNodeCore, Services};
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -668,13 +669,13 @@ impl Bootstrap {
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
-            bin_dir: None,
+            bin_dir: self.args.nats_bin_dir.clone(),
             client_listen_port: self.args.nats_client_port,
-            config_dir: "/tmp/nats-config".to_string(),
+            config_dir: PathBuf::from("/tmp/nats-config"),
             debug: self.args.testnet,
             network: network.clone(),
             server_name: network.fqdn().await?,
-            store_dir: self.args.nats_store_dir.to_string_lossy().to_string(),
+            store_dir: self.args.nats_store_dir.clone(),
         })?;
 
         let nats_server_handle = nats_server.start().await?;

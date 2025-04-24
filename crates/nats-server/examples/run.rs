@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use proven_attestation_mock::MockAttestor;
 use proven_governance_mock::MockGovernance;
 use proven_nats_server::{NatsServer, NatsServerOptions};
@@ -9,10 +11,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Create directories for storing NATS server data and config
-    let store_dir = "/tmp/nats-data".to_string();
-    let config_dir = "/tmp/nats-config".to_string();
+    let store_dir = PathBuf::from("/tmp/nats-data");
+    let config_dir = PathBuf::from("/tmp/nats-config");
 
-    println!("Starting NATS server in directory: {}", store_dir);
+    println!("Starting NATS server in directory: {}", store_dir.display());
 
     let private_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
 
@@ -31,8 +33,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get the path to the NATS server binary
     let bin_dir = match which::which("nats-server") {
-        Ok(path) => path.parent().unwrap().to_str().unwrap().to_string(),
-        Err(_) => "/apps/nats/v2.11.0".to_string(),
+        Ok(path) => path.parent().unwrap().to_path_buf(),
+        Err(_) => PathBuf::from("/apps/nats/v2.11.0"),
     };
 
     // Create server options

@@ -258,6 +258,10 @@ struct Args {
     #[arg(long, default_value_t = 3200, env = "PROVEN_PORT")]
     port: u16,
 
+    /// NATS store directory
+    #[arg(long, env = "PROVEN_NATS_BIN_DIR")]
+    nats_bin_dir: Option<PathBuf>,
+
     /// NATS port
     #[arg(long, default_value_t = 4222, env = "PROVEN_NATS_CLIENT_PORT")]
     nats_client_port: u16,

@@ -18,6 +18,7 @@ services:
       - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_RPC_PORT=8545
       - PROVEN_ETHEREUM_SEPOLIA_EXECUTION_STORE_DIR=/tmp/proven/ethereum-sepolia/reth
       - PROVEN_PORT=3201
+      - PROVEN_NATS_BIN_DIR=/apps/nats/v2.11.0
       - PROVEN_NATS_CLIENT_PORT=4222
       - PROVEN_NATS_CLUSTER_PORT=6222
       - PROVEN_NODE_KEY=5625b9a5552793f321c6b1178fd20be8f8ab83fbab91a729fb9d5d222fc830c2
@@ -55,6 +56,7 @@ services:
       - seccomp:unconfined
     environment:
       - PROVEN_PORT=3202
+      - PROVEN_NATS_BIN_DIR=/apps/nats/v2.11.0
       - PROVEN_NATS_CLIENT_PORT=4223
       - PROVEN_NATS_CLUSTER_PORT=6223
       - PROVEN_NODE_KEY=76709830bdd5eee1601fc8dee71713a9dde29c9895d15b3208bd26ce0c9e266d
@@ -86,6 +88,7 @@ services:
       - seccomp:unconfined
     environment:
       - PROVEN_PORT=3203
+      - PROVEN_NATS_BIN_DIR=/apps/nats/v2.11.0
       - PROVEN_NATS_CLIENT_PORT=4224
       - PROVEN_NATS_CLUSTER_PORT=6224
       - PROVEN_NODE_KEY=9d3585d534880f32264b35c087cbc84d774b53fcbebc9649fec7bdf2db04ffe4

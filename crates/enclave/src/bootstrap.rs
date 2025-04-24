@@ -5,6 +5,7 @@ use super::speedtest::SpeedTest;
 
 use std::convert::TryInto;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -788,13 +789,13 @@ impl Bootstrap {
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
-            bin_dir: Some("/apps/nats/v2.11.0".to_string()),
+            bin_dir: Some(PathBuf::from("/apps/nats/v2.11.0")),
             client_listen_port: 4222,
-            config_dir: "/tmp/nats-config".to_string(),
+            config_dir: PathBuf::from("/tmp/nats-config"),
             debug: self.args.testnet,
             network: network.clone(),
             server_name: instance_details.instance_id.clone(),
-            store_dir: "/var/lib/nats/nats".to_string(),
+            store_dir: PathBuf::from("/var/lib/nats/nats"),
         })?;
 
         let nats_server_handle = nats_server.start().await?;

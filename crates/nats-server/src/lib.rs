@@ -10,6 +10,7 @@ mod error;
 pub use error::Error;
 
 use std::error::Error as StdError;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_nats::Client;
@@ -44,13 +45,13 @@ where
     A: Attestor,
 {
     /// Optional path to the NATS server binary if it is not in the PATH.
-    pub bin_dir: Option<String>,
+    pub bin_dir: Option<PathBuf>,
 
     /// The port to listen for client connections on.
     pub client_listen_port: u16,
 
     /// The directory to store configuration in.
-    pub config_dir: String,
+    pub config_dir: PathBuf,
 
     /// Whether to enable debug logging.
     pub debug: bool,
@@ -62,16 +63,16 @@ where
     pub server_name: String,
 
     /// The directory to store data in.
-    pub store_dir: String,
+    pub store_dir: PathBuf,
 }
 
 /// NATS server application implementing the IsolatedApplication trait
 struct NatsServerApp {
     /// The path to the nats-server executable
-    bin_dir: String,
+    bin_dir: PathBuf,
 
     /// The configuration directory inside the container
-    config_dir: String,
+    config_dir: PathBuf,
 
     /// The client listen port
     client_listen_port: u16,
@@ -83,7 +84,7 @@ struct NatsServerApp {
     executable_path: String,
 
     /// The store directory
-    store_dir: String,
+    store_dir: PathBuf,
 }
 
 #[async_trait]
@@ -91,7 +92,10 @@ impl IsolatedApplication for NatsServerApp {
     fn args(&self) -> Vec<String> {
         let mut args = vec![
             "--config".to_string(),
-            format!("{}/nats-server.conf", self.config_dir),
+            self.config_dir
+                .join("nats-server.conf")
+                .to_string_lossy()
+                .to_string(),
         ];
 
         if self.debug {
@@ -166,9 +170,9 @@ impl IsolatedApplication for NatsServerApp {
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
+            VolumeMount::new(self.bin_dir.clone(), self.bin_dir.clone()),
             VolumeMount::new(self.config_dir.clone(), self.config_dir.clone()),
             VolumeMount::new(self.store_dir.clone(), self.store_dir.clone()),
-            VolumeMount::new(self.bin_dir.clone(), "/apps/nats/v2.11.0".to_string()),
         ]
     }
 }
@@ -181,13 +185,13 @@ where
     A: Attestor,
 {
     /// Path to the directory containing the NATS server binary
-    bin_dir: String,
+    bin_dir: PathBuf,
 
     /// The client listen port
     client_listen_port: u16,
 
     /// The config directory
-    config_dir: String,
+    config_dir: PathBuf,
 
     /// Enable debug logging
     debug: bool,
@@ -202,7 +206,7 @@ where
     server_name: String,
 
     /// The store directory
-    store_dir: String,
+    store_dir: PathBuf,
 }
 
 impl<G, A> NatsServer<G, A>
@@ -226,7 +230,7 @@ where
         let bin_dir = match bin_dir {
             Some(dir) => dir,
             None => match which::which("nats-server") {
-                Ok(path) => path.parent().unwrap().to_str().unwrap().to_string(),
+                Ok(path) => path.parent().unwrap().to_path_buf(),
                 Err(_) => return Err(Error::BinaryNotFound),
             },
         };
@@ -256,7 +260,7 @@ where
         debug!("Starting isolated NATS server...");
 
         // Create necessary directories
-        tokio::fs::create_dir_all(format!("{}/jetstream", self.store_dir.as_str()))
+        tokio::fs::create_dir_all(self.store_dir.join("jetstream"))
             .await
             .map_err(|e| Error::Io("failed to create jetstream directory", e))?;
 
@@ -269,7 +273,11 @@ where
             client_listen_port: self.client_listen_port,
             debug: self.debug,
             config_dir: self.config_dir.clone(),
-            executable_path: format!("{}/nats-server", self.bin_dir),
+            executable_path: self
+                .bin_dir
+                .join("nats-server")
+                .to_string_lossy()
+                .to_string(),
             store_dir: self.store_dir.clone(),
         };
 
@@ -396,7 +404,7 @@ where
         let mut config = CONFIG_TEMPLATE
             .replace("{server_name}", &self.server_name)
             .replace("{client_listen_addr}", "0.0.0.0:4222") // Listen on all interfaces inside the container
-            .replace("{store_dir}", &self.store_dir);
+            .replace("{store_dir}", &self.store_dir.to_string_lossy());
 
         // Only add cluster.routes configuration if there are valid peers
         if valid_peer_count > 0 {
@@ -421,7 +429,7 @@ where
             .await
             .map_err(|e| Error::Io("failed to create config directory", e))?;
 
-        tokio::fs::write(format!("{}/nats-server.conf", self.config_dir), config)
+        tokio::fs::write(self.config_dir.join("nats-server.conf"), config)
             .await
             .map_err(|e| Error::Io("failed to write nats-server.conf", e))?;
 
