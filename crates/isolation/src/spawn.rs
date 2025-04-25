@@ -32,6 +32,8 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
 
+use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
+
 /// Options for spawning an isolated process.
 pub struct IsolatedProcessOptions {
     /// The arguments to pass to the executable.
@@ -787,73 +789,139 @@ impl IsolatedProcessSpawner {
 
         let join_handle = tokio::task::spawn(async move {
             tokio::select! {
-                status = child.wait() => {
-                    match status {
+                status_result = child.wait() => {
+                    match status_result {
                         Ok(status) => {
                             if status.success() {
-                                info!("Process exited with status: {}", status);
+                                info!("Process {} exited normally with status: {}", pid_for_task, status);
                             } else {
-                                error!("Process exited with non-zero status: {}", status);
+                                warn!("Process {} exited normally with non-zero status: {}", pid_for_task, status);
                             }
-
                             *exit_status_for_task.lock().await = Some(status);
                         }
                         Err(err) => {
-                            error!("Failed to wait for process: {}", err);
+                            error!("Failed to wait for process {}: {}", pid_for_task, err);
+                            // Set a generic error status if wait fails
+                            *exit_status_for_task.lock().await = Some(ExitStatus::from_raw(1));
                         }
                     }
                 }
                 () = shutdown_token_for_task.cancelled() => {
-                    info!("Shutdown requested, terminating process...");
-
-                    // Convert to i32 for the kill operation
+                    info!("Shutdown requested for process {}, terminating...", pid_for_task);
                     let pid = Pid::from_raw(pid_for_task as i32);
-
                     debug!("Sending {} to process {}", shutdown_signal, pid);
-
                     if let Err(err) = signal::kill(pid, shutdown_signal) {
-                        error!("Failed to send {} to process: {}", shutdown_signal, err);
+                        error!("Failed to send {} to process {}: {}", shutdown_signal, pid_for_task, err);
+                        // If sending the initial signal fails, we might still want to proceed to kill
                     }
 
-                    // Wait for the actual process to exit, not the unshare parent
                     let check_interval = Duration::from_millis(100);
                     let start = std::time::Instant::now();
+                    let mut graceful_exit_status: Option<ExitStatus> = None;
+                    let mut killed_by_timeout = false;
 
                     loop {
-                        let process_exists = unsafe { libc::kill(pid_for_task as i32, 0) } == 0;
-
-                        if !process_exists {
-                            info!("Process {} has exited after signal", pid_for_task);
-                            break;
-                        }
-
-                        if start.elapsed() > shutdown_timeout {
-                            error!("Timeout waiting for process {} to exit, killing...", pid_for_task);
-
-                            // Try to kill the process forcefully
-                            if let Err(err) = signal::kill(pid, Signal::SIGKILL) {
-                                error!("Failed to kill process {}: {}", pid_for_task, err);
+                        let pid_for_wait = Pid::from_raw(pid_for_task as i32);
+                        match waitpid(pid_for_wait, Some(WaitPidFlag::WNOHANG)) {
+                            Ok(WaitStatus::Exited(_, status)) => {
+                                info!("Process {} exited gracefully after signal with status code: {}", pid_for_task, status);
+                                graceful_exit_status = Some(ExitStatus::from_raw(status));
+                                break;
                             }
-
-                            // As a last resort, try to kill the child process (unshare)
-                            if let Err(err) = child.kill().await {
-                                error!("Failed to kill unshare process: {}", err);
+                            Ok(WaitStatus::Signaled(_, signal, _)) => {
+                                info!("Process {} terminated by signal: {}", pid_for_task, signal);
+                                // This case should ideally be caught by the final wait() below,
+                                // but we can record it happened.
+                                graceful_exit_status = Some(ExitStatus::from_raw(128 + signal as i32));
+                                break;
                             }
-
-                            // Set the exit status
-                            *exit_status_for_task.lock().await = Some(ExitStatus::from_raw(
-                                libc::CLD_KILLED,
-                            ));
-
-                            break;
+                            Ok(WaitStatus::StillAlive) => {
+                                // Process still running, check timeout
+                                if start.elapsed() > shutdown_timeout {
+                                    error!("Timeout waiting for process {} to exit gracefully, killing...", pid_for_task);
+                                    // Send SIGKILL to the specific PID
+                                    if let Err(err) = signal::kill(pid, Signal::SIGKILL) {
+                                        error!("Failed to send SIGKILL to process {}: {}", pid_for_task, err);
+                                    }
+                                    // Also try killing the handle `child` directly, might be needed for `unshare`
+                                    // Note: child.kill() is async, but we are in a sync context here implicitly.
+                                    // We rely on the subsequent child.wait() to handle the result of the kill.
+                                    // Consider using child.start_kill() if we need finer control.
+                                    killed_by_timeout = true;
+                                    break;
+                                }
+                            }
+                            Ok(other_status) => {
+                                // Log and continue checking, treating as StillAlive for timeout purposes.
+                                warn!("Process {} reported unexpected status via waitpid: {:?}", pid_for_task, other_status);
+                                if start.elapsed() > shutdown_timeout { // Check timeout here too
+                                     error!("Timeout waiting for process {} after unexpected status, killing...", pid_for_task);
+                                     if let Err(err) = signal::kill(pid, Signal::SIGKILL) {
+                                        error!("Failed to send SIGKILL to process {}: {}", pid_for_task, err);
+                                     }
+                                     killed_by_timeout = true;
+                                     break;
+                                }
+                            }
+                            Err(e) => {
+                                error!("waitpid error checking process {}: {}", pid_for_task, e);
+                                // ECHILD means the process is already gone (or never existed), break.
+                                if e == nix::errno::Errno::ECHILD {
+                                    info!("Process {} already reaped or gone (ECHILD).", pid_for_task);
+                                    // Assume it exited somehow, let final wait() confirm.
+                                    // Or maybe set a default status? Let's break and let wait() handle it.
+                                    break;
+                                }
+                                // For other errors, log and potentially break to avoid infinite loop.
+                                break;
+                            }
                         }
-
                         tokio::time::sleep(check_interval).await;
-                    }
+                    } // End of loop
 
-                    // Still wait for the child to avoid zombie processes
-                    if let Err(err) = child.wait().await {
-                        error!("Failed to wait for unshare process: {}", err);
+                    // Always attempt to wait() on the child handle to reap the process and get the definitive status.
+                    match child.wait().await {
+                        Ok(final_status) => {
+                            let mut exit_status_guard = exit_status_for_task.lock().await;
+                            if exit_status_guard.is_none() { // Only set if not already set (e.g., by normal exit path)
+                                if killed_by_timeout {
+                                     warn!("Process {} was killed due to timeout. Final status from wait: {}", pid_for_task, final_status);
+                                     // We trust the final_status from wait() as the most accurate.
+                                     *exit_status_guard = Some(final_status);
+                                } else if let Some(_graceful_status) = graceful_exit_status {
+                                     // Prefer the status obtained via waitpid if available and consistent?
+                                     // Let's trust the final wait() status as the definitive one from the OS.
+                                     info!("Process {} exited after signal. Final status from wait: {}", pid_for_task, final_status);
+                                     *exit_status_guard = Some(final_status);
+                                } else {
+                                      // Process exited/disappeared during waitpid loop (e.g., ECHILD or other error)
+                                      info!("Process {} status unclear from waitpid loop. Final status from wait: {}", pid_for_task, final_status);
+                                      *exit_status_guard = Some(final_status);
+                                }
+                            } else {
+                                 // Status was already set, likely by the normal exit path race condition. Log if different.
+                                 if Some(final_status) != *exit_status_guard {
+                                     warn!("Final status from wait ({}) differs from already set status ({:?}) for process {}", final_status, *exit_status_guard, pid_for_task);
+                                 }
+                            }
+                        }
+                        Err(err) => {
+                            error!("Final wait() failed for process {} after shutdown sequence: {}", pid_for_task, err);
+                            // If wait failed, we need to set *some* status if not already set.
+                            let mut exit_status_guard = exit_status_for_task.lock().await;
+                            if exit_status_guard.is_none() {
+                                if killed_by_timeout {
+                                    // If we killed it and wait failed, set a generic failure status.
+                                    *exit_status_guard = Some(ExitStatus::from_raw(1)); // Indicate generic failure
+                                } else if let Some(graceful_status) = graceful_exit_status {
+                                     // If waitpid indicated success but wait failed, use the waitpid status.
+                                     *exit_status_guard = Some(graceful_status);
+                                } else {
+                                     // Unknown state, set generic failure.
+                                     *exit_status_guard = Some(ExitStatus::from_raw(1));
+                                }
+                            }
+                        }
                     }
 
                     // Remove the chroot directory
