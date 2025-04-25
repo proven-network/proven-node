@@ -95,10 +95,10 @@ RUN mkdir -p /apps/ethereum-lighthouse/v7.0.0 && \
     && install -m 0755 -o root -g root -t /apps/ethereum-lighthouse/v7.0.0 lighthouse
 
 # Download and install NATS server
-RUN mkdir -p /apps/nats/v2.11.0 && \
-    wget https://github.com/nats-io/nats-server/releases/download/v2.11.0/nats-server-v2.11.0-linux-arm64.tar.gz \
-    && tar -xzf nats-server-v2.11.0-linux-arm64.tar.gz \
-    && install -m 0755 -o root -g root -t /apps/nats/v2.11.0 nats-server-v2.11.0-linux-arm64/nats-server
+RUN mkdir -p /apps/nats/v2.11.2 && \
+    wget https://github.com/nats-io/nats-server/releases/download/v2.11.2/nats-server-v2.11.2-linux-arm64.tar.gz \
+    && tar -xzf nats-server-v2.11.2-linux-arm64.tar.gz \
+    && install -m 0755 -o root -g root -t /apps/nats/v2.11.2 nats-server-v2.11.2-linux-arm64/nats-server
 
 # Download and install Radix Node
 RUN mkdir -p /apps/radix-node/v1.3.0.2 && \

@@ -789,7 +789,7 @@ impl Bootstrap {
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
-            bin_dir: Some(PathBuf::from("/apps/nats/v2.11.0")),
+            bin_dir: Some(PathBuf::from("/apps/nats/v2.11.2")),
             client_port: 4222,
             config_dir: PathBuf::from("/tmp/nats-config"),
             debug: self.args.testnet,
