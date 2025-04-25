@@ -238,6 +238,7 @@ impl IsolatedApplication for LighthouseApp {
                 if response.status() == 200 {
                     match response.json::<serde_json::Value>().await {
                         Ok(json) => {
+                            debug!("Response from /lighthouse/syncing: {:?}", json);
                             if let Some(data) = json.get("data") {
                                 if data.is_string() {
                                     match data.as_str() {
@@ -247,16 +248,27 @@ impl IsolatedApplication for LighthouseApp {
                                     }
                                 } else if data.is_object() && data.get("SyncingFinalized").is_some()
                                 {
-                                    return Ok(false);
+                                    // Lighthouse is syncing, but we can still consider it ready
+                                    return Ok(true);
                                 }
                             }
                         }
-                        Err(_) => return Ok(false),
+                        Err(_) => {
+                            warn!("Error parsing /lighthouse/syncing response");
+
+                            return Ok(false);
+                        }
                     }
+                } else {
+                    warn!("Response from /lighthouse/syncing: {:?}", response.status());
                 }
+
                 Ok(false)
             }
-            Err(_) => Ok(false),
+            Err(_) => {
+                debug!("Error getting /lighthouse/syncing");
+                Ok(false)
+            }
         }
     }
 
@@ -270,7 +282,7 @@ impl IsolatedApplication for LighthouseApp {
     }
 
     fn udp_port_forwards(&self) -> Vec<u16> {
-        vec![self.p2p_port]
+        vec![self.p2p_port, self.p2p_port + 1] // Lighthouse uses +1 for the QUIC port
     }
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {

@@ -30,8 +30,8 @@ upnpc -a "$LOCAL_IP" 30001 30001 TCP "Proven Node - Radix"
 upnpc -a "$LOCAL_IP" 30304 30304 TCP "Proven Node - Reth P2P"
 upnpc -a "$LOCAL_IP" 30304 30304 UDP "Proven Node - Reth P2P UDP"
 # Lighthouse ports
-upnpc -a "$LOCAL_IP" 10109 10109 TCP "Proven Node - Lighthouse libp2p"
-upnpc -a "$LOCAL_IP" 10109 10109 UDP "Proven Node - Lighthouse discovery"
-upnpc -a "$LOCAL_IP" 10110 10110 UDP "Proven Node - Lighthouse QUIC"
+upnpc -a "$LOCAL_IP" 9000 9000 TCP "Proven Node - Lighthouse libp2p"
+upnpc -a "$LOCAL_IP" 9000 9000 UDP "Proven Node - Lighthouse discovery"
+upnpc -a "$LOCAL_IP" 9001 9001 UDP "Proven Node - Lighthouse QUIC"
 
 echo "UPnP port forwarding setup complete" 

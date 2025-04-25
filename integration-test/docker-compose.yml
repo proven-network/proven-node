@@ -9,7 +9,7 @@ services:
     security_opt:
       - seccomp:unconfined
     environment:
-      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_P2P_PORT=10109
+      - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_P2P_PORT=9000
       - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_HTTP_PORT=5052
       - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_METRICS_PORT=5054
       - PROVEN_ETHEREUM_SEPOLIA_CONSENSUS_STORE_DIR=/tmp/proven/ethereum-sepolia/lighthouse
@@ -31,9 +31,9 @@ services:
       - "30304:30304/udp"      # P2P communication
       - "8546:8546/tcp"        # HTTP-RPC server
       # lighthouse ports
-      - "10109:10109/tcp"        # Discovery and libp2p
-      - "10109:10109/udp"        # Discovery and libp2p
-      - "10110:10110/udp"        # QUIC
+      - "9000:9000/tcp"        # Discovery and libp2p
+      - "9000:9000/udp"        # Discovery and libp2p
+      - "9001:9001/udp"        # QUIC
       - "5052:5052/tcp"        # HTTP API
     volumes:
       - bulbasaur-data:/tmp/proven
