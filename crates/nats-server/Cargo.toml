@@ -19,6 +19,7 @@ tracing.workspace = true
 which.workspace = true
 
 [dev-dependencies]
+bytes.workspace = true
 ed25519-dalek.workspace = true
 proven-attestation-mock.workspace = true
 proven-governance-mock.workspace = true

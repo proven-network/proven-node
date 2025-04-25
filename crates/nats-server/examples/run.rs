@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use bytes::Bytes;
 use proven_attestation_mock::MockAttestor;
 use proven_governance_mock::MockGovernance;
 use proven_nats_server::{NatsServer, NatsServerOptions};
@@ -57,12 +58,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("NATS URL: {}", server.get_client_url().await);
 
     // Connect a client to verify it's working
-    server.build_client().await?;
+    let client = server.build_client().await?;
     println!("Successfully connected client to NATS server");
+
+    // Publish a message to the server
+    client.publish("test", Bytes::from("Hello, world!")).await?;
+    println!("Published message to NATS server");
 
     // Keep the server running until user interrupts with Ctrl+C
     println!("\nServer is running. Press Ctrl+C to stop...");
     tokio::signal::ctrl_c().await?;
+
+    drop(client);
 
     // Shutdown the server when done
     println!("Shutting down NATS server...");

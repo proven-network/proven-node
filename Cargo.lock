@@ -9484,6 +9484,7 @@ version = "0.1.0"
 dependencies = [
  "async-nats",
  "async-trait",
+ "bytes",
  "ed25519-dalek",
  "nix 0.27.1",
  "once_cell",

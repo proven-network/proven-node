@@ -220,6 +220,9 @@ where
 
     /// The store directory
     store_dir: PathBuf,
+
+    /// The topology update task
+    topology_update_task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl<G, A> NatsServer<G, A>
@@ -259,6 +262,7 @@ where
             process: Arc::new(Mutex::new(None)),
             server_name,
             store_dir,
+            topology_update_task: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -308,7 +312,8 @@ where
         *self.process.lock().await = Some(process);
 
         // Start periodic topology update task
-        self.start_topology_update_task()?;
+        let topology_update_task = self.start_topology_update_task()?;
+        *self.topology_update_task.lock().await = Some(topology_update_task);
 
         info!("NATS server started");
 
@@ -339,14 +344,14 @@ where
     /// # Errors
     ///
     /// This function will return an error if it fails to start the task.
-    fn start_topology_update_task(&self) -> Result<(), Error> {
+    fn start_topology_update_task(&self) -> Result<JoinHandle<()>, Error> {
         let server_name = self.server_name.clone();
 
         // We need self reference for updating config
         let self_clone = self.clone();
         let process = self.process.clone();
 
-        tokio::spawn(async move {
+        let join_handle = tokio::spawn(async move {
             let update_interval = Duration::from_secs(PEER_DISCOVERY_INTERVAL);
             let mut interval = tokio::time::interval(update_interval);
 
@@ -379,7 +384,7 @@ where
             }
         });
 
-        Ok(())
+        Ok(join_handle)
     }
 
     /// Updates the NATS server configuration with peer nodes from the topology.
@@ -474,6 +479,11 @@ where
     /// Returns an error if the server fails to shutdown.
     pub async fn shutdown(&self) -> Result<(), Error> {
         info!("Shutting down isolated NATS server...");
+
+        // Stop the topology update task
+        if let Some(task) = self.topology_update_task.lock().await.take() {
+            task.abort();
+        }
 
         // Get the process and shut it down
         let mut process_guard = self.process.lock().await;
