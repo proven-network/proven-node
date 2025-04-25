@@ -24,6 +24,7 @@ services:
       - PROVEN_NODE_KEY=5625b9a5552793f321c6b1178fd20be8f8ab83fbab91a729fb9d5d222fc830c2
     ports:
       - "3201:3201/tcp"
+      - "6222:6222/tcp"
       # reth ports
       - "30304:30304/tcp"      # P2P communication
       - "30304:30304/udp"      # P2P communication
@@ -63,6 +64,7 @@ services:
       - PROVEN_SKIP_VACUUM=true
     ports:
       - "3202:3202/tcp"
+      - "6223:6223/tcp"
       # radix ports
       - "30001:30001/tcp"   # gossip port
     volumes:
@@ -94,6 +96,7 @@ services:
       - PROVEN_NODE_KEY=9d3585d534880f32264b35c087cbc84d774b53fcbebc9649fec7bdf2db04ffe4
     ports:
       - "3203:3203/tcp"
+      - "6224:6224/tcp"
     volumes:
       - squirtle-data:/tmp/proven
       - shared-config:/etc/proven
