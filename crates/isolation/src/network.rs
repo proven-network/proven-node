@@ -25,6 +25,12 @@ pub struct VethPairOptions {
 /// A virtual ethernet pair for network communication between host and container
 #[derive(Debug)]
 pub struct VethPair {
+    /// The TCP port of the docker DNS server
+    pub docker_dns_tcp_port: Option<u16>,
+
+    /// The UDP port of the docker DNS server
+    pub docker_dns_udp_port: Option<u16>,
+
     /// The IP address of the host end
     pub host_ip_address: IpAddr,
 
@@ -39,6 +45,9 @@ pub struct VethPair {
 
     /// The name of the container end of the veth pair
     pub isolated_veth_interface_name: String,
+
+    /// The nameservers the host uses to resolve DNS queries
+    pub nameservers: Vec<String>,
 
     /// TCP ports to forward from host to container
     pub tcp_port_forwards: Vec<u16>,
@@ -60,12 +69,51 @@ impl VethPair {
             udp_port_forwards,
         }: VethPairOptions,
     ) -> Result<Self> {
+        // Read the host's resolv.conf to get nameservers
+        let resolv_conf = match std::fs::read_to_string("/etc/resolv.conf") {
+            Ok(content) => content,
+            Err(e) => {
+                debug!("Failed to read host's resolv.conf: {}", e);
+                return Err(Error::Network(format!("Failed to configure DNS: {}", e)));
+            }
+        };
+
+        // Extract nameserver IPs using regex
+        let nameservers = resolv_conf
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.starts_with("nameserver") {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        return Some(parts[1].to_string());
+                    }
+                }
+                None
+            })
+            .collect::<Vec<String>>();
+
+        if nameservers.is_empty() {
+            debug!("No nameservers found in host's resolv.conf");
+            return Err(Error::Network(
+                "No nameservers found in host's resolv.conf".to_string(),
+            ));
+        }
+
+        debug!("Found nameservers: {:?}", nameservers);
+
+        let docker_dns_tcp_port = get_docker_dns_tcp_port()?;
+        let docker_dns_udp_port = get_docker_dns_udp_port()?;
+
         let veth = Self {
+            docker_dns_tcp_port,
+            docker_dns_udp_port,
             host_ip_address,
             host_veth_interface_name,
             isolated_ip_address,
             isolated_pid,
             isolated_veth_interface_name,
+            nameservers,
             tcp_port_forwards,
             udp_port_forwards,
         };
@@ -455,68 +503,140 @@ impl VethPair {
 
         // Add iptables rules to forward DNS queries to each nameserver
         for nameserver in nameservers {
-            // Forward UDP DNS queries (port 53)
-            let output = Command::new("iptables")
-                .args(&[
-                    "-t",
-                    "nat",
-                    "-A",
-                    "PREROUTING",
-                    "-s",
-                    &self.isolated_ip_address.to_string(),
-                    "-p",
-                    "udp",
-                    "--dport",
-                    "53",
-                    "-j",
-                    "DNAT",
-                    "--to",
-                    &format!("{}:53", nameserver),
-                ])
-                .output()
-                .map_err(|e| Error::Network(format!("Failed to set up DNS forwarding: {}", e)))?;
+            if nameserver == "127.0.0.1" {
+                continue;
+            } else if nameserver == "127.0.0.11" {
+                // Forward UDP DNS queries (port 53)
+                let output = Command::new("iptables")
+                    .args(&[
+                        "-t",
+                        "nat",
+                        "-A",
+                        "PREROUTING",
+                        "-s",
+                        &self.isolated_ip_address.to_string(),
+                        "-p",
+                        "udp",
+                        "--dport",
+                        "53",
+                        "-j",
+                        "DNAT",
+                        "--to",
+                        &format!("{}:{}", nameserver, self.docker_dns_udp_port.unwrap_or(53)),
+                    ])
+                    .output()
+                    .map_err(|e| {
+                        Error::Network(format!("Failed to set up DNS forwarding: {}", e))
+                    })?;
 
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                debug!(
-                    "Failed to set up UDP DNS forwarding to {}: {}",
-                    nameserver, stderr
-                );
-                continue; // Try the next nameserver if this one fails
-            }
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    debug!(
+                        "Failed to set up UDP DNS forwarding to {}: {}",
+                        nameserver, stderr
+                    );
+                    continue; // Try the next nameserver if this one fails
+                }
 
-            // Forward TCP DNS queries (less common but sometimes used)
-            let output = Command::new("iptables")
-                .args(&[
-                    "-t",
-                    "nat",
-                    "-A",
-                    "PREROUTING",
-                    "-s",
-                    &self.isolated_ip_address.to_string(),
-                    "-p",
-                    "tcp",
-                    "--dport",
-                    "53",
-                    "-j",
-                    "DNAT",
-                    "--to",
-                    &format!("{}:53", nameserver),
-                ])
-                .output()
-                .map_err(|e| {
-                    Error::Network(format!("Failed to set up TCP DNS forwarding: {}", e))
-                })?;
+                // Forward TCP DNS queries (less common but sometimes used)
+                let output = Command::new("iptables")
+                    .args(&[
+                        "-t",
+                        "nat",
+                        "-A",
+                        "PREROUTING",
+                        "-s",
+                        &self.isolated_ip_address.to_string(),
+                        "-p",
+                        "tcp",
+                        "--dport",
+                        "53",
+                        "-j",
+                        "DNAT",
+                        "--to",
+                        &format!("{}:{}", nameserver, self.docker_dns_tcp_port.unwrap_or(53)),
+                    ])
+                    .output()
+                    .map_err(|e| {
+                        Error::Network(format!("Failed to set up TCP DNS forwarding: {}", e))
+                    })?;
 
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                debug!(
-                    "Failed to set up TCP DNS forwarding to {}: {}",
-                    nameserver, stderr
-                );
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    debug!(
+                        "Failed to set up TCP DNS forwarding to {}: {}",
+                        nameserver, stderr
+                    );
+                } else {
+                    debug!("Set up DNS forwarding to {}", nameserver);
+                    return Ok(()); // Success with this nameserver, stop here
+                }
             } else {
-                debug!("Set up DNS forwarding to {}", nameserver);
-                return Ok(()); // Success with this nameserver, stop here
+                // Forward UDP DNS queries (port 53)
+                let output = Command::new("iptables")
+                    .args(&[
+                        "-t",
+                        "nat",
+                        "-A",
+                        "PREROUTING",
+                        "-s",
+                        &self.isolated_ip_address.to_string(),
+                        "-p",
+                        "udp",
+                        "--dport",
+                        "53",
+                        "-j",
+                        "DNAT",
+                        "--to",
+                        &format!("{}:53", nameserver),
+                    ])
+                    .output()
+                    .map_err(|e| {
+                        Error::Network(format!("Failed to set up DNS forwarding: {}", e))
+                    })?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    debug!(
+                        "Failed to set up UDP DNS forwarding to {}: {}",
+                        nameserver, stderr
+                    );
+                    continue; // Try the next nameserver if this one fails
+                }
+
+                // Forward TCP DNS queries (less common but sometimes used)
+                let output = Command::new("iptables")
+                    .args(&[
+                        "-t",
+                        "nat",
+                        "-A",
+                        "PREROUTING",
+                        "-s",
+                        &self.isolated_ip_address.to_string(),
+                        "-p",
+                        "tcp",
+                        "--dport",
+                        "53",
+                        "-j",
+                        "DNAT",
+                        "--to",
+                        &format!("{}:53", nameserver),
+                    ])
+                    .output()
+                    .map_err(|e| {
+                        Error::Network(format!("Failed to set up TCP DNS forwarding: {}", e))
+                    })?;
+
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    debug!(
+                        "Failed to set up TCP DNS forwarding to {}: {}",
+                        nameserver, stderr
+                    );
+                } else {
+                    debug!("Set up DNS forwarding to {}", nameserver);
+                    return Ok(()); // Success with this nameserver, stop here
+                }
             }
         }
 
@@ -1352,4 +1472,62 @@ pub fn check_root_permissions() -> Result<bool> {
         .map_err(|e| Error::ParseInt(format!("Failed to parse uid: {}", e)))?;
 
     Ok(uid == 0)
+}
+
+fn get_docker_dns_tcp_port() -> Result<Option<u16>> {
+    let output = Command::new("iptables")
+        .args(&["-t", "nat", "-L", "DOCKER_POSTROUTING", "-n"])
+        .output()
+        .map_err(|e| Error::Network(format!("Failed to get docker dns tcp port: {}", e)))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    for line in stdout.lines() {
+        // Look for "tcp" and "spt:" in the line
+        if line.contains(" tcp ") && line.contains(" spt:") {
+            // Find the part starting with "spt:"
+            if let Some(spt_part) = line
+                .split_whitespace()
+                .find(|&part| part.starts_with("spt:"))
+            {
+                // Extract the port number after "spt:"
+                if let Some(port_str) = spt_part.strip_prefix("spt:") {
+                    if let Ok(port) = port_str.parse::<u16>() {
+                        return Ok(Some(port));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
+fn get_docker_dns_udp_port() -> Result<Option<u16>> {
+    let output = Command::new("iptables")
+        .args(&["-t", "nat", "-L", "DOCKER_POSTROUTING", "-n"])
+        .output()
+        .map_err(|e| Error::Network(format!("Failed to get docker dns udp port: {}", e)))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    for line in stdout.lines() {
+        // Look for "udp" and "spt:" in the line
+        if line.contains(" udp ") && line.contains(" spt:") {
+            // Find the part starting with "spt:"
+            if let Some(spt_part) = line
+                .split_whitespace()
+                .find(|&part| part.starts_with("spt:"))
+            {
+                // Extract the port number after "spt:"
+                if let Some(port_str) = spt_part.strip_prefix("spt:") {
+                    if let Ok(port) = port_str.parse::<u16>() {
+                        return Ok(Some(port)); // Found the UDP source port
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
 }
