@@ -52,9 +52,9 @@
 #![warn(clippy::nursery)]
 #![allow(clippy::redundant_pub_crate)]
 
+use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
-use tokio::task::JoinHandle;
-use tracing::warn;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 mod cgroups;
 mod error;
@@ -71,6 +71,12 @@ pub use namespaces::{IsolationNamespaces, NamespaceOptions};
 pub use network::{VethPair, check_root_permissions};
 pub use spawn::{IsolatedProcess, IsolatedProcessOptions, IsolatedProcessSpawner};
 pub use volume_mount::VolumeMount;
+
+use tokio::task::JoinHandle;
+use tracing::warn;
+
+/// Counter for generating unique Veth pair IP addresses
+static IP_COUNTER: AtomicU32 = AtomicU32::new(2);
 
 /// Spawns an isolated process for the given application.
 ///
@@ -127,6 +133,16 @@ pub use volume_mount::VolumeMount;
 pub async fn spawn<A: IsolatedApplication>(
     application: A,
 ) -> Result<(IsolatedProcess, JoinHandle<()>)> {
+    let counter = IP_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let host_veth_interface_name = format!("veth{}", counter);
+    let isolated_veth_interface_name = format!("veth{}", counter + 1);
+
+    // Use a unique subnet for each veth pair to avoid conflicts
+    // Each container gets its own /24 subnet: 10.0.{counter}.0/24
+    let subnet_id = counter;
+    let host_ip_address = IpAddr::V4(Ipv4Addr::new(10, 0, subnet_id as u8, 1));
+    let isolated_ip_address = IpAddr::V4(Ipv4Addr::new(10, 0, subnet_id as u8, 2));
+
     // Configure namespaces based on application preferences
     let mut namespace_options = NamespaceOptions::default();
     if !application.use_user_namespace() {
@@ -165,8 +181,8 @@ pub async fn spawn<A: IsolatedApplication>(
         args: app.args(),
         env: app.env().into_iter().collect(),
         executable: app.executable().into(),
-        memory_control,
-        namespaces: namespace_options,
+        host_ip_address,
+        host_veth_interface_name,
         is_ready_check: {
             let app = Arc::clone(&app);
             Box::new(move |info| {
@@ -176,6 +192,10 @@ pub async fn spawn<A: IsolatedApplication>(
         },
         is_ready_check_interval_ms: app.is_ready_check_interval_ms(),
         is_ready_check_max: app.is_ready_check_max(),
+        isolated_ip_address,
+        isolated_veth_interface_name,
+        memory_control,
+        namespaces: namespace_options,
         shutdown_signal: app.shutdown_signal(),
         shutdown_timeout: app.shutdown_timeout(),
         stdout_handler: {

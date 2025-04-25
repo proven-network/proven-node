@@ -3,9 +3,8 @@
 //! - Port forwarding configuration
 //! - IP configuration for isolated environments
 
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::IpAddr;
 use std::process::Command;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use tracing::debug;
@@ -13,26 +12,33 @@ use tracing::debug;
 use crate::error::Error;
 use crate::error::Result;
 
-/// Counter for generating unique IP addresses
-static IP_COUNTER: AtomicU32 = AtomicU32::new(2); // Start at 2 since 1 is reserved for host
+pub struct VethPairOptions {
+    pub host_ip_address: IpAddr,
+    pub host_veth_interface_name: String,
+    pub isolated_ip_address: IpAddr,
+    pub isolated_pid: u32,
+    pub isolated_veth_interface_name: String,
+    pub tcp_port_forwards: Vec<u16>,
+    pub udp_port_forwards: Vec<u16>,
+}
 
 /// A virtual ethernet pair for network communication between host and container
 #[derive(Debug)]
 pub struct VethPair {
-    /// The IP address of the container end
-    pub container_ip: IpAddr,
-
-    /// The PID of the container process
-    pub container_pid: u32,
-
-    /// The name of the container end of the veth pair
-    pub container_name: String,
-
     /// The IP address of the host end
-    pub host_ip: IpAddr,
+    pub host_ip_address: IpAddr,
 
     /// The name of the host end of the veth pair
-    pub host_name: String,
+    pub host_veth_interface_name: String,
+
+    /// The IP address of the container end
+    pub isolated_ip_address: IpAddr,
+
+    /// The PID of the container process
+    pub isolated_pid: u32,
+
+    /// The name of the container end of the veth pair
+    pub isolated_veth_interface_name: String,
 
     /// TCP ports to forward from host to container
     pub tcp_port_forwards: Vec<u16>,
@@ -44,26 +50,22 @@ pub struct VethPair {
 impl VethPair {
     /// Create a new veth pair
     pub async fn new(
-        pid: u32,
-        tcp_port_forwards: Vec<u16>,
-        udp_port_forwards: Vec<u16>,
+        VethPairOptions {
+            host_ip_address,
+            host_veth_interface_name,
+            isolated_ip_address,
+            isolated_pid,
+            isolated_veth_interface_name,
+            tcp_port_forwards,
+            udp_port_forwards,
+        }: VethPairOptions,
     ) -> Result<Self> {
-        let counter = IP_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let host_name = format!("veth{}", counter);
-        let container_name = format!("veth{}", counter + 1);
-
-        // Use a unique subnet for each veth pair to avoid conflicts
-        // Each container gets its own /24 subnet: 10.0.{counter}.0/24
-        let subnet_id = counter;
-        let host_ip = IpAddr::V4(Ipv4Addr::new(10, 0, subnet_id as u8, 1));
-        let container_ip = IpAddr::V4(Ipv4Addr::new(10, 0, subnet_id as u8, 2));
-
         let veth = Self {
-            host_name,
-            container_name,
-            host_ip,
-            container_ip,
-            container_pid: pid,
+            host_ip_address,
+            host_veth_interface_name,
+            isolated_ip_address,
+            isolated_pid,
+            isolated_veth_interface_name,
             tcp_port_forwards,
             udp_port_forwards,
         };
@@ -83,8 +85,8 @@ impl VethPair {
         }
 
         // Create symlink to the network namespace
-        let ns_path = format!("/proc/{}/ns/net", pid);
-        let ns_name = format!("container_{}", pid);
+        let ns_path = format!("/proc/{}/ns/net", isolated_pid);
+        let ns_name = format!("container_{}", isolated_pid);
         let ns_link = format!("/var/run/netns/{}", ns_name);
 
         let output = Command::new("ln")
@@ -105,12 +107,12 @@ impl VethPair {
             .args(&[
                 "link",
                 "add",
-                &veth.host_name,
+                &veth.host_veth_interface_name,
                 "type",
                 "veth",
                 "peer",
                 "name",
-                &veth.container_name,
+                &veth.isolated_veth_interface_name,
             ])
             .output()
             .map_err(|e| Error::Network(format!("Failed to create veth pair: {}", e)))?;
@@ -129,7 +131,7 @@ impl VethPair {
         let retry_delay = Duration::from_millis(100);
 
         while retries < max_retries {
-            let ns_path = format!("/proc/{}/ns/net", pid);
+            let ns_path = format!("/proc/{}/ns/net", isolated_pid);
             if std::path::Path::new(&ns_path).exists() {
                 // Verify network namespace is different from host
                 let output = Command::new("readlink")
@@ -165,7 +167,13 @@ impl VethPair {
 
         // Move container end to namespace
         let output = Command::new("ip")
-            .args(&["link", "set", &veth.container_name, "netns", &ns_name])
+            .args(&[
+                "link",
+                "set",
+                &veth.isolated_veth_interface_name,
+                "netns",
+                &ns_name,
+            ])
             .output()
             .map_err(|e| Error::Network(format!("Failed to move veth to namespace: {}", e)))?;
 
@@ -178,7 +186,7 @@ impl VethPair {
         }
 
         // Set up container network
-        veth.setup_container_network(pid).await?;
+        veth.setup_container_network(isolated_pid).await?;
 
         // Set up host network
         veth.setup_host_network().await?;
@@ -188,12 +196,12 @@ impl VethPair {
 
     /// Get the container's IP address (as reachable from the host)
     pub fn container_ip(&self) -> IpAddr {
-        self.container_ip
+        self.isolated_ip_address
     }
 
     /// Get the host's IP address (as reachable from the container)
     pub fn host_ip(&self) -> IpAddr {
-        self.host_ip
+        self.host_ip_address
     }
 
     /// Set up the container side of the veth pair
@@ -267,9 +275,9 @@ impl VethPair {
                 "ip",
                 "addr",
                 "add",
-                &format!("{}/24", self.container_ip),
+                &format!("{}/24", self.isolated_ip_address),
                 "dev",
-                &self.container_name,
+                &self.isolated_veth_interface_name,
             ])
             .output()
             .map_err(|e| Error::Network(format!("Failed to set container IP: {}", e)))?;
@@ -282,7 +290,7 @@ impl VethPair {
             )));
         }
 
-        debug!("Set container IP to {}", self.container_ip);
+        debug!("Set container IP to {}", self.isolated_ip_address);
 
         // Verify container IP was set correctly
         let output = Command::new("ip")
@@ -293,7 +301,7 @@ impl VethPair {
                 "ip",
                 "addr",
                 "show",
-                &self.container_name,
+                &self.isolated_veth_interface_name,
             ])
             .output()
             .map_err(|e| Error::Network(format!("Failed to verify container IP: {}", e)))?;
@@ -318,7 +326,7 @@ impl VethPair {
                 "ip",
                 "link",
                 "set",
-                &self.container_name,
+                &self.isolated_veth_interface_name,
                 "up",
             ])
             .output()
@@ -334,7 +342,10 @@ impl VethPair {
             )));
         }
 
-        debug!("Brought up container interface {}", self.container_name);
+        debug!(
+            "Brought up container interface {}",
+            self.isolated_veth_interface_name
+        );
 
         // Set default route
         let output = Command::new("ip")
@@ -347,7 +358,7 @@ impl VethPair {
                 "add",
                 "default",
                 "via",
-                &self.host_ip.to_string(),
+                &self.host_ip_address.to_string(),
             ])
             .output()
             .map_err(|e| Error::Network(format!("Failed to set default route: {}", e)))?;
@@ -360,7 +371,7 @@ impl VethPair {
             )));
         }
 
-        debug!("Set default route via {}", self.host_ip);
+        debug!("Set default route via {}", self.host_ip_address);
 
         // Verify routing table
         let output = Command::new("ip")
@@ -452,7 +463,7 @@ impl VethPair {
                     "-A",
                     "PREROUTING",
                     "-s",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "-p",
                     "udp",
                     "--dport",
@@ -482,7 +493,7 @@ impl VethPair {
                     "-A",
                     "PREROUTING",
                     "-s",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "-p",
                     "tcp",
                     "--dport",
@@ -520,16 +531,19 @@ impl VethPair {
     ///
     /// Returns an error if the setup fails
     async fn setup_host_network(&self) -> Result<()> {
-        debug!("Setting up host network for interface {}", self.host_name);
+        debug!(
+            "Setting up host network for interface {}",
+            self.host_veth_interface_name
+        );
 
         // Set host IP
         let output = Command::new("ip")
             .args(&[
                 "addr",
                 "add",
-                &format!("{}/24", self.host_ip),
+                &format!("{}/24", self.host_ip_address),
                 "dev",
-                &self.host_name,
+                &self.host_veth_interface_name,
             ])
             .output()
             .map_err(|e| Error::Network(format!("Failed to set host IP: {}", e)))?;
@@ -539,11 +553,11 @@ impl VethPair {
             return Err(Error::Network(format!("Failed to set host IP: {}", stderr)));
         }
 
-        debug!("Set host IP to {}", self.host_ip);
+        debug!("Set host IP to {}", self.host_ip_address);
 
         // Verify host IP was set correctly
         let output = Command::new("ip")
-            .args(&["addr", "show", &self.host_name])
+            .args(&["addr", "show", &self.host_veth_interface_name])
             .output()
             .map_err(|e| Error::Network(format!("Failed to verify host IP: {}", e)))?;
 
@@ -560,7 +574,7 @@ impl VethPair {
 
         // Bring up host interface
         let output = Command::new("ip")
-            .args(&["link", "set", &self.host_name, "up"])
+            .args(&["link", "set", &self.host_veth_interface_name, "up"])
             .output()
             .map_err(|e| Error::Network(format!("Failed to bring up host interface: {}", e)))?;
 
@@ -572,7 +586,10 @@ impl VethPair {
             )));
         }
 
-        debug!("Brought up host interface {}", self.host_name);
+        debug!(
+            "Brought up host interface {}",
+            self.host_veth_interface_name
+        );
 
         // Enable IPv4 forwarding
         let output = Command::new("sysctl")
@@ -590,7 +607,7 @@ impl VethPair {
 
         // Enable route_localnet for loopback and veth to handle NAT'd localhost traffic
         debug!("Enabling route_localnet");
-        for iface in &["lo", &self.host_name] {
+        for iface in &["lo", &self.host_veth_interface_name] {
             let setting = format!("net.ipv4.conf.{}.route_localnet=1", iface);
             let output = Command::new("sysctl")
                 .args(&["-w", &setting])
@@ -606,7 +623,7 @@ impl VethPair {
         }
 
         // Extract subnet from the container IP
-        let ip_string = self.container_ip.to_string();
+        let ip_string = self.isolated_ip_address.to_string();
         let subnet_parts: Vec<&str> = ip_string.split('.').collect();
         let container_subnet = format!(
             "{}.{}.{}.0/24",
@@ -636,7 +653,7 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to-destination",
-                    &format!("{}:{}", self.container_ip, port),
+                    &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output()
                 .map_err(|e| Error::Network(format!("Failed to set NAT PREROUTING rule: {}", e)))?;
@@ -666,7 +683,7 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to-destination",
-                    &format!("{}:{}", self.container_ip, port),
+                    &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output()
                 .map_err(|e| Error::Network(format!("Failed to set NAT OUTPUT rule: {}", e)))?;
@@ -690,13 +707,13 @@ impl VethPair {
                     "-s",
                     "127.0.0.1/32", // Source is localhost
                     "-d",
-                    &self.container_ip.to_string(), // Destination is container
+                    &self.isolated_ip_address.to_string(), // Destination is container
                     "--dport",
                     &port.to_string(),
                     "-j",
                     "SNAT",
                     "--to-source",
-                    &self.host_ip.to_string(), // Change src to host veth IP
+                    &self.host_ip_address.to_string(), // Change src to host veth IP
                 ])
                 .output()
                 .map_err(|e| {
@@ -718,7 +735,7 @@ impl VethPair {
                     "-A",
                     "FORWARD",
                     "-d",
-                    &self.container_ip.to_string(), // Destination is container
+                    &self.isolated_ip_address.to_string(), // Destination is container
                     "-p",
                     "tcp",
                     "--dport",
@@ -766,7 +783,7 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to-destination",
-                    &format!("{}:{}", self.container_ip, port),
+                    &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output()
                 .map_err(|e| {
@@ -798,7 +815,7 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to-destination",
-                    &format!("{}:{}", self.container_ip, port),
+                    &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output()
                 .map_err(|e| Error::Network(format!("Failed to set UDP NAT OUTPUT rule: {}", e)))?;
@@ -822,13 +839,13 @@ impl VethPair {
                     "-s",
                     "127.0.0.1/32",
                     "-d",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "--dport",
                     &port.to_string(),
                     "-j",
                     "SNAT",
                     "--to-source",
-                    &self.host_ip.to_string(),
+                    &self.host_ip_address.to_string(),
                 ])
                 .output()
                 .map_err(|e| {
@@ -855,7 +872,7 @@ impl VethPair {
                     "-A",
                     "FORWARD",
                     "-d",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "-p",
                     "udp",
                     "--dport",
@@ -986,7 +1003,7 @@ impl VethPair {
     ///
     /// Returns an error if the cleanup fails
     fn cleanup(&self) -> Result<()> {
-        debug!("Cleaning up veth pair: {}", self.host_name);
+        debug!("Cleaning up veth pair: {}", self.host_veth_interface_name);
 
         // Clean up DNS forwarding rules
         self.cleanup_dns_forwarding();
@@ -1012,7 +1029,7 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to-destination",
-                    &format!("{}:{}", self.container_ip, port),
+                    &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output();
 
@@ -1034,7 +1051,7 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to-destination",
-                    &format!("{}:{}", self.container_ip, port),
+                    &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output();
 
@@ -1050,13 +1067,13 @@ impl VethPair {
                     "-s",
                     "127.0.0.1/32",
                     "-d",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "--dport",
                     &port.to_string(),
                     "-j",
                     "SNAT",
                     "--to-source",
-                    &self.host_ip.to_string(),
+                    &self.host_ip_address.to_string(),
                 ])
                 .output();
 
@@ -1066,7 +1083,7 @@ impl VethPair {
                     "-D",
                     "FORWARD",
                     "-d",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "-p",
                     "tcp",
                     "--dport",
@@ -1102,7 +1119,7 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to-destination",
-                    &format!("{}:{}", self.container_ip, port),
+                    &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output();
 
@@ -1124,7 +1141,7 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to-destination",
-                    &format!("{}:{}", self.container_ip, port),
+                    &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output();
 
@@ -1140,13 +1157,13 @@ impl VethPair {
                     "-s",
                     "127.0.0.1/32",
                     "-d",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "--dport",
                     &port.to_string(),
                     "-j",
                     "SNAT",
                     "--to-source",
-                    &self.host_ip.to_string(),
+                    &self.host_ip_address.to_string(),
                 ])
                 .output();
 
@@ -1156,7 +1173,7 @@ impl VethPair {
                     "-D",
                     "FORWARD",
                     "-d",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "-p",
                     "udp",
                     "--dport",
@@ -1168,7 +1185,7 @@ impl VethPair {
         }
 
         // Extract subnet from the container IP
-        let ip_string = self.container_ip.to_string();
+        let ip_string = self.isolated_ip_address.to_string();
         let subnet_parts: Vec<&str> = ip_string.split('.').collect();
         let container_subnet = format!(
             "{}.{}.{}.0/24",
@@ -1194,9 +1211,9 @@ impl VethPair {
 
         // Delete the veth interface - doing this will automatically
         // remove the other end of the pair as well
-        debug!("Deleting veth interface {}", self.host_name);
+        debug!("Deleting veth interface {}", self.host_veth_interface_name);
         let output = Command::new("ip")
-            .args(&["link", "delete", &self.host_name])
+            .args(&["link", "delete", &self.host_veth_interface_name])
             .output()
             .map_err(|e| Error::Network(format!("Failed to delete veth interface: {}", e)))?;
 
@@ -1210,7 +1227,7 @@ impl VethPair {
         }
 
         // Clean up network namespace symlink
-        let ns_name = format!("container_{}", self.container_pid);
+        let ns_name = format!("container_{}", self.isolated_pid);
         let ns_link = format!("/var/run/netns/{}", ns_name);
         if std::path::Path::new(&ns_link).exists() {
             debug!("Removing network namespace symlink: {}", ns_link);
@@ -1225,7 +1242,10 @@ impl VethPair {
         // Note: We don't delete the actual netns (`ip netns del ...`) as it should be automatically
         // cleaned up when the process (container) exits and the symlink is removed.
 
-        debug!("Veth pair cleanup for {} complete", self.host_name);
+        debug!(
+            "Veth pair cleanup for {} complete",
+            self.host_veth_interface_name
+        );
         Ok(())
     }
 
@@ -1274,7 +1294,7 @@ impl VethPair {
                     "-D",
                     "PREROUTING",
                     "-s",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "-p",
                     "udp",
                     "--dport",
@@ -1294,7 +1314,7 @@ impl VethPair {
                     "-D",
                     "PREROUTING",
                     "-s",
-                    &self.container_ip.to_string(),
+                    &self.isolated_ip_address.to_string(),
                     "-p",
                     "tcp",
                     "--dport",

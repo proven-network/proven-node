@@ -6,6 +6,8 @@ use crate::error::Error;
 use crate::namespaces::NamespaceOptions;
 use crate::network::VethPair;
 #[cfg(target_os = "linux")]
+use crate::network::VethPairOptions;
+#[cfg(target_os = "linux")]
 use crate::network::check_root_permissions;
 use crate::volume_mount::VolumeMount;
 
@@ -41,6 +43,12 @@ pub struct IsolatedProcessOptions {
     /// The executable to run.
     pub executable: PathBuf,
 
+    /// The IP address to use for the host.
+    pub host_ip_address: IpAddr,
+
+    /// The interface name for the host veth pair.
+    pub host_veth_interface_name: String,
+
     /// Readiness check function
     pub is_ready_check: Box<
         dyn for<'a> FnMut(
@@ -57,6 +65,12 @@ pub struct IsolatedProcessOptions {
 
     /// Maximum number of readiness checks
     pub is_ready_check_max: Option<u32>,
+
+    /// The IP address to use for the isolated application.
+    pub isolated_ip_address: IpAddr,
+
+    /// The interface name for the isolated veth pair.
+    pub isolated_veth_interface_name: String,
 
     /// Memory control configuration using cgroups.
     pub memory_control: Option<CgroupMemoryConfig>,
@@ -231,6 +245,12 @@ pub struct IsolatedProcessSpawner {
     /// The executable to run.
     pub executable: PathBuf,
 
+    /// The IP address to use for the host.
+    pub host_ip_address: IpAddr,
+
+    /// The interface name for the host veth pair.
+    pub host_veth_interface_name: String,
+
     /// Readiness check function
     pub is_ready_check: Box<
         dyn for<'a> FnMut(
@@ -247,6 +267,12 @@ pub struct IsolatedProcessSpawner {
 
     /// Maximum number of readiness checks
     pub is_ready_check_max: Option<u32>,
+
+    /// The IP address to use for the isolated application.
+    pub isolated_ip_address: IpAddr,
+
+    /// The interface name for the isolated veth pair.
+    pub isolated_veth_interface_name: String,
 
     /// Memory control configuration using cgroups.
     pub memory_control: Option<CgroupMemoryConfig>,
@@ -318,19 +344,23 @@ impl IsolatedProcessSpawner {
             args,
             env,
             executable,
+            host_ip_address,
+            host_veth_interface_name,
+            is_ready_check,
+            is_ready_check_interval_ms,
+            is_ready_check_max,
+            isolated_ip_address,
+            isolated_veth_interface_name,
             memory_control,
             namespaces,
-            working_dir,
-            volume_mounts,
-            tcp_ports,
-            udp_ports,
             shutdown_signal,
             shutdown_timeout,
             stdout_handler,
             stderr_handler,
-            is_ready_check,
-            is_ready_check_interval_ms,
-            is_ready_check_max,
+            tcp_ports,
+            udp_ports,
+            volume_mounts,
+            working_dir,
         }: IsolatedProcessOptions,
     ) -> Self {
         // Generate a random string for the chroot directory
@@ -341,20 +371,24 @@ impl IsolatedProcessSpawner {
             chroot_dir: PathBuf::from(chroot_dir),
             env,
             executable,
+            host_ip_address,
+            host_veth_interface_name,
             memory_control,
             namespaces,
-            working_dir,
-            volume_mounts,
-            tcp_ports,
-            udp_ports,
+            is_ready_check,
+            is_ready_check_interval_ms,
+            is_ready_check_max,
+            isolated_ip_address,
+            isolated_veth_interface_name,
             shutdown_signal,
             shutdown_timeout,
             stdout_handler,
             stderr_handler,
-            is_ready_check,
-            is_ready_check_interval_ms,
-            is_ready_check_max,
+            tcp_ports,
+            udp_ports,
             veth_pair: None,
+            volume_mounts,
+            working_dir,
         }
     }
 
@@ -411,6 +445,14 @@ impl IsolatedProcessSpawner {
         // Create mock /etc/passwd and /etc/group
         setup_cmd.push_str(&format!(
             "echo 'root:x:0:0:root:/usr/sbin/nologin' > {}/etc/passwd; ",
+            self.chroot_dir.display()
+        ));
+
+        // Create /etc/resolv.conf for DNS resolution inside chroot
+        setup_cmd.push_str(&format!(
+            "mkdir -p {}/etc; echo 'nameserver {}\noptions ndots:0' > {}/etc/resolv.conf; ",
+            self.chroot_dir.display(),
+            self.host_ip_address,
             self.chroot_dir.display()
         ));
 
@@ -679,7 +721,17 @@ impl IsolatedProcessSpawner {
                 warn!("Network namespaces require root permissions for port forwarding setup");
             } else {
                 // Set up the veth pair with port lists
-                match VethPair::new(pid, self.tcp_ports.clone(), self.udp_ports.clone()).await {
+                match VethPair::new(VethPairOptions {
+                    host_ip_address: self.host_ip_address,
+                    host_veth_interface_name: self.host_veth_interface_name.clone(),
+                    isolated_ip_address: self.isolated_ip_address,
+                    isolated_pid: pid,
+                    isolated_veth_interface_name: self.isolated_veth_interface_name.clone(),
+                    tcp_port_forwards: self.tcp_ports.clone(),
+                    udp_port_forwards: self.udp_ports.clone(),
+                })
+                .await
+                {
                     Ok(veth) => {
                         let veth = Arc::new(veth);
                         self.veth_pair = Some(Arc::clone(&veth));
@@ -687,29 +739,6 @@ impl IsolatedProcessSpawner {
                     Err(e) => {
                         warn!("Failed to set up network: {}", e);
                     }
-                }
-            }
-        }
-
-        // Create resolv.conf for DNS resolution inside chroot if network namespace is used
-        #[cfg(target_os = "linux")]
-        if let Some(veth) = self.veth_pair.as_ref() {
-            let etc_dir = self.chroot_dir.join("etc");
-            let resolv_conf_path = etc_dir.join("resolv.conf");
-
-            // Create /etc directory if it doesn't exist
-            if let Err(e) = std::fs::create_dir_all(&etc_dir) {
-                warn!("Failed to create /etc directory in chroot: {}", e);
-            } else {
-                // Point to the host's veth IP
-                let resolv_conf_content = format!("nameserver {}\n", veth.host_ip());
-                if let Err(e) = std::fs::write(&resolv_conf_path, resolv_conf_content) {
-                    warn!("Failed to write resolv.conf in chroot: {}", e);
-                } else {
-                    debug!(
-                        "Created resolv.conf in chroot pointing to {} (DNS queries will be forwarded to host's DNS servers)",
-                        veth.host_ip()
-                    );
                 }
             }
         }
