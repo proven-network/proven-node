@@ -147,17 +147,17 @@ alloy-sol-types = "0.8.21"
 alloy-trie = "0.7.9"
 anyhow = "1.0.98"
 asn1-rs = "0.7.1"
-async-compression = "0.4.22"
+async-compression = "0.4.23"
 async-nats = "0.40.0"
 async-once-cell = "0.5.4"
 async-stream = "0.3.6"
 async-trait = "0.1.87"
-aws-config = { version = "1.6.1", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
-aws-sdk-ec2 = { version = "1.122.0", default-features = false }
-aws-sdk-kms = { version = "1.65.0", default-features = false }
-aws-sdk-route53resolver = { version = "1.69.0", default-features = false }
-aws-sdk-s3 = { version = "1.82.0", default-features = false, features = ["rt-tokio"] }
-aws-sdk-secretsmanager = { version = "1.68.0", default-features = false }
+aws-config = { version = "1.6.2", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
+aws-sdk-ec2 = { version = "1.123.0", default-features = false }
+aws-sdk-kms = { version = "1.66.0", default-features = false }
+aws-sdk-route53resolver = { version = "1.70.0", default-features = false }
+aws-sdk-s3 = { version = "1.83.0", default-features = false, features = ["rt-tokio"] }
+aws-sdk-secretsmanager = { version = "1.69.0", default-features = false }
 axum = { version = "0.8.3", features = ["ws"] }
 axum-extra = { version = "0.10.1", features = ["typed-header"] }
 axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
@@ -200,7 +200,7 @@ deno_ast = { version = "0.46.5", features = ["transpiling"] }
 deno_bench_util = { path = "vendor/deno/bench_util" }
 deno_broadcast_channel = { path = "vendor/deno/ext/broadcast_channel" }
 deno_cache = { path = "vendor/deno/ext/cache" }
-deno_cache_dir = "0.19.1"
+deno_cache_dir = "0.19.2"
 deno_canvas = { path = "vendor/deno/ext/canvas" }
 deno_config = { version = "0.53.0", features = ["workspace", "sync"] }
 deno_console = { path = "vendor/deno/ext/console" }
