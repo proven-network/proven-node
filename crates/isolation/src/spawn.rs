@@ -635,6 +635,10 @@ impl IsolatedProcessSpawner {
                 cmd.env(key, value);
             }
 
+            // Put the child process in its own process group
+            // to prevent signals like SIGINT (Ctrl+C) from reaching it directly.
+            cmd.process_group(0);
+
             cmd
         };
 
