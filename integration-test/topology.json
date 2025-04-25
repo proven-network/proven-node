@@ -2,7 +2,7 @@
   {
     "public_key": "3fded8e1f5b1125e3f2360e91fdba2498ef5f53a57b2ad562349ad88dcff6d7f",
     "origin": "http://bulbasaur.local:3201",
-    "specializations": ["ethereum-sepolia"]
+    "specializations": ["ethereum-holesky"]
   },
   {
     "public_key": "8b13f1f0bf178207ed466dd1449ff6f3074e707a5085312cd8eb357d9be3e86d",
