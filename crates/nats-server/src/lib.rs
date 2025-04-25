@@ -299,9 +299,6 @@ where
             store_dir: self.store_dir.clone(),
         };
 
-        // Small sleep as config seems to have intermittent issues with being partially written
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
         // Spawn the isolated process
         let (process, join_handle) = proven_isolation::spawn(app)
             .await
@@ -447,12 +444,10 @@ where
 
         info!("{}", config);
 
-        tokio::fs::create_dir_all(&self.config_dir)
-            .await
+        std::fs::create_dir_all(&self.config_dir)
             .map_err(|e| Error::Io("failed to create config directory", e))?;
 
-        tokio::fs::write(self.config_dir.join("nats-server.conf"), config)
-            .await
+        std::fs::write(self.config_dir.join("nats-server.conf"), config)
             .map_err(|e| Error::Io("failed to write nats-server.conf", e))?;
 
         // Reload the configuration if the server is running
