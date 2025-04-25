@@ -176,6 +176,15 @@ impl IsolatedApplication for LighthouseApp {
         args.push("--enr-address".to_string());
         args.push(self.host_ip.clone());
 
+        // Disable backfill rate limiting
+        args.push("--disable-backfill-rate-limiting".to_string());
+
+        // Disable deposit contract sync (not needed for non-staking)
+        args.push("--disable-deposit-contract-sync".to_string());
+
+        // Disable discv5 packet filter
+        args.push("--disable-packet-filter".to_string());
+
         // Disable UPNP
         args.push("--disable-upnp".to_string());
 
