@@ -258,7 +258,9 @@ impl IsolatedApplication for LighthouseApp {
                                         Some("Stalled") => return Ok(false),
                                         _ => return Ok(false),
                                     }
-                                } else if data.is_object() && data.get("SyncingFinalized").is_some()
+                                } else if data.is_object()
+                                    && (data.get("SyncingFinalized").is_some()
+                                        || data.get("BackFillSyncing").is_some())
                                 {
                                     // Lighthouse is syncing, but we can still consider it ready
                                     return Ok(true);
