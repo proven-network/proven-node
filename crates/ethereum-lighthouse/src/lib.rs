@@ -176,6 +176,9 @@ impl IsolatedApplication for LighthouseApp {
         args.push("--enr-address".to_string());
         args.push(self.host_ip.clone());
 
+        // Disable ENR auto update
+        args.push("--disable-enr-auto-update".to_string());
+
         // Disable backfill rate limiting
         args.push("--disable-backfill-rate-limiting".to_string());
 
