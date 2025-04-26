@@ -412,9 +412,6 @@ impl IsolatedProcessSpawner {
         // Build the setup and exec command
         let mut setup_cmd = String::new();
 
-        // Sleep for 5s to allow the network to be setup before executing the target program
-        setup_cmd.push_str(&format!("sleep 5; "));
-
         // Create basic directory structure
         setup_cmd.push_str(&format!(
             "mkdir -p {}/bin {}/lib {}/usr/bin {}/usr/lib {}/tmp; ",
@@ -549,6 +546,9 @@ impl IsolatedProcessSpawner {
                 ));
             }
         }
+
+        // Sleep for 3s to allow the network and mounts to be setup before executing the command
+        setup_cmd.push_str(&format!("sleep 3; "));
 
         // Set env variables
         for (key, value) in &self.env {
@@ -966,9 +966,9 @@ impl IsolatedProcessSpawner {
             veth_pair: self.veth_pair.clone(),
         };
 
-        // We might need to compensate for the network setup sleep before starting the readiness checks
+        // We might need to compensate for the setup sleep before starting the readiness checks
         #[cfg(target_os = "linux")]
-        let compensation = Duration::from_secs(5) - (std::time::Instant::now() - start_time);
+        let compensation = Duration::from_secs(3) - (std::time::Instant::now() - start_time);
 
         #[cfg(target_os = "linux")]
         if compensation > Duration::from_millis(0) {
