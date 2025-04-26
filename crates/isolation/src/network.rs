@@ -765,9 +765,12 @@ impl VethPair {
                     "PREROUTING",
                     "-p",
                     "tcp",
-                    "!",
+                    "!", // Exclude traffic originating from the container itself
+                    "-s",
+                    &self.isolated_ip_address.to_string(),
+                    "!", // Match any interface *except* loopback
                     "-i",
-                    "lo", // Match any interface *except* loopback
+                    "lo",
                     "--dport",
                     &port.to_string(),
                     "-j",
@@ -895,7 +898,10 @@ impl VethPair {
                     "PREROUTING",
                     "-p",
                     "udp",
-                    "!",
+                    "!", // Exclude traffic originating from the container itself
+                    "-s",
+                    &self.isolated_ip_address.to_string(),
+                    "!", // Match any interface *except* loopback
                     "-i",
                     "lo",
                     "--dport",
@@ -1141,7 +1147,10 @@ impl VethPair {
                     "PREROUTING",
                     "-p",
                     "tcp",
-                    "!",
+                    "!", // Exclude traffic originating from the container itself
+                    "-s",
+                    &self.isolated_ip_address.to_string(),
+                    "!", // Match any interface *except* loopback
                     "-i",
                     "lo",
                     "--dport",
@@ -1231,7 +1240,10 @@ impl VethPair {
                     "PREROUTING",
                     "-p",
                     "udp",
-                    "!",
+                    "!", // Exclude traffic originating from the container itself
+                    "-s",
+                    &self.isolated_ip_address.to_string(),
+                    "!", // Match any interface *except* loopback
                     "-i",
                     "lo",
                     "--dport",
