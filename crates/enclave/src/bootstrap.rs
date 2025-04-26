@@ -77,7 +77,7 @@ pub struct Bootstrap {
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
     network: Option<ProvenNetwork<MockGovernance, NsmAttestor>>,
-    node_config: Option<Peer>,
+    node_config: Option<Peer<NsmAttestor>>,
 
     proxy: Option<Proxy>,
     proxy_handle: Option<JoinHandle<proven_vsock_proxy::Result<()>>>,

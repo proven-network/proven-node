@@ -154,6 +154,12 @@ where
         Ok(self.get_self().await?.availability_zone().to_string())
     }
 
+    /// Get the attestor instance used by this network.
+    #[must_use]
+    pub fn attestor(&self) -> &A {
+        &self.attestor
+    }
+
     /// Get all peer nodes in the network topology (excluding self).
     ///
     /// # Errors
@@ -161,18 +167,18 @@ where
     /// Returns an error if:
     /// - Failed to get topology from governance
     /// - Failed to get self node
-    pub async fn get_peers(&self) -> Result<Vec<Peer>, Error> {
+    pub async fn get_peers(&self) -> Result<Vec<Peer<A>>, Error> {
         let all_nodes = self
             .governance
             .get_topology()
             .await
             .map_err(|e| Error::Governance(e.to_string()))?;
 
-        // Filter out the self node
+        // Filter out self and create Peer<A> instances
         Ok(all_nodes
             .into_iter()
             .filter(|node| node.public_key != hex::encode(self.public_key.as_bytes()))
-            .map(Peer::from)
+            .map(|node| Peer::new(node, self.attestor.clone())) // Use Peer::new with cloned attestor
             .collect())
     }
 
@@ -240,14 +246,19 @@ where
     }
 
     /// Get the self node.
-    async fn get_self(&self) -> Result<Peer, Error> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to get topology from governance
+    /// - Failed to find self node in topology
+    async fn get_self(&self) -> Result<Peer<A>, Error> {
         let topology = self
             .governance
             .get_topology()
             .await
             .map_err(|e| Error::Governance(e.to_string()))?;
 
-        // Find the node with matching public_key in the topology
         let node = topology
             .iter()
             .find(|n| n.public_key == hex::encode(self.public_key.as_bytes()))
@@ -258,7 +269,8 @@ where
                 ))
             })?;
 
-        Ok(node.clone().into())
+        // Use Peer::new with cloned attestor
+        Ok(Peer::new(node.clone(), self.attestor.clone()))
     }
 
     /// Attest the provided data.

@@ -396,7 +396,7 @@ where
     /// # Errors
     ///
     /// This function will return an error if it fails to update the configuration.
-    async fn update_nats_config_with_peers(&self, peers: &[Peer]) -> Result<(), Error> {
+    async fn update_nats_config_with_peers(&self, peers: &[Peer<A>]) -> Result<(), Error> {
         // Build routes for cluster configuration
         let mut routes = String::new();
         let mut valid_peer_count = 0;

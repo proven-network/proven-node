@@ -83,4 +83,8 @@ pub enum Error {
     /// UTF-8 decoding error.
     #[error(transparent)]
     Utf8Decode(#[from] std::string::FromUtf8Error),
+
+    /// Nonce mismatch during attestation verification.
+    #[error("nonce mismatch during attestation verification")]
+    NonceMismatch,
 }
