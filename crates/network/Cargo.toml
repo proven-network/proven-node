@@ -4,12 +4,14 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-base64.workspace = true
 bytes.workspace = true
 ed25519-dalek.workspace = true
+headers.workspace = true
 hex.workspace = true
 proven-attestation.workspace = true
 proven-governance.workspace = true
+proven-headers.workspace = true
+rand.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 thiserror.workspace = true

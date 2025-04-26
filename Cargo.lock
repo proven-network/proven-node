@@ -9002,6 +9002,7 @@ dependencies = [
  "proven-attestation",
  "proven-code-package",
  "proven-governance",
+ "proven-headers",
  "proven-http",
  "proven-identity",
  "proven-network",
@@ -9191,6 +9192,15 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
+]
+
+[[package]]
+name = "proven-headers"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "headers",
 ]
 
 [[package]]
@@ -9523,14 +9533,16 @@ name = "proven-network"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
  "bytes",
  "ed25519-dalek",
+ "headers",
  "hex",
  "proven-attestation",
  "proven-attestation-mock",
  "proven-governance",
  "proven-governance-mock",
+ "proven-headers",
+ "rand 0.8.5",
  "reqwest",
  "serde",
  "thiserror 2.0.12",

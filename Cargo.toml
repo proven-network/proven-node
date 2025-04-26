@@ -24,6 +24,7 @@ members = [
     "crates/governance",
     "crates/governance-helios",
     "crates/governance-mock",
+    "crates/headers",
     "crates/host",
     "crates/http",
     "crates/http-insecure",
@@ -83,6 +84,7 @@ default-members = [
     "crates/governance",
     "crates/governance-helios",
     "crates/governance-mock",
+    "crates/headers",
     "crates/host",
     "crates/http",
     "crates/http-insecure",
@@ -387,6 +389,7 @@ proven-external-fs = { path = "crates/external-fs" }
 proven-governance = { path = "crates/governance" }
 proven-governance-helios = { path = "crates/governance-helios" }
 proven-governance-mock = { path = "crates/governance-mock" }
+proven-headers = { path = "crates/headers" }
 proven-host = { path = "crates/host" }
 proven-http = { path = "crates/http" }
 proven-http-insecure = { path = "crates/http-insecure" }

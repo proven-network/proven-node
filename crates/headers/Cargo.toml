@@ -1,0 +1,12 @@
+[package]
+name = "proven-headers"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+base64.workspace = true
+bytes.workspace = true
+headers.workspace = true
+
+[lints.rust]
+long_running_const_eval = "allow"

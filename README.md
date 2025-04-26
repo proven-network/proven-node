@@ -96,6 +96,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [governance](crates/governance): Abstract interface for getting active version information, network topology, etc. from a governance mechanism.
 - [governance-helios](crates/governance-helios): Helios light-client based implementation of the governance interface.
 - [governance-mock](crates/governance-mock): Mock implementation of the governance interface for testing.
+- [headers](crates/headers): Common HTTP header definitions for use in other crates.
 - [host](crates/host): Binary to run on the host machine to manage enclave lifecycle.
 - [http](crates/http): Abstract interface for running an Axum-based HTTP server.
 - [http-insecure](crates/http-insecure): Implementation of simple non-secure HTTP for local development.

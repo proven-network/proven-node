@@ -21,6 +21,7 @@ proven-applications.workspace = true
 proven-attestation.workspace = true
 proven-code-package.workspace = true
 proven-governance.workspace = true
+proven-headers.workspace = true
 proven-http.workspace = true
 proven-identity.workspace = true
 proven-network.workspace = true

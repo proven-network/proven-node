@@ -40,6 +40,10 @@ pub enum Error {
     #[error("node not found: {0}")]
     NodeNotFound(String),
 
+    /// Error when encoding the nonce.
+    #[error("nonce encoding error")]
+    NonceEncoding,
+
     /// Error related to private key operations.
     #[error("private key error: {0}")]
     PrivateKey(String),

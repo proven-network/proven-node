@@ -3,7 +3,12 @@ use crate::error::{Error, Result};
 
 use std::collections::HashSet;
 
+use bytes::Bytes;
+use headers::Header;
 use proven_governance::{NodeSpecialization, TopologyNode};
+use proven_headers::Nonce;
+use rand::RngCore;
+use reqwest::header::HeaderValue;
 use url::Url;
 
 /// A node in the network.
@@ -51,7 +56,18 @@ impl Peer {
     }
 
     async fn request_info(&self, path: &str) -> Result<String> {
-        let response = reqwest::get(format!("{}{}", self.origin(), path)).await?;
+        let mut nonce_bytes = [0u8; 32];
+        rand::thread_rng().fill_bytes(&mut nonce_bytes);
+
+        let nonce = Nonce(Bytes::copy_from_slice(&nonce_bytes));
+
+        let client = reqwest::Client::new();
+
+        let response = client
+            .get(format!("{}{}", self.origin(), path))
+            .header(Nonce::name(), nonce.encode_to_value()?)
+            .send()
+            .await?;
 
         if response.status() != reqwest::StatusCode::OK {
             return Err(Error::RequestFailed(response.status().as_u16()));
@@ -64,5 +80,21 @@ impl Peer {
 impl From<TopologyNode> for Peer {
     fn from(node: TopologyNode) -> Self {
         Self(node)
+    }
+}
+
+trait HeaderExt {
+    fn encode_to_value(&self) -> Result<HeaderValue>;
+}
+
+impl<H> HeaderExt for H
+where
+    H: headers::Header,
+{
+    fn encode_to_value(&self) -> Result<HeaderValue> {
+        let mut values = Vec::new();
+        self.encode(&mut values);
+
+        values.pop().ok_or(Error::NonceEncoding)
     }
 }
