@@ -29,6 +29,7 @@ members = [
     "crates/http",
     "crates/http-insecure",
     "crates/http-letsencrypt",
+    "crates/http-proxy",
     "crates/identity",
     "crates/imds",
     "crates/instance-details",
@@ -89,6 +90,8 @@ default-members = [
     "crates/http",
     "crates/http-insecure",
     "crates/http-letsencrypt",
+    "crates/http-proxy",
+    "crates/identity",
     "crates/imds",
     "crates/instance-details",
     "crates/isolation",
@@ -295,6 +298,7 @@ hkdf = "0.12.3"
 http = "1.3.1"
 http-body = "1.0.1"
 http-body-util = "0.1.3"
+http-serde = "2.1.1"
 http_v02 = { package = "http", version = "0.2.12" }
 httparse = "1.10.1"
 hyper = { version = "1.6.0", features = ["full"] }
@@ -394,6 +398,7 @@ proven-host = { path = "crates/host" }
 proven-http = { path = "crates/http" }
 proven-http-insecure = { path = "crates/http-insecure" }
 proven-http-letsencrypt = { path = "crates/http-letsencrypt" }
+proven-http-proxy = { path = "crates/http-proxy" }
 proven-identity = { path = "crates/identity" }
 proven-imds = { path = "crates/imds" }
 proven-instance-details = { path = "crates/instance-details" }

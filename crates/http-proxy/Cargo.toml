@@ -1,0 +1,19 @@
+[package]
+name = "proven-http-proxy"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+async-trait.workspace = true
+axum.workspace = true
+bytes.workspace = true
+ciborium.workspace = true
+deno_error.workspace = true
+futures.workspace = true
+http.workspace = true
+http-serde.workspace = true
+proven-messaging.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
