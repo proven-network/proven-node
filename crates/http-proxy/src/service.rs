@@ -1,44 +1,105 @@
 use crate::error::Error;
+use crate::request::Request;
+use crate::service_handler::HttpServiceHandler;
+use crate::{DeserializeError, SerializeError};
 
-/// Options for the NATS proxy service.
-pub struct NatsProxyServiceOptions {
-    /// The name of the service listen for requests on.
+use proven_messaging::service::Service;
+use proven_messaging::stream::InitializedStream;
+use tracing::{error, info};
+
+type MessagingService<S> =
+    <S as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
+        HttpServiceHandler,
+    >;
+
+/// Options for the HTTP proxy service.
+pub struct HttpProxyServiceOptions<S>
+where
+    S: InitializedStream<Request, DeserializeError, SerializeError>,
+{
+    /// The name of the service.
+    pub service_name: String,
+
+    /// The options for the service.
+    pub service_options: <MessagingService<S> as Service<
+        HttpServiceHandler,
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Options,
+
+    /// The stream to listen for requests on.
+    pub stream: S,
+
+    /// The port to forward requests to.
+    pub target_port: u16,
+}
+
+/// The HTTP proxy service.
+pub struct HttpProxyService<S>
+where
+    S: InitializedStream<Request, DeserializeError, SerializeError>,
+{
+    /// The name of the service.
     service_name: String,
+
+    /// The options for the service.
+    service_options: <MessagingService<S> as Service<
+        HttpServiceHandler,
+        Request,
+        DeserializeError,
+        SerializeError,
+    >>::Options,
+
+    /// The stream to listen for requests on.
+    stream: S,
 
     /// The port to forward requests to.
     target_port: u16,
 }
 
-/// The NATS proxy service.
-#[allow(dead_code)]
-pub struct NatsProxyService {
-    /// The name of the service listen for requests on.
-    service_name: String,
-
-    /// The port to forward requests to.
-    target_port: u16,
-}
-
-impl NatsProxyService {
-    /// Create a new NATS proxy service.
+impl<S> HttpProxyService<S>
+where
+    S: InitializedStream<Request, DeserializeError, SerializeError>,
+{
+    /// Create a new HTTP proxy service.
     pub fn new(
-        NatsProxyServiceOptions {
+        HttpProxyServiceOptions {
             service_name,
+            service_options,
+            stream,
             target_port,
-        }: NatsProxyServiceOptions,
+        }: HttpProxyServiceOptions<S>,
     ) -> Self {
         Self {
             service_name,
+            service_options,
+            stream,
             target_port,
         }
     }
 
-    /// Start the NATS proxy.
+    /// Start the HTTP proxy.
     pub async fn start(&self) -> Result<(), Error> {
-        todo!()
+        info!("Initializing HTTP proxy service...");
+
+        let _messaging_service = self
+            .stream
+            .start_service::<_, HttpServiceHandler>(
+                self.service_name.clone(),
+                self.service_options.clone(),
+                HttpServiceHandler::new(self.target_port),
+            )
+            .await
+            .map_err(|e| {
+                error!("HTTP proxy service setup failed: {}", e);
+                Error::Service(e.to_string())
+            })?;
+
+        Ok(())
     }
 
-    /// Shutdown the NATS proxy.
+    /// Shutdown the HTTP proxy.
     pub async fn shutdown(&self) -> Result<(), Error> {
         todo!()
     }

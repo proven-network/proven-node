@@ -7,11 +7,15 @@ pub enum Error {
     #[error("already started")]
     AlreadyStarted,
 
-    /// Client setup failed.
-    #[error("client setup failed: {0}")]
-    ClientSetup(String),
+    /// Client error.
+    #[error("client error: {0}")]
+    Client(String),
 
     /// IO operation failed.
     #[error("{0}: {1}")]
     Io(&'static str, #[source] std::io::Error),
+
+    /// Service error.
+    #[error("service error: {0}")]
+    Service(String),
 }
