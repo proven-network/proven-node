@@ -1,8 +1,12 @@
+use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum Error
+where
+    Self: Send,
+{
     /// Already started.
     #[error("already started")]
     AlreadyStarted,
@@ -23,3 +27,5 @@ pub enum Error {
     #[error("vacuuming database failed")]
     Vacuum,
 }
+
+impl BootableError for Error {}

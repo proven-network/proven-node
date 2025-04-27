@@ -7,7 +7,6 @@
 //!
 //! The server will delay its startup to show the readiness check mechanism in action.
 
-use std::error::Error as StdError;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
@@ -51,7 +50,7 @@ impl IsolatedApplication for ReadinessCheckServer {
         "/bin/http_server"
     }
 
-    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         // Check if the HTTP server is ready by making a request
         static ATTEMPT: AtomicU32 = AtomicU32::new(1);
         let attempt = ATTEMPT.fetch_add(1, Ordering::SeqCst);
@@ -66,14 +65,14 @@ impl IsolatedApplication for ReadinessCheckServer {
                         "✅ Server is ready! Got HTTP 200 OK response on attempt {}",
                         attempt
                     );
-                    Ok(true)
+                    true
                 } else {
                     println!(
                         "❌ Server responded with non-OK status: {} on attempt {}",
                         response.status(),
                         attempt
                     );
-                    Ok(false)
+                    false
                 }
             }
             Err(e) => {
@@ -81,7 +80,7 @@ impl IsolatedApplication for ReadinessCheckServer {
                     "❌ Failed to connect to server on attempt {}: {}",
                     attempt, e
                 );
-                Ok(false)
+                false
             }
         }
     }
@@ -145,7 +144,7 @@ async fn main() {
     info!("Readiness will be checked once per second with up to 30 retries");
 
     let start_time = Instant::now();
-    let (process, _join_handle) = proven_isolation::spawn(server)
+    let process = proven_isolation::spawn(server)
         .await
         .expect("Failed to spawn server");
     let elapsed = start_time.elapsed();

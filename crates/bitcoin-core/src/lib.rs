@@ -8,10 +8,10 @@
 mod error;
 
 pub use error::Error;
-use tokio::task::JoinHandle;
+use proven_bootable::Bootable;
 
-use std::error::Error as StdError;
 use std::path::Path;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -19,6 +19,7 @@ use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, Vol
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info};
 
 static P2P_PORT: u16 = 18333;
@@ -133,7 +134,7 @@ impl IsolatedApplication for BitcoinCoreApp {
         8192
     }
 
-    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         // To check if Bitcoin Core is ready, we'll use the RPC interface
         // to call the `getblockchaininfo` method
         let rpc_url = format!("http://{}:{}", info.ip_address, self.rpc_port);
@@ -153,11 +154,11 @@ impl IsolatedApplication for BitcoinCoreApp {
             .await
         {
             Ok(resp) => resp,
-            Err(_) => return Ok(false), // Not ready yet
+            Err(_) => return false, // Not ready yet
         };
 
         // If we get a 200 response, the node is up and running
-        Ok(response.status().is_success())
+        response.status().is_success()
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {
@@ -178,9 +179,10 @@ impl IsolatedApplication for BitcoinCoreApp {
 }
 
 /// Represents an isolated Bitcoin Core node.
+#[derive(Clone)]
 pub struct BitcoinNode {
     /// The isolated process running Bitcoin Core
-    process: Option<IsolatedProcess>,
+    process: Arc<Mutex<Option<IsolatedProcess>>>,
 
     /// The Bitcoin network type
     network: BitcoinNetwork,
@@ -197,75 +199,27 @@ impl BitcoinNode {
     #[must_use]
     pub fn new(options: BitcoinNodeOptions) -> Self {
         Self {
-            process: None,
+            process: Arc::new(Mutex::new(None)),
             network: options.network,
             store_dir: options.store_dir,
             rpc_port: options.rpc_port.unwrap_or(8332),
         }
     }
 
-    /// Starts the Bitcoin Core node in an isolated environment.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the node fails to start.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
-        if self.process.is_some() {
-            return Err(Error::AlreadyStarted);
-        }
-
-        debug!("Starting isolated Bitcoin Core node...");
-
-        self.prepare_config().await?;
-
-        let app = BitcoinCoreApp {
-            executable_path: "/apps/bitcoin/v28.1/bitcoind".to_string(),
-            network: self.network,
-            store_dir: self.store_dir.clone(),
-            rpc_port: self.rpc_port,
-        };
-
-        let (process, join_handle) = proven_isolation::spawn(app)
-            .await
-            .map_err(Error::Isolation)?;
-
-        // Store the process for later shutdown
-        self.process = Some(process);
-
-        info!("Bitcoin Core node started");
-
-        Ok(join_handle)
-    }
-
-    /// Shuts down the Bitcoin Core node.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the node fails to shutdown.
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
-        info!("Shutting down isolated Bitcoin Core node...");
-
-        if let Some(process) = self.process.take() {
-            process.shutdown().await.map_err(Error::Isolation)?;
-            info!("Bitcoin Core node shut down successfully");
-        } else {
-            debug!("No running Bitcoin Core node to shut down");
-        }
-
-        Ok(())
-    }
-
     /// Returns the RPC URL for the Bitcoin Core node.
     #[must_use]
-    pub fn get_rpc_url(&self) -> String {
-        if let Some(process) = &self.process {
-            if let Some(container_ip) = process.container_ip() {
-                format!("http://{}:{}", container_ip, self.rpc_port)
-            } else {
-                format!("http://127.0.0.1:{}", self.rpc_port)
-            }
-        } else {
-            format!("http://127.0.0.1:{}", self.rpc_port)
+    pub async fn get_rpc_url(&self) -> String {
+        match self
+            .process
+            .as_ref()
+            .lock()
+            .await
+            .as_ref()
+            .expect("process not started") // TODO: Handle this better
+            .container_ip()
+        {
+            Some(container_ip) => format!("http://{}:{}", container_ip, self.rpc_port),
+            None => format!("http://127.0.0.1:{}", self.rpc_port),
         }
     }
 
@@ -282,7 +236,7 @@ impl BitcoinNode {
         let client = reqwest::Client::new();
 
         let response = client
-            .post(&self.get_rpc_url())
+            .post(&self.get_rpc_url().await)
             .basic_auth(RPC_USER, Some(RPC_PASSWORD))
             .json(&serde_json::json!({
                 "jsonrpc": "1.0",
@@ -334,5 +288,67 @@ impl BitcoinNode {
         }
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Bootable for BitcoinNode {
+    type Error = Error;
+
+    /// Starts the Bitcoin Core node in an isolated environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the node fails to start.
+    async fn start(&self) -> Result<(), Error> {
+        if self.process.lock().await.is_some() {
+            return Err(Error::AlreadyStarted);
+        }
+
+        debug!("Starting isolated Bitcoin Core node...");
+
+        self.prepare_config().await?;
+
+        let app = BitcoinCoreApp {
+            executable_path: "/apps/bitcoin/v28.1/bitcoind".to_string(),
+            network: self.network,
+            store_dir: self.store_dir.clone(),
+            rpc_port: self.rpc_port,
+        };
+
+        let process = proven_isolation::spawn(app)
+            .await
+            .map_err(Error::Isolation)?;
+
+        // Store the process for later shutdown
+        self.process.lock().await.replace(process);
+
+        info!("Bitcoin Core node started");
+
+        Ok(())
+    }
+
+    /// Shuts down the Bitcoin Core node.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the node fails to shutdown.
+    async fn shutdown(&self) -> Result<(), Error> {
+        info!("Shutting down isolated Bitcoin Core node...");
+
+        if let Some(process) = self.process.lock().await.take() {
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("Bitcoin Core node shut down successfully");
+        } else {
+            debug!("No running Bitcoin Core node to shut down");
+        }
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        if let Some(process) = self.process.lock().await.as_ref() {
+            process.wait().await;
+        }
     }
 }

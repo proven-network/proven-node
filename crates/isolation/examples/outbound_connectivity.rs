@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
 
     info!("🔄 Spawning test process and waiting for it to become ready...");
 
-    let (process, _join_handle) = proven_isolation::spawn(test_app).await?;
+    let process = proven_isolation::spawn(test_app).await?;
 
     // Wait a bit before shutting down
     info!("Waiting 5 seconds before shutdown");

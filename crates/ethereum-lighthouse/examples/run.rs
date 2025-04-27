@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use proven_bootable::Bootable;
 use proven_ethereum_lighthouse::{EthereumNetwork, LighthouseNode, LighthouseNodeOptions};
 use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOptions};
 use tracing::info;
@@ -9,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     info!("Starting Reth node...");
-    let mut reth_node = RethNode::new(RethNodeOptions {
+    let reth_node = RethNode::new(RethNodeOptions {
         discovery_port: 30304,
         http_port: 8545,
         metrics_port: 9001,
@@ -21,8 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Reth node is ready!");
 
     info!("Starting Lighthouse node...");
-    let mut lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
-        execution_rpc_ip_address: reth_node.ip_address().to_string(),
+    let lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+        execution_rpc_ip_address: reth_node.ip_address().await.to_string(),
         execution_rpc_jwt_hex: reth_node.jwt_hex().await?,
         execution_rpc_port: reth_node.rpc_port(),
         host_ip: fetch_external_ip().await,

@@ -174,7 +174,7 @@ async fn main() -> Result<()> {
 
     // Spawn the isolated process
     info!("Spawning isolated process...");
-    let (process, _join_handle) = proven_isolation::spawn(test).await?;
+    let process = proven_isolation::spawn(test).await?;
 
     info!("Process is running with PID: {}", process.pid());
 

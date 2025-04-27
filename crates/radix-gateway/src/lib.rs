@@ -9,15 +9,15 @@ mod error;
 
 pub use error::Error;
 
-use std::error::Error as StdError;
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
+use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
 use serde_json::json;
-use tokio::task::JoinHandle;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace, warn};
 
 static GATEWAY_API_CONFIG_PATH: &str =
@@ -64,7 +64,7 @@ impl IsolatedApplication for RadixGatewayApp {
         error!(target: "radix-gateway", "{}", line);
     }
 
-    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         // Check if the service is responding on port 8081
         let client = reqwest::Client::new();
         match client
@@ -72,8 +72,8 @@ impl IsolatedApplication for RadixGatewayApp {
             .send()
             .await
         {
-            Ok(response) => Ok(response.status().is_success()),
-            Err(_) => Ok(false), // Not ready yet
+            Ok(response) => response.status().is_success(),
+            Err(_) => false, // Not ready yet
         }
     }
 
@@ -106,13 +106,14 @@ impl IsolatedApplication for RadixGatewayApp {
 }
 
 /// Configures and runs a local Radix Gateway.
+#[derive(Clone)]
 pub struct RadixGateway {
     postgres_database: String,
     postgres_ip_address: String,
     postgres_password: String,
     postgres_port: u16,
     postgres_username: String,
-    process: Option<IsolatedProcess>,
+    process: Arc<Mutex<Option<IsolatedProcess>>>,
     radix_node_ip_address: String,
     radix_node_port: u16,
 }
@@ -161,55 +162,10 @@ impl RadixGateway {
             postgres_password,
             postgres_port,
             postgres_username,
-            process: None,
+            process: Arc::new(Mutex::new(None)),
             radix_node_ip_address,
             radix_node_port,
         }
-    }
-
-    /// Starts the Radix Gateway server.
-    ///
-    /// # Errors
-    ///
-    /// Returns an `Error::AlreadyStarted` if the server is already running.
-    /// Returns an `Error::Isolation` if there is an error starting the isolated process.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
-        if self.process.is_some() {
-            return Err(Error::AlreadyStarted);
-        }
-
-        info!("Starting radix-gateway...");
-
-        self.prepare_config().await?;
-
-        let (process, join_handle) = proven_isolation::spawn(RadixGatewayApp)
-            .await
-            .map_err(Error::Isolation)?;
-
-        // Store the process for later shutdown
-        self.process = Some(process);
-
-        info!("radix-gateway started");
-
-        Ok(join_handle)
-    }
-
-    /// Shuts down the server.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if there is an issue shutting down the isolated process.
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
-        info!("radix-gateway shutting down...");
-
-        if let Some(process) = self.process.take() {
-            process.shutdown().await.map_err(Error::Isolation)?;
-            info!("radix-gateway shutdown");
-        } else {
-            debug!("No running radix-gateway to shut down");
-        }
-
-        Ok(())
     }
 
     async fn prepare_config(&self) -> Result<(), Error> {
@@ -291,5 +247,61 @@ impl RadixGateway {
             .map_err(|e| Error::Io("Failed to write gateway config", e))?;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Bootable for RadixGateway {
+    type Error = Error;
+
+    /// Starts the Radix Gateway server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error::AlreadyStarted` if the server is already running.
+    /// Returns an `Error::Isolation` if there is an error starting the isolated process.
+    async fn start(&self) -> Result<(), Error> {
+        if self.process.lock().await.is_some() {
+            return Err(Error::AlreadyStarted);
+        }
+
+        info!("Starting radix-gateway...");
+
+        self.prepare_config().await?;
+
+        let process = proven_isolation::spawn(RadixGatewayApp)
+            .await
+            .map_err(Error::Isolation)?;
+
+        // Store the process for later shutdown
+        self.process.lock().await.replace(process);
+
+        info!("radix-gateway started");
+
+        Ok(())
+    }
+
+    /// Shuts down the server.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if there is an issue shutting down the isolated process.
+    async fn shutdown(&self) -> Result<(), Error> {
+        info!("radix-gateway shutting down...");
+
+        if let Some(process) = self.process.lock().await.take() {
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("radix-gateway shutdown");
+        } else {
+            debug!("No running radix-gateway to shut down");
+        }
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        if let Some(process) = self.process.lock().await.as_ref() {
+            process.wait().await;
+        }
     }
 }

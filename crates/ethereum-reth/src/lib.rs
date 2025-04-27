@@ -9,19 +9,21 @@ mod error;
 
 pub use error::Error;
 use regex::Regex;
+use tokio::sync::Mutex;
 
 use std::fs;
+use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
-use std::{error::Error as StdError, net::IpAddr};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
+use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use reqwest::Client;
 use std::sync::RwLock;
 use strip_ansi_escapes::strip_str;
-use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
 
 // Rust log regexp
@@ -198,7 +200,7 @@ impl IsolatedApplication for RethApp {
     }
 
     /// Checks if the Reth node is ready (returns true if it has at least one peer)
-    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         let http_url = format!("http://{}:{}", info.ip_address, self.http_port);
 
         let client = Client::new();
@@ -224,17 +226,17 @@ impl IsolatedApplication for RethApp {
                                     if let Ok(peer_count) =
                                         u64::from_str_radix(hex.trim_start_matches("0x"), 16)
                                     {
-                                        return Ok(peer_count > 0);
+                                        return peer_count > 0;
                                     }
                                 }
                             }
                         }
-                        Err(_) => return Ok(false),
+                        Err(_) => return false,
                     }
                 }
-                Ok(false)
+                false
             }
-            Err(_) => Ok(false),
+            Err(_) => false,
         }
     }
 
@@ -260,9 +262,10 @@ impl IsolatedApplication for RethApp {
 }
 
 /// Runs a Reth execution client.
+#[derive(Clone)]
 pub struct RethNode {
     /// The isolated process running Reth
-    process: Option<IsolatedProcess>,
+    process: Arc<Mutex<Option<IsolatedProcess>>>,
 
     /// The peer discovery port
     discovery_port: u16,
@@ -297,7 +300,7 @@ impl RethNode {
         }: RethNodeOptions,
     ) -> Self {
         Self {
-            process: None,
+            process: Arc::new(Mutex::new(None)),
             discovery_port,
             http_port,
             metrics_port,
@@ -307,56 +310,12 @@ impl RethNode {
         }
     }
 
-    /// Start the Reth node.
-    ///
-    /// Returns a handle to the task that is running the node.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
-        if self.process.is_some() {
-            return Err(Error::AlreadyStarted);
-        }
-
-        info!("Starting Reth node...");
-
-        self.prepare_config().await?;
-
-        let app = RethApp {
-            executable_path: "/apps/ethereum-reth/v1.3.12/reth".to_string(),
-            discovery_port: self.discovery_port,
-            http_port: self.http_port,
-            last_log_level: RwLock::new("INFO".to_string()),
-            metrics_port: self.metrics_port,
-            network: self.network,
-            rpc_port: self.rpc_port,
-            store_dir: self.store_dir.clone(),
-        };
-
-        let (process, join_handle) = proven_isolation::spawn(app)
-            .await
-            .map_err(Error::Isolation)?;
-
-        self.process = Some(process);
-
-        Ok(join_handle)
-    }
-
-    /// Shuts down the Reth node.
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
-        info!("Reth node shutting down...");
-
-        if let Some(process) = self.process.take() {
-            process.shutdown().await.map_err(Error::Isolation)?;
-            info!("Reth node shutdown");
-        } else {
-            debug!("No running Reth node to shut down");
-        }
-
-        Ok(())
-    }
-
     /// Returns the IP address of the Postgres server.
     #[must_use]
-    pub fn ip_address(&self) -> IpAddr {
+    pub async fn ip_address(&self) -> IpAddr {
         self.process
+            .lock()
+            .await
             .as_ref()
             .map(|p| p.container_ip().unwrap())
             .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
@@ -384,5 +343,62 @@ impl RethNode {
                 .map_err(|e| Error::Io("Failed to create data directory", e))?;
         }
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Bootable for RethNode {
+    type Error = Error;
+
+    /// Start the Reth node.
+    ///
+    /// Returns a handle to the task that is running the node.
+    async fn start(&self) -> Result<(), Error> {
+        if self.process.lock().await.is_some() {
+            return Err(Error::AlreadyStarted);
+        }
+
+        info!("Starting Reth node...");
+
+        self.prepare_config().await?;
+
+        let app = RethApp {
+            executable_path: "/apps/ethereum-reth/v1.3.12/reth".to_string(),
+            discovery_port: self.discovery_port,
+            http_port: self.http_port,
+            last_log_level: RwLock::new("INFO".to_string()),
+            metrics_port: self.metrics_port,
+            network: self.network,
+            rpc_port: self.rpc_port,
+            store_dir: self.store_dir.clone(),
+        };
+
+        let process = proven_isolation::spawn(app)
+            .await
+            .map_err(Error::Isolation)?;
+
+        self.process.lock().await.replace(process);
+
+        Ok(())
+    }
+
+    /// Shuts down the Reth node.
+    async fn shutdown(&self) -> Result<(), Error> {
+        info!("Reth node shutting down...");
+
+        if let Some(process) = self.process.lock().await.take() {
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("Reth node shutdown");
+        } else {
+            debug!("No running Reth node to shut down");
+        }
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        if let Some(process) = self.process.lock().await.as_ref() {
+            process.wait().await;
+        }
     }
 }

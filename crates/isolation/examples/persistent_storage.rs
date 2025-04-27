@@ -126,7 +126,7 @@ async fn main() {
         info!("Run #{}", run);
 
         let app = CounterApp::new(storage_dir_path.clone(), test_bin_dir_path.clone());
-        let (process, _join_handle) = proven_isolation::spawn(app)
+        let process = proven_isolation::spawn(app)
             .await
             .expect("Failed to spawn counter app");
 

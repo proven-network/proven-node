@@ -1,3 +1,4 @@
+use proven_bootable::Bootable;
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use radix_common::network::NetworkDefinition;
 use tracing::info;
@@ -17,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Create and start the node
-    let mut node = RadixNode::new(RadixNodeOptions {
+    let node = RadixNode::new(RadixNodeOptions {
         host_ip: fetch_external_ip().await,
         http_port: 3333,
         network_definition: NetworkDefinition::stokenet(),
@@ -25,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         store_dir,
         config_dir,
     });
-    let handle = node.start().await?;
+    node.start().await?;
 
     println!("Radix Node is ready!");
 
@@ -37,9 +38,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Shutting down Radix Node...");
     node.shutdown().await?;
     println!("Node shutdown complete");
-
-    // Wait for the node process to fully terminate
-    let _ = handle.await;
 
     Ok(())
 }

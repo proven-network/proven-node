@@ -29,9 +29,9 @@ use hickory_proto::rr::{RData, RecordType};
 use hickory_resolver::Resolver;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use parking_lot::RwLock;
+use proven_bootable::Bootable;
 use proven_http::HttpServer;
 use proven_store::Store;
-use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 use tokio_rustls_acme::AcmeConfig;
 use tokio_stream::StreamExt;
@@ -41,6 +41,7 @@ use tower::Service;
 use tracing::{error, info};
 
 /// Secure HTTPS server using Let's Encrypt certificates.
+#[derive(Clone)]
 pub struct LetsEncryptHttpServer<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
@@ -49,6 +50,7 @@ where
     cert_store: S,
     cname_domain: String,
     emails: Vec<String>,
+    fallback_router: Router,
     hostname_routers: Arc<RwLock<HashMap<String, Router>>>,
     listen_addr: SocketAddr,
     registered_domains: Arc<RwLock<HashSet<String>>>,
@@ -74,6 +76,9 @@ where
     /// The list of email addresses to use for Let's Encrypt.
     pub emails: Vec<String>,
 
+    /// The fallback router.
+    pub fallback_router: Router,
+
     /// The address to listen on.
     pub listen_addr: SocketAddr,
 }
@@ -93,6 +98,7 @@ where
             cname_domain,
             domains,
             emails,
+            fallback_router,
             listen_addr,
         }: LetsEncryptHttpServerOptions<S>,
     ) -> Self {
@@ -121,6 +127,7 @@ where
             cert_store,
             cname_domain,
             emails,
+            fallback_router,
             hostname_routers: Arc::new(RwLock::new(HashMap::new())),
             listen_addr,
             registered_domains,
@@ -189,13 +196,13 @@ where
 }
 
 #[async_trait]
-impl<S> HttpServer for LetsEncryptHttpServer<S>
+impl<S> Bootable for LetsEncryptHttpServer<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
     type Error = Error;
 
-    async fn start(&self, fallback_router: Router) -> Result<JoinHandle<()>, Self::Error> {
+    async fn start(&self) -> Result<(), Error> {
         let acceptor = self.acceptor.clone();
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();
@@ -204,6 +211,7 @@ where
             return Err(Error::AlreadyStarted);
         }
 
+        let fallback_router = self.fallback_router.clone();
         let routers = self.hostname_routers.clone();
         let router = Router::new().fallback_service(tower::service_fn(
             move |req: axum::http::Request<_>| {
@@ -236,7 +244,7 @@ where
             },
         ));
 
-        let handle = self.task_tracker.spawn(async move {
+        self.task_tracker.spawn(async move {
             tokio::select! {
                 e = axum_server::bind(listen_addr).acceptor(acceptor).serve(router.into_make_service()).into_future() => {
                     info!("https server exited {:?}", e);
@@ -247,14 +255,33 @@ where
 
         self.task_tracker.close();
 
-        Ok(handle)
+        Ok(())
     }
 
-    async fn set_router_for_hostname(
-        &self,
-        hostname: String,
-        router: Router,
-    ) -> Result<(), Self::Error> {
+    async fn shutdown(&self) -> Result<(), Error> {
+        info!("http server shutting down...");
+
+        self.shutdown_token.cancel();
+        self.task_tracker.wait().await;
+
+        info!("http server shutdown");
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        self.task_tracker.wait().await;
+    }
+}
+
+#[async_trait]
+impl<S> HttpServer for LetsEncryptHttpServer<S>
+where
+    S: Store<Bytes, Infallible, Infallible>,
+{
+    type Error = Error;
+
+    async fn set_router_for_hostname(&self, hostname: String, router: Router) -> Result<(), Error> {
         if self.registered_domains.write().insert(hostname.clone()) {
             self.add_domain(hostname.clone());
         }
@@ -264,17 +291,8 @@ where
         Ok(())
     }
 
-    async fn remove_hostname(&self, hostname: String) -> Result<(), Self::Error> {
+    async fn remove_hostname(&self, hostname: String) -> Result<(), Error> {
         self.hostname_routers.write().remove(&hostname);
         Ok(())
-    }
-
-    async fn shutdown(&self) {
-        info!("http server shutting down...");
-
-        self.shutdown_token.cancel();
-        self.task_tracker.wait().await;
-
-        info!("http server shutdown");
     }
 }

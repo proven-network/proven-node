@@ -9,7 +9,7 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use axum::Router;
-use tokio::task::JoinHandle;
+use proven_bootable::Bootable;
 
 /// Marker trait for `HttpServer` errors
 pub trait HttpServerError: Debug + Error + Send + Sync {}
@@ -18,27 +18,18 @@ pub trait HttpServerError: Debug + Error + Send + Sync {}
 #[async_trait]
 pub trait HttpServer
 where
-    Self: Send + Sync + 'static,
+    Self: Bootable + Send + Sync + 'static,
 {
     /// The error type for this server.
     type Error: HttpServerError;
-
-    /// Start the server with the given Axum routers.
-    /// - `primary_hostname`: The hostname to match for the primary router
-    /// - `primary_router`: Router to use when hostname matches
-    /// - `fallback_router`: Router to use when hostname doesn't match
-    async fn start(&self, fallback_router: Router) -> Result<JoinHandle<()>, Self::Error>;
-
-    /// Shutdown the server.
-    async fn shutdown(&self);
 
     /// Set the router for a hostname, creating or updating the mapping as needed.
     async fn set_router_for_hostname(
         &self,
         hostname: String,
         router: Router,
-    ) -> Result<(), Self::Error>;
+    ) -> Result<(), <Self as HttpServer>::Error>;
 
     /// Remove the router for the given hostname.
-    async fn remove_hostname(&self, hostname: String) -> Result<(), Self::Error>;
+    async fn remove_hostname(&self, hostname: String) -> Result<(), <Self as HttpServer>::Error>;
 }

@@ -1,5 +1,6 @@
 //! Error types for Reth integration.
 
+use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// Errors that can occur when working with Reth.
@@ -25,3 +26,5 @@ pub enum Error {
     #[error("JSON error: {0}")]
     Json(String),
 }
+
+impl BootableError for Error {}

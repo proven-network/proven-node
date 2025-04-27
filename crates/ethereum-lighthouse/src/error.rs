@@ -1,3 +1,4 @@
+use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
@@ -19,3 +20,5 @@ pub enum Error {
     #[error(transparent)]
     RegexParse(#[from] regex::Error),
 }
+
+impl BootableError for Error {}

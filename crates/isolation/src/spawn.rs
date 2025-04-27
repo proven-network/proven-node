@@ -12,7 +12,6 @@ use crate::network::check_root_permissions;
 use crate::volume_mount::VolumeMount;
 
 use std::collections::HashMap;
-use std::error::Error as StdError;
 use std::future::Future;
 use std::net::IpAddr;
 use std::os::unix::process::ExitStatusExt;
@@ -27,7 +26,6 @@ use nix::unistd::Pid;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
@@ -53,10 +51,7 @@ pub struct IsolatedProcessOptions {
 
     /// Readiness check function
     pub is_ready_check: Box<
-        dyn for<'a> FnMut(
-                ReadyCheckInfo,
-            )
-                -> Pin<Box<dyn Future<Output = Result<bool, Box<dyn StdError>>> + Send>>
+        dyn for<'a> FnMut(ReadyCheckInfo) -> Pin<Box<dyn Future<Output = bool> + Send>>
             + Send
             + Sync
             + 'static,
@@ -255,10 +250,7 @@ pub struct IsolatedProcessSpawner {
 
     /// Readiness check function
     pub is_ready_check: Box<
-        dyn for<'a> FnMut(
-                ReadyCheckInfo,
-            )
-                -> Pin<Box<dyn Future<Output = Result<bool, Box<dyn StdError>>> + Send>>
+        dyn for<'a> FnMut(ReadyCheckInfo) -> Pin<Box<dyn Future<Output = bool> + Send>>
             + Send
             + Sync
             + 'static,
@@ -600,7 +592,7 @@ impl IsolatedProcessSpawner {
     /// # Errors
     ///
     /// Returns an error if the process could not be spawned.
-    pub async fn spawn(&mut self) -> Result<(IsolatedProcess, JoinHandle<()>), Error> {
+    pub async fn spawn(&mut self) -> Result<IsolatedProcess, Error> {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
 
@@ -787,7 +779,7 @@ impl IsolatedProcessSpawner {
         #[cfg(target_os = "linux")]
         let chroot_dir = self.chroot_dir.clone();
 
-        let join_handle = tokio::task::spawn(async move {
+        tokio::task::spawn(async move {
             tokio::select! {
                 status_result = child.wait() => {
                     match status_result {
@@ -1038,11 +1030,11 @@ impl IsolatedProcessSpawner {
             };
 
             match (self.is_ready_check)(ready_check_info).await {
-                Ok(true) => {
+                true => {
                     debug!("Application reported ready after {} attempts", attempts + 1);
                     break;
                 }
-                Ok(false) => {
+                false => {
                     attempts += 1;
                     if let Some(max) = max_attempts {
                         if attempts >= max {
@@ -1055,12 +1047,9 @@ impl IsolatedProcessSpawner {
                     debug!("Application not ready, attempt {}, waiting...", attempts);
                     tokio::time::sleep(interval).await;
                 }
-                Err(e) => {
-                    return Err(Error::ReadinessCheck(e.to_string()));
-                }
             }
         }
 
-        Ok((process, join_handle))
+        Ok(process)
     }
 }

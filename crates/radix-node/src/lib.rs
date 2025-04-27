@@ -8,17 +8,18 @@
 mod error;
 
 pub use error::Error;
+use proven_bootable::Bootable;
+use tokio::sync::Mutex;
 
-use std::error::Error as StdError;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
+use std::sync::Arc;
 
 use radix_common::network::NetworkDefinition;
 use regex::Regex;
 use reqwest::Client;
 use strip_ansi_escapes::strip_str;
 use tokio::process::Command;
-use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
 
 use async_trait::async_trait;
@@ -149,7 +150,7 @@ impl IsolatedApplication for RadixNodeApp {
         self.handle_stdout(line);
     }
 
-    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         let client = Client::new();
         let payload = format!(
             "{{\"network\":\"{}\"}}",
@@ -172,7 +173,7 @@ impl IsolatedApplication for RadixNodeApp {
             _ => false,
         };
 
-        Ok(response)
+        response
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {
@@ -205,13 +206,14 @@ impl IsolatedApplication for RadixNodeApp {
 }
 
 /// Runs a Radix Babylon Node.
+#[derive(Clone)]
 pub struct RadixNode {
     config_dir: String,
     host_ip: String,
     http_port: u16,
     network_definition: NetworkDefinition,
     p2p_port: u16,
-    process: Option<IsolatedProcess>,
+    process: Arc<Mutex<Option<IsolatedProcess>>>,
     store_dir: String,
 }
 
@@ -254,59 +256,10 @@ impl RadixNode {
             http_port,
             network_definition,
             p2p_port,
-            process: None,
+            process: Arc::new(Mutex::new(None)),
             store_dir,
             config_dir,
         }
-    }
-
-    /// Starts the Radix Babylon Node.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the node is already started, if there is an I/O error,
-    /// or if the node process exits with a non-zero status code.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
-        if self.process.is_some() {
-            return Err(Error::AlreadyStarted);
-        }
-
-        info!("Starting Radix Node...");
-
-        self.prepare_config().await?;
-
-        let app = RadixNodeApp {
-            http_port: self.http_port,
-            network_definition: self.network_definition.clone(),
-            p2p_port: self.p2p_port,
-            store_dir: self.store_dir.clone(),
-            config_dir: self.config_dir.clone(),
-        };
-
-        let (process, join_handle) = proven_isolation::spawn(app)
-            .await
-            .map_err(Error::Isolation)?;
-
-        // Store the process for later shutdown
-        self.process = Some(process);
-
-        info!("Radix Node started");
-
-        Ok(join_handle)
-    }
-
-    /// Shuts down the server.
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
-        info!("radix-node shutting down...");
-
-        if let Some(process) = self.process.take() {
-            process.shutdown().await.map_err(Error::Isolation)?;
-            info!("radix-node shutdown");
-        } else {
-            debug!("No running radix-node to shut down");
-        }
-
-        Ok(())
     }
 
     /// Returns the HTTP port of the Radix Node.
@@ -317,8 +270,10 @@ impl RadixNode {
 
     /// Returns the IP address of the Radix Node.
     #[must_use]
-    pub fn ip_address(&self) -> IpAddr {
+    pub async fn ip_address(&self) -> IpAddr {
         self.process
+            .lock()
+            .await
             .as_ref()
             .map(|p| p.container_ip().unwrap())
             .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
@@ -395,5 +350,65 @@ api.core.port={}",
         }
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Bootable for RadixNode {
+    type Error = Error;
+
+    /// Starts the Radix Babylon Node.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the node is already started, if there is an I/O error,
+    /// or if the node process exits with a non-zero status code.
+    async fn start(&self) -> Result<(), Error> {
+        if self.process.lock().await.is_some() {
+            return Err(Error::AlreadyStarted);
+        }
+
+        info!("Starting Radix Node...");
+
+        self.prepare_config().await?;
+
+        let app = RadixNodeApp {
+            http_port: self.http_port,
+            network_definition: self.network_definition.clone(),
+            p2p_port: self.p2p_port,
+            store_dir: self.store_dir.clone(),
+            config_dir: self.config_dir.clone(),
+        };
+
+        let process = proven_isolation::spawn(app)
+            .await
+            .map_err(Error::Isolation)?;
+
+        // Store the process for later shutdown
+        self.process.lock().await.replace(process);
+
+        info!("Radix Node started");
+
+        Ok(())
+    }
+
+    /// Shuts down the server.
+    async fn shutdown(&self) -> Result<(), Error> {
+        info!("radix-node shutting down...");
+
+        if let Some(process) = self.process.lock().await.take() {
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("radix-node shutdown");
+        } else {
+            debug!("No running radix-node to shut down");
+        }
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        if let Some(process) = self.process.lock().await.as_ref() {
+            process.wait().await;
+        }
     }
 }

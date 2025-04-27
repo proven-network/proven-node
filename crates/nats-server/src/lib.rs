@@ -8,8 +8,8 @@
 mod error;
 
 pub use error::Error;
+use proven_bootable::Bootable;
 
-use std::error::Error as StdError;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -141,7 +141,7 @@ impl IsolatedApplication for NatsServerApp {
         "nats-server"
     }
 
-    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         // Try to connect to the NATS server with async-nats
         let server_url = format!("nats://{}:{}", info.ip_address, self.client_port);
         match async_nats::connect(&server_url).await {
@@ -149,11 +149,11 @@ impl IsolatedApplication for NatsServerApp {
                 // Connection successful, server is ready
                 // We can drop the client right away as we only wanted to test the connection
                 drop(client);
-                Ok(true)
+                true
             }
             Err(_) => {
                 // Connection failed, server not ready yet
-                Ok(false)
+                false
             }
         }
     }
@@ -264,60 +264,6 @@ where
             store_dir,
             topology_update_task: Arc::new(Mutex::new(None)),
         })
-    }
-
-    /// Starts the NATS server in an isolated environment.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server fails to start.
-    pub async fn start(&self) -> Result<JoinHandle<()>, Error> {
-        if self.process.lock().await.is_some() {
-            return Err(Error::AlreadyStarted);
-        }
-
-        debug!("Starting isolated NATS server...");
-
-        // Create necessary directories
-        tokio::fs::create_dir_all(self.store_dir.join("jetstream"))
-            .await
-            .map_err(|e| Error::Io("failed to create jetstream directory", e))?;
-
-        // Initialize topology from network
-        self.update_topology().await?;
-
-        let cluster_port = self.network.nats_cluster_endpoint().await?.port().unwrap();
-
-        // Prepare the NATS server application
-        let app = NatsServerApp {
-            bin_dir: self.bin_dir.clone(),
-            client_port: self.client_port,
-            cluster_port,
-            debug: self.debug,
-            config_dir: self.config_dir.clone(),
-            executable_path: self
-                .bin_dir
-                .join("nats-server")
-                .to_string_lossy()
-                .to_string(),
-            store_dir: self.store_dir.clone(),
-        };
-
-        // Spawn the isolated process
-        let (process, join_handle) = proven_isolation::spawn(app)
-            .await
-            .map_err(Error::Isolation)?;
-
-        // Store the process for later access
-        *self.process.lock().await = Some(process);
-
-        // Start periodic topology update task
-        let topology_update_task = self.start_topology_update_task()?;
-        *self.topology_update_task.lock().await = Some(topology_update_task);
-
-        info!("NATS server started");
-
-        Ok(join_handle)
     }
 
     /// Updates topology from network and updates NATS configuration.
@@ -472,31 +418,6 @@ where
         Ok(())
     }
 
-    /// Shuts down the NATS server.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the server fails to shutdown.
-    pub async fn shutdown(&self) -> Result<(), Error> {
-        info!("Shutting down isolated NATS server...");
-
-        // Stop the topology update task
-        if let Some(task) = self.topology_update_task.lock().await.take() {
-            task.abort();
-        }
-
-        // Get the process and shut it down
-        let mut process_guard = self.process.lock().await;
-        if let Some(process) = process_guard.take() {
-            process.shutdown().await.map_err(Error::Isolation)?;
-            info!("NATS server shut down successfully");
-        } else {
-            debug!("No running NATS server to shut down");
-        }
-
-        Ok(())
-    }
-
     /// Returns the client URL for the NATS server.
     #[must_use]
     pub async fn get_client_url(&self) -> String {
@@ -527,5 +448,102 @@ where
             .map_err(Error::ClientFailedToConnect)?;
 
         Ok(client)
+    }
+}
+
+#[async_trait]
+impl<G, A> Bootable for NatsServer<G, A>
+where
+    G: Governance,
+    A: Attestor,
+{
+    type Error = Error;
+
+    /// Starts the NATS server in an isolated environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server fails to start.
+    async fn start(&self) -> Result<(), Error> {
+        if self.process.lock().await.is_some() {
+            return Err(Error::AlreadyStarted);
+        }
+
+        debug!("Starting isolated NATS server...");
+
+        // Create necessary directories
+        tokio::fs::create_dir_all(self.store_dir.join("jetstream"))
+            .await
+            .map_err(|e| Error::Io("failed to create jetstream directory", e))?;
+
+        // Initialize topology from network
+        self.update_topology().await?;
+
+        let cluster_port = self.network.nats_cluster_endpoint().await?.port().unwrap();
+
+        // Prepare the NATS server application
+        let app = NatsServerApp {
+            bin_dir: self.bin_dir.clone(),
+            client_port: self.client_port,
+            cluster_port,
+            debug: self.debug,
+            config_dir: self.config_dir.clone(),
+            executable_path: self
+                .bin_dir
+                .join("nats-server")
+                .to_string_lossy()
+                .to_string(),
+            store_dir: self.store_dir.clone(),
+        };
+
+        // Spawn the isolated process
+        let process = proven_isolation::spawn(app)
+            .await
+            .map_err(Error::Isolation)?;
+
+        // Store the process for later access
+        self.process.lock().await.replace(process);
+
+        // Start periodic topology update task
+        let topology_update_task = self.start_topology_update_task()?;
+        self.topology_update_task
+            .lock()
+            .await
+            .replace(topology_update_task);
+
+        info!("NATS server started");
+
+        Ok(())
+    }
+
+    /// Shuts down the NATS server.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server fails to shutdown.
+    async fn shutdown(&self) -> Result<(), Error> {
+        info!("Shutting down isolated NATS server...");
+
+        // Stop the topology update task
+        if let Some(task) = self.topology_update_task.lock().await.take() {
+            task.abort();
+        }
+
+        // Get the process and shut it down
+        let mut process_guard = self.process.lock().await;
+        if let Some(process) = process_guard.take() {
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("NATS server shut down successfully");
+        } else {
+            debug!("No running NATS server to shut down");
+        }
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        if let Some(process) = self.process.lock().await.as_ref() {
+            process.wait().await;
+        }
     }
 }

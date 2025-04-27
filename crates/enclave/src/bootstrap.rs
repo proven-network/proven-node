@@ -10,11 +10,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_nats::Client as NatsClient;
+use axum::Router;
+use axum::routing::any;
 use bytes::Bytes;
 use ed25519_dalek::SigningKey;
+use http::StatusCode;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
+use proven_bootable::Bootable;
 use proven_core::{Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
@@ -48,6 +52,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockStream};
+use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 static VMADDR_CID_EC2_HOST: u32 = 3;
@@ -89,26 +94,21 @@ pub struct Bootstrap {
     radix_node_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
 
     radix_node: Option<RadixNode>,
-    radix_node_handle: Option<JoinHandle<()>>,
 
     postgres_fs: Option<ExternalFs>,
     postgres_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
 
     postgres: Option<Postgres>,
-    postgres_handle: Option<JoinHandle<()>>,
 
     radix_aggregator: Option<RadixAggregator>,
-    radix_aggregator_handle: Option<JoinHandle<()>>,
 
     radix_gateway: Option<RadixGateway>,
-    radix_gateway_handle: Option<JoinHandle<()>>,
 
     nats_server_fs: Option<ExternalFs>,
     nats_server_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
 
     nats_client: Option<NatsClient>,
     nats_server: Option<NatsServer<MockGovernance, NsmAttestor>>,
-    nats_server_handle: Option<JoinHandle<()>>,
 
     core: Option<EnclaveNodeCore>,
     core_handle: Option<JoinHandle<proven_core::Result<()>>>,
@@ -143,26 +143,21 @@ impl Bootstrap {
             radix_node_fs_handle: None,
 
             radix_node: None,
-            radix_node_handle: None,
 
             postgres_fs: None,
             postgres_fs_handle: None,
 
             postgres: None,
-            postgres_handle: None,
 
             radix_aggregator: None,
-            radix_aggregator_handle: None,
 
             radix_gateway: None,
-            radix_gateway_handle: None,
 
             nats_server_fs: None,
             nats_server_fs_handle: None,
 
             nats_client: None,
             nats_server: None,
-            nats_server_handle: None,
 
             core: None,
             core_handle: None,
@@ -299,13 +294,8 @@ impl Bootstrap {
         let proxy_handle = self.proxy_handle.take().unwrap();
         let dnscrypt_proxy_handle = self.dnscrypt_proxy_handle.take().unwrap();
         let radix_node_fs_handle = self.radix_node_fs_handle.take().unwrap();
-        let radix_node_handle = self.radix_node_handle.take().unwrap();
         let postgres_fs_handle = self.postgres_fs_handle.take().unwrap();
-        let postgres_handle = self.postgres_handle.take().unwrap();
-        let radix_aggregator_handle = self.radix_aggregator_handle.take().unwrap();
-        let radix_gateway_handle = self.radix_gateway_handle.take().unwrap();
         let nats_server_fs_handle = self.nats_server_fs_handle.take().unwrap();
-        let nats_server_handle = self.nats_server_handle.take().unwrap();
         let core_handle = self.core_handle.take().unwrap();
 
         let proxy = Arc::new(Mutex::new(self.proxy.take().unwrap()));
@@ -336,47 +326,71 @@ impl Bootstrap {
 
         let shutdown_token = self.shutdown_token.clone();
         self.task_tracker.spawn(async move {
-            // Tasks that must be running for the enclave to function
-            let critical_tasks = tokio::spawn(async move {
-                tokio::select! {
-                    Ok(Err(e)) = proxy_handle => {
-                        error!("proxy exited: {:?}", e);
+            let critical_tasks = {
+                let radix_node = radix_node.clone();
+                let radix_aggregator = radix_aggregator.clone();
+                let radix_gateway = radix_gateway.clone();
+                let nats_server = nats_server.clone();
+                let postgres = postgres.clone();
+
+
+                // Tasks that must be running for the enclave to function
+                tokio::spawn(async move {
+                    let radix_node = radix_node.clone();
+                    let radix_node_guard = radix_node.lock().await;
+
+                    let radix_aggregator = radix_aggregator.clone();
+                    let radix_aggregator_guard = radix_aggregator.lock().await;
+
+                    let radix_gateway = radix_gateway.clone();
+                    let radix_gateway_guard = radix_gateway.lock().await;
+
+                    let postgres = postgres.clone();
+                    let postgres_guard = postgres.lock().await;
+
+                    let nats_server = nats_server.clone();
+                    let nats_server_guard = nats_server.lock().await;
+
+                    tokio::select! {
+                        Ok(Err(e)) = proxy_handle => {
+                            error!("proxy exited: {:?}", e);
+                        }
+                        Ok(Err(e)) = dnscrypt_proxy_handle => {
+                            error!("dnscrypt_proxy exited: {:?}", e);
+                        }
+                        Ok(Err(e)) = radix_node_fs_handle => {
+                            error!("radix_external_fs exited: {:?}", e);
+                        }
+                        () = radix_node_guard.wait() => {
+                            error!("radix_node exited");
+                        }
+                        Ok(Err(e)) = postgres_fs_handle => {
+                            error!("postgres_external_fs exited: {:?}", e);
+                        }
+                        () = postgres_guard.wait() => {
+                            error!("postgres exited");
+                        }
+                        () = radix_aggregator_guard.wait() => {
+                            error!("radix_aggregator exited");
+                        }
+                        () = radix_gateway_guard.wait() => {
+                            error!("radix_gateway exited");
+                        }
+                        Ok(Err(e)) = nats_server_fs_handle => {
+                            error!("nats_external_fs exited: {:?}", e);
+                        }
+                        () = nats_server_guard.wait() => {
+                            error!("nats_server exited");
+                        }
+                        Ok(Err(e)) = core_handle => {
+                            error!("core exited: {:?}", e);
+                        }
+                        else => {
+                            info!("enclave shutdown cleanly. goodbye.");
+                        }
                     }
-                    Ok(Err(e)) = dnscrypt_proxy_handle => {
-                        error!("dnscrypt_proxy exited: {:?}", e);
-                    }
-                    Ok(Err(e)) = radix_node_fs_handle => {
-                        error!("radix_external_fs exited: {:?}", e);
-                    }
-                    Ok(e) = radix_node_handle => {
-                        error!("radix_node exited: {:?}", e);
-                    }
-                    Ok(Err(e)) = postgres_fs_handle => {
-                        error!("postgres_external_fs exited: {:?}", e);
-                    }
-                    Ok(e) = postgres_handle => {
-                        error!("postgres exited: {:?}", e);
-                    }
-                    Ok(e) = radix_aggregator_handle => {
-                        error!("radix_aggregator exited: {:?}", e);
-                    }
-                    Ok(e) = radix_gateway_handle => {
-                        error!("radix_gateway exited: {:?}", e);
-                    }
-                    Ok(Err(e)) = nats_server_fs_handle => {
-                        error!("nats_external_fs exited: {:?}", e);
-                    }
-                    Ok(e) = nats_server_handle => {
-                        error!("nats_server exited: {:?}", e);
-                    }
-                    Ok(Err(e)) = core_handle => {
-                        error!("core exited: {:?}", e);
-                    }
-                    else => {
-                        info!("enclave shutdown cleanly. goodbye.");
-                    }
-                }
-            });
+                })
+            };
 
             tokio::select! {
                 () = shutdown_token.cancelled() => info!("shutdown command received. shutting down..."),
@@ -425,15 +439,15 @@ impl Bootstrap {
             nats_server_fs.shutdown().await;
         }
 
-        if let Some(mut radix_gateway) = self.radix_gateway {
+        if let Some(radix_gateway) = self.radix_gateway {
             let _ = radix_gateway.shutdown().await;
         }
 
-        if let Some(mut radix_aggregator) = self.radix_aggregator {
+        if let Some(radix_aggregator) = self.radix_aggregator {
             let _ = radix_aggregator.shutdown().await;
         }
 
-        if let Some(mut postgres) = self.postgres {
+        if let Some(postgres) = self.postgres {
             let _ = postgres.shutdown().await;
         }
 
@@ -441,7 +455,7 @@ impl Bootstrap {
             postgres_fs.shutdown().await;
         }
 
-        if let Some(mut radix_node) = self.radix_node {
+        if let Some(radix_node) = self.radix_node {
             let _ = radix_node.shutdown().await;
         }
 
@@ -647,7 +661,7 @@ impl Bootstrap {
         });
 
         let host_ip = instance_details.public_ip.unwrap().to_string();
-        let mut radix_node = RadixNode::new(RadixNodeOptions {
+        let radix_node = RadixNode::new(RadixNodeOptions {
             config_dir: "/tmp/radix-node-stokenet".to_string(),
             host_ip,
             http_port: 3333,
@@ -656,10 +670,9 @@ impl Bootstrap {
             store_dir: RADIX_NODE_STORE_DIR.to_string(),
         });
 
-        let radix_node_handle = radix_node.start().await?;
+        radix_node.start().await?;
 
         self.radix_node = Some(radix_node);
-        self.radix_node_handle = Some(radix_node_handle);
 
         info!("radix-node started");
 
@@ -685,7 +698,7 @@ impl Bootstrap {
     }
 
     async fn start_postgres(&mut self) -> Result<()> {
-        let mut postgres = Postgres::new(PostgresOptions {
+        let postgres = Postgres::new(PostgresOptions {
             password: POSTGRES_PASSWORD.to_string(),
             port: 5432,
             username: POSTGRES_USERNAME.to_string(),
@@ -693,10 +706,9 @@ impl Bootstrap {
             store_dir: POSTGRES_STORE_DIR.to_string(),
         });
 
-        let postgres_handle = postgres.start().await?;
+        postgres.start().await?;
 
         self.postgres = Some(postgres);
-        self.postgres_handle = Some(postgres_handle);
 
         info!("postgres started");
 
@@ -712,20 +724,19 @@ impl Bootstrap {
             panic!("radix node not set before radix aggregator step");
         });
 
-        let mut radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
+        let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
             postgres_database: POSTGRES_DATABASE.to_string(),
-            postgres_ip_address: postgres.ip_address().to_string(),
+            postgres_ip_address: postgres.ip_address().await.to_string(),
             postgres_password: POSTGRES_PASSWORD.to_string(),
             postgres_port: postgres.port(),
             postgres_username: POSTGRES_USERNAME.to_string(),
-            radix_node_ip_address: radix_node.ip_address().to_string(),
+            radix_node_ip_address: radix_node.ip_address().await.to_string(),
             radix_node_port: radix_node.http_port(),
         });
 
-        let radix_aggregator_handle = radix_aggregator.start().await?;
+        radix_aggregator.start().await?;
 
         self.radix_aggregator = Some(radix_aggregator);
-        self.radix_aggregator_handle = Some(radix_aggregator_handle);
 
         info!("radix-aggregator started");
 
@@ -741,20 +752,19 @@ impl Bootstrap {
             panic!("radix node not set before radix gateway step");
         });
 
-        let mut radix_gateway = RadixGateway::new(RadixGatewayOptions {
+        let radix_gateway = RadixGateway::new(RadixGatewayOptions {
             postgres_database: POSTGRES_DATABASE.to_string(),
-            postgres_ip_address: postgres.ip_address().to_string(),
+            postgres_ip_address: postgres.ip_address().await.to_string(),
             postgres_password: POSTGRES_PASSWORD.to_string(),
             postgres_port: postgres.port(),
             postgres_username: POSTGRES_USERNAME.to_string(),
-            radix_node_ip_address: radix_node.ip_address().to_string(),
+            radix_node_ip_address: radix_node.ip_address().await.to_string(),
             radix_node_port: radix_node.http_port(),
         });
 
-        let radix_gateway_handle = radix_gateway.start().await?;
+        radix_gateway.start().await?;
 
         self.radix_gateway = Some(radix_gateway);
-        self.radix_gateway_handle = Some(radix_gateway_handle);
 
         info!("radix-gateway started");
 
@@ -799,11 +809,10 @@ impl Bootstrap {
             store_dir: PathBuf::from("/var/lib/nats/nats"),
         })?;
 
-        let nats_server_handle = nats_server.start().await?;
+        nats_server.start().await?;
         let nats_client = nats_server.build_client().await?;
 
         self.nats_server = Some(nats_server);
-        self.nats_server_handle = Some(nats_server_handle);
         self.nats_client = Some(nats_client);
 
         info!("nats server started");
@@ -873,6 +882,9 @@ impl Bootstrap {
             cname_domain: domain.to_string(),
             domains: vec![domain.to_string()],
             emails: self.args.email.clone(),
+            fallback_router: Router::new()
+                .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
+                .layer(CorsLayer::very_permissive()),
             listen_addr: http_sock_addr,
         });
 

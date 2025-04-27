@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 async-trait.workspace = true
 axum.workspace = true
+proven-bootable.workspace = true
 tokio.workspace = true

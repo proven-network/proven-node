@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use bytes::Bytes;
 use proven_attestation_mock::MockAttestor;
+use proven_bootable::Bootable;
 use proven_governance_mock::MockGovernance;
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{ProvenNetwork, ProvenNetworkOptions};

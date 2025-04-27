@@ -17,15 +17,17 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::Router;
 use parking_lot::RwLock;
+use proven_bootable::Bootable;
 use proven_http::HttpServer;
-use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower::Service;
 use tracing::info;
 
 /// Simple non-secure HTTP server.
+#[derive(Clone)]
 pub struct InsecureHttpServer {
+    fallback_router: Router,
     listen_addr: SocketAddr,
     hostname_routers: Arc<RwLock<HashMap<String, Router>>>,
     shutdown_token: CancellationToken,
@@ -35,8 +37,9 @@ pub struct InsecureHttpServer {
 impl InsecureHttpServer {
     /// Creates a new instance of `InsecureHttpServer`.
     #[must_use]
-    pub fn new(listen_addr: SocketAddr) -> Self {
+    pub fn new(listen_addr: SocketAddr, fallback_router: Router) -> Self {
         Self {
+            fallback_router,
             listen_addr,
             hostname_routers: Arc::new(RwLock::new(HashMap::new())),
             shutdown_token: CancellationToken::new(),
@@ -46,10 +49,10 @@ impl InsecureHttpServer {
 }
 
 #[async_trait]
-impl HttpServer for InsecureHttpServer {
+impl Bootable for InsecureHttpServer {
     type Error = Error;
 
-    async fn start(&self, fallback_router: Router) -> Result<JoinHandle<()>, Self::Error> {
+    async fn start(&self) -> Result<(), Error> {
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();
 
@@ -58,6 +61,7 @@ impl HttpServer for InsecureHttpServer {
         }
 
         let routers = self.hostname_routers.clone();
+        let fallback_router = self.fallback_router.clone();
         let router = Router::new().fallback_service(tower::service_fn(
             move |req: axum::http::Request<_>| {
                 let mut fallback = fallback_router.clone();
@@ -93,7 +97,7 @@ impl HttpServer for InsecureHttpServer {
             .await
             .map_err(Error::Bind)?;
 
-        let handle = self.task_tracker.spawn(async move {
+        self.task_tracker.spawn(async move {
             tokio::select! {
                 e = axum::serve(listener, router.into_make_service()).into_future() => {
                     info!("http server exited {:?}", e);
@@ -104,29 +108,38 @@ impl HttpServer for InsecureHttpServer {
 
         self.task_tracker.close();
 
-        Ok(handle)
+        Ok(())
     }
 
-    async fn shutdown(&self) {
+    async fn shutdown(&self) -> Result<(), Error> {
         info!("http server shutting down...");
 
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
         info!("http server shutdown");
-    }
 
-    async fn set_router_for_hostname(
-        &self,
-        hostname: String,
-        router: Router,
-    ) -> Result<(), Self::Error> {
-        self.hostname_routers.write().insert(hostname, router);
         Ok(())
     }
 
-    async fn remove_hostname(&self, hostname: String) -> Result<(), Self::Error> {
+    async fn wait(&self) {
+        self.task_tracker.wait().await;
+    }
+}
+
+#[async_trait]
+impl HttpServer for InsecureHttpServer {
+    type Error = Error;
+
+    async fn set_router_for_hostname(&self, hostname: String, router: Router) -> Result<(), Error> {
+        self.hostname_routers.write().insert(hostname, router);
+
+        Ok(())
+    }
+
+    async fn remove_hostname(&self, hostname: String) -> Result<(), Error> {
         self.hostname_routers.write().remove(&hostname);
+
         Ok(())
     }
 }

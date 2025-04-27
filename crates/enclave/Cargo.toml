@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-nats.workspace = true
+axum.workspace = true
 bytes.workspace = true
 ciborium.workspace = true
 cidr.workspace = true
@@ -12,9 +13,11 @@ ed25519-dalek.workspace = true
 fdlimit.workspace = true
 futures.workspace = true
 hex.workspace = true
+http.workspace = true
 proven-applications.workspace = true
 proven-attestation.workspace = true
 proven-attestation-nsm.workspace = true
+proven-bootable.workspace = true
 proven-core.workspace = true
 proven-dnscrypt-proxy.workspace = true
 proven-external-fs.workspace = true
@@ -54,6 +57,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tokio-vsock.workspace = true
+tower-http.workspace = true
 tracing.workspace = true
 tracing-panic.workspace = true
 tracing-subscriber.workspace = true

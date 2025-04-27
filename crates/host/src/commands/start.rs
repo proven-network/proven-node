@@ -13,7 +13,7 @@ use axum::http::Uri;
 use axum::response::Redirect;
 use axum::routing::any;
 use nix::unistd::Uid;
-use proven_http::HttpServer;
+use proven_bootable::Bootable;
 use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::{InitializeRequest, RpcClient};
@@ -66,25 +66,28 @@ pub async fn start(args: StartArgs) -> Result<()> {
     configure_route(&args.tun_device, args.cidr, args.enclave_ip).await?;
     configure_port_forwarding(args.host_ip, args.enclave_ip, &args.outbound_device).await?;
 
-    let http_server = InsecureHttpServer::new(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 80)));
     let fqdn = args.fqdn.clone();
-    let http_redirector = Router::new().fallback(any(move |uri: Uri| {
+    let fallback_router = Router::new().fallback(any(move |uri: Uri| {
         let fqdn = fqdn.clone();
         async move {
             let https_uri = format!("https://{fqdn}{uri}");
             Redirect::permanent(&https_uri)
         }
     }));
-    let http_server_handle = http_server
-        // Always use fallback_router for all requests
-        .start(http_redirector)
-        .await?;
+
+    let http_server = InsecureHttpServer::new(
+        SocketAddr::from((Ipv4Addr::UNSPECIFIED, 80)),
+        fallback_router,
+    );
+
+    http_server.start().await?;
 
     // Tasks that must be running for the host to function
+    let http_server_clone = http_server.clone();
     let critical_tasks = tokio::spawn(async move {
         tokio::select! {
-            Err(e) = http_server_handle => {
-                error!("http_server exited: {:?}", e);
+            _ = http_server_clone.wait() => {
+                error!("http_server exited");
             }
             () = proxy_handle => {
                 error!("proxy exited");
@@ -108,13 +111,13 @@ pub async fn start(args: StartArgs) -> Result<()> {
         _ = sigterm.recv() => {
             info!("received SIGTERM, initiating shutdown");
             shutdown_enclave(&args).await?;
-            http_server.shutdown().await;
+            let _ = http_server.shutdown().await;
             proxy.shutdown().await;
         }
         _ = tokio::signal::ctrl_c() => {
             info!("received SIGINT, initiating shutdown");
             shutdown_enclave(&args).await?;
-            http_server.shutdown().await;
+            let _ = http_server.shutdown().await;
             proxy.shutdown().await;
         }
         _ = critical_tasks => {

@@ -10,10 +10,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_nats::Client as NatsClient;
+use axum::Router;
+use axum::routing::any;
 use ed25519_dalek::SigningKey;
+use http::StatusCode;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation_mock::MockAttestor;
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
+use proven_bootable::Bootable;
 use proven_core::{Core, CoreOptions, LightCore, LightCoreOptions};
 use proven_ethereum_lighthouse::{
     EthereumNetwork as LighthouseNetwork, LighthouseNode, LighthouseNodeOptions,
@@ -42,6 +46,7 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
@@ -63,44 +68,28 @@ pub struct Bootstrap {
     light_core: Option<LightCore<MockAttestor, MockGovernance>>,
 
     radix_mainnet_node: Option<RadixNode>,
-    radix_mainnet_node_handle: Option<JoinHandle<()>>,
 
     radix_stokenet_node: Option<RadixNode>,
-    radix_stokenet_node_handle: Option<JoinHandle<()>>,
 
     ethereum_mainnet_reth_node: Option<proven_ethereum_reth::RethNode>,
-    ethereum_mainnet_reth_node_handle: Option<JoinHandle<()>>,
-
     ethereum_mainnet_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
-    ethereum_mainnet_lighthouse_node_handle: Option<JoinHandle<()>>,
 
     ethereum_holesky_reth_node: Option<proven_ethereum_reth::RethNode>,
-    ethereum_holesky_reth_node_handle: Option<JoinHandle<()>>,
-
     ethereum_holesky_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
-    ethereum_holesky_lighthouse_node_handle: Option<JoinHandle<()>>,
 
     ethereum_sepolia_reth_node: Option<proven_ethereum_reth::RethNode>,
-    ethereum_sepolia_reth_node_handle: Option<JoinHandle<()>>,
-
     ethereum_sepolia_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
-    ethereum_sepolia_lighthouse_node_handle: Option<JoinHandle<()>>,
 
     bitcoin_node: Option<BitcoinNode>,
-    bitcoin_node_handle: Option<JoinHandle<()>>,
 
     postgres: Option<Postgres>,
-    postgres_handle: Option<JoinHandle<()>>,
 
     radix_aggregator: Option<RadixAggregator>,
-    radix_aggregator_handle: Option<JoinHandle<()>>,
 
     radix_gateway: Option<RadixGateway>,
-    radix_gateway_handle: Option<JoinHandle<()>>,
 
     nats_client: Option<NatsClient>,
     nats_server: Option<NatsServer<MockGovernance, MockAttestor>>,
-    nats_server_handle: Option<JoinHandle<()>>,
 
     core: Option<LocalNodeCore>,
     core_handle: Option<JoinHandle<proven_core::Result<()>>>,
@@ -124,45 +113,30 @@ impl Bootstrap {
             governance: None,
             network: None,
             light_core: None,
+
             radix_mainnet_node: None,
-            radix_mainnet_node_handle: None,
 
             radix_stokenet_node: None,
-            radix_stokenet_node_handle: None,
 
             ethereum_mainnet_reth_node: None,
-            ethereum_mainnet_reth_node_handle: None,
-
             ethereum_mainnet_lighthouse_node: None,
-            ethereum_mainnet_lighthouse_node_handle: None,
 
             ethereum_holesky_reth_node: None,
-            ethereum_holesky_reth_node_handle: None,
-
             ethereum_holesky_lighthouse_node: None,
-            ethereum_holesky_lighthouse_node_handle: None,
 
             ethereum_sepolia_reth_node: None,
-            ethereum_sepolia_reth_node_handle: None,
-
             ethereum_sepolia_lighthouse_node: None,
-            ethereum_sepolia_lighthouse_node_handle: None,
 
             bitcoin_node: None,
-            bitcoin_node_handle: None,
 
             postgres: None,
-            postgres_handle: None,
 
             radix_aggregator: None,
-            radix_aggregator_handle: None,
 
             radix_gateway: None,
-            radix_gateway_handle: None,
 
             nats_client: None,
             nats_server: None,
-            nats_server_handle: None,
 
             core: None,
             core_handle: None,
@@ -248,25 +222,7 @@ impl Bootstrap {
             return Err(e);
         }
 
-        // Optional handles
-        let radix_mainnet_node_handle = self.radix_mainnet_node_handle.take();
-        let radix_stokenet_node_handle = self.radix_stokenet_node_handle.take();
-        let ethereum_mainnet_reth_node_handle = self.ethereum_mainnet_reth_node_handle.take();
-        let ethereum_mainnet_lighthouse_node_handle =
-            self.ethereum_mainnet_lighthouse_node_handle.take();
-        let ethereum_holesky_reth_node_handle = self.ethereum_holesky_reth_node_handle.take();
-        let ethereum_holesky_lighthouse_node_handle =
-            self.ethereum_holesky_lighthouse_node_handle.take();
-        let ethereum_sepolia_reth_node_handle = self.ethereum_sepolia_reth_node_handle.take();
-        let ethereum_sepolia_lighthouse_node_handle =
-            self.ethereum_sepolia_lighthouse_node_handle.take();
-        let bitcoin_node_handle = self.bitcoin_node_handle.take();
-        let postgres_handle = self.postgres_handle.take();
-        let radix_aggregator_handle = self.radix_aggregator_handle.take();
-        let radix_gateway_handle = self.radix_gateway_handle.take();
-
         // Mandatory handles
-        let nats_server_handle = self.nats_server_handle.take().unwrap();
         let core_handle = self.core_handle.take().unwrap();
 
         // Optional services
@@ -345,114 +301,107 @@ impl Bootstrap {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
-                    Ok(e) = nats_server_handle => {
-                        error!("nats_server exited: {:?}", e);
-                    }
                     _ = async {
-                        if let Some(handle) = radix_mainnet_node_handle {
-                            if let Ok(e) = handle.await {
-                                error!("radix mainnet node exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(nats_server) = self.nats_server {
+                            nats_server.wait().await;
+                            error!("nats_server exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = radix_stokenet_node_handle {
-                            if let Ok(e) = handle.await {
-                                error!("radix stokenet node exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(radix_mainnet_node) = self.radix_mainnet_node {
+                            radix_mainnet_node.wait().await;
+                            error!("radix mainnet node exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = ethereum_mainnet_reth_node_handle {
-                            if let Ok(e) = handle.await {
-                                error!("ethereum mainnet reth node exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(radix_stokenet_node) = self.radix_stokenet_node {
+                            radix_stokenet_node.wait().await;
+                            error!("radix stokenet node exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = ethereum_mainnet_lighthouse_node_handle {
-                            if let Ok(e) = handle.await {
-                                error!("ethereum mainnet lighthouse node exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(ethereum_mainnet_reth_node) = self.ethereum_mainnet_reth_node {
+                            ethereum_mainnet_reth_node.wait().await;
+                            error!("ethereum mainnet reth node exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = ethereum_holesky_reth_node_handle {
-                            if let Ok(e) = handle.await {
-                                error!("ethereum holesky reth node exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(ethereum_mainnet_lighthouse_node) = self.ethereum_mainnet_lighthouse_node {
+                            ethereum_mainnet_lighthouse_node.wait().await;
+                            error!("ethereum mainnet lighthouse node exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = ethereum_holesky_lighthouse_node_handle {
-                            if let Ok(e) = handle.await {
-                                error!("ethereum holesky lighthouse node exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(ethereum_holesky_reth_node) = self.ethereum_holesky_reth_node {
+                            ethereum_holesky_reth_node.wait().await;
+                            error!("ethereum holesky reth node exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = ethereum_sepolia_reth_node_handle {
-                            if let Ok(e) = handle.await {
-                                error!("ethereum sepolia reth node exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(ethereum_holesky_lighthouse_node) = self.ethereum_holesky_lighthouse_node {
+                            ethereum_holesky_lighthouse_node.wait().await;
+                            error!("ethereum holesky lighthouse node exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = ethereum_sepolia_lighthouse_node_handle {
-                            if let Ok(e) = handle.await {
-                                error!("ethereum sepolia lighthouse node exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(ethereum_sepolia_reth_node) = self.ethereum_sepolia_reth_node {
+                            ethereum_sepolia_reth_node.wait().await;
+                            error!("ethereum sepolia reth node exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = bitcoin_node_handle {
-                            if let Ok(e) = handle.await {
-                                error!("bitcoin node exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(ethereum_sepolia_lighthouse_node) = self.ethereum_sepolia_lighthouse_node {
+                            ethereum_sepolia_lighthouse_node.wait().await;
+                            error!("ethereum sepolia lighthouse node exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = postgres_handle {
-                            if let Ok(e) = handle.await {
-                                error!("postgres exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(bitcoin_node) = self.bitcoin_node {
+                            bitcoin_node.wait().await;
+                            error!("bitcoin node exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = radix_aggregator_handle {
-                            if let Ok(e) = handle.await {
-                                error!("radix_aggregator exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(postgres) = self.postgres {
+                            postgres.wait().await;
+                            error!("postgres exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(handle) = radix_gateway_handle {
-                            if let Ok(e) = handle.await {
-                                error!("radix_gateway exited: {:?}", e);
-                                return;
-                            }
+                        if let Some(radix_aggregator) = self.radix_aggregator {
+                            radix_aggregator.wait().await;
+                            error!("radix_aggregator exited");
+                            return;
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async {
+                        if let Some(radix_gateway) = self.radix_gateway {
+                            radix_gateway.wait().await;
+                            error!("radix_gateway exited");
+                            return;
                         }
                         std::future::pending::<()>().await
                     } => {},
@@ -542,51 +491,51 @@ impl Bootstrap {
             core.shutdown().await;
         }
 
-        if let Some(mut radix_gateway) = self.radix_gateway {
+        if let Some(radix_gateway) = self.radix_gateway {
             let _ = radix_gateway.shutdown().await;
         }
 
-        if let Some(mut radix_aggregator) = self.radix_aggregator {
+        if let Some(radix_aggregator) = self.radix_aggregator {
             let _ = radix_aggregator.shutdown().await;
         }
 
-        if let Some(mut postgres) = self.postgres {
+        if let Some(postgres) = self.postgres {
             let _ = postgres.shutdown().await;
         }
 
-        if let Some(mut ethereum_sepolia_lighthouse_node) = self.ethereum_sepolia_lighthouse_node {
+        if let Some(ethereum_sepolia_lighthouse_node) = self.ethereum_sepolia_lighthouse_node {
             let _ = ethereum_sepolia_lighthouse_node.shutdown().await;
         }
 
-        if let Some(mut ethereum_sepolia_reth_node) = self.ethereum_sepolia_reth_node {
+        if let Some(ethereum_sepolia_reth_node) = self.ethereum_sepolia_reth_node {
             let _ = ethereum_sepolia_reth_node.shutdown().await;
         }
 
-        if let Some(mut ethereum_holesky_lighthouse_node) = self.ethereum_holesky_lighthouse_node {
+        if let Some(ethereum_holesky_lighthouse_node) = self.ethereum_holesky_lighthouse_node {
             let _ = ethereum_holesky_lighthouse_node.shutdown().await;
         }
 
-        if let Some(mut ethereum_holesky_reth_node) = self.ethereum_holesky_reth_node {
+        if let Some(ethereum_holesky_reth_node) = self.ethereum_holesky_reth_node {
             let _ = ethereum_holesky_reth_node.shutdown().await;
         }
 
-        if let Some(mut ethereum_mainnet_lighthouse_node) = self.ethereum_mainnet_lighthouse_node {
+        if let Some(ethereum_mainnet_lighthouse_node) = self.ethereum_mainnet_lighthouse_node {
             let _ = ethereum_mainnet_lighthouse_node.shutdown().await;
         }
 
-        if let Some(mut ethereum_mainnet_reth_node) = self.ethereum_mainnet_reth_node {
+        if let Some(ethereum_mainnet_reth_node) = self.ethereum_mainnet_reth_node {
             let _ = ethereum_mainnet_reth_node.shutdown().await;
         }
 
-        if let Some(mut bitcoin_node) = self.bitcoin_node {
+        if let Some(bitcoin_node) = self.bitcoin_node {
             let _ = bitcoin_node.shutdown().await;
         }
 
-        if let Some(mut radix_mainnet_node) = self.radix_mainnet_node {
+        if let Some(radix_mainnet_node) = self.radix_mainnet_node {
             let _ = radix_mainnet_node.shutdown().await;
         }
 
-        if let Some(mut radix_stokenet_node) = self.radix_stokenet_node {
+        if let Some(radix_stokenet_node) = self.radix_stokenet_node {
             let _ = radix_stokenet_node.shutdown().await;
         }
 
@@ -643,7 +592,12 @@ impl Bootstrap {
         check_hostname_resolution(network.fqdn().await?.as_str()).await?;
 
         let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, self.args.port));
-        let http_server = InsecureHttpServer::new(http_sock_addr);
+        let http_server = InsecureHttpServer::new(
+            http_sock_addr,
+            Router::new()
+                .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
+                .layer(CorsLayer::very_permissive()),
+        );
 
         let light_core = LightCore::new(LightCoreOptions {
             network: network.clone(),
@@ -679,11 +633,10 @@ impl Bootstrap {
             store_dir: self.args.nats_store_dir.clone(),
         })?;
 
-        let nats_server_handle = nats_server.start().await?;
+        nats_server.start().await?;
         let nats_client = nats_server.build_client().await?;
 
         self.nats_server = Some(nats_server);
-        self.nats_server_handle = Some(nats_server_handle);
         self.nats_client = Some(nats_client);
 
         info!("nats server started");
@@ -701,7 +654,7 @@ impl Bootstrap {
             .await?
             .contains(&NodeSpecialization::RadixMainnet)
         {
-            let mut radix_mainnet_node = RadixNode::new(RadixNodeOptions {
+            let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
                 config_dir: "/tmp/radix-node-mainnet".to_string(),
                 host_ip: self.external_ip.to_string(),
                 http_port: self.args.radix_mainnet_http_port,
@@ -714,10 +667,9 @@ impl Bootstrap {
                     .to_string(),
             });
 
-            let radix_mainnet_node_handle = radix_mainnet_node.start().await?;
+            radix_mainnet_node.start().await?;
 
             self.radix_mainnet_node = Some(radix_mainnet_node);
-            self.radix_mainnet_node_handle = Some(radix_mainnet_node_handle);
 
             info!("radix mainnet node started");
         }
@@ -727,7 +679,7 @@ impl Bootstrap {
             .await?
             .contains(&NodeSpecialization::RadixStokenet)
         {
-            let mut radix_stokenet_node = RadixNode::new(RadixNodeOptions {
+            let radix_stokenet_node = RadixNode::new(RadixNodeOptions {
                 config_dir: "/tmp/radix-node-stokenet".to_string(),
                 host_ip: self.external_ip.to_string(),
                 http_port: self.args.radix_stokenet_http_port,
@@ -740,10 +692,9 @@ impl Bootstrap {
                     .to_string(),
             });
 
-            let radix_stokenet_node_handle = radix_stokenet_node.start().await?;
+            radix_stokenet_node.start().await?;
 
             self.radix_stokenet_node = Some(radix_stokenet_node);
-            self.radix_stokenet_node_handle = Some(radix_stokenet_node_handle);
 
             info!("radix stokenet node started");
         }
@@ -762,7 +713,7 @@ impl Bootstrap {
             .contains(&NodeSpecialization::EthereumHolesky)
         {
             // Start Reth execution client
-            let mut ethereum_reth_node = RethNode::new(RethNodeOptions {
+            let ethereum_reth_node = RethNode::new(RethNodeOptions {
                 discovery_port: self.args.ethereum_holesky_execution_discovery_port,
                 http_port: self.args.ethereum_holesky_execution_http_port,
                 metrics_port: self.args.ethereum_holesky_execution_metrics_port,
@@ -771,21 +722,20 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_holesky_execution_store_dir.clone(),
             });
 
-            let ethereum_reth_node_handle = ethereum_reth_node
+            ethereum_reth_node
                 .start()
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
             let execution_rpc_jwt_hex = ethereum_reth_node.jwt_hex().await?;
-            let execution_rpc_ip_address = ethereum_reth_node.ip_address().to_string();
+            let execution_rpc_ip_address = ethereum_reth_node.ip_address().await.to_string();
 
             self.ethereum_holesky_reth_node = Some(ethereum_reth_node);
-            self.ethereum_holesky_reth_node_handle = Some(ethereum_reth_node_handle);
 
             info!("ethereum reth node (holesky) started");
 
             // Start Lighthouse consensus client
-            let mut ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
                 execution_rpc_ip_address,
                 execution_rpc_jwt_hex,
                 execution_rpc_port: self.args.ethereum_holesky_execution_rpc_port,
@@ -797,13 +747,12 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_holesky_consensus_store_dir.clone(),
             });
 
-            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node
+            ethereum_lighthouse_node
                 .start()
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
 
             self.ethereum_holesky_lighthouse_node = Some(ethereum_lighthouse_node);
-            self.ethereum_holesky_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
 
             info!("ethereum lighthouse node (holesky) started");
         }
@@ -822,7 +771,7 @@ impl Bootstrap {
             .contains(&NodeSpecialization::EthereumMainnet)
         {
             // Start Reth execution client
-            let mut ethereum_reth_node = RethNode::new(RethNodeOptions {
+            let ethereum_reth_node = RethNode::new(RethNodeOptions {
                 discovery_port: self.args.ethereum_mainnet_execution_discovery_port,
                 http_port: self.args.ethereum_mainnet_execution_http_port,
                 metrics_port: self.args.ethereum_mainnet_execution_metrics_port,
@@ -831,21 +780,20 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_mainnet_execution_store_dir.clone(),
             });
 
-            let ethereum_reth_node_handle = ethereum_reth_node
+            ethereum_reth_node
                 .start()
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
-            let execution_rpc_ip_address = ethereum_reth_node.ip_address().to_string();
+            let execution_rpc_ip_address = ethereum_reth_node.ip_address().await.to_string();
             let execution_rpc_jwt_hex = ethereum_reth_node.jwt_hex().await?;
 
             self.ethereum_mainnet_reth_node = Some(ethereum_reth_node);
-            self.ethereum_mainnet_reth_node_handle = Some(ethereum_reth_node_handle);
 
             info!("ethereum reth node (mainnet) started");
 
             // Start Lighthouse consensus client
-            let mut ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
                 execution_rpc_ip_address,
                 execution_rpc_jwt_hex,
                 execution_rpc_port: self.args.ethereum_mainnet_execution_rpc_port,
@@ -857,13 +805,12 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_mainnet_consensus_store_dir.clone(),
             });
 
-            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node
+            ethereum_lighthouse_node
                 .start()
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
 
             self.ethereum_mainnet_lighthouse_node = Some(ethereum_lighthouse_node);
-            self.ethereum_mainnet_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
 
             info!("ethereum lighthouse node (mainnet) started");
         }
@@ -882,7 +829,7 @@ impl Bootstrap {
             .contains(&NodeSpecialization::EthereumSepolia)
         {
             // Start Reth execution client
-            let mut ethereum_reth_node = RethNode::new(RethNodeOptions {
+            let ethereum_reth_node = RethNode::new(RethNodeOptions {
                 discovery_port: self.args.ethereum_sepolia_execution_discovery_port,
                 http_port: self.args.ethereum_sepolia_execution_http_port,
                 metrics_port: self.args.ethereum_sepolia_execution_metrics_port,
@@ -891,20 +838,19 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_sepolia_execution_store_dir.clone(),
             });
 
-            let ethereum_reth_node_handle = ethereum_reth_node
+            ethereum_reth_node
                 .start()
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
-            let execution_rpc_ip_address = ethereum_reth_node.ip_address().to_string();
+            let execution_rpc_ip_address = ethereum_reth_node.ip_address().await.to_string();
             let execution_rpc_jwt_hex = ethereum_reth_node.jwt_hex().await?;
             self.ethereum_sepolia_reth_node = Some(ethereum_reth_node);
-            self.ethereum_sepolia_reth_node_handle = Some(ethereum_reth_node_handle);
 
             info!("ethereum reth node (sepolia) started");
 
             // Start Lighthouse consensus client
-            let mut ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
+            let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
                 execution_rpc_ip_address,
                 execution_rpc_jwt_hex,
                 execution_rpc_port: self.args.ethereum_sepolia_execution_rpc_port,
@@ -916,13 +862,12 @@ impl Bootstrap {
                 store_dir: self.args.ethereum_sepolia_consensus_store_dir.clone(),
             });
 
-            let ethereum_lighthouse_node_handle = ethereum_lighthouse_node
+            ethereum_lighthouse_node
                 .start()
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
 
             self.ethereum_sepolia_lighthouse_node = Some(ethereum_lighthouse_node);
-            self.ethereum_sepolia_lighthouse_node_handle = Some(ethereum_lighthouse_node_handle);
 
             info!("ethereum lighthouse node (sepolia) started");
         }
@@ -941,7 +886,7 @@ impl Bootstrap {
             .contains(&NodeSpecialization::BitcoinTestnet)
         {
             // Start Bitcoin testnet node
-            let mut bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
+            let bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
                 network: BitcoinNetwork::Testnet,
                 store_dir: self
                     .args
@@ -951,13 +896,9 @@ impl Bootstrap {
                 rpc_port: None,
             });
 
-            let bitcoin_node_handle = bitcoin_node
-                .start()
-                .await
-                .map_err(|e| Error::Io(format!("Failed to start Bitcoin testnet node: {}", e)))?;
+            bitcoin_node.start().await?;
 
             self.bitcoin_node = Some(bitcoin_node);
-            self.bitcoin_node_handle = Some(bitcoin_node_handle);
 
             info!("bitcoin testnet node started");
         }
@@ -979,7 +920,7 @@ impl Bootstrap {
                 .await?
                 .contains(&NodeSpecialization::RadixStokenet)
         {
-            let mut postgres = Postgres::new(PostgresOptions {
+            let postgres = Postgres::new(PostgresOptions {
                 password: POSTGRES_PASSWORD.to_string(),
                 port: self.args.postgres_port,
                 username: POSTGRES_USERNAME.to_string(),
@@ -987,10 +928,9 @@ impl Bootstrap {
                 store_dir: self.args.postgres_store_dir.to_string_lossy().to_string(),
             });
 
-            let postgres_handle = postgres.start().await?;
+            postgres.start().await?;
 
             self.postgres = Some(postgres);
-            self.postgres_handle = Some(postgres_handle);
 
             info!("postgres for radix stokenet started");
         }
@@ -1016,20 +956,19 @@ impl Bootstrap {
                 panic!("radix node not set before radix aggregator step");
             });
 
-            let mut radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
+            let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
-                postgres_ip_address: postgres.ip_address().to_string(),
+                postgres_ip_address: postgres.ip_address().await.to_string(),
                 postgres_password: POSTGRES_PASSWORD.to_string(),
                 postgres_port: postgres.port(),
                 postgres_username: POSTGRES_USERNAME.to_string(),
-                radix_node_ip_address: radix_stokenet_node.ip_address().to_string(),
+                radix_node_ip_address: radix_stokenet_node.ip_address().await.to_string(),
                 radix_node_port: radix_stokenet_node.http_port(),
             });
 
-            let radix_aggregator_handle = radix_aggregator.start().await?;
+            radix_aggregator.start().await?;
 
             self.radix_aggregator = Some(radix_aggregator);
-            self.radix_aggregator_handle = Some(radix_aggregator_handle);
 
             info!("radix-aggregator for radix stokenet started");
         }
@@ -1055,20 +994,19 @@ impl Bootstrap {
                 panic!("radix node not set before radix gateway step");
             });
 
-            let mut radix_gateway = RadixGateway::new(RadixGatewayOptions {
+            let radix_gateway = RadixGateway::new(RadixGatewayOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
-                postgres_ip_address: postgres.ip_address().to_string(),
+                postgres_ip_address: postgres.ip_address().await.to_string(),
                 postgres_password: POSTGRES_PASSWORD.to_string(),
                 postgres_port: postgres.port(),
                 postgres_username: POSTGRES_USERNAME.to_string(),
-                radix_node_ip_address: radix_stokenet_node.ip_address().to_string(),
+                radix_node_ip_address: radix_stokenet_node.ip_address().await.to_string(),
                 radix_node_port: radix_stokenet_node.http_port(),
             });
 
-            let radix_gateway_handle = radix_gateway.start().await?;
+            radix_gateway.start().await?;
 
             self.radix_gateway = Some(radix_gateway);
-            self.radix_gateway_handle = Some(radix_gateway_handle);
 
             info!("radix-gateway for radix stokenet started");
         }
@@ -1113,7 +1051,12 @@ impl Bootstrap {
         });
 
         let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, self.args.port));
-        let http_server = InsecureHttpServer::new(http_sock_addr);
+        let http_server = InsecureHttpServer::new(
+            http_sock_addr,
+            Router::new()
+                .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
+                .layer(CorsLayer::very_permissive()),
+        );
 
         let application_manager = ApplicationManager::new(
             NatsStore::new(NatsStoreOptions {

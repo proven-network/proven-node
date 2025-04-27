@@ -45,10 +45,7 @@ impl IsolatedApplication for UdpEchoServer {
         "/bin/udp_server"
     }
 
-    async fn is_ready_check(
-        &self,
-        info: ReadyCheckInfo,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         // Check if the UDP server is ready by sending a test packet
         static ATTEMPT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
         let attempt = ATTEMPT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -57,7 +54,7 @@ impl IsolatedApplication for UdpEchoServer {
         if attempt == 1 {
             tokio::time::sleep(Duration::from_secs(1)).await;
             debug!("UDP server readiness check: initial 1 second wait");
-            return Ok(false);
+            return false;
         }
 
         // Use the container's IP from the process
@@ -102,15 +99,15 @@ impl IsolatedApplication for UdpEchoServer {
                     "✅ UDP server is ready! Got echo response on attempt {}",
                     attempt
                 );
-                Ok(true)
+                true
             }
             Ok(false) => {
                 debug!("❌ UDP server not ready on attempt {}", attempt);
-                Ok(false)
+                false
             }
             Err(e) => {
                 debug!("❌ Error testing UDP server on attempt {}: {}", attempt, e);
-                Ok(false)
+                false
             }
         }
     }
@@ -183,7 +180,7 @@ async fn main() {
     );
 
     let start_time = Instant::now();
-    let (process, _join_handle) = proven_isolation::spawn(server)
+    let process = proven_isolation::spawn(server)
         .await
         .expect("Failed to spawn server");
     let elapsed = start_time.elapsed();

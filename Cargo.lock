@@ -8959,6 +8959,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "once_cell",
+ "proven-bootable",
  "proven-isolation",
  "regex",
  "reqwest",
@@ -8969,6 +8970,13 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "proven-bootable"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
 ]
 
 [[package]]
@@ -9055,6 +9063,7 @@ name = "proven-enclave"
 version = "0.1.0"
 dependencies = [
  "async-nats",
+ "axum 0.8.3",
  "bytes",
  "ciborium",
  "cidr",
@@ -9062,9 +9071,11 @@ dependencies = [
  "fdlimit",
  "futures",
  "hex",
+ "http 1.3.1",
  "proven-applications",
  "proven-attestation",
  "proven-attestation-nsm",
+ "proven-bootable",
  "proven-core",
  "proven-dnscrypt-proxy",
  "proven-external-fs",
@@ -9105,6 +9116,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tokio-vsock",
+ "tower-http",
  "tracing",
  "tracing-panic",
  "tracing-subscriber",
@@ -9116,6 +9128,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "once_cell",
+ "proven-bootable",
  "proven-ethereum-reth",
  "proven-isolation",
  "regex",
@@ -9135,6 +9148,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "once_cell",
+ "proven-bootable",
  "proven-isolation",
  "regex",
  "reqwest",
@@ -9221,6 +9235,7 @@ dependencies = [
  "cidr",
  "clap",
  "nix 0.27.1",
+ "proven-bootable",
  "proven-http",
  "proven-http-insecure",
  "proven-vsock-proxy",
@@ -9243,6 +9258,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum 0.8.3",
+ "proven-bootable",
  "tokio",
 ]
 
@@ -9253,6 +9269,7 @@ dependencies = [
  "async-trait",
  "axum 0.8.3",
  "parking_lot",
+ "proven-bootable",
  "proven-http",
  "thiserror 2.0.12",
  "tokio",
@@ -9274,6 +9291,7 @@ dependencies = [
  "hickory-resolver",
  "multi_key_map",
  "parking_lot",
+ "proven-bootable",
  "proven-http",
  "proven-store",
  "ring",
@@ -9412,6 +9430,7 @@ name = "proven-local"
 version = "0.1.0"
 dependencies = [
  "async-nats",
+ "axum 0.8.3",
  "bytes",
  "ciborium",
  "clap",
@@ -9419,10 +9438,12 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "hickory-resolver",
+ "http 1.3.1",
  "proven-applications",
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bitcoin-core",
+ "proven-bootable",
  "proven-core",
  "proven-ethereum-lighthouse",
  "proven-ethereum-reth",
@@ -9452,6 +9473,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
 ]
@@ -9545,6 +9567,7 @@ dependencies = [
  "once_cell",
  "proven-attestation",
  "proven-attestation-mock",
+ "proven-bootable",
  "proven-governance",
  "proven-governance-mock",
  "proven-isolation",
@@ -9587,6 +9610,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "once_cell",
+ "proven-bootable",
  "proven-isolation",
  "regex",
  "tempfile",
@@ -9604,6 +9628,7 @@ dependencies = [
  "async-trait",
  "nix 0.27.1",
  "once_cell",
+ "proven-bootable",
  "proven-isolation",
  "proven-postgres",
  "proven-radix-node",
@@ -9624,6 +9649,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "once_cell",
+ "proven-bootable",
  "proven-isolation",
  "regex",
  "reqwest",
@@ -9690,6 +9716,7 @@ dependencies = [
  "async-trait",
  "nix 0.27.1",
  "once_cell",
+ "proven-bootable",
  "proven-isolation",
  "radix-common 1.3.0",
  "regex",

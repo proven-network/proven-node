@@ -1,3 +1,4 @@
+use proven_bootable::Bootable;
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_node::{RadixNode, RadixNodeOptions};
@@ -10,7 +11,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     println!("Starting Postgres...");
-    let mut postgres = Postgres::new(PostgresOptions {
+    let postgres = Postgres::new(PostgresOptions {
         password: "postgres".to_string(),
         port: 5432,
         username: "postgres".to_string(),
@@ -21,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Postgres is ready!");
 
     println!("Starting Radix Node...");
-    let mut radix_node = RadixNode::new(RadixNodeOptions {
+    let radix_node = RadixNode::new(RadixNodeOptions {
         host_ip: fetch_external_ip().await,
         http_port: 3333,
         network_definition: NetworkDefinition::stokenet(),
@@ -33,13 +34,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Radix Node is ready!");
 
     println!("Starting Radix Aggregator...");
-    let mut aggregator = RadixAggregator::new(RadixAggregatorOptions {
+    let aggregator = RadixAggregator::new(RadixAggregatorOptions {
         postgres_database: "radix_gateway".to_string(),
-        postgres_ip_address: postgres.ip_address().to_string(),
+        postgres_ip_address: postgres.ip_address().await.to_string(),
         postgres_password: "postgres".to_string(),
         postgres_port: postgres.port(),
         postgres_username: "postgres".to_string(),
-        radix_node_ip_address: radix_node.ip_address().to_string(),
+        radix_node_ip_address: radix_node.ip_address().await.to_string(),
         radix_node_port: radix_node.http_port(),
     });
     let _ = aggregator.start().await?;

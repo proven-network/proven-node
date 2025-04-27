@@ -1,51 +1,4 @@
 //! Isolation primitives for spawning untrusted processes in a secure manner.
-//!
-//! This crate provides a way to isolate third-party applications using Linux
-//! namespaces and cgroups v2.
-//!
-//! # Example
-//!
-//! ```rust,no_run
-//! use async_trait::async_trait;
-//! use proven_isolation::{IsolatedApplication, Result, spawn};
-//! use std::path::PathBuf;
-//!
-//! struct MyApp {
-//!     name: String,
-//!     executable: String,
-//! }
-//!
-//! #[async_trait]
-//! impl IsolatedApplication for MyApp {
-//!     fn args(&self) -> Vec<String> {
-//!         vec!["--config=/etc/config.json".to_string()]
-//!     }
-//!
-//!     fn executable(&self) -> &str {
-//!         &self.executable
-//!     }
-//!
-//!     fn name(&self) -> &str {
-//!         &self.name
-//!     }
-//! }
-//!
-//! async fn run() -> Result<()> {
-//!     let app = MyApp {
-//!         name: "my-app".to_string(),
-//!         executable: "path/to/app".to_string(),
-//!     };
-//!
-//!     let (process, _) = spawn(app).await?;
-//!
-//!     // App is now running and ready
-//!
-//!     // Shut down when done
-//!     process.shutdown().await?;
-//!
-//!     Ok(())
-//! }
-//! ```
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -72,7 +25,6 @@ pub use network::{VethPair, check_root_permissions};
 pub use spawn::{IsolatedProcess, IsolatedProcessOptions, IsolatedProcessSpawner};
 pub use volume_mount::VolumeMount;
 
-use tokio::task::JoinHandle;
 use tracing::warn;
 
 /// Counter for generating unique Veth pair IP addresses
@@ -116,7 +68,7 @@ static IP_COUNTER: AtomicU32 = AtomicU32::new(2);
 ///         executable: "path/to/app".to_string(),
 ///     };
 ///
-///     let (process, _) = spawn(app).await?;
+///     let process = spawn(app).await?;
 ///
 ///     // App is now running and ready
 ///
@@ -130,9 +82,7 @@ static IP_COUNTER: AtomicU32 = AtomicU32::new(2);
 /// # Errors
 ///
 /// Returns an error if the process could not be spawned or if the readiness checks fail.
-pub async fn spawn<A: IsolatedApplication>(
-    application: A,
-) -> Result<(IsolatedProcess, JoinHandle<()>)> {
+pub async fn spawn<A: IsolatedApplication>(application: A) -> Result<IsolatedProcess> {
     let counter = IP_COUNTER.fetch_add(1, Ordering::SeqCst);
     let host_veth_interface_name = format!("veth{}", counter);
     let isolated_veth_interface_name = format!("veth{}", counter + 1);

@@ -13,6 +13,7 @@ members = [
     "crates/attestation",
     "crates/attestation-mock",
     "crates/attestation-nsm",
+    "crates/bootable",
     "crates/bitcoin-core",
     "crates/code-package",
     "crates/core",
@@ -75,6 +76,7 @@ default-members = [
     "crates/attestation-mock",
     "crates/attestation-nsm",
     "crates/bitcoin-core",
+    "crates/bootable",
     "crates/code-package",
     "crates/core",
     "crates/dnscrypt-proxy",
@@ -383,6 +385,7 @@ proven-attestation = { path = "crates/attestation" }
 proven-attestation-mock = { path = "crates/attestation-mock" }
 proven-attestation-nsm = { path = "crates/attestation-nsm" }
 proven-bitcoin-core = { path = "crates/bitcoin-core" }
+proven-bootable = { path = "crates/bootable" }
 proven-code-package = { path = "crates/code-package" }
 proven-core = { path = "crates/core" }
 proven-dnscrypt-proxy = { path = "crates/dnscrypt-proxy" }

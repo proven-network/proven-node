@@ -1,3 +1,4 @@
+use proven_bootable::Bootable;
 use proven_postgres::{Postgres, PostgresOptions};
 
 #[tokio::main]
@@ -20,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create and start the node
-    let mut node = Postgres::new(options);
+    let node = Postgres::new(options);
     node.start().await?;
 
     println!("Postgres node is ready!");

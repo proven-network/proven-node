@@ -2,11 +2,15 @@
 
 use std::io;
 
+use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// Error type for the isolated-bitcoin-core crate.
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum Error
+where
+    Self: Send + Sync,
+{
     /// Already started.
     #[error("already started")]
     AlreadyStarted,
@@ -27,3 +31,5 @@ pub enum Error {
     #[error("rpc call failed: {0}")]
     RpcCall(String),
 }
+
+impl BootableError for Error {}

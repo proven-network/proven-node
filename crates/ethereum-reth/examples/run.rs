@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use proven_bootable::Bootable;
 use proven_ethereum_reth::{EthereumNetwork, RethNode, RethNodeOptions};
 use tracing::info;
 #[tokio::main]
@@ -9,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting Reth node...");
     // Create and start the node
-    let mut node = RethNode::new(RethNodeOptions {
+    let node = RethNode::new(RethNodeOptions {
         discovery_port: 30303,
         http_port: 8545,
         metrics_port: 9001,

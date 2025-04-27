@@ -9,10 +9,12 @@
 mod error;
 
 pub use error::Error;
+use proven_bootable::Bootable;
+use tokio::sync::Mutex;
 
-use std::error::Error as StdError;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -21,7 +23,6 @@ use regex::Regex;
 use serde_json::json;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace, warn};
 
 static AGGREGATOR_CONFIG_PATH: &str =
@@ -72,7 +73,7 @@ impl IsolatedApplication for RadixAggregatorApp {
         error!(target: "radix-aggregator", "{}", line);
     }
 
-    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         // Check if the service is responding on port 8080
         let client = reqwest::Client::new();
 
@@ -81,8 +82,8 @@ impl IsolatedApplication for RadixAggregatorApp {
             .send()
             .await
         {
-            Ok(response) => Ok(response.status().is_success()),
-            Err(_) => Ok(false), // Not ready yet
+            Ok(response) => response.status().is_success(),
+            Err(_) => false, // Not ready yet
         }
     }
 
@@ -116,13 +117,14 @@ impl IsolatedApplication for RadixAggregatorApp {
 }
 
 /// Configures and runs Radix Gateway's data aggregator.
+#[derive(Clone)]
 pub struct RadixAggregator {
     postgres_database: String,
     postgres_ip_address: String,
     postgres_port: u16,
     postgres_username: String,
     postgres_password: String,
-    process: Option<IsolatedProcess>,
+    process: Arc<Mutex<Option<IsolatedProcess>>>,
     radix_node_ip_address: String,
     radix_node_port: u16,
 }
@@ -171,62 +173,10 @@ impl RadixAggregator {
             postgres_password,
             postgres_port,
             postgres_username,
-            process: None,
+            process: Arc::new(Mutex::new(None)),
             radix_node_ip_address,
             radix_node_port,
         }
-    }
-
-    /// Starts the Radix Aggregator.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the server is already started or if there
-    /// is an issue starting the isolated process.
-    ///
-    /// # Returns
-    ///
-    /// A `JoinHandle` to the spawned task.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
-        if self.process.is_some() {
-            return Err(Error::AlreadyStarted);
-        }
-
-        info!("Starting radix-aggregator...");
-
-        self.prepare_config().await?;
-
-        // Run migrations
-        self.run_migrations().await?;
-
-        let (process, join_handle) = proven_isolation::spawn(RadixAggregatorApp)
-            .await
-            .map_err(Error::Isolation)?;
-
-        // Store the process for later shutdown
-        self.process = Some(process);
-
-        info!("radix-aggregator started");
-
-        Ok(join_handle)
-    }
-
-    /// Shuts down the server.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if there is an issue shutting down the isolated process.
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
-        info!("radix-aggregator shutting down...");
-
-        if let Some(process) = self.process.take() {
-            process.shutdown().await.map_err(Error::Isolation)?;
-            info!("radix-aggregator shutdown");
-        } else {
-            debug!("No running radix-aggregator to shut down");
-        }
-
-        Ok(())
     }
 
     async fn prepare_config(&self) -> Result<(), Error> {
@@ -379,5 +329,68 @@ impl RadixAggregator {
         }
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Bootable for RadixAggregator {
+    type Error = Error;
+
+    /// Starts the Radix Aggregator.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the server is already started or if there
+    /// is an issue starting the isolated process.
+    ///
+    /// # Returns
+    ///
+    /// A `JoinHandle` to the spawned task.
+    async fn start(&self) -> Result<(), Error> {
+        if self.process.lock().await.is_some() {
+            return Err(Error::AlreadyStarted);
+        }
+
+        info!("Starting radix-aggregator...");
+
+        self.prepare_config().await?;
+
+        // Run migrations
+        self.run_migrations().await?;
+
+        let process = proven_isolation::spawn(RadixAggregatorApp)
+            .await
+            .map_err(Error::Isolation)?;
+
+        // Store the process for later shutdown
+        self.process.lock().await.replace(process);
+
+        info!("radix-aggregator started");
+
+        Ok(())
+    }
+
+    /// Shuts down the server.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if there is an issue shutting down the isolated process.
+    async fn shutdown(&self) -> Result<(), Error> {
+        info!("radix-aggregator shutting down...");
+
+        if let Some(process) = self.process.lock().await.take() {
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("radix-aggregator shutdown");
+        } else {
+            debug!("No running radix-aggregator to shut down");
+        }
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        if let Some(process) = self.process.lock().await.as_ref() {
+            process.wait().await;
+        }
     }
 }

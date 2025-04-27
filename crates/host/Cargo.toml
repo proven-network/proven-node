@@ -8,6 +8,7 @@ axum.workspace = true
 cidr.workspace = true
 clap.workspace = true
 nix.workspace = true
+proven-bootable.workspace = true
 proven-http.workspace = true
 proven-http-insecure.workspace = true
 proven-vsock-proxy.workspace = true

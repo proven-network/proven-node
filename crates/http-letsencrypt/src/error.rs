@@ -1,3 +1,4 @@
+use proven_bootable::BootableError;
 use proven_http::HttpServerError;
 use thiserror::Error;
 
@@ -13,4 +14,5 @@ pub enum Error {
     CertStore(String),
 }
 
+impl BootableError for Error {}
 impl HttpServerError for Error {}

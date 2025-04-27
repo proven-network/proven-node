@@ -189,10 +189,6 @@ where
             .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
             .layer(CorsLayer::very_permissive());
 
-        let error_404_router = Router::new()
-            .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
-            .layer(CorsLayer::very_permissive());
-
         // Add a test http endpoint
         let code_package = CodePackage::from_str(
             r#"
@@ -250,19 +246,19 @@ where
         let shutdown_token = self.shutdown_token.clone();
 
         let handle = self.task_tracker.spawn(async move {
-            let https_handle = http_server
-                .start(error_404_router)
+            http_server
+                .start()
                 .await
                 .map_err(|e| Error::HttpServer(e.to_string()))?;
 
             tokio::select! {
                 () = shutdown_token.cancelled() => {
                     info!("shutdown command received");
-                    http_server.shutdown().await;
+                    let _ = http_server.shutdown().await;
 
                     Ok(())
                 }
-                _ = https_handle => {
+                _ = http_server.wait() => {
                     error!("https server stopped unexpectedly");
 
                     Err(Error::HttpServer("https server stopped unexpectedly".to_string()))

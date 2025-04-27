@@ -1,4 +1,5 @@
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
+use proven_bootable::Bootable;
 use serde_json::Value;
 
 #[tokio::main]
@@ -20,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create and start the node
-    let mut node = BitcoinNode::new(options);
+    let node = BitcoinNode::new(options);
     node.start().await?;
 
     println!("Bitcoin Core node is ready!");

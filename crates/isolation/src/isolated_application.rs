@@ -1,6 +1,5 @@
 use crate::VolumeMount;
 
-use std::error::Error as StdError;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -57,8 +56,8 @@ pub trait IsolatedApplication: Send + Sync + 'static {
     ///
     /// This function is allowed to return errors, which will be propagated
     /// to the caller.
-    async fn is_ready_check(&self, _info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
-        Ok(true)
+    async fn is_ready_check(&self, _info: ReadyCheckInfo) -> bool {
+        true
     }
 
     /// Returns how often to run the readiness check in milliseconds

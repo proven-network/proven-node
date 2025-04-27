@@ -9,17 +9,18 @@ mod error;
 
 pub use error::Error;
 
-use std::error::Error as StdError;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::Path;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
+use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
 use tempfile::TempDir;
 use tokio::process::Command;
-use tokio::task::JoinHandle;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 /// Regex pattern for matching Postgres log lines
@@ -86,7 +87,7 @@ impl IsolatedApplication for PostgresApp {
         self.handle_stdout(line) // Postgres sends all logs to stderr, so handle them the same way
     }
 
-    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         let ip_address = info.ip_address.to_string();
 
         debug!(
@@ -94,7 +95,7 @@ impl IsolatedApplication for PostgresApp {
             ip_address, self.port
         );
 
-        let cmd = Command::new("/apps/postgres/v17.4/bin/pg_isready")
+        match Command::new("/apps/postgres/v17.4/bin/pg_isready")
             .arg("-h")
             .arg(ip_address)
             .arg("-p")
@@ -105,9 +106,10 @@ impl IsolatedApplication for PostgresApp {
             .arg("postgres")
             .output()
             .await
-            .map_err(|e| Error::Io("failed to spawn pg_isready", e))?;
-
-        Ok(cmd.status.success())
+        {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
+        }
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {
@@ -234,13 +236,14 @@ impl IsolatedApplication for PostgresVacuumApp {
 }
 
 /// Runs a Postgres server to provide storage for Radix Gateway.
+#[derive(Clone)]
 pub struct Postgres {
     password: String,
-    process: Option<IsolatedProcess>,
-    username: String,
+    port: u16,
+    process: Arc<Mutex<Option<IsolatedProcess>>>,
     skip_vacuum: bool,
     store_dir: String,
-    port: u16,
+    username: String,
 }
 
 /// Options for configuring `Postgres`.
@@ -276,84 +279,19 @@ impl Postgres {
         Self {
             password,
             port,
-            process: None,
+            process: Arc::new(Mutex::new(None)),
             username,
             skip_vacuum,
             store_dir,
         }
     }
 
-    /// Starts the Postgres server.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the server is already started, if the database
-    /// initialization fails, or if the vacuuming process fails.
-    ///
-    /// # Returns
-    ///
-    /// A `JoinHandle` to the spawned task that runs the Postgres server.
-    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
-        if self.process.is_some() {
-            return Err(Error::AlreadyStarted);
-        }
-
-        self.prepare_config().await?;
-
-        if !self.is_initialized() {
-            info!("initializing database...");
-            self.initialize_database().await?;
-        }
-
-        // Ensure pg_hba.conf is properly configured even for existing databases
-        self.configure_pg_hba().await?;
-
-        // ensure postmaster.pid does not exist
-        let postmaster_pid = std::path::Path::new(&self.store_dir).join("postmaster.pid");
-        if postmaster_pid.exists() {
-            std::fs::remove_file(&postmaster_pid)
-                .map_err(|e| Error::Io("failed to remove postmaster pid", e))?;
-        }
-
-        let app = PostgresApp {
-            username: self.username.clone(),
-            store_dir: self.store_dir.clone(),
-            port: self.port,
-        };
-
-        let (process, join_handle) = proven_isolation::spawn(app)
-            .await
-            .map_err(Error::Isolation)?;
-
-        self.process = Some(process);
-        if !self.skip_vacuum {
-            if let Err(e) = self.vacuum_database().await {
-                let _ = self.shutdown().await;
-
-                return Err(e);
-            }
-        }
-
-        Ok(join_handle)
-    }
-
-    /// Shuts down the server.
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
-        if let Some(process) = self.process.take() {
-            info!("postgres shutting down...");
-            process.shutdown().await.map_err(Error::Isolation)?;
-            info!("postgres shutdown");
-        } else {
-            debug!("no running Postgres server to shut down");
-        }
-
-        Ok(())
-    }
-
     /// Returns the IP address of the Postgres server.
     #[must_use]
-    pub fn ip_address(&self) -> IpAddr {
+    pub async fn ip_address(&self) -> IpAddr {
         self.process
+            .lock()
+            .await
             .as_ref()
             .map(|p| p.container_ip().unwrap())
             .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
@@ -382,7 +320,7 @@ impl Postgres {
             store_dir: self.store_dir.clone(),
         };
 
-        let (process, _join_handle) = proven_isolation::spawn(init_app)
+        let process = proven_isolation::spawn(init_app)
             .await
             .map_err(Error::Isolation)?;
 
@@ -444,13 +382,13 @@ impl Postgres {
         info!("vacuuming database...");
 
         let vacuum_app = PostgresVacuumApp {
-            host: self.ip_address(),
+            host: self.ip_address().await,
             password: self.password.clone(),
             port: self.port,
             username: self.username.clone(),
         };
 
-        let (process, _join_handle) = proven_isolation::spawn(vacuum_app)
+        let process = proven_isolation::spawn(vacuum_app)
             .await
             .map_err(Error::Isolation)?;
 
@@ -464,6 +402,87 @@ impl Postgres {
             error!("vacuuming database failed");
 
             Err(Error::Vacuum)
+        }
+    }
+}
+
+#[async_trait]
+impl Bootable for Postgres {
+    type Error = Error;
+
+    /// Starts the Postgres server.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the server is already started, if the database
+    /// initialization fails, or if the vacuuming process fails.
+    ///
+    /// # Returns
+    ///
+    /// Returns an error if postgres fails to start.
+    async fn start(&self) -> Result<(), Error> {
+        if self.process.lock().await.is_some() {
+            return Err(Error::AlreadyStarted);
+        }
+
+        debug!("starting Postgres server...");
+
+        self.prepare_config().await?;
+
+        if !self.is_initialized() {
+            info!("initializing database...");
+            self.initialize_database().await?;
+        }
+
+        // Ensure pg_hba.conf is properly configured even for existing databases
+        self.configure_pg_hba().await?;
+
+        // ensure postmaster.pid does not exist
+        let postmaster_pid = std::path::Path::new(&self.store_dir).join("postmaster.pid");
+        if postmaster_pid.exists() {
+            std::fs::remove_file(&postmaster_pid)
+                .map_err(|e| Error::Io("failed to remove postmaster pid", e))?;
+        }
+
+        let app = PostgresApp {
+            port: self.port,
+            store_dir: self.store_dir.clone(),
+            username: self.username.clone(),
+        };
+
+        let process = proven_isolation::spawn(app)
+            .await
+            .map_err(Error::Isolation)?;
+
+        self.process.lock().await.replace(process);
+
+        if !self.skip_vacuum {
+            if let Err(e) = self.vacuum_database().await {
+                let _ = self.shutdown().await;
+
+                return Err(e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Shuts down the server.
+    async fn shutdown(&self) -> Result<(), Error> {
+        if let Some(process) = self.process.lock().await.take() {
+            info!("postgres shutting down...");
+            process.shutdown().await.map_err(Error::Isolation)?;
+            info!("postgres shutdown");
+        } else {
+            debug!("no running Postgres server to shut down");
+        }
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        if let Some(process) = self.process.lock().await.as_ref() {
+            process.wait().await;
         }
     }
 }

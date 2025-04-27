@@ -3,6 +3,7 @@
 use std::io;
 use std::process::ExitStatus;
 
+use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// Error type for the nats-server crate.
@@ -48,3 +49,5 @@ pub enum Error {
     #[error("regex error: {0}")]
     Regex(#[from] regex::Error),
 }
+
+impl BootableError for Error {}

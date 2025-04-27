@@ -7,6 +7,7 @@ edition = "2024"
 async-trait.workspace = true
 axum.workspace = true
 parking_lot.workspace = true
+proven-bootable.workspace = true
 proven-http.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

@@ -10,18 +10,19 @@ mod error;
 pub use error::Error;
 use regex::Regex;
 
-use std::error::Error as StdError;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::RwLock;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
+use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use reqwest::Client;
 use serde_json;
 use strip_ansi_escapes::strip_str;
-use tokio::task::JoinHandle;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace, warn};
 
 // Rust log regexp
@@ -237,7 +238,7 @@ impl IsolatedApplication for LighthouseApp {
         16 * 1024
     }
 
-    async fn is_ready_check(&self, info: ReadyCheckInfo) -> Result<bool, Box<dyn StdError>> {
+    async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
         let http_url = format!("http://{}:{}", info.ip_address, self.http_port);
 
         let client = Client::new();
@@ -254,34 +255,34 @@ impl IsolatedApplication for LighthouseApp {
                             if let Some(data) = json.get("data") {
                                 if data.is_string() {
                                     match data.as_str() {
-                                        Some("Synced") => return Ok(true),
-                                        Some("Stalled") => return Ok(false),
-                                        _ => return Ok(false),
+                                        Some("Synced") => return true,
+                                        Some("Stalled") => return false,
+                                        _ => return false,
                                     }
                                 } else if data.is_object()
                                     && (data.get("SyncingFinalized").is_some()
                                         || data.get("BackFillSyncing").is_some())
                                 {
                                     // Lighthouse is syncing, but we can still consider it ready
-                                    return Ok(true);
+                                    return true;
                                 }
                             }
                         }
                         Err(_) => {
                             warn!("Error parsing /lighthouse/syncing response");
 
-                            return Ok(false);
+                            return false;
                         }
                     }
                 } else {
                     warn!("Response from /lighthouse/syncing: {:?}", response.status());
                 }
 
-                Ok(false)
+                false
             }
             Err(_) => {
                 debug!("Error getting /lighthouse/syncing");
-                Ok(false)
+                false
             }
         }
     }
@@ -311,9 +312,10 @@ impl IsolatedApplication for LighthouseApp {
 }
 
 /// Runs a Lighthouse consensus client.
+#[derive(Clone)]
 pub struct LighthouseNode {
     /// The isolated process running Lighthouse
-    process: Option<IsolatedProcess>,
+    process: Arc<Mutex<Option<IsolatedProcess>>>,
 
     /// The execution client RPC IP address
     execution_rpc_ip_address: String,
@@ -360,7 +362,7 @@ impl LighthouseNode {
         }: LighthouseNodeOptions,
     ) -> Self {
         Self {
-            process: None,
+            process: Arc::new(Mutex::new(None)),
             execution_rpc_ip_address,
             execution_rpc_jwt_hex,
             execution_rpc_port,
@@ -373,6 +375,20 @@ impl LighthouseNode {
         }
     }
 
+    async fn prepare_config(&self) -> Result<(), Error> {
+        // Create the data directory if it doesn't exist
+        if !self.store_dir.exists() {
+            fs::create_dir_all(&self.store_dir)
+                .map_err(|e| Error::Io("Failed to create data directory", e))?;
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Bootable for LighthouseNode {
+    type Error = Error;
+
     /// Starts the Lighthouse consensus client.
     ///
     /// # Errors
@@ -380,8 +396,8 @@ impl LighthouseNode {
     /// - Data directories cannot be created
     /// - The Lighthouse process fails to start
     /// - The Lighthouse HTTP endpoint fails to become available
-    pub async fn start(&mut self) -> Result<JoinHandle<()>, Error> {
-        if self.process.is_some() {
+    async fn start(&self) -> Result<(), Error> {
+        if self.process.lock().await.is_some() {
             return Err(Error::AlreadyStarted);
         }
 
@@ -403,20 +419,20 @@ impl LighthouseNode {
             store_dir: self.store_dir.clone(),
         };
 
-        let (process, join_handle) = proven_isolation::spawn(app)
+        let process = proven_isolation::spawn(app)
             .await
             .map_err(Error::Isolation)?;
 
-        self.process = Some(process);
+        self.process.lock().await.replace(process);
 
-        Ok(join_handle)
+        Ok(())
     }
 
     /// Shuts down the Lighthouse node.
-    pub async fn shutdown(&mut self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Error> {
         info!("Lighthouse node shutting down...");
 
-        if let Some(process) = self.process.take() {
+        if let Some(process) = self.process.lock().await.take() {
             process.shutdown().await.map_err(Error::Isolation)?;
             info!("Lighthouse node shutdown");
         } else {
@@ -426,13 +442,10 @@ impl LighthouseNode {
         Ok(())
     }
 
-    async fn prepare_config(&self) -> Result<(), Error> {
-        // Create the data directory if it doesn't exist
-        if !self.store_dir.exists() {
-            fs::create_dir_all(&self.store_dir)
-                .map_err(|e| Error::Io("Failed to create data directory", e))?;
+    async fn wait(&self) {
+        if let Some(process) = self.process.lock().await.as_ref() {
+            process.wait().await;
         }
-        Ok(())
     }
 }
 

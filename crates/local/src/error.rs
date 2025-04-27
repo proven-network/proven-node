@@ -8,6 +8,10 @@ pub enum Error {
     #[error("already started")]
     AlreadyStarted,
 
+    /// Bitcoin node error
+    #[error(transparent)]
+    BitcoinNode(#[from] proven_bitcoin_core::Error),
+
     /// Core error
     #[error(transparent)]
     Core(#[from] proven_core::Error),
