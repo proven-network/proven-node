@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use http::HeaderMap;
+use http::{HeaderMap, Method};
 use serde::{Deserialize, Serialize};
 
 /// A request to a SQL store.
@@ -13,7 +13,8 @@ pub struct Request {
     pub headers: HeaderMap,
 
     /// The method of the request.
-    pub method: String,
+    #[serde(with = "http_serde::method")]
+    pub method: Method,
 
     /// The path of the request.
     pub path: String,

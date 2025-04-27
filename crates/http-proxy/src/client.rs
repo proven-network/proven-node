@@ -17,9 +17,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
-type NatsClient<S> = <S as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-    HttpServiceHandler<S>,
->;
+type NatsClient<S> =
+    <S as InitializedStream<Request, DeserializeError, SerializeError>>::Client<HttpServiceHandler>;
 
 /// Options for the NATS proxy client.
 #[derive(Clone)]
@@ -27,12 +26,12 @@ pub struct NatsProxyClientOptions<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
     <<S as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-        HttpServiceHandler<S>,
-    > as Client<HttpServiceHandler<S>, Request, DeserializeError, SerializeError>>::Options: Clone,
+        HttpServiceHandler,
+    > as Client<HttpServiceHandler, Request, DeserializeError, SerializeError>>::Options: Clone,
 {
     /// The options for the messaging client.
     pub client_options: <NatsClient<S> as Client<
-        HttpServiceHandler<S>,
+        HttpServiceHandler,
         Request,
         DeserializeError,
         SerializeError,
@@ -50,18 +49,18 @@ where
 pub struct NatsProxyClient<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError> + Clone + Send + Sync + 'static,
-    NatsClient<S>: Client<HttpServiceHandler<S>, Request, DeserializeError, SerializeError>
+    NatsClient<S>: Client<HttpServiceHandler, Request, DeserializeError, SerializeError>
         + Clone
         + Send
         + Sync
         + 'static,
     <<S as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-        HttpServiceHandler<S>,
-    > as Client<HttpServiceHandler<S>, Request, DeserializeError, SerializeError>>::Options:
+        HttpServiceHandler,
+    > as Client<HttpServiceHandler, Request, DeserializeError, SerializeError>>::Options:
         Clone + Send,
 {
     client_options: <NatsClient<S> as Client<
-        HttpServiceHandler<S>,
+            HttpServiceHandler,
         Request,
         DeserializeError,
         SerializeError,
@@ -73,14 +72,14 @@ where
 impl<S> NatsProxyClient<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError> + Clone + Send + Sync + 'static,
-    NatsClient<S>: Client<HttpServiceHandler<S>, Request, DeserializeError, SerializeError>
+    NatsClient<S>: Client<HttpServiceHandler, Request, DeserializeError, SerializeError>
         + Clone
         + Send
         + Sync
         + 'static,
     <<S as InitializedStream<Request, DeserializeError, SerializeError>>::Client<
-        HttpServiceHandler<S>,
-    > as Client<HttpServiceHandler<S>, Request, DeserializeError, SerializeError>>::Options:
+        HttpServiceHandler,
+    > as Client<HttpServiceHandler, Request, DeserializeError, SerializeError>>::Options:
         Clone + Send,
 {
     /// Create a new NATS proxy client.
@@ -98,7 +97,7 @@ where
         info!("Initializing NATS client for HTTP proxy...");
         let nats_client = self
             .stream
-            .client::<_, HttpServiceHandler<S>>("HTTP_PROXY", self.client_options.clone())
+            .client::<_, HttpServiceHandler>("HTTP_PROXY", self.client_options.clone())
             .await
             .map_err(|e| {
                 error!("NATS client setup failed: {}", e);
@@ -118,14 +117,14 @@ where
         where
             Stream: InitializedStream<Request, DeserializeError, SerializeError>,
             NatsClient<Stream>:
-                Client<HttpServiceHandler<Stream>, Request, DeserializeError, SerializeError>,
+                Client<HttpServiceHandler, Request, DeserializeError, SerializeError>,
         {
             info!(%method, %uri, "Received HTTP request");
 
             let proxy_request = Request {
                 body: if body.is_empty() { None } else { Some(body) },
                 headers,
-                method: method.to_string(),
+                method,
                 path: uri
                     .path_and_query()
                     .map_or_else(|| uri.path().to_string(), |pq| pq.to_string()),
@@ -179,12 +178,14 @@ where
             })?;
 
         warn!("HTTP server unexpectedly stopped.");
+        
         Ok(())
     }
 
     /// Shutdown the NATS proxy client.
     pub async fn shutdown(&self) -> Result<(), Error> {
         info!("NatsProxyClient shutdown requested.");
+
         Ok(())
     }
 }

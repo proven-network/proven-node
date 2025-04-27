@@ -1,14 +1,12 @@
 use crate::error::Error;
 
-use std::net::IpAddr;
-
 /// Options for the NATS proxy service.
 pub struct NatsProxyServiceOptions {
     /// The name of the service listen for requests on.
     service_name: String,
 
-    /// The address to forward requests to.
-    target_addr: IpAddr,
+    /// The port to forward requests to.
+    target_port: u16,
 }
 
 /// The NATS proxy service.
@@ -17,21 +15,21 @@ pub struct NatsProxyService {
     /// The name of the service listen for requests on.
     service_name: String,
 
-    /// The address to forward requests to.
-    target_addr: IpAddr,
+    /// The port to forward requests to.
+    target_port: u16,
 }
 
 impl NatsProxyService {
     /// Create a new NATS proxy service.
     pub fn new(
         NatsProxyServiceOptions {
-            target_addr,
             service_name,
+            target_port,
         }: NatsProxyServiceOptions,
     ) -> Self {
         Self {
-            target_addr,
             service_name,
+            target_port,
         }
     }
 

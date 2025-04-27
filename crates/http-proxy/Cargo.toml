@@ -13,6 +13,7 @@ futures.workspace = true
 http.workspace = true
 http-serde.workspace = true
 proven-messaging.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
