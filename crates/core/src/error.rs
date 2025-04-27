@@ -1,3 +1,4 @@
+use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// The result type for this crate.
@@ -58,3 +59,5 @@ pub enum Error {
     #[error(transparent)]
     Runtime(#[from] proven_runtime::Error),
 }
+
+impl BootableError for Error {}

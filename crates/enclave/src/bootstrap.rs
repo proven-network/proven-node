@@ -111,7 +111,6 @@ pub struct Bootstrap {
     nats_server: Option<NatsServer<MockGovernance, NsmAttestor>>,
 
     core: Option<EnclaveNodeCore>,
-    core_handle: Option<JoinHandle<proven_core::Result<()>>>,
 
     // state
     started: bool,
@@ -160,7 +159,6 @@ impl Bootstrap {
             nats_server: None,
 
             core: None,
-            core_handle: None,
 
             started: false,
             shutdown_token: CancellationToken::new(),
@@ -296,7 +294,6 @@ impl Bootstrap {
         let radix_node_fs_handle = self.radix_node_fs_handle.take().unwrap();
         let postgres_fs_handle = self.postgres_fs_handle.take().unwrap();
         let nats_server_fs_handle = self.nats_server_fs_handle.take().unwrap();
-        let core_handle = self.core_handle.take().unwrap();
 
         let proxy = Arc::new(Mutex::new(self.proxy.take().unwrap()));
         let dnscrypt_proxy = Arc::new(Mutex::new(self.dnscrypt_proxy.take().unwrap()));
@@ -332,7 +329,7 @@ impl Bootstrap {
                 let radix_gateway = radix_gateway.clone();
                 let nats_server = nats_server.clone();
                 let postgres = postgres.clone();
-
+                let core = core.clone();
 
                 // Tasks that must be running for the enclave to function
                 tokio::spawn(async move {
@@ -350,6 +347,9 @@ impl Bootstrap {
 
                     let nats_server = nats_server.clone();
                     let nats_server_guard = nats_server.lock().await;
+
+                    let core = core.clone();
+                    let core_guard = core.lock().await;
 
                     tokio::select! {
                         Ok(Err(e)) = proxy_handle => {
@@ -382,8 +382,8 @@ impl Bootstrap {
                         () = nats_server_guard.wait() => {
                             error!("nats_server exited");
                         }
-                        Ok(Err(e)) = core_handle => {
-                            error!("core exited: {:?}", e);
+                        () = core_guard.wait() => {
+                            error!("core exited");
                         }
                         else => {
                             info!("enclave shutdown cleanly. goodbye.");
@@ -397,8 +397,8 @@ impl Bootstrap {
                 _ = critical_tasks => error!("critical task failed - exiting")
             }
 
-            core.lock().await.shutdown().await;
-            let _ =nats_server.lock().await.shutdown().await;
+            let _ = core.lock().await.shutdown().await;
+            let _ = nats_server.lock().await.shutdown().await;
             nats_server_fs.lock().await.shutdown().await;
             let _ = radix_gateway.lock().await.shutdown().await;
             let _ = radix_aggregator.lock().await.shutdown().await;
@@ -428,7 +428,7 @@ impl Bootstrap {
         // shutdown in reverse order
 
         if let Some(core) = self.core {
-            core.shutdown().await;
+            let _ = core.shutdown().await;
         }
 
         if let Some(nats_server) = self.nats_server {
@@ -1070,14 +1070,14 @@ impl Bootstrap {
         let core = Core::new(CoreOptions {
             application_manager,
             attestor: self.attestor.clone(),
+            http_server,
             network: network.clone(),
             runtime_pool_manager,
             session_manager,
         });
-        let core_handle = core.start(http_server).await?;
+        core.start().await?;
 
         self.core = Some(core);
-        self.core_handle = Some(core_handle);
 
         info!("core started");
 

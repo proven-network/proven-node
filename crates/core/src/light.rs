@@ -2,54 +2,79 @@ use crate::LightContext;
 use crate::error::{Error, Result};
 use crate::handlers::nats_cluster_endpoint_handler;
 
+use async_trait::async_trait;
 use axum::Router;
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::{any, get};
 use proven_attestation::Attestor;
+use proven_bootable::Bootable;
 use proven_governance::Governance;
 use proven_http::HttpServer;
 use proven_network::{NATS_CLUSTER_ENDPOINT_API_PATH, ProvenNetwork};
-use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 /// Options for creating a new core.
-pub struct LightCoreOptions<A, G>
+pub struct LightCoreOptions<A, G, HS>
 where
     A: Attestor,
     G: Governance,
+    HS: HttpServer,
 {
+    /// The HTTP server.
+    pub http_server: HS,
+
     /// The network for peer discovery.
     pub network: ProvenNetwork<G, A>,
 }
 
 /// Core logic for handling user interactions.
-pub struct LightCore<A, G>
+#[derive(Clone)]
+pub struct LightCore<A, G, HS>
 where
     A: Attestor,
     G: Governance,
+    HS: HttpServer,
 {
+    http_server: HS,
     network: ProvenNetwork<G, A>,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl<A, G> LightCore<A, G>
+impl<A, G, HS> LightCore<A, G, HS>
 where
     A: Attestor,
     G: Governance,
+    HS: HttpServer,
 {
     /// Create new core.
-    pub fn new(LightCoreOptions { network }: LightCoreOptions<A, G>) -> Self {
+    pub fn new(
+        LightCoreOptions {
+            http_server,
+            network,
+        }: LightCoreOptions<A, G, HS>,
+    ) -> Self {
         Self {
+            http_server,
             network,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
     }
+}
+
+#[async_trait]
+impl<A, G, HS> Bootable for LightCore<A, G, HS>
+where
+    A: Attestor,
+    G: Governance,
+    HS: HttpServer,
+{
+    type Error = Error;
 
     /// Start the core.
     ///
@@ -57,10 +82,7 @@ where
     ///
     /// This function will return an error if the core has already been started or if the HTTP server fails to start.
     #[allow(clippy::missing_panics_doc)] // TODO: Remove with test code
-    pub async fn start<HS>(&self, http_server: HS) -> Result<JoinHandle<Result<()>>>
-    where
-        HS: HttpServer,
-    {
+    async fn start(&self) -> Result<()> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
@@ -90,14 +112,14 @@ where
             .await
             .map_err(|e| Error::Network(e.to_string()))?;
 
-        http_server
+        self.http_server
             .set_router_for_hostname(fqdn, primary_router)
             .await
             .map_err(|e| Error::HttpServer(e.to_string()))?;
 
+        let http_server = self.http_server.clone();
         let shutdown_token = self.shutdown_token.clone();
-
-        let handle = self.task_tracker.spawn(async move {
+        self.task_tracker.spawn(async move {
             http_server
                 .start()
                 .await
@@ -120,16 +142,22 @@ where
 
         self.task_tracker.close();
 
-        Ok(handle)
+        Ok(())
     }
 
     /// Shutdown the core.
-    pub async fn shutdown(&self) {
+    async fn shutdown(&self) -> Result<()> {
         info!("light core shutting down...");
 
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
         info!("light core shutdown");
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        self.task_tracker.wait().await;
     }
 }

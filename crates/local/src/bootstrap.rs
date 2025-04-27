@@ -43,7 +43,6 @@ use proven_store_fs::{FsStore, FsStore1, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
 use radix_common::prelude::NetworkDefinition;
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
@@ -65,7 +64,7 @@ pub struct Bootstrap {
     num_replicas: usize,
     governance: Option<MockGovernance>,
     network: Option<ProvenNetwork<MockGovernance, MockAttestor>>,
-    light_core: Option<LightCore<MockAttestor, MockGovernance>>,
+    light_core: Option<LightCore<MockAttestor, MockGovernance, InsecureHttpServer>>,
 
     radix_mainnet_node: Option<RadixNode>,
 
@@ -92,7 +91,6 @@ pub struct Bootstrap {
     nats_server: Option<NatsServer<MockGovernance, MockAttestor>>,
 
     core: Option<LocalNodeCore>,
-    core_handle: Option<JoinHandle<proven_core::Result<()>>>,
 
     // state
     started: bool,
@@ -139,7 +137,6 @@ impl Bootstrap {
             nats_server: None,
 
             core: None,
-            core_handle: None,
 
             started: false,
             shutdown_token: CancellationToken::new(),
@@ -221,9 +218,6 @@ impl Bootstrap {
             self.unwind_services().await;
             return Err(e);
         }
-
-        // Mandatory handles
-        let core_handle = self.core_handle.take().unwrap();
 
         // Optional services
         let radix_mainnet_node_option = self
@@ -405,9 +399,14 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-                    Ok(Err(e)) = core_handle => {
-                        error!("core exited: {:?}", e);
-                    }
+                    _ = async {
+                        if let Some(core) = self.core {
+                            core.wait().await;
+                            error!("core exited");
+                            return;
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
                     else => {
                         info!("enclave shutdown cleanly. goodbye.");
                     }
@@ -420,7 +419,7 @@ impl Bootstrap {
             }
 
             // Shutdown services in reverse order
-            core.lock().await.shutdown().await;
+            let _ = core.lock().await.shutdown().await;
             let _ = nats_server.lock().await.shutdown().await;
 
             if let Some(gateway) = &radix_gateway {
@@ -488,7 +487,7 @@ impl Bootstrap {
         // shutdown in reverse order
 
         if let Some(core) = self.core {
-            core.shutdown().await;
+            let _ = core.shutdown().await;
         }
 
         if let Some(radix_gateway) = self.radix_gateway {
@@ -544,7 +543,7 @@ impl Bootstrap {
         }
 
         if let Some(light_core) = self.light_core {
-            light_core.shutdown().await;
+            let _ = light_core.shutdown().await;
         }
     }
 
@@ -600,9 +599,10 @@ impl Bootstrap {
         );
 
         let light_core = LightCore::new(LightCoreOptions {
+            http_server,
             network: network.clone(),
         });
-        let _light_core_handle = light_core.start(http_server).await?;
+        light_core.start().await?;
 
         self.governance = Some(governance);
         self.network = Some(network);
@@ -1185,19 +1185,19 @@ impl Bootstrap {
         let core = Core::new(CoreOptions {
             application_manager,
             attestor: self.attestor.clone(),
+            http_server,
             network: network.clone(),
             runtime_pool_manager,
             session_manager,
         });
 
         // Shutdown the light core and free the port before starting the full core
-        light_core.shutdown().await;
+        let _ = light_core.shutdown().await;
         self.light_core = None;
 
-        let core_handle = core.start(http_server).await?;
+        core.start().await?;
 
         self.core = Some(core);
-        self.core_handle = Some(core_handle);
 
         info!("core started");
 

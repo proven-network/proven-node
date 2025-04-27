@@ -18,7 +18,7 @@ pub trait HttpServerError: Debug + Error + Send + Sync {}
 #[async_trait]
 pub trait HttpServer
 where
-    Self: Bootable + Send + Sync + 'static,
+    Self: Bootable + Clone + Send + Sync + 'static,
 {
     /// The error type for this server.
     type Error: HttpServerError;
