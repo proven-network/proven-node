@@ -1,3 +1,4 @@
+use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
@@ -19,3 +20,5 @@ pub enum Error {
     #[error("service error: {0}")]
     Service(String),
 }
+
+impl BootableError for Error {}

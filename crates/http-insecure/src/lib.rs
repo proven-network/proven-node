@@ -53,9 +53,6 @@ impl Bootable for InsecureHttpServer {
     type Error = Error;
 
     async fn start(&self) -> Result<(), Error> {
-        let listen_addr = self.listen_addr;
-        let shutdown_token = self.shutdown_token.clone();
-
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
         }
@@ -93,10 +90,11 @@ impl Bootable for InsecureHttpServer {
             },
         ));
 
-        let listener = tokio::net::TcpListener::bind(listen_addr)
+        let listener = tokio::net::TcpListener::bind(self.listen_addr)
             .await
             .map_err(Error::Bind)?;
 
+        let shutdown_token = self.shutdown_token.clone();
         self.task_tracker.spawn(async move {
             tokio::select! {
                 e = axum::serve(listener, router.into_make_service()).into_future() => {

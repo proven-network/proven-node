@@ -3,8 +3,12 @@ use crate::request::Request;
 use crate::service_handler::HttpServiceHandler;
 use crate::{DeserializeError, SerializeError};
 
+use async_trait::async_trait;
+use proven_bootable::Bootable;
 use proven_messaging::service::Service;
 use proven_messaging::stream::InitializedStream;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 
 type MessagingService<S> =
@@ -36,6 +40,7 @@ where
 }
 
 /// The HTTP proxy service.
+#[derive(Clone)]
 pub struct HttpProxyService<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
@@ -51,11 +56,17 @@ where
         SerializeError,
     >>::Options,
 
+    /// The shutdown token.
+    shutdown_token: CancellationToken,
+
     /// The stream to listen for requests on.
     stream: S,
 
     /// The port to forward requests to.
     target_port: u16,
+
+    /// The task tracker.
+    task_tracker: TaskTracker,
 }
 
 impl<S> HttpProxyService<S>
@@ -74,15 +85,30 @@ where
         Self {
             service_name,
             service_options,
+            shutdown_token: CancellationToken::new(),
             stream,
             target_port,
+            task_tracker: TaskTracker::new(),
         }
     }
+}
+
+#[async_trait]
+impl<S> Bootable for HttpProxyService<S>
+where
+    S: InitializedStream<Request, DeserializeError, SerializeError>,
+{
+    type Error = Error;
 
     /// Start the HTTP proxy.
-    pub async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Error> {
+        if self.task_tracker.is_closed() {
+            return Err(Error::AlreadyStarted);
+        }
+
         info!("Initializing HTTP proxy service...");
 
+        // TODO: Serivces and consumers should probably become bootables
         let _messaging_service = self
             .stream
             .start_service::<_, HttpServiceHandler>(
@@ -96,11 +122,25 @@ where
                 Error::Service(e.to_string())
             })?;
 
+        self.task_tracker.close();
+
         Ok(())
     }
 
-    /// Shutdown the HTTP proxy.
-    pub async fn shutdown(&self) -> Result<(), Error> {
-        todo!()
+    /// Shutdown the HTTP proxy service.
+    async fn shutdown(&self) -> Result<(), Error> {
+        info!("http proxy service shutting down...");
+
+        self.shutdown_token.cancel();
+        self.task_tracker.wait().await;
+
+        info!("http proxy service shutdown");
+
+        Ok(())
+    }
+
+    /// Wait for the HTTP proxy to exit.
+    async fn wait(&self) {
+        self.task_tracker.wait().await;
     }
 }
