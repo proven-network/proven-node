@@ -6,6 +6,7 @@ use crate::request::Request;
 use crate::response::Response;
 use crate::{DeserializeError, SerializeError};
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -22,9 +23,9 @@ pub struct HttpServiceHandler {
 }
 
 impl HttpServiceHandler {
-    pub fn new(target_port: u16) -> Self {
+    pub fn new(target_addr: SocketAddr) -> Self {
         Self {
-            base_url: format!("http://localhost:{}", target_port),
+            base_url: format!("http://{}", target_addr),
             client: Arc::new(Client::new()),
         }
     }

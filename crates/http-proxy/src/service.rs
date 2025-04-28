@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use crate::error::Error;
 use crate::request::Request;
 use crate::service_handler::HttpServiceHandler;
@@ -33,8 +35,8 @@ where
     /// The stream to listen for requests on.
     pub stream: S,
 
-    /// The port to forward requests to.
-    pub target_port: u16,
+    /// The address to forward requests to.
+    pub target_addr: SocketAddr,
 }
 
 /// The HTTP proxy service.
@@ -57,14 +59,14 @@ where
             service_name,
             service_options,
             stream,
-            target_port,
+            target_addr,
         }: HttpProxyServiceOptions<S>,
     ) -> Result<Self, Error> {
         let service = stream
             .service::<_, HttpServiceHandler>(
                 service_name.clone(),
                 service_options.clone(),
-                HttpServiceHandler::new(target_port),
+                HttpServiceHandler::new(target_addr),
             )
             .await
             .map_err(|e| {

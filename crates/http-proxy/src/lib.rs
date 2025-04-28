@@ -107,7 +107,6 @@ mod tests {
         let result = tokio::time::timeout(test_timeout, async {
             // 1. Start Echo Server
             let (echo_addr, echo_server_handle) = run_echo_server().await;
-            let target_port = echo_addr.port();
 
             // 2. Setup Stream
             let stream =
@@ -140,7 +139,7 @@ mod tests {
                 service_name: "test_http_proxy_integration".to_string(),
                 service_options: MemoryServiceOptions,
                 stream: stream.clone(),
-                target_port,
+                target_addr: echo_addr,
             };
             let proxy_service = HttpProxyService::new(service_options)
                 .await
