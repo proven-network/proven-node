@@ -8,8 +8,6 @@
 mod error;
 
 pub use error::Error;
-use proven_bootable::Bootable;
-use url::Url;
 
 use std::net::SocketAddr;
 use std::path::Path;
@@ -17,12 +15,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
+use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info};
+use url::Url;
 
 static P2P_PORT: u16 = 18333;
 
@@ -208,26 +208,15 @@ impl BitcoinNode {
         }
     }
 
-    /// Returns the RPC URL for the Bitcoin Core node.
-    #[must_use]
-    pub async fn get_rpc_url(&self) -> Result<Url, Error> {
-        self.get_rpc_socket_addr().await.and_then(|socket_addr| {
-            Url::parse(&format!("http://{}:{}", socket_addr.ip(), self.rpc_port))
-                .map_err(Error::UrlParse)
-        })
-    }
+    async fn prepare_config(&self) -> Result<(), Error> {
+        // Create the data directory if it doesn't exist
+        let data_dir = Path::new(&self.store_dir);
+        if !data_dir.exists() {
+            std::fs::create_dir_all(data_dir)
+                .map_err(|e| Error::Io("Failed to create data directory", e))?;
+        }
 
-    /// Returns the IP address of the Bitcoin Core node.
-    #[must_use]
-    pub async fn get_rpc_socket_addr(&self) -> Result<SocketAddr, Error> {
-        self.process
-            .lock()
-            .await
-            .as_ref()
-            .ok_or(Error::NotStarted)?
-            .container_ip()
-            .map(|ip| SocketAddr::new(ip, self.rpc_port))
-            .ok_or(Error::NotStarted)
+        Ok(())
     }
 
     /// Make an RPC call to the Bitcoin Core node
@@ -243,7 +232,7 @@ impl BitcoinNode {
         let client = reqwest::Client::new();
 
         let response = client
-            .post(self.get_rpc_url().await?)
+            .post(self.rpc_url().await?)
             .basic_auth(RPC_USER, Some(RPC_PASSWORD))
             .json(&serde_json::json!({
                 "jsonrpc": "1.0",
@@ -286,15 +275,26 @@ impl BitcoinNode {
         Ok(rpc_response.result)
     }
 
-    async fn prepare_config(&self) -> Result<(), Error> {
-        // Create the data directory if it doesn't exist
-        let data_dir = Path::new(&self.store_dir);
-        if !data_dir.exists() {
-            std::fs::create_dir_all(data_dir)
-                .map_err(|e| Error::Io("Failed to create data directory", e))?;
-        }
+    /// Returns the RPC URL for the Bitcoin Core node.
+    #[must_use]
+    pub async fn rpc_url(&self) -> Result<Url, Error> {
+        self.rpc_socket_addr().await.and_then(|socket_addr| {
+            Url::parse(&format!("http://{}:{}", socket_addr.ip(), self.rpc_port))
+                .map_err(Error::UrlParse)
+        })
+    }
 
-        Ok(())
+    /// Returns the socket address of the Bitcoin Core node's RPC server.
+    #[must_use]
+    pub async fn rpc_socket_addr(&self) -> Result<SocketAddr, Error> {
+        self.process
+            .lock()
+            .await
+            .as_ref()
+            .ok_or(Error::NotStarted)?
+            .container_ip()
+            .map(|ip| SocketAddr::new(ip, self.rpc_port))
+            .ok_or(Error::NotStarted)
     }
 }
 

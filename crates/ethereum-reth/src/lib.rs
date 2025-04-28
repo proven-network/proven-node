@@ -8,12 +8,11 @@
 mod error;
 
 pub use error::Error;
-use regex::Regex;
-use tokio::sync::Mutex;
 
 use std::fs;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -21,10 +20,13 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
+use regex::Regex;
 use reqwest::Client;
 use std::sync::RwLock;
 use strip_ansi_escapes::strip_str;
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace, warn};
+use url::Url;
 
 // Rust log regexp
 static LOG_REGEX: Lazy<Regex> =
@@ -35,8 +37,10 @@ static LOG_REGEX: Lazy<Regex> =
 pub enum EthereumNetwork {
     /// Ethereum mainnet
     Mainnet,
+
     /// Ethereum testnet (Sepolia)
     Sepolia,
+
     /// Ethereum testnet (Holesky)
     Holesky,
 }
@@ -310,7 +314,7 @@ impl RethNode {
         }
     }
 
-    /// Returns the IP address of the Postgres server.
+    /// Returns the IP address of the Reth node.
     #[must_use]
     pub async fn ip_address(&self) -> IpAddr {
         self.process
@@ -321,19 +325,42 @@ impl RethNode {
             .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
     }
 
+    /// Returns the port of the Reth node's HTTP RPC server.
+    #[must_use]
+    pub fn http_port(&self) -> u16 {
+        self.http_port
+    }
+
+    /// Returns the HTTP RPC URL for the Reth node.
+    #[must_use]
+    pub async fn http_url(&self) -> Result<Url, Error> {
+        self.http_socket_addr().await.and_then(|socket_addr| {
+            Url::parse(&format!("http://{}:{}", socket_addr.ip(), self.http_port))
+                .map_err(Error::UrlParse)
+        })
+    }
+
+    /// Returns the socket address of the Reth node's HTTP RPC server.
+    #[must_use]
+    pub async fn http_socket_addr(&self) -> Result<SocketAddr, Error> {
+        self.process
+            .lock()
+            .await
+            .as_ref()
+            .ok_or(Error::NotStarted)?
+            .container_ip()
+            .map(|ip| SocketAddr::new(ip, self.http_port))
+            .ok_or(Error::NotStarted)
+    }
+
     /// Returns the JWT hex value for auth RPC.
+    #[must_use]
     pub async fn jwt_hex(&self) -> Result<String, Error> {
         let jwt_hex = tokio::fs::read_to_string(self.store_dir.join("jwt.hex"))
             .await
             .map_err(|e| Error::Io("Failed to read jwt.hex", e))?;
 
         Ok(jwt_hex)
-    }
-
-    /// Returns the port of the Postgres server.
-    #[must_use]
-    pub fn rpc_port(&self) -> u16 {
-        self.rpc_port
     }
 
     async fn prepare_config(&self) -> Result<(), Error> {
@@ -343,6 +370,34 @@ impl RethNode {
                 .map_err(|e| Error::Io("Failed to create data directory", e))?;
         }
         Ok(())
+    }
+
+    /// Returns the port of the Reth node's RPC server.
+    #[must_use]
+    pub fn rpc_port(&self) -> u16 {
+        self.rpc_port
+    }
+
+    /// Returns the RPC URL for the Reth node.
+    #[must_use]
+    pub async fn rpc_url(&self) -> Result<Url, Error> {
+        self.rpc_socket_addr().await.and_then(|socket_addr| {
+            Url::parse(&format!("http://{}:{}", socket_addr.ip(), self.rpc_port))
+                .map_err(Error::UrlParse)
+        })
+    }
+
+    /// Returns the socket address of the Reth node's RPC server.
+    #[must_use]
+    pub async fn rpc_socket_addr(&self) -> Result<SocketAddr, Error> {
+        self.process
+            .lock()
+            .await
+            .as_ref()
+            .ok_or(Error::NotStarted)?
+            .container_ip()
+            .map(|ip| SocketAddr::new(ip, self.rpc_port))
+            .ok_or(Error::NotStarted)
     }
 }
 

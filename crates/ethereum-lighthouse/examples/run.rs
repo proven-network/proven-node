@@ -23,9 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting Lighthouse node...");
     let lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
-        execution_rpc_ip_address: reth_node.ip_address().await.to_string(),
         execution_rpc_jwt_hex: reth_node.jwt_hex().await?,
-        execution_rpc_port: reth_node.rpc_port(),
+        execution_rpc_socket_addr: reth_node.rpc_socket_addr().await?,
         host_ip: fetch_external_ip().await,
         http_port: 5052,
         metrics_port: 5054,

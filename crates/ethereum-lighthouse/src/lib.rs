@@ -11,6 +11,7 @@ pub use error::Error;
 use regex::Regex;
 
 use std::fs;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -55,14 +56,11 @@ impl EthereumNetwork {
 
 /// Options for configuring a `LighthouseNode`.
 pub struct LighthouseNodeOptions {
-    /// The execution client RPC IP address.
-    pub execution_rpc_ip_address: String,
-
     /// The execution client RPC JWT hex.
     pub execution_rpc_jwt_hex: String,
 
-    /// The execution client RPC port.
-    pub execution_rpc_port: u16,
+    /// The execution client RPC socket address.
+    pub execution_rpc_socket_addr: SocketAddr,
 
     /// The host IP address.
     pub host_ip: String,
@@ -88,14 +86,11 @@ struct LighthouseApp {
     /// The path to the lighthouse executable
     executable_path: String,
 
-    /// The execution client RPC IP address
-    execution_rpc_ip_address: String,
-
     /// The execution client RPC JWT hex
     execution_rpc_jwt_hex: String,
 
-    /// The execution client RPC port
-    execution_rpc_port: u16,
+    /// The execution client RPC socket address
+    execution_rpc_socket_addr: SocketAddr,
 
     /// The host IP address
     host_ip: String,
@@ -142,7 +137,8 @@ impl IsolatedApplication for LighthouseApp {
         args.push("--execution-endpoint".to_string());
         args.push(format!(
             "http://{}:{}",
-            self.execution_rpc_ip_address, self.execution_rpc_port
+            self.execution_rpc_socket_addr.ip(),
+            self.execution_rpc_socket_addr.port()
         ));
 
         // Add JWT secret
@@ -317,14 +313,11 @@ pub struct LighthouseNode {
     /// The isolated process running Lighthouse
     process: Arc<Mutex<Option<IsolatedProcess>>>,
 
-    /// The execution client RPC IP address
-    execution_rpc_ip_address: String,
-
     /// The execution client RPC JWT hex
     execution_rpc_jwt_hex: String,
 
-    /// The execution client RPC port
-    execution_rpc_port: u16,
+    /// The execution client RPC socket address
+    execution_rpc_socket_addr: SocketAddr,
 
     /// The host IP address
     host_ip: String,
@@ -350,9 +343,8 @@ impl LighthouseNode {
     #[must_use]
     pub fn new(
         LighthouseNodeOptions {
-            execution_rpc_ip_address,
             execution_rpc_jwt_hex,
-            execution_rpc_port,
+            execution_rpc_socket_addr,
             host_ip,
             http_port,
             metrics_port,
@@ -363,9 +355,8 @@ impl LighthouseNode {
     ) -> Self {
         Self {
             process: Arc::new(Mutex::new(None)),
-            execution_rpc_ip_address,
             execution_rpc_jwt_hex,
-            execution_rpc_port,
+            execution_rpc_socket_addr,
             host_ip,
             http_port,
             metrics_port,
@@ -407,9 +398,8 @@ impl Bootable for LighthouseNode {
 
         let app = LighthouseApp {
             executable_path: "/apps/ethereum-lighthouse/v7.0.0/lighthouse".to_string(),
-            execution_rpc_ip_address: self.execution_rpc_ip_address.clone(),
             execution_rpc_jwt_hex: self.execution_rpc_jwt_hex.clone(),
-            execution_rpc_port: self.execution_rpc_port,
+            execution_rpc_socket_addr: self.execution_rpc_socket_addr,
             host_ip: self.host_ip.clone(),
             http_port: self.http_port,
             last_log_level: RwLock::new("INFO".to_string()),

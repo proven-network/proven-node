@@ -25,6 +25,14 @@ pub enum Error {
     /// JSON serialization/deserialization error
     #[error("JSON error: {0}")]
     Json(String),
+
+    /// Not started error
+    #[error("not started")]
+    NotStarted,
+
+    /// URL parse error
+    #[error("URL parse error: {0}")]
+    UrlParse(#[from] url::ParseError),
 }
 
 impl BootableError for Error {}

@@ -759,7 +759,7 @@ impl Bootstrap {
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
             let execution_rpc_jwt_hex = ethereum_reth_node.jwt_hex().await?;
-            let execution_rpc_ip_address = ethereum_reth_node.ip_address().await.to_string();
+            let execution_rpc_socket_addr = ethereum_reth_node.rpc_socket_addr().await?;
 
             self.ethereum_holesky_reth_node = Some(ethereum_reth_node);
 
@@ -767,9 +767,8 @@ impl Bootstrap {
 
             // Start Lighthouse consensus client
             let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
-                execution_rpc_ip_address,
                 execution_rpc_jwt_hex,
-                execution_rpc_port: self.args.ethereum_holesky_execution_rpc_port,
+                execution_rpc_socket_addr,
                 host_ip: self.external_ip.to_string(),
                 http_port: self.args.ethereum_holesky_consensus_http_port,
                 metrics_port: self.args.ethereum_holesky_consensus_metrics_port,
@@ -816,8 +815,8 @@ impl Bootstrap {
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
-            let execution_rpc_ip_address = ethereum_reth_node.ip_address().await.to_string();
             let execution_rpc_jwt_hex = ethereum_reth_node.jwt_hex().await?;
+            let execution_rpc_socket_addr = ethereum_reth_node.rpc_socket_addr().await?;
 
             self.ethereum_mainnet_reth_node = Some(ethereum_reth_node);
 
@@ -825,9 +824,8 @@ impl Bootstrap {
 
             // Start Lighthouse consensus client
             let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
-                execution_rpc_ip_address,
                 execution_rpc_jwt_hex,
-                execution_rpc_port: self.args.ethereum_mainnet_execution_rpc_port,
+                execution_rpc_socket_addr,
                 host_ip: self.external_ip.to_string(),
                 http_port: self.args.ethereum_mainnet_consensus_http_port,
                 metrics_port: self.args.ethereum_mainnet_consensus_metrics_port,
@@ -874,17 +872,17 @@ impl Bootstrap {
                 .await
                 .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
 
-            let execution_rpc_ip_address = ethereum_reth_node.ip_address().await.to_string();
             let execution_rpc_jwt_hex = ethereum_reth_node.jwt_hex().await?;
+            let execution_rpc_socket_addr = ethereum_reth_node.rpc_socket_addr().await?;
+
             self.ethereum_sepolia_reth_node = Some(ethereum_reth_node);
 
             info!("ethereum reth node (sepolia) started");
 
             // Start Lighthouse consensus client
             let ethereum_lighthouse_node = LighthouseNode::new(LighthouseNodeOptions {
-                execution_rpc_ip_address,
                 execution_rpc_jwt_hex,
-                execution_rpc_port: self.args.ethereum_sepolia_execution_rpc_port,
+                execution_rpc_socket_addr,
                 host_ip: self.external_ip.to_string(),
                 http_port: self.args.ethereum_sepolia_consensus_http_port,
                 metrics_port: self.args.ethereum_sepolia_consensus_metrics_port,
@@ -953,13 +951,13 @@ impl Bootstrap {
                     jetstream_context: async_nats::jetstream::new(nats_client.clone()),
                 },
                 stream: bitcoin_proxy_stream,
-                target_addr: bitcoin_node.get_rpc_socket_addr().await?,
+                target_addr: bitcoin_node.rpc_socket_addr().await?,
             })
             .await?;
 
             bitcoin_proxy_service.start().await?;
 
-            self.bitcoin_node_rpc_url = Some(bitcoin_node.get_rpc_url().await?);
+            self.bitcoin_node_rpc_url = Some(bitcoin_node.rpc_url().await?);
             self.bitcoin_node = Some(bitcoin_node);
             self.bitcoin_proxy_service = Some(bitcoin_proxy_service);
 
