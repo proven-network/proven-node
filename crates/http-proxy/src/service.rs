@@ -7,8 +7,6 @@ use async_trait::async_trait;
 use proven_bootable::Bootable;
 use proven_messaging::service::Service;
 use proven_messaging::stream::InitializedStream;
-use tokio_util::sync::CancellationToken;
-use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 
 type MessagingService<S> =
@@ -45,28 +43,8 @@ pub struct HttpProxyService<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
-    /// The name of the service.
-    service_name: String,
-
-    /// The options for the service.
-    service_options: <MessagingService<S> as Service<
-        HttpServiceHandler,
-        Request,
-        DeserializeError,
-        SerializeError,
-    >>::Options,
-
-    /// The shutdown token.
-    shutdown_token: CancellationToken,
-
-    /// The stream to listen for requests on.
-    stream: S,
-
-    /// The port to forward requests to.
-    target_port: u16,
-
-    /// The task tracker.
-    task_tracker: TaskTracker,
+    /// The messaging service.
+    service: MessagingService<S>,
 }
 
 impl<S> HttpProxyService<S>
@@ -74,22 +52,27 @@ where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
     /// Create a new HTTP proxy service.
-    pub fn new(
+    pub async fn new(
         HttpProxyServiceOptions {
             service_name,
             service_options,
             stream,
             target_port,
         }: HttpProxyServiceOptions<S>,
-    ) -> Self {
-        Self {
-            service_name,
-            service_options,
-            shutdown_token: CancellationToken::new(),
-            stream,
-            target_port,
-            task_tracker: TaskTracker::new(),
-        }
+    ) -> Result<Self, Error> {
+        let service = stream
+            .service::<_, HttpServiceHandler>(
+                service_name.clone(),
+                service_options.clone(),
+                HttpServiceHandler::new(target_port),
+            )
+            .await
+            .map_err(|e| {
+                error!("HTTP proxy service setup failed: {}", e);
+                Error::Service(e.to_string())
+            })?;
+
+        Ok(Self { service })
     }
 }
 
@@ -102,45 +85,24 @@ where
 
     /// Start the HTTP proxy.
     async fn start(&self) -> Result<(), Error> {
-        if self.task_tracker.is_closed() {
-            return Err(Error::AlreadyStarted);
-        }
-
-        info!("Initializing HTTP proxy service...");
-
-        // TODO: Serivces and consumers should probably become bootables
-        let _messaging_service = self
-            .stream
-            .start_service::<_, HttpServiceHandler>(
-                self.service_name.clone(),
-                self.service_options.clone(),
-                HttpServiceHandler::new(self.target_port),
-            )
-            .await
-            .map_err(|e| {
-                error!("HTTP proxy service setup failed: {}", e);
-                Error::Service(e.to_string())
-            })?;
-
-        self.task_tracker.close();
-
-        Ok(())
+        self.service.start().await.map_err(|e| {
+            error!("HTTP proxy service setup failed: {}", e);
+            Error::Service(e.to_string())
+        })
     }
 
     /// Shutdown the HTTP proxy service.
     async fn shutdown(&self) -> Result<(), Error> {
         info!("http proxy service shutting down...");
 
-        self.shutdown_token.cancel();
-        self.task_tracker.wait().await;
-
-        info!("http proxy service shutdown");
-
-        Ok(())
+        self.service.shutdown().await.map_err(|e| {
+            error!("HTTP proxy service shutdown failed: {}", e);
+            Error::Service(e.to_string())
+        })
     }
 
     /// Wait for the HTTP proxy to exit.
     async fn wait(&self) {
-        self.task_tracker.wait().await;
+        self.service.wait().await;
     }
 }

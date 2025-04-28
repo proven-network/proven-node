@@ -277,6 +277,7 @@ mod tests {
     use std::convert::Infallible;
     use std::time::Duration;
 
+    use proven_bootable::Bootable;
     use proven_messaging::service_responder::ServiceResponder;
     use proven_messaging::stream::Stream;
     use tokio::time::timeout;
@@ -322,11 +323,13 @@ mod tests {
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");
 
         // Start service
-        let _service = initialized_stream
+        let service = initialized_stream
             .clone()
-            .start_service("test_service", MemoryServiceOptions {}, TestHandler)
+            .service("test_service", MemoryServiceOptions {}, TestHandler)
             .await
             .expect("Failed to start service");
+
+        service.start().await.expect("Failed to start service");
 
         // Create client
         let client = initialized_stream

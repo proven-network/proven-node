@@ -14,9 +14,13 @@ use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
+use proven_bootable::Bootable;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
+use tracing::debug;
 
 /// Options for the nats service.
 #[derive(Clone, Debug)]
@@ -47,10 +51,13 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    handler: X,
     nats_client: NatsClient,
     nats_consumer: NatsConsumerType<NatsConsumerConfig>,
     nats_jetstream_context: Context,
+    shutdown_token: CancellationToken,
     stream: <Self as Service<X, T, D, S>>::StreamType,
+    task_tracker: TaskTracker,
 }
 
 impl<X, T, D, S> Clone for NatsService<X, T, D, S>
@@ -68,10 +75,13 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            handler: self.handler.clone(),
             nats_client: self.nats_client.clone(),
             nats_consumer: self.nats_consumer.clone(),
             nats_jetstream_context: self.nats_jetstream_context.clone(),
+            shutdown_token: self.shutdown_token.clone(),
             stream: self.stream.clone(),
+            task_tracker: self.task_tracker.clone(),
         }
     }
 }
@@ -95,10 +105,8 @@ where
         handler: X,
         nats_consumer: NatsConsumerType<NatsConsumerConfig>,
         stream: InitializedNatsStream<T, D, S>,
-    ) -> Result<(), Error>
-    where
-        X: ServiceHandler<T, D, S>,
-    {
+        shutdown_token: CancellationToken,
+    ) -> Result<(), Error> {
         let initial_stream_seq = stream.last_seq().await.unwrap_or(0);
         let mut caught_up = initial_stream_seq == 0;
 
@@ -106,61 +114,75 @@ where
             let _ = handler.on_caught_up().await;
         }
 
+        let mut messages = nats_consumer
+            .messages()
+            .await
+            .map_err(|e| Error::Stream(e.kind()))?;
+
         loop {
-            let mut messages = nats_consumer
-                .messages()
-                .await
-                .map_err(|e| Error::Stream(e.kind()))?;
+            tokio::select! {
+                    biased;
+                    _ = shutdown_token.cancelled() => {
+                        debug!("shutdown token cancelled, exiting message processing loop");
+                        break;
+                    }
+                    message = messages.next() => {
+                        if let Some(message) = message {
+                            let message = message.map_err(|e| Error::Messages(e.kind()))?;
 
-            while let Some(message) = messages.next().await {
-                let message = message.map_err(|e| Error::Messages(e.kind()))?;
+                        let handler = handler.clone();
+                        let nats_client = nats_client.clone();
 
-                let handler = handler.clone();
-                let nats_client = nats_client.clone();
+                        let payload: T = message.payload.clone().try_into().unwrap();
 
-                let payload: T = message.payload.clone().try_into().unwrap();
+                        let headers = if let Some(headers) = message.headers.as_ref() {
+                            headers.clone()
+                        } else {
+                            continue;
+                        };
 
-                let headers = if let Some(headers) = message.headers.as_ref() {
-                    headers.clone()
-                } else {
-                    continue;
-                };
+                        let request_id_header = headers.get("Reply-Id").cloned();
+                        let reply_stream_header = headers.get("Reply-Stream").cloned();
 
-                let request_id_header = headers.get("Reply-Id").cloned();
-                let reply_stream_header = headers.get("Reply-Stream").cloned();
+                        if let (Some(reply_stream_name), Some(request_id)) =
+                            (reply_stream_header, request_id_header)
+                        {
+                            let responder = NatsServiceResponder::new(
+                                caught_up,
+                                nats_client.clone(),
+                                reply_stream_name.clone().to_string(),
+                                request_id.clone().to_string(),
+                                stream.clone(),
+                                message.info().unwrap().stream_sequence,
+                            );
 
-                if let (Some(reply_stream_name), Some(request_id)) =
-                    (reply_stream_header, request_id_header)
-                {
-                    let responder = NatsServiceResponder::new(
-                        caught_up,
-                        nats_client.clone(),
-                        reply_stream_name.clone().to_string(),
-                        request_id.clone().to_string(),
-                        stream.clone(),
-                        message.info().unwrap().stream_sequence,
-                    );
+                            handler
+                                .handle(payload, responder)
+                                .await
+                                .map_err(|_| Error::Handler)?;
 
-                    handler
-                        .handle(payload, responder)
-                        .await
-                        .map_err(|_| Error::Handler)?;
+                            message.ack().await.unwrap();
+                        }
 
-                    message.ack().await.unwrap();
-                }
-
-                // This check will re-fetch the last sequence number from the
-                // stream in case it's changed since the service initialized
-                if !caught_up
-                    && message.info().unwrap().stream_sequence >= initial_stream_seq
-                    && stream.last_seq().await.unwrap_or(0)
-                        == message.info().unwrap().stream_sequence
-                {
-                    caught_up = true;
-                    let _ = handler.on_caught_up().await;
+                        // This check will re-fetch the last sequence number from the
+                        // stream in case it's changed since the service initialized
+                        if !caught_up
+                            && message.info().unwrap().stream_sequence >= initial_stream_seq
+                            && stream.last_seq().await.unwrap_or(0)
+                                == message.info().unwrap().stream_sequence
+                        {
+                            caught_up = true;
+                            let _ = handler.on_caught_up().await;
+                        }
+                    } else {
+                        // Stream closed
+                        break;
+                    }
                 }
             }
         }
+
+        Ok(())
     }
 }
 
@@ -200,7 +222,7 @@ where
         stream: Self::StreamType,
         options: NatsServiceOptions,
         handler: X,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, Error> {
         let nats_consumer = options
             .jetstream_context
             .create_consumer_on_stream(
@@ -214,22 +236,18 @@ where
             .await
             .map_err(|e| Error::Create(e.kind()))?;
 
-        tokio::spawn(Self::process_requests(
-            options.client.clone(),
-            handler.clone(),
-            nats_consumer.clone(),
-            stream.clone(),
-        ));
-
         Ok(Self {
+            handler,
             nats_client: options.client,
             nats_consumer,
             nats_jetstream_context: options.jetstream_context,
+            shutdown_token: CancellationToken::new(),
             stream,
+            task_tracker: TaskTracker::new(),
         })
     }
 
-    async fn last_seq(&self) -> Result<u64, Self::Error> {
+    async fn last_seq(&self) -> Result<u64, Error> {
         let seq = self
             .nats_consumer
             .clone()
@@ -244,6 +262,54 @@ where
 
     fn stream(&self) -> Self::StreamType {
         self.stream.clone()
+    }
+}
+
+#[async_trait]
+impl<X, T, D, S> Bootable for NatsService<X, T, D, S>
+where
+    X: ServiceHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    type Error = Error;
+
+    async fn start(&self) -> Result<(), Self::Error> {
+        if self.task_tracker.is_closed() {
+            return Err(Error::AlreadyRunning);
+        }
+
+        self.task_tracker.spawn(Self::process_requests(
+            self.nats_client.clone(),
+            self.handler.clone(),
+            self.nats_consumer.clone(),
+            self.stream.clone(),
+            self.shutdown_token.clone(),
+        ));
+
+        self.task_tracker.close();
+
+        Ok(())
+    }
+
+    async fn shutdown(&self) -> Result<(), Self::Error> {
+        debug!("shutting down nats service");
+
+        self.shutdown_token.cancel();
+        let _ = self.task_tracker.wait().await;
+
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        let _ = self.task_tracker.wait();
     }
 }
 
@@ -390,8 +456,8 @@ mod tests {
         let caught_up_count = handler.caught_up_count.clone();
         let messages_processed = handler.messages_processed.clone();
 
-        let _service = initialized_stream
-            .start_service(
+        let service = initialized_stream
+            .service(
                 "test_on_caught_up_called",
                 NatsServiceOptions {
                     client: client.clone(),
@@ -402,6 +468,8 @@ mod tests {
             )
             .await
             .unwrap();
+
+        service.start().await.unwrap();
 
         // Give enough time for messages to be processed
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

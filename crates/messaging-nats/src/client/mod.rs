@@ -456,6 +456,7 @@ mod tests {
     use std::time::Duration;
 
     use async_nats::ConnectOptions;
+    use proven_bootable::Bootable;
     use proven_messaging::service_responder::ServiceResponder;
     use proven_messaging::stream::Stream;
     use serde::{Deserialize, Serialize};
@@ -617,9 +618,9 @@ mod tests {
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");
 
         // Start service
-        let _service = initialized_stream
+        let service = initialized_stream
             .clone()
-            .start_service(
+            .service(
                 "test_client_request_response",
                 NatsServiceOptions {
                     client: client.clone(),
@@ -630,6 +631,8 @@ mod tests {
             )
             .await
             .expect("Failed to start service");
+
+        service.start().await.unwrap();
 
         // Create client
         let client = initialized_stream
@@ -731,9 +734,9 @@ mod tests {
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");
 
         // Start service with streaming handler
-        let _service = initialized_stream
+        let service = initialized_stream
             .clone()
-            .start_service(
+            .service(
                 "test_client_stream_response",
                 NatsServiceOptions {
                     client: client.clone(),
@@ -744,6 +747,8 @@ mod tests {
             )
             .await
             .expect("Failed to start service");
+
+        service.start().await.unwrap();
 
         // Create client
         let client = initialized_stream
@@ -817,9 +822,9 @@ mod tests {
         let initialized_stream = stream.init().await.expect("Failed to initialize stream");
 
         // Start service with streaming handler
-        let _service = initialized_stream
+        let service = initialized_stream
             .clone()
-            .start_service(
+            .service(
                 "test_client_stream_response",
                 NatsServiceOptions {
                     client: client.clone(),
@@ -830,6 +835,8 @@ mod tests {
             )
             .await
             .expect("Failed to start service");
+
+        service.start().await.unwrap();
 
         // Create client
         let client = initialized_stream

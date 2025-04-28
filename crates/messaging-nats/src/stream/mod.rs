@@ -290,7 +290,7 @@ where
     }
 
     /// Consumes the stream with the given consumer.
-    async fn start_consumer<N, X>(
+    async fn consumer<N, X>(
         &self,
         consumer_name: N,
         options: NatsConsumerOptions,
@@ -312,7 +312,7 @@ where
     }
 
     /// Consumes the stream with the given service.
-    async fn start_service<N, X>(
+    async fn service<N, X>(
         &self,
         service_name: N,
         options: NatsServiceOptions,

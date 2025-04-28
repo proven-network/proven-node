@@ -234,6 +234,28 @@ where
         Ok(client)
     }
 
+    /// Consumes the stream with the given consumer.
+    async fn consumer<N, X>(
+        &self,
+        consumer_name: N,
+        options: MemoryConsumerOptions,
+        handler: X,
+    ) -> Result<Self::Consumer<X>, <Self::Consumer<X> as Consumer<X, T, D, S>>::Error>
+    where
+        N: Clone + Into<String> + Send,
+        X: ConsumerHandler<T, D, S>,
+    {
+        let consumer = MemoryConsumer::new(
+            format!("{}_{}", self.name(), consumer_name.into()),
+            self.clone(),
+            options,
+            handler,
+        )
+        .await?;
+
+        Ok(consumer)
+    }
+
     /// Deletes the message with the given sequence number.
     async fn delete(&self, seq: u64) -> Result<(), Self::Error> {
         // TODO: Add error handling for sequence number conversion
@@ -342,30 +364,8 @@ where
         Ok(seq)
     }
 
-    /// Consumes the stream with the given consumer.
-    async fn start_consumer<N, X>(
-        &self,
-        consumer_name: N,
-        options: MemoryConsumerOptions,
-        handler: X,
-    ) -> Result<Self::Consumer<X>, <Self::Consumer<X> as Consumer<X, T, D, S>>::Error>
-    where
-        N: Clone + Into<String> + Send,
-        X: ConsumerHandler<T, D, S>,
-    {
-        let consumer = MemoryConsumer::new(
-            format!("{}_{}", self.name(), consumer_name.into()),
-            self.clone(),
-            options,
-            handler,
-        )
-        .await?;
-
-        Ok(consumer)
-    }
-
     /// Consumes the stream with the given service.
-    async fn start_service<N, X>(
+    async fn service<N, X>(
         &self,
         service_name: N,
         options: MemoryServiceOptions,
@@ -612,6 +612,7 @@ mod tests {
     use std::error::Error as StdError;
 
     use bytes::Bytes;
+    use proven_bootable::Bootable;
     use proven_messaging::subject::PublishableSubject;
 
     #[tokio::test]
@@ -788,10 +789,12 @@ mod tests {
         // Wait for the message to be processed
         tokio::task::yield_now().await;
 
-        let _consumer = stream
-            .start_consumer("test", MemoryConsumerOptions, handler)
+        let consumer = stream
+            .consumer("test", MemoryConsumerOptions, handler)
             .await
             .unwrap();
+
+        consumer.start().await.unwrap();
 
         // Wait for the consumer to start
         tokio::task::yield_now().await;

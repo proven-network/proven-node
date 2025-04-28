@@ -6,6 +6,7 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use proven_bootable::Bootable;
 
 /// Marker trait for consumer errors
 pub trait ConsumerError: Error + Send + Sync + 'static {}
@@ -17,7 +18,7 @@ pub trait ConsumerOptions: Clone + Debug + Send + Sync + 'static {}
 #[async_trait]
 pub trait Consumer<X, T, D, S>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
+    Self: Bootable + Clone + Debug + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -44,8 +45,8 @@ where
         stream: Self::StreamType,
         options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error>;
+    ) -> Result<Self, <Self as Consumer<X, T, D, S>>::Error>;
 
     /// Gets the last sequence number processed by the consumer.
-    async fn last_seq(&self) -> Result<u64, Self::Error>;
+    async fn last_seq(&self) -> Result<u64, <Self as Consumer<X, T, D, S>>::Error>;
 }

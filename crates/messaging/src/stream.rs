@@ -71,7 +71,7 @@ where
         N: Clone + Into<String> + Send,
         J: Into<Self::Subject> + Clone + Send;
 
-    /// Gets a client for a service.
+    /// Creates a client for a service.
     async fn client<N, X>(
         &self,
         service_name: N,
@@ -80,6 +80,17 @@ where
     where
         N: Clone + Into<String> + Send,
         X: ServiceHandler<T, D, S>;
+
+    /// Creates a consumer for the stream.
+    async fn consumer<N, X>(
+        &self,
+        consumer_name: N,
+        options: <Self::Consumer<X> as Consumer<X, T, D, S>>::Options,
+        handler: X,
+    ) -> Result<Self::Consumer<X>, <Self::Consumer<X> as Consumer<X, T, D, S>>::Error>
+    where
+        N: Clone + Into<String> + Send,
+        X: ConsumerHandler<T, D, S>;
 
     /// Deletes the message with the given sequence number.
     async fn delete(&self, seq: u64) -> Result<(), Self::Error>;
@@ -103,19 +114,8 @@ where
     /// Must provide expected sequence number for optimistic concurrency control.
     async fn rollup(&self, message: T, expected_seq: u64) -> Result<u64, Self::Error>;
 
-    /// Consumes the stream with the given consumer.
-    async fn start_consumer<N, X>(
-        &self,
-        consumer_name: N,
-        options: <Self::Consumer<X> as Consumer<X, T, D, S>>::Options,
-        handler: X,
-    ) -> Result<Self::Consumer<X>, <Self::Consumer<X> as Consumer<X, T, D, S>>::Error>
-    where
-        N: Clone + Into<String> + Send,
-        X: ConsumerHandler<T, D, S>;
-
-    /// Consumes the stream with the given service.
-    async fn start_service<N, X>(
+    /// Creates a service for the stream.
+    async fn service<N, X>(
         &self,
         service_name: N,
         options: <Self::Service<X> as Service<X, T, D, S>>::Options,

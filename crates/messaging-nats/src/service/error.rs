@@ -1,11 +1,16 @@
 use std::fmt::Debug;
 
+use proven_bootable::BootableError;
 use proven_messaging::service::ServiceError;
 use thiserror::Error;
 
 /// Errors that can occur in a consumer.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Already running.
+    #[error("Already running")]
+    AlreadyRunning,
+
     /// Consumer create error.
     #[error("Failed to create consumer: {0}")]
     Create(async_nats::jetstream::stream::ConsumerErrorKind),
@@ -27,4 +32,5 @@ pub enum Error {
     Stream(async_nats::jetstream::consumer::StreamErrorKind),
 }
 
+impl BootableError for Error {}
 impl ServiceError for Error {}

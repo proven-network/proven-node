@@ -10,6 +10,7 @@ ciborium.workspace = true
 deno_error.workspace = true
 futures.workspace = true
 paste.workspace = true
+proven-bootable.workspace = true
 proven-libsql.workspace = true
 proven-sql.workspace = true
 proven-store.workspace = true

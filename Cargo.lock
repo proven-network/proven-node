@@ -9507,6 +9507,7 @@ dependencies = [
  "bytes",
  "futures",
  "paste",
+ "proven-bootable",
 ]
 
 [[package]]
@@ -9517,6 +9518,7 @@ dependencies = [
  "bytes",
  "futures",
  "paste",
+ "proven-bootable",
  "proven-messaging",
  "serial_test",
  "thiserror 2.0.12",
@@ -9536,6 +9538,7 @@ dependencies = [
  "bytes",
  "futures",
  "paste",
+ "proven-bootable",
  "proven-messaging",
  "serde",
  "serde_json",
@@ -9544,6 +9547,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
+ "tracing",
  "uuid",
 ]
 
@@ -9850,6 +9854,7 @@ dependencies = [
  "deno_error",
  "futures",
  "paste",
+ "proven-bootable",
  "proven-libsql",
  "proven-messaging",
  "proven-messaging-memory",

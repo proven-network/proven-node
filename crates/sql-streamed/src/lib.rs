@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use proven_bootable::Bootable;
 use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stream3};
@@ -141,8 +142,13 @@ where
                 stream.clone(),
             );
 
-            let _service = stream
-                .start_service("SQL_SERVICE", self.service_options.clone(), handler.clone())
+            let service = stream
+                .service("SQL_SERVICE", self.service_options.clone(), handler.clone())
+                .await
+                .map_err(|e| Error::Service(e.to_string()))?;
+
+            service
+                .start()
                 .await
                 .map_err(|e| Error::Service(e.to_string()))?;
 

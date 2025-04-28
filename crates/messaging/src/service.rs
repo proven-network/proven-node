@@ -7,7 +7,7 @@ use std::fmt::Debug;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-
+use proven_bootable::Bootable;
 /// Marker trait for service errors
 pub trait ServiceError: Error + Send + Sync + 'static {}
 
@@ -18,7 +18,7 @@ pub trait ServiceOptions: Clone + Debug + Send + Sync + 'static {}
 #[async_trait]
 pub trait Service<X, T, D, S>
 where
-    Self: Clone + Debug + Send + Sync + 'static,
+    Self: Bootable + Clone + Debug + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -58,10 +58,10 @@ where
         stream: Self::StreamType,
         options: Self::Options,
         handler: X,
-    ) -> Result<Self, Self::Error>;
+    ) -> Result<Self, <Self as Service<X, T, D, S>>::Error>;
 
     /// Gets the last sequence number processed by the service.
-    async fn last_seq(&self) -> Result<u64, Self::Error>;
+    async fn last_seq(&self) -> Result<u64, <Self as Service<X, T, D, S>>::Error>;
 
     /// Gets the stream for the service.
     fn stream(&self) -> Self::StreamType;
