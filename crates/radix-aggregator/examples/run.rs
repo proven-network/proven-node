@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use proven_bootable::Bootable;
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
@@ -16,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         port: 5432,
         username: "postgres".to_string(),
         skip_vacuum: true,
-        store_dir: "/tmp/postgres-data".to_string(),
+        store_dir: PathBuf::from("/tmp/postgres-data"),
     });
     let _ = postgres.start().await?;
     println!("Postgres is ready!");
@@ -27,8 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         http_port: 3333,
         network_definition: NetworkDefinition::stokenet(),
         p2p_port: 30001,
-        store_dir: "/tmp/radix-node-stokenet-data".to_string(),
-        config_dir: "/tmp/radix-node-stokenet-config".to_string(),
+        store_dir: PathBuf::from("/tmp/radix-node-stokenet-data"),
+        config_dir: PathBuf::from("/tmp/radix-node-stokenet-config"),
     });
     let _ = radix_node.start().await?;
     println!("Radix Node is ready!");

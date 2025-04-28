@@ -10,7 +10,7 @@ mod error;
 pub use error::Error;
 
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -66,7 +66,7 @@ pub struct BitcoinNodeOptions {
     pub network: BitcoinNetwork,
 
     /// The directory to store data in.
-    pub store_dir: String,
+    pub store_dir: PathBuf,
 
     /// Optional RPC port (defaults to 8332)
     pub rpc_port: Option<u16>,
@@ -84,7 +84,7 @@ struct BitcoinCoreApp {
     rpc_port: u16,
 
     /// The directory to store data in
-    store_dir: String,
+    store_dir: PathBuf,
 }
 
 #[async_trait]
@@ -174,7 +174,7 @@ impl IsolatedApplication for BitcoinCoreApp {
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
-            VolumeMount::new(&self.store_dir, &"/data".to_string()),
+            VolumeMount::new(&self.store_dir, &PathBuf::from("/data")),
             VolumeMount::new("/apps/bitcoin/v28.1", "/apps/bitcoin/v28.1"),
         ]
     }
@@ -190,7 +190,7 @@ pub struct BitcoinNode {
     network: BitcoinNetwork,
 
     /// The directory to store data in
-    store_dir: String,
+    store_dir: PathBuf,
 
     /// The RPC port
     rpc_port: u16,

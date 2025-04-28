@@ -686,16 +686,12 @@ impl Bootstrap {
             .contains(&NodeSpecialization::RadixMainnet)
         {
             let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
-                config_dir: "/tmp/radix-node-mainnet".to_string(),
+                config_dir: PathBuf::from("/tmp/radix-node-mainnet"),
                 host_ip: self.external_ip.to_string(),
                 http_port: self.args.radix_mainnet_http_port,
                 network_definition: NetworkDefinition::mainnet(),
                 p2p_port: self.args.radix_mainnet_p2p_port,
-                store_dir: self
-                    .args
-                    .radix_mainnet_store_dir
-                    .to_string_lossy()
-                    .to_string(),
+                store_dir: self.args.radix_mainnet_store_dir.clone(),
             });
 
             radix_mainnet_node.start().await?;
@@ -711,16 +707,12 @@ impl Bootstrap {
             .contains(&NodeSpecialization::RadixStokenet)
         {
             let radix_stokenet_node = RadixNode::new(RadixNodeOptions {
-                config_dir: "/tmp/radix-node-stokenet".to_string(),
+                config_dir: PathBuf::from("/tmp/radix-node-stokenet"),
                 host_ip: self.external_ip.to_string(),
                 http_port: self.args.radix_stokenet_http_port,
                 network_definition: NetworkDefinition::stokenet(),
                 p2p_port: self.args.radix_stokenet_p2p_port,
-                store_dir: self
-                    .args
-                    .radix_stokenet_store_dir
-                    .to_string_lossy()
-                    .to_string(),
+                store_dir: self.args.radix_stokenet_store_dir.clone(),
             });
 
             radix_stokenet_node.start().await?;
@@ -932,11 +924,7 @@ impl Bootstrap {
             // Start Bitcoin testnet node
             let bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
                 network: BitcoinNetwork::Testnet,
-                store_dir: self
-                    .args
-                    .bitcoin_testnet_store_dir
-                    .to_string_lossy()
-                    .to_string(),
+                store_dir: self.args.bitcoin_testnet_store_dir.clone(),
                 rpc_port: None,
             });
 
@@ -1001,7 +989,7 @@ impl Bootstrap {
                 port: self.args.postgres_port,
                 username: POSTGRES_USERNAME.to_string(),
                 skip_vacuum: self.args.skip_vacuum,
-                store_dir: self.args.postgres_store_dir.to_string_lossy().to_string(),
+                store_dir: self.args.postgres_store_dir.clone(),
             });
 
             postgres.start().await?;

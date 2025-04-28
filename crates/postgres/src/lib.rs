@@ -10,7 +10,7 @@ mod error;
 pub use error::Error;
 
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -32,7 +32,7 @@ static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| {
 /// Application struct for running Postgres in isolation
 struct PostgresApp {
     username: String,
-    store_dir: String,
+    store_dir: PathBuf,
     port: u16,
 }
 
@@ -122,7 +122,7 @@ impl IsolatedApplication for PostgresApp {
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
-            VolumeMount::new(&self.store_dir, &"/data".to_string()),
+            VolumeMount::new(&self.store_dir, &PathBuf::from("/data")),
             VolumeMount::new("/apps/postgres/v17.4", "/apps/postgres/v17.4"),
         ]
     }
@@ -131,8 +131,8 @@ impl IsolatedApplication for PostgresApp {
 /// Isolated application for initializing Postgres database
 struct PostgresInitApp {
     username: String,
-    pass_dir: String,
-    store_dir: String,
+    pass_dir: PathBuf,
+    store_dir: PathBuf,
 }
 
 #[async_trait]
@@ -170,8 +170,8 @@ impl IsolatedApplication for PostgresInitApp {
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
-            VolumeMount::new(&self.pass_dir, &"/pass".to_string()),
-            VolumeMount::new(&self.store_dir, &"/data".to_string()),
+            VolumeMount::new(&self.pass_dir, &PathBuf::from("/pass")),
+            VolumeMount::new(&self.store_dir, &PathBuf::from("/data")),
             VolumeMount::new("/apps/postgres/v17.4", "/apps/postgres/v17.4"),
         ]
     }
@@ -242,7 +242,7 @@ pub struct Postgres {
     port: u16,
     process: Arc<Mutex<Option<IsolatedProcess>>>,
     skip_vacuum: bool,
-    store_dir: String,
+    store_dir: PathBuf,
     username: String,
 }
 
@@ -261,7 +261,7 @@ pub struct PostgresOptions {
     pub skip_vacuum: bool,
 
     /// The directory to store data in.
-    pub store_dir: String,
+    pub store_dir: PathBuf,
 }
 
 impl Postgres {
@@ -316,7 +316,7 @@ impl Postgres {
 
         let init_app = PostgresInitApp {
             username: self.username.clone(),
-            pass_dir: pass_dir.path().to_string_lossy().into_owned(),
+            pass_dir: pass_dir.into_path(),
             store_dir: self.store_dir.clone(),
         };
 

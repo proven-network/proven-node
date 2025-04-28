@@ -11,6 +11,7 @@ mod error;
 
 pub use error::{Error, Result};
 
+use std::path::PathBuf;
 use std::process::Stdio;
 
 use rand::distributions::Alphanumeric;
@@ -28,10 +29,10 @@ static PASSFILE_DIR: &str = "/var/lib/proven/gocryptfs";
 
 /// Manages an external filesystem mounted via NFS and encrypted with gocryptfs.
 pub struct ExternalFs {
-    mount_dir: String,
-    nfs_mount_dir: String,
-    nfs_mount_point: String,
-    passfile_path: String,
+    mount_dir: PathBuf,
+    nfs_mount_dir: PathBuf,
+    nfs_mount_point_dir: PathBuf,
+    passfile_path: PathBuf,
     skip_fsck: bool,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
@@ -43,10 +44,10 @@ pub struct ExternalFsOptions {
     pub encryption_key: String,
 
     /// The NFS mount point.
-    pub nfs_mount_point: String,
+    pub nfs_mount_point_dir: PathBuf,
 
     /// The directory to mount the external filesystem.
-    pub mount_dir: String,
+    pub mount_dir: PathBuf,
 
     /// Whether to skip the gocryptfs integrity check.
     pub skip_fsck: bool,
@@ -63,21 +64,24 @@ impl ExternalFs {
     pub fn new(
         ExternalFsOptions {
             encryption_key,
-            nfs_mount_point,
+            nfs_mount_point_dir,
             mount_dir,
             skip_fsck,
         }: ExternalFsOptions,
     ) -> Result<Self> {
         // random name for nfs_dir
-        let sub_dir: String = thread_rng()
+        let rand_id: String = thread_rng()
             .sample_iter(&Alphanumeric)
             .take(10)
             .map(char::from)
             .collect();
 
+        let mnt_dir = PathBuf::from(MNT_DIR);
+        let passfile_dir = PathBuf::from(PASSFILE_DIR);
+
         // Paths specific to this instance
-        let nfs_mount_dir = format!("{MNT_DIR}/{sub_dir}");
-        let passfile_path = format!("{PASSFILE_DIR}/{sub_dir}.passfile");
+        let nfs_mount_dir = mnt_dir.join(&rand_id);
+        let passfile_path = passfile_dir.join(format!("{}.passfile", rand_id));
 
         // create directories
         std::fs::create_dir_all(&mount_dir)
@@ -94,7 +98,7 @@ impl ExternalFs {
         Ok(Self {
             mount_dir,
             nfs_mount_dir,
-            nfs_mount_point,
+            nfs_mount_point_dir,
             passfile_path,
             skip_fsck,
             shutdown_token: CancellationToken::new(),
@@ -119,8 +123,8 @@ impl ExternalFs {
             return Err(Error::AlreadyStarted);
         }
 
-        mount_nfs(self.nfs_mount_point.clone(), self.nfs_mount_dir.clone()).await?;
-        ensure_permissions(self.nfs_mount_dir.as_str(), "0700").await?;
+        mount_nfs(&self.nfs_mount_point_dir, &self.nfs_mount_dir).await?;
+        ensure_permissions(&self.nfs_mount_dir, "0700").await?;
 
         if self.is_initialized() {
             info!("gocryptfs already initialized");
@@ -153,8 +157,8 @@ impl ExternalFs {
                 .arg("-nosyslog")
                 .arg("-kernel_cache")
                 .arg("-sharedstorage")
-                .arg(nfs_mount_dir.as_str())
-                .arg(mount_dir.as_str())
+                .arg(&nfs_mount_dir)
+                .arg(&mount_dir)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -165,7 +169,8 @@ impl ExternalFs {
 
             info!(
                 "mounted gocrypt: {} -> {}",
-                nfs_mount_dir, mount_dir
+                nfs_mount_dir.display(),
+                mount_dir.display()
             );
 
             // Spawn a task to read and process the stdout output of the gocryptfs process
@@ -202,7 +207,7 @@ impl ExternalFs {
                 () = shutdown_token.cancelled() => {
                     // Run umount command
                     let output = Command::new("umount")
-                        .arg(mount_dir.as_str())
+                        .arg(&mount_dir)
                         .stdout(Stdio::inherit())
                         .stderr(Stdio::inherit())
                         .output()
@@ -219,7 +224,7 @@ impl ExternalFs {
                         .await
                         .map_err(|e| Error::Io("failed to wait for gocryptfs shutdown", e))?;
 
-                    umount_nfs(nfs_mount_dir).await?;
+                    umount_nfs(&nfs_mount_dir).await?;
 
                     Ok(())
                 }
@@ -245,15 +250,15 @@ impl ExternalFs {
     }
 
     fn is_initialized(&self) -> bool {
-        std::fs::metadata(format!("{}/{}", self.nfs_mount_dir, CONF_FILENAME)).is_ok()
+        std::fs::metadata(self.nfs_mount_dir.join(CONF_FILENAME)).is_ok()
     }
 
     async fn init_gocryptfs(&self) -> Result<()> {
         let cmd = Command::new("gocryptfs")
             .arg("-init")
             .arg("-passfile")
-            .arg(self.passfile_path.as_str())
-            .arg(self.nfs_mount_dir.as_str())
+            .arg(&self.passfile_path)
+            .arg(&self.nfs_mount_dir)
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
@@ -274,8 +279,8 @@ impl ExternalFs {
             .arg("-kernel_cache")
             .arg("-sharedstorage")
             .arg("-passfile")
-            .arg(self.passfile_path.as_str())
-            .arg(self.nfs_mount_dir.as_str())
+            .arg(&self.passfile_path)
+            .arg(&self.nfs_mount_dir)
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .output()
@@ -291,21 +296,25 @@ impl ExternalFs {
     }
 }
 
-async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()> {
+async fn mount_nfs(nfs_mount_point_dir: &PathBuf, nfs_mount_dir: &PathBuf) -> Result<()> {
     let cmd = Command::new("mount")
         .arg("-v")
         .arg("-t")
         .arg("nfs")
         .arg("-o")
         .arg("noatime,nolock,nfsvers=3,sync,nconnect=16,rsize=1048576,wsize=1048576")
-        .arg(nfs_mount_point.as_str())
-        .arg(nfs_mount_dir.as_str())
+        .arg(nfs_mount_point_dir)
+        .arg(nfs_mount_dir)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
         .await;
 
-    info!("mounted nfs: {} -> {}", nfs_mount_point, nfs_mount_dir);
+    info!(
+        "mounted nfs: {} -> {}",
+        nfs_mount_point_dir.display(),
+        nfs_mount_dir.display()
+    );
 
     match cmd {
         Ok(output) if output.status.success() => Ok(()),
@@ -314,15 +323,15 @@ async fn mount_nfs(nfs_mount_point: String, nfs_mount_dir: String) -> Result<()>
     }
 }
 
-async fn umount_nfs(nfs_mount_dir: String) -> Result<()> {
+async fn umount_nfs(nfs_mount_dir: &PathBuf) -> Result<()> {
     let cmd = Command::new("umount")
-        .arg(nfs_mount_dir.as_str())
+        .arg(nfs_mount_dir)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
         .await;
 
-    info!("unmounted nfs: {}", nfs_mount_dir);
+    info!("unmounted nfs: {}", nfs_mount_dir.display());
 
     match cmd {
         Ok(output) if output.status.success() => Ok(()),
@@ -331,7 +340,7 @@ async fn umount_nfs(nfs_mount_dir: String) -> Result<()> {
     }
 }
 
-async fn ensure_permissions(path: &str, permissions: &str) -> Result<()> {
+async fn ensure_permissions(path: &PathBuf, permissions: &str) -> Result<()> {
     let output = Command::new("chmod")
         .arg("-R")
         .arg(permissions)

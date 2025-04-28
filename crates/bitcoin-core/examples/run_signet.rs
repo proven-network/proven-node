@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_bootable::Bootable;
 
@@ -8,9 +10,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a directory for storing Bitcoin Core data
     // Note: For a persistent node, you might want to use a fixed directory instead of a temporary one
-    let store_dir = "/tmp/bitcoin-core-signet".to_string();
+    let store_dir = PathBuf::from("/tmp/bitcoin-core-signet");
 
-    println!("Starting Bitcoin Core node in directory: {}", store_dir);
+    println!(
+        "Starting Bitcoin Core node in directory: {}",
+        store_dir.display()
+    );
 
     // Create node options with Signet network
     let options = BitcoinNodeOptions {

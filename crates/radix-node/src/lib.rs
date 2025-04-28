@@ -12,7 +12,7 @@ use proven_bootable::Bootable;
 use tokio::sync::Mutex;
 
 use std::net::{IpAddr, Ipv4Addr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use radix_common::network::NetworkDefinition;
@@ -72,11 +72,11 @@ static RUST_LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
 
 /// Application struct for running Radix Node in isolation
 struct RadixNodeApp {
-    config_dir: String,
+    config_dir: PathBuf,
     http_port: u16,
     network_definition: NetworkDefinition,
     p2p_port: u16,
-    store_dir: String,
+    store_dir: PathBuf,
 }
 
 #[async_trait]
@@ -194,8 +194,8 @@ impl IsolatedApplication for RadixNodeApp {
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
-            VolumeMount::new(&self.store_dir, &"/data".to_string()),
-            VolumeMount::new(&self.config_dir, &"/config".to_string()),
+            VolumeMount::new(&self.store_dir, &PathBuf::from("/data")),
+            VolumeMount::new(&self.config_dir, &PathBuf::from("/config")),
             VolumeMount::new("/apps/radix-node/v1.3.0.2", "/apps/radix-node/v1.3.0.2"),
             VolumeMount::new(
                 "/etc/java-17-openjdk/security",
@@ -208,19 +208,19 @@ impl IsolatedApplication for RadixNodeApp {
 /// Runs a Radix Babylon Node.
 #[derive(Clone)]
 pub struct RadixNode {
-    config_dir: String,
+    config_dir: PathBuf,
     host_ip: String,
     http_port: u16,
     network_definition: NetworkDefinition,
     p2p_port: u16,
     process: Arc<Mutex<Option<IsolatedProcess>>>,
-    store_dir: String,
+    store_dir: PathBuf,
 }
 
 /// Options for configuring a `RadixNode`.
 pub struct RadixNodeOptions {
     /// The directory to store configuration and keystore files in.
-    pub config_dir: String,
+    pub config_dir: PathBuf,
 
     /// The host IP address.
     pub host_ip: String,
@@ -235,7 +235,7 @@ pub struct RadixNodeOptions {
     pub p2p_port: u16,
 
     /// The directory to store data in.
-    pub store_dir: String,
+    pub store_dir: PathBuf,
 }
 
 impl RadixNode {

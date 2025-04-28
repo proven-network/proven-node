@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use proven_bootable::Bootable;
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use radix_common::network::NetworkDefinition;
@@ -9,12 +11,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Create directories for storing Radix Node data and configuration
-    let store_dir = "/tmp/radix-node-stokenet-data".to_string();
-    let config_dir = "/tmp/radix-node-stokenet-config".to_string();
+    let store_dir = PathBuf::from("/tmp/radix-node-stokenet-data");
+    let config_dir = PathBuf::from("/tmp/radix-node-stokenet-config");
 
     println!(
         "Starting Radix Node with data in '{}' and config in '{}'",
-        store_dir, config_dir
+        store_dir.display(),
+        config_dir.display()
     );
 
     // Create and start the node

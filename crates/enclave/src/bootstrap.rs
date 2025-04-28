@@ -640,8 +640,8 @@ impl Bootstrap {
     async fn start_radix_node_fs(&mut self) -> Result<()> {
         let radix_node_fs = ExternalFs::new(ExternalFsOptions {
             encryption_key: "your-password".to_string(),
-            nfs_mount_point: format!("{}/babylon/", self.args.nfs_mount_point),
-            mount_dir: RADIX_NODE_STORE_DIR.to_string(),
+            nfs_mount_point_dir: PathBuf::from(format!("{}/babylon/", self.args.nfs_mount_point)),
+            mount_dir: PathBuf::from(RADIX_NODE_STORE_DIR),
             skip_fsck: self.args.skip_fsck,
         })?;
 
@@ -662,12 +662,12 @@ impl Bootstrap {
 
         let host_ip = instance_details.public_ip.unwrap().to_string();
         let radix_node = RadixNode::new(RadixNodeOptions {
-            config_dir: "/tmp/radix-node-stokenet".to_string(),
+            config_dir: PathBuf::from("/tmp/radix-node-stokenet"),
             host_ip,
             http_port: 3333,
             network_definition: radix_common::network::NetworkDefinition::stokenet(),
             p2p_port: self.args.radix_stokenet_port,
-            store_dir: RADIX_NODE_STORE_DIR.to_string(),
+            store_dir: PathBuf::from(RADIX_NODE_STORE_DIR),
         });
 
         radix_node.start().await?;
@@ -682,8 +682,8 @@ impl Bootstrap {
     async fn start_postgres_fs(&mut self) -> Result<()> {
         let postgres_fs = ExternalFs::new(ExternalFsOptions {
             encryption_key: "your-password".to_string(),
-            nfs_mount_point: format!("{}/postgres/", self.args.nfs_mount_point),
-            mount_dir: POSTGRES_STORE_DIR.to_string(),
+            nfs_mount_point_dir: PathBuf::from(format!("{}/postgres/", self.args.nfs_mount_point)),
+            mount_dir: PathBuf::from(POSTGRES_STORE_DIR),
             skip_fsck: self.args.skip_fsck,
         })?;
 
@@ -703,7 +703,7 @@ impl Bootstrap {
             port: 5432,
             username: POSTGRES_USERNAME.to_string(),
             skip_vacuum: self.args.skip_vacuum,
-            store_dir: POSTGRES_STORE_DIR.to_string(),
+            store_dir: PathBuf::from(POSTGRES_STORE_DIR),
         });
 
         postgres.start().await?;
@@ -774,8 +774,8 @@ impl Bootstrap {
     async fn start_nats_fs(&mut self) -> Result<()> {
         let nats_server_fs = ExternalFs::new(ExternalFsOptions {
             encryption_key: "your-password".to_string(),
-            nfs_mount_point: format!("{}/nats/", self.args.nfs_mount_point),
-            mount_dir: "/var/lib/nats".to_string(),
+            nfs_mount_point_dir: PathBuf::from(format!("{}/nats/", self.args.nfs_mount_point)),
+            mount_dir: PathBuf::from("/var/lib/nats"),
             skip_fsck: self.args.skip_fsck,
         })?;
 

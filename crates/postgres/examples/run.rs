@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use proven_bootable::Bootable;
 use proven_postgres::{Postgres, PostgresOptions};
 
@@ -7,9 +9,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Create a directory for storing Postgres data
-    let store_dir = "/tmp/postgres-data".to_string();
+    let store_dir = PathBuf::from("/tmp/postgres-data");
 
-    println!("Starting Postgres node in directory: {}", store_dir);
+    println!(
+        "Starting Postgres node in directory: {}",
+        store_dir.display()
+    );
 
     // Create node options
     let options = PostgresOptions {
