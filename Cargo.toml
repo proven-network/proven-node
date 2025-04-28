@@ -323,9 +323,10 @@ lcms2 = "6.1.0"
 libffi = "4.0.0"
 libffi-sys = "3.2.0"
 libloading = "0.8.6"
-libsql = { version = "0.6.0", default-features = false, features = ["core", "stream"] }
-libsql-ffi = { version = "0.5.0", features = ["session"] }
-libsql-rusqlite = { version = "0.33.0", features = ["limits"] }
+# Using git for now because libsql-rusqlite is not yet released/out of sync
+libsql = { git = "https://github.com/tursodatabase/libsql", default-features = false, features = ["core", "stream"] }
+libsql-ffi = { git = "https://github.com/tursodatabase/libsql", features = ["session"] }
+libsql-rusqlite = { git = "https://github.com/tursodatabase/libsql", features = ["limits"] }
 libsui = "0.10.0"
 libc = "0.2.172"
 libuv-sys-lite = "1.48.3"
