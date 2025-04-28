@@ -54,7 +54,7 @@ impl ServiceHandler<Request, DeserializeError, SerializeError> for HttpServiceHa
             >,
     {
         debug!(
-            "proxying request: {} {}/{}",
+            "proxying request: {} {}{}",
             request.method, self.base_url, request.path
         );
 
@@ -62,7 +62,7 @@ impl ServiceHandler<Request, DeserializeError, SerializeError> for HttpServiceHa
             .client
             .request(
                 request.method.clone(),
-                format!("{}:{}", self.base_url, request.path),
+                format!("{}{}", self.base_url, request.path),
             )
             .headers(request.headers);
 

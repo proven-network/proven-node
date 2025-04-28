@@ -85,6 +85,8 @@ where
 
     /// Start the HTTP proxy.
     async fn start(&self) -> Result<(), Error> {
+        info!("http proxy service starting...");
+
         self.service.start().await.map_err(|e| {
             error!("HTTP proxy service setup failed: {}", e);
             Error::Service(e.to_string())
