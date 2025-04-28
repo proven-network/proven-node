@@ -8967,6 +8967,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -9455,6 +9456,7 @@ dependencies = [
  "proven-governance",
  "proven-governance-mock",
  "proven-http-insecure",
+ "proven-http-proxy",
  "proven-identity",
  "proven-messaging",
  "proven-messaging-nats",
@@ -9481,6 +9483,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]

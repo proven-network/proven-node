@@ -17,8 +17,14 @@ pub use request::*;
 pub use response::*;
 pub use service::*;
 
-type DeserializeError = ciborium::de::Error<std::io::Error>;
-type SerializeError = ciborium::ser::Error<std::io::Error>;
+/// The error type for deserializing HTTP proxy requests.
+pub type DeserializeError = ciborium::de::Error<std::io::Error>;
+
+/// The error type for serializing HTTP proxy requests.
+pub type SerializeError = ciborium::ser::Error<std::io::Error>;
+
+/// The name of the HTTP proxy service.
+pub const SERVICE_NAME: &str = "HTTP_PROXY";
 
 #[cfg(test)]
 mod tests {
@@ -125,7 +131,6 @@ mod tests {
             let client_options = HttpProxyClientOptions {
                 client_options: MemoryClientOptions,
                 http_port: client_port,
-                service_name: "test_http_proxy_integration".to_string(),
                 stream: stream.clone(),
             };
             let proxy_client = HttpProxyClient::new(client_options);
@@ -136,7 +141,6 @@ mod tests {
 
             // 4. Setup Proxy Service
             let service_options = HttpProxyServiceOptions {
-                service_name: "test_http_proxy_integration".to_string(),
                 service_options: MemoryServiceOptions,
                 stream: stream.clone(),
                 target_addr: echo_addr,

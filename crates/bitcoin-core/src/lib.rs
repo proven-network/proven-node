@@ -9,7 +9,9 @@ mod error;
 
 pub use error::Error;
 use proven_bootable::Bootable;
+use url::Url;
 
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -208,19 +210,24 @@ impl BitcoinNode {
 
     /// Returns the RPC URL for the Bitcoin Core node.
     #[must_use]
-    pub async fn get_rpc_url(&self) -> String {
-        match self
-            .process
-            .as_ref()
+    pub async fn get_rpc_url(&self) -> Result<Url, Error> {
+        self.get_rpc_socket_addr().await.and_then(|socket_addr| {
+            Url::parse(&format!("http://{}:{}", socket_addr.ip(), self.rpc_port))
+                .map_err(Error::UrlParse)
+        })
+    }
+
+    /// Returns the IP address of the Bitcoin Core node.
+    #[must_use]
+    pub async fn get_rpc_socket_addr(&self) -> Result<SocketAddr, Error> {
+        self.process
             .lock()
             .await
             .as_ref()
-            .expect("process not started") // TODO: Handle this better
+            .ok_or(Error::NotStarted)?
             .container_ip()
-        {
-            Some(container_ip) => format!("http://{}:{}", container_ip, self.rpc_port),
-            None => format!("http://127.0.0.1:{}", self.rpc_port),
-        }
+            .map(|ip| SocketAddr::new(ip, self.rpc_port))
+            .ok_or(Error::NotStarted)
     }
 
     /// Make an RPC call to the Bitcoin Core node
@@ -236,7 +243,7 @@ impl BitcoinNode {
         let client = reqwest::Client::new();
 
         let response = client
-            .post(&self.get_rpc_url().await)
+            .post(self.get_rpc_url().await?)
             .basic_auth(RPC_USER, Some(RPC_PASSWORD))
             .json(&serde_json::json!({
                 "jsonrpc": "1.0",

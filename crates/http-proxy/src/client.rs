@@ -2,7 +2,7 @@ use crate::error::Error;
 use crate::request::Request;
 use crate::response::Response;
 use crate::service_handler::HttpServiceHandler;
-use crate::{DeserializeError, SerializeError};
+use crate::{DeserializeError, SERVICE_NAME, SerializeError};
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -40,9 +40,6 @@ where
     /// The port to listen on for incoming requests.
     pub http_port: u16,
 
-    /// The name of the service.
-    pub service_name: String,
-
     /// The stream to route requests to.
     pub stream: S,
 }
@@ -64,9 +61,6 @@ where
     /// The port to listen on for incoming requests.
     http_port: u16,
 
-    /// The name of the service.
-    service_name: String,
-
     /// The shutdown token.
     shutdown_token: CancellationToken,
 
@@ -82,13 +76,18 @@ where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
     /// Create a new HTTP proxy client.
-    pub fn new(options: HttpProxyClientOptions<S>) -> Self {
+    pub fn new(
+        HttpProxyClientOptions {
+            client_options,
+            http_port,
+            stream,
+        }: HttpProxyClientOptions<S>,
+    ) -> Self {
         Self {
-            client_options: options.client_options,
-            http_port: options.http_port,
-            service_name: options.service_name,
+            client_options,
+            http_port,
             shutdown_token: CancellationToken::new(),
-            stream: options.stream,
+            stream,
             task_tracker: TaskTracker::new(),
         }
     }
@@ -110,7 +109,7 @@ where
         info!("Initializing HTTP proxy client...");
         let messaging_client = self
             .stream
-            .client::<_, HttpServiceHandler>(self.service_name.clone(), self.client_options.clone())
+            .client::<_, HttpServiceHandler>(SERVICE_NAME.to_string(), self.client_options.clone())
             .await
             .map_err(|e| {
                 error!("HTTP proxy client setup failed: {}", e);

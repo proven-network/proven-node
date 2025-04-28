@@ -20,6 +20,10 @@ pub enum Error {
     #[error(transparent)]
     EthereumReth(#[from] proven_ethereum_reth::Error),
 
+    /// HTTP proxy error
+    #[error(transparent)]
+    HttpProxy(#[from] proven_http_proxy::Error),
+
     /// Could not set global default subscriber.
     #[error("could not set global default subscriber: {0}")]
     SetTracing(#[from] tracing::dispatcher::SetGlobalDefaultError),
@@ -59,4 +63,8 @@ pub enum Error {
     /// Babylon node error.
     #[error(transparent)]
     RadixNode(#[from] proven_radix_node::Error),
+
+    /// Stream error
+    #[error("stream error: {0}")]
+    Stream(String),
 }

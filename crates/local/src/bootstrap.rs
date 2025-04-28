@@ -26,10 +26,18 @@ use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOpt
 use proven_governance::NodeSpecialization;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
+use proven_http_proxy::{
+    DeserializeError as HttpProxyDeserializeError, HttpProxyClient, HttpProxyClientOptions,
+    HttpProxyService, HttpProxyServiceOptions, Request as HttpProxyRequest,
+    SerializeError as HttpProxySerializeError,
+};
 use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
+use proven_messaging::stream::Stream;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
-use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
+use proven_messaging_nats::stream::{
+    InitializedNatsStream, NatsStream, NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions,
+};
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{ProvenNetwork, ProvenNetworkOptions};
 use proven_postgres::{Postgres, PostgresOptions};
@@ -47,6 +55,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
+use url::Url;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
@@ -80,6 +89,25 @@ pub struct Bootstrap {
     ethereum_sepolia_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
 
     bitcoin_node: Option<BitcoinNode>,
+    bitcoin_node_rpc_url: Option<Url>,
+    bitcoin_proxy_service: Option<
+        HttpProxyService<
+            InitializedNatsStream<
+                HttpProxyRequest,
+                HttpProxyDeserializeError,
+                HttpProxySerializeError,
+            >,
+        >,
+    >,
+    bitcoin_proxy_client: Option<
+        HttpProxyClient<
+            InitializedNatsStream<
+                HttpProxyRequest,
+                HttpProxyDeserializeError,
+                HttpProxySerializeError,
+            >,
+        >,
+    >,
 
     postgres: Option<Postgres>,
 
@@ -126,6 +154,9 @@ impl Bootstrap {
             ethereum_sepolia_lighthouse_node: None,
 
             bitcoin_node: None,
+            bitcoin_node_rpc_url: None,
+            bitcoin_proxy_service: None,
+            bitcoin_proxy_client: None,
 
             postgres: None,
 
@@ -876,9 +907,24 @@ impl Bootstrap {
     }
 
     async fn start_bitcoin_node(&mut self) -> Result<()> {
+        let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
+            panic!("nats client not fetched before bitcoin node step");
+        });
+
         let network = self.network.as_ref().unwrap_or_else(|| {
             panic!("network not set before bitcoin node step");
         });
+
+        let bitcoin_proxy_stream = NatsStream::new(
+            "BITCOIN_TESTNET_PROXY",
+            NatsStreamOptions {
+                client: nats_client.clone(),
+                num_replicas: self.num_replicas,
+            },
+        )
+        .init()
+        .await
+        .map_err(|e| Error::Stream(e.to_string()))?;
 
         if network
             .specializations()
@@ -898,9 +944,41 @@ impl Bootstrap {
 
             bitcoin_node.start().await?;
 
-            self.bitcoin_node = Some(bitcoin_node);
-
             info!("bitcoin testnet node started");
+
+            let bitcoin_proxy_service = HttpProxyService::new(HttpProxyServiceOptions {
+                service_options: NatsServiceOptions {
+                    client: nats_client.clone(),
+                    durable_name: None,
+                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+                },
+                stream: bitcoin_proxy_stream,
+                target_addr: bitcoin_node.get_rpc_socket_addr().await?,
+            })
+            .await?;
+
+            bitcoin_proxy_service.start().await?;
+
+            self.bitcoin_node_rpc_url = Some(bitcoin_node.get_rpc_url().await?);
+            self.bitcoin_node = Some(bitcoin_node);
+            self.bitcoin_proxy_service = Some(bitcoin_proxy_service);
+
+            info!("bitcoin testnet proxy service started");
+        } else {
+            let bitcoin_proxy_client = HttpProxyClient::new(HttpProxyClientOptions {
+                client_options: NatsClientOptions {
+                    client: nats_client.clone(),
+                },
+                http_port: 8332,
+                stream: bitcoin_proxy_stream,
+            });
+
+            bitcoin_proxy_client.start().await?;
+
+            self.bitcoin_node_rpc_url = Some(Url::parse("http://127.0.0.1:8332").unwrap());
+            self.bitcoin_proxy_client = Some(bitcoin_proxy_client);
+
+            info!("bitcoin testnet proxy client started");
         }
 
         Ok(())

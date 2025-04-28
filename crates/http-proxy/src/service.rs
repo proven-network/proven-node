@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use crate::error::Error;
 use crate::request::Request;
 use crate::service_handler::HttpServiceHandler;
-use crate::{DeserializeError, SerializeError};
+use crate::{DeserializeError, SERVICE_NAME, SerializeError};
 
 use async_trait::async_trait;
 use proven_bootable::Bootable;
@@ -21,9 +21,6 @@ pub struct HttpProxyServiceOptions<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
-    /// The name of the service.
-    pub service_name: String,
-
     /// The options for the service.
     pub service_options: <MessagingService<S> as Service<
         HttpServiceHandler,
@@ -56,7 +53,6 @@ where
     /// Create a new HTTP proxy service.
     pub async fn new(
         HttpProxyServiceOptions {
-            service_name,
             service_options,
             stream,
             target_addr,
@@ -64,7 +60,7 @@ where
     ) -> Result<Self, Error> {
         let service = stream
             .service::<_, HttpServiceHandler>(
-                service_name.clone(),
+                SERVICE_NAME.to_string(),
                 service_options.clone(),
                 HttpServiceHandler::new(target_addr),
             )
