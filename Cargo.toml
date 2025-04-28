@@ -211,6 +211,8 @@ deno_cache_dir = "0.19.2"
 deno_canvas = { path = "vendor/deno/ext/canvas" }
 deno_config = { version = "0.53.0", features = ["workspace", "sync"] }
 deno_console = { path = "vendor/deno/ext/console" }
+# TODO: Enable pointer compression when prebuilts are available for ARM.
+# https://github.com/denoland/rusty_v8/pull/1752
 deno_core = "0.343.0"
 deno_cron = { path = "vendor/deno/ext/cron" }
 deno_crypto = { path = "vendor/deno/ext/crypto" }
