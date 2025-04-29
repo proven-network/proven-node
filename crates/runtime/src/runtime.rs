@@ -330,28 +330,28 @@ where
             max_heap_size: Some(MAX_HEAP_SIZE_MBS_HARD_LIMIT * 1024 * 1024),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
-                handler_runtime_ext::init_ops_and_esm(),
-                console_ext::init_ops_and_esm(),
-                crypto_ext::init_ops_and_esm(),
-                session_ext::init_ops_and_esm(),
-                kv_runtime_ext::init_ops_and_esm::<
+                handler_runtime_ext::init(),
+                console_ext::init(),
+                crypto_ext::init(),
+                session_ext::init(),
+                kv_runtime_ext::init::<
                     AS::Scoped,
                     <<PS as Store3>::Scoped as Store2>::Scoped,
                     NS::Scoped,
                     RNV,
                 >(),
-                sql_runtime_ext::init_ops_and_esm::<
+                sql_runtime_ext::init::<
                     ASS::Scoped,
                     <<PSS as SqlStore3>::Scoped as SqlStore2>::Scoped,
                     NSS::Scoped,
                     RNV,
                 >(),
                 // Vendered modules
-                openai_ext::init_ops_and_esm(),
-                babylon_gateway_api_ext::init_ops_and_esm(),
-                radix_engine_toolkit_ext::init_ops_and_esm(),
-                uuid_ext::init_ops_and_esm(),
-                zod_ext::init_ops_and_esm(),
+                openai_ext::init(),
+                babylon_gateway_api_ext::init(),
+                radix_engine_toolkit_ext::init(),
+                uuid_ext::init(),
+                zod_ext::init(),
             ],
             extension_options: ExtensionOptions {
                 filesystem: Arc::new(FileSystem::new(file_system_store)),
