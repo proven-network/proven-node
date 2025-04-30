@@ -130,7 +130,7 @@ where
                 ..Default::default()
             })
             .await
-            .unwrap();
+            .map_err(|e| Error::CreateStream(e.kind()))?;
 
         Ok(Self {
             jetstream_context,

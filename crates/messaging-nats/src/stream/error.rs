@@ -6,6 +6,10 @@ use thiserror::Error;
 /// Error type for memory stream operations.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// Create stream error.
+    #[error("failed to create stream: {0}")]
+    CreateStream(async_nats::jetstream::context::CreateStreamErrorKind),
+
     /// Delete error.
     #[error("failed to delete message: {0}")]
     Delete(async_nats::jetstream::stream::DeleteMessageErrorKind),
