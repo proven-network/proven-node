@@ -18,7 +18,7 @@ use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use hex;
 use proven_attestation::{AttestationParams, Attestor};
-use proven_governance::{Governance, NodeSpecialization};
+use proven_governance::{Governance, NodeSpecialization, Version};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use url::Url;
@@ -135,6 +135,14 @@ where
         })
     }
 
+    /// Get the active versions of the node.
+    pub async fn get_active_versions(&self) -> Result<Vec<Version>, Error> {
+        self.governance
+            .get_active_versions()
+            .await
+            .map_err(|e| Error::Governance(e.to_string()))
+    }
+
     /// Attest the nats cluster endpoint.
     pub async fn attested_nats_cluster_endpoint(
         &self,
@@ -167,6 +175,7 @@ where
     /// Returns an error if:
     /// - Failed to get topology from governance
     /// - Failed to get self node
+    /// - Failed to get active versions
     pub async fn get_peers(&self) -> Result<Vec<Peer<A>>, Error> {
         let all_nodes = self
             .governance
@@ -174,11 +183,13 @@ where
             .await
             .map_err(|e| Error::Governance(e.to_string()))?;
 
-        // Filter out self and create Peer<A> instances
+        let active_versions = self.get_active_versions().await?;
+
+        // Filter out self
         Ok(all_nodes
             .into_iter()
             .filter(|node| node.public_key != hex::encode(self.public_key.as_bytes()))
-            .map(|node| Peer::new(node, self.attestor.clone())) // Use Peer::new with cloned attestor
+            .map(|node| Peer::new(node, active_versions.clone(), self.attestor.clone()))
             .collect())
     }
 
@@ -252,6 +263,7 @@ where
     /// Returns an error if:
     /// - Failed to get topology from governance
     /// - Failed to find self node in topology
+    /// - Failed to get active versions
     async fn get_self(&self) -> Result<Peer<A>, Error> {
         let topology = self
             .governance
@@ -270,7 +282,11 @@ where
             })?;
 
         // Use Peer::new with cloned attestor
-        Ok(Peer::new(node.clone(), self.attestor.clone()))
+        Ok(Peer::new(
+            node.clone(),
+            self.get_active_versions().await?,
+            self.attestor.clone(),
+        ))
     }
 
     /// Attest the provided data.

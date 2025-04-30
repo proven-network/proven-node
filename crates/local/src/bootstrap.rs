@@ -15,6 +15,7 @@ use axum::routing::any;
 use ed25519_dalek::SigningKey;
 use http::StatusCode;
 use proven_applications::{ApplicationManagement, ApplicationManager};
+use proven_attestation::Attestor;
 use proven_attestation_mock::MockAttestor;
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_bootable::Bootable;
@@ -23,7 +24,7 @@ use proven_ethereum_lighthouse::{
     EthereumNetwork as LighthouseNetwork, LighthouseNode, LighthouseNodeOptions,
 };
 use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOptions};
-use proven_governance::NodeSpecialization;
+use proven_governance::{NodeSpecialization, Version};
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_http_proxy::{
@@ -589,13 +590,21 @@ impl Bootstrap {
             Error::PrivateKey("Failed to create SigningKey: invalid key length".to_string())
         })?;
 
+        // Just use single version based on mock attestation pcrs (deterministic hashes on cargo version)
+        let pcrs = self
+            .attestor
+            .pcrs()
+            .await
+            .map_err(|e| Error::Attestation(format!("failed to get PCRs: {}", e)))?;
+        let version = Version::from_pcrs(pcrs);
+
         let governance = match self.args.topology_file {
             Some(ref topology_file) => {
                 info!(
                     "using replication factor 3 with topology from file: {}",
                     topology_file.display()
                 );
-                MockGovernance::from_topology_file(topology_file, vec![])
+                MockGovernance::from_topology_file(topology_file, vec![version])
                     .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?
             }
             None => {

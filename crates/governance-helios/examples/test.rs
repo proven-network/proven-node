@@ -61,7 +61,10 @@ async fn main() {
             for version in versions {
                 info!(
                     "Version {}: PCR0: {}, PCR1: {}, PCR2: {}",
-                    version.sequence, version.ne_pcr0, version.ne_pcr1, version.ne_pcr2
+                    version.sequence,
+                    hex::encode(version.ne_pcr0),
+                    hex::encode(version.ne_pcr1),
+                    hex::encode(version.ne_pcr2)
                 );
             }
         }

@@ -72,6 +72,10 @@ pub enum Error {
     #[error("missing required header: {0}")]
     MissingHeader(&'static str),
 
+    /// Nonce mismatch during attestation verification.
+    #[error("nonce mismatch during attestation verification")]
+    NonceMismatch,
+
     /// Signature verification failed.
     #[error("signature verification failed: {0}")]
     SignatureVerificationFailed(String),
@@ -84,7 +88,7 @@ pub enum Error {
     #[error(transparent)]
     Utf8Decode(#[from] std::string::FromUtf8Error),
 
-    /// Nonce mismatch during attestation verification.
-    #[error("nonce mismatch during attestation verification")]
-    NonceMismatch,
+    /// Version mismatch.
+    #[error("version mismatch")]
+    VersionMismatch,
 }

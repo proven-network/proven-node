@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::time::SystemTime;
 
+use bytes::Bytes;
 use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
 use proven_governance_mock::MockGovernance;
 
@@ -30,17 +31,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create test versions
     let version1 = Version {
         activated_at: SystemTime::now(),
-        ne_pcr0: "pcr0-1".to_string(),
-        ne_pcr1: "pcr1-1".to_string(),
-        ne_pcr2: "pcr2-1".to_string(),
+        ne_pcr0: Bytes::from("pcr0-1"),
+        ne_pcr1: Bytes::from("pcr1-1"),
+        ne_pcr2: Bytes::from("pcr2-1"),
         sequence: 1,
     };
 
     let version2 = Version {
         activated_at: SystemTime::now(),
-        ne_pcr0: "pcr0-2".to_string(),
-        ne_pcr1: "pcr1-2".to_string(),
-        ne_pcr2: "pcr2-2".to_string(),
+        ne_pcr0: Bytes::from("pcr0-2"),
+        ne_pcr1: Bytes::from("pcr1-2"),
+        ne_pcr2: Bytes::from("pcr2-2"),
         sequence: 2,
     };
 

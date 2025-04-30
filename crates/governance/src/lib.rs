@@ -10,6 +10,8 @@ use std::time::SystemTime;
 use std::{collections::HashSet, fmt::Display};
 
 use async_trait::async_trait;
+use bytes::Bytes;
+use proven_attestation::Pcrs;
 use serde::{Deserialize, Serialize};
 
 /// A node in the network topology.
@@ -63,16 +65,34 @@ pub struct Version {
     pub activated_at: SystemTime,
 
     /// A contiguous measure of the contents of the image file, without the section data.
-    pub ne_pcr0: String,
+    pub ne_pcr0: Bytes,
 
     /// A contiguous measurement of the kernel and boot ramfs data.
-    pub ne_pcr1: String,
+    pub ne_pcr1: Bytes,
 
     /// A contiguous, in-order measurement of the user applications, without the boot ramfs.
-    pub ne_pcr2: String,
+    pub ne_pcr2: Bytes,
 
     /// Sequence number of the version.
     pub sequence: u64,
+}
+
+impl Version {
+    /// Create a new from attestation PCRs.
+    pub fn from_pcrs(pcrs: Pcrs) -> Self {
+        Self {
+            activated_at: SystemTime::now(),
+            ne_pcr0: pcrs.pcr0,
+            ne_pcr1: pcrs.pcr1,
+            ne_pcr2: pcrs.pcr2,
+            sequence: 0,
+        }
+    }
+
+    /// Check if the version matches the PCRs.
+    pub fn matches_pcrs(&self, pcrs: &Pcrs) -> bool {
+        self.ne_pcr0 == pcrs.pcr0 && self.ne_pcr1 == pcrs.pcr1 && self.ne_pcr2 == pcrs.pcr2
+    }
 }
 
 /// The kind of governance error.

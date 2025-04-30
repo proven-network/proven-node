@@ -349,7 +349,7 @@ netif = "0.1.6"
 nix = { version = "=0.27.1", features = ["process", "signal", "user", "mount", "sched"] }
 node_resolver = { path = "vendor/deno/resolvers/node" }
 notify = "8.0.0"
-nsm-nitro-enclave-utils = { version = "0.1.2", features = ["pki", "rand", "verify"] }
+nsm-nitro-enclave-utils = { version = "0.1.2", features = ["pki", "seed", "verify"] }
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"

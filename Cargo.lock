@@ -7782,7 +7782,6 @@ dependencies = [
  "coset",
  "hex",
  "p384",
- "rand 0.8.5",
  "ring",
  "rustls-pki-types",
  "rustls-webpki 0.103.1",
@@ -7790,6 +7789,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+ "sha2",
  "x509-cert",
 ]
 
@@ -9217,6 +9217,8 @@ name = "proven-governance"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytes",
+ "proven-attestation",
  "serde",
  "tokio",
 ]
@@ -9248,6 +9250,7 @@ name = "proven-governance-mock"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytes",
  "ed25519-dalek",
  "hex",
  "proven-governance",

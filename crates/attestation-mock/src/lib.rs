@@ -8,6 +8,7 @@ mod error;
 
 pub use error::{Error, Result};
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -48,7 +49,12 @@ impl MockAttestor {
 
         let signing_key = SecretKey::from_pkcs8_der(&SIGNING_KEY).unwrap();
 
-        let driver_pcrs = DriverPcrs::rand();
+        let version = env!("CARGO_PKG_VERSION");
+        let driver_pcrs = DriverPcrs::seed(BTreeMap::from([
+            (PcrIndex::Zero, format!("pcr0:{}", version)),
+            (PcrIndex::One, format!("pcr1:{}", version)),
+            (PcrIndex::Two, format!("pcr2:{}", version)),
+        ]));
 
         let pcrs = Pcrs {
             pcr0: driver_pcrs.get(PcrIndex::Zero).to_vec().into(),

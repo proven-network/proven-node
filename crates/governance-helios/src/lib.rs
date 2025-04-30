@@ -187,9 +187,9 @@ impl Governance for HeliosGovernance {
                 versions.push(Version {
                     sequence: version_struct.sequence,
                     activated_at,
-                    ne_pcr0: version_struct.nePcr0.clone(),
-                    ne_pcr1: version_struct.nePcr1.clone(),
-                    ne_pcr2: version_struct.nePcr2.clone(),
+                    ne_pcr0: version_struct.nePcr0.clone().into(),
+                    ne_pcr1: version_struct.nePcr1.clone().into(),
+                    ne_pcr2: version_struct.nePcr2.clone().into(),
                 });
             }
         }

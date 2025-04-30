@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-trait.workspace = true
+bytes.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
 proven-governance.workspace = true

@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use bytes::Bytes;
 use headers::Header;
 use proven_attestation::Attestor;
-use proven_governance::{NodeSpecialization, TopologyNode};
+use proven_governance::{NodeSpecialization, TopologyNode, Version};
 use proven_headers::{Attestation, Nonce};
 use rand::RngCore;
 use reqwest::header::{HeaderName as ReqwestHeaderName, HeaderValue as ReqwestHeaderValue};
@@ -21,6 +21,7 @@ where
 {
     attestor: A,
     node: TopologyNode,
+    versions: Vec<Version>,
 }
 
 impl<A> Peer<A>
@@ -28,8 +29,12 @@ where
     A: Attestor,
 {
     /// Create a new Peer instance.
-    pub fn new(node: TopologyNode, attestor: A) -> Self {
-        Self { attestor, node }
+    pub fn new(node: TopologyNode, versions: Vec<Version>, attestor: A) -> Self {
+        Self {
+            attestor,
+            node,
+            versions,
+        }
     }
 
     /// Get the availability zone of the node.
@@ -102,6 +107,7 @@ where
             .verify(attestation.0)
             .map_err(|e| Error::AttestationVerificationFailed(e.to_string()))?;
 
+        // Check nonce matches
         let expected_nonce = Bytes::copy_from_slice(&nonce_bytes);
         if verified_attestation.nonce.as_ref() != Some(&expected_nonce) {
             warn!(
@@ -111,6 +117,13 @@ where
             );
             return Err(Error::NonceMismatch);
         }
+
+        // Check PCRs match known version
+        let pcrs = verified_attestation.pcrs;
+        self.versions
+            .iter()
+            .find(|v| v.matches_pcrs(&pcrs))
+            .ok_or(Error::VersionMismatch)?;
 
         response.text().await.map_err(Error::Reqwest)
     }
