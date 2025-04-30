@@ -35,6 +35,9 @@ pub struct NatsStoreOptions {
     /// The maximum age of entries in the store. Use `Duration::ZERO` for no expiry.
     pub max_age: Duration,
 
+    /// The number of NATS JetStream replicas to use for the store.
+    pub num_replicas: usize,
+
     /// Whether to persist the store to disk.
     pub persist: bool,
 }
@@ -57,6 +60,7 @@ where
     client: Client,
     jetstream_context: JetStreamContext,
     max_age: Duration,
+    num_replicas: usize,
     persist: bool,
     _marker: PhantomData<(T, D, S)>,
 }
@@ -79,6 +83,7 @@ where
             client: self.client.clone(),
             jetstream_context: self.jetstream_context.clone(),
             max_age: self.max_age,
+            num_replicas: self.num_replicas,
             persist: self.persist,
             _marker: PhantomData,
         }
@@ -104,6 +109,7 @@ where
             client,
             bucket,
             max_age,
+            num_replicas,
             persist,
         }: NatsStoreOptions,
     ) -> Self {
@@ -114,6 +120,7 @@ where
             client,
             jetstream_context,
             max_age,
+            num_replicas,
             persist,
             _marker: PhantomData,
         }
@@ -123,6 +130,7 @@ where
         let config = Config {
             bucket: self.bucket.clone(),
             max_age: self.max_age,
+            num_replicas: self.num_replicas,
             storage: if self.persist {
                 jetstream::stream::StorageType::File
             } else {
@@ -259,6 +267,7 @@ macro_rules! impl_scoped_store {
                 client: Client,
                 jetstream_context: JetStreamContext,
                 max_age: Duration,
+                num_replicas: usize,
                 persist: bool,
                 _marker: PhantomData<(T, D, S)>,
             }
@@ -281,6 +290,7 @@ macro_rules! impl_scoped_store {
                         client: self.client.clone(),
                         jetstream_context: self.jetstream_context.clone(),
                         max_age: self.max_age,
+                        num_replicas: self.num_replicas,
                         persist: self.persist,
                         _marker: PhantomData,
                     }
@@ -326,6 +336,7 @@ macro_rules! impl_scoped_store {
                         client,
                         bucket,
                         max_age,
+                        num_replicas,
                         persist,
                     }: NatsStoreOptions,
                 ) -> Self {
@@ -336,6 +347,7 @@ macro_rules! impl_scoped_store {
                         client,
                         jetstream_context,
                         max_age,
+                        num_replicas,
                         persist,
                         _marker: PhantomData,
                     }
@@ -370,6 +382,7 @@ macro_rules! impl_scoped_store {
                         client: self.client.clone(),
                         bucket,
                         max_age: self.max_age,
+                        num_replicas: self.num_replicas,
                         persist: self.persist,
                     })
                 }
@@ -410,6 +423,7 @@ mod tests {
             client,
             bucket: "test".to_string(),
             max_age: Duration::from_secs(3600),
+            num_replicas: 1,
             persist: false,
         });
 
@@ -438,6 +452,7 @@ mod tests {
             client,
             bucket: "scoped".to_string(),
             max_age: Duration::from_secs(3600),
+            num_replicas: 1,
             persist: false,
         });
 

@@ -1096,6 +1096,7 @@ impl Bootstrap {
             bucket: "challenges".to_string(),
             client: nats_client.clone(),
             max_age: Duration::from_secs(5 * 60),
+            num_replicas: self.num_replicas,
             persist: false,
         });
 
@@ -1103,6 +1104,7 @@ impl Bootstrap {
             bucket: "sessions".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
+            num_replicas: self.num_replicas,
             persist: true,
         });
 
@@ -1127,6 +1129,7 @@ impl Bootstrap {
                 bucket: "APPLICATION_MANAGER_KV".to_string(),
                 client: nats_client.clone(),
                 max_age: Duration::ZERO,
+                num_replicas: self.num_replicas,
                 persist: true,
             }),
             StreamedSqlStore1::new(
@@ -1153,6 +1156,7 @@ impl Bootstrap {
             bucket: "APPLICATION_KV".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
+            num_replicas: self.num_replicas,
             persist: true,
         });
 
@@ -1179,6 +1183,7 @@ impl Bootstrap {
             bucket: "PERSONAL_KV".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
+            num_replicas: self.num_replicas,
             persist: true,
         });
 
@@ -1205,6 +1210,7 @@ impl Bootstrap {
             bucket: "NFT_KV".to_string(),
             client: nats_client.clone(),
             max_age: Duration::ZERO,
+            num_replicas: self.num_replicas,
             persist: true,
         });
 
