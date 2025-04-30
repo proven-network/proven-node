@@ -1,0 +1,30 @@
+{
+  "server_id": "NDIESIZS7MWBAOM2BVC3YLEGJLGFMZYVO23OIYB7WUF5736JWKND5TKQ",
+  "server_name": "us-south-nats-demo",
+  "now": "2025-04-30T10:45:01.178799923Z",
+  "num_routes": 0,
+  "routes": [
+    {
+      "rid": 15,
+      "remote_id": "NBHE7EHS6RIRGFZ4HLGZU4QUSYQOBZGHLNCC4PPDQEWVWUWAVJZP3EX3",
+      "remote_name": "bulbasaur.local",
+      "did_solicit": true,
+      "is_configured": false,
+      "ip": "172.28.1.2",
+      "port": 49962,
+      "start": "2025-04-30T11:06:45.529280795Z",
+      "last_activity": "2025-04-30T11:06:45.673868086Z",
+      "rtt": "0s",
+      "uptime": "0s",
+      "idle": "0s",
+      "pending_size": 0,
+      "in_msgs": 1,
+      "out_msgs": 1,
+      "in_bytes": 1723,
+      "out_bytes": 1728,
+      "subscriptions": 60,
+      "account": "$SYS",
+      "compression": "off"
+    }
+  ]
+}

@@ -9,9 +9,10 @@ mod error;
 
 pub use error::Error;
 use proven_bootable::Bootable;
+use proven_nats_monitor::NatsMonitor;
 
-use std::path::PathBuf;
 use std::sync::Arc;
+use std::{net::SocketAddr, path::PathBuf};
 
 use async_nats::Client;
 use async_trait::async_trait;
@@ -89,8 +90,14 @@ struct NatsServerApp {
     /// The path to the nats-server executable
     executable_path: String,
 
+    /// The http listen port
+    http_port: u16,
+
     /// The store directory
     store_dir: PathBuf,
+
+    /// Whether to wait for a cluster to be formed
+    wait_for_cluster: bool,
 }
 
 #[async_trait]
@@ -146,10 +153,32 @@ impl IsolatedApplication for NatsServerApp {
         let server_url = format!("nats://{}:{}", info.ip_address, self.client_port);
         match async_nats::connect(&server_url).await {
             Ok(client) => {
-                // Connection successful, server is ready
-                // We can drop the client right away as we only wanted to test the connection
+                // // We can drop the client right away as we only wanted to test the connection
                 drop(client);
-                true
+
+                if self.wait_for_cluster {
+                    // Check route information (/routez) endpoints to see if cluster is ready
+                    let monitor =
+                        NatsMonitor::new(SocketAddr::new(info.ip_address, self.http_port));
+
+                    match monitor.get_routez().await {
+                        Ok(routez) => {
+                            // Check there's at least one route with an uptime of more than 5s
+                            routez
+                                .routes
+                                .iter()
+                                .any(|route| route.uptime.unwrap() > Duration::from_secs(5))
+                        }
+                        Err(e) => {
+                            error!("Failed to get route info: {}", e);
+
+                            false
+                        }
+                    }
+                } else {
+                    // If we're not using a cluster, we can just return based on the client connecting
+                    true
+                }
             }
             Err(_) => {
                 // Connection failed, server not ready yet
@@ -351,7 +380,7 @@ where
             // Try to get the NATS cluster endpoint
             match peer.nats_cluster_endpoint().await {
                 Ok(endpoint) => {
-                    routes.push_str(&format!("{}\n    ", endpoint));
+                    routes.push_str(&format!("\"{}\"\n    ", endpoint));
                     valid_peer_count += 1;
                 }
                 Err(e) => {
@@ -395,10 +424,12 @@ where
 
         info!("{}", config);
 
-        std::fs::create_dir_all(&self.config_dir)
+        tokio::fs::create_dir_all(&self.config_dir)
+            .await
             .map_err(|e| Error::Io("failed to create config directory", e))?;
 
-        std::fs::write(self.config_dir.join("nats-server.conf"), config)
+        tokio::fs::write(self.config_dir.join("nats-server.conf"), config)
+            .await
             .map_err(|e| Error::Io("failed to write nats-server.conf", e))?;
 
         // Reload the configuration if the server is running
@@ -480,6 +511,7 @@ where
         self.update_topology().await?;
 
         let cluster_port = self.network.nats_cluster_endpoint().await?.port().unwrap();
+        let wait_for_cluster = self.network.get_peers().await?.len() > 1;
 
         // Prepare the NATS server application
         let app = NatsServerApp {
@@ -493,7 +525,9 @@ where
                 .join("nats-server")
                 .to_string_lossy()
                 .to_string(),
+            http_port: self.http_port,
             store_dir: self.store_dir.clone(),
+            wait_for_cluster,
         };
 
         // Spawn the isolated process
@@ -504,7 +538,7 @@ where
         // Store the process for later access
         self.process.lock().await.replace(process);
 
-        // Start periodic topology update task
+        // // Start periodic topology update task
         let topology_update_task = self.start_topology_update_task()?;
         self.topology_update_task
             .lock()

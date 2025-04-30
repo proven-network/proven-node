@@ -5,7 +5,10 @@
 #![warn(clippy::nursery)]
 
 mod error;
+mod serde_duration;
 mod types;
+
+use std::net::SocketAddr;
 
 pub use error::{Error, Result};
 pub use types::*;
@@ -16,7 +19,7 @@ use tracing::info;
 /// Helper for querying NATS HTTP monitoring endpoints.
 pub struct NatsMonitor {
     client: Client,
-    monitoring_port: u32,
+    socket_addr: SocketAddr,
 }
 
 impl NatsMonitor {
@@ -30,10 +33,10 @@ impl NatsMonitor {
     ///
     /// A new `NatsMonitor` instance.
     #[must_use]
-    pub fn new(monitoring_port: u32) -> Self {
+    pub fn new(socket_addr: SocketAddr) -> Self {
         Self {
             client: Client::new(),
-            monitoring_port,
+            socket_addr,
         }
     }
 
@@ -44,7 +47,7 @@ impl NatsMonitor {
     /// This function will return an error if the HTTP request fails or if the response
     /// cannot be parsed into a `Connz` object.
     pub async fn get_connz(&self) -> Result<Connz> {
-        let url = format!("http://localhost:{}/connz?subs=1", self.monitoring_port);
+        let url = format!("http://{}/connz?subs=1", self.socket_addr);
         let response = self.client.get(url).send().await?;
         let json = response.text().await?;
         info!("raw connz: {}", json); // TODO: remove this later
@@ -59,7 +62,7 @@ impl NatsMonitor {
     /// This function will return an error if the HTTP request fails or if the response
     /// cannot be parsed into a `Varz` object.
     pub async fn get_varz(&self) -> Result<Varz> {
-        let url = format!("http://localhost:{}/varz", self.monitoring_port);
+        let url = format!("http://{}/varz", self.socket_addr);
         let response = self.client.get(url).send().await?;
         let json = response.text().await?;
         info!("raw varz: {}", json); // TODO: remove this later
@@ -67,5 +70,17 @@ impl NatsMonitor {
         Ok(varz)
     }
 
-    // TODO: Implement similar async functions for Connz, Routez, Subz, etc.
+    /// Fetches the route information (Routez) from the NATS server.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if the HTTP request fails or if the response
+    /// cannot be parsed into a `Routez` object.
+    pub async fn get_routez(&self) -> Result<Routez> {
+        let url = format!("http://{}/routez", self.socket_addr);
+        let response = self.client.get(url).send().await?;
+        let json = response.text().await?;
+        let routez: Routez = serde_json::from_str(&json)?;
+        Ok(routez)
+    }
 }

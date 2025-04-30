@@ -9625,6 +9625,7 @@ dependencies = [
  "proven-governance",
  "proven-governance-mock",
  "proven-isolation",
+ "proven-nats-monitor",
  "proven-network",
  "rand 0.8.5",
  "regex",

@@ -37,6 +37,10 @@ pub enum Error {
     #[error(transparent)]
     ProvenNetwork(#[from] proven_network::Error),
 
+    /// Nats monitor error.
+    #[error(transparent)]
+    NatsMonitor(#[from] proven_nats_monitor::Error),
+
     /// Process exited with non-zero.
     #[error("nats server exited with non-zero status: {0}")]
     NonZeroExitCode(ExitStatus),

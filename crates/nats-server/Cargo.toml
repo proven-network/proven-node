@@ -12,6 +12,7 @@ proven-attestation.workspace = true
 proven-bootable.workspace = true
 proven-governance.workspace = true
 proven-isolation.workspace = true
+proven-nats-monitor.workspace = true
 proven-network.workspace = true
 regex.workspace = true
 thiserror.workspace = true
