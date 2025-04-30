@@ -422,8 +422,6 @@ where
             );
         }
 
-        info!("{}", config);
-
         tokio::fs::create_dir_all(&self.config_dir)
             .await
             .map_err(|e| Error::Io("failed to create config directory", e))?;
