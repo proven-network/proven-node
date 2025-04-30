@@ -165,7 +165,7 @@ aws-sdk-kms = { version = "1.66.0", default-features = false }
 aws-sdk-route53resolver = { version = "1.70.0", default-features = false }
 aws-sdk-s3 = { version = "1.83.0", default-features = false, features = ["rt-tokio"] }
 aws-sdk-secretsmanager = { version = "1.69.0", default-features = false }
-axum = { version = "0.8.3", features = ["ws"] }
+axum = { version = "0.8.4", features = ["ws"] }
 axum-extra = { version = "0.10.1", features = ["typed-header"] }
 axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
 axum_typed_multipart = "0.16.0"
@@ -231,7 +231,7 @@ deno_napi = { path = "vendor/deno/ext/napi" }
 deno_native_certs = "0.3.0"
 deno_net = { path = "vendor/deno/ext/net" }
 deno_node = { path = "vendor/deno/ext/node" }
-deno_npm = "0.32.0"
+deno_npm = "0.33.0"
 deno_npm_cache = { path = "vendor/deno/resolvers/npm_cache" }
 deno_os = { path = "vendor/deno/ext/os" }
 deno_package_json = { version = "0.6.0", default-features = false }
@@ -479,7 +479,7 @@ serde_yaml = "0.9.34+deprecated"
 serde-value = "0.7.0"
 serial_test = "3.2.0"
 sha1 = { version = "0.10.6", features = ["oid"] }
-sha2 = { version = "0.10.8", features = ["oid"] }
+sha2 = { version = "0.10.9", features = ["oid"] }
 sha3 = "0.10.8"
 signature = "2.2.0"
 simd-json = "0.15.0"
@@ -491,7 +491,7 @@ spki = "0.7.3"
 ssz_types = "=0.10.1"
 strip-ansi-escapes = "0.2.1"
 superstruct = "0.9.0"
-syn = { version = "2.0.100", features = ["full", "extra-traits"] }
+syn = { version = "2.0.101", features = ["full", "extra-traits"] }
 sys_traits = "0.1.9"
 systemctl = "0.4.0"
 tar = "0.4.44"
@@ -501,7 +501,7 @@ test_util = { package = "test_server", path = "vendor/deno/tests/util/server" }
 thiserror = "2.0.12"
 tokio = { version = "1.44.2", features = ["full"] }
 tokio-eld = "0.2.0"
-tokio-metrics = { version = "0.4.1", features = ["rt"] }
+tokio-metrics = { version = "0.4.2", features = ["rt"] }
 tokio-rustls = { version = "0.26.2", default-features = false, features = ["ring", "tls12"] }
 tokio-rustls-acme = { version = "0.7.1", features = ["axum"] }
 tokio-socks = "0.5.1"
@@ -527,8 +527,8 @@ uuid = { version = "1.15.1", features = ["v4"] }
 v8_valueserializer = "0.1.1"
 web-transport-proto = "0.2.5"
 webauthn-rs = { version = "0.5.1", features = ["danger-allow-state-serialisation"] }
-webpki-root-certs = "0.26.8"
-webpki-roots = "0.26.8"
+webpki-root-certs = "0.26.10"
+webpki-roots = "0.26.10"
 wgpu-core = "=24.0.0"
 wgpu-types = "=24.0.0"
 which = "=6.0.3"
