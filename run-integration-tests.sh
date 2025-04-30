@@ -3,17 +3,34 @@
 
 set -e
 
+# Default log level
+RUST_LOG="info"
+
+# Parse named arguments
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --log)
+      RUST_LOG="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
 echo "======================================"
 echo "Starting Proven Node Integration Tests"
+echo "Log level: ${RUST_LOG}"
 echo "======================================"
 
 # Set up UPnP port forwarding
 ./upnp-setup.sh
 
-# Enable Docker BuildKit
-export DOCKER_BUILDKIT=1
+# export variables for docker-compose
 export COMPOSE_DOCKER_CLI_BUILD=1
-export COMPOSE_BAKE=true
+export DOCKER_BUILDKIT=1
+export RUST_LOG
 
 # Build the Docker images and run the tests
 cd integration-test
