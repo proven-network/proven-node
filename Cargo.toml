@@ -160,7 +160,7 @@ async-once-cell = "0.5.4"
 async-stream = "0.3.6"
 async-trait = "0.1.87"
 aws-config = { version = "1.6.2", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
-aws-sdk-ec2 = { version = "1.123.0", default-features = false }
+aws-sdk-ec2 = { version = "1.124.0", default-features = false }
 aws-sdk-kms = { version = "1.66.0", default-features = false }
 aws-sdk-route53resolver = { version = "1.70.0", default-features = false }
 aws-sdk-s3 = { version = "1.83.0", default-features = false, features = ["rt-tokio"] }
@@ -207,13 +207,13 @@ deno_ast = { version = "0.46.6", features = ["transpiling"] }
 deno_bench_util = { path = "vendor/deno/bench_util" }
 deno_broadcast_channel = { path = "vendor/deno/ext/broadcast_channel" }
 deno_cache = { path = "vendor/deno/ext/cache" }
-deno_cache_dir = "0.19.2"
+deno_cache_dir = "=0.19.2"
 deno_canvas = { path = "vendor/deno/ext/canvas" }
 deno_config = { version = "0.54.2", features = ["workspace", "sync"] }
 deno_console = { path = "vendor/deno/ext/console" }
 # TODO: Enable pointer compression when prebuilts are available for ARM.
 # https://github.com/denoland/rusty_v8/pull/1752
-deno_core = "0.344.0"
+deno_core = "0.345.0"
 deno_cron = { path = "vendor/deno/ext/cron" }
 deno_crypto = { path = "vendor/deno/ext/crypto" }
 deno_error = "0.5.6"
@@ -379,8 +379,8 @@ pin-project-lite = "0.2.13"
 pkcs8 = "0.10.2"
 pretty_assertions = "1.4.1"
 prettyplease = "0.2.32"
-progenitor = "0.9.1"
-progenitor-client = "0.9.1"
+progenitor = "0.10.0"
+progenitor-client = "0.10.0"
 prost = "0.13.5"
 prost-build = "0.13.5"
 proven-applications = { path = "crates/applications" }

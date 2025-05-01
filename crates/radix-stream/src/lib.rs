@@ -13,6 +13,7 @@ pub use error::Error;
 pub use event::Event;
 pub use transaction::Transaction;
 
+use std::num::NonZero;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
@@ -145,7 +146,7 @@ where
             }
 
             let ledger_state_version_selector = if let Some(state_version) = current_version {
-                let state_version_i64: i64 = state_version
+                let state_version_i64: NonZero<u64> = state_version
                     .try_into()
                     .map_err(|e| Error::TryFromInt("state_version", e))?;
 
