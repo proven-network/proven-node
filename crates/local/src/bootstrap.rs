@@ -64,6 +64,7 @@ static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
 static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
+static POSTGRES_RADIX_MAINNET_DATABASE: &str = "radix-mainnet-db";
 static POSTGRES_RADIX_STOKENET_DATABASE: &str = "radix-stokenet-db";
 
 // TODO: This is in dire need of refactoring.
@@ -73,26 +74,15 @@ pub struct Bootstrap {
     external_ip: IpAddr,
 
     // added during initialization
-    num_replicas: usize,
-    governance: Option<MockGovernance>,
-    network: Option<ProvenNetwork<MockGovernance, MockAttestor>>,
+    core: Option<LocalNodeCore>,
     light_core: Option<LightCore<MockAttestor, MockGovernance, InsecureHttpServer>>,
 
-    radix_mainnet_node: Option<RadixNode>,
-
-    radix_stokenet_node: Option<RadixNode>,
-
-    ethereum_mainnet_reth_node: Option<proven_ethereum_reth::RethNode>,
-    ethereum_mainnet_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
-
-    ethereum_holesky_reth_node: Option<proven_ethereum_reth::RethNode>,
-    ethereum_holesky_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
-
-    ethereum_sepolia_reth_node: Option<proven_ethereum_reth::RethNode>,
-    ethereum_sepolia_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
+    network: Option<ProvenNetwork<MockGovernance, MockAttestor>>,
+    num_replicas: usize,
+    governance: Option<MockGovernance>,
 
     bitcoin_node: Option<BitcoinNode>,
-    bitcoin_node_rpc_url: Option<Url>,
+    bitcoin_node_rpc_endpoint: Option<Url>,
     bitcoin_proxy_service: Option<
         HttpProxyService<
             InitializedNatsStream<
@@ -112,16 +102,32 @@ pub struct Bootstrap {
         >,
     >,
 
-    postgres: Option<Postgres>,
+    ethereum_mainnet_reth_node: Option<proven_ethereum_reth::RethNode>,
+    ethereum_mainnet_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
+    ethereum_mainnet_rpc_endpoint: Option<Url>,
 
-    radix_aggregator: Option<RadixAggregator>,
+    ethereum_holesky_reth_node: Option<proven_ethereum_reth::RethNode>,
+    ethereum_holesky_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
+    ethereum_holesky_rpc_endpoint: Option<Url>,
 
-    radix_gateway: Option<RadixGateway>,
+    ethereum_sepolia_reth_node: Option<proven_ethereum_reth::RethNode>,
+    ethereum_sepolia_lighthouse_node: Option<proven_ethereum_lighthouse::LighthouseNode>,
+    ethereum_sepolia_rpc_endpoint: Option<Url>,
 
     nats_client: Option<NatsClient>,
     nats_server: Option<NatsServer<MockGovernance, MockAttestor>>,
 
-    core: Option<LocalNodeCore>,
+    postgres: Option<Postgres>,
+
+    radix_mainnet_node: Option<RadixNode>,
+    radix_mainnet_aggregator: Option<RadixAggregator>,
+    radix_mainnet_gateway: Option<RadixGateway>,
+    radix_mainnet_rpc_endpoint: Option<Url>,
+
+    radix_stokenet_node: Option<RadixNode>,
+    radix_stokenet_aggregator: Option<RadixAggregator>,
+    radix_stokenet_gateway: Option<RadixGateway>,
+    radix_stokenet_rpc_endpoint: Option<Url>,
 
     // state
     started: bool,
@@ -138,39 +144,44 @@ impl Bootstrap {
             attestor: MockAttestor::new(),
             external_ip,
 
-            num_replicas: 3,
-            governance: None,
-            network: None,
+            core: None,
             light_core: None,
 
-            radix_mainnet_node: None,
-
-            radix_stokenet_node: None,
-
-            ethereum_mainnet_reth_node: None,
-            ethereum_mainnet_lighthouse_node: None,
-
-            ethereum_holesky_reth_node: None,
-            ethereum_holesky_lighthouse_node: None,
-
-            ethereum_sepolia_reth_node: None,
-            ethereum_sepolia_lighthouse_node: None,
+            governance: None,
+            network: None,
+            num_replicas: 3,
 
             bitcoin_node: None,
-            bitcoin_node_rpc_url: None,
+            bitcoin_node_rpc_endpoint: None,
             bitcoin_proxy_service: None,
             bitcoin_proxy_client: None,
 
-            postgres: None,
+            ethereum_mainnet_reth_node: None,
+            ethereum_mainnet_lighthouse_node: None,
+            ethereum_mainnet_rpc_endpoint: None,
 
-            radix_aggregator: None,
+            ethereum_holesky_reth_node: None,
+            ethereum_holesky_lighthouse_node: None,
+            ethereum_holesky_rpc_endpoint: None,
 
-            radix_gateway: None,
+            ethereum_sepolia_reth_node: None,
+            ethereum_sepolia_lighthouse_node: None,
+            ethereum_sepolia_rpc_endpoint: None,
 
             nats_client: None,
             nats_server: None,
 
-            core: None,
+            postgres: None,
+
+            radix_mainnet_node: None,
+            radix_mainnet_aggregator: None,
+            radix_mainnet_gateway: None,
+            radix_mainnet_rpc_endpoint: None,
+
+            radix_stokenet_node: None,
+            radix_stokenet_aggregator: None,
+            radix_stokenet_gateway: None,
+            radix_stokenet_rpc_endpoint: None,
 
             started: false,
             shutdown_token: CancellationToken::new(),
@@ -199,8 +210,14 @@ impl Bootstrap {
             return Err(e);
         }
 
-        if let Err(e) = self.start_radix_node().await {
-            error!("failed to start radix-node: {:?}", e);
+        if let Err(e) = self.start_postgres().await {
+            error!("failed to start postgres: {:?}", e);
+            self.unwind_services().await;
+            return Err(e);
+        }
+
+        if let Err(e) = self.start_bitcoin_mainnet_node().await {
+            error!("failed to start bitcoin node: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
@@ -223,26 +240,14 @@ impl Bootstrap {
             return Err(e);
         }
 
-        if let Err(e) = self.start_bitcoin_node().await {
-            error!("failed to start bitcoin node: {:?}", e);
+        if let Err(e) = self.start_radix_mainnet_node().await {
+            error!("failed to start radix-node: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
 
-        if let Err(e) = self.start_postgres().await {
-            error!("failed to start postgres: {:?}", e);
-            self.unwind_services().await;
-            return Err(e);
-        }
-
-        if let Err(e) = self.start_radix_aggregator().await {
-            error!("failed to start radix-aggregator: {:?}", e);
-            self.unwind_services().await;
-            return Err(e);
-        }
-
-        if let Err(e) = self.start_radix_gateway().await {
-            error!("failed to start radix-gateway: {:?}", e);
+        if let Err(e) = self.start_radix_stokenet_node().await {
+            error!("failed to start radix-node: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
@@ -254,12 +259,12 @@ impl Bootstrap {
         }
 
         // Optional services
-        let radix_mainnet_node_option = self
-            .radix_mainnet_node
+        let postgres = self
+            .postgres
             .take()
-            .map(|node| Arc::new(Mutex::new(node)));
-        let radix_stokenet_node_option = self
-            .radix_stokenet_node
+            .map(|postgres| Arc::new(Mutex::new(postgres)));
+        let bitcoin_node_option = self
+            .bitcoin_node
             .take()
             .map(|node| Arc::new(Mutex::new(node)));
         let ethereum_mainnet_reth_node_option = self
@@ -286,20 +291,28 @@ impl Bootstrap {
             .ethereum_sepolia_lighthouse_node
             .take()
             .map(|node| Arc::new(Mutex::new(node)));
-        let bitcoin_node_option = self
-            .bitcoin_node
+        let radix_mainnet_node_option = self
+            .radix_mainnet_node
             .take()
             .map(|node| Arc::new(Mutex::new(node)));
-        let postgres = self
-            .postgres
-            .take()
-            .map(|postgres| Arc::new(Mutex::new(postgres)));
-        let radix_aggregator = self
-            .radix_aggregator
+        let radix_mainnet_aggregator_option = self
+            .radix_mainnet_aggregator
             .take()
             .map(|aggregator| Arc::new(Mutex::new(aggregator)));
-        let radix_gateway = self
-            .radix_gateway
+        let radix_mainnet_gateway_option = self
+            .radix_mainnet_gateway
+            .take()
+            .map(|gateway| Arc::new(Mutex::new(gateway)));
+        let radix_stokenet_node_option = self
+            .radix_stokenet_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let radix_stokenet_aggregator_option = self
+            .radix_stokenet_aggregator
+            .take()
+            .map(|aggregator| Arc::new(Mutex::new(aggregator)));
+        let radix_stokenet_gateway_option = self
+            .radix_stokenet_gateway
             .take()
             .map(|gateway| Arc::new(Mutex::new(gateway)));
 
@@ -309,18 +322,20 @@ impl Bootstrap {
 
         let node_services = Services {
             nats_server: nats_server.clone(),
-            radix_mainnet_node: radix_mainnet_node_option.clone(),
-            radix_stokenet_node: radix_stokenet_node_option.clone(),
+            postgres: postgres.clone(),
+            bitcoin_node: bitcoin_node_option.clone(),
             ethereum_holesky_reth_node: ethereum_holesky_reth_node_option.clone(),
             ethereum_holesky_lighthouse_node: ethereum_holesky_lighthouse_node_option.clone(),
             ethereum_mainnet_reth_node: ethereum_mainnet_reth_node_option.clone(),
             ethereum_mainnet_lighthouse_node: ethereum_mainnet_lighthouse_node_option.clone(),
             ethereum_sepolia_reth_node: ethereum_sepolia_reth_node_option.clone(),
             ethereum_sepolia_lighthouse_node: ethereum_sepolia_lighthouse_node_option.clone(),
-            bitcoin_node: bitcoin_node_option.clone(),
-            postgres: postgres.clone(),
-            radix_aggregator: radix_aggregator.clone(),
-            radix_gateway: radix_gateway.clone(),
+            radix_mainnet_node: radix_mainnet_node_option.clone(),
+            radix_mainnet_aggregator: radix_mainnet_aggregator_option.clone(),
+            radix_mainnet_gateway: radix_mainnet_gateway_option.clone(),
+            radix_stokenet_node: radix_stokenet_node_option.clone(),
+            radix_stokenet_aggregator: radix_stokenet_aggregator_option.clone(),
+            radix_stokenet_gateway: radix_stokenet_gateway_option.clone(),
             core: core.clone(),
         };
 
@@ -418,7 +433,7 @@ impl Bootstrap {
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(radix_aggregator) = self.radix_aggregator {
+                        if let Some(radix_aggregator) = self.radix_stokenet_aggregator {
                             radix_aggregator.wait().await;
                             error!("radix_aggregator exited");
                             return;
@@ -426,7 +441,7 @@ impl Bootstrap {
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(radix_gateway) = self.radix_gateway {
+                        if let Some(radix_gateway) = self.radix_stokenet_gateway {
                             radix_gateway.wait().await;
                             error!("radix_gateway exited");
                             return;
@@ -456,20 +471,24 @@ impl Bootstrap {
             let _ = core.lock().await.shutdown().await;
             let _ = nats_server.lock().await.shutdown().await;
 
-            if let Some(gateway) = &radix_gateway {
-                let _ = gateway.lock().await.shutdown().await;
+            if let Some(mainnet_gateway) = &radix_mainnet_gateway_option {
+                let _ = mainnet_gateway.lock().await.shutdown().await;
             }
 
-            if let Some(aggregator) = &radix_aggregator {
-                let _ = aggregator.lock().await.shutdown().await;
-            }
-
-            if let Some(postgres) = &postgres {
-                let _ = postgres.lock().await.shutdown().await;
+            if let Some(mainnet_aggregator) = &radix_mainnet_aggregator_option {
+                let _ = mainnet_aggregator.lock().await.shutdown().await;
             }
 
             if let Some(mainnet_node) = &radix_mainnet_node_option {
                 let _ = mainnet_node.lock().await.shutdown().await;
+            }
+
+            if let Some(stokenet_gateway) = &radix_stokenet_gateway_option {
+                let _ = stokenet_gateway.lock().await.shutdown().await;
+            }
+
+            if let Some(stokenet_aggregator) = &radix_stokenet_aggregator_option {
+                let _ = stokenet_aggregator.lock().await.shutdown().await;
             }
 
             if let Some(stokenet_node) = &radix_stokenet_node_option {
@@ -503,6 +522,10 @@ impl Bootstrap {
             if let Some(bitcoin_node) = &bitcoin_node_option {
                 let _ = bitcoin_node.lock().await.shutdown().await;
             }
+
+            if let Some(postgres) = &postgres {
+                let _ = postgres.lock().await.shutdown().await;
+            }
         });
 
         self.task_tracker.close();
@@ -524,11 +547,11 @@ impl Bootstrap {
             let _ = core.shutdown().await;
         }
 
-        if let Some(radix_gateway) = self.radix_gateway {
+        if let Some(radix_gateway) = self.radix_stokenet_gateway {
             let _ = radix_gateway.shutdown().await;
         }
 
-        if let Some(radix_aggregator) = self.radix_aggregator {
+        if let Some(radix_aggregator) = self.radix_stokenet_aggregator {
             let _ = radix_aggregator.shutdown().await;
         }
 
@@ -686,51 +709,107 @@ impl Bootstrap {
         Ok(())
     }
 
-    async fn start_radix_node(&mut self) -> Result<()> {
+    async fn start_postgres(&mut self) -> Result<()> {
         let network = self.network.as_ref().unwrap_or_else(|| {
-            panic!("network not set before radix node step");
+            panic!("network not set before postgres step");
         });
 
         if network
             .specializations()
             .await?
             .contains(&NodeSpecialization::RadixMainnet)
+            || network
+                .specializations()
+                .await?
+                .contains(&NodeSpecialization::RadixStokenet)
         {
-            let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
-                config_dir: PathBuf::from("/tmp/radix-node-mainnet"),
-                host_ip: self.external_ip.to_string(),
-                http_port: self.args.radix_mainnet_http_port,
-                network_definition: NetworkDefinition::mainnet(),
-                p2p_port: self.args.radix_mainnet_p2p_port,
-                store_dir: self.args.radix_mainnet_store_dir.clone(),
+            let postgres = Postgres::new(PostgresOptions {
+                password: POSTGRES_PASSWORD.to_string(),
+                port: self.args.postgres_port,
+                username: POSTGRES_USERNAME.to_string(),
+                skip_vacuum: self.args.skip_vacuum,
+                store_dir: self.args.postgres_store_dir.clone(),
             });
 
-            radix_mainnet_node.start().await?;
+            postgres.start().await?;
 
-            self.radix_mainnet_node = Some(radix_mainnet_node);
+            self.postgres = Some(postgres);
 
-            info!("radix mainnet node started");
+            info!("postgres for radix stokenet started");
         }
+
+        Ok(())
+    }
+
+    async fn start_bitcoin_mainnet_node(&mut self) -> Result<()> {
+        let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
+            panic!("nats client not fetched before bitcoin node step");
+        });
+
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before bitcoin node step");
+        });
+
+        let bitcoin_proxy_stream = NatsStream::new(
+            "BITCOIN_TESTNET_PROXY",
+            NatsStreamOptions {
+                client: nats_client.clone(),
+                num_replicas: self.num_replicas,
+            },
+        )
+        .init()
+        .await
+        .map_err(|e| Error::Stream(e.to_string()))?;
 
         if network
             .specializations()
             .await?
-            .contains(&NodeSpecialization::RadixStokenet)
+            .contains(&NodeSpecialization::BitcoinTestnet)
         {
-            let radix_stokenet_node = RadixNode::new(RadixNodeOptions {
-                config_dir: PathBuf::from("/tmp/radix-node-stokenet"),
-                host_ip: self.external_ip.to_string(),
-                http_port: self.args.radix_stokenet_http_port,
-                network_definition: NetworkDefinition::stokenet(),
-                p2p_port: self.args.radix_stokenet_p2p_port,
-                store_dir: self.args.radix_stokenet_store_dir.clone(),
+            // Start Bitcoin testnet node
+            let bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
+                network: BitcoinNetwork::Testnet,
+                store_dir: self.args.bitcoin_testnet_store_dir.clone(),
+                rpc_port: None,
             });
 
-            radix_stokenet_node.start().await?;
+            bitcoin_node.start().await?;
 
-            self.radix_stokenet_node = Some(radix_stokenet_node);
+            info!("bitcoin testnet node started");
 
-            info!("radix stokenet node started");
+            let bitcoin_proxy_service = HttpProxyService::new(HttpProxyServiceOptions {
+                service_options: NatsServiceOptions {
+                    client: nats_client.clone(),
+                    durable_name: None,
+                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+                },
+                stream: bitcoin_proxy_stream,
+                target_addr: bitcoin_node.rpc_socket_addr().await?,
+            })
+            .await?;
+
+            bitcoin_proxy_service.start().await?;
+
+            self.bitcoin_node_rpc_endpoint = Some(bitcoin_node.rpc_url().await?);
+            self.bitcoin_node = Some(bitcoin_node);
+            self.bitcoin_proxy_service = Some(bitcoin_proxy_service);
+
+            info!("bitcoin testnet proxy service started");
+        } else {
+            let bitcoin_proxy_client = HttpProxyClient::new(HttpProxyClientOptions {
+                client_options: NatsClientOptions {
+                    client: nats_client.clone(),
+                },
+                http_port: 8332,
+                stream: bitcoin_proxy_stream,
+            });
+
+            bitcoin_proxy_client.start().await?;
+
+            self.bitcoin_node_rpc_endpoint = Some(Url::parse("http://127.0.0.1:8332").unwrap());
+            self.bitcoin_proxy_client = Some(bitcoin_proxy_client);
+
+            info!("bitcoin testnet proxy client started");
         }
 
         Ok(())
@@ -907,115 +986,76 @@ impl Bootstrap {
         Ok(())
     }
 
-    async fn start_bitcoin_node(&mut self) -> Result<()> {
-        let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
-            panic!("nats client not fetched before bitcoin node step");
-        });
-
+    async fn start_radix_mainnet_node(&mut self) -> Result<()> {
         let network = self.network.as_ref().unwrap_or_else(|| {
-            panic!("network not set before bitcoin node step");
-        });
-
-        let bitcoin_proxy_stream = NatsStream::new(
-            "BITCOIN_TESTNET_PROXY",
-            NatsStreamOptions {
-                client: nats_client.clone(),
-                num_replicas: self.num_replicas,
-            },
-        )
-        .init()
-        .await
-        .map_err(|e| Error::Stream(e.to_string()))?;
-
-        if network
-            .specializations()
-            .await?
-            .contains(&NodeSpecialization::BitcoinTestnet)
-        {
-            // Start Bitcoin testnet node
-            let bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
-                network: BitcoinNetwork::Testnet,
-                store_dir: self.args.bitcoin_testnet_store_dir.clone(),
-                rpc_port: None,
-            });
-
-            bitcoin_node.start().await?;
-
-            info!("bitcoin testnet node started");
-
-            let bitcoin_proxy_service = HttpProxyService::new(HttpProxyServiceOptions {
-                service_options: NatsServiceOptions {
-                    client: nats_client.clone(),
-                    durable_name: None,
-                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-                },
-                stream: bitcoin_proxy_stream,
-                target_addr: bitcoin_node.rpc_socket_addr().await?,
-            })
-            .await?;
-
-            bitcoin_proxy_service.start().await?;
-
-            self.bitcoin_node_rpc_url = Some(bitcoin_node.rpc_url().await?);
-            self.bitcoin_node = Some(bitcoin_node);
-            self.bitcoin_proxy_service = Some(bitcoin_proxy_service);
-
-            info!("bitcoin testnet proxy service started");
-        } else {
-            let bitcoin_proxy_client = HttpProxyClient::new(HttpProxyClientOptions {
-                client_options: NatsClientOptions {
-                    client: nats_client.clone(),
-                },
-                http_port: 8332,
-                stream: bitcoin_proxy_stream,
-            });
-
-            bitcoin_proxy_client.start().await?;
-
-            self.bitcoin_node_rpc_url = Some(Url::parse("http://127.0.0.1:8332").unwrap());
-            self.bitcoin_proxy_client = Some(bitcoin_proxy_client);
-
-            info!("bitcoin testnet proxy client started");
-        }
-
-        Ok(())
-    }
-
-    async fn start_postgres(&mut self) -> Result<()> {
-        let network = self.network.as_ref().unwrap_or_else(|| {
-            panic!("network not set before postgres step");
+            panic!("network not set before radix mainnet node step");
         });
 
         if network
             .specializations()
             .await?
             .contains(&NodeSpecialization::RadixMainnet)
-            || network
-                .specializations()
-                .await?
-                .contains(&NodeSpecialization::RadixStokenet)
         {
-            let postgres = Postgres::new(PostgresOptions {
-                password: POSTGRES_PASSWORD.to_string(),
-                port: self.args.postgres_port,
-                username: POSTGRES_USERNAME.to_string(),
-                skip_vacuum: self.args.skip_vacuum,
-                store_dir: self.args.postgres_store_dir.clone(),
+            let postgres = self.postgres.as_ref().unwrap_or_else(|| {
+                panic!("postgres not set before radix mainnet node step");
             });
 
-            postgres.start().await?;
+            let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
+                config_dir: PathBuf::from("/tmp/radix-node-mainnet"),
+                host_ip: self.external_ip.to_string(),
+                http_port: self.args.radix_mainnet_http_port,
+                network_definition: NetworkDefinition::mainnet(),
+                p2p_port: self.args.radix_mainnet_p2p_port,
+                store_dir: self.args.radix_mainnet_store_dir.clone(),
+            });
 
-            self.postgres = Some(postgres);
+            radix_mainnet_node.start().await?;
+            let radix_node_ip_address = radix_mainnet_node.ip_address().await.to_string();
+            let radix_node_port = radix_mainnet_node.http_port();
 
-            info!("postgres for radix stokenet started");
+            self.radix_mainnet_node = Some(radix_mainnet_node);
+
+            info!("radix mainnet node started");
+
+            let radix_mainnet_aggregator = RadixAggregator::new(RadixAggregatorOptions {
+                postgres_database: POSTGRES_RADIX_MAINNET_DATABASE.to_string(),
+                postgres_ip_address: postgres.ip_address().await.to_string(),
+                postgres_password: POSTGRES_PASSWORD.to_string(),
+                postgres_port: postgres.port(),
+                postgres_username: POSTGRES_USERNAME.to_string(),
+                radix_node_ip_address: radix_node_ip_address.clone(),
+                radix_node_port,
+            });
+
+            radix_mainnet_aggregator.start().await?;
+
+            self.radix_mainnet_aggregator = Some(radix_mainnet_aggregator);
+
+            info!("radix-aggregator for radix mainnet started");
+
+            let radix_mainnet_gateway = RadixGateway::new(RadixGatewayOptions {
+                postgres_database: POSTGRES_RADIX_MAINNET_DATABASE.to_string(),
+                postgres_ip_address: postgres.ip_address().await.to_string(),
+                postgres_password: POSTGRES_PASSWORD.to_string(),
+                postgres_port: postgres.port(),
+                postgres_username: POSTGRES_USERNAME.to_string(),
+                radix_node_ip_address,
+                radix_node_port,
+            });
+
+            radix_mainnet_gateway.start().await?;
+
+            self.radix_mainnet_gateway = Some(radix_mainnet_gateway);
+
+            info!("radix-gateway for radix mainnet started");
         }
 
         Ok(())
     }
 
-    async fn start_radix_aggregator(&mut self) -> Result<()> {
+    async fn start_radix_stokenet_node(&mut self) -> Result<()> {
         let network = self.network.as_ref().unwrap_or_else(|| {
-            panic!("network not set before radix aggregator step");
+            panic!("network not set before radix stokenet node step");
         });
 
         if network
@@ -1024,64 +1064,55 @@ impl Bootstrap {
             .contains(&NodeSpecialization::RadixStokenet)
         {
             let postgres = self.postgres.as_ref().unwrap_or_else(|| {
-                panic!("postgres not set before radix aggregator step");
+                panic!("postgres not set before radix stokenet node step");
             });
 
-            let radix_stokenet_node = self.radix_stokenet_node.as_ref().unwrap_or_else(|| {
-                panic!("radix node not set before radix aggregator step");
+            let radix_stokenet_node = RadixNode::new(RadixNodeOptions {
+                config_dir: PathBuf::from("/tmp/radix-node-stokenet"),
+                host_ip: self.external_ip.to_string(),
+                http_port: self.args.radix_stokenet_http_port,
+                network_definition: NetworkDefinition::stokenet(),
+                p2p_port: self.args.radix_stokenet_p2p_port,
+                store_dir: self.args.radix_stokenet_store_dir.clone(),
             });
 
-            let radix_aggregator = RadixAggregator::new(RadixAggregatorOptions {
+            radix_stokenet_node.start().await?;
+            let radix_node_ip_address = radix_stokenet_node.ip_address().await.to_string();
+            let radix_node_port = radix_stokenet_node.http_port();
+
+            self.radix_stokenet_node = Some(radix_stokenet_node);
+
+            info!("radix stokenet node started");
+
+            let radix_stokenet_aggregator = RadixAggregator::new(RadixAggregatorOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
                 postgres_ip_address: postgres.ip_address().await.to_string(),
                 postgres_password: POSTGRES_PASSWORD.to_string(),
                 postgres_port: postgres.port(),
                 postgres_username: POSTGRES_USERNAME.to_string(),
-                radix_node_ip_address: radix_stokenet_node.ip_address().await.to_string(),
-                radix_node_port: radix_stokenet_node.http_port(),
+                radix_node_ip_address: radix_node_ip_address.clone(),
+                radix_node_port,
             });
 
-            radix_aggregator.start().await?;
+            radix_stokenet_aggregator.start().await?;
 
-            self.radix_aggregator = Some(radix_aggregator);
+            self.radix_stokenet_aggregator = Some(radix_stokenet_aggregator);
 
             info!("radix-aggregator for radix stokenet started");
-        }
 
-        Ok(())
-    }
-
-    async fn start_radix_gateway(&mut self) -> Result<()> {
-        let network = self.network.as_ref().unwrap_or_else(|| {
-            panic!("network not set before radix gateway step");
-        });
-
-        if network
-            .specializations()
-            .await?
-            .contains(&NodeSpecialization::RadixStokenet)
-        {
-            let postgres = self.postgres.as_ref().unwrap_or_else(|| {
-                panic!("postgres not set before radix gateway step");
-            });
-
-            let radix_stokenet_node = self.radix_stokenet_node.as_ref().unwrap_or_else(|| {
-                panic!("radix node not set before radix gateway step");
-            });
-
-            let radix_gateway = RadixGateway::new(RadixGatewayOptions {
+            let radix_stokenet_gateway = RadixGateway::new(RadixGatewayOptions {
                 postgres_database: POSTGRES_RADIX_STOKENET_DATABASE.to_string(),
                 postgres_ip_address: postgres.ip_address().await.to_string(),
                 postgres_password: POSTGRES_PASSWORD.to_string(),
                 postgres_port: postgres.port(),
                 postgres_username: POSTGRES_USERNAME.to_string(),
-                radix_node_ip_address: radix_stokenet_node.ip_address().await.to_string(),
-                radix_node_port: radix_stokenet_node.http_port(),
+                radix_node_ip_address,
+                radix_node_port,
             });
 
-            radix_gateway.start().await?;
+            radix_stokenet_gateway.start().await?;
 
-            self.radix_gateway = Some(radix_gateway);
+            self.radix_stokenet_gateway = Some(radix_stokenet_gateway);
 
             info!("radix-gateway for radix stokenet started");
         }
@@ -1259,7 +1290,36 @@ impl Bootstrap {
             personal_store,
             radix_network_definition: NetworkDefinition::stokenet(),
             radix_nft_verifier,
-            rpc_endpoints: RpcEndpoints::external(), // TODO: build this from network
+            rpc_endpoints: RpcEndpoints {
+                bitcoin_mainnet: self
+                    .bitcoin_node_rpc_endpoint
+                    .take()
+                    .unwrap_or(self.args.bitcoin_mainnet_fallback_rpc_endpoint.clone()),
+                bitcoin_testnet: self
+                    .bitcoin_node_rpc_endpoint
+                    .take()
+                    .unwrap_or(self.args.bitcoin_testnet_fallback_rpc_endpoint.clone()),
+                ethereum_holesky: self
+                    .ethereum_holesky_rpc_endpoint
+                    .take()
+                    .unwrap_or(self.args.ethereum_holesky_fallback_rpc_endpoint.clone()),
+                ethereum_mainnet: self
+                    .ethereum_mainnet_rpc_endpoint
+                    .take()
+                    .unwrap_or(self.args.ethereum_mainnet_fallback_rpc_endpoint.clone()),
+                ethereum_sepolia: self
+                    .ethereum_sepolia_rpc_endpoint
+                    .take()
+                    .unwrap_or(self.args.ethereum_sepolia_fallback_rpc_endpoint.clone()),
+                radix_mainnet: self
+                    .radix_mainnet_rpc_endpoint
+                    .take()
+                    .unwrap_or(self.args.radix_mainnet_fallback_rpc_endpoint.clone()),
+                radix_stokenet: self
+                    .radix_stokenet_rpc_endpoint
+                    .take()
+                    .unwrap_or(self.args.radix_stokenet_fallback_rpc_endpoint.clone()),
+            },
         })
         .await;
 

@@ -98,11 +98,11 @@ pub type LocalNodeCore = Core<
 
 /// A collection of all the services that can be running in the enclave.
 pub struct Services {
-    /// The Radix Mainnet node.
-    pub radix_mainnet_node: Option<Arc<Mutex<RadixNode>>>,
+    /// The Bitcoin node (testnet or mainnet).
+    pub bitcoin_node: Option<Arc<Mutex<BitcoinNode>>>,
 
-    /// The Radix Stokenet node.
-    pub radix_stokenet_node: Option<Arc<Mutex<RadixNode>>>,
+    /// The Core.
+    pub core: Arc<Mutex<LocalNodeCore>>,
 
     /// The Ethereum Holesky Reth node.
     pub ethereum_holesky_reth_node: Option<Arc<Mutex<RethNode>>>,
@@ -122,23 +122,29 @@ pub struct Services {
     /// The Ethereum Sepolia Lighthouse node.
     pub ethereum_sepolia_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
 
-    /// The Bitcoin node (testnet or mainnet).
-    pub bitcoin_node: Option<Arc<Mutex<BitcoinNode>>>,
+    /// The NATS server.
+    pub nats_server: Arc<Mutex<NatsServer<MockGovernance, MockAttestor>>>,
 
     /// The Postgres database.
     pub postgres: Option<Arc<Mutex<Postgres>>>,
 
+    /// The Radix Mainnet node.
+    pub radix_mainnet_node: Option<Arc<Mutex<RadixNode>>>,
+
     /// The Radix Aggregator.
-    pub radix_aggregator: Option<Arc<Mutex<RadixAggregator>>>,
+    pub radix_mainnet_aggregator: Option<Arc<Mutex<RadixAggregator>>>,
 
     /// The Radix Gateway.
-    pub radix_gateway: Option<Arc<Mutex<RadixGateway>>>,
+    pub radix_mainnet_gateway: Option<Arc<Mutex<RadixGateway>>>,
 
-    /// The NATS server.
-    pub nats_server: Arc<Mutex<NatsServer<MockGovernance, MockAttestor>>>,
+    /// The Radix Stokenet node.
+    pub radix_stokenet_node: Option<Arc<Mutex<RadixNode>>>,
 
-    /// The Core.
-    pub core: Arc<Mutex<LocalNodeCore>>,
+    /// The Radix Aggregator.
+    pub radix_stokenet_aggregator: Option<Arc<Mutex<RadixAggregator>>>,
+
+    /// The Radix Gateway.
+    pub radix_stokenet_gateway: Option<Arc<Mutex<RadixGateway>>>,
 }
 
 pub struct LocalNode {

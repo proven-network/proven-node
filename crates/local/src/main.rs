@@ -18,10 +18,19 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use tracing::info;
+use url::Url;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
+    /// Bitcoin mainnet fallback RPC endpoint
+    #[arg(
+        long,
+        default_value = "https://bitcoin-rpc.publicnode.com",
+        env = "PROVEN_BITCOIN_MAINNET_FALLBACK_RPC_ENDPOINT"
+    )]
+    bitcoin_mainnet_fallback_rpc_endpoint: Url,
+
     /// Bitcoin mainnet store directory
     #[arg(
         long,
@@ -29,6 +38,14 @@ struct Args {
         env = "PROVEN_BITCOIN_MAINNET_STORE_DIR"
     )]
     bitcoin_mainnet_store_dir: PathBuf,
+
+    /// Bitcoin testnet fallback RPC endpoint
+    #[arg(
+        long,
+        default_value = "https://bitcoin-testnet-rpc.publicnode.com",
+        env = "PROVEN_BITCOIN_TESTNET_FALLBACK_RPC_ENDPOINT"
+    )]
+    bitcoin_testnet_fallback_rpc_endpoint: Url,
 
     /// Bitcoin testnet store directory
     #[arg(
@@ -110,6 +127,14 @@ struct Args {
     )]
     ethereum_holesky_execution_store_dir: PathBuf,
 
+    /// Ethereum Holesky fallback RPC endpoint
+    #[arg(
+        long,
+        default_value = "https://ethereum-holesky-rpc.publicnode.com",
+        env = "PROVEN_ETHEREUM_HOLESKY_FALLBACK_RPC_ENDPOINT"
+    )]
+    ethereum_holesky_fallback_rpc_endpoint: Url,
+
     /// Ethereum Mainnet Consensus HTTP address
     #[arg(
         long,
@@ -181,6 +206,14 @@ struct Args {
         env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_STORE_DIR"
     )]
     ethereum_mainnet_execution_store_dir: PathBuf,
+
+    /// Ethereum Mainnet fallback RPC endpoint
+    #[arg(
+        long,
+        default_value = "https://ethereum-rpc.publicnode.com",
+        env = "PROVEN_ETHEREUM_MAINNET_FALLBACK_RPC_ENDPOINT"
+    )]
+    ethereum_mainnet_fallback_rpc_endpoint: Url,
 
     /// Ethereum Sepolia Consensus HTTP address
     #[arg(
@@ -254,6 +287,13 @@ struct Args {
     )]
     ethereum_sepolia_execution_store_dir: PathBuf,
 
+    /// Ethereum Sepolia fallback RPC endpoint
+    #[arg(
+        long,
+        default_value = "https://ethereum-sepolia-rpc.publicnode.com",
+        env = "PROVEN_ETHEREUM_SEPOLIA_FALLBACK_RPC_ENDPOINT"
+    )]
+    ethereum_sepolia_fallback_rpc_endpoint: Url,
     /// Proven HTTP port
     #[arg(long, default_value_t = 3200, env = "PROVEN_PORT")]
     port: u16,
@@ -306,6 +346,14 @@ struct Args {
     )]
     postgres_store_dir: PathBuf,
 
+    /// Radix Mainnet fallback RPC endpoint
+    #[arg(
+        long,
+        default_value = "https://mainnet.radixdlt.com",
+        env = "PROVEN_RADIX_MAINNET_FALLBACK_RPC_ENDPOINT"
+    )]
+    radix_mainnet_fallback_rpc_endpoint: Url,
+
     /// Radix Mainnet HTTP port
     #[arg(long, default_value_t = 3333, env = "PROVEN_RADIX_MAINNET_HTTP_PORT")]
     radix_mainnet_http_port: u16,
@@ -321,6 +369,14 @@ struct Args {
         env = "PROVEN_RADIX_MAINNET_STORE_DIR"
     )]
     radix_mainnet_store_dir: PathBuf,
+
+    /// Radix Stokenet fallback RPC endpoint
+    #[arg(
+        long,
+        default_value = "https://stokenet.radixdlt.com",
+        env = "PROVEN_RADIX_STOKENET_FALLBACK_RPC_ENDPOINT"
+    )]
+    radix_stokenet_fallback_rpc_endpoint: Url,
 
     /// Radix Stokenet HTTP port
     #[arg(long, default_value_t = 3343, env = "PROVEN_RADIX_STOKENET_HTTP_PORT")]
