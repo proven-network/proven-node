@@ -1,6 +1,7 @@
 use crate::file_system::StoredEntry;
 use crate::{
-    Error, ExecutionRequest, ExecutionResult, ModuleLoader, Result, RuntimeOptions, Worker,
+    Error, ExecutionRequest, ExecutionResult, ModuleLoader, Result, RpcEndpoints, RuntimeOptions,
+    Worker,
 };
 
 use std::collections::{HashMap, VecDeque};
@@ -66,14 +67,14 @@ where
     /// Persona-scoped KV store.
     pub personal_store: PS,
 
-    /// Origin for Radix Network gateway.
-    pub radix_gateway_origin: String,
-
     /// Network definition for Radix Network.
     pub radix_network_definition: NetworkDefinition,
 
     /// Verifier for checking NFT ownership on the Radix Network.
     pub radix_nft_verifier: RNV,
+
+    /// RPC endpoints for the runtime.
+    pub rpc_endpoints: RpcEndpoints,
 }
 
 /// A pool of workers that can execute tasks concurrently.
@@ -186,7 +187,7 @@ where
     overflow_queue: Arc<Mutex<VecDeque<QueueItem>>>,
     personal_sql_store: PSS,
     personal_store: PS,
-    radix_gateway_origin: String,
+    rpc_endpoints: RpcEndpoints,
     radix_network_definition: NetworkDefinition,
     radix_nft_verifier: RNV,
     queue_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
@@ -222,9 +223,9 @@ where
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_gateway_origin,
             radix_network_definition,
             radix_nft_verifier,
+            rpc_endpoints,
         }: PoolOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Arc<Self> {
         rustyscript::init_platform(max_workers, true);
@@ -247,9 +248,9 @@ where
             personal_store,
             queue_processor: Arc::new(Mutex::new(None)),
             queue_sender,
-            radix_gateway_origin,
             radix_network_definition,
             radix_nft_verifier,
+            rpc_endpoints,
             total_workers: AtomicU32::new(0),
             try_kill_interval: Duration::from_millis(20),
             workers: Arc::new(Mutex::new(HashMap::new())),
@@ -320,7 +321,7 @@ where
                             nft_store: pool.nft_store.clone(),
                             personal_sql_store: pool.personal_sql_store.clone(),
                             personal_store: pool.personal_store.clone(),
-                            radix_gateway_origin: pool.radix_gateway_origin.clone(),
+                            rpc_endpoints: pool.rpc_endpoints.clone(),
                             radix_network_definition: pool.radix_network_definition.clone(),
                             radix_nft_verifier: pool.radix_nft_verifier.clone(),
                         })
@@ -482,9 +483,9 @@ where
                         nft_store: self.nft_store.clone(),
                         personal_sql_store: self.personal_sql_store.clone(),
                         personal_store: self.personal_store.clone(),
-                        radix_gateway_origin: self.radix_gateway_origin.clone(),
                         radix_network_definition: self.radix_network_definition.clone(),
                         radix_nft_verifier: self.radix_nft_verifier.clone(),
+                        rpc_endpoints: self.rpc_endpoints.clone(),
                     })
                     .await;
 
@@ -631,9 +632,9 @@ where
                         nft_store: self.nft_store.clone(),
                         personal_sql_store: self.personal_sql_store.clone(),
                         personal_store: self.personal_store.clone(),
-                        radix_gateway_origin: self.radix_gateway_origin.clone(),
                         radix_network_definition: self.radix_network_definition.clone(),
                         radix_nft_verifier: self.radix_nft_verifier.clone(),
+                        rpc_endpoints: self.rpc_endpoints.clone(),
                     })
                     .await;
 
@@ -812,9 +813,9 @@ mod tests {
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore3::new(),
-            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
             radix_nft_verifier: MockRadixNftVerifier::new(),
+            rpc_endpoints: RpcEndpoints::external(),
         }
     }
 

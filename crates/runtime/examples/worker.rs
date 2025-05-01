@@ -1,5 +1,6 @@
 use proven_runtime::{
-    ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimeOptions, Worker,
+    ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RpcEndpoints,
+    RuntimeOptions, Worker,
 };
 
 use std::sync::Arc;
@@ -51,9 +52,9 @@ async fn main() -> Result<(), Error> {
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore3::new(),
-            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
             radix_nft_verifier: MockRadixNftVerifier::new(),
+            rpc_endpoints: RpcEndpoints::external(),
         })
         .await
         .unwrap(),

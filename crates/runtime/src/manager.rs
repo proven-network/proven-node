@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::file_system::StoredEntry;
-use crate::{ExecutionRequest, ExecutionResult, ModuleLoader, Pool, PoolOptions};
+use crate::{ExecutionRequest, ExecutionResult, ModuleLoader, Pool, PoolOptions, RpcEndpoints};
 
 use super::Result;
 
@@ -51,14 +51,14 @@ where
     /// Persona-scoped KV store.
     pub personal_store: PS,
 
-    /// Origin for Radix Network gateway.
-    pub radix_gateway_origin: String,
-
     /// Network definition for Radix Network.
     pub radix_network_definition: NetworkDefinition,
 
     /// Verifier for checking NFT ownership on the Radix Network.
     pub radix_nft_verifier: RNV,
+
+    /// RPC endpoints for the runtime.
+    pub rpc_endpoints: RpcEndpoints,
 }
 
 /// Trait for managing a pool.
@@ -181,9 +181,9 @@ where
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_gateway_origin,
             radix_network_definition,
             radix_nft_verifier,
+            rpc_endpoints,
         }: RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Self {
         let pool = Pool::new(PoolOptions {
@@ -195,9 +195,9 @@ where
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_gateway_origin,
             radix_network_definition,
             radix_nft_verifier,
+            rpc_endpoints,
         })
         .await;
 

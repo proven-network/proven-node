@@ -9,6 +9,7 @@ use crate::file_system::{FileSystem, StoredEntry};
 use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::HandlerOptions;
 use crate::permissions::OriginAllowlistWebPermissions;
+use crate::rpc_endpoints::RpcEndpoints;
 use crate::schema::SCHEMA_WHLIST;
 use crate::{Error, ExecutionLogs, ExecutionRequest, ExecutionResult, HandlerSpecifier, Result};
 
@@ -74,14 +75,14 @@ where
     /// Persona-scoped KV store.
     pub personal_store: PS,
 
-    /// Origin for Radix Network gateway.
-    pub radix_gateway_origin: String,
-
     /// Network definition for Radix Network.
     pub radix_network_definition: NetworkDefinition,
 
     /// Verifier for checking NFT ownership on the Radix Network.
     pub radix_nft_verifier: RNV,
+
+    /// RPC endpoints for the runtime.
+    pub rpc_endpoints: RpcEndpoints,
 }
 
 #[cfg(test)]
@@ -128,9 +129,9 @@ impl
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore3::new(),
-            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
             radix_nft_verifier: MockRadixNftVerifier::new(),
+            rpc_endpoints: RpcEndpoints::external(),
         }
     }
 
@@ -170,9 +171,9 @@ impl
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore3::new(),
-            radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
             radix_network_definition: NetworkDefinition::stokenet(),
             radix_nft_verifier: MockRadixNftVerifier::new(),
+            rpc_endpoints: RpcEndpoints::external(),
         }
     }
 }
@@ -312,15 +313,19 @@ where
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_gateway_origin,
+            rpc_endpoints,
             radix_network_definition,
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Result<Self> {
-        let origin_allowlist_web_permissions = Arc::new(OriginAllowlistWebPermissions::new(vec![
-            // Always allow Radix gateway origin
-            radix_gateway_origin.clone(),
-        ]));
+        // Allow outbound requests to all endpoints
+        let origin_allowlist_web_permissions = Arc::new(OriginAllowlistWebPermissions::new(
+            rpc_endpoints
+                .clone()
+                .into_vec()
+                .into_iter()
+                .map(|url| url.to_string()),
+        ));
 
         let mut runtime = rustyscript::Runtime::new(rustyscript::RuntimeOptions {
             import_provider: Some(Box::new(
@@ -372,7 +377,7 @@ where
         rustyscript::Runtime::put(
             &mut runtime,
             GatewayDetailsState {
-                gateway_origin: radix_gateway_origin,
+                gateway_origin: rpc_endpoints.radix_stokenet.to_string(),
                 network_id: radix_network_definition.id,
             },
         )?;

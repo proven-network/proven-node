@@ -39,7 +39,9 @@ use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_radix_node::{RadixNode, RadixNodeOptions};
-use proven_runtime::{RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions};
+use proven_runtime::{
+    RpcEndpoints, RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions,
+};
 use proven_sql_streamed::{StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
@@ -1067,9 +1069,9 @@ impl Bootstrap {
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_gateway_origin: GATEWAY_URL.to_string(),
             radix_network_definition: radix_common::network::NetworkDefinition::stokenet(),
             radix_nft_verifier,
+            rpc_endpoints: RpcEndpoints::external(), // TODO: build this from network
         })
         .await;
 
