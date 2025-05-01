@@ -81,9 +81,9 @@ pub struct Bootstrap {
     num_replicas: usize,
     governance: Option<MockGovernance>,
 
-    bitcoin_node: Option<BitcoinNode>,
-    bitcoin_node_rpc_endpoint: Option<Url>,
-    bitcoin_proxy_service: Option<
+    bitcoin_mainnet_node: Option<BitcoinNode>,
+    bitcoin_mainnet_node_rpc_endpoint: Option<Url>,
+    bitcoin_mainnet_proxy_service: Option<
         HttpProxyService<
             InitializedNatsStream<
                 HttpProxyRequest,
@@ -92,7 +92,28 @@ pub struct Bootstrap {
             >,
         >,
     >,
-    bitcoin_proxy_client: Option<
+    bitcoin_mainnet_proxy_client: Option<
+        HttpProxyClient<
+            InitializedNatsStream<
+                HttpProxyRequest,
+                HttpProxyDeserializeError,
+                HttpProxySerializeError,
+            >,
+        >,
+    >,
+
+    bitcoin_testnet_node: Option<BitcoinNode>,
+    bitcoin_testnet_node_rpc_endpoint: Option<Url>,
+    bitcoin_testnet_proxy_service: Option<
+        HttpProxyService<
+            InitializedNatsStream<
+                HttpProxyRequest,
+                HttpProxyDeserializeError,
+                HttpProxySerializeError,
+            >,
+        >,
+    >,
+    bitcoin_testnet_proxy_client: Option<
         HttpProxyClient<
             InitializedNatsStream<
                 HttpProxyRequest,
@@ -151,10 +172,15 @@ impl Bootstrap {
             network: None,
             num_replicas: 3,
 
-            bitcoin_node: None,
-            bitcoin_node_rpc_endpoint: None,
-            bitcoin_proxy_service: None,
-            bitcoin_proxy_client: None,
+            bitcoin_mainnet_node: None,
+            bitcoin_mainnet_node_rpc_endpoint: None,
+            bitcoin_mainnet_proxy_service: None,
+            bitcoin_mainnet_proxy_client: None,
+
+            bitcoin_testnet_node: None,
+            bitcoin_testnet_node_rpc_endpoint: None,
+            bitcoin_testnet_proxy_service: None,
+            bitcoin_testnet_proxy_client: None,
 
             ethereum_mainnet_reth_node: None,
             ethereum_mainnet_lighthouse_node: None,
@@ -217,7 +243,13 @@ impl Bootstrap {
         }
 
         if let Err(e) = self.start_bitcoin_mainnet_node().await {
-            error!("failed to start bitcoin node: {:?}", e);
+            error!("failed to start bitcoin mainnet node: {:?}", e);
+            self.unwind_services().await;
+            return Err(e);
+        }
+
+        if let Err(e) = self.start_bitcoin_testnet_node().await {
+            error!("failed to start bitcoin testnet node: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
@@ -263,8 +295,12 @@ impl Bootstrap {
             .postgres
             .take()
             .map(|postgres| Arc::new(Mutex::new(postgres)));
-        let bitcoin_node_option = self
-            .bitcoin_node
+        let bitcoin_mainnet_node_option = self
+            .bitcoin_mainnet_node
+            .take()
+            .map(|node| Arc::new(Mutex::new(node)));
+        let bitcoin_testnet_node_option = self
+            .bitcoin_testnet_node
             .take()
             .map(|node| Arc::new(Mutex::new(node)));
         let ethereum_mainnet_reth_node_option = self
@@ -323,7 +359,8 @@ impl Bootstrap {
         let node_services = Services {
             nats_server: nats_server.clone(),
             postgres: postgres.clone(),
-            bitcoin_node: bitcoin_node_option.clone(),
+            bitcoin_mainnet_node: bitcoin_mainnet_node_option.clone(),
+            bitcoin_testnet_node: bitcoin_testnet_node_option.clone(),
             ethereum_holesky_reth_node: ethereum_holesky_reth_node_option.clone(),
             ethereum_holesky_lighthouse_node: ethereum_holesky_lighthouse_node_option.clone(),
             ethereum_mainnet_reth_node: ethereum_mainnet_reth_node_option.clone(),
@@ -353,17 +390,17 @@ impl Bootstrap {
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(radix_mainnet_node) = self.radix_mainnet_node {
-                            radix_mainnet_node.wait().await;
-                            error!("radix mainnet node exited");
+                        if let Some(postgres) = self.postgres {
+                            postgres.wait().await;
+                            error!("postgres exited");
                             return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(radix_stokenet_node) = self.radix_stokenet_node {
-                            radix_stokenet_node.wait().await;
-                            error!("radix stokenet node exited");
+                        if let Some(bitcoin_node) = self.bitcoin_testnet_node {
+                            bitcoin_node.wait().await;
+                            error!("bitcoin node exited");
                             return;
                         }
                         std::future::pending::<()>().await
@@ -416,34 +453,52 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
+     
+                
                     _ = async {
-                        if let Some(bitcoin_node) = self.bitcoin_node {
-                            bitcoin_node.wait().await;
-                            error!("bitcoin node exited");
+                        if let Some(radix_mainnet_node) = self.radix_mainnet_node {
+                            radix_mainnet_node.wait().await;
+                            error!("radix mainnet node exited");
                             return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(postgres) = self.postgres {
-                            postgres.wait().await;
-                            error!("postgres exited");
+                        if let Some(radix_mainnet_aggregator) = self.radix_mainnet_aggregator {
+                            radix_mainnet_aggregator.wait().await;
+                            error!("radix mainnet aggregator exited");
                             return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(radix_aggregator) = self.radix_stokenet_aggregator {
-                            radix_aggregator.wait().await;
-                            error!("radix_aggregator exited");
+                        if let Some(radix_mainnet_gateway) = self.radix_mainnet_gateway {
+                            radix_mainnet_gateway.wait().await;
+                            error!("radix mainnet gateway exited");
                             return;
                         }
                         std::future::pending::<()>().await
                     } => {},
                     _ = async {
-                        if let Some(radix_gateway) = self.radix_stokenet_gateway {
-                            radix_gateway.wait().await;
-                            error!("radix_gateway exited");
+                        if let Some(radix_stokenet_node) = self.radix_stokenet_node {
+                            radix_stokenet_node.wait().await;
+                            error!("radix stokenet node exited");
+                            return;
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async {
+                        if let Some(radix_stokenet_aggregator) = self.radix_stokenet_aggregator {
+                            radix_stokenet_aggregator.wait().await;
+                            error!("radix stokenet aggregator exited");
+                            return;
+                        }
+                        std::future::pending::<()>().await
+                    } => {},
+                    _ = async {
+                        if let Some(radix_stokenet_gateway) = self.radix_stokenet_gateway {
+                            radix_stokenet_gateway.wait().await;
+                            error!("radix stokenet gateway exited");
                             return;
                         }
                         std::future::pending::<()>().await
@@ -519,8 +574,12 @@ impl Bootstrap {
                 let _ = ethereum_sepolia_lighthouse_node.lock().await.shutdown().await;
             }
 
-            if let Some(bitcoin_node) = &bitcoin_node_option {
-                let _ = bitcoin_node.lock().await.shutdown().await;
+            if let Some(bitcoin_testnet_node) = &bitcoin_testnet_node_option {
+                let _ = bitcoin_testnet_node.lock().await.shutdown().await;
+            }
+
+            if let Some(bitcoin_mainnet_node) = &bitcoin_mainnet_node_option {
+                let _ = bitcoin_mainnet_node.lock().await.shutdown().await;
             }
 
             if let Some(postgres) = &postgres {
@@ -547,16 +606,30 @@ impl Bootstrap {
             let _ = core.shutdown().await;
         }
 
-        if let Some(radix_gateway) = self.radix_stokenet_gateway {
-            let _ = radix_gateway.shutdown().await;
+        
+
+        if let Some(radix_stokenet_gateway) = self.radix_stokenet_gateway {
+            let _ = radix_stokenet_gateway.shutdown().await;
         }
 
-        if let Some(radix_aggregator) = self.radix_stokenet_aggregator {
-            let _ = radix_aggregator.shutdown().await;
+        if let Some(radix_stokenet_aggregator) = self.radix_stokenet_aggregator {
+            let _ = radix_stokenet_aggregator.shutdown().await;
         }
 
-        if let Some(postgres) = self.postgres {
-            let _ = postgres.shutdown().await;
+        if let Some(radix_stokenet_node) = self.radix_stokenet_node {
+            let _ = radix_stokenet_node.shutdown().await;
+        }        
+
+        if let Some(radix_mainnet_gateway) = self.radix_mainnet_gateway {
+            let _ = radix_mainnet_gateway.shutdown().await;
+        }
+
+        if let Some(radix_mainnet_aggregator) = self.radix_mainnet_aggregator {
+            let _ = radix_mainnet_aggregator.shutdown().await;
+        }
+
+        if let Some(radix_mainnet_node) = self.radix_mainnet_node {
+            let _ = radix_mainnet_node.shutdown().await;
         }
 
         if let Some(ethereum_sepolia_lighthouse_node) = self.ethereum_sepolia_lighthouse_node {
@@ -583,16 +656,16 @@ impl Bootstrap {
             let _ = ethereum_mainnet_reth_node.shutdown().await;
         }
 
-        if let Some(bitcoin_node) = self.bitcoin_node {
-            let _ = bitcoin_node.shutdown().await;
+        if let Some(bitcoin_testnet_node) = self.bitcoin_testnet_node {
+            let _ = bitcoin_testnet_node.shutdown().await;
         }
 
-        if let Some(radix_mainnet_node) = self.radix_mainnet_node {
-            let _ = radix_mainnet_node.shutdown().await;
+        if let Some(bitcoin_mainnet_node) = self.bitcoin_mainnet_node {
+            let _ = bitcoin_mainnet_node.shutdown().await;
         }
 
-        if let Some(radix_stokenet_node) = self.radix_stokenet_node {
-            let _ = radix_stokenet_node.shutdown().await;
+        if let Some(postgres) = self.postgres {
+            let _ = postgres.shutdown().await;
         }
 
         if let Some(nats_server) = self.nats_server {
@@ -743,14 +816,89 @@ impl Bootstrap {
 
     async fn start_bitcoin_mainnet_node(&mut self) -> Result<()> {
         let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
-            panic!("nats client not fetched before bitcoin node step");
+            panic!("nats client not fetched before bitcoin mainnet node step");
         });
 
         let network = self.network.as_ref().unwrap_or_else(|| {
-            panic!("network not set before bitcoin node step");
+            panic!("network not set before bitcoin mainnet node step");
         });
 
-        let bitcoin_proxy_stream = NatsStream::new(
+        let bitcoin_mainnet_proxy_stream = NatsStream::new(
+            "BITCOIN_MAINNET_PROXY",
+            NatsStreamOptions {
+                client: nats_client.clone(),
+                num_replicas: self.num_replicas,
+            },
+        )
+        .init()
+        .await
+        .map_err(|e| Error::Stream(e.to_string()))?;
+
+        if network
+            .specializations()
+            .await?
+            .contains(&NodeSpecialization::BitcoinMainnet)
+        {
+            // Start Bitcoin testnet node
+            let bitcoin_mainnet_node = BitcoinNode::new(BitcoinNodeOptions {
+                network: BitcoinNetwork::Mainnet,
+                store_dir: self.args.bitcoin_mainnet_store_dir.clone(),
+                rpc_port: None,
+            });
+
+            bitcoin_mainnet_node.start().await?;
+
+            info!("bitcoin mainnet node started");
+
+            let bitcoin_mainnet_proxy_service = HttpProxyService::new(HttpProxyServiceOptions {
+                service_options: NatsServiceOptions {
+                    client: nats_client.clone(),
+                    durable_name: None,
+                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+                },
+                stream: bitcoin_mainnet_proxy_stream,
+                target_addr: bitcoin_mainnet_node.rpc_socket_addr().await?,
+            })
+            .await?;
+
+            bitcoin_mainnet_proxy_service.start().await?;
+
+            self.bitcoin_mainnet_node_rpc_endpoint = Some(bitcoin_mainnet_node.rpc_url().await?);
+            self.bitcoin_mainnet_node = Some(bitcoin_mainnet_node);
+            self.bitcoin_mainnet_proxy_service = Some(bitcoin_mainnet_proxy_service);
+
+            info!("bitcoin mainnet proxy service started");
+        } else {
+            let bitcoin_mainnet_proxy_client = HttpProxyClient::new(HttpProxyClientOptions {
+                client_options: NatsClientOptions {
+                    client: nats_client.clone(),
+                },
+                http_port: 8332,
+                stream: bitcoin_mainnet_proxy_stream,
+            });
+
+            bitcoin_mainnet_proxy_client.start().await?;
+
+            self.bitcoin_mainnet_node_rpc_endpoint =
+                Some(Url::parse("http://127.0.0.1:8332").unwrap());
+            self.bitcoin_mainnet_proxy_client = Some(bitcoin_mainnet_proxy_client);
+
+            info!("bitcoin mainnet proxy client started");
+        }
+
+        Ok(())
+    }
+
+    async fn start_bitcoin_testnet_node(&mut self) -> Result<()> {
+        let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
+            panic!("nats client not fetched before bitcoin testnet node step");
+        });
+
+        let network = self.network.as_ref().unwrap_or_else(|| {
+            panic!("network not set before bitcoin testnet node step");
+        });
+
+        let bitcoin_testnet_proxy_stream = NatsStream::new(
             "BITCOIN_TESTNET_PROXY",
             NatsStreamOptions {
                 client: nats_client.clone(),
@@ -767,47 +915,48 @@ impl Bootstrap {
             .contains(&NodeSpecialization::BitcoinTestnet)
         {
             // Start Bitcoin testnet node
-            let bitcoin_node = BitcoinNode::new(BitcoinNodeOptions {
+            let bitcoin_testnet_node = BitcoinNode::new(BitcoinNodeOptions {
                 network: BitcoinNetwork::Testnet,
                 store_dir: self.args.bitcoin_testnet_store_dir.clone(),
                 rpc_port: None,
             });
 
-            bitcoin_node.start().await?;
+            bitcoin_testnet_node.start().await?;
 
             info!("bitcoin testnet node started");
 
-            let bitcoin_proxy_service = HttpProxyService::new(HttpProxyServiceOptions {
+            let bitcoin_testnet_proxy_service = HttpProxyService::new(HttpProxyServiceOptions {
                 service_options: NatsServiceOptions {
                     client: nats_client.clone(),
                     durable_name: None,
                     jetstream_context: async_nats::jetstream::new(nats_client.clone()),
                 },
-                stream: bitcoin_proxy_stream,
-                target_addr: bitcoin_node.rpc_socket_addr().await?,
+                stream: bitcoin_testnet_proxy_stream,
+                target_addr: bitcoin_testnet_node.rpc_socket_addr().await?,
             })
             .await?;
 
-            bitcoin_proxy_service.start().await?;
+            bitcoin_testnet_proxy_service.start().await?;
 
-            self.bitcoin_node_rpc_endpoint = Some(bitcoin_node.rpc_url().await?);
-            self.bitcoin_node = Some(bitcoin_node);
-            self.bitcoin_proxy_service = Some(bitcoin_proxy_service);
+            self.bitcoin_testnet_node_rpc_endpoint = Some(bitcoin_testnet_node.rpc_url().await?);
+            self.bitcoin_testnet_node = Some(bitcoin_testnet_node);
+            self.bitcoin_testnet_proxy_service = Some(bitcoin_testnet_proxy_service);
 
             info!("bitcoin testnet proxy service started");
         } else {
-            let bitcoin_proxy_client = HttpProxyClient::new(HttpProxyClientOptions {
+            let bitcoin_testnet_proxy_client = HttpProxyClient::new(HttpProxyClientOptions {
                 client_options: NatsClientOptions {
                     client: nats_client.clone(),
                 },
                 http_port: 8332,
-                stream: bitcoin_proxy_stream,
+                stream: bitcoin_testnet_proxy_stream,
             });
 
-            bitcoin_proxy_client.start().await?;
+            bitcoin_testnet_proxy_client.start().await?;
 
-            self.bitcoin_node_rpc_endpoint = Some(Url::parse("http://127.0.0.1:8332").unwrap());
-            self.bitcoin_proxy_client = Some(bitcoin_proxy_client);
+            self.bitcoin_testnet_node_rpc_endpoint =
+                Some(Url::parse("http://127.0.0.1:8332").unwrap());
+            self.bitcoin_testnet_proxy_client = Some(bitcoin_testnet_proxy_client);
 
             info!("bitcoin testnet proxy client started");
         }
@@ -1292,11 +1441,11 @@ impl Bootstrap {
             radix_nft_verifier,
             rpc_endpoints: RpcEndpoints {
                 bitcoin_mainnet: self
-                    .bitcoin_node_rpc_endpoint
+                    .bitcoin_testnet_node_rpc_endpoint
                     .take()
                     .unwrap_or(self.args.bitcoin_mainnet_fallback_rpc_endpoint.clone()),
                 bitcoin_testnet: self
-                    .bitcoin_node_rpc_endpoint
+                    .bitcoin_testnet_node_rpc_endpoint
                     .take()
                     .unwrap_or(self.args.bitcoin_testnet_fallback_rpc_endpoint.clone()),
                 ethereum_holesky: self

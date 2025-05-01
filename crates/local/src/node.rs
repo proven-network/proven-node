@@ -98,28 +98,31 @@ pub type LocalNodeCore = Core<
 
 /// A collection of all the services that can be running in the enclave.
 pub struct Services {
-    /// The Bitcoin node (testnet or mainnet).
-    pub bitcoin_node: Option<Arc<Mutex<BitcoinNode>>>,
+    /// The Bitcoin node (mainnet).
+    pub bitcoin_mainnet_node: Option<Arc<Mutex<BitcoinNode>>>,
+
+    /// The Bitcoin node (testnet).
+    pub bitcoin_testnet_node: Option<Arc<Mutex<BitcoinNode>>>,
 
     /// The Core.
     pub core: Arc<Mutex<LocalNodeCore>>,
 
-    /// The Ethereum Holesky Reth node.
+    /// The Ethereum Holesky Reth node (holesky).
     pub ethereum_holesky_reth_node: Option<Arc<Mutex<RethNode>>>,
 
-    /// The Ethereum Holesky Lighthouse node.
+    /// The Ethereum Holesky Lighthouse node (holesky).
     pub ethereum_holesky_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
 
-    /// The Ethereum Mainnet Reth node.
+    /// The Ethereum Mainnet Reth node (mainnet).
     pub ethereum_mainnet_reth_node: Option<Arc<Mutex<RethNode>>>,
 
-    /// The Ethereum Mainnet Lighthouse node.
+    /// The Ethereum Mainnet Lighthouse node (mainnet).
     pub ethereum_mainnet_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
 
-    /// The Ethereum Sepolia Reth node.
+    /// The Ethereum Sepolia Reth node (sepolia).
     pub ethereum_sepolia_reth_node: Option<Arc<Mutex<RethNode>>>,
 
-    /// The Ethereum Sepolia Lighthouse node.
+    /// The Ethereum Sepolia Lighthouse node (sepolia).
     pub ethereum_sepolia_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
 
     /// The NATS server.
@@ -128,22 +131,22 @@ pub struct Services {
     /// The Postgres database.
     pub postgres: Option<Arc<Mutex<Postgres>>>,
 
-    /// The Radix Mainnet node.
+    /// The Radix Mainnet node (mainnet).
     pub radix_mainnet_node: Option<Arc<Mutex<RadixNode>>>,
 
-    /// The Radix Aggregator.
+    /// The Radix Aggregator (mainnet).
     pub radix_mainnet_aggregator: Option<Arc<Mutex<RadixAggregator>>>,
 
-    /// The Radix Gateway.
+    /// The Radix Gateway (mainnet).
     pub radix_mainnet_gateway: Option<Arc<Mutex<RadixGateway>>>,
 
-    /// The Radix Stokenet node.
+    /// The Radix Stokenet node (stokenet).
     pub radix_stokenet_node: Option<Arc<Mutex<RadixNode>>>,
 
-    /// The Radix Aggregator.
+    /// The Radix Aggregator (stokenet).
     pub radix_stokenet_aggregator: Option<Arc<Mutex<RadixAggregator>>>,
 
-    /// The Radix Gateway.
+    /// The Radix Gateway (stokenet).
     pub radix_stokenet_gateway: Option<Arc<Mutex<RadixGateway>>>,
 }
 
