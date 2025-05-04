@@ -92,13 +92,11 @@ fn clean_vendor_file(package_name: &str) -> std::io::Result<()> {
 fn check_output_files_exist() -> bool {
     // Check if all expected output files exist
     let expected_files = [
-        "src/extensions/gateway_api_sdk/gateway-api-sdk.js",
         "src/extensions/kv/kv-options.js",
         "src/extensions/kv/kv-runtime.js",
         "vendor/openai/index.mjs",
         "vendor/uuid/index.mjs",
         "vendor/zod/index.mjs",
-        "vendor/@radixdlt/babylon-gateway-api-sdk/index.mjs",
         "vendor/@radixdlt/radix-engine-toolkit/index.mjs",
     ];
 
@@ -119,7 +117,6 @@ fn main() {
     println!("cargo:rerun-if-changed=vendor/openai/index.mjs");
     println!("cargo:rerun-if-changed=vendor/uuid/index.mjs");
     println!("cargo:rerun-if-changed=vendor/zod/index.mjs");
-    println!("cargo:rerun-if-changed=vendor/@radixdlt/babylon-gateway-api-sdk/index.mjs");
     println!("cargo:rerun-if-changed=vendor/@radixdlt/radix-engine-toolkit/index.mjs");
 
     // Add this to prevent rerunning for other files
@@ -162,19 +159,13 @@ fn main() {
 
         // Do ESM replacements on extensions
         [
-            "src/extensions/gateway_api_sdk/gateway-api-sdk.js",
             "src/extensions/kv/kv-options.js",
             "src/extensions/kv/kv-runtime.js",
         ]
         .iter()
         .for_each(|path| {
             let content = fs::read_to_string(path).expect("Failed to read file");
-            // Do this replacement first to avoid cycle
-            let intermediate = content.replace(
-                "@radixdlt/babylon-gateway-api-sdk",
-                "proven:raw_babylon_gateway_api",
-            );
-            let replaced = replace_esm_imports(&intermediate);
+            let replaced = replace_esm_imports(&content);
             fs::write(path, replaced).expect("Failed to write file");
         });
 
@@ -193,8 +184,6 @@ fn main() {
 
         // Copy and clean other packages
         copy_and_clean_package("zod").expect("Failed to process zod files");
-        copy_and_clean_package("@radixdlt/babylon-gateway-api-sdk")
-            .expect("Failed to process @radixdlt/babylon-gateway-api-sdk files");
         copy_and_clean_package("@radixdlt/radix-engine-toolkit")
             .expect("Failed to process @radixdlt/radix-engine-toolkit files");
     } else {

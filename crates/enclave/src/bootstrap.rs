@@ -1069,7 +1069,6 @@ impl Bootstrap {
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_network_definition: radix_common::network::NetworkDefinition::stokenet(),
             radix_nft_verifier,
             rpc_endpoints: RpcEndpoints::external(), // TODO: build this from network
         })

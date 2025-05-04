@@ -1,6 +1,5 @@
 mod console;
 mod crypto;
-mod gateway_api_sdk;
 mod handler;
 mod kv;
 mod openai;
@@ -12,7 +11,6 @@ mod zod;
 
 pub use console::*;
 pub use crypto::*;
-pub use gateway_api_sdk::*;
 pub use handler::*;
 pub use kv::*;
 pub use openai::*;

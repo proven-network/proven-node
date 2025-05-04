@@ -102,12 +102,9 @@ impl CodePackage {
             ("proven:crypto", Source::External("proven:crypto")),
             ("proven:handler", Source::External("proven:handler")),
             ("proven:kv", Source::External("proven:kv")),
+            ("proven:rpc", Source::External("proven:rpc")),
             ("proven:session", Source::External("proven:session")),
             ("proven:sql", Source::External("proven:sql")),
-            (
-                "proven:babylon_gateway_api",
-                Source::External("proven:babylon_gateway_api"),
-            ),
             ("proven:openai", Source::External("proven:openai")),
             (
                 "proven:radix_engine_toolkit",

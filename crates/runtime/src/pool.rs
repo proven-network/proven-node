@@ -11,7 +11,6 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
-use radix_common::network::NetworkDefinition;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::{Duration, Instant, sleep};
 
@@ -67,9 +66,6 @@ where
     /// Persona-scoped KV store.
     pub personal_store: PS,
 
-    /// Network definition for Radix Network.
-    pub radix_network_definition: NetworkDefinition,
-
     /// Verifier for checking NFT ownership on the Radix Network.
     pub radix_nft_verifier: RNV,
 
@@ -97,11 +93,11 @@ where
 /// use proven_identity::{Identity, LedgerIdentity, RadixIdentityDetails, Session};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Pool, PoolOptions,
+///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Pool,
+///     PoolOptions, RpcEndpoints,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
-/// use radix_common::network::NetworkDefinition;
 /// use serde_json::json;
 /// use tempfile::tempdir;
 ///
@@ -116,9 +112,8 @@ where
 ///         nft_store: MemoryStore3::new(),
 ///         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///         personal_store: MemoryStore3::new(),
-///         radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
-///         radix_network_definition: NetworkDefinition::stokenet(),
 ///         radix_nft_verifier: MockRadixNftVerifier::new(),
+///         rpc_endpoints: RpcEndpoints::external(),
 ///     })
 ///     .await;
 ///
@@ -188,7 +183,6 @@ where
     personal_sql_store: PSS,
     personal_store: PS,
     rpc_endpoints: RpcEndpoints,
-    radix_network_definition: NetworkDefinition,
     radix_nft_verifier: RNV,
     queue_processor: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     queue_sender: QueueSender,
@@ -223,7 +217,6 @@ where
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_network_definition,
             radix_nft_verifier,
             rpc_endpoints,
         }: PoolOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
@@ -248,7 +241,6 @@ where
             personal_store,
             queue_processor: Arc::new(Mutex::new(None)),
             queue_sender,
-            radix_network_definition,
             radix_nft_verifier,
             rpc_endpoints,
             total_workers: AtomicU32::new(0),
@@ -322,7 +314,6 @@ where
                             personal_sql_store: pool.personal_sql_store.clone(),
                             personal_store: pool.personal_store.clone(),
                             rpc_endpoints: pool.rpc_endpoints.clone(),
-                            radix_network_definition: pool.radix_network_definition.clone(),
                             radix_nft_verifier: pool.radix_nft_verifier.clone(),
                         })
                         .await;
@@ -483,7 +474,6 @@ where
                         nft_store: self.nft_store.clone(),
                         personal_sql_store: self.personal_sql_store.clone(),
                         personal_store: self.personal_store.clone(),
-                        radix_network_definition: self.radix_network_definition.clone(),
                         radix_nft_verifier: self.radix_nft_verifier.clone(),
                         rpc_endpoints: self.rpc_endpoints.clone(),
                     })
@@ -632,7 +622,6 @@ where
                         nft_store: self.nft_store.clone(),
                         personal_sql_store: self.personal_sql_store.clone(),
                         personal_store: self.personal_store.clone(),
-                        radix_network_definition: self.radix_network_definition.clone(),
                         radix_nft_verifier: self.radix_nft_verifier.clone(),
                         rpc_endpoints: self.rpc_endpoints.clone(),
                     })
@@ -813,7 +802,6 @@ mod tests {
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore3::new(),
-            radix_network_definition: NetworkDefinition::stokenet(),
             radix_nft_verifier: MockRadixNftVerifier::new(),
             rpc_endpoints: RpcEndpoints::external(),
         }

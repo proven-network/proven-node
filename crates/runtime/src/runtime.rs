@@ -1,9 +1,8 @@
 use crate::extensions::{
-    ApplicationSqlConnectionManager, ConsoleState, CryptoState, GatewayDetailsState, HandlerOutput,
+    ApplicationSqlConnectionManager, ConsoleState, CryptoState, HandlerOutput,
     NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
-    SqlQueryResultsManager, babylon_gateway_api_ext, console_ext, crypto_ext, handler_runtime_ext,
-    kv_runtime_ext, openai_ext, radix_engine_toolkit_ext, session_ext, sql_runtime_ext, uuid_ext,
-    zod_ext,
+    SqlQueryResultsManager, console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext,
+    openai_ext, radix_engine_toolkit_ext, session_ext, sql_runtime_ext, uuid_ext, zod_ext,
 };
 use crate::file_system::{FileSystem, StoredEntry};
 use crate::module_loader::{ModuleLoader, ProcessingMode};
@@ -25,7 +24,6 @@ use proven_identity::{LedgerIdentity, Session};
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
-use radix_common::network::NetworkDefinition;
 use rustyscript::js_value::Value;
 use rustyscript::{ExtensionOptions, ModuleHandle, WebOptions};
 use serde_json::json;
@@ -75,9 +73,6 @@ where
     /// Persona-scoped KV store.
     pub personal_store: PS,
 
-    /// Network definition for Radix Network.
-    pub radix_network_definition: NetworkDefinition,
-
     /// Verifier for checking NFT ownership on the Radix Network.
     pub radix_nft_verifier: RNV,
 
@@ -117,7 +112,6 @@ impl
         use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
         use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
         use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
-        use radix_common::network::NetworkDefinition;
         use tempfile::tempdir;
 
         Self {
@@ -129,7 +123,6 @@ impl
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore3::new(),
-            radix_network_definition: NetworkDefinition::stokenet(),
             radix_nft_verifier: MockRadixNftVerifier::new(),
             rpc_endpoints: RpcEndpoints::external(),
         }
@@ -155,7 +148,6 @@ impl
         use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
         use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
         use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
-        use radix_common::network::NetworkDefinition;
         use tempfile::tempdir;
 
         Self {
@@ -171,7 +163,6 @@ impl
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
             personal_store: MemoryStore3::new(),
-            radix_network_definition: NetworkDefinition::stokenet(),
             radix_nft_verifier: MockRadixNftVerifier::new(),
             rpc_endpoints: RpcEndpoints::external(),
         }
@@ -195,12 +186,11 @@ impl
 /// use proven_identity::{Identity, LedgerIdentity, RadixIdentityDetails, Session};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
-///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Runtime,
-///     RuntimeOptions,
+///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RpcEndpoints,
+///     Runtime, RuntimeOptions,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
-/// use radix_common::network::NetworkDefinition;
 /// use serde_json::json;
 /// use tempfile::tempdir;
 ///
@@ -215,9 +205,8 @@ impl
 ///     nft_store: MemoryStore3::new(),
 ///     personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
 ///     personal_store: MemoryStore3::new(),
-///     radix_gateway_origin: "https://stokenet.radixdlt.com".to_string(),
-///     radix_network_definition: NetworkDefinition::stokenet(),
 ///     radix_nft_verifier: MockRadixNftVerifier::new(),
+///     rpc_endpoints: RpcEndpoints::external(),
 /// })
 /// .expect("Failed to create runtime");
 ///
@@ -314,7 +303,6 @@ where
             personal_sql_store,
             personal_store,
             rpc_endpoints,
-            radix_network_definition,
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Result<Self> {
@@ -335,6 +323,7 @@ where
             max_heap_size: Some(MAX_HEAP_SIZE_MBS_HARD_LIMIT * 1024 * 1024),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
+                rpc_endpoints.into_extension(),
                 handler_runtime_ext::init(),
                 console_ext::init(),
                 crypto_ext::init(),
@@ -353,7 +342,6 @@ where
                 >(),
                 // Vendered modules
                 openai_ext::init(),
-                babylon_gateway_api_ext::init(),
                 radix_engine_toolkit_ext::init(),
                 uuid_ext::init(),
                 zod_ext::init(),
@@ -372,15 +360,6 @@ where
             },
             ..Default::default()
         })?;
-
-        // Set the gateway origin and id for the gateway API SDK extension
-        rustyscript::Runtime::put(
-            &mut runtime,
-            GatewayDetailsState {
-                gateway_origin: rpc_endpoints.radix_stokenet.to_string(),
-                network_id: radix_network_definition.id,
-            },
-        )?;
 
         // Set the Radix NFT verifier for storage extensions
         rustyscript::Runtime::put(&mut runtime, radix_nft_verifier)?;
@@ -879,6 +858,31 @@ mod tests {
                 }
                 Err(_) => {
                     // Heap size error is expected
+                }
+            }
+        });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_rpc_endpoints() {
+        let options = RuntimeOptions::for_test_code("test_runtime_execute_rpc_endpoints");
+
+        run_in_thread(|| {
+            let mut runtime = Runtime::new(options).unwrap();
+
+            let request =
+                ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+
+            match runtime.execute(request) {
+                Ok(ExecutionResult::Ok { output, .. }) => {
+                    assert!(output.is_array());
+                    assert_eq!(output.as_array().unwrap().len(), 7);
+                }
+                Ok(ExecutionResult::Error { error, .. }) => {
+                    panic!("Unexpected js error: {error:?}");
+                }
+                Err(error) => {
+                    panic!("Unexpected execution error: {error:?}");
                 }
             }
         });

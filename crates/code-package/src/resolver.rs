@@ -44,14 +44,12 @@ impl Resolver for CodePackageResolver {
             "@proven-network/crypto" => Ok(ModuleSpecifier::parse("proven:crypto").unwrap()),
             "@proven-network/handler" => Ok(ModuleSpecifier::parse("proven:handler").unwrap()),
             "@proven-network/kv" => Ok(ModuleSpecifier::parse("proven:kv").unwrap()),
+            "@proven-network/rpc" => Ok(ModuleSpecifier::parse("proven:rpc").unwrap()),
             "@proven-network/session" => Ok(ModuleSpecifier::parse("proven:session").unwrap()),
             "@proven-network/sql" => Ok(ModuleSpecifier::parse("proven:sql").unwrap()),
 
             // Vendor packages
             // TODO: Load dynamically from registry
-            "@radixdlt/babylon-gateway-api-sdk" => {
-                Ok(ModuleSpecifier::parse("proven:babylon_gateway_api").unwrap())
-            }
             "@radixdlt/radix-engine-toolkit" => {
                 Ok(ModuleSpecifier::parse("proven:radix_engine_toolkit").unwrap())
             }

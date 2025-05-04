@@ -1,3 +1,6 @@
+use std::borrow::Cow;
+
+use deno_core::{Extension, ExtensionFileSource};
 use url::Url;
 
 /// RPC endpoints for the runtime.
@@ -37,6 +40,36 @@ impl RpcEndpoints {
             radix_mainnet: Url::parse("https://mainnet.radixdlt.com").unwrap(),
             radix_stokenet: Url::parse("https://stokenet.radixdlt.com").unwrap(),
         }
+    }
+
+    /// Convert the `RpcEndpoints` instance to a `Extension` which allows using the RPC endpoints in the Runtime.
+    pub fn into_extension(self) -> Extension {
+        let mut extension = Extension::default();
+
+        // Generate dynamic JavaScript content based on RPC endpoints
+        let js_content = format!(
+            "export const BITCOIN_MAINNET_RPC = '{}';
+            export const BITCOIN_TESTNET_RPC = '{}';
+            export const ETHEREUM_HOLESKY_RPC = '{}';
+            export const ETHEREUM_MAINNET_RPC = '{}';
+            export const ETHEREUM_SEPOLIA_RPC = '{}';
+            export const RADIX_MAINNET_RPC = '{}';
+            export const RADIX_STOKENET_RPC = '{}';",
+            self.bitcoin_mainnet,
+            self.bitcoin_testnet,
+            self.ethereum_holesky,
+            self.ethereum_mainnet,
+            self.ethereum_sepolia,
+            self.radix_mainnet,
+            self.radix_stokenet
+        );
+
+        let source = ExtensionFileSource::new_computed("proven:rpc", js_content.into());
+
+        extension.esm_files = Cow::Owned(vec![source]);
+        extension.esm_entry_point = Some("proven:rpc");
+
+        extension
     }
 
     /// Convert the `RpcEndpoints` instance to a vector of URLs.

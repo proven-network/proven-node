@@ -1,7 +1,6 @@
 use crate::extensions::{
-    ConsoleState, GatewayDetailsState, babylon_gateway_api_ext, console_ext, crypto_ext,
-    handler_options_ext, kv_options_ext, openai_ext, radix_engine_toolkit_ext, session_ext,
-    sql_migrations_ext, sql_options_ext, uuid_ext, zod_ext,
+    ConsoleState, console_ext, crypto_ext, handler_options_ext, kv_options_ext, openai_ext,
+    radix_engine_toolkit_ext, session_ext, sql_migrations_ext, sql_options_ext, uuid_ext, zod_ext,
 };
 use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::{
@@ -9,7 +8,7 @@ use crate::options::{
 };
 use crate::permissions::OriginAllowlistWebPermissions;
 use crate::schema::SCHEMA_WHLIST;
-use crate::{Error, HandlerSpecifier};
+use crate::{Error, HandlerSpecifier, RpcEndpoints};
 
 use std::sync::Arc;
 use std::thread;
@@ -33,6 +32,7 @@ impl OptionsParser {
             timeout: Duration::from_millis(5000),
             schema_whlist: SCHEMA_WHLIST.clone(),
             extensions: vec![
+                RpcEndpoints::external().into_extension(),
                 handler_options_ext::init(),
                 console_ext::init(),
                 crypto_ext::init(),
@@ -42,7 +42,6 @@ impl OptionsParser {
                 sql_migrations_ext::init(),
                 // Vendered modules
                 openai_ext::init(),
-                babylon_gateway_api_ext::init(),
                 radix_engine_toolkit_ext::init(),
                 uuid_ext::init(),
                 zod_ext::init(),
@@ -57,8 +56,6 @@ impl OptionsParser {
             },
             ..Default::default()
         })?;
-
-        runtime.put(GatewayDetailsState::default())?;
 
         runtime.put(ConsoleState::default())?;
         runtime.put(ModuleHandlerOptions::default())?;

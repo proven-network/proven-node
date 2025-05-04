@@ -23,7 +23,6 @@ proven-locks.workspace = true
 proven-radix-nft-verifier.workspace = true
 proven-sql.workspace = true
 proven-store.workspace = true
-radix-common.workspace = true
 rand.workspace = true
 regex.workspace = true
 rustyscript.workspace = true

@@ -1437,7 +1437,6 @@ impl Bootstrap {
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_network_definition: NetworkDefinition::stokenet(),
             radix_nft_verifier,
             rpc_endpoints: RpcEndpoints {
                 bitcoin_mainnet: self

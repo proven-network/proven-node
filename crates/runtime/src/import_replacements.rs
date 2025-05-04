@@ -20,6 +20,8 @@ static IMPORT_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
 
     map.insert("@proven-network/kv".to_string(), "proven:kv".to_string());
 
+    map.insert("@proven-network/rpc".to_string(), "proven:rpc".to_string());
+
     map.insert(
         "@proven-network/session".to_string(),
         "proven:session".to_string(),
@@ -28,11 +30,6 @@ static IMPORT_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
     map.insert("@proven-network/sql".to_string(), "proven:sql".to_string());
 
     // Vendor packages
-
-    map.insert(
-        "@radixdlt/babylon-gateway-api-sdk".to_string(),
-        "proven:babylon_gateway_api".to_string(),
-    );
 
     map.insert(
         "@radixdlt/radix-engine-toolkit".to_string(),
@@ -81,7 +78,6 @@ mod tests {
     fn test_replace_esm_imports() {
         let input = r#"
             import { v4 } from "uuid";
-            import { Gateway } from "@radixdlt/babylon-gateway-api-sdk";
             const uuid = "uuid"; // Should not replace this
             export { something } from "uuid/v4";
         "#;
@@ -89,7 +85,6 @@ mod tests {
         let output = replace_esm_imports(input);
 
         assert!(output.contains(r#"from "proven:uuid""#));
-        assert!(output.contains(r#"from "proven:babylon_gateway_api""#));
         assert!(output.contains(r#"const uuid = "uuid""#)); // Unchanged
         assert!(output.contains(r#"from "proven:uuid/v4""#));
     }

@@ -9,7 +9,6 @@ use async_trait::async_trait;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
-use radix_common::network::NetworkDefinition;
 
 /// Options for configuring a `RuntimePoolManager`.
 pub struct RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
@@ -50,9 +49,6 @@ where
 
     /// Persona-scoped KV store.
     pub personal_store: PS,
-
-    /// Network definition for Radix Network.
-    pub radix_network_definition: NetworkDefinition,
 
     /// Verifier for checking NFT ownership on the Radix Network.
     pub radix_nft_verifier: RNV,
@@ -181,7 +177,6 @@ where
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_network_definition,
             radix_nft_verifier,
             rpc_endpoints,
         }: RuntimePoolManagerOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
@@ -195,7 +190,6 @@ where
             nft_store,
             personal_sql_store,
             personal_store,
-            radix_network_definition,
             radix_nft_verifier,
             rpc_endpoints,
         })
