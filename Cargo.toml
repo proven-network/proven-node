@@ -209,6 +209,7 @@ deno_ast = { version = "0.46.6", features = ["transpiling"] }
 deno_bench_util = { path = "vendor/deno/bench_util" }
 deno_broadcast_channel = { path = "vendor/deno/ext/broadcast_channel" }
 deno_cache = { path = "vendor/deno/ext/cache" }
+# TODO: deno_cache_dir 0.20.0 seems to have an incompat. Check next release.
 deno_cache_dir = "=0.19.2"
 deno_canvas = { path = "vendor/deno/ext/canvas" }
 deno_config = { version = "0.54.2", features = ["workspace", "sync"] }
@@ -233,7 +234,7 @@ deno_napi = { path = "vendor/deno/ext/napi" }
 deno_native_certs = "0.3.0"
 deno_net = { path = "vendor/deno/ext/net" }
 deno_node = { path = "vendor/deno/ext/node" }
-deno_npm = "0.33.0"
+deno_npm = "0.33.2"
 deno_npm_cache = { path = "vendor/deno/resolvers/npm_cache" }
 deno_os = { path = "vendor/deno/ext/os" }
 deno_package_json = { version = "0.6.0", default-features = false }

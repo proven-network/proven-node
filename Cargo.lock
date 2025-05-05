@@ -3196,7 +3196,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.197.0"
+version = "0.198.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -3205,7 +3205,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.197.0"
+version = "0.198.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -3218,7 +3218,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.135.0"
+version = "0.136.0"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -3274,7 +3274,7 @@ dependencies = [
 
 [[package]]
 name = "deno_canvas"
-version = "0.72.0"
+version = "0.73.0"
 dependencies = [
  "bytemuck",
  "deno_core",
@@ -3314,7 +3314,7 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.203.0"
+version = "0.204.0"
 dependencies = [
  "deno_core",
 ]
@@ -3365,7 +3365,7 @@ checksum = "fe4dccb6147bb3f3ba0c7a48e993bfeb999d2c2e47a81badee80e2b370c8d695"
 
 [[package]]
 name = "deno_cron"
-version = "0.83.0"
+version = "0.84.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3379,7 +3379,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.217.0"
+version = "0.218.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3442,7 +3442,7 @@ dependencies = [
 
 [[package]]
 name = "deno_features"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "deno_core",
  "serde",
@@ -3451,7 +3451,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.227.0"
+version = "0.228.0"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3490,7 +3490,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.190.0"
+version = "0.191.0"
 dependencies = [
  "cranelift",
  "cranelift-native",
@@ -3514,7 +3514,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-version = "0.113.0"
+version = "0.114.0"
 dependencies = [
  "async-trait",
  "base32",
@@ -3572,7 +3572,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.201.0"
+version = "0.202.0"
 dependencies = [
  "async-compression",
  "async-trait",
@@ -3614,7 +3614,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.113.0"
+version = "0.114.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -3636,7 +3636,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.111.0"
+version = "0.112.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3668,7 +3668,7 @@ dependencies = [
 
 [[package]]
 name = "deno_lib"
-version = "2.3.0-rc.3"
+version = "0.20.0"
 dependencies = [
  "capacity_builder",
  "deno_error",
@@ -3724,7 +3724,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.134.0"
+version = "0.135.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3754,7 +3754,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.195.0"
+version = "0.196.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3778,7 +3778,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.141.0"
+version = "0.142.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -3868,9 +3868,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.33.0"
+version = "0.33.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bbe8ae992daf5506f430f2df2c5cf1ce95afe0a08d749251a5761488c71426d"
+checksum = "5217eb9aaebd02e92baeea7b474ca3f663b611204ccbfba11f8d296be08abe69"
 dependencies = [
  "async-trait",
  "capacity_builder",
@@ -3906,7 +3906,7 @@ dependencies = [
 
 [[package]]
 name = "deno_os"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -3958,7 +3958,7 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
-version = "0.62.0"
+version = "0.63.0"
 dependencies = [
  "capacity_builder",
  "deno_core",
@@ -3978,7 +3978,7 @@ dependencies = [
 
 [[package]]
 name = "deno_process"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -4005,7 +4005,7 @@ dependencies = [
 
 [[package]]
 name = "deno_resolver"
-version = "0.34.0"
+version = "0.35.0"
 dependencies = [
  "anyhow",
  "async-once-cell",
@@ -4016,12 +4016,14 @@ dependencies = [
  "deno_cache_dir",
  "deno_config",
  "deno_error",
+ "deno_graph",
  "deno_media_type",
  "deno_npm",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
  "deno_terminal",
+ "deno_unsync",
  "futures",
  "import_map",
  "indexmap 2.9.0",
@@ -4039,7 +4041,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.211.0"
+version = "0.212.0"
 dependencies = [
  "color-print",
  "deno_ast",
@@ -4121,7 +4123,7 @@ dependencies = [
 
 [[package]]
 name = "deno_telemetry"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -4156,7 +4158,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.190.0"
+version = "0.191.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -4185,7 +4187,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.203.0"
+version = "0.204.0"
 dependencies = [
  "deno_bench_util",
  "deno_console",
@@ -4197,7 +4199,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.234.0"
+version = "0.235.0"
 dependencies = [
  "async-trait",
  "base64-simd 0.8.0",
@@ -4220,7 +4222,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.170.0"
+version = "0.171.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -4237,7 +4239,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.203.0"
+version = "0.204.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -4245,7 +4247,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.208.0"
+version = "0.209.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -4268,7 +4270,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.198.0"
+version = "0.199.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -4354,7 +4356,7 @@ dependencies = [
 
 [[package]]
 name = "denort_helper"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "deno_error",
  "deno_path_util",
@@ -7491,7 +7493,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.133.0"
+version = "0.134.0"
 dependencies = [
  "quote",
  "serde",
@@ -7669,7 +7671,7 @@ dependencies = [
 
 [[package]]
 name = "node_resolver"
-version = "0.41.0"
+version = "0.42.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7677,6 +7679,7 @@ dependencies = [
  "dashmap 6.1.0",
  "deno_config",
  "deno_error",
+ "deno_graph",
  "deno_media_type",
  "deno_package_json",
  "deno_path_util",

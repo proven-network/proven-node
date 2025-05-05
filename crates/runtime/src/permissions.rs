@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use deno_core::url::Url;
+use deno_fs::{CheckedPath, FsError, GetPath};
 use rustyscript::{PermissionDeniedError, SystemsPermissionKind, WebPermissions};
 
 // Inner container for the allowlist permission set
@@ -104,13 +105,22 @@ impl WebPermissions for OriginAllowlistWebPermissions {
 
     fn check_open<'a>(
         &self,
-        _resolved: bool,
         _read: bool,
         _write: bool,
-        _path: &'a Path,
+        _path: Cow<'a, Path>,
         _api_name: &str,
-    ) -> Option<std::borrow::Cow<'a, Path>> {
-        None
+        _get_path: &'a dyn GetPath,
+    ) -> Result<CheckedPath<'a>, FsError> {
+        Err(FsError::NotCapable("open"))
+    }
+
+    fn check_read_path<'a>(
+        &self,
+        _p: Cow<'a, Path>,
+        _api_name: Option<&str>,
+        _get_path: &'a dyn GetPath,
+    ) -> Result<CheckedPath<'a>, FsError> {
+        Err(FsError::NotCapable("read"))
     }
 
     fn check_read_all(&self, _api_name: Option<&str>) -> Result<(), PermissionDeniedError> {
