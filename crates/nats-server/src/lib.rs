@@ -22,6 +22,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use nix::sys::signal::Signal;
 use once_cell::sync::Lazy;
+use pem::{Pem, encode};
 use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
@@ -433,7 +434,7 @@ where
             // If we have a cert store, we should apply TLS configuration
             // TODO: Needs testing against production ACME server
             let cluster_config = if let Some(cert_store) = &self.cert_store {
-                if let (Some(cert), Some(key)) = (
+                if let (Some(cert_bytes), Some(pkcs8_bytes)) = (
                     cert_store
                         .load_cert(
                             &[nats_cluster_endpoint.host_str().unwrap().to_string()],
@@ -450,10 +451,14 @@ where
                     let cert_file = self.config_dir.join("cert.pem");
                     let key_file = self.config_dir.join("key.pem");
 
-                    tokio::fs::write(&cert_file, cert)
+                    tokio::fs::write(&cert_file, cert_bytes)
                         .await
                         .map_err(|e| Error::Io("failed to write cert file", e))?;
-                    tokio::fs::write(&key_file, key)
+
+                    // Convert the loaded account bytes (PKCS#8) to PEM format
+                    let pem = Pem::new(String::from("PRIVATE KEY"), pkcs8_bytes);
+                    let key_pem_string = encode(&pem);
+                    tokio::fs::write(&key_file, key_pem_string.as_bytes())
                         .await
                         .map_err(|e| Error::Io("failed to write key file", e))?;
 
@@ -466,6 +471,8 @@ where
                         nats_cluster_endpoint
                     );
 
+                    // TODO: This is a temporary solution to allow the server to start without TLS
+                    // Should probably just retry until the HTTPS server populates the cert store
                     CLUSTER_NO_TLS_CONFIG_TEMPLATE.to_string()
                 }
             } else {

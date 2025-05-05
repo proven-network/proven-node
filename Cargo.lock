@@ -9602,6 +9602,7 @@ dependencies = [
  "ed25519-dalek",
  "nix 0.27.1",
  "once_cell",
+ "pem",
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bootable",
