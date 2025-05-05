@@ -30,10 +30,13 @@ use regex::Regex;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
+use tokio_rustls_acme::acme::LETS_ENCRYPT_PRODUCTION_DIRECTORY;
+use tokio_rustls_acme::{AccountCache, CertCache};
 use tracing::{debug, error, info, trace, warn};
 
 static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
 static CLUSTER_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster.conf");
+static CLUSTER_NO_TLS_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster-no-tls.conf");
 
 const PEER_DISCOVERY_INTERVAL: u64 = 300; // 5 minutes
 
@@ -236,7 +239,7 @@ where
     bin_dir: PathBuf,
 
     /// The store for certificates. Set to `None` if the server is not using TLS.
-    _cert_store: Option<CertStore<S>>,
+    cert_store: Option<CertStore<S>>,
 
     /// The client listen port
     client_port: u16,
@@ -297,7 +300,7 @@ where
 
         Ok(Self {
             bin_dir,
-            _cert_store: cert_store,
+            cert_store,
             client_port,
             config_dir,
             debug,
@@ -411,6 +414,11 @@ where
             valid_peer_count
         );
 
+        // Create the config directory if it doesn't exist
+        tokio::fs::create_dir_all(&self.config_dir)
+            .await
+            .map_err(|e| Error::Io("failed to create config directory", e))?;
+
         let nats_cluster_endpoint = self.network.nats_cluster_endpoint().await?;
 
         // Start with the basic configuration
@@ -420,10 +428,52 @@ where
             .replace("{http_addr}", &format!("0.0.0.0:{}", self.http_port))
             .replace("{store_dir}", &self.store_dir.to_string_lossy());
 
-        // Only add cluster.routes configuration if there are valid peers
+        // Only add cluster configuration if there are valid peers
         if valid_peer_count > 0 {
+            // If we have a cert store, we should apply TLS configuration
+            // TODO: Needs testing against production ACME server
+            let cluster_config = if let Some(cert_store) = &self.cert_store {
+                if let (Some(cert), Some(key)) = (
+                    cert_store
+                        .load_cert(
+                            &[nats_cluster_endpoint.host_str().unwrap().to_string()],
+                            LETS_ENCRYPT_PRODUCTION_DIRECTORY,
+                        )
+                        .await?,
+                    cert_store
+                        .load_account(
+                            &[nats_cluster_endpoint.host_str().unwrap().to_string()],
+                            LETS_ENCRYPT_PRODUCTION_DIRECTORY,
+                        )
+                        .await?,
+                ) {
+                    let cert_file = self.config_dir.join("cert.pem");
+                    let key_file = self.config_dir.join("key.pem");
+
+                    tokio::fs::write(&cert_file, cert)
+                        .await
+                        .map_err(|e| Error::Io("failed to write cert file", e))?;
+                    tokio::fs::write(&key_file, key)
+                        .await
+                        .map_err(|e| Error::Io("failed to write key file", e))?;
+
+                    CLUSTER_CONFIG_TEMPLATE
+                        .replace("{cert_file}", &cert_file.to_string_lossy())
+                        .replace("{key_file}", &key_file.to_string_lossy())
+                } else {
+                    warn!(
+                        "Failed to load certificate for NATS cluster endpoint: {}",
+                        nats_cluster_endpoint
+                    );
+
+                    CLUSTER_NO_TLS_CONFIG_TEMPLATE.to_string()
+                }
+            } else {
+                CLUSTER_NO_TLS_CONFIG_TEMPLATE.to_string()
+            };
+
             config.push_str(
-                &CLUSTER_CONFIG_TEMPLATE
+                &cluster_config
                     .replace(
                         "{cluster_port}",
                         &nats_cluster_endpoint.port().unwrap().to_string(),
@@ -436,10 +486,6 @@ where
                     .replace("{cluster_routes}", &routes.trim()),
             );
         }
-
-        tokio::fs::create_dir_all(&self.config_dir)
-            .await
-            .map_err(|e| Error::Io("failed to create config directory", e))?;
 
         tokio::fs::write(self.config_dir.join("nats-server.conf"), config)
             .await

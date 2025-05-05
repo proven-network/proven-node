@@ -17,6 +17,10 @@ pub enum Error {
     #[error("binary not found")]
     BinaryNotFound,
 
+    /// Cert store error.
+    #[error("cert store error: {0}")]
+    CertStore(#[from] proven_cert_store::Error),
+
     /// Failed to connect to nats server.
     #[error("failed to connect to nats server: {0}")]
     ClientFailedToConnect(#[from] async_nats::ConnectError),

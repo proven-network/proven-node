@@ -9617,6 +9617,7 @@ dependencies = [
  "regex",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-rustls-acme",
  "tracing",
  "tracing-subscriber",
  "which 6.0.3",

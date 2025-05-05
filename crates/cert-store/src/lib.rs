@@ -6,7 +6,7 @@
 
 mod error;
 
-use error::Error;
+pub use error::Error;
 
 use std::convert::Infallible;
 
@@ -16,6 +16,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use bytes::Bytes;
 use proven_store::Store;
 use ring::digest::{Context, SHA256};
+use tokio_rustls_acme::{AccountCache, CertCache};
 
 /// A store for certificates.
 #[derive(Clone)]
@@ -74,7 +75,7 @@ where
 }
 
 #[async_trait]
-impl<S> tokio_rustls_acme::CertCache for CertStore<S>
+impl<S> CertCache for CertStore<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
@@ -102,7 +103,7 @@ where
 }
 
 #[async_trait]
-impl<S> tokio_rustls_acme::AccountCache for CertStore<S>
+impl<S> AccountCache for CertStore<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
