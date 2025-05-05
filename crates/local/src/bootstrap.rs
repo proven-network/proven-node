@@ -4,6 +4,7 @@ use crate::hosts::check_hostname_resolution;
 use crate::net::fetch_external_ip;
 use crate::node::{LocalNode, LocalNodeCore, Services};
 
+use std::convert::Infallible;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,6 +13,7 @@ use std::time::Duration;
 use async_nats::Client as NatsClient;
 use axum::Router;
 use axum::routing::any;
+use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use http::StatusCode;
 use proven_applications::{ApplicationManagement, ApplicationManager};
@@ -136,7 +138,7 @@ pub struct Bootstrap {
     ethereum_sepolia_rpc_endpoint: Option<Url>,
 
     nats_client: Option<NatsClient>,
-    nats_server: Option<NatsServer<MockGovernance, MockAttestor>>,
+    nats_server: Option<NatsServer<MockGovernance, MockAttestor, FsStore<Bytes, Infallible, Infallible>>>,
 
     postgres: Option<Postgres>,
 
@@ -762,6 +764,7 @@ impl Bootstrap {
 
         let nats_server = NatsServer::new(NatsServerOptions {
             bin_dir: self.args.nats_bin_dir.clone(),
+            cert_store: None,
             client_port: self.args.nats_client_port,
             config_dir: PathBuf::from("/tmp/nats-config"),
             debug: self.args.testnet,

@@ -87,6 +87,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [attestation-nsm](crates/attestation-nsm): Implementation of attestation using the Nitro Security Module.
 - [bitcoin-core](crates/bitcoin-core): Configures and runs a local Bitcoin Core full node.
 - [bootable](crates/bootable): Abstract interface for bootable services.
+- [cert-store](crates/cert-store): Shared cert store for both HTTPS and NATS.
 - [code-package](crates/code-package): Tools for creating and working with code packages runnable in the Proven runtime.
 - [core](crates/core): Core logic for the Proven node and the entrypoint for all user interactions.
 - [dnscrypt-proxy](crates/dnscrypt-proxy): Configures and runs a DNSCrypt proxy to ensure all DNS runs over tamper-proof HTTPS.

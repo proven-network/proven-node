@@ -8982,6 +8982,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-cert-store"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "ciborium",
+ "proven-store",
+ "ring",
+ "thiserror 2.0.12",
+ "tokio-rustls-acme",
+]
+
+[[package]]
 name = "proven-code-package"
 version = "0.1.0"
 dependencies = [
@@ -9080,6 +9094,7 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-nsm",
  "proven-bootable",
+ "proven-cert-store",
  "proven-core",
  "proven-dnscrypt-proxy",
  "proven-external-fs",
@@ -9293,16 +9308,15 @@ dependencies = [
  "async-trait",
  "axum 0.8.4",
  "axum-server",
- "base64 0.22.1",
  "bytes",
  "hickory-proto",
  "hickory-resolver",
  "multi_key_map",
  "parking_lot",
  "proven-bootable",
+ "proven-cert-store",
  "proven-http",
  "proven-store",
- "ring",
  "rustls",
  "thiserror 2.0.12",
  "tokio",
@@ -9588,11 +9602,14 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bootable",
+ "proven-cert-store",
  "proven-governance",
  "proven-governance-mock",
  "proven-isolation",
  "proven-nats-monitor",
  "proven-network",
+ "proven-store",
+ "proven-store-memory",
  "rand 0.8.5",
  "regex",
  "thiserror 2.0.12",

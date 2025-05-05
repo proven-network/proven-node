@@ -126,7 +126,9 @@ pub struct Services {
     pub ethereum_sepolia_lighthouse_node: Option<Arc<Mutex<LighthouseNode>>>,
 
     /// The NATS server.
-    pub nats_server: Arc<Mutex<NatsServer<MockGovernance, MockAttestor>>>,
+    pub nats_server: Arc<
+        Mutex<NatsServer<MockGovernance, MockAttestor, FsStore<Bytes, Infallible, Infallible>>>,
+    >,
 
     /// The Postgres database.
     pub postgres: Option<Arc<Mutex<Postgres>>>,

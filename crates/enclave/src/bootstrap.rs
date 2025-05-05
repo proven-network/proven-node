@@ -3,6 +3,7 @@ use super::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 use super::node::{EnclaveNode, EnclaveNodeCore, Services};
 use super::speedtest::SpeedTest;
 
+use std::convert::Infallible;
 use std::convert::TryInto;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -19,6 +20,7 @@ use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_bootable::Bootable;
+use proven_cert_store::CertStore;
 use proven_core::{Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
@@ -110,7 +112,8 @@ pub struct Bootstrap {
     nats_server_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
 
     nats_client: Option<NatsClient>,
-    nats_server: Option<NatsServer<MockGovernance, NsmAttestor>>,
+    nats_server:
+        Option<NatsServer<MockGovernance, NsmAttestor, S3Store<Bytes, Infallible, Infallible>>>,
 
     core: Option<EnclaveNodeCore>,
 
@@ -802,6 +805,7 @@ impl Bootstrap {
 
         let nats_server = NatsServer::new(NatsServerOptions {
             bin_dir: Some(PathBuf::from("/apps/nats/v2.11.2")),
+            cert_store: None,
             client_port: 4222,
             config_dir: PathBuf::from("/tmp/nats-config"),
             debug: self.args.testnet,
@@ -864,18 +868,20 @@ impl Bootstrap {
             radix_network_definition: &radix_common::network::NetworkDefinition::stokenet(),
         });
 
-        let cert_store = S3Store::new(S3StoreOptions {
-            bucket: self.args.certificates_bucket.clone(),
-            prefix: None,
-            region: id.region.clone(),
-            secret_key: get_or_init_encrypted_key(
-                id.region.clone(),
-                self.args.kms_key_id.clone(),
-                "CERTIFICATES_KEY".to_string(),
-            )
-            .await?,
-        })
-        .await;
+        let cert_store = CertStore::new(
+            S3Store::new(S3StoreOptions {
+                bucket: self.args.certificates_bucket.clone(),
+                prefix: None,
+                region: id.region.clone(),
+                secret_key: get_or_init_encrypted_key(
+                    id.region.clone(),
+                    self.args.kms_key_id.clone(),
+                    "CERTIFICATES_KEY".to_string(),
+                )
+                .await?,
+            })
+            .await,
+        );
 
         // Parse the domain name from the origin in node config
         let domain = node_config.fqdn()?;

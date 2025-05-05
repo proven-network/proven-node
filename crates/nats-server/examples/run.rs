@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use std::path::PathBuf;
 
 use bytes::Bytes;
@@ -6,6 +7,7 @@ use proven_bootable::Bootable;
 use proven_governance_mock::MockGovernance;
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{ProvenNetwork, ProvenNetworkOptions};
+use proven_store_memory::MemoryStore;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,8 +42,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create server options
-    let options = NatsServerOptions {
+    let options: NatsServerOptions<
+        MockGovernance,
+        MockAttestor,
+        MemoryStore<Bytes, Infallible, Infallible>,
+    > = NatsServerOptions {
         bin_dir: Some(bin_dir),
+        cert_store: None,
         client_port: 4222,
         config_dir,
         debug: true,

@@ -1,4 +1,12 @@
-use crate::Error;
+//! Shared cert store for both HTTPS and NATS.
+#![warn(missing_docs)]
+#![warn(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+
+mod error;
+
+use error::Error;
 
 use std::convert::Infallible;
 
@@ -9,17 +17,20 @@ use bytes::Bytes;
 use proven_store::Store;
 use ring::digest::{Context, SHA256};
 
-pub struct CertCache<S>
+/// A store for certificates.
+#[derive(Clone)]
+pub struct CertStore<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
     store: S,
 }
 
-impl<S> CertCache<S>
+impl<S> CertStore<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
+    /// Creates a new `CertStore`.
     pub const fn new(store: S) -> Self {
         Self { store }
     }
@@ -63,7 +74,7 @@ where
 }
 
 #[async_trait]
-impl<S> tokio_rustls_acme::CertCache for CertCache<S>
+impl<S> tokio_rustls_acme::CertCache for CertStore<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
@@ -91,7 +102,7 @@ where
 }
 
 #[async_trait]
-impl<S> tokio_rustls_acme::AccountCache for CertCache<S>
+impl<S> tokio_rustls_acme::AccountCache for CertStore<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {

@@ -18,6 +18,7 @@ proven-applications.workspace = true
 proven-attestation.workspace = true
 proven-attestation-nsm.workspace = true
 proven-bootable.workspace = true
+proven-cert-store.workspace = true
 proven-core.workspace = true
 proven-dnscrypt-proxy.workspace = true
 proven-external-fs.workspace = true

@@ -8,10 +8,6 @@ pub enum Error {
     /// The server has already been started.
     #[error("the server has already been started")]
     AlreadyStarted,
-
-    /// Failed to store certificate.
-    #[error("certificate store error: {0}")]
-    CertStore(String),
 }
 
 impl BootableError for Error {}

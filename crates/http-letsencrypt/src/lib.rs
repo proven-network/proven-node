@@ -7,14 +7,13 @@
 #![allow(clippy::redundant_pub_crate)]
 
 mod acceptor;
-mod cert_cache;
 mod error;
 mod multi_resolver;
 
 use acceptor::AxumAcceptor;
-use cert_cache::CertCache;
 pub use error::Error;
 use multi_resolver::MultiResolver;
+use proven_cert_store::CertStore;
 
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
@@ -40,32 +39,13 @@ use tokio_util::task::TaskTracker;
 use tower::Service;
 use tracing::{error, info};
 
-/// Secure HTTPS server using Let's Encrypt certificates.
-#[derive(Clone)]
-pub struct LetsEncryptHttpServer<S>
-where
-    S: Store<Bytes, Infallible, Infallible>,
-{
-    acceptor: AxumAcceptor,
-    cert_store: S,
-    cname_domain: String,
-    emails: Vec<String>,
-    fallback_router: Router,
-    hostname_routers: Arc<RwLock<HashMap<String, Router>>>,
-    listen_addr: SocketAddr,
-    registered_domains: Arc<RwLock<HashSet<String>>>,
-    resolver: Arc<MultiResolver>,
-    shutdown_token: CancellationToken,
-    task_tracker: TaskTracker,
-}
-
 /// Options for creating a new `LetsEncryptHttpServer`.
 pub struct LetsEncryptHttpServerOptions<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
     /// The store for certificates.
-    pub cert_store: S,
+    pub cert_store: CertStore<S>,
 
     /// The CNAME domain used to point to the network.
     pub cname_domain: String,
@@ -81,6 +61,25 @@ where
 
     /// The address to listen on.
     pub listen_addr: SocketAddr,
+}
+
+/// Secure HTTPS server using Let's Encrypt certificates.
+#[derive(Clone)]
+pub struct LetsEncryptHttpServer<S>
+where
+    S: Store<Bytes, Infallible, Infallible>,
+{
+    acceptor: AxumAcceptor,
+    cert_store: CertStore<S>,
+    cname_domain: String,
+    emails: Vec<String>,
+    fallback_router: Router,
+    hostname_routers: Arc<RwLock<HashMap<String, Router>>>,
+    listen_addr: SocketAddr,
+    registered_domains: Arc<RwLock<HashSet<String>>>,
+    resolver: Arc<MultiResolver>,
+    shutdown_token: CancellationToken,
+    task_tracker: TaskTracker,
 }
 
 impl<S> LetsEncryptHttpServer<S>
@@ -104,7 +103,7 @@ where
     ) -> Self {
         let mut node_endpoints_state = AcmeConfig::new(domains.clone())
             .contact(emails.iter().map(|e| format!("mailto:{e}")))
-            .cache(CertCache::new(cert_store.clone()))
+            .cache(cert_store.clone())
             .directory_lets_encrypt(true)
             .state();
 
@@ -145,7 +144,7 @@ where
     pub fn add_domain(&self, domain: String) {
         let mut new_state = AcmeConfig::new(vec![domain.clone()])
             .contact(self.emails.iter().map(|e| format!("mailto:{e}")))
-            .cache(CertCache::new(self.cert_store.clone()))
+            .cache(self.cert_store.clone())
             .directory_lets_encrypt(true)
             .state();
 

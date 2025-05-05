@@ -9,13 +9,17 @@ mod error;
 
 pub use error::Error;
 use proven_bootable::Bootable;
+use proven_cert_store::CertStore;
 use proven_nats_monitor::NatsMonitor;
+use proven_store::Store;
 
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::{net::SocketAddr, path::PathBuf};
 
 use async_nats::Client;
 use async_trait::async_trait;
+use bytes::Bytes;
 use nix::sys::signal::Signal;
 use once_cell::sync::Lazy;
 use proven_attestation::Attestor;
@@ -40,13 +44,17 @@ static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// Options for configuring a `NatsServer`.
-pub struct NatsServerOptions<G, A>
+pub struct NatsServerOptions<G, A, S>
 where
     G: Governance,
     A: Attestor,
+    S: Store<Bytes, Infallible, Infallible>,
 {
     /// Optional path to the NATS server binary if it is not in the PATH.
     pub bin_dir: Option<PathBuf>,
+
+    /// The store for certificates. Set to `None` if the server is not using TLS.
+    pub cert_store: Option<CertStore<S>>,
 
     /// The port to listen for client connections on.
     pub client_port: u16,
@@ -218,13 +226,17 @@ impl IsolatedApplication for NatsServerApp {
 
 /// Represents an isolated NATS server with network discovery.
 #[derive(Clone)]
-pub struct NatsServer<G, A>
+pub struct NatsServer<G, A, S>
 where
     G: Governance,
     A: Attestor,
+    S: Store<Bytes, Infallible, Infallible>,
 {
     /// Path to the directory containing the NATS server binary
     bin_dir: PathBuf,
+
+    /// The store for certificates. Set to `None` if the server is not using TLS.
+    _cert_store: Option<CertStore<S>>,
 
     /// The client listen port
     client_port: u16,
@@ -254,16 +266,18 @@ where
     topology_update_task: Arc<Mutex<Option<JoinHandle<()>>>>,
 }
 
-impl<G, A> NatsServer<G, A>
+impl<G, A, S> NatsServer<G, A, S>
 where
     G: Governance,
     A: Attestor,
+    S: Store<Bytes, Infallible, Infallible>,
 {
     /// Creates a new `NatsServer` with the specified options.
     #[must_use]
     pub fn new(
         NatsServerOptions {
             bin_dir,
+            cert_store,
             client_port,
             config_dir,
             debug,
@@ -271,7 +285,7 @@ where
             network,
             server_name,
             store_dir,
-        }: NatsServerOptions<G, A>,
+        }: NatsServerOptions<G, A, S>,
     ) -> Result<Self, Error> {
         let bin_dir = match bin_dir {
             Some(dir) => dir,
@@ -283,6 +297,7 @@ where
 
         Ok(Self {
             bin_dir,
+            _cert_store: cert_store,
             client_port,
             config_dir,
             debug,
@@ -481,10 +496,11 @@ where
 }
 
 #[async_trait]
-impl<G, A> Bootable for NatsServer<G, A>
+impl<G, A, S> Bootable for NatsServer<G, A, S>
 where
     G: Governance,
     A: Attestor,
+    S: Store<Bytes, Infallible, Infallible>,
 {
     type Error = Error;
 
