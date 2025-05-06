@@ -22,12 +22,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "adler"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
-
-[[package]]
 name = "adler2"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1247,9 +1241,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-ec2"
-version = "1.124.0"
+version = "1.125.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6746a315a5446304942f057e6a072347dad558d23bfbda64c42b9a236f824013"
+checksum = "cab610372795e7d65e54c49a7513287f9fff602880356f2fb535dbf547d6a336"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1271,9 +1265,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-kms"
-version = "1.66.0"
+version = "1.67.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "655097cd83ab1f15575890943135192560f77097413c6dd1733fdbdc453e81ac"
+checksum = "2b650cf9e1e153ab13acd3aa1f73b271dac14e019353ec0b0c176f24a21bad03"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1294,9 +1288,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-route53resolver"
-version = "1.70.0"
+version = "1.71.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "969e6538315c47149b74b41154e4ffff689be0a136140b0c50512860244061b3"
+checksum = "aa2fcc8ec7245caba760e2c62808152028275d85da46d2b949f2e2eafbd0970f"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1317,9 +1311,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-s3"
-version = "1.83.0"
+version = "1.84.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51384750334005f40e1a334b0d54eca822a77eacdcf3c50fdf38f583c5eee7a2"
+checksum = "2111975ef21dc06542918479df0df861b273eb8d99e6bb987da469b546dce32c"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1352,9 +1346,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-secretsmanager"
-version = "1.69.0"
+version = "1.70.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dff24b4eb5d06e80d028b74ccf1c7a1d34f05f9960c5a0e8223fbb82afd905c6"
+checksum = "dc4f6dde0ed20fae65d239b63eed382217e2dd8781ffa7d2fd190383c5d7db70"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1802,7 +1796,7 @@ dependencies = [
  "addr2line",
  "cfg-if",
  "libc",
- "miniz_oxide 0.8.8",
+ "miniz_oxide",
  "object",
  "rustc-demangle",
  "windows-targets 0.52.6",
@@ -3321,9 +3315,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.345.0"
+version = "0.346.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "189d49e038d293b527bb609b8aed08ed0b2a1b2a265335ad2c7fbe33c1262ea5"
+checksum = "7aa52a258b569fd6ab2756d2435a56c82a4dc6cb749d8cf7957ffacdf293334d"
 dependencies = [
  "anyhow",
  "az",
@@ -3465,7 +3459,7 @@ dependencies = [
  "dyn-clone",
  "error_reporter",
  "fast-socks5",
- "h2 0.4.9",
+ "h2 0.4.10",
  "hickory-resolver",
  "http 1.3.1",
  "http-body-util",
@@ -3475,7 +3469,7 @@ dependencies = [
  "ipnet",
  "percent-encoding",
  "rustls-pki-types",
- "rustls-webpki 0.102.8",
+ "rustls-webpki 0.103.2",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
@@ -3812,7 +3806,7 @@ dependencies = [
  "elliptic-curve",
  "errno",
  "faster-hex",
- "h2 0.4.9",
+ "h2 0.4.10",
  "hkdf",
  "http 1.3.1",
  "http-body-util",
@@ -3889,9 +3883,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.221.0"
+version = "0.222.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca19c0509f4375f23e64e72a6e1d7c2baa892354c004a635ef248409464de993"
+checksum = "50943fa006027bffd0c390d733bbaa8144cf7f5b35beb2e29e4a481ad8e3ae45"
 dependencies = [
  "indexmap 2.9.0",
  "proc-macro-rules",
@@ -4167,7 +4161,7 @@ dependencies = [
  "rustls-pemfile",
  "rustls-pki-types",
  "rustls-tokio-stream",
- "rustls-webpki 0.102.8",
+ "rustls-webpki 0.103.2",
  "serde",
  "thiserror 2.0.12",
  "tokio",
@@ -4256,7 +4250,7 @@ dependencies = [
  "deno_permissions",
  "deno_tls",
  "fastwebsockets",
- "h2 0.4.9",
+ "h2 0.4.10",
  "http 1.3.1",
  "http-body-util",
  "hyper 1.6.0",
@@ -5123,7 +5117,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ced92e76e966ca2fd84c8f7aa01a4aea65b0eb6648d72f7c8f3e2764a67fece"
 dependencies = [
  "crc32fast",
- "miniz_oxide 0.8.8",
+ "miniz_oxide",
 ]
 
 [[package]]
@@ -5646,9 +5640,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.9"
+version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75249d144030531f8dee69fe9cea04d3edf809a017ae445e2abdff6629e86633"
+checksum = "a9421a676d1b147b16b82c9225157dc629087ef8ec4d5e2960f9437a90dac0a5"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -6200,7 +6194,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
- "h2 0.4.9",
+ "h2 0.4.10",
  "http 1.3.1",
  "http-body 1.0.1",
  "httparse",
@@ -7385,15 +7379,6 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "miniz_oxide"
-version = "0.7.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8a240ddb74feaf34a79a7add65a741f3167852fba007066dcac1ca548d89c08"
-dependencies = [
- "adler",
-]
-
-[[package]]
-name = "miniz_oxide"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3be647b768db090acb35d5ec5db2b0e1f1de11133ca123b9eacf5137868f892a"
@@ -7753,7 +7738,7 @@ dependencies = [
  "p384",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.1",
+ "rustls-webpki 0.103.2",
  "sealed",
  "serde",
  "serde_bytes",
@@ -8595,7 +8580,7 @@ dependencies = [
  "crc32fast",
  "fdeflate",
  "flate2",
- "miniz_oxide 0.8.8",
+ "miniz_oxide",
 ]
 
 [[package]]
@@ -10598,7 +10583,7 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2 0.4.9",
+ "h2 0.4.10",
  "http 1.3.1",
  "http-body 1.0.1",
  "http-body-util",
@@ -10993,15 +10978,15 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.26"
+version = "0.23.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df51b5869f3a441595eac5e8ff14d486ff285f7b8c0df8770e49c3b56351f0f0"
+checksum = "730944ca083c1c233a75c09f199e973ca499344a2b7ba9e755c457e86fb4a321"
 dependencies = [
  "log",
  "once_cell",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.1",
+ "rustls-webpki 0.103.2",
  "subtle",
  "zeroize",
 ]
@@ -11063,7 +11048,7 @@ dependencies = [
  "rustls",
  "rustls-native-certs 0.8.1",
  "rustls-platform-verifier-android",
- "rustls-webpki 0.103.1",
+ "rustls-webpki 0.103.2",
  "security-framework 3.2.0",
  "security-framework-sys",
  "webpki-root-certs",
@@ -11094,16 +11079,15 @@ version = "0.102.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
 dependencies = [
- "ring",
  "rustls-pki-types",
  "untrusted",
 ]
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.1"
+version = "0.103.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fef8b8769aaccf73098557a87cd1816b4f9c7c16811c9c77142aa695c16f2c03"
+checksum = "7149975849f1abb3832b246010ef62ccc80d3a76169517ada7188252b9cfb437"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -11715,9 +11699,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.254.0"
+version = "0.255.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b09d3a2fa567f807974fc963b625e2ef25dc900655252170926aafecfd201c6"
+checksum = "4cdcce5bd642c2ead6e6eb9727f34b15559a68308c190482ac6fc120b711b4ff"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -12821,7 +12805,7 @@ dependencies = [
  "flate2",
  "futures",
  "glob",
- "h2 0.4.9",
+ "h2 0.4.10",
  "http 1.3.1",
  "http-body-util",
  "hyper 1.6.0",
@@ -13289,7 +13273,7 @@ dependencies = [
  "axum 0.7.9",
  "base64 0.22.1",
  "bytes",
- "h2 0.4.9",
+ "h2 0.4.10",
  "http 1.3.1",
  "http-body 1.0.1",
  "http-body-util",
@@ -13833,16 +13817,16 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "135.1.0"
+version = "137.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5861d62596971e448da865320a9ac547e2526fdf9eaf4fb40bf8a9f465bccecb"
+checksum = "f6aaebc183929f8a70b4320865ba92600add1a3f94cd2b1b898ad589e4e4925a"
 dependencies = [
  "bindgen 0.71.1",
  "bitflags 2.9.0",
  "fslock",
  "gzip-header",
  "home",
- "miniz_oxide 0.7.4",
+ "miniz_oxide",
  "paste",
  "which 6.0.3",
 ]
