@@ -804,7 +804,7 @@ impl Bootstrap {
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
-            bin_dir: Some(PathBuf::from("/apps/nats/v2.11.2")),
+            bin_dir: Some(PathBuf::from("/apps/nats/v2.11.3")),
             cert_store: None,
             client_port: 4222,
             config_dir: PathBuf::from("/tmp/nats-config"),

@@ -130,7 +130,7 @@ RUN wget -q https://github.com/paradigmxyz/reth/releases/download/v1.3.12/reth-v
 RUN wget -q https://github.com/sigp/lighthouse/releases/download/v7.0.0/lighthouse-v7.0.0-aarch64-unknown-linux-gnu.tar.gz
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN wget -q https://github.com/radixdlt/babylon-node/releases/download/v1.3.0.2/babylon-node-v1.3.0.2.zip
-RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.11.2/nats-server-v2.11.2-linux-arm64.tar.gz
+RUN wget -q https://github.com/nats-io/nats-server/releases/download/v2.11.3/nats-server-v2.11.3-linux-arm64.tar.gz
 RUN wget -q https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/2.1.7/dnscrypt-proxy-linux_arm64-2.1.7.tar.gz
 RUN wget -q https://github.com/librespeed/speedtest-cli/releases/download/v1.0.11/librespeed-cli_1.0.11_linux_arm64.tar.gz
 
@@ -140,7 +140,7 @@ RUN tar -xvzf reth-v1.3.12-aarch64-unknown-linux-gnu.tar.gz
 RUN tar -xvzf lighthouse-v7.0.0-aarch64-unknown-linux-gnu.tar.gz
 RUN unzip babylon-node-rust-arch-linux-aarch64-release-v1.3.0.2.zip
 RUN unzip babylon-node-v1.3.0.2.zip
-RUN tar -xvzf nats-server-v2.11.2-linux-arm64.tar.gz
+RUN tar -xvzf nats-server-v2.11.3-linux-arm64.tar.gz
 RUN tar -xvzf dnscrypt-proxy-linux_arm64-2.1.7.tar.gz
 RUN tar -xvzf librespeed-cli_1.0.11_linux_arm64.tar.gz
 
@@ -149,7 +149,7 @@ RUN mkdir -p /apps/bitcoin/v28.1 \
     /apps/ethereum-reth/v1.3.12 \
     /apps/ethereum-lighthouse/v7.0.0 \
     /apps/radix-node/v1.3.0.2 \
-    /apps/nats/v2.11.2 \
+    /apps/nats/v2.11.3 \
     /apps/dnscrypt-proxy/v2.1.7 \
     /apps/librespeed/v1.0.11
 
@@ -159,7 +159,7 @@ RUN mv bitcoin-28.1/bin/bitcoind /apps/bitcoin/v28.1/ && \
     mv lighthouse /apps/ethereum-lighthouse/v7.0.0/ && \
     mv core-v1.3.0.2 /apps/radix-node/v1.3.0.2/ && \
     mv libcorerust.so /apps/radix-node/v1.3.0.2/ && \
-    mv nats-server-v2.11.2-linux-arm64/nats-server /apps/nats/v2.11.2/ && \
+    mv nats-server-v2.11.3-linux-arm64/nats-server /apps/nats/v2.11.3/ && \
     mv linux-arm64/dnscrypt-proxy /apps/dnscrypt-proxy/v2.1.7/ && \
     mv librespeed-cli /apps/librespeed/v1.0.11/
 
@@ -198,7 +198,7 @@ COPY --from=extra-binaries /apps/bitcoin/v28.1 /apps/bitcoin/v28.1
 COPY --from=extra-binaries /apps/ethereum-reth/v1.3.12 /apps/ethereum-reth/v1.3.12
 COPY --from=extra-binaries /apps/ethereum-lighthouse/v7.0.0 /apps/ethereum-lighthouse/v7.0.0
 COPY --from=extra-binaries /apps/radix-node/v1.3.0.2 /apps/radix-node/v1.3.0.2
-COPY --from=extra-binaries /apps/nats/v2.11.2 /apps/nats/v2.11.2
+COPY --from=extra-binaries /apps/nats/v2.11.3 /apps/nats/v2.11.3
 COPY --from=extra-binaries /apps/dnscrypt-proxy/v2.1.7 /apps/dnscrypt-proxy/v2.1.7
 COPY --from=extra-binaries /apps/librespeed/v1.0.11 /apps/librespeed/v1.0.11
 COPY --from=openjdk:17-jdk-slim /usr/local/openjdk-17/lib/security/cacerts /etc/ssl/certs/java/cacerts

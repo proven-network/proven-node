@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get the path to the NATS server binary
     let bin_dir = match which::which("nats-server") {
         Ok(path) => path.parent().unwrap().to_path_buf(),
-        Err(_) => PathBuf::from("/apps/nats/v2.11.2"),
+        Err(_) => PathBuf::from("/apps/nats/v2.11.3"),
     };
 
     // Create server options
