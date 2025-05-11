@@ -29,12 +29,18 @@ This repo contains code for Proven Network nodes. Proven is a novel TEE-based pl
 
 ## Security Model
 
-The Proven Network operates under a security model which can roughly be classified into three tiers:
+The Proven Network operates under a security model which can roughly be classified into four layers:
+
+**The Governance Layer**
+
+Network governance is managed as a decentralized autonomous organisation on a decentralised blockchain. Network stakeholders (primarily application developers and infrastructure providers) vote on both the node membership to the network, as well as on any versioned updates to network code. This decentralised source of truth is read directly by both nodes and end-user SDKs, using Ethereum Light Clients at runtime, to provide a consistent view of which [other] nodes and versions should be considered trust-worthy.
+
+Ethereum was selected as the "homebase" blockchain for this governance process - given that it has the highest economic security available, as well as the highest level of maturity in it's light client tooling. Additionally, the relative slowness of Ethereum block-times makes syncing light clients against Ethereum mainnet much quicker than any other option.
 
 **The Hardware Layer**
 
 The code for any version of a Proven node can be built by any third-party through a reproducible process resulting in concrete build measurements. These measurements: Platform Configuration Registers (or PCRs) ensure bit-for-bit that the packaged application (including kernel, tempfs, etc.) is the same as is deployed to any live node.<br><br>
-Nodes can confirm these PCR measurements to any stakeholder (whether that is an end-user, application developer, or another Proven node) via a process of remote attestation. This involves sending a request (including a requestor-defined nonce) which the TEE hardware will reply to with a hardware-signed attestation report - containing both the nonce and the PCR measurements. These reports can then be verified using the well-known public keys of the hardware vendor.
+Nodes can confirm these PCR measurements to any stakeholder (whether that is an end-user, application developer, or another Proven node) via a process of remote attestation. This involves sending a request (including a requestor-defined nonce) which the TEE hardware will reply to with a hardware-signed attestation report - containing both the nonce and the PCR measurements. These reports can then be verified using the well-known public keys of the hardware vendor, as well as cross-referencing active versions from the governance layer described above.
 
 **The Node Layer**
 
