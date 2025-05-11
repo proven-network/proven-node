@@ -876,14 +876,14 @@ impl Bootstrap {
                 client_options: NatsClientOptions {
                     client: nats_client.clone(),
                 },
-                http_port: 8332,
+                http_port: 11000,
                 stream: bitcoin_mainnet_proxy_stream,
             });
 
             bitcoin_mainnet_proxy_client.start().await?;
 
             self.bitcoin_mainnet_node_rpc_endpoint =
-                Some(Url::parse("http://127.0.0.1:8332").unwrap());
+                Some(Url::parse("http://127.0.0.1:11000").unwrap());
             self.bitcoin_mainnet_proxy_client = Some(bitcoin_mainnet_proxy_client);
 
             info!("bitcoin mainnet proxy client started");
@@ -951,14 +951,14 @@ impl Bootstrap {
                 client_options: NatsClientOptions {
                     client: nats_client.clone(),
                 },
-                http_port: 8332,
+                http_port: 11001,
                 stream: bitcoin_testnet_proxy_stream,
             });
 
             bitcoin_testnet_proxy_client.start().await?;
 
             self.bitcoin_testnet_node_rpc_endpoint =
-                Some(Url::parse("http://127.0.0.1:8332").unwrap());
+                Some(Url::parse("http://127.0.0.1:11001").unwrap());
             self.bitcoin_testnet_proxy_client = Some(bitcoin_testnet_proxy_client);
 
             info!("bitcoin testnet proxy client started");
