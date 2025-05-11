@@ -24,6 +24,7 @@ use proven_messaging::stream::InitializedStream;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::{Duration, sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
+use tracing::warn;
 
 use uuid::Uuid;
 
@@ -199,6 +200,11 @@ where
         tokio::spawn(async move {
             let mut messages = consumer.messages().await.unwrap();
             while let Some(msg) = messages.next().await {
+                if let Err(e) = msg {
+                    warn!("error receiving message in client: {:?}", e);
+                    continue;
+                }
+
                 let msg = msg.unwrap();
 
                 match msg.headers.as_ref().map(|h| {
