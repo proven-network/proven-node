@@ -368,7 +368,7 @@ where
         let reply_stream_name = format!("{name}_CLIENT_{client_id}");
 
         let reply_stream = jetstream_context
-            .create_stream(NatsStreamConfig {
+            .get_or_create_stream(NatsStreamConfig {
                 name: reply_stream_name.clone(),
                 no_ack: true,
                 storage: async_nats::jetstream::stream::StorageType::Memory,

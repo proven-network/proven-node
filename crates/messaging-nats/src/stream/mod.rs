@@ -153,7 +153,7 @@ where
         let jetstream_context = async_nats::jetstream::new(options.client.clone());
 
         let nats_stream = jetstream_context
-            .create_stream(NatsStreamConfig {
+            .get_or_create_stream(NatsStreamConfig {
                 name: stream_name.clone().into(),
                 allow_direct: true,
                 allow_rollup: true,
