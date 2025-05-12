@@ -7,8 +7,6 @@ edition = "2024"
 alloy.workspace = true
 alloy-sol-types.workspace = true
 async-trait.workspace = true
-dotenv.workspace = true
-ed25519-dalek.workspace = true
 eyre.workspace = true
 helios-common.workspace = true
 helios-consensus-core.workspace = true
@@ -21,4 +19,6 @@ tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+dotenv.workspace = true
+ed25519-dalek.workspace = true
 tracing-subscriber.workspace = true

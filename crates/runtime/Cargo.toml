@@ -19,7 +19,6 @@ futures.workspace = true
 http.workspace = true
 proven-code-package.workspace = true
 proven-identity.workspace = true
-proven-locks.workspace = true
 proven-radix-nft-verifier.workspace = true
 proven-sql.workspace = true
 proven-store.workspace = true
@@ -34,7 +33,6 @@ url.workspace = true
 
 [dev-dependencies]
 hex.workspace = true
-proven-locks-memory.workspace = true
 proven-radix-nft-verifier-mock.workspace = true
 proven-sql-direct.workspace = true
 proven-store-memory.workspace = true

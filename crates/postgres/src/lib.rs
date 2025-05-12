@@ -316,7 +316,7 @@ impl Postgres {
 
         let init_app = PostgresInitApp {
             username: self.username.clone(),
-            pass_dir: pass_dir.into_path(),
+            pass_dir: pass_dir.keep(),
             store_dir: self.store_dir.clone(),
         };
 

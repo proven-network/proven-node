@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 bech32.workspace = true
-futures.workspace = true
 hex.workspace = true
 proven-radix-gateway-sdk.workspace = true
 radix-common.workspace = true

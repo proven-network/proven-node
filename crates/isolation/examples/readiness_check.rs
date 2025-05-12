@@ -118,7 +118,7 @@ async fn main() {
 
     // Create dir for test binary
     let test_bin_dir = tempfile::tempdir().expect("Failed to create test bin directory");
-    let test_bin_dir_path = test_bin_dir.into_path();
+    let test_bin_dir_path = test_bin_dir.keep();
 
     // Compile the HTTP server statically and copy to test bin dir
     let server_c_path =

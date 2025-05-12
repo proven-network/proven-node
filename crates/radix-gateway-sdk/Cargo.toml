@@ -9,9 +9,7 @@ doctest = false
 
 [dependencies]
 chrono.workspace = true
-futures.workspace = true
 http.workspace = true
-lazy_static.workspace = true
 progenitor-client.workspace = true
 reqwest.workspace = true
 serde.workspace = true

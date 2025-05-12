@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 rand.workspace = true
-regex.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

@@ -116,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sql_store() {
-        let mut dir = tempdir().unwrap().into_path();
+        let mut dir = tempdir().unwrap().keep();
         dir.push("test_sql_store.db");
 
         let store = DirectSqlStore::new(dir);
@@ -163,7 +163,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_results() {
-        let mut dir = tempdir().unwrap().into_path();
+        let mut dir = tempdir().unwrap().keep();
         dir.push("test_no_results.db");
 
         let store = DirectSqlStore::new(dir);

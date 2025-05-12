@@ -9,7 +9,6 @@ bytes.workspace = true
 ciborium.workspace = true
 proven-messaging.workspace = true
 proven-radix-gateway-sdk.workspace = true
-radix-common.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

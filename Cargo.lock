@@ -4792,16 +4792,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_logger"
-version = "0.10.2"
+name = "env_filter"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cd405aab171cb85d6735e5c8d9db038c17d3ca007a4d2c25f337935c3d90580"
+checksum = "186e05a59d4c50738528153b83b0b0194d3a29507dfec16eccd4b342903397d0"
 dependencies = [
- "humantime",
- "is-terminal",
  "log",
  "regex",
- "termcolor",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.11.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13c863f0904021b108aa8b2f55046443e6b1ebde8fd4a15c399893aae4fa069f"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "env_filter",
+ "jiff",
+ "log",
 ]
 
 [[package]]
@@ -6156,12 +6166,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
-name = "humantime"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b112acc8b3adf4b107a8ec20977da0273a8c386765a3ec0229bd500a1443f9f"
-
-[[package]]
 name = "hyper"
 version = "0.14.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6664,6 +6668,30 @@ name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
+
+[[package]]
+name = "jiff"
+version = "0.2.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f02000660d30638906021176af16b17498bd0d12813dbfe7b276d8bc7f3c0806"
+dependencies = [
+ "jiff-static",
+ "log",
+ "portable-atomic",
+ "portable-atomic-util",
+ "serde",
+]
+
+[[package]]
+name = "jiff-static"
+version = "0.2.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3c30758ddd7188629c6713fc45d1188af4f44c90582311d0c8d8c9907f60c48"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.101",
+]
 
 [[package]]
 name = "jni"
@@ -8608,6 +8636,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "350e9b48cbc6b0e028b0473b114454c6316e57336ee184ceab6e53f72c178b3e"
 
 [[package]]
+name = "portable-atomic-util"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8a2f0d8d040d7848a709caf78912debcc3f33ee4b3cac47d73d1e1069e83507"
+dependencies = [
+ "portable-atomic",
+]
+
+[[package]]
 name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8982,7 +9019,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "bytes",
- "ciborium",
  "proven-store",
  "ring",
  "thiserror 2.0.12",
@@ -9001,7 +9037,6 @@ dependencies = [
  "deno_error",
  "deno_graph",
  "deno_npm",
- "deno_permissions",
  "deno_semver",
  "eszip",
  "futures",
@@ -9180,7 +9215,6 @@ name = "proven-external-fs"
 version = "0.1.0"
 dependencies = [
  "rand 0.8.5",
- "regex",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
@@ -9195,7 +9229,6 @@ dependencies = [
  "bytes",
  "proven-attestation",
  "serde",
- "tokio",
 ]
 
 [[package]]
@@ -9425,7 +9458,6 @@ dependencies = [
  "bytes",
  "cbc",
  "proven-attestation",
- "proven-attestation-nsm",
  "rand 0.8.5",
  "rsa",
  "sha2",
@@ -9698,9 +9730,7 @@ name = "proven-radix-gateway-sdk"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "futures",
  "http 1.3.1",
- "lazy_static",
  "prettyplease",
  "progenitor",
  "progenitor-client",
@@ -9769,7 +9799,6 @@ name = "proven-radix-rola"
 version = "0.1.0"
 dependencies = [
  "bech32 0.11.0",
- "futures",
  "hex",
  "proven-radix-gateway-sdk",
  "radix-common 1.3.0",
@@ -9791,7 +9820,6 @@ dependencies = [
  "proven-messaging",
  "proven-messaging-memory",
  "proven-radix-gateway-sdk",
- "radix-common 1.3.0",
  "reqwest",
  "serde",
  "serde_json",
@@ -9821,8 +9849,6 @@ dependencies = [
  "http 1.3.1",
  "proven-code-package",
  "proven-identity",
- "proven-locks",
- "proven-locks-memory",
  "proven-radix-nft-verifier",
  "proven-radix-nft-verifier-mock",
  "proven-sql",
@@ -9926,7 +9952,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "ciborium",
  "deno_error",
  "paste",
  "proven-store",
@@ -9955,7 +9980,6 @@ dependencies = [
  "async-nats",
  "async-trait",
  "bytes",
- "ciborium",
  "deno_error",
  "futures",
  "paste",
@@ -9992,7 +10016,6 @@ dependencies = [
  "tokio-tun",
  "tokio-util",
  "tokio-vsock",
- "tracing",
 ]
 
 [[package]]
@@ -10001,7 +10024,7 @@ version = "0.1.0"
 dependencies = [
  "ciborium",
  "cidr",
- "derive_more 1.0.0",
+ "derive_more 2.0.1",
  "serde",
  "thiserror 2.0.12",
  "tokio",
@@ -12777,9 +12800,9 @@ checksum = "e502f78cdbb8ba4718f566c418c52bc729126ffd16baee5baa718cf25dd5a69a"
 
 [[package]]
 name = "tempfile"
-version = "3.19.1"
+version = "3.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7437ac7763b9b123ccf33c338a5cc1bac6f69b45a136c19bdd8a65e3916435bf"
+checksum = "e8a64e3985349f2441a1a9ef0b853f869006c3855f2cda6862a94d26ebb9d6a1"
 dependencies = [
  "fastrand",
  "getrandom 0.3.2",

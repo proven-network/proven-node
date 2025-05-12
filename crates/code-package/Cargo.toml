@@ -13,7 +13,6 @@ deno_error.workspace = true
 deno_graph.workspace = true
 deno_npm.workspace = true
 deno_semver.workspace = true
-deno_permissions.workspace = true
 eszip.workspace = true
 futures.workspace = true
 serde.workspace = true

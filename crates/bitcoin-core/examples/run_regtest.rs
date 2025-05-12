@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a temporary directory for storing Bitcoin Core data
     let temp_dir = tempfile::tempdir()?;
-    let store_dir = temp_dir.into_path();
+    let store_dir = temp_dir.keep();
 
     println!(
         "Starting Bitcoin Core node in directory: {}",

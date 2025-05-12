@@ -8,4 +8,3 @@ async-trait.workspace = true
 bytes.workspace = true
 proven-attestation.workspace = true
 serde.workspace = true
-tokio.workspace = true

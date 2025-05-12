@@ -104,8 +104,8 @@ async fn main() {
     // Create a persistent storage directory
     let storage_dir = tempfile::tempdir().expect("Failed to create storage directory");
 
-    let storage_dir_path = storage_dir.into_path();
-    let test_bin_dir_path = test_bin_dir.into_path();
+    let storage_dir_path = storage_dir.keep();
+    let test_bin_dir_path = test_bin_dir.keep();
 
     // Compile the counter program statically and copy to test bin dir
     let counter_c_path =

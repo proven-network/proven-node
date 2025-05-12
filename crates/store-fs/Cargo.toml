@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 async-trait.workspace = true
 bytes.workspace = true
-ciborium.workspace = true
 deno_error.workspace = true
 paste.workspace = true
 proven-store.workspace = true

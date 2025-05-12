@@ -13,7 +13,6 @@ block-padding.workspace = true
 bytes.workspace = true
 cbc.workspace = true
 proven-attestation.workspace = true
-proven-attestation-nsm.workspace = true
 rand.workspace = true
 rsa.workspace = true
 sha2.workspace = true
