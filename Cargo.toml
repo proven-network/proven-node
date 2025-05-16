@@ -157,7 +157,7 @@ alloy-trie = "0.8.1"
 anyhow = "1.0.98"
 asn1-rs = "0.7.1"
 async-compression = "0.4.23"
-async-nats = "0.40.0"
+async-nats = "0.41.0"
 async-once-cell = "0.5.4"
 async-stream = "0.3.6"
 async-trait = "0.1.87"
@@ -219,7 +219,7 @@ deno_console = { path = "vendor/deno/ext/console" }
 deno_core = "0.347.0"
 deno_cron = { path = "vendor/deno/ext/cron" }
 deno_crypto = { path = "vendor/deno/ext/crypto" }
-deno_error = "0.5.6"
+deno_error = "0.5.7"
 deno_features = { path = "vendor/deno/runtime/features" }
 deno_fetch = { path = "vendor/deno/ext/fetch" }
 deno_ffi = { path = "vendor/deno/ext/ffi" }
@@ -234,11 +234,11 @@ deno_napi = { path = "vendor/deno/ext/napi" }
 deno_native_certs = "0.3.0"
 deno_net = { path = "vendor/deno/ext/net" }
 deno_node = { path = "vendor/deno/ext/node" }
-deno_npm = "0.33.3"
+deno_npm = "0.33.4"
 deno_npm_cache = { path = "vendor/deno/resolvers/npm_cache" }
 deno_os = { path = "vendor/deno/ext/os" }
 deno_package_json = { version = "0.6.0", default-features = false }
-deno_path_util = "0.3.2"
+deno_path_util = "0.3.3"
 deno_permissions = { path = "vendor/deno/runtime/permissions" }
 deno_process = { path = "vendor/deno/ext/process" }
 deno_resolver = { path = "vendor/deno/resolvers/deno" }
@@ -248,7 +248,7 @@ deno_telemetry = { path = "vendor/deno/ext/telemetry" }
 deno_terminal = "0.2.0"
 deno_tls = { path = "vendor/deno/ext/tls" }
 deno_url = { path = "vendor/deno/ext/url" }
-deno_unsync = "0.4.2"
+deno_unsync = "0.4.3"
 deno_web = { path = "vendor/deno/ext/web" }
 deno_webgpu = { path = "vendor/deno/ext/webgpu" }
 deno_webidl = { path = "vendor/deno/ext/webidl" }
@@ -529,14 +529,14 @@ url = { version = "2.5.4", features = ["serde", "expose_internals"] }
 urlpattern = "0.3.0"
 uuid = { version = "1.15.1", features = ["v4"] }
 v8_valueserializer = "0.1.1"
-web-transport-proto = "0.2.5"
+web-transport-proto = "0.2.6"
 webauthn-rs = { version = "0.5.1", features = ["danger-allow-state-serialisation"] }
 webpki-root-certs = "1.0.0"
 webpki-roots = "1.0.0"
 wgpu-core = "=24.0.0"
 wgpu-types = "=24.0.0"
 which = "=6.0.3"
-win32job = "2.0.2"
+win32job = "=2.0.2"
 winapi = "=0.3.9"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel"] }
 yoke = { version = "0.8.0", features = ["derive"] }

@@ -17,7 +17,7 @@ pub enum Error {
 
     /// Consumer info error.
     #[error("Failed to get consumer info: {0}")]
-    Info(async_nats::jetstream::context::RequestErrorKind),
+    Info(async_nats::jetstream::context::ConsumerInfoErrorKind),
 
     /// Handler error.
     #[error("Handler error")]
