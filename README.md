@@ -118,7 +118,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [local](crates/local): Binary to bootstrap other components locally. Similar to [enclave](crates/enclave) but for local development.
 - [locks](crates/locks): Abstract interface for managing system-global distributed locks.
 - [locks-memory](crates/locks-memory): In-memory (single node) implementation of locks for local development.
-- locks-nats: TODO: Implementation of distributed locks using NATS Jetstream with HA replication.
+- [locks-nats](crates/locks-nats): Implementation of distributed locks using NATS Jetstream with HA replication.
 - [messaging](crates/messaging): Abstract interface for pub/sub messaging across subjects.
 - [messaging-memory](crates/messaging-memory): In-memory (single node) implementation of messaging for local development.
 - [messaging-nats](crates/messaging-nats): Implementation of messaging using Core NATS.

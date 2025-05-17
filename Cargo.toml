@@ -41,6 +41,7 @@ members = [
     "crates/local",
     "crates/locks",
     "crates/locks-memory",
+    "crates/locks-nats",
     "crates/messaging",
     "crates/messaging-memory",
     "crates/messaging-nats",
@@ -104,6 +105,7 @@ default-members = [
     "crates/local",
     "crates/locks",
     "crates/locks-memory",
+    "crates/locks-nats",
     "crates/messaging",
     "crates/messaging-memory",
     "crates/messaging-nats",
@@ -156,6 +158,7 @@ alloy-sol-types = "=0.8.25"
 alloy-trie = "0.8.1"
 anyhow = "1.0.98"
 asn1-rs = "0.7.1"
+assert_matches = "1.5.0"
 async-compression = "0.4.23"
 async-nats = "0.41.0"
 async-once-cell = "0.5.4"
@@ -418,6 +421,7 @@ proven-libsql = { path = "crates/libsql" }
 proven-local = { path = "crates/local" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
+proven-locks-nats = { path = "crates/locks-nats" }
 proven-messaging = { path = "crates/messaging" }
 proven-messaging-memory = { path = "crates/messaging-memory" }
 proven-messaging-nats = { path = "crates/messaging-nats" }

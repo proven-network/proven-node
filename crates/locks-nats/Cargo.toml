@@ -1,10 +1,12 @@
 [package]
-name = "proven-locks-memory"
+name = "proven-locks-nats"
 version.workspace = true
 edition = "2024"
 
 [dependencies]
+async-nats.workspace = true
 async-trait.workspace = true
+bytes.workspace = true
 proven-locks.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

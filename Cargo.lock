@@ -1358,6 +1358,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "assert_matches"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
+
+[[package]]
 name = "ast_node"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9989,10 +9995,28 @@ dependencies = [
 name = "proven-locks-memory"
 version = "0.1.0"
 dependencies = [
+ "assert_matches",
  "async-trait",
  "proven-locks",
  "thiserror 2.0.12",
  "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "proven-locks-nats"
+version = "0.1.0"
+dependencies = [
+ "assert_matches",
+ "async-nats",
+ "async-trait",
+ "bytes",
+ "proven-locks",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

@@ -26,16 +26,16 @@ use proven_store::{Store, Store1, Store2, Store3};
 
 /// Options for configuring a `NatsStore`.
 pub struct NatsStoreOptions {
-    /// The NATS client to use.
-    pub client: Client,
-
     /// The bucket to use for the key-value store (may be refined through scopes)
     pub bucket: String,
+
+    /// The NATS client to use.
+    pub client: Client,
 
     /// The maximum age of entries in the store. Use `Duration::ZERO` for no expiry.
     pub max_age: Duration,
 
-    /// The number of NATS JetStream replicas to use for the store.
+    /// Number of replicas for the KV store. Should be set to at least 3 in production for HA.
     pub num_replicas: usize,
 
     /// Whether to persist the store to disk.

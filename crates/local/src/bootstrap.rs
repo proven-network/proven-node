@@ -138,7 +138,8 @@ pub struct Bootstrap {
     ethereum_sepolia_rpc_endpoint: Option<Url>,
 
     nats_client: Option<NatsClient>,
-    nats_server: Option<NatsServer<MockGovernance, MockAttestor, FsStore<Bytes, Infallible, Infallible>>>,
+    nats_server:
+        Option<NatsServer<MockGovernance, MockAttestor, FsStore<Bytes, Infallible, Infallible>>>,
 
     postgres: Option<Postgres>,
 
@@ -455,8 +456,6 @@ impl Bootstrap {
                         }
                         std::future::pending::<()>().await
                     } => {},
-     
-                
                     _ = async {
                         if let Some(radix_mainnet_node) = self.radix_mainnet_node {
                             radix_mainnet_node.wait().await;
@@ -608,8 +607,6 @@ impl Bootstrap {
             let _ = core.shutdown().await;
         }
 
-        
-
         if let Some(radix_stokenet_gateway) = self.radix_stokenet_gateway {
             let _ = radix_stokenet_gateway.shutdown().await;
         }
@@ -620,7 +617,7 @@ impl Bootstrap {
 
         if let Some(radix_stokenet_node) = self.radix_stokenet_node {
             let _ = radix_stokenet_node.shutdown().await;
-        }        
+        }
 
         if let Some(radix_mainnet_gateway) = self.radix_mainnet_gateway {
             let _ = radix_mainnet_gateway.shutdown().await;
