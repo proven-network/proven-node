@@ -126,11 +126,11 @@ impl CodePackage {
             graph
                 .build(
                     module_roots_clone,
+                    Vec::default(),
                     &loader,
                     BuildOptions {
                         is_dynamic: true,
                         skip_dynamic_deps: false,
-                        imports: Vec::default(),
                         executor: Default::default(),
                         locker: None,
                         file_system: &NullFileSystem,
