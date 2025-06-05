@@ -351,6 +351,14 @@ where
         self.persist().await
     }
 
+    fn chown_sync(self: Rc<Self>, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
+        todo!()
+    }
+
+    async fn chown_async(self: Rc<Self>, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
+        todo!()
+    }
+
     fn seek_sync(self: Rc<Self>, pos: std::io::SeekFrom) -> FsResult<u64> {
         let mut inner = self.inner.borrow_mut();
         let new_pos = match pos {

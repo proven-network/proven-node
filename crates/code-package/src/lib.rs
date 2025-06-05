@@ -19,9 +19,9 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 
+use deno_graph::ast::{CapturingEsParser, DefaultParsedSourceStore};
 use deno_graph::source::{MemoryLoader, NullFileSystem, Source};
 use deno_graph::{BuildOptions, GraphKind, ModuleGraph};
-use deno_graph::{CapturingEsParser, DefaultParsedSourceStore};
 use eszip::{EszipV2, FromGraphOptions};
 use futures::executor::block_on;
 use futures::io::BufReader;
@@ -137,6 +137,7 @@ impl CodePackage {
                         jsr_url_provider: Default::default(),
                         passthrough_jsr_specifiers: false,
                         module_analyzer: Default::default(),
+                        module_info_cacher: Default::default(),
                         npm_resolver: Some(&CodePackageNpmResolver),
                         reporter: None,
                         resolver: Some(&CodePackageResolver),
