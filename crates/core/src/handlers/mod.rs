@@ -14,7 +14,8 @@ pub(crate) use sessions::{
     create_rola_challenge_handler, create_session_handler, verify_rola_handler,
 };
 pub(crate) use webauthn::{
-    iframe_js_handler, webauthn_iframe_handler, webauthn_js_handler,
+    iframe_js_handler, webauthn_authentication_finish_handler,
+    webauthn_authentication_start_handler, webauthn_iframe_handler, webauthn_js_handler,
     webauthn_registration_finish_handler, webauthn_registration_start_handler,
     ws_worker_js_handler,
 };
