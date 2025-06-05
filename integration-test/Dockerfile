@@ -55,6 +55,7 @@ FROM rustlang/rust:nightly-bookworm-slim AS builder
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
+    cmake \
     curl \
     libssl-dev \
     nodejs \

@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     bison \
     build-essential \
     ca-certificates \
+    cmake \
     curl \
     dnsutils \
     flex \
