@@ -2191,11 +2191,10 @@ checksum = "89e25b6adfb930f02d1981565a6e5d9c547ac15a96606256d3b59040e5cd4ca3"
 [[package]]
 name = "base64urlsafedata"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72f0ad38ce7fbed55985ad5b2197f05cff8324ee6eb6638304e78f0108fae56c"
+source = "git+https://github.com/proven-network/webauthn-rs#b4ec942fbab9bce746efca0ec80ffd599b109619"
 dependencies = [
  "base64 0.21.7",
- "paste",
+ "pastey",
  "serde",
 ]
 
@@ -2929,23 +2928,6 @@ checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
 dependencies = [
  "bytes",
  "memchr",
-]
-
-[[package]]
-name = "compact_jwt"
-version = "0.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12bbab6445446e8d0b07468a01d0bfdae15879de5c440c5e47ae4ae0e18a1fba"
-dependencies = [
- "base64 0.21.7",
- "base64urlsafedata",
- "hex",
- "openssl",
- "serde",
- "serde_json",
- "tracing",
- "url",
- "uuid",
 ]
 
 [[package]]
@@ -8929,6 +8911,12 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "pastey"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3a8cb46bdc156b1c90460339ae6bfd45ba0394e5effbaa640badb4987fdc261"
 
 [[package]]
 name = "path-clean"
@@ -14915,8 +14903,7 @@ dependencies = [
 [[package]]
 name = "webauthn-attestation-ca"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "29e77e8859ecb93b00e4a8e56ae45f8a8dd69b1539e3d32cf4cce1db9a3a0b99"
+source = "git+https://github.com/proven-network/webauthn-rs#b4ec942fbab9bce746efca0ec80ffd599b109619"
 dependencies = [
  "base64urlsafedata",
  "openssl",
@@ -14928,8 +14915,7 @@ dependencies = [
 [[package]]
 name = "webauthn-rs"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b44347ee0d66f222043663a6aaf5ec78022b9b11c3a9ed488c21f2bd5680856"
+source = "git+https://github.com/proven-network/webauthn-rs#b4ec942fbab9bce746efca0ec80ffd599b109619"
 dependencies = [
  "base64urlsafedata",
  "serde",
@@ -14942,12 +14928,10 @@ dependencies = [
 [[package]]
 name = "webauthn-rs-core"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ef48f07ed8f3dfe304d6c48e85317feba0439675f31a13063b2936c9b4eaf0d"
+source = "git+https://github.com/proven-network/webauthn-rs#b4ec942fbab9bce746efca0ec80ffd599b109619"
 dependencies = [
  "base64 0.21.7",
  "base64urlsafedata",
- "compact_jwt",
  "der-parser 9.0.0",
  "hex",
  "nom 7.1.3",
@@ -14969,8 +14953,7 @@ dependencies = [
 [[package]]
 name = "webauthn-rs-proto"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14e1367f70e7dc7b83afc971ce8a54d578f4fdf488ea093021180e073744a69f"
+source = "git+https://github.com/proven-network/webauthn-rs#b4ec942fbab9bce746efca0ec80ffd599b109619"
 dependencies = [
  "base64 0.21.7",
  "base64urlsafedata",

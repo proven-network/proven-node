@@ -87,6 +87,7 @@ where
     let rp_origin = Url::parse("http://localhost:3200").unwrap();
     let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
         .unwrap()
+        .allow_cross_origin(true)
         .build()
         .unwrap();
 
@@ -185,6 +186,7 @@ where
     let rp_origin = Url::parse("http://localhost:3200").unwrap();
     let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
         .unwrap()
+        .allow_cross_origin(true)
         .build()
         .unwrap();
 
