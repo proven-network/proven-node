@@ -748,7 +748,7 @@ impl Bootstrap {
         if peer_count > 0 {
             // TODO: Wait for at least one other node to be started so NATS can boot in cluster mode
             // Just sleep to simulate for now
-            tokio::time::sleep(Duration::from_secs(20)).await;
+            tokio::time::sleep(Duration::from_secs(10)).await;
         }
 
         Ok(())
@@ -758,6 +758,8 @@ impl Bootstrap {
         let network = self.network.as_ref().unwrap_or_else(|| {
             panic!("network not set before nats server step");
         });
+
+        let peer_count = network.get_peers().await?.len();
 
         let nats_server = NatsServer::new(NatsServerOptions {
             bin_dir: self.args.nats_bin_dir.clone(),
@@ -778,6 +780,12 @@ impl Bootstrap {
         self.nats_client = Some(nats_client);
 
         info!("nats server started");
+
+        if peer_count > 0 {
+            // TODO: Wait for cluster to reach consensus
+            // Just sleep to simulate for now
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
 
         Ok(())
     }
