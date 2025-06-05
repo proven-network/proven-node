@@ -120,6 +120,23 @@ export const createSession = async (applicationId: string) => {
     8: bytesToHex(rawPcrs[8]!),
   };
 
+  // TODO: get from options or generate from cargo version for testing
+  const expectedPcrs: ExpectedPcrs = {
+    0: "30f2c9b7736afa4af8e80acf549cb5c9511c2198f0174bf461a5c547ad3bfbd04dd6370968444bfdf64a34e5dda2a684",
+    1: "0ab829f12a94d68545fe4a331fb80ccd2cd0e16b5c84f854a4b7f3c3c32a386dd6aed3f1117e3831bc21ac124a5e9ec8",
+    2: "ba73cd68537fb4a9e704df621505420055ee049177c50a59643cad88736fcee578139cf76549cdb9d37169a13276578b",
+  };
+
+  // verify expected PCRs or throw error
+  expectedPcrs &&
+    Object.entries(expectedPcrs).forEach(([index, expectedValue]) => {
+      if (pcrs[index as unknown as keyof Pcrs] !== expectedValue) {
+        throw new Error(
+          `PCR${index} does not match expected value. Expected: ${expectedValue} Actual: ${pcrs[index as unknown as keyof Pcrs]}`
+        );
+      }
+    });
+
   session = {
     sessionId: bytesToHex(sessionIdBytes),
     pcrs,
