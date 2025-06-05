@@ -5,7 +5,7 @@
   },
   "dependencies": {
     "@auth0/cose": "1.0.2",
-    "@noble/curves": "^1.9.0",
+    "@noble/curves": "1.9.2",
     "@noble/ed25519": "^2.2.3",
     "@noble/hashes": "1.8.0",
     "@peculiar/x509": "1.12.3",
@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "@radixdlt/radix-dapp-toolkit": "2.2.1",
-    "esbuild": "0.25.3",
+    "esbuild": "0.25.5",
     "prettier": "3.5.3"
   }
 }

@@ -7,6 +7,7 @@ import {
 import { decode as cborDecode } from "cbor-x";
 import { X509Certificate, X509ChainBuilder } from "@peculiar/x509";
 import { Sign1 } from "@auth0/cose";
+import { mockCertificate } from "./pems/mock";
 import { usEast2Certificate } from "./pems/us-east-2";
 
 type PcrIndex = 0 | 1 | 2 | 3 | 4 | 8;
@@ -32,7 +33,7 @@ let session: Session | null = null;
 
 export const createSession = async (applicationId: string) => {
   const signingKey = ed25519.utils.randomPrivateKey();
-  const publicKeyInput = ed25519.getPublicKey(signingKey);
+  const publicKeyInput = await ed25519.getPublicKeyAsync(signingKey);
 
   const nonceInput = new Uint8Array(32);
   crypto.getRandomValues(nonceInput);
@@ -76,35 +77,38 @@ export const createSession = async (applicationId: string) => {
     user_data: Uint8Array;
   };
 
-  if (!globalThis.location.hostname.includes("localhost")) {
-    const leaf = new X509Certificate(certificate);
+  const leaf = new X509Certificate(certificate);
 
-    if (!equalBytes(nonceInput, nonce)) {
-      throw new Error("Attestation nonce does not match expected value.");
-    }
+  if (!equalBytes(nonceInput, nonce)) {
+    throw new Error("Attestation nonce does not match expected value.");
+  }
 
-    if (leaf.notAfter < new Date()) {
-      throw new Error("Attestation document certificate has expired.");
-    }
+  if (leaf.notAfter < new Date()) {
+    throw new Error("Attestation document certificate has expired.");
+  }
 
-    const publicKey = await crypto.subtle.importKey(
-      "spki",
-      new Uint8Array(leaf.publicKey.rawData),
-      { name: "ECDSA", namedCurve: "P-384" },
-      true,
-      ["verify"]
+  const publicKey = await crypto.subtle.importKey(
+    "spki",
+    new Uint8Array(leaf.publicKey.rawData),
+    { name: "ECDSA", namedCurve: "P-384" },
+    true,
+    ["verify"]
+  );
+  await Sign1.decode(data).verify(publicKey);
+
+  const hostname = globalThis.location.hostname;
+  const knownCa = new X509Certificate(
+    hostname.includes("localhost") ? mockCertificate : usEast2Certificate
+  );
+
+  const chain = await new X509ChainBuilder({
+    certificates: cabundle.map((cert) => new X509Certificate(cert)),
+  }).build(leaf);
+
+  if (!chain[chain.length - 1]?.equal(knownCa)) {
+    throw new Error(
+      "x509 certificate chain does not have expected certificate authority."
     );
-    await Sign1.decode(data).verify(publicKey);
-
-    const knownCa = new X509Certificate(usEast2Certificate);
-    const chain = await new X509ChainBuilder({
-      certificates: cabundle.map((cert) => new X509Certificate(cert)),
-    }).build(leaf);
-    if (!chain[chain.length - 1]?.equal(knownCa)) {
-      throw new Error(
-        "x509 certificate chain does not have expected certificate authority."
-      );
-    }
   }
 
   const pcrs: Pcrs = {
