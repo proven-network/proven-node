@@ -4,6 +4,7 @@ use crate::ledger_identity::LedgerIdentity;
 use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// A session.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -14,7 +15,7 @@ pub enum Session {
         origin: String,
 
         /// The session ID.
-        session_id: String,
+        session_id: Uuid,
 
         /// The Ed25519 signing key for the server-side generated key.
         signing_key: SigningKey,
@@ -35,7 +36,7 @@ pub enum Session {
         origin: String,
 
         /// The session ID.
-        session_id: String,
+        session_id: Uuid,
 
         /// The Ed25519 signing key for the server-side generated key.
         signing_key: SigningKey,
@@ -56,7 +57,7 @@ impl Session {
 
     /// The session ID.
     #[must_use]
-    pub fn session_id(&self) -> &str {
+    pub fn session_id(&self) -> &Uuid {
         match self {
             Self::Anonymous { session_id, .. } | Self::Identified { session_id, .. } => session_id,
         }

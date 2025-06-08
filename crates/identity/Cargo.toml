@@ -16,5 +16,6 @@ radix-common.workspace = true
 rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 uuid.workspace = true
 webauthn-rs.workspace = true

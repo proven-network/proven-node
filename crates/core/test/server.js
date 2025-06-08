@@ -6,7 +6,7 @@ const PORT = 6900;
 
 const server = http.createServer((req, res) => {
   if (req.url === "/") {
-    fs.readFile(path.join(__dirname, "iframe-test.html"), (err, content) => {
+    fs.readFile(path.join(__dirname, "sdk-test.html"), (err, content) => {
       if (err) {
         res.writeHead(500);
         res.end("Error loading test page");

@@ -49,7 +49,7 @@ export const createSession = async (applicationId: string) => {
   );
   body.append("application_id", applicationId);
 
-  const response = await fetch("/auth/create_session", {
+  const response = await fetch(`/app/${applicationId}/auth/create_session`, {
     method: "POST",
     body,
   });
@@ -137,8 +137,14 @@ export const createSession = async (applicationId: string) => {
       }
     });
 
+  // Restore UUID with dashes from sessionIdBytes
+  const sessionId = bytesToHex(sessionIdBytes).replace(
+    /^([0-9a-fA-F]{8})([0-9a-fA-F]{4})([0-9a-fA-F]{4})([0-9a-fA-F]{4})([0-9a-fA-F]{12})$/,
+    "$1-$2-$3-$4-$5"
+  );
+
   session = {
-    sessionId: bytesToHex(sessionIdBytes),
+    sessionId,
     pcrs,
     signingKey,
     verifyingKey: verifyingKeyBytes,
@@ -155,6 +161,8 @@ export const createSession = async (applicationId: string) => {
     "currentSession:" + applicationId,
     JSON.stringify(serializableSession)
   );
+
+  return session;
 };
 
 export const getSession = async (applicationId: string) => {

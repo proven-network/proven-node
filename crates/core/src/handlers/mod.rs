@@ -3,6 +3,7 @@ mod node;
 mod rpc_http;
 mod rpc_ws;
 mod sessions;
+mod static_files;
 mod webauthn;
 mod whoami;
 
@@ -13,11 +14,13 @@ pub(crate) use rpc_ws::ws_rpc_handler;
 pub(crate) use sessions::{
     create_rola_challenge_handler, create_session_handler, verify_rola_handler,
 };
-pub(crate) use webauthn::{
-    iframe_js_handler, webauthn_authentication_finish_handler,
-    webauthn_authentication_start_handler, webauthn_iframe_handler, webauthn_js_handler,
-    webauthn_registration_finish_handler, webauthn_registration_start_handler,
+pub(crate) use static_files::{
+    iframe_html_handler, iframe_js_handler, sdk_js_handler, webauthn_js_handler,
     ws_worker_js_handler,
+};
+pub(crate) use webauthn::{
+    webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
+    webauthn_registration_finish_handler, webauthn_registration_start_handler,
 };
 pub(crate) use whoami::whoami_handler;
 

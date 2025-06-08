@@ -80,6 +80,7 @@ impl ExecutionRequest {
     #[cfg(test)]
     pub(crate) fn for_rpc_test(handler_specifier: &str, args: Vec<Value>) -> Self {
         use ed25519_dalek::{SigningKey, VerifyingKey};
+        use uuid::Uuid;
 
         let random_signing_key = SigningKey::generate(&mut rand::thread_rng());
         let random_verifying_key =
@@ -91,7 +92,7 @@ impl ExecutionRequest {
             handler_specifier: HandlerSpecifier::parse(handler_specifier).unwrap(),
             session: Session::Anonymous {
                 origin: "origin".to_string(),
-                session_id: "session_id".to_string(),
+                session_id: Uuid::new_v4(),
                 signing_key: random_signing_key,
                 verifying_key: random_verifying_key,
             },
@@ -102,6 +103,7 @@ impl ExecutionRequest {
     pub(crate) fn for_rpc_with_session_test(handler_specifier: &str, args: Vec<Value>) -> Self {
         use ed25519_dalek::{SigningKey, VerifyingKey};
         use proven_identity::{Identity, LedgerIdentity, RadixIdentityDetails};
+        use uuid::Uuid;
 
         let random_signing_key = SigningKey::generate(&mut rand::thread_rng());
         let random_verifying_key =
@@ -132,7 +134,7 @@ impl ExecutionRequest {
                     identity_address: "my_identity".to_string(),
                 }),
                 origin: "origin".to_string(),
-                session_id: "session_id".to_string(),
+                session_id: Uuid::new_v4(),
                 signing_key: random_signing_key,
                 verifying_key: random_verifying_key,
             },
@@ -146,6 +148,7 @@ impl ExecutionRequest {
     ) -> Self {
         use ed25519_dalek::{SigningKey, VerifyingKey};
         use proven_identity::{Identity, LedgerIdentity, RadixIdentityDetails};
+        use uuid::Uuid;
 
         let random_signing_key = SigningKey::generate(&mut rand::thread_rng());
         let random_verifying_key =
@@ -173,7 +176,7 @@ impl ExecutionRequest {
                     identity_address: "my_identity".to_string(),
                 }),
                 origin: "origin".to_string(),
-                session_id: "session_id".to_string(),
+                session_id: Uuid::new_v4(),
                 signing_key: random_signing_key,
                 verifying_key: random_verifying_key,
             },

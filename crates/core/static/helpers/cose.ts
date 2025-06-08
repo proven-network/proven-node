@@ -1,5 +1,5 @@
 import { Encoder, decode } from "cbor-x";
-import { sign, verify } from "@noble/ed25519";
+import { signAsync, verifyAsync } from "@noble/ed25519";
 import { Result, ok, err } from "neverthrow";
 
 // Note: This is a tiny implementation of COSE Sign1, using noble/ed25519 for signing
@@ -63,7 +63,7 @@ export const decodeAndVerifyCoseSign1 = async (
     payload, // payload
   ]);
 
-  if (!verify(signature, toBeSigned, verifyingKey)) {
+  if (!(await verifyAsync(signature, toBeSigned, verifyingKey))) {
     return err("COSE Sign1 verification failed.");
   }
 
@@ -94,7 +94,7 @@ export const encodeSign1 = async (
     payloadCbor, // payload
   ]);
 
-  const signature = sign(toBeSigned, signingKey);
+  const signature = await signAsync(toBeSigned, signingKey);
   const coseSign1 = await coseEncoder.encode([
     ed25519Header,
     unprotectedHeaders,

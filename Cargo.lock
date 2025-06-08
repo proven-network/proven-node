@@ -9961,6 +9961,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "thiserror 2.0.12",
+ "tracing",
  "uuid",
  "webauthn-rs",
 ]
@@ -10447,6 +10448,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "url",
+ "uuid",
 ]
 
 [[package]]

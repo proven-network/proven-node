@@ -66,6 +66,7 @@ pub enum Request {
 
 #[derive(Debug, Serialize)]
 pub enum Response {
+    BadHandlerSpecifier,
     ExecuteHashUnknown,
     ExecuteSuccess(ExecutionResult),
     ExecuteFailure(String),
@@ -84,10 +85,8 @@ where
         application_id: String,
         session: Session,
     ) -> Result<Self, RpcHandlerError> {
-        let aad = hex::decode(session.session_id()).map_err(|_| RpcHandlerError::Session)?;
-
         Ok(Self {
-            aad,
+            aad: session.session_id().as_bytes().to_vec(),
             application_id,
             _application_manager: application_manager,
             runtime_pool_manager,
@@ -140,21 +139,28 @@ where
                 }
             }
             Request::ExecuteHash(code_package_hash, handler_specifier_string, args) => {
-                let execution_request = ExecutionRequest::Rpc {
-                    application_id: self.application_id.clone(),
-                    args,
-                    handler_specifier: HandlerSpecifier::parse(&handler_specifier_string).unwrap(),
-                    session: self.session.clone(),
-                };
+                match HandlerSpecifier::parse(&handler_specifier_string) {
+                    Ok(handler_specifier) => {
+                        let execution_request = ExecutionRequest::Rpc {
+                            application_id: self.application_id.clone(),
+                            args,
+                            handler_specifier,
+                            session: self.session.clone(),
+                        };
 
-                match self
-                    .runtime_pool_manager
-                    .execute_prehashed(code_package_hash, execution_request)
-                    .await
-                {
-                    Ok(result) => Ok(Response::ExecuteSuccess(result)),
-                    Err(proven_runtime::Error::HashUnknown) => Ok(Response::ExecuteHashUnknown),
-                    Err(e) => Ok(Response::ExecuteFailure(format!("{e:?}"))),
+                        match self
+                            .runtime_pool_manager
+                            .execute_prehashed(code_package_hash, execution_request)
+                            .await
+                        {
+                            Ok(result) => Ok(Response::ExecuteSuccess(result)),
+                            Err(proven_runtime::Error::HashUnknown) => {
+                                Ok(Response::ExecuteHashUnknown)
+                            }
+                            Err(e) => Ok(Response::ExecuteFailure(format!("{e:?}"))),
+                        }
+                    }
+                    Err(_) => Ok(Response::BadHandlerSpecifier),
                 }
             }
             Request::Watch(_) => Ok(Response::Ok),

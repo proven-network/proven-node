@@ -15,6 +15,7 @@ use serde_json::json;
 use tempfile::tempdir;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
+use uuid::Uuid;
 
 static EXECUTIONS: usize = 1_000_000;
 static NUM_WORKERS: u32 = 40;
@@ -100,7 +101,7 @@ async fn main() -> Result<(), Error> {
                             identity_address: "my_identity".to_string(),
                         }),
                         origin: "origin".to_string(),
-                        session_id: "session_id".to_string(),
+                        session_id: Uuid::new_v4(),
                         signing_key: random_signing_key.clone(),
                         verifying_key: random_verifying_key,
                     },
@@ -149,7 +150,7 @@ async fn main() -> Result<(), Error> {
                         identity_address: "my_identity".to_string(),
                     }),
                     origin: "origin".to_string(),
-                    session_id: "session_id".to_string(),
+                    session_id: Uuid::new_v4(),
                     signing_key: random_signing_key,
                     verifying_key: random_verifying_key,
                 },

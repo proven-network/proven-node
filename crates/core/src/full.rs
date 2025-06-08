@@ -1,11 +1,11 @@
 use crate::error::{Error, Result};
 use crate::handlers::{
     ApplicationHttpContext, application_http_handler, create_rola_challenge_handler,
-    create_session_handler, http_rpc_handler, iframe_js_handler, nats_cluster_endpoint_handler,
-    verify_rola_handler, webauthn_authentication_finish_handler,
-    webauthn_authentication_start_handler, webauthn_iframe_handler, webauthn_js_handler,
-    webauthn_registration_finish_handler, webauthn_registration_start_handler, whoami_handler,
-    ws_rpc_handler, ws_worker_js_handler,
+    create_session_handler, http_rpc_handler, iframe_html_handler, iframe_js_handler,
+    nats_cluster_endpoint_handler, sdk_js_handler, verify_rola_handler,
+    webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
+    webauthn_js_handler, webauthn_registration_finish_handler, webauthn_registration_start_handler,
+    whoami_handler, ws_rpc_handler, ws_worker_js_handler,
 };
 use crate::{FullContext, LightContext};
 
@@ -251,7 +251,7 @@ where
         let primary_router = Router::new()
             .route("/", get(|| async { redirect_response }))
             .route(
-                "/auth/create_session",
+                "/app/{application_id}/auth/create_session",
                 post(create_session_handler).with_state(full_ctx.clone()),
             )
             .route(
@@ -264,12 +264,14 @@ where
             )
             .route(
                 "/app/{application_id}/auth/webauthn/login",
-                get(webauthn_iframe_handler).with_state(full_ctx.clone()),
+                get(iframe_html_handler).with_state(full_ctx.clone()),
             )
             .route(
                 "/app/{application_id}/auth/webauthn/login.js",
                 get(webauthn_js_handler),
             )
+            // TODO: temporary - should be extracted to external package (not served via node)
+            .route("/sdk.js", get(sdk_js_handler))
             .route(
                 "/app/{application_id}/auth/webauthn/iframe.js",
                 get(iframe_js_handler),
@@ -304,7 +306,7 @@ where
                 post(http_rpc_handler).with_state(full_ctx.clone()),
             )
             .route(
-                "/ws/{application_id}",
+                "/app/{application_id}/ws",
                 get(ws_rpc_handler).with_state(full_ctx.clone()),
             )
             .route(

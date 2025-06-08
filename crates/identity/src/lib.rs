@@ -25,6 +25,7 @@ use proven_radix_rola::{Rola, RolaOptions, SignedChallenge, Type as SignedChalle
 use proven_store::{Store, Store1, Store2};
 use radix_common::network::NetworkDefinition;
 use rand::{Rng, thread_rng};
+use tracing::info;
 use uuid::Uuid;
 
 /// Options for creating a new `IdentityManager`
@@ -138,6 +139,9 @@ where
         session_id: &str,
     ) -> Result<Option<Session>, Error>;
 
+    /// Identifies a session
+    async fn identify_session(&self, session_id: &str, identity_id: &str) -> Result<Bytes, Error>;
+
     /// Identifies a session via ROLA.
     async fn identify_session_via_rola(
         &self,
@@ -213,9 +217,7 @@ where
             verifying_key,
         }: CreateAnonymousSessionOptions<'_>,
     ) -> Result<Bytes, Error> {
-        let session_uuid = Uuid::new_v4();
-        let session_id_bytes = session_uuid.as_bytes();
-        let session_id = session_uuid.to_string();
+        let session_id = Uuid::new_v4();
 
         let server_signing_key = SigningKey::generate(&mut thread_rng());
         let server_public_key = server_signing_key.verifying_key();
@@ -227,9 +229,14 @@ where
             verifying_key: *verifying_key,
         };
 
+        info!(
+            "Creating anonymous session (id: {}) for application: {}",
+            session_id, application_id
+        );
+
         self.sessions_store
             .scope(application_id)
-            .put(session_id.clone(), session.clone())
+            .put(session_id.to_string(), session.clone())
             .await
             .map_err(|e| Error::SessionStore(e.to_string()))?;
 
@@ -237,7 +244,7 @@ where
             .attestor
             .attest(AttestationParams {
                 nonce: Some(nonce.clone()),
-                user_data: Some(Bytes::from(session_id_bytes.to_vec())),
+                user_data: Some(Bytes::from(session_id.as_bytes().to_vec())),
                 public_key: Some(Bytes::from(server_public_key.to_bytes().to_vec())),
             })
             .await
@@ -284,6 +291,11 @@ where
         application_id: &str,
         session_id: &str,
     ) -> Result<Option<Session>, Error> {
+        info!(
+            "Getting session (id: {}) for application: {}",
+            session_id, application_id
+        );
+
         match self
             .sessions_store
             .scope(application_id.to_string())
@@ -294,6 +306,14 @@ where
             Ok(None) => Ok(None),
             Err(e) => Err(Error::SessionStore(e.to_string())),
         }
+    }
+
+    async fn identify_session(
+        &self,
+        _session_id: &str,
+        _identity_id: &str,
+    ) -> Result<Bytes, Error> {
+        unimplemented!()
     }
 
     async fn identify_session_via_rola(
@@ -362,8 +382,7 @@ where
             .map(|sc| sc.address.clone())
             .collect::<Vec<String>>();
 
-        let mut session_id_bytes = [0u8; 32];
-        thread_rng().fill(&mut session_id_bytes);
+        let session_id = Uuid::new_v4();
 
         let radix_identity = RadixIdentityDetails {
             account_addresses,
@@ -386,14 +405,14 @@ where
             identity,
             ledger_identity: LedgerIdentity::Radix(radix_identity),
             origin: origin.to_string(),
-            session_id: hex::encode(session_id_bytes),
+            session_id,
             signing_key: server_signing_key.clone(),
             verifying_key: *verifying_key,
         };
 
         self.sessions_store
             .scope(application_id)
-            .put(session.session_id(), session.clone())
+            .put(session.session_id().to_string(), session.clone())
             .await
             .map_err(|e| Error::SessionStore(e.to_string()))?;
 
@@ -401,7 +420,7 @@ where
             .attestor
             .attest(AttestationParams {
                 nonce: Some(nonce.clone()),
-                user_data: Some(Bytes::from(session_id_bytes.to_vec())),
+                user_data: Some(Bytes::from(session.session_id().as_bytes().to_vec())),
                 public_key: Some(Bytes::from(server_public_key.to_bytes().to_vec())),
             })
             .await

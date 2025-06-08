@@ -11,6 +11,7 @@ use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 use serde_json::json;
 use tempfile::tempdir;
+use uuid::Uuid;
 
 fn main() -> Result<(), Error> {
     let module_loader = ModuleLoader::new(
@@ -70,7 +71,7 @@ fn main() -> Result<(), Error> {
                 identity_address: "my_identity".to_string(),
             }),
             origin: "origin".to_string(),
-            session_id: "session_id".to_string(),
+            session_id: Uuid::new_v4(),
             signing_key: random_signing_key,
             verifying_key: random_verifying_key,
         },

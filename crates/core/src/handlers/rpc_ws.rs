@@ -1,10 +1,8 @@
-use super::parse_bearer_token;
 use crate::FullContext;
 use crate::rpc::RpcHandler;
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, State};
-use axum::http::HeaderMap;
+use axum::extract::{Path, Query, State};
 use axum::response::IntoResponse;
 use bytes::Bytes;
 use futures::{sink::SinkExt, stream::StreamExt};
@@ -13,9 +11,17 @@ use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
+use serde::Deserialize;
 use tracing::{error, info};
 
+#[derive(Deserialize)]
+pub struct SessionQuery {
+    pub session: String,
+}
+
 async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
+    error!("Error handling websocket: {}", reason);
+
     socket
         .send(Message::Close(Some(CloseFrame {
             code: axum::extract::ws::close_code::ERROR,
@@ -27,13 +33,15 @@ async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
 
 pub(crate) async fn ws_rpc_handler<AM, RM, SM, A, G>(
     Path(application_id): Path<String>,
+    Query(SessionQuery {
+        session: session_id,
+    }): Query<SessionQuery>,
     State(FullContext {
         application_manager,
         network: _,
         runtime_pool_manager,
         session_manager,
     }): State<FullContext<AM, RM, SM, A, G>>,
-    headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse
 where
@@ -43,25 +51,18 @@ where
     A: Attestor,
     G: Governance,
 {
-    let Some(header) = headers.get("Authorization") else {
-        return ws
-            .on_upgrade(|socket| handle_socket_error(socket, "Authorization header required"));
-    };
-
-    let Ok(header_str) = header.to_str() else {
-        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid authorization header"));
-    };
-
-    let Ok(token) = parse_bearer_token(header_str) else {
-        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid bearer token format"));
-    };
-
-    let Ok(maybe_session) = session_manager.get_session(&application_id, &token).await else {
-        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid token"));
-    };
-
-    let Some(session) = maybe_session else {
-        return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid session"));
+    let session = match session_manager
+        .get_session(&application_id, &session_id)
+        .await
+    {
+        Ok(Some(session)) => session,
+        Ok(None) => {
+            return ws.on_upgrade(|socket| handle_socket_error(socket, "Session not found"));
+        }
+        Err(e) => {
+            error!("Error getting session: {:?}", e);
+            return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid session"));
+        }
     };
 
     let Ok(rpc_handler) = RpcHandler::new(
