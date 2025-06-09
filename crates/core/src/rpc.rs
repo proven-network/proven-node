@@ -4,7 +4,7 @@ use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, Verifier};
 use proven_applications::ApplicationManagement;
 use proven_code_package::CodePackage;
-use proven_identity::Session;
+use proven_identity::{Session, WhoAmI};
 use proven_runtime::{
     ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
 };
@@ -71,7 +71,7 @@ pub enum Response {
     ExecuteSuccess(ExecutionResult),
     ExecuteFailure(String),
     Ok,
-    WhoAmI(String),
+    WhoAmI(WhoAmI),
 }
 
 impl<AM, RM> RpcHandler<AM, RM>
@@ -164,7 +164,7 @@ where
                 }
             }
             Request::Watch(_) => Ok(Response::Ok),
-            Request::WhoAmI => Ok(Response::WhoAmI(self.session.session_id().to_string())),
+            Request::WhoAmI => Ok(Response::WhoAmI(self.session.clone().into())),
         }?;
 
         let mut payload = Vec::new();

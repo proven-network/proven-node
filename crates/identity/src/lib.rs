@@ -8,12 +8,14 @@ mod error;
 mod identity;
 mod ledger_identity;
 mod session;
+mod whoami;
 
 pub use error::Error;
 pub use identity::Identity;
 pub use ledger_identity::LedgerIdentity;
 pub use ledger_identity::radix::RadixIdentityDetails;
 pub use session::Session;
+pub use whoami::WhoAmI;
 
 use std::collections::HashSet;
 
