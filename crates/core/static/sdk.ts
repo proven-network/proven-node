@@ -2,9 +2,11 @@ import { type RadixDappToolkitOptions } from "@radixdlt/radix-dapp-toolkit";
 
 type ExecuteOutput = string | number | boolean | null | undefined;
 type WhoAmIResponse = { identity_address: string; account_addresses: string[] };
+type AuthState = "signed_in" | "not_signed_in";
+type AuthResponse = { state: AuthState };
 
 type SdkMessage = {
-  type: "execute" | "whoAmI";
+  type: "execute" | "whoAmI" | "login" | "logout" | "getAuthState";
   nonce: number;
   data?: {
     script?: string;
@@ -28,6 +30,9 @@ export type ProvenSDK = {
     args?: any[]
   ) => Promise<ExecuteOutput>;
   whoAmI: () => Promise<WhoAmIResponse>;
+  login: () => Promise<AuthResponse>;
+  logout: () => Promise<AuthResponse>;
+  getAuthState: () => Promise<AuthResponse>;
 };
 
 export const ProvenSDK = (options: {
@@ -56,6 +61,10 @@ export const ProvenSDK = (options: {
       iframe.src = `${iframeUrl}?app=${applicationId}`;
       iframe.style.display = "none";
       iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      iframe.setAttribute(
+        "allow",
+        "publickey-credentials-create *; publickey-credentials-get *"
+      );
 
       iframe.onload = () => {
         // Wait a bit for iframe to initialize
@@ -151,9 +160,45 @@ export const ProvenSDK = (options: {
     return response;
   };
 
+  const login = async (): Promise<AuthResponse> => {
+    logger?.debug("SDK: Logging in");
+
+    const response = await sendMessage({
+      type: "login",
+      nonce: 0, // Will be set by sendMessage
+    });
+
+    return response;
+  };
+
+  const logout = async (): Promise<AuthResponse> => {
+    logger?.debug("SDK: Logging out");
+
+    const response = await sendMessage({
+      type: "logout",
+      nonce: 0, // Will be set by sendMessage
+    });
+
+    return response;
+  };
+
+  const getAuthState = async (): Promise<AuthResponse> => {
+    logger?.debug("SDK: Getting auth state");
+
+    const response = await sendMessage({
+      type: "getAuthState",
+      nonce: 0, // Will be set by sendMessage
+    });
+
+    return response;
+  };
+
   return {
     execute,
     whoAmI,
+    login,
+    logout,
+    getAuthState,
   };
 };
 

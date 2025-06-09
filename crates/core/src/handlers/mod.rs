@@ -15,8 +15,7 @@ pub(crate) use sessions::{
     create_rola_challenge_handler, create_session_handler, verify_rola_handler,
 };
 pub(crate) use static_files::{
-    iframe_html_handler, iframe_js_handler, sdk_js_handler, webauthn_js_handler,
-    ws_worker_js_handler,
+    iframe_html_handler, iframe_js_handler, sdk_js_handler, ws_worker_js_handler,
 };
 pub(crate) use webauthn::{
     webauthn_authentication_finish_handler, webauthn_authentication_start_handler,

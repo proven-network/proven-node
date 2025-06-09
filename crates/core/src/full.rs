@@ -4,8 +4,8 @@ use crate::handlers::{
     create_session_handler, http_rpc_handler, iframe_html_handler, iframe_js_handler,
     nats_cluster_endpoint_handler, sdk_js_handler, verify_rola_handler,
     webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
-    webauthn_js_handler, webauthn_registration_finish_handler, webauthn_registration_start_handler,
-    whoami_handler, ws_rpc_handler, ws_worker_js_handler,
+    webauthn_registration_finish_handler, webauthn_registration_start_handler, whoami_handler,
+    ws_rpc_handler, ws_worker_js_handler,
 };
 use crate::{FullContext, LightContext};
 
@@ -266,19 +266,11 @@ where
                 "/app/{application_id}/auth/webauthn/login",
                 get(iframe_html_handler).with_state(full_ctx.clone()),
             )
-            .route(
-                "/app/{application_id}/auth/webauthn/login.js",
-                get(webauthn_js_handler),
-            )
             // TODO: temporary - should be extracted to external package (not served via node)
             .route("/sdk.js", get(sdk_js_handler))
             .route(
                 "/app/{application_id}/auth/webauthn/iframe.js",
                 get(iframe_js_handler),
-            )
-            .route(
-                "/app/{application_id}/auth/webauthn/webauthn.js",
-                get(webauthn_js_handler),
             )
             .route(
                 "/app/{application_id}/auth/webauthn/ws-worker.js",

@@ -96,7 +96,7 @@ function convertResultToBase64Url(obj: any): any {
   return obj;
 }
 
-class WebAuthnClient {
+export class WebAuthnClient {
   private readonly MASTER_SECRET_KEY = "webauthn_master_secret";
 
   // Check if user is currently signed in (has master secret in sessionStorage)
@@ -299,5 +299,3 @@ class WebAuthnClient {
     }
   }
 }
-
-globalThis.WebAuthnClient = WebAuthnClient;

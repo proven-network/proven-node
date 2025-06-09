@@ -10,6 +10,15 @@
       .controls {
         margin: 20px 0;
       }
+      .auth-controls {
+        margin: 20px 0;
+        padding: 15px;
+        background: #e9ecef;
+        border-radius: 4px;
+      }
+      .auth-controls h3 {
+        margin-top: 0;
+      }
       button {
         margin: 5px;
         padding: 10px 20px;
@@ -25,6 +34,18 @@
       button:disabled {
         background: #6c757d;
         cursor: not-allowed;
+      }
+      .login-btn {
+        background: #28a745;
+      }
+      .login-btn:hover {
+        background: #218838;
+      }
+      .logout-btn {
+        background: #dc3545;
+      }
+      .logout-btn:hover {
+        background: #c82333;
       }
       #messages {
         background: #f8f9fa;
@@ -54,7 +75,15 @@
   <body>
     <h1>Proven SDK Test</h1>
     
+    <div class="auth-controls">
+      <h3>Authentication</h3>
+      <button class="login-btn" onclick="testLogin()">Login</button>
+      <button class="logout-btn" onclick="testLogout()">Logout</button>
+      <button onclick="testGetAuthState()">Check Auth State</button>
+    </div>
+    
     <div class="controls">
+      <h3>API Calls</h3>
       <button onclick="testWhoAmI()">Who Am I</button>
       <button onclick="testExecute()">Test Execute</button>
       <button onclick="clearMessages()">Clear Messages</button>
@@ -90,6 +119,51 @@
         `;
         document.getElementById('messages').prepend(div);
       }
+
+      window.testLogin = async function() {
+        const button = event.target;
+        button.disabled = true;
+        
+        try {
+          logMessage('Attempting login...', 'info');
+          const result = await sdk.login();
+          logMessage(`Login Result: ${JSON.stringify(result, null, 2)}`, 'success');
+        } catch (error) {
+          logMessage(`Login Error: ${error.message}`, 'error');
+        } finally {
+          button.disabled = false;
+        }
+      };
+
+      window.testLogout = async function() {
+        const button = event.target;
+        button.disabled = true;
+        
+        try {
+          logMessage('Logging out...', 'info');
+          const result = await sdk.logout();
+          logMessage(`Logout Result: ${JSON.stringify(result, null, 2)}`, 'success');
+        } catch (error) {
+          logMessage(`Logout Error: ${error.message}`, 'error');
+        } finally {
+          button.disabled = false;
+        }
+      };
+
+      window.testGetAuthState = async function() {
+        const button = event.target;
+        button.disabled = true;
+        
+        try {
+          logMessage('Checking auth state...', 'info');
+          const result = await sdk.getAuthState();
+          logMessage(`Auth State: ${JSON.stringify(result, null, 2)}`, 'success');
+        } catch (error) {
+          logMessage(`Auth State Error: ${error.message}`, 'error');
+        } finally {
+          button.disabled = false;
+        }
+      };
 
       window.testWhoAmI = async function() {
         const button = event.target;

@@ -14,7 +14,6 @@ use axum::extract::Path;
 const IFRAME_HTML: &str = include_str!("../../static/iframe.html");
 const IFRAME_JS: &str = include_str!("../../static/iframe.js");
 const SDK_JS: &str = include_str!("../../static/sdk.js");
-const WEBAUTHN_JS: &str = include_str!("../../static/webauthn.js");
 const WS_WORKER_JS: &str = include_str!("../../static/ws-worker.js");
 
 pub(crate) async fn iframe_js_handler() -> impl IntoResponse {
@@ -55,10 +54,6 @@ where
 // TODO: temporary - should be extracted to external package (not served via node)
 pub(crate) async fn sdk_js_handler() -> impl IntoResponse {
     ([("Content-Type", "application/javascript")], SDK_JS)
-}
-
-pub(crate) async fn webauthn_js_handler() -> impl IntoResponse {
-    ([("Content-Type", "application/javascript")], WEBAUTHN_JS)
 }
 
 pub(crate) async fn ws_worker_js_handler() -> impl IntoResponse {
