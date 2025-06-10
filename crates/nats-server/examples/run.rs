@@ -2,8 +2,10 @@ use std::convert::Infallible;
 use std::path::PathBuf;
 
 use bytes::Bytes;
+use proven_attestation::Attestor;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
+use proven_governance::Version;
 use proven_governance_mock::MockGovernance;
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{ProvenNetwork, ProvenNetworkOptions};
@@ -23,9 +25,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let private_key = ed25519_dalek::SigningKey::generate(&mut rand::thread_rng());
 
     // Create test network components
-    let governance =
-        MockGovernance::for_single_node(format!("http://localhost:{}", 3300), private_key.clone());
     let attestor = MockAttestor::new();
+    // Just use single version based on mock attestation pcrs (deterministic hashes on cargo version)
+    let pcrs = attestor.pcrs().await.unwrap();
+    let version = Version::from_pcrs(pcrs);
+    let governance = MockGovernance::for_single_node(
+        format!("http://localhost:{}", 3300),
+        private_key.clone(),
+        version,
+    );
     let network = ProvenNetwork::new(ProvenNetworkOptions {
         attestor,
         governance,
