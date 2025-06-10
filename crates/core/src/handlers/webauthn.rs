@@ -49,6 +49,7 @@ where
 
     let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
+        .rp_name("Proven Network")
         .allow_cross_origin(true)
         .append_allowed_origin(&origin)
         .build()
@@ -159,6 +160,7 @@ where
 
     let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
+        .rp_name("Proven Network")
         .allow_cross_origin(true)
         .append_allowed_origin(&origin)
         .build()
@@ -245,6 +247,7 @@ where
 
     let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
+        .rp_name("Proven Network")
         .allow_cross_origin(true)
         .append_allowed_origin(&origin)
         .build()
@@ -362,6 +365,7 @@ where
 
     let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
+        .rp_name("Proven Network")
         .allow_cross_origin(true)
         .append_allowed_origin(&origin)
         .build()
