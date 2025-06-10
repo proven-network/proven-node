@@ -626,7 +626,12 @@ impl Bootstrap {
         })?;
 
         // TODO: use helios in production
-        let governance = MockGovernance::new(Vec::new(), Vec::new());
+        let governance = MockGovernance::new(
+            Vec::new(),
+            Vec::new(),
+            "http://localhost:3200".to_string(),
+            vec![],
+        );
 
         let network = ProvenNetwork::new(ProvenNetworkOptions {
             attestor: self.attestor.clone(),

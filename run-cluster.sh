@@ -41,7 +41,7 @@ docker-compose build
 
 echo "Starting node cluster"
 # Run only the node containers, not the test-client
-docker-compose up bulbasaur charmander squirtle
+docker-compose up auth-gateway bulbasaur charmander squirtle
 
 # This line will only be reached when the user stops the cluster with Ctrl+C
 echo "Cluster stopped. Cleaning up..."

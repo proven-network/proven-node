@@ -1,4 +1,12 @@
 {
+  "auth_gateways": {
+    "primary": "http://rp.local",
+    "alternates": [
+      "http://bulbasaur.local",
+      "http://charmander.local",
+      "http://squirtle.local"
+    ]
+  },
   "topology": [
     {
       "public_key": "3fded8e1f5b1125e3f2360e91fdba2498ef5f53a57b2ad562349ad88dcff6d7f",

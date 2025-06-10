@@ -98,7 +98,9 @@ export const createSession = async (applicationId: string) => {
 
   const hostname = globalThis.location.hostname;
   const knownCa = new X509Certificate(
-    hostname.includes("localhost") ? mockCertificate : usEast2Certificate
+    hostname === "localhost" || hostname.endsWith(".local")
+      ? mockCertificate
+      : usEast2Certificate
   );
 
   const chain = await new X509ChainBuilder({

@@ -24,6 +24,8 @@ use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
 /// Mock implementation of the governance interface.
 #[derive(Debug, Clone)]
 pub struct MockGovernance {
+    alternate_auth_gateways: Vec<String>,
+    primary_auth_gateway: String,
     nodes: Vec<TopologyNode>,
     versions: Vec<Version>,
 }
@@ -31,8 +33,18 @@ pub struct MockGovernance {
 impl MockGovernance {
     /// Create a new mock governance implementation with the given nodes and versions.
     #[must_use]
-    pub fn new(nodes: Vec<TopologyNode>, versions: Vec<Version>) -> Self {
-        Self { nodes, versions }
+    pub fn new(
+        nodes: Vec<TopologyNode>,
+        versions: Vec<Version>,
+        primary_auth_gateway: String,
+        alternate_auth_gateways: Vec<String>,
+    ) -> Self {
+        Self {
+            alternate_auth_gateways,
+            primary_auth_gateway,
+            nodes,
+            versions,
+        }
     }
 
     /// Create a new mock governance implementation with a single node.
@@ -46,7 +58,12 @@ impl MockGovernance {
             specializations: HashSet::new(),
         };
 
-        Self::new(vec![node], vec![])
+        Self::new(
+            vec![node],
+            vec![],
+            "http://localhost:3200".to_string(),
+            vec![],
+        )
     }
 
     /// Create a new mock governance instance from a topology file
@@ -116,7 +133,12 @@ impl MockGovernance {
             })
             .collect();
 
-        Ok(Self { nodes, versions })
+        Ok(Self {
+            alternate_auth_gateways: network_config.auth_gateways.alternates,
+            primary_auth_gateway: network_config.auth_gateways.primary,
+            nodes,
+            versions,
+        })
     }
 }
 
@@ -126,6 +148,14 @@ impl Governance for MockGovernance {
 
     async fn get_active_versions(&self) -> Result<Vec<Version>, Self::Error> {
         Ok(self.versions.clone())
+    }
+
+    async fn get_alternates_auth_gateways(&self) -> Result<Vec<String>, Self::Error> {
+        Ok(self.alternate_auth_gateways.clone())
+    }
+
+    async fn get_primary_auth_gateway(&self) -> Result<String, Self::Error> {
+        Ok(self.primary_auth_gateway.clone())
     }
 
     async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error> {
@@ -182,6 +212,8 @@ mod tests {
         let governance = MockGovernance::new(
             vec![node_1.clone(), node_2.clone()],
             vec![version_1.clone(), version_2.clone()],
+            "http://localhost:3200".to_string(),
+            vec![],
         );
 
         // Test get_topology
@@ -195,5 +227,13 @@ mod tests {
         assert_eq!(active_versions.len(), 2);
         assert!(active_versions.contains(&version_1));
         assert!(active_versions.contains(&version_2));
+
+        // Test get_alternates_auth_gateways
+        let alternates = governance.get_alternates_auth_gateways().await.unwrap();
+        assert_eq!(alternates.len(), 0);
+
+        // Test get_primary_auth_gateway
+        let primary = governance.get_primary_auth_gateway().await.unwrap();
+        assert_eq!(primary, "http://localhost:3200");
     }
 }

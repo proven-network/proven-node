@@ -364,7 +364,12 @@ mod tests {
         };
 
         // Create mock governance
-        let mock_governance = MockGovernance::new(vec![node1.clone(), node2.clone()], vec![]);
+        let mock_governance = MockGovernance::new(
+            vec![node1.clone(), node2.clone()],
+            vec![],
+            "http://localhost:3200".to_string(),
+            vec![],
+        );
 
         // Create network
         let network = ProvenNetwork::new(ProvenNetworkOptions {

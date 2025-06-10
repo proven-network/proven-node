@@ -43,7 +43,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create mock governance
     let nodes = vec![node1, node2];
     let versions = vec![version1, version2];
-    let governance = MockGovernance::new(nodes, versions);
+    let governance =
+        MockGovernance::new(nodes, versions, "http://localhost:3200".to_string(), vec![]);
 
     // Get topology
     let topology = governance.get_topology().await?;

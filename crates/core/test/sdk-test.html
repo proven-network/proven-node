@@ -92,7 +92,7 @@
     <div id="messages"></div>
 
     <!-- Load the SDK -->
-    <script src="http://localhost:3200/sdk.js"></script>
+    <script src="http://bulbasaur.local:3201/sdk.js"></script>
     
     <script>
       // Initialize the SDK
@@ -103,7 +103,7 @@
           warn: (...args) => console.warn('[SDK]', ...args),
           error: (...args) => console.error('[SDK]', ...args),
         },
-        iframeUrl: 'http://localhost:3200/app/application_id/auth/webauthn/login',
+        iframeUrl: 'http://bulbasaur.local:3201/app/application_id/auth/webauthn/login',
         applicationId: 'application_id'
       });
 

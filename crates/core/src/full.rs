@@ -12,10 +12,10 @@ use crate::{FullContext, LightContext};
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use axum::Router;
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::{any, delete, get, patch, post, put};
+use axum::{Json, Router};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_bootable::Bootable;
@@ -25,6 +25,7 @@ use proven_http::HttpServer;
 use proven_identity::IdentityManagement;
 use proven_network::{NATS_CLUSTER_ENDPOINT_API_PATH, ProvenNetwork};
 use proven_runtime::{HttpEndpoint, ModuleLoader, ModuleOptions, RuntimePoolManagement};
+use serde_json::json;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
@@ -353,6 +354,36 @@ where
             .await
             .map_err(|e| Error::HttpServer(e.to_string()))?;
 
+        // Router for WebAuthn related origin requests
+        let primary_auth_gateway = self
+            .network
+            .governance()
+            .get_primary_auth_gateway()
+            .await
+            .map_err(|e| Error::Network(e.to_string()))?;
+
+        let alternates_auth_gateways = self
+            .network
+            .governance()
+            .get_alternates_auth_gateways()
+            .await
+            .map_err(|e| Error::Network(e.to_string()))?;
+
+        let webauthn_router = Router::new().route(
+            "/.well-known/webauthn",
+            get(|| async move {
+                Json(json!({
+                    "origins": alternates_auth_gateways
+                }))
+            }),
+        );
+
+        self.http_server
+            .set_router_for_hostname(primary_auth_gateway, webauthn_router)
+            .await
+            .map_err(|e| Error::HttpServer(e.to_string()))?;
+
+        // Test router for application endpoints
         let test_router = self
             .create_application_http_router(code_package, module_specifier)
             .await?;

@@ -35,7 +35,7 @@ class WebSocketWorker {
 
     const query = globalThis.location.search;
     this.ws = new WebSocket(
-      `ws://localhost:3200/app/application_id/ws${query}`
+      `ws://${globalThis.location.host}/app/application_id/ws${query}`
     );
     this.ws.binaryType = "arraybuffer";
     this.updateLastActivity();

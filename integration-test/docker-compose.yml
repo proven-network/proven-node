@@ -1,4 +1,21 @@
 services:
+  # Auth gateway
+  # - Proxies to the other nodes here but in production this would be handled with DNS
+  auth-gateway:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "3200:80"
+    depends_on:
+      - bulbasaur
+      - charmander
+      - squirtle
+    networks:
+      proven-network:
+        ipv4_address: 172.28.1.2
+    hostname: rp.local
+
   # Ethereum sepolia node
   bulbasaur:
     build:
@@ -43,7 +60,7 @@ services:
       - target-cache:/app/target
     networks:
       proven-network:
-        ipv4_address: 172.28.1.2
+        ipv4_address: 172.28.1.3
     hostname: bulbasaur.local
     stop_grace_period: 3m
 
@@ -77,7 +94,7 @@ services:
       - target-cache:/app/target
     networks:
       proven-network:
-        ipv4_address: 172.28.1.3
+        ipv4_address: 172.28.1.4
     hostname: charmander.local
     stop_grace_period: 3m
 
@@ -108,7 +125,7 @@ services:
       - target-cache:/app/target
     networks:
       proven-network:
-        ipv4_address: 172.28.1.4
+        ipv4_address: 172.28.1.5
     hostname: squirtle.local
     stop_grace_period: 3m
 
@@ -118,6 +135,7 @@ services:
       context: ..
       dockerfile: integration-test/Dockerfile.test
     depends_on:
+      - auth-gateway
       - bulbasaur
       - charmander
       - squirtle

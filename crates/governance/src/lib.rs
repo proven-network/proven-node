@@ -123,6 +123,12 @@ where
     /// Get the active versions of the node.
     async fn get_active_versions(&self) -> Result<Vec<Version>, Self::Error>;
 
+    /// Get the alternates auth gateways.
+    async fn get_alternates_auth_gateways(&self) -> Result<Vec<String>, Self::Error>;
+
+    /// Get the primary auth gateway.
+    async fn get_primary_auth_gateway(&self) -> Result<String, Self::Error>;
+
     /// Get the network topology.
     async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error>;
 }

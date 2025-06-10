@@ -190,6 +190,14 @@ impl Governance for HeliosGovernance {
         Ok(versions)
     }
 
+    async fn get_alternates_auth_gateways(&self) -> Result<Vec<String>, Self::Error> {
+        todo!()
+    }
+
+    async fn get_primary_auth_gateway(&self) -> Result<String, Self::Error> {
+        todo!()
+    }
+
     async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error> {
         // Prepare the call data
         let selector = getNodesCall::SELECTOR;

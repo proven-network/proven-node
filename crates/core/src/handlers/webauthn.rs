@@ -22,7 +22,7 @@ use axum::extract::Path;
 const PRF_EVAL_FIRST_B64URL: &str = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
 pub(crate) async fn webauthn_registration_start_handler<AM, RM, SM, A, G>(
-    State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
+    State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     _origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
 where
@@ -34,12 +34,23 @@ where
 {
     let user_unique_id = Uuid::new_v4();
 
-    // Configure webauthn
-    let rp_id = "localhost"; // TODO: Replace with value from primary domains
-    let rp_origin = Url::parse("http://localhost:3200").unwrap();
-    let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
+    let rp_origin = Url::parse(
+        &network
+            .governance()
+            .get_primary_auth_gateway()
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let rp_id = rp_origin.host_str().unwrap();
+
+    let origin = Url::parse(&network.origin().await.unwrap()).unwrap();
+
+    let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
         .allow_cross_origin(true)
+        .append_allowed_origin(&origin)
         .build()
         .unwrap();
 
@@ -123,7 +134,7 @@ where
 
 pub(crate) async fn webauthn_registration_finish_handler<AM, RM, SM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
+    State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     Json(register_public_key_credential): Json<RegisterPublicKeyCredential>,
 ) -> impl IntoResponse
 where
@@ -133,12 +144,23 @@ where
     A: Attestor,
     G: Governance,
 {
-    // TODO: Replace with value from primary domains
-    let rp_id = "localhost"; // TODO: Replace with value from primary domains
-    let rp_origin = Url::parse("http://localhost:3200").unwrap();
-    let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
+    let rp_origin = Url::parse(
+        &network
+            .governance()
+            .get_primary_auth_gateway()
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let rp_id = rp_origin.host_str().unwrap();
+
+    let origin = Url::parse(&network.origin().await.unwrap()).unwrap();
+
+    let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
         .allow_cross_origin(true)
+        .append_allowed_origin(&origin)
         .build()
         .unwrap();
 
@@ -168,7 +190,7 @@ where
 }
 
 pub(crate) async fn webauthn_authentication_start_handler<AM, RM, SM, A, G>(
-    State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
+    State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     _origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
 where
@@ -208,12 +230,23 @@ where
         }
     };
 
-    // Configure webauthn
-    let rp_id = "localhost"; // TODO: Replace with value from primary domains
-    let rp_origin = Url::parse("http://localhost:3200").unwrap();
-    let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
+    let rp_origin = Url::parse(
+        &network
+            .governance()
+            .get_primary_auth_gateway()
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let rp_id = rp_origin.host_str().unwrap();
+
+    let origin = Url::parse(&network.origin().await.unwrap()).unwrap();
+
+    let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
         .allow_cross_origin(true)
+        .append_allowed_origin(&origin)
         .build()
         .unwrap();
 
@@ -304,7 +337,7 @@ where
 
 pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, SM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
+    State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     Json(auth_public_key_credential): Json<PublicKeyCredential>,
 ) -> impl IntoResponse
 where
@@ -314,12 +347,23 @@ where
     A: Attestor,
     G: Governance,
 {
-    // TODO: Replace with value from primary domains
-    let rp_id = "localhost";
-    let rp_origin = Url::parse("http://localhost:3200").unwrap();
-    let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
+    let rp_origin = Url::parse(
+        &network
+            .governance()
+            .get_primary_auth_gateway()
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+
+    let rp_id = rp_origin.host_str().unwrap();
+
+    let origin = Url::parse(&network.origin().await.unwrap()).unwrap();
+
+    let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
         .allow_cross_origin(true)
+        .append_allowed_origin(&origin)
         .build()
         .unwrap();
 
