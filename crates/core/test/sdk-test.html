@@ -7,17 +7,18 @@
         font-family: Arial, sans-serif;
         margin: 20px;
       }
-      .controls {
-        margin: 20px 0;
-      }
-      .auth-controls {
+      .auth-section {
         margin: 20px 0;
         padding: 15px;
         background: #e9ecef;
         border-radius: 4px;
       }
-      .auth-controls h3 {
+      .auth-section h3 {
         margin-top: 0;
+        margin-bottom: 10px;
+      }
+      .controls {
+        margin: 20px 0;
       }
       button {
         margin: 5px;
@@ -34,18 +35,6 @@
       button:disabled {
         background: #6c757d;
         cursor: not-allowed;
-      }
-      .login-btn {
-        background: #28a745;
-      }
-      .login-btn:hover {
-        background: #218838;
-      }
-      .logout-btn {
-        background: #dc3545;
-      }
-      .logout-btn:hover {
-        background: #c82333;
       }
       #messages {
         background: #f8f9fa;
@@ -75,11 +64,10 @@
   <body>
     <h1>Proven SDK Test</h1>
     
-    <div class="auth-controls">
+    <div class="auth-section">
       <h3>Authentication</h3>
-      <button class="login-btn" onclick="testLogin()">Login</button>
-      <button class="logout-btn" onclick="testLogout()">Logout</button>
-      <button onclick="testGetAuthState()">Check Auth State</button>
+      <p>Click the button below to sign in or out:</p>
+      <div id="auth-container"></div>
     </div>
     
     <div class="controls">
@@ -92,7 +80,7 @@
     <div id="messages"></div>
 
     <!-- Load the SDK -->
-    <script src="http://bulbasaur.local:3201/sdk.js"></script>
+    <script src="http://localhost:3200/sdk.js"></script>
     
     <script>
       // Initialize the SDK
@@ -103,8 +91,9 @@
           warn: (...args) => console.warn('[SDK]', ...args),
           error: (...args) => console.error('[SDK]', ...args),
         },
-        iframeUrl: 'http://bulbasaur.local:3201/app/application_id/auth/webauthn/login',
-        applicationId: 'application_id'
+        iframeUrl: 'http://localhost:3200/app/application_id/auth/webauthn/login',
+        applicationId: 'application_id',
+        targetElement: '#auth-container'
       });
 
       // Make SDK available globally for button handlers
@@ -119,51 +108,6 @@
         `;
         document.getElementById('messages').prepend(div);
       }
-
-      window.testLogin = async function() {
-        const button = event.target;
-        button.disabled = true;
-        
-        try {
-          logMessage('Attempting login...', 'info');
-          const result = await sdk.login();
-          logMessage(`Login Result: ${JSON.stringify(result, null, 2)}`, 'success');
-        } catch (error) {
-          logMessage(`Login Error: ${error.message}`, 'error');
-        } finally {
-          button.disabled = false;
-        }
-      };
-
-      window.testLogout = async function() {
-        const button = event.target;
-        button.disabled = true;
-        
-        try {
-          logMessage('Logging out...', 'info');
-          const result = await sdk.logout();
-          logMessage(`Logout Result: ${JSON.stringify(result, null, 2)}`, 'success');
-        } catch (error) {
-          logMessage(`Logout Error: ${error.message}`, 'error');
-        } finally {
-          button.disabled = false;
-        }
-      };
-
-      window.testGetAuthState = async function() {
-        const button = event.target;
-        button.disabled = true;
-        
-        try {
-          logMessage('Checking auth state...', 'info');
-          const result = await sdk.getAuthState();
-          logMessage(`Auth State: ${JSON.stringify(result, null, 2)}`, 'success');
-        } catch (error) {
-          logMessage(`Auth State Error: ${error.message}`, 'error');
-        } finally {
-          button.disabled = false;
-        }
-      };
 
       window.testWhoAmI = async function() {
         const button = event.target;

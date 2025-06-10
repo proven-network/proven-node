@@ -2,11 +2,9 @@ import { type RadixDappToolkitOptions } from "@radixdlt/radix-dapp-toolkit";
 
 type ExecuteOutput = string | number | boolean | null | undefined;
 type WhoAmIResponse = { identity_address: string; account_addresses: string[] };
-type AuthState = "signed_in" | "not_signed_in";
-type AuthResponse = { state: AuthState };
 
 type SdkMessage = {
-  type: "execute" | "whoAmI" | "login" | "logout" | "getAuthState";
+  type: "execute" | "whoAmI";
   nonce: number;
   data?: {
     script?: string;
@@ -30,17 +28,15 @@ export type ProvenSDK = {
     args?: any[]
   ) => Promise<ExecuteOutput>;
   whoAmI: () => Promise<WhoAmIResponse>;
-  login: () => Promise<AuthResponse>;
-  logout: () => Promise<AuthResponse>;
-  getAuthState: () => Promise<AuthResponse>;
 };
 
 export const ProvenSDK = (options: {
   logger?: RadixDappToolkitOptions["logger"];
   iframeUrl: string;
   applicationId: string;
+  targetElement?: HTMLElement | string;
 }): ProvenSDK => {
-  const { logger, iframeUrl, applicationId } = options;
+  const { logger, iframeUrl, applicationId, targetElement } = options;
 
   let iframe: HTMLIFrameElement | null = null;
   let iframeReady = false;
@@ -59,12 +55,17 @@ export const ProvenSDK = (options: {
 
       iframe = document.createElement("iframe");
       iframe.src = `${iframeUrl}?app=${applicationId}`;
-      iframe.style.display = "none";
       iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
       iframe.setAttribute(
         "allow",
         "publickey-credentials-create *; publickey-credentials-get *"
       );
+
+      // Set iframe dimensions for the auth button
+      iframe.style.width = "140px";
+      iframe.style.height = "50px";
+      iframe.style.border = "none";
+      iframe.style.background = "transparent";
 
       iframe.onload = () => {
         // Wait a bit for iframe to initialize
@@ -78,7 +79,19 @@ export const ProvenSDK = (options: {
         reject(new Error("Failed to load iframe"));
       };
 
-      document.body.appendChild(iframe);
+      // Append iframe to target element or document body
+      let target = document.body;
+      if (targetElement) {
+        if (typeof targetElement === "string") {
+          const element = document.querySelector(targetElement);
+          if (element) {
+            target = element as HTMLElement;
+          }
+        } else {
+          target = targetElement;
+        }
+      }
+      target.appendChild(iframe);
 
       // Listen for messages from iframe
       window.addEventListener("message", handleIframeMessage);
@@ -107,7 +120,8 @@ export const ProvenSDK = (options: {
   };
 
   const sendMessage = async (message: SdkMessage): Promise<any> => {
-    if (!iframe || !iframeReady) {
+    // Wait for iframe to be ready if it's not already
+    if (!iframeReady) {
       await createIframe();
     }
 
@@ -160,45 +174,14 @@ export const ProvenSDK = (options: {
     return response;
   };
 
-  const login = async (): Promise<AuthResponse> => {
-    logger?.debug("SDK: Logging in");
-
-    const response = await sendMessage({
-      type: "login",
-      nonce: 0, // Will be set by sendMessage
-    });
-
-    return response;
-  };
-
-  const logout = async (): Promise<AuthResponse> => {
-    logger?.debug("SDK: Logging out");
-
-    const response = await sendMessage({
-      type: "logout",
-      nonce: 0, // Will be set by sendMessage
-    });
-
-    return response;
-  };
-
-  const getAuthState = async (): Promise<AuthResponse> => {
-    logger?.debug("SDK: Getting auth state");
-
-    const response = await sendMessage({
-      type: "getAuthState",
-      nonce: 0, // Will be set by sendMessage
-    });
-
-    return response;
-  };
+  // Initialize iframe immediately
+  createIframe().catch((error) => {
+    logger?.error("Failed to initialize iframe:", error);
+  });
 
   return {
     execute,
     whoAmI,
-    login,
-    logout,
-    getAuthState,
   };
 };
 

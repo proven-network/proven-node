@@ -2,7 +2,176 @@
 <html>
   <head>
     <script src="./iframe.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 8px;
+        background: transparent;
+      }
+      
+      .auth-button {
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: 500;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-width: 100px;
+        outline: none;
+      }
+      
+      .auth-button:focus {
+        outline: 2px solid #0066cc;
+        outline-offset: 2px;
+      }
+      
+      .sign-in {
+        background-color: #28a745;
+        color: white;
+      }
+      
+      .sign-in:hover {
+        background-color: #218838;
+      }
+      
+      .sign-in:active {
+        background-color: #1e7e34;
+      }
+      
+      .sign-out {
+        background-color: #dc3545;
+        color: white;
+      }
+      
+      .sign-out:hover {
+        background-color: #c82333;
+      }
+      
+      .sign-out:active {
+        background-color: #bd2130;
+      }
+      
+      .auth-button:disabled {
+        background-color: #6c757d;
+        cursor: not-allowed;
+        opacity: 0.65;
+      }
+    </style>
   </head>
   <body>
+    <div id="auth-container">
+      <button id="auth-button" class="auth-button">Loading...</button>
+    </div>
+
+    <script>
+      let authButton;
+      let iframeClient;
+
+      function updateAuthButton() {
+        if (!authButton || !iframeClient) return;
+
+        const isSignedIn = iframeClient.webAuthnClient.isSignedIn();
+        
+        if (isSignedIn) {
+          authButton.textContent = 'Sign Out';
+          authButton.className = 'auth-button sign-out';
+        } else {
+          authButton.textContent = 'Sign In';
+          authButton.className = 'auth-button sign-in';
+        }
+        
+        authButton.disabled = false;
+      }
+
+      async function handleAuthClick() {
+        if (!iframeClient) return;
+
+        const button = authButton;
+        const wasSignedIn = iframeClient.webAuthnClient.isSignedIn();
+        
+        button.disabled = true;
+        
+        try {
+          if (wasSignedIn) {
+            // Sign out
+            button.textContent = 'Signing out...';
+            iframeClient.webAuthnClient.signOut();
+            updateAuthButton();
+          } else {
+            // Sign in
+            button.textContent = 'Signing in...';
+            
+            try {
+              await iframeClient.webAuthnClient.authenticate();
+              updateAuthButton();
+            } catch (authError) {
+              console.log('Authentication error:', authError);
+              
+              // Only try registration if the error indicates no credentials exist
+              const shouldTryRegistration = 
+                (authError.name === 'NotAllowedError' && 
+                 (authError.message?.includes('no credentials') || 
+                  authError.message?.includes('No authenticators') ||
+                  authError.message?.includes('not found'))) ||
+                authError.message?.includes('No credentials found - registration required');
+              
+              if (shouldTryRegistration) {
+                console.log('No credentials found, trying registration');
+                button.textContent = 'Creating passkey...';
+                await iframeClient.webAuthnClient.register();
+                updateAuthButton();
+              } else {
+                // For other errors, just throw
+                throw authError;
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Auth operation failed:', error);
+          
+          let errorMessage = 'Authentication failed';
+          if (error.name === 'NotAllowedError') {
+            errorMessage = 'Authentication was cancelled';
+          } else if (error.name === 'SecurityError') {
+            errorMessage = 'Security error during authentication';
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+          
+          alert(errorMessage);
+          updateAuthButton();
+        }
+      }
+
+      // Wait for iframe client to be ready
+      function waitForIframeClient() {
+        if (globalThis.iframeClient) {
+          iframeClient = globalThis.iframeClient;
+          updateAuthButton();
+        } else {
+          setTimeout(waitForIframeClient, 100);
+        }
+      }
+
+      // Initialize when DOM is ready
+      document.addEventListener('DOMContentLoaded', () => {
+        authButton = document.getElementById('auth-button');
+        authButton.addEventListener('click', handleAuthClick);
+        waitForIframeClient();
+      });
+
+      // Also check immediately in case DOMContentLoaded already fired
+      if (document.readyState === 'loading') {
+        // DOM is still loading
+      } else {
+        authButton = document.getElementById('auth-button');
+        if (authButton) {
+          authButton.addEventListener('click', handleAuthClick);
+          waitForIframeClient();
+        }
+      }
+    </script>
   </body>
 </html>

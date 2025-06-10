@@ -6,7 +6,7 @@ import { WebAuthnClient } from "./webauthn";
 type WhoAmI = "WhoAmI";
 type WhoAmIResponse = { identity_address: string; account_addresses: string[] };
 
-type ExecuteHash = { ExecuteHash: [string, any[]] };
+type ExecuteHash = { ExecuteHash: [string, string, any[]] };
 type Execute = {
   Execute: [string, string, any[]];
 };
@@ -27,7 +27,7 @@ type ExecuteSuccess = {
 type RpcCall = WhoAmI | ExecuteHash | Execute;
 
 type SdkMessage = {
-  type: "execute" | "whoAmI" | "login" | "logout" | "getAuthState";
+  type: "execute" | "whoAmI";
   nonce: number;
   data?: {
     script?: string;
@@ -64,9 +64,7 @@ function isSdkMessage(data: unknown): data is SdkMessage {
     "type" in data &&
     "nonce" in data &&
     typeof (data as SdkMessage).nonce === "number" &&
-    ["execute", "whoAmI", "login", "logout", "getAuthState"].includes(
-      (data as SdkMessage).type
-    )
+    ["execute", "whoAmI"].includes((data as SdkMessage).type)
   );
 }
 
@@ -144,30 +142,21 @@ class IframeClient {
 
   async handleSdkMessage(message: SdkMessage) {
     try {
-      if (message.type === "login") {
-        await this.handleLogin(message.nonce);
-      } else if (message.type === "logout") {
-        await this.handleLogout(message.nonce);
-      } else if (message.type === "getAuthState") {
-        await this.handleGetAuthState(message.nonce);
+      let rpcCall: RpcCall;
+
+      if (message.type === "whoAmI") {
+        rpcCall = "WhoAmI";
+      } else if (message.type === "execute") {
+        const { script, handler, args } = message.data!;
+
+        // Hash the script and handler for ExecuteHash first
+        const moduleHash = await this.hashScript(script!);
+        rpcCall = { ExecuteHash: [moduleHash, handler!, args || []] };
       } else {
-        // Handle RPC calls (execute, whoAmI)
-        let rpcCall: RpcCall;
-
-        if (message.type === "whoAmI") {
-          rpcCall = "WhoAmI";
-        } else if (message.type === "execute") {
-          const { script, handler, args } = message.data!;
-
-          // Hash the script and handler for ExecuteHash first
-          const moduleHash = await this.hashScript(script!, handler!);
-          rpcCall = { ExecuteHash: [moduleHash, args || []] };
-        } else {
-          throw new Error(`Unknown message type: ${message.type}`);
-        }
-
-        await this.sendRpcCall(message.nonce, rpcCall, message);
+        throw new Error(`Unknown message type: ${message.type}`);
       }
+
+      await this.sendRpcCall(message.nonce, rpcCall, message);
     } catch (error) {
       this.sendResponseToParent({
         type: "response",
@@ -178,107 +167,10 @@ class IframeClient {
     }
   }
 
-  async handleLogin(nonce: number) {
-    try {
-      // Try authentication first
-      try {
-        await this.webAuthnClient.authenticate();
-        this.sendResponseToParent({
-          type: "response",
-          nonce,
-          success: true,
-          data: { state: "signed_in" },
-        });
-        return;
-      } catch (authError: any) {
-        console.log("Authentication error:", authError);
-
-        // Only try registration if the error indicates no credentials exist
-        const shouldTryRegistration =
-          (authError.name === "NotAllowedError" &&
-            (authError.message?.includes("no credentials") ||
-              authError.message?.includes("No authenticators") ||
-              authError.message?.includes("not found"))) ||
-          authError.message?.includes(
-            "No credentials found - registration required"
-          );
-
-        if (shouldTryRegistration) {
-          console.log("No credentials found, trying registration");
-          await this.webAuthnClient.register();
-          this.sendResponseToParent({
-            type: "response",
-            nonce,
-            success: true,
-            data: { state: "signed_in" },
-          });
-        } else {
-          // For other errors (user cancelled, security error, etc.), just throw
-          throw authError;
-        }
-      }
-    } catch (error: any) {
-      let errorMessage = "Authentication failed";
-      if (error.name === "NotAllowedError") {
-        errorMessage = "Authentication was cancelled or not allowed";
-      } else if (error.name === "SecurityError") {
-        errorMessage = "Security error during authentication";
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
-      this.sendResponseToParent({
-        type: "response",
-        nonce,
-        success: false,
-        error: errorMessage,
-      });
-    }
-  }
-
-  async handleLogout(nonce: number) {
-    try {
-      this.webAuthnClient.signOut();
-      this.sendResponseToParent({
-        type: "response",
-        nonce,
-        success: true,
-        data: { state: "not_signed_in" },
-      });
-    } catch (error) {
-      this.sendResponseToParent({
-        type: "response",
-        nonce,
-        success: false,
-        error: error instanceof Error ? error.message : "Logout failed",
-      });
-    }
-  }
-
-  async handleGetAuthState(nonce: number) {
-    try {
-      const state = this.webAuthnClient.getAuthState();
-      this.sendResponseToParent({
-        type: "response",
-        nonce,
-        success: true,
-        data: { state },
-      });
-    } catch (error) {
-      this.sendResponseToParent({
-        type: "response",
-        nonce,
-        success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to get auth state",
-      });
-    }
-  }
-
-  async hashScript(script: string, handler: string): Promise<string> {
+  async hashScript(script: string): Promise<string> {
     const rawHash = await crypto.subtle.digest(
       "SHA-256",
-      new TextEncoder().encode(`${script}\n${handler}`)
+      new TextEncoder().encode(`${script}`)
     );
     return bytesToHex(new Uint8Array(rawHash));
   }
@@ -360,7 +252,7 @@ class IframeClient {
       if (originalMessage?.type === "execute") {
         // Handle execute responses
         if (data.ExecuteSuccess) {
-          const result = data.ExecuteSuccess as ExecuteSuccess;
+          const result = data.ExecuteSuccess.Ok as ExecuteSuccess;
           this.processExecuteLogs(result.logs);
 
           this.sendResponseToParent({

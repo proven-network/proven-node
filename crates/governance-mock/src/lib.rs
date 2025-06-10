@@ -49,7 +49,7 @@ impl MockGovernance {
 
     /// Create a new mock governance implementation with a single node.
     #[must_use]
-    pub fn for_single_node(origin: String, private_key: SigningKey) -> Self {
+    pub fn for_single_node(origin: String, private_key: SigningKey, version: Version) -> Self {
         let node = TopologyNode {
             availability_zone: "local".to_string(),
             origin,
@@ -60,7 +60,7 @@ impl MockGovernance {
 
         Self::new(
             vec![node],
-            vec![],
+            vec![version],
             "http://localhost:3200".to_string(),
             vec![],
         )
