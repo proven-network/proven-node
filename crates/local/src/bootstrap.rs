@@ -687,6 +687,14 @@ impl Bootstrap {
             Error::PrivateKey("Failed to create SigningKey: invalid key length".to_string())
         })?;
 
+        // Just use single version based on mock attestation pcrs (deterministic hashes on cargo version)
+        let pcrs = self
+            .attestor
+            .pcrs()
+            .await
+            .map_err(|e| Error::Attestation(format!("failed to get PCRs: {}", e)))?;
+        let version = Version::from_pcrs(pcrs);
+
         let governance = match self.args.network_config_path {
             Some(ref network_config_path) => {
                 info!(
@@ -702,17 +710,10 @@ impl Bootstrap {
                 MockGovernance::for_single_node(
                     format!("http://localhost:{}", self.args.port),
                     private_key.clone(),
+                    version.clone(),
                 )
             }
         };
-
-        // Just use single version based on mock attestation pcrs (deterministic hashes on cargo version)
-        let pcrs = self
-            .attestor
-            .pcrs()
-            .await
-            .map_err(|e| Error::Attestation(format!("failed to get PCRs: {}", e)))?;
-        let version = Version::from_pcrs(pcrs);
 
         // Check that governance contains the version from attestor
         if !governance
