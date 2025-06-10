@@ -4,6 +4,12 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
+mod config;
+mod error;
+
+use config::Config;
+pub use error::Error;
+
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
@@ -11,20 +17,9 @@ use std::path::Path;
 use std::vec::Vec;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
-use serde::{Deserialize, Serialize};
-
-mod error;
-pub use error::Error;
-
-/// Node definition in the topology file
-#[derive(Debug, Serialize, Deserialize)]
-struct TopologyFileNode {
-    origin: String,
-    public_key: String,
-    specializations: Vec<String>,
-}
 
 /// Mock implementation of the governance interface.
 #[derive(Debug, Clone)]
@@ -59,26 +54,27 @@ impl MockGovernance {
     /// # Errors
     ///
     /// Returns an error if:
-    /// - The topology file cannot be read
-    /// - The topology file contains invalid JSON
-    pub fn from_topology_file<P: AsRef<Path>>(
-        topology_path: P,
-        versions: Vec<Version>,
-    ) -> Result<Self, Error> {
-        // Read the topology file
-        let mut file = File::open(topology_path)
-            .map_err(|e| Error::TopologyFile(format!("Failed to open topology file: {}", e)))?;
+    /// - The network config file cannot be read
+    /// - The network config file contains invalid JSON
+    pub fn from_network_config_file<P: AsRef<Path>>(network_config_path: P) -> Result<Self, Error> {
+        // Read the network config file
+        let mut file = File::open(network_config_path).map_err(|e| {
+            Error::TopologyFile(format!("Failed to open network config file: {}", e))
+        })?;
 
         let mut content = String::new();
-        file.read_to_string(&mut content)
-            .map_err(|e| Error::TopologyFile(format!("Failed to read topology file: {}", e)))?;
+        file.read_to_string(&mut content).map_err(|e| {
+            Error::TopologyFile(format!("Failed to read network config file: {}", e))
+        })?;
 
-        // Parse the topology nodes
-        let topology_nodes: Vec<TopologyFileNode> = serde_json::from_str(&content)
-            .map_err(|e| Error::TopologyFile(format!("Failed to parse topology file: {}", e)))?;
+        // Parse the network config file
+        let network_config: Config = serde_json::from_str(&content).map_err(|e| {
+            Error::TopologyFile(format!("Failed to parse network config file: {}", e))
+        })?;
 
         // Convert to governance nodes
-        let nodes = topology_nodes
+        let nodes = network_config
+            .topology
             .into_iter()
             .map(|n| {
                 let mut specializations = HashSet::new();
@@ -110,6 +106,16 @@ impl MockGovernance {
             })
             .collect();
 
+        let versions = network_config
+            .versions
+            .into_iter()
+            .map(|v| Version {
+                ne_pcr0: Bytes::from(hex::decode(v.pcr0).unwrap()),
+                ne_pcr1: Bytes::from(hex::decode(v.pcr1).unwrap()),
+                ne_pcr2: Bytes::from(hex::decode(v.pcr2).unwrap()),
+            })
+            .collect();
+
         Ok(Self { nodes, versions })
     }
 }
@@ -130,7 +136,6 @@ impl Governance for MockGovernance {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use std::time::SystemTime;
 
     use bytes::Bytes;
     use proven_governance::{NodeSpecialization, TopologyNode, Version};
@@ -162,19 +167,15 @@ mod tests {
 
         // Create test versions
         let version_1 = Version {
-            activated_at: SystemTime::now(),
             ne_pcr0: Bytes::from("pcr0-1"),
             ne_pcr1: Bytes::from("pcr1-1"),
             ne_pcr2: Bytes::from("pcr2-1"),
-            sequence: 1,
         };
 
         let version_2 = Version {
-            activated_at: SystemTime::now(),
             ne_pcr0: Bytes::from("pcr0-2"),
             ne_pcr1: Bytes::from("pcr1-2"),
             ne_pcr2: Bytes::from("pcr2-2"),
-            sequence: 2,
         };
 
         // Create mock governance

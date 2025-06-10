@@ -24,6 +24,10 @@ pub enum Error {
     #[error(transparent)]
     EthereumReth(#[from] proven_ethereum_reth::Error),
 
+    /// Governance error
+    #[error("governance error: {0}")]
+    Governance(String),
+
     /// HTTP proxy error
     #[error(transparent)]
     HttpProxy(#[from] proven_http_proxy::Error),

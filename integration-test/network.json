@@ -1,0 +1,26 @@
+{
+  "topology": [
+    {
+      "public_key": "3fded8e1f5b1125e3f2360e91fdba2498ef5f53a57b2ad562349ad88dcff6d7f",
+      "origin": "http://bulbasaur.local:3201",
+      "specializations": ["ethereum-holesky"]
+    },
+    {
+      "public_key": "8b13f1f0bf178207ed466dd1449ff6f3074e707a5085312cd8eb357d9be3e86d",
+      "origin": "http://charmander.local:3202",
+      "specializations": ["radix-stokenet"]
+    },
+    {
+      "public_key": "2eed1d6d1b8a8dd6ffe7b186dc5ea59a7e572bae03dafaec3f388d7c7798ca8a",
+      "origin": "http://squirtle.local:3203",
+      "specializations": ["bitcoin-testnet"]
+    }
+  ],
+  "versions": [
+    {
+      "pcr0": "30f2c9b7736afa4af8e80acf549cb5c9511c2198f0174bf461a5c547ad3bfbd04dd6370968444bfdf64a34e5dda2a684",
+      "pcr1": "0ab829f12a94d68545fe4a331fb80ccd2cd0e16b5c84f854a4b7f3c3c32a386dd6aed3f1117e3831bc21ac124a5e9ec8",
+      "pcr2": "ba73cd68537fb4a9e704df621505420055ee049177c50a59643cad88736fcee578139cf76549cdb9d37169a13276578b"
+    }
+  ]
+}

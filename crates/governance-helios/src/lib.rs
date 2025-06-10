@@ -11,7 +11,6 @@ use error::Error;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, UNIX_EPOCH};
 use std::vec::Vec;
 
 use alloy::primitives::Address;
@@ -179,14 +178,8 @@ impl Governance for HeliosGovernance {
 
         // getActiveVersions returns VersionStruct[] memory, so versions_result._0 is the array
         for version_struct in &versions_result._0 {
-            // Convert timestamp to SystemTime
-            let activated_at_secs = version_struct.activatedAt.to::<u64>();
-            let activated_at = UNIX_EPOCH + Duration::from_secs(activated_at_secs);
-
             if version_struct.active {
                 versions.push(Version {
-                    sequence: version_struct.sequence,
-                    activated_at,
                     ne_pcr0: version_struct.nePcr0.clone().into(),
                     ne_pcr1: version_struct.nePcr1.clone().into(),
                     ne_pcr2: version_struct.nePcr2.clone().into(),

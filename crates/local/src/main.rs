@@ -322,6 +322,10 @@ struct Args {
     )]
     nats_store_dir: PathBuf,
 
+    /// Path to the network config file
+    #[arg(long, env = "PROVEN_NETWORK_CONFIG_PATH")]
+    network_config_path: Option<PathBuf>,
+
     /// Private key provided directly as an environment variable
     #[arg(long, env = "PROVEN_NODE_KEY", required = true)]
     node_key: String,
@@ -401,10 +405,6 @@ struct Args {
     /// Use testnet
     #[arg(long, env = "PROVEN_TESTNET")]
     testnet: bool,
-
-    /// Path to the topology file
-    #[arg(long, env = "PROVEN_TOPOLOGY_FILE")]
-    topology_file: Option<PathBuf>,
 }
 
 #[tokio::main(worker_threads = 8)]

@@ -6,7 +6,6 @@
 
 use std::error::Error;
 use std::fmt::{self, Debug};
-use std::time::SystemTime;
 use std::{collections::HashSet, fmt::Display};
 
 use async_trait::async_trait;
@@ -61,9 +60,6 @@ pub enum NodeSpecialization {
 /// A version of the node software.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Version {
-    /// The timestamp when the version was activated.
-    pub activated_at: SystemTime,
-
     /// A contiguous measure of the contents of the image file, without the section data.
     pub ne_pcr0: Bytes,
 
@@ -72,20 +68,15 @@ pub struct Version {
 
     /// A contiguous, in-order measurement of the user applications, without the boot ramfs.
     pub ne_pcr2: Bytes,
-
-    /// Sequence number of the version.
-    pub sequence: u64,
 }
 
 impl Version {
     /// Create a new from attestation PCRs.
     pub fn from_pcrs(pcrs: Pcrs) -> Self {
         Self {
-            activated_at: SystemTime::now(),
             ne_pcr0: pcrs.pcr0,
             ne_pcr1: pcrs.pcr1,
             ne_pcr2: pcrs.pcr2,
-            sequence: 0,
         }
     }
 

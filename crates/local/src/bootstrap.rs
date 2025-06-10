@@ -26,7 +26,7 @@ use proven_ethereum_lighthouse::{
     EthereumNetwork as LighthouseNetwork, LighthouseNode, LighthouseNodeOptions,
 };
 use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOptions};
-use proven_governance::{NodeSpecialization, Version};
+use proven_governance::{Governance, NodeSpecialization, Version};
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_http_proxy::{
@@ -687,6 +687,25 @@ impl Bootstrap {
             Error::PrivateKey("Failed to create SigningKey: invalid key length".to_string())
         })?;
 
+        let governance = match self.args.network_config_path {
+            Some(ref network_config_path) => {
+                info!(
+                    "using replication factor 3 with network config from file: {}",
+                    network_config_path.display()
+                );
+                MockGovernance::from_network_config_file(network_config_path)
+                    .map_err(|e| Error::Io(format!("Failed to load network config: {}", e)))?
+            }
+            None => {
+                info!("using replication factor 1 as no network config file provided");
+                self.num_replicas = 1;
+                MockGovernance::for_single_node(
+                    format!("http://localhost:{}", self.args.port),
+                    private_key.clone(),
+                )
+            }
+        };
+
         // Just use single version based on mock attestation pcrs (deterministic hashes on cargo version)
         let pcrs = self
             .attestor
@@ -695,24 +714,18 @@ impl Bootstrap {
             .map_err(|e| Error::Attestation(format!("failed to get PCRs: {}", e)))?;
         let version = Version::from_pcrs(pcrs);
 
-        let governance = match self.args.topology_file {
-            Some(ref topology_file) => {
-                info!(
-                    "using replication factor 3 with topology from file: {}",
-                    topology_file.display()
-                );
-                MockGovernance::from_topology_file(topology_file, vec![version])
-                    .map_err(|e| Error::Io(format!("Failed to load topology: {}", e)))?
-            }
-            None => {
-                info!("using replication factor 1 as no topology file provided");
-                self.num_replicas = 1;
-                MockGovernance::for_single_node(
-                    format!("http://localhost:{}", self.args.port),
-                    private_key.clone(),
-                )
-            }
-        };
+        // Check that governance contains the version from attestor
+        if !governance
+            .get_active_versions()
+            .await
+            .map_err(|e| Error::Governance(e.to_string()))?
+            .contains(&version)
+        {
+            return Err(Error::Governance(format!(
+                "governance does not contain version from attestor: {:?}",
+                version
+            )));
+        }
 
         let network = ProvenNetwork::new(ProvenNetworkOptions {
             governance: governance.clone(),

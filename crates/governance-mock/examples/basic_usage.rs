@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::time::SystemTime;
 
 use bytes::Bytes;
 use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
@@ -30,19 +29,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create test versions
     let version1 = Version {
-        activated_at: SystemTime::now(),
         ne_pcr0: Bytes::from("pcr0-1"),
         ne_pcr1: Bytes::from("pcr1-1"),
         ne_pcr2: Bytes::from("pcr2-1"),
-        sequence: 1,
     };
 
     let version2 = Version {
-        activated_at: SystemTime::now(),
         ne_pcr0: Bytes::from("pcr0-2"),
         ne_pcr1: Bytes::from("pcr1-2"),
         ne_pcr2: Bytes::from("pcr2-2"),
-        sequence: 2,
     };
 
     // Create mock governance
@@ -61,7 +56,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let active_versions = governance.get_active_versions().await?;
     println!("\nActive versions:");
     for version in active_versions {
-        println!("  - Version sequence: {}", version.sequence);
+        println!(
+            "  - Version: PCR0: {}, PCR1: {}, PCR2: {}",
+            hex::encode(version.ne_pcr0),
+            hex::encode(version.ne_pcr1),
+            hex::encode(version.ne_pcr2)
+        );
     }
 
     Ok(())

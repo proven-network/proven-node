@@ -2,7 +2,7 @@
 set -e
 
 # Use the shared topology file
-TOPOLOGY_FILE="/etc/proven/topology.json"
+NETWORK_CONFIG_PATH="/etc/proven/network.json"
 
 echo "Starting node with ID: $NODE_ID, port: $PORT"
 
@@ -18,5 +18,5 @@ if [ -f "/tmp/proven/hosts" ]; then
 fi
 
 # Run the proven-local binary
-echo "Starting proven-local with topology file: $TOPOLOGY_FILE and private key via environment variable on port $PORT"
-exec proven-local --topology-file $TOPOLOGY_FILE
+echo "Starting proven-local with network config file: $NETWORK_CONFIG_PATH and private key via environment variable on port $PORT"
+exec proven-local --network-config-path $NETWORK_CONFIG_PATH

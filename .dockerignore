@@ -62,7 +62,7 @@ benches/
 # Exclude integration test files except specific ones
 integration-test/*
 !integration-test/entrypoint.sh
-!integration-test/topology.json
+!integration-test/network.json
 !integration-test/test-scripts/
 
 # Don't exclude important project files
@@ -78,4 +78,3 @@ Dockerfile*
 docker-compose*.yml
 .env
 .env.*
-!integration-test/topology.json

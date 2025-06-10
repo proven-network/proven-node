@@ -162,7 +162,7 @@ COPY integration-test/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Copy configuration files
-COPY integration-test/topology.json /etc/proven/topology.json
+COPY integration-test/network.json /etc/proven/network.json
 
 # Expose port for API
 EXPOSE 3201 3202 3203
