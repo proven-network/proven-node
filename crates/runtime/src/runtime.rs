@@ -193,6 +193,7 @@ impl
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 /// use serde_json::json;
 /// use tempfile::tempdir;
+/// use uuid::Uuid;
 ///
 /// let code_package = CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
 ///
@@ -232,7 +233,7 @@ impl
 ///             identity_address: "my_identity".to_string(),
 ///         }),
 ///         origin: "origin".to_string(),
-///         session_id: "session_id".to_string(),
+///         session_id: Uuid::new_v4(),
 ///         signing_key: SigningKey::generate(&mut rand::thread_rng()),
 ///         verifying_key: VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng())),
 ///     },

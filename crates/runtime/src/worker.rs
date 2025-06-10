@@ -31,6 +31,7 @@ use tokio::sync::oneshot;
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 /// use serde_json::json;
 /// use tempfile::tempdir;
+/// use uuid::Uuid;
 ///
 /// #[tokio::main]
 /// async fn main() {
@@ -81,7 +82,7 @@ use tokio::sync::oneshot;
 ///                     identity_address: "my_identity".to_string(),
 ///                 }),
 ///                 origin: "origin".to_string(),
-///                 session_id: "session_id".to_string(),
+///                 session_id: Uuid::new_v4(),
 ///                 signing_key: SigningKey::generate(&mut rand::thread_rng()),
 ///                 verifying_key: VerifyingKey::from(&SigningKey::generate(
 ///                     &mut rand::thread_rng(),
