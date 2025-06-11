@@ -1,7 +1,7 @@
 use crate::FullContext;
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
@@ -11,19 +11,24 @@ use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
+use serde::Deserialize;
 use url::Url;
 use uuid::Uuid;
 use webauthn_rs::prelude::*;
-
-use axum::extract::Path;
 
 // Base64URL representation of 32 bytes of '1'
 // TODO: Tie this to a network parameter or something
 const PRF_EVAL_FIRST_B64URL: &str = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
+#[derive(Deserialize)]
+pub struct RegistrationStartData {
+    pub user_name: String,
+}
+
 pub(crate) async fn webauthn_registration_start_handler<AM, RM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     _origin_header: Option<TypedHeader<Origin>>,
+    Json(RegistrationStartData { user_name }): Json<RegistrationStartData>,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
@@ -55,14 +60,22 @@ where
         .build()
         .unwrap();
 
-    // Initiate passkey registration
+    // Initiate passkey registration - this automatically creates discoverable credentials when possible
     let (ccr, state) = webauthn
-        .start_passkey_registration(user_unique_id, "user@proven.network", "Proven User", None)
+        .start_passkey_registration(user_unique_id, &user_name, &user_name, None)
         .expect("Failed to start registration");
 
-    // Just serialize the state to /tmp with serde_json for testing
+    // Store both the state and the user UUID for use in finish
     let state_json = serde_json::to_string(&state).unwrap();
     std::fs::write("/tmp/registration_state.json", state_json.as_bytes()).unwrap();
+
+    // Store the user UUID separately so we can access it in the finish handler
+    let user_uuid_json = serde_json::to_string(&user_unique_id).unwrap();
+    std::fs::write(
+        "/tmp/registration_user_uuid.json",
+        user_uuid_json.as_bytes(),
+    )
+    .unwrap();
 
     // Convert CCR to Value for modification
     let mut ccr_val = match serde_json::to_value(&ccr) {
@@ -75,6 +88,55 @@ where
                 .unwrap();
         }
     };
+
+    // Manually override to require resident keys (discoverable credentials)
+    let resident_key_set = ccr_val
+        .pointer_mut("/publicKey/authenticatorSelection")
+        .and_then(|auth_sel| auth_sel.as_object_mut())
+        .map(|auth_obj| {
+            auth_obj.insert(
+                "residentKey".to_string(),
+                serde_json::Value::String("required".to_string()),
+            );
+            auth_obj.insert(
+                "requireResidentKey".to_string(),
+                serde_json::Value::Bool(true),
+            );
+            auth_obj.insert(
+                "userVerification".to_string(),
+                serde_json::Value::String("required".to_string()),
+            );
+            auth_obj.insert(
+                "authenticatorAttachment".to_string(),
+                serde_json::Value::String("platform".to_string()),
+            );
+            true
+        })
+        .unwrap_or_else(|| {
+            // Create authenticatorSelection if it doesn't exist
+            ccr_val
+                .pointer_mut("/publicKey")
+                .and_then(|pk_val| pk_val.as_object_mut())
+                .map(|pk_obj| {
+                    let auth_selection = serde_json::json!({
+                        "residentKey": "required",
+                        "requireResidentKey": true,
+                        "userVerification": "required",
+                        "authenticatorAttachment": "platform"
+                    });
+                    pk_obj.insert("authenticatorSelection".to_string(), auth_selection);
+                    true
+                })
+                .unwrap_or(false)
+        });
+
+    if !resident_key_set {
+        eprintln!("Failed to set resident key requirement");
+        return Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body("Failed to configure credential requirements".to_string())
+            .unwrap();
+    }
 
     // Navigate into ccr_val["publicKey"]["extensions"] and insert PRF
     let prf_inserted = ccr_val
@@ -175,9 +237,38 @@ where
     match webauthn.finish_passkey_registration(&register_public_key_credential, &registration_state)
     {
         Ok(passkey) => {
-            // Store the passkey for future authentication
+            // Read the user UUID that we stored during registration start
+            let user_uuid_data = match std::fs::read("/tmp/registration_user_uuid.json") {
+                Ok(data) => data,
+                Err(e) => {
+                    eprintln!("Failed to read user UUID file: {}", e);
+                    return Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body("Failed to load user UUID".to_string())
+                        .unwrap();
+                }
+            };
+
+            let user_uuid: Uuid = match serde_json::from_slice(&user_uuid_data) {
+                Ok(uuid) => uuid,
+                Err(e) => {
+                    eprintln!("Failed to deserialize user UUID: {}", e);
+                    return Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body("Failed to parse user UUID".to_string())
+                        .unwrap();
+                }
+            };
+
+            // Store the passkey with the user UUID for future authentication
             let passkey_json = serde_json::to_string(&passkey).unwrap();
-            std::fs::write("/tmp/stored_passkey.json", passkey_json.as_bytes()).unwrap();
+            let passkey_filename = format!("/tmp/stored_passkey_{}.json", user_uuid);
+            std::fs::write(&passkey_filename, passkey_json.as_bytes()).unwrap();
+
+            println!(
+                "Stored passkey for user {} at {}",
+                user_uuid, passkey_filename
+            );
 
             Response::builder()
                 .status(StatusCode::OK)
@@ -202,36 +293,6 @@ where
     A: Attestor,
     G: Governance,
 {
-    // Check if we have stored passkeys
-    if !std::path::Path::new("/tmp/stored_passkey.json").exists() {
-        return Response::builder()
-            .status(StatusCode::NOT_FOUND)
-            .body("No credentials found - registration required".to_string())
-            .unwrap();
-    }
-
-    // Load the stored passkey
-    let passkey_data = match std::fs::read("/tmp/stored_passkey.json") {
-        Ok(data) => data,
-        Err(_) => {
-            return Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body("No credentials found - registration required".to_string())
-                .unwrap();
-        }
-    };
-
-    let passkey: Passkey = match serde_json::from_slice(&passkey_data) {
-        Ok(pk) => pk,
-        Err(e) => {
-            eprintln!("Failed to deserialize stored passkey: {}", e);
-            return Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to load stored credentials".to_string())
-                .unwrap();
-        }
-    };
-
     let rp_origin = Url::parse(
         &network
             .governance()
@@ -253,11 +314,12 @@ where
         .build()
         .unwrap();
 
-    // Start authentication
-    let (rcr, state) = match webauthn.start_passkey_authentication(&[passkey]) {
+    // Start discoverable authentication (for conditional UI)
+    // This allows any discoverable credential for this RP to be used
+    let (rcr, state) = match webauthn.start_discoverable_authentication() {
         Ok((rcr, state)) => (rcr, state),
         Err(e) => {
-            eprintln!("Failed to start authentication: {}", e);
+            eprintln!("Failed to start discoverable authentication: {}", e);
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to start authentication".to_string())
@@ -317,6 +379,31 @@ where
             .status(StatusCode::INTERNAL_SERVER_ERROR)
             .body("Failed to structure authentication options".to_string())
             .unwrap();
+    }
+
+    // Set hints to client-device only
+    let hints_set = rcr_val
+        .pointer_mut("/publicKey")
+        .and_then(|pk_val| pk_val.as_object_mut())
+        .map(|pk_obj| {
+            pk_obj.insert(
+                "hints".to_string(),
+                serde_json::Value::Array(vec![serde_json::Value::String(
+                    "client-device".to_string(),
+                )]),
+            );
+            true
+        })
+        .unwrap_or(false);
+
+    if !hints_set {
+        eprintln!("Failed to insert userVerification");
+    }
+
+    // Remove mediation field (webauthn_rs forces it when activating discoverable)
+    // Set to immediate in client-side code
+    if let Some(obj) = rcr_val.as_object_mut() {
+        obj.remove("mediation");
     }
 
     // Serialize the modified RCR
@@ -382,22 +469,80 @@ where
         }
     };
 
-    let auth_state: PasskeyAuthentication = match serde_json::from_slice(&auth_state_data) {
-        Ok(state) => state,
+    let auth_state: webauthn_rs::prelude::DiscoverableAuthentication =
+        match serde_json::from_slice(&auth_state_data) {
+            Ok(state) => state,
+            Err(e) => {
+                eprintln!("Failed to deserialize authentication state: {}", e);
+                return Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body("Failed to load authentication session".to_string())
+                    .unwrap();
+            }
+        };
+
+    // First, identify which user is trying to authenticate
+    let (user_unique_id, _user_handle) =
+        match webauthn.identify_discoverable_authentication(&auth_public_key_credential) {
+            Ok(user_data) => user_data,
+            Err(e) => {
+                eprintln!(
+                    "Failed to identify user from discoverable authentication: {}",
+                    e
+                );
+                return Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .body(format!("Failed to identify user: {e}"))
+                    .unwrap();
+            }
+        };
+
+    println!("Identified user: {:?}", user_unique_id);
+
+    // Load the stored passkey for this specific user
+    let passkey_filename = format!("/tmp/stored_passkey_{}.json", user_unique_id);
+    let passkey_data = match std::fs::read(&passkey_filename) {
+        Ok(data) => data,
         Err(e) => {
-            eprintln!("Failed to deserialize authentication state: {}", e);
+            eprintln!("Failed to read passkey file {}: {}", passkey_filename, e);
             return Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to load authentication session".to_string())
+                .status(StatusCode::NOT_FOUND)
+                .body(format!(
+                    "No stored passkey found for user {}",
+                    user_unique_id
+                ))
                 .unwrap();
         }
     };
 
-    // Complete the authentication
-    match webauthn.finish_passkey_authentication(&auth_public_key_credential, &auth_state) {
+    let passkey: webauthn_rs::prelude::Passkey = match serde_json::from_slice(&passkey_data) {
+        Ok(pk) => pk,
+        Err(e) => {
+            eprintln!("Failed to deserialize stored passkey: {}", e);
+            return Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Failed to load stored passkey".to_string())
+                .unwrap();
+        }
+    };
+
+    // Convert to DiscoverableKey
+    let discoverable_key: webauthn_rs::prelude::DiscoverableKey = (&passkey).into();
+
+    println!(
+        "Loaded passkey for user {} from {}",
+        user_unique_id, passkey_filename
+    );
+
+    // Complete the discoverable authentication
+    match webauthn.finish_discoverable_authentication(
+        &auth_public_key_credential,
+        auth_state,
+        &[discoverable_key],
+    ) {
         Ok(auth_result) => {
             // Authentication successful
-            println!("Authentication successful: {:?}", auth_result);
+            println!("Discoverable authentication successful: {:?}", auth_result);
 
             Response::builder()
                 .status(StatusCode::OK)

@@ -109,193 +109,173 @@ export class WebAuthnClient {
     return this.isSignedIn() ? "signed_in" : "not_signed_in";
   }
 
-  // Store master secret in sessionStorage
+  // Simple authenticate method - matches working example pattern
+  async authenticate(): Promise<Response> {
+    console.log("Starting authentication...");
+
+    // Get challenge from server - uses start_discoverable_authentication
+    const resp = await fetch("./auth/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!resp.ok) {
+      throw new Error(
+        `Authentication start failed: ${resp.status} ${resp.statusText}`
+      );
+    }
+
+    const responseData = await resp.json();
+    const options = convertOptionsToBuffer(responseData);
+
+    console.log("Server provided auth options:", options);
+    console.log("RP ID:", options?.publicKey?.rpId);
+    console.log("Allow credentials:", options?.publicKey?.allowCredentials);
+
+    // Use navigator.credentials.get with discoverable auth options
+    const credential = await navigator.credentials.get({
+      publicKey: options.publicKey,
+      mediation: "immediate" as CredentialMediationRequirement,
+    });
+
+    if (!credential) {
+      throw new Error("No credential received from authenticator");
+    }
+
+    console.log("Received credential from authenticator");
+
+    // Convert credential to JSON format for server
+    const credentialJson = convertResultToBase64Url({
+      id: credential.id,
+      rawId: (credential as any).rawId,
+      response: {
+        authenticatorData: (credential as any).response.authenticatorData,
+        clientDataJSON: (credential as any).response.clientDataJSON,
+        signature: (credential as any).response.signature,
+        userHandle: (credential as any).response.userHandle,
+      },
+      type: credential.type,
+    });
+
+    // Send credential to server
+    const finishResp = await fetch("./auth/finish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentialJson),
+    });
+
+    if (finishResp.ok) {
+      console.log("Authentication successful!");
+
+      // Process PRF results if available
+      const extensionResults = (
+        credential as any
+      ).getClientExtensionResults?.();
+      if (extensionResults?.prf?.results?.first) {
+        const masterSecretBytes = new Uint8Array(
+          extensionResults.prf.results.first
+        );
+        this.storeMasterSecret(masterSecretBytes);
+        console.log("Stored master secret from PRF");
+      }
+    }
+
+    return finishResp;
+  }
+
+  // Simple register method - matches working example pattern
+  async register(username: string): Promise<Response> {
+    console.log("Starting registration...");
+
+    // Get challenge from server
+    const resp = await fetch("./register/start", {
+      body: JSON.stringify({ user_name: username }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    });
+
+    if (!resp.ok) {
+      throw new Error(
+        `Registration start failed: ${resp.status} ${resp.statusText}`
+      );
+    }
+
+    const responseData = await resp.json();
+    const options = convertOptionsToBuffer(responseData);
+
+    console.log("Server provided registration options:", options);
+
+    // Use navigator.credentials.create
+    const credential = await navigator.credentials.create({
+      publicKey: options.publicKey,
+    });
+
+    if (!credential) {
+      throw new Error("No credential received from authenticator");
+    }
+
+    console.log("Received credential from authenticator");
+
+    // Check if credential was created as discoverable (resident key)
+    const extensionResults = (credential as any).getClientExtensionResults?.();
+    console.log("Extension results:", extensionResults);
+    if (extensionResults?.credProps?.rk !== undefined) {
+      console.log(
+        `Credential created as resident key: ${extensionResults.credProps.rk}`
+      );
+    }
+
+    // Convert credential to JSON format for server
+    const credentialJson = convertResultToBase64Url({
+      id: credential.id,
+      rawId: (credential as any).rawId,
+      response: {
+        attestationObject: (credential as any).response.attestationObject,
+        clientDataJSON: (credential as any).response.clientDataJSON,
+      },
+      type: credential.type,
+    });
+
+    // Send credential to server
+    const finishResp = await fetch("./register/finish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(credentialJson),
+    });
+
+    if (finishResp.ok) {
+      console.log("Registration successful!");
+
+      // Process PRF results if available
+      if (extensionResults?.prf?.results?.first) {
+        const masterSecretBytes = new Uint8Array(
+          extensionResults.prf.results.first
+        );
+        this.storeMasterSecret(masterSecretBytes);
+        console.log("Stored master secret from PRF");
+      }
+    }
+
+    return finishResp;
+  }
+
+  signOut(): void {
+    sessionStorage.removeItem(this.MASTER_SECRET_KEY);
+    console.log("Signed out - cleared master secret");
+  }
+
   private storeMasterSecret(masterSecretBytes: Uint8Array): void {
     const masterSecretHex = bytesToHex(masterSecretBytes);
     sessionStorage.setItem(this.MASTER_SECRET_KEY, masterSecretHex);
-    console.log("Master secret stored in sessionStorage");
   }
 
-  // Get master secret from sessionStorage
   getMasterSecret(): Uint8Array | null {
     const masterSecretHex = sessionStorage.getItem(this.MASTER_SECRET_KEY);
-    if (!masterSecretHex) {
-      return null;
-    }
-
-    try {
-      // Convert hex string back to Uint8Array
-      const bytes = new Uint8Array(
+    if (masterSecretHex) {
+      return new Uint8Array(
         masterSecretHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
       );
-      return bytes;
-    } catch (e) {
-      console.error("Failed to parse master secret from sessionStorage:", e);
-      return null;
     }
-  }
-
-  // Sign out (clear sessionStorage)
-  signOut(): void {
-    sessionStorage.removeItem(this.MASTER_SECRET_KEY);
-    console.log("User signed out");
-  }
-
-  // Process PRF results and derive keys
-  private async processPRFResults(prfResults: any): Promise<Uint8Array | null> {
-    if (!prfResults || !prfResults.results || !prfResults.results.first) {
-      console.log("No PRF results available");
-      return null;
-    }
-
-    console.log("PRF Results:", prfResults);
-    console.log("Full PRF Extension results:", prfResults);
-
-    // Use the PRF output directly as the master secret for HKDF
-    const masterSecretBytes = new Uint8Array(prfResults.results.first);
-    console.log(
-      "Using Master Secret (from PRF - hex):",
-      bytesToHex(masterSecretBytes)
-    );
-
-    // Define the context for the key derivation
-    const contextString = "app/1234/main_store";
-    const derivedKeyLengthBytes = 32; // For Ed25519 seed
-
-    console.log(`Deriving key for context: "${contextString}"`);
-
-    // 1. Derive the 32-byte seed using HKDF
-    const derivedSeed = hkdf(
-      sha256, // Underlying hash function
-      masterSecretBytes, // Master secret (from PRF)
-      undefined, // Salt (optional)
-      contextString, // Context-specific information
-      derivedKeyLengthBytes // Output length (32 for Ed25519 seed)
-    );
-    console.log(` Derived Seed via HKDF (hex): ${bytesToHex(derivedSeed)}`);
-
-    // 2. Use the HKDF-derived seed to generate the Ed25519 public key
-    const derivedPublicKeyBytes = await ed.getPublicKeyAsync(derivedSeed);
-    console.log(
-      ` Derived Public Key (hex): ${bytesToHex(derivedPublicKeyBytes)}`
-    );
-
-    return masterSecretBytes;
-  }
-
-  async register(): Promise<Response> {
-    try {
-      const resp = await fetch("./start");
-
-      if (!resp.ok) {
-        throw new Error(
-          `Failed to get registration options: ${resp.statusText}`
-        );
-      }
-
-      const responseData = await resp.json();
-      console.log("Raw server response:", responseData);
-
-      // Convert the options, only converting specific fields
-      const options = convertOptionsToBuffer(responseData);
-      console.log("Converted options:", options);
-
-      const result = await navigator.credentials.create(options);
-      console.log("Credential result:", result);
-
-      if (!result) {
-        throw new Error("Failed to create credential - null result");
-      }
-
-      // Log PRF results if available
-      const credential = result as PublicKeyCredential;
-      if ("getClientExtensionResults" in credential) {
-        const clientExtensionResults =
-          credential.getClientExtensionResults() as { prf?: any };
-        if (clientExtensionResults.prf) {
-          const masterSecretBytes = await this.processPRFResults(
-            clientExtensionResults.prf
-          );
-          if (masterSecretBytes) {
-            this.storeMasterSecret(masterSecretBytes);
-          }
-        } else {
-          console.log("PRF extension not present in authenticator response.");
-        }
-      } else {
-        console.log("getClientExtensionResults not available on credential.");
-      }
-
-      return fetch("./finish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(result),
-      });
-    } catch (err) {
-      console.error("WebAuthn registration failed:", err);
-      throw err;
-    }
-  }
-
-  async authenticate(): Promise<Response> {
-    try {
-      const resp = await fetch("./auth/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      // If server returns 404 or similar, it means no credentials are registered
-      if (resp.status === 404) {
-        throw new Error("No credentials found - registration required");
-      }
-
-      if (!resp.ok) {
-        throw new Error(
-          `Failed to get authentication options: ${resp.statusText}`
-        );
-      }
-
-      const responseData = await resp.json();
-      console.log("Raw auth server response:", responseData);
-
-      // Convert the options for authentication
-      const options = convertOptionsToBuffer(responseData);
-      console.log("Converted auth options:", options);
-
-      const result = await navigator.credentials.get(options);
-      console.log("Authentication result:", result);
-
-      if (!result) {
-        throw new Error("Failed to authenticate - null result");
-      }
-
-      // Process PRF results for authentication
-      const credential = result as PublicKeyCredential;
-      if ("getClientExtensionResults" in credential) {
-        const clientExtensionResults =
-          credential.getClientExtensionResults() as { prf?: any };
-        if (clientExtensionResults.prf) {
-          const masterSecretBytes = await this.processPRFResults(
-            clientExtensionResults.prf
-          );
-          if (masterSecretBytes) {
-            this.storeMasterSecret(masterSecretBytes);
-          }
-        } else {
-          console.log("PRF extension not present in authentication response.");
-        }
-      } else {
-        console.log("getClientExtensionResults not available on credential.");
-      }
-
-      return fetch("./auth/finish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(result),
-      });
-    } catch (err) {
-      console.error("WebAuthn authentication failed:", err);
-      throw err;
-    }
+    return null;
   }
 }

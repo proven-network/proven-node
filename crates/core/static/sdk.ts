@@ -21,6 +21,16 @@ type IframeResponse = {
   error?: string;
 };
 
+// Additional message types for modal communication
+type ModalMessage = {
+  type:
+    | "open_registration_modal"
+    | "close_registration_modal"
+    | "registration_complete";
+  success?: boolean;
+  username?: string;
+};
+
 export type ProvenSDK = {
   execute: (
     script: string,
@@ -39,12 +49,91 @@ export const ProvenSDK = (options: {
   const { logger, iframeUrl, applicationId, targetElement } = options;
 
   let iframe: HTMLIFrameElement | null = null;
+  let modalIframe: HTMLIFrameElement | null = null;
+  let modalOverlay: HTMLDivElement | null = null;
   let iframeReady = false;
   let nonce = 0;
   const pendingCallbacks = new Map<
     number,
     { resolve: (data: any) => void; reject: (error: Error) => void }
   >();
+
+  const createModalOverlay = (): HTMLDivElement => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10000;
+    `;
+
+    return overlay;
+  };
+
+  const openRegistrationModal = (): void => {
+    if (modalIframe && modalOverlay) {
+      // Modal already open
+      return;
+    }
+
+    logger?.debug("SDK: Opening registration modal");
+
+    // Create overlay
+    modalOverlay = createModalOverlay();
+
+    // Create modal iframe
+    modalIframe = document.createElement("iframe");
+    const baseUrl =
+      iframeUrl.replace("/button.html", "") ||
+      iframeUrl.replace(/\/[^\/]*$/, "");
+    modalIframe.src = `${baseUrl}/register.html?app=${applicationId}`;
+    modalIframe.setAttribute(
+      "sandbox",
+      "allow-scripts allow-same-origin allow-forms"
+    );
+    modalIframe.setAttribute(
+      "allow",
+      "publickey-credentials-create *; publickey-credentials-get *"
+    );
+
+    // Style the modal iframe to fill the screen
+    modalIframe.style.cssText = `
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: transparent;
+    `;
+
+    modalOverlay.appendChild(modalIframe);
+    document.body.appendChild(modalOverlay);
+
+    // Send init message to modal after it loads
+    modalIframe.onload = () => {
+      setTimeout(() => {
+        if (modalIframe && modalIframe.contentWindow) {
+          modalIframe.contentWindow.postMessage(
+            {
+              type: "init_registration",
+            },
+            "*"
+          );
+        }
+      }, 100);
+    };
+  };
+
+  const closeRegistrationModal = (): void => {
+    logger?.debug("SDK: Closing registration modal");
+
+    if (modalOverlay && modalOverlay.parentNode) {
+      modalOverlay.parentNode.removeChild(modalOverlay);
+    }
+
+    modalIframe = null;
+    modalOverlay = null;
+  };
 
   const createIframe = (): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -61,9 +150,9 @@ export const ProvenSDK = (options: {
         "publickey-credentials-create *; publickey-credentials-get *"
       );
 
-      // Set iframe dimensions for the auth button
-      iframe.style.width = "140px";
-      iframe.style.height = "50px";
+      // Set iframe dimensions for the smart auth button
+      iframe.style.width = "180px";
+      iframe.style.height = "65px";
       iframe.style.border = "none";
       iframe.style.background = "transparent";
 
@@ -99,23 +188,58 @@ export const ProvenSDK = (options: {
   };
 
   const handleIframeMessage = (event: MessageEvent) => {
-    if (!iframe || event.source !== iframe.contentWindow) {
+    // Handle messages from button iframe
+    if (iframe && event.source === iframe.contentWindow) {
+      const message = event.data as IframeResponse | ModalMessage;
+
+      if (message.type === "response") {
+        const response = message as IframeResponse;
+        const callback = pendingCallbacks.get(response.nonce);
+        if (callback) {
+          pendingCallbacks.delete(response.nonce);
+
+          if (response.success) {
+            callback.resolve(response.data);
+          } else {
+            callback.reject(new Error(response.error || "Unknown error"));
+          }
+        }
+      } else if (message.type === "open_registration_modal") {
+        openRegistrationModal();
+      }
       return;
     }
 
-    const response = event.data as IframeResponse;
+    // Handle messages from modal iframe
+    if (modalIframe && event.source === modalIframe.contentWindow) {
+      const message = event.data as ModalMessage;
 
-    if (response.type === "response") {
-      const callback = pendingCallbacks.get(response.nonce);
-      if (callback) {
-        pendingCallbacks.delete(response.nonce);
+      if (message.type === "close_registration_modal") {
+        closeRegistrationModal();
+      } else if (message.type === "registration_complete") {
+        logger?.debug("SDK: Registration completed", {
+          success: message.success,
+          username: message.username,
+        });
 
-        if (response.success) {
-          callback.resolve(response.data);
-        } else {
-          callback.reject(new Error(response.error || "Unknown error"));
+        // Notify the button iframe about registration completion
+        if (iframe && iframe.contentWindow) {
+          iframe.contentWindow.postMessage(
+            {
+              type: "registration_complete",
+              success: message.success,
+              username: message.username,
+            },
+            "*"
+          );
+        }
+
+        // Close modal after successful registration
+        if (message.success) {
+          closeRegistrationModal();
         }
       }
+      return;
     }
   };
 
@@ -177,6 +301,13 @@ export const ProvenSDK = (options: {
   // Initialize iframe immediately
   createIframe().catch((error) => {
     logger?.error("Failed to initialize iframe:", error);
+  });
+
+  // Handle ESC key to close modal
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && modalOverlay) {
+      closeRegistrationModal();
+    }
   });
 
   return {

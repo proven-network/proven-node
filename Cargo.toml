@@ -540,7 +540,7 @@ urlpattern = "0.3.0"
 uuid = { version = "1.17.0", features = ["v4"] }
 v8_valueserializer = "0.1.1"
 web-transport-proto = "0.2.6"
-webauthn-rs = { git = "https://github.com/proven-network/webauthn-rs", features = ["danger-allow-state-serialisation"] }
+webauthn-rs = { git = "https://github.com/proven-network/webauthn-rs", features = ["conditional-ui", "danger-allow-state-serialisation"] }
 webpki-root-certs = "1.0.0"
 webpki-roots = "1.0.0"
 wgpu-core = "=24.0.0"

@@ -1,11 +1,11 @@
 use crate::error::{Error, Result};
 use crate::handlers::{
-    ApplicationHttpContext, application_http_handler, create_rola_challenge_handler,
-    create_session_handler, http_rpc_handler, iframe_html_handler, iframe_js_handler,
-    nats_cluster_endpoint_handler, sdk_js_handler, verify_rola_handler,
-    webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
-    webauthn_registration_finish_handler, webauthn_registration_start_handler, whoami_handler,
-    ws_rpc_handler, ws_worker_js_handler,
+    ApplicationHttpContext, application_http_handler, button_iframe_html_handler,
+    create_rola_challenge_handler, create_session_handler, http_rpc_handler, iframe_js_handler,
+    nats_cluster_endpoint_handler, register_iframe_html_handler, sdk_js_handler,
+    verify_rola_handler, webauthn_authentication_finish_handler,
+    webauthn_authentication_start_handler, webauthn_registration_finish_handler,
+    webauthn_registration_start_handler, whoami_handler, ws_rpc_handler, ws_worker_js_handler,
 };
 use crate::{FullContext, LightContext};
 
@@ -264,33 +264,37 @@ where
                 post(verify_rola_handler).with_state(full_ctx.clone()),
             )
             .route(
-                "/app/{application_id}/auth/webauthn/login",
-                get(iframe_html_handler).with_state(full_ctx.clone()),
+                "/app/{application_id}/iframe/button.html",
+                get(button_iframe_html_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/iframe/register.html",
+                get(register_iframe_html_handler).with_state(full_ctx.clone()),
             )
             // TODO: temporary - should be extracted to external package (not served via node)
             .route("/sdk.js", get(sdk_js_handler))
             .route(
-                "/app/{application_id}/auth/webauthn/iframe.js",
+                "/app/{application_id}/iframe/iframe.js",
                 get(iframe_js_handler),
             )
             .route(
-                "/app/{application_id}/auth/webauthn/ws-worker.js",
+                "/app/{application_id}/iframe/ws-worker.js",
                 get(ws_worker_js_handler),
             )
             .route(
-                "/app/{application_id}/auth/webauthn/start",
-                get(webauthn_registration_start_handler).with_state(full_ctx.clone()),
+                "/app/{application_id}/iframe/register/start",
+                post(webauthn_registration_start_handler).with_state(full_ctx.clone()),
             )
             .route(
-                "/app/{application_id}/auth/webauthn/finish",
+                "/app/{application_id}/iframe/register/finish",
                 post(webauthn_registration_finish_handler).with_state(full_ctx.clone()),
             )
             .route(
-                "/app/{application_id}/auth/webauthn/auth/start",
+                "/app/{application_id}/iframe/auth/start",
                 post(webauthn_authentication_start_handler).with_state(full_ctx.clone()),
             )
             .route(
-                "/app/{application_id}/auth/webauthn/auth/finish",
+                "/app/{application_id}/iframe/auth/finish",
                 post(webauthn_authentication_finish_handler).with_state(full_ctx.clone()),
             )
             .route("/whoami", get(whoami_handler).with_state(full_ctx.clone()))

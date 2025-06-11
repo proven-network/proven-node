@@ -101,6 +101,8 @@ class IframeClient {
       await this.setupCose();
       await this.setupWorkerCommunication();
       this.setupParentCommunication();
+
+      console.log("Iframe client initialized successfully");
     } catch (error) {
       console.error("Failed to initialize session:", error);
     }

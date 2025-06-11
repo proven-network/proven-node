@@ -11,7 +11,8 @@ use proven_runtime::RuntimePoolManagement;
 
 use axum::extract::Path;
 
-const IFRAME_HTML: &str = include_str!("../../static/iframe.html");
+const BUTTON_IFRAME_HTML: &str = include_str!("../../static/button.html");
+const REGISTER_IFRAME_HTML: &str = include_str!("../../static/register.html");
 const IFRAME_JS: &str = include_str!("../../static/iframe.js");
 const SDK_JS: &str = include_str!("../../static/sdk.js");
 const WS_WORKER_JS: &str = include_str!("../../static/ws-worker.js");
@@ -20,7 +21,7 @@ pub(crate) async fn iframe_js_handler() -> impl IntoResponse {
     ([("Content-Type", "application/javascript")], IFRAME_JS)
 }
 
-pub(crate) async fn iframe_html_handler<AM, RM, SM, A, G>(
+pub(crate) async fn button_iframe_html_handler<AM, RM, SM, A, G>(
     Path(_application_id): Path<String>,
     State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
     headers: HeaderMap,
@@ -47,7 +48,38 @@ where
                 format!("ALLOW-FROM frame-ancestors {referer}"),
             ),
         ],
-        Html(IFRAME_HTML),
+        Html(BUTTON_IFRAME_HTML),
+    )
+}
+
+pub(crate) async fn register_iframe_html_handler<AM, RM, SM, A, G>(
+    Path(_application_id): Path<String>,
+    State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
+    headers: HeaderMap,
+) -> impl IntoResponse
+where
+    AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
+    SM: IdentityManagement,
+    A: Attestor,
+    G: Governance,
+{
+    let referer = headers
+        .get("Referer")
+        .map_or("http://localhost:3200", |r| r.to_str().unwrap());
+
+    (
+        [
+            (
+                "Content-Security-Policy",
+                format!("frame-ancestors {referer}"),
+            ),
+            (
+                "X-Frame-Options",
+                format!("ALLOW-FROM frame-ancestors {referer}"),
+            ),
+        ],
+        Html(REGISTER_IFRAME_HTML),
     )
 }
 
