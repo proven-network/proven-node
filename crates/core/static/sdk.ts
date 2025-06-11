@@ -1,5 +1,3 @@
-import { type RadixDappToolkitOptions } from "@radixdlt/radix-dapp-toolkit";
-
 type ExecuteOutput = string | number | boolean | null | undefined;
 type WhoAmIResponse = { identity_address: string; account_addresses: string[] };
 
@@ -40,8 +38,16 @@ export type ProvenSDK = {
   whoAmI: () => Promise<WhoAmIResponse>;
 };
 
+export type Logger = {
+  debug: (message: string, data?: any) => void;
+  log: (message: string, data?: any) => void;
+  error: (message: string, data?: any) => void;
+  info: (message: string, data?: any) => void;
+  warn: (message: string, data?: any) => void;
+};
+
 export const ProvenSDK = (options: {
-  logger?: RadixDappToolkitOptions["logger"];
+  logger?: Logger;
   iframeUrl: string;
   applicationId: string;
   targetElement?: HTMLElement | string;
