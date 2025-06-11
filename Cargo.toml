@@ -159,17 +159,17 @@ alloy-trie = "0.8.1"
 anyhow = "1.0.98"
 asn1-rs = "0.7.1"
 assert_matches = "1.5.0"
-async-compression = "0.4.23"
-async-nats = "0.41.0"
+async-compression = "0.4.24"
+async-nats = "0.42.0"
 async-once-cell = "0.5.4"
 async-stream = "0.3.6"
 async-trait = "0.1.87"
 aws-config = { version = "1.6.3", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
-aws-sdk-ec2 = { version = "1.136.0", default-features = false }
-aws-sdk-kms = { version = "1.72.0", default-features = false }
-aws-sdk-route53resolver = { version = "1.76.0", default-features = false }
-aws-sdk-s3 = { version = "1.90.0", default-features = false, features = ["rt-tokio"] }
-aws-sdk-secretsmanager = { version = "1.75.0", default-features = false }
+aws-sdk-ec2 = { version = "1.138.0", default-features = false }
+aws-sdk-kms = { version = "1.75.0", default-features = false }
+aws-sdk-route53resolver = { version = "1.77.0", default-features = false }
+aws-sdk-s3 = { version = "1.91.0", default-features = false, features = ["rt-tokio"] }
+aws-sdk-secretsmanager = { version = "1.76.0", default-features = false }
 axum = { version = "0.8.4", features = ["ws"] }
 axum-extra = { version = "0.10.1", features = ["typed-header"] }
 axum-server = { version = "0.7.1", features = ["tls-rustls-no-provider"] }
@@ -186,7 +186,7 @@ block-padding = { version = "0.3.3", features = ["std"] }
 bls12_381 = { git = "https://github.com/fspreiss/bls12_381", branch = "upgrade-sha-and-digest", features = ["experimental"] }
 boxed_error = "0.2.3"
 brotli = "=6.0.0"
-bytemuck = "1.23.0"
+bytemuck = "1.23.1"
 bytes = { version = "1.9.0", features = ["serde"] }
 cache_control = "=0.2.0"
 capacity_builder = "0.5.0"
@@ -195,7 +195,7 @@ chrono = { version = "0.4.41", features = ["serde"] }
 ciborium = "0.2.2"
 cidr = { version = "0.3.1", features = ["serde"] }
 checksum = "0.2.1"
-clap = { version = "4.5.39", features = ["derive", "env"] }
+clap = { version = "4.5.40", features = ["derive", "env"] }
 color-print = "0.3.5"
 console = "0.15.11"
 console_static_text = "0.8.3"
@@ -213,9 +213,9 @@ deno_ast = { version = "0.48.0", features = ["transpiling"] }
 deno_bench_util = { path = "vendor/deno/bench_util" }
 deno_broadcast_channel = { path = "vendor/deno/ext/broadcast_channel" }
 deno_cache = { path = "vendor/deno/ext/cache" }
-deno_cache_dir = "0.22.2"
+deno_cache_dir = "0.22.3"
 deno_canvas = { path = "vendor/deno/ext/canvas" }
-deno_config = { version = "0.55.0", features = ["workspace", "sync"] }
+deno_config = { version = "=0.56.0", features = ["workspace", "sync"] }
 deno_console = { path = "vendor/deno/ext/console" }
 # TODO: Enable pointer compression when prebuilts are available for ARM.
 # https://github.com/denoland/rusty_v8/pull/1752
@@ -227,22 +227,22 @@ deno_features = { path = "vendor/deno/runtime/features" }
 deno_fetch = { path = "vendor/deno/ext/fetch" }
 deno_ffi = { path = "vendor/deno/ext/ffi" }
 deno_fs = { path = "vendor/deno/ext/fs" }
-deno_graph = "0.95.0"
+deno_graph = "0.95.1"
 deno_http = { path = "vendor/deno/ext/http" }
 deno_io = { path = "vendor/deno/ext/io" }
 deno_kv = { path = "vendor/deno/ext/kv" }
 deno_lib = { path = "vendor/deno/cli/lib" }
-deno_lockfile = "0.29.0"
+deno_lockfile = "0.30.1"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
 deno_napi = { path = "vendor/deno/ext/napi" }
 deno_native_certs = "0.3.0"
 deno_net = { path = "vendor/deno/ext/net" }
 deno_node = { path = "vendor/deno/ext/node" }
-deno_npm = "0.34.0"
+deno_npm = "0.35.0"
 deno_npm_cache = { path = "vendor/deno/resolvers/npm_cache" }
 deno_npm_installer = { path = "vendor/deno/resolvers/npm_installer" }
 deno_os = { path = "vendor/deno/ext/os" }
-deno_package_json = { version = "0.7.0", default-features = false }
+deno_package_json = { version = "=0.7.0", default-features = false }
 deno_path_util = "0.4.0"
 deno_permissions = { path = "vendor/deno/runtime/permissions" }
 deno_process = { path = "vendor/deno/ext/process" }
@@ -292,7 +292,7 @@ faster-hex = "0.10.0"
 fastwebsockets = { version = "0.10.0", features = ["upgrade", "unstable-split"] }
 fdlimit = "0.3.0"
 filetime = "0.2.16"
-flate2 = { version = "1.1.1", default-features = false }
+flate2 = { version = "1.1.2", default-features = false }
 fqdn = "0.4.6"
 fs3 = "0.5.0"
 futures = "0.3.21"
@@ -314,7 +314,7 @@ http-serde = "2.1.1"
 http_v02 = { package = "http", version = "0.2.12" }
 httparse = "1.10.1"
 hyper = { version = "1.6.0", features = ["full"] }
-hyper-rustls = { version = "0.27.6", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
+hyper-rustls = { version = "0.27.7", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
 hyper-util = { version = "0.1.14", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.32", features = ["runtime", "http1"] }
 idna = "1.0.3"
@@ -333,9 +333,9 @@ lcms2 = "6.1.0"
 libffi = "4.1.0"
 libffi-sys = "3.3.1"
 libloading = "0.8.8"
-libsql = { version = "0.9.9", default-features = false, features = ["core", "stream"] }
-libsql-ffi = { version = "0.9.9", features = ["session"] }
-libsql-rusqlite = { version = "0.9.9", features = ["limits"] }
+libsql = { version = "0.9.10", default-features = false, features = ["core", "stream"] }
+libsql-ffi = { version = "0.9.11", features = ["session"] }
+libsql-rusqlite = { version = "0.9.10", features = ["limits"] }
 libsui = "0.10.0"
 libc = "0.2.172"
 libuv-sys-lite = "1.48.3"
@@ -345,7 +345,7 @@ lsp-types = "=0.97.0"
 md-5 = "0.10.5"
 md4 = "0.10.2"
 md5 = "0.7.0"
-memchr = "2.7.4"
+memchr = "2.7.5"
 memmap2 = "0.9"
 memmem = "0.1.1"
 mime = "0.3.16"
@@ -462,7 +462,7 @@ rand_distr = "0.5.1"
 raw-window-handle = "0.6.0"
 rayon = "1.8.0"
 regex = "1.10.6"
-reqwest = { version = "0.12.15", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] }
+reqwest = { version = "0.12.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] }
 retri = "0.1.0"
 revm = { version = "=22.0.1", default-features = false, features = ["std", "serde", "optional_block_gas_limit", "optional_eip3607", "optional_no_base_fee"] }
 ring = "0.17.14"
@@ -497,13 +497,13 @@ signature = "2.2.0"
 simd-json = "0.15.0"
 slab = "0.4.9"
 sm3 = "0.4.2"
-smallvec = "1.15.0"
+smallvec = "1.15.1"
 socket2 = { version = "0.5.10", features = ["all"] }
 spki = "0.7.3"
 ssz_types = "0.11.0"
 strip-ansi-escapes = "0.2.1"
 superstruct = "0.9.0"
-syn = { version = "2.0.101", features = ["full", "extra-traits"] }
+syn = { version = "2.0.102", features = ["full", "extra-traits"] }
 sys_traits = "0.1.15"
 systemctl = "0.4.0"
 tar = "0.4.44"
@@ -523,7 +523,7 @@ tokio-stream = "0.1.17"
 tokio-tun = "0.13.2"
 tokio-util = { version = "0.7.15", features = ["rt"] }
 tokio-vsock = "0.7.1"
-toml = "0.8.22"
+toml = "0.8.23"
 tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }
 tower-http = { version = "0.6.6", features = ["decompression-br", "decompression-gzip", "cors"] }
 tower-service = "0.3.2"
@@ -533,7 +533,7 @@ tracing-subscriber = "0.3.19"
 tracing-test = "0.2.5"
 tree_hash = "0.10.0"
 tree_hash_derive = "0.10.0"
-twox-hash = "2.1.0"
+twox-hash = "2.1.1"
 typenum = "1.18.0"
 url = { version = "2.5.4", features = ["serde", "expose_internals"] }
 urlpattern = "0.3.0"
