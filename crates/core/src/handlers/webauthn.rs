@@ -27,7 +27,7 @@ pub struct RegistrationStartData {
 
 pub(crate) async fn webauthn_registration_start_handler<AM, RM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
-    _origin_header: Option<TypedHeader<Origin>>,
+    origin_header: Option<TypedHeader<Origin>>,
     Json(RegistrationStartData { user_name }): Json<RegistrationStartData>,
 ) -> impl IntoResponse
 where
@@ -50,13 +50,29 @@ where
 
     let rp_id = rp_origin.host_str().unwrap();
 
-    let origin = Url::parse(&network.origin().await.unwrap()).unwrap();
+    let origin = &network.origin().await.unwrap();
+    let origin_url = Url::parse(origin).unwrap();
+
+    // Check origin_header and origin match
+    if let Some(origin_header) = origin_header {
+        if &origin_header.0.to_string() != origin {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("Origin mismatch".to_string())
+                .unwrap();
+        }
+    } else {
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body("Origin header missing".to_string())
+            .unwrap();
+    }
 
     let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
         .rp_name("Proven Network")
         .allow_cross_origin(true)
-        .append_allowed_origin(&origin)
+        .append_allowed_origin(&origin_url)
         .build()
         .unwrap();
 
@@ -197,6 +213,7 @@ where
 
 pub(crate) async fn webauthn_registration_finish_handler<AM, RM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
+    origin_header: Option<TypedHeader<Origin>>,
     Json(register_public_key_credential): Json<RegisterPublicKeyCredential>,
 ) -> impl IntoResponse
 where
@@ -217,13 +234,29 @@ where
 
     let rp_id = rp_origin.host_str().unwrap();
 
-    let origin = Url::parse(&network.origin().await.unwrap()).unwrap();
+    let origin = &network.origin().await.unwrap();
+    let origin_url = Url::parse(origin).unwrap();
+
+    // Check origin_header and origin match
+    if let Some(origin_header) = origin_header {
+        if &origin_header.0.to_string() != origin {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("Origin mismatch".to_string())
+                .unwrap();
+        }
+    } else {
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body("Origin header missing".to_string())
+            .unwrap();
+    }
 
     let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
         .rp_name("Proven Network")
         .allow_cross_origin(true)
-        .append_allowed_origin(&origin)
+        .append_allowed_origin(&origin_url)
         .build()
         .unwrap();
 
@@ -283,7 +316,7 @@ where
 
 pub(crate) async fn webauthn_authentication_start_handler<AM, RM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
-    _origin_header: Option<TypedHeader<Origin>>,
+    origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
@@ -303,13 +336,29 @@ where
 
     let rp_id = rp_origin.host_str().unwrap();
 
-    let origin = Url::parse(&network.origin().await.unwrap()).unwrap();
+    let origin = &network.origin().await.unwrap();
+    let origin_url = Url::parse(origin).unwrap();
+
+    // Check origin_header and origin match
+    if let Some(origin_header) = origin_header {
+        if &origin_header.0.to_string() != origin {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("Origin mismatch".to_string())
+                .unwrap();
+        }
+    } else {
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body("Origin header missing".to_string())
+            .unwrap();
+    }
 
     let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
         .rp_name("Proven Network")
         .allow_cross_origin(true)
-        .append_allowed_origin(&origin)
+        .append_allowed_origin(&origin_url)
         .build()
         .unwrap();
 
@@ -426,6 +475,7 @@ where
 
 pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
+    origin_header: Option<TypedHeader<Origin>>,
     Json(auth_public_key_credential): Json<PublicKeyCredential>,
 ) -> impl IntoResponse
 where
@@ -446,13 +496,29 @@ where
 
     let rp_id = rp_origin.host_str().unwrap();
 
-    let origin = Url::parse(&network.origin().await.unwrap()).unwrap();
+    let origin = &network.origin().await.unwrap();
+    let origin_url = Url::parse(origin).unwrap();
+
+    // Check origin_header and origin match
+    if let Some(origin_header) = origin_header {
+        if &origin_header.0.to_string() != origin {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("Origin mismatch".to_string())
+                .unwrap();
+        }
+    } else {
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body("Origin header missing".to_string())
+            .unwrap();
+    }
 
     let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
         .unwrap()
         .rp_name("Proven Network")
         .allow_cross_origin(true)
-        .append_allowed_origin(&origin)
+        .append_allowed_origin(&origin_url)
         .build()
         .unwrap();
 
