@@ -1,8 +1,8 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Auth Button</title>
     <script src="./button.js"></script>
     <style>
@@ -12,7 +12,7 @@
         padding: 8px;
         background: transparent;
       }
-      
+
       .auth-button {
         padding: 10px 20px;
         font-size: 14px;
@@ -25,30 +25,30 @@
         outline: none;
         margin: 2px;
       }
-      
+
       .auth-button:focus {
         outline: 2px solid #0066cc;
         outline-offset: 2px;
       }
-      
+
       .sign-in {
         background-color: #28a745;
         color: white;
       }
-      
+
       .sign-in:hover {
         background-color: #218838;
       }
-      
+
       .sign-out {
         background-color: #dc3545;
         color: white;
       }
-      
+
       .sign-out:hover {
         background-color: #c82333;
       }
-      
+
       .auth-button:disabled {
         background-color: #6c757d;
         cursor: not-allowed;
@@ -70,9 +70,11 @@
       <div id="signed-out-view">
         <button id="auth-button" class="auth-button sign-in">Sign In</button>
       </div>
-      <div id="signed-in-view" style="display: none;">
-        <button id="signout-button" class="auth-button sign-out">Sign Out</button>
+      <div id="signed-in-view" style="display: none">
+        <button id="signout-button" class="auth-button sign-out">
+          Sign Out
+        </button>
       </div>
     </div>
   </body>
-</html> 
+</html>
