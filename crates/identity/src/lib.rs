@@ -27,7 +27,7 @@ use proven_radix_rola::{Rola, RolaOptions, SignedChallenge, Type as SignedChalle
 use proven_store::{Store, Store1, Store2};
 use radix_common::network::NetworkDefinition;
 use rand::{Rng, thread_rng};
-use tracing::info;
+use tracing::{debug, info};
 use uuid::Uuid;
 
 /// Options for creating a new `IdentityManager`
@@ -293,7 +293,7 @@ where
         application_id: &str,
         session_id: &str,
     ) -> Result<Option<Session>, Error> {
-        info!(
+        debug!(
             "Getting session (id: {}) for application: {}",
             session_id, application_id
         );

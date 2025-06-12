@@ -226,7 +226,7 @@ class RpcClient {
   }
 
   async handleWorkerMessage(message: any) {
-    if (message.type === "ws-message") {
+    if (message.type === "ws-message" || message.type === "http-response") {
       try {
         // Decode COSE message
         const data = new Uint8Array(message.data);
@@ -248,7 +248,14 @@ class RpcClient {
           );
         }
       } catch (error) {
-        console.error("RPC: Error handling WebSocket message:", error);
+        console.error("RPC: Error handling response message:", error);
+      }
+    } else if (message.type === "http-error") {
+      // Handle HTTP errors
+      const pendingRequest = this.pendingRequests.get(message.nonce);
+      if (pendingRequest) {
+        this.pendingRequests.delete(message.nonce);
+        pendingRequest.reject(new Error(message.error));
       }
     }
   }

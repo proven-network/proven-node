@@ -261,11 +261,11 @@ where
             )
             // ** RPC **
             .route(
-                "/rpc/{application_id}",
+                "/app/{application_id}/rpc/http",
                 post(http_rpc_handler).with_state(full_ctx.clone()),
             )
             .route(
-                "/app/{application_id}/ws",
+                "/app/{application_id}/rpc/ws",
                 get(ws_rpc_handler).with_state(full_ctx.clone()),
             )
             .route(

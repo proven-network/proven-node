@@ -38,9 +38,9 @@ pub(crate) async fn ws_rpc_handler<AM, RM, SM, A, G>(
     }): Query<SessionQuery>,
     State(FullContext {
         application_manager,
-        network: _,
         runtime_pool_manager,
         session_manager,
+        ..
     }): State<FullContext<AM, RM, SM, A, G>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse

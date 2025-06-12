@@ -9,13 +9,15 @@ type WorkerMessage = {
   data: Uint8Array;
 };
 
-class WebSocketWorker {
+class RpcWorker {
   ws: WebSocket | null;
   ports: Set<MessagePort>;
   lastActivity: number;
   timeoutChecker: number | null;
   intentionallyClosed: boolean;
   pendingRequests: Map<number, MessagePort>;
+  httpEndpoint: string;
+  wsEndpoint: string;
 
   constructor() {
     this.ws = null;
@@ -25,18 +27,18 @@ class WebSocketWorker {
     this.intentionallyClosed = false;
     this.pendingRequests = new Map();
 
-    this.init();
+    const query = globalThis.location.search;
+    this.httpEndpoint = `http://${globalThis.location.host}/app/application_id/rpc/http${query}`;
+    this.wsEndpoint = `ws://${globalThis.location.host}/app/application_id/rpc/ws${query}`;
+
     this.startTimeoutChecker();
   }
 
-  init() {
+  initWebSocket() {
     if (this.ws?.readyState === WebSocket.OPEN || this.intentionallyClosed)
       return;
 
-    const query = globalThis.location.search;
-    this.ws = new WebSocket(
-      `ws://${globalThis.location.host}/app/application_id/ws${query}`
-    );
+    this.ws = new WebSocket(this.wsEndpoint);
     this.ws.binaryType = "arraybuffer";
     this.updateLastActivity();
     this.intentionallyClosed = false;
@@ -51,7 +53,7 @@ class WebSocketWorker {
       this.ws = null;
       // Only reconnect if closure wasn't intentional
       if (!this.intentionallyClosed) {
-        setTimeout(() => this.init(), 1000);
+        setTimeout(() => this.initWebSocket(), 1000);
       }
     };
 
@@ -70,30 +72,52 @@ class WebSocketWorker {
     });
   }
 
-  updateLastActivity() {
-    this.lastActivity = Date.now();
-  }
+  async sendViaHttp(data: Uint8Array, nonce: number): Promise<void> {
+    try {
+      const response = await fetch(this.httpEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+        },
+        body: data,
+      });
 
-  startTimeoutChecker() {
-    this.timeoutChecker = setInterval(() => {
-      if (Date.now() - this.lastActivity > INACTIVITY_TIMEOUT) {
-        this.closeConnection();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-    }, CHECK_INTERVAL) as unknown as number;
-  }
 
-  closeConnection() {
-    if (this.ws) {
-      this.intentionallyClosed = true;
-      this.ws.close();
-      this.ws = null;
+      const responseData = await response.arrayBuffer();
+
+      // Send response back to the requesting port
+      const port = this.pendingRequests.get(nonce);
+      if (port) {
+        port.postMessage({
+          type: "http-response",
+          nonce: nonce,
+          data: responseData,
+        });
+        this.pendingRequests.delete(nonce);
+      }
+    } catch (error) {
+      console.error("HTTP request failed:", error);
+
+      // Send error back to the requesting port
+      const port = this.pendingRequests.get(nonce);
+      if (port) {
+        port.postMessage({
+          type: "http-error",
+          nonce: nonce,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+        this.pendingRequests.delete(nonce);
+      }
     }
   }
 
-  send(data: Uint8Array) {
+  sendViaWebSocket(data: Uint8Array) {
     this.intentionallyClosed = false; // Reset the flag when attempting to send
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.init();
+      this.initWebSocket();
     }
 
     // Wait for connection to be ready
@@ -110,43 +134,66 @@ class WebSocketWorker {
     sendWhenReady();
   }
 
-  handlePortMessage(port: MessagePort, data: any) {
+  updateLastActivity() {
+    this.lastActivity = Date.now();
+  }
+
+  startTimeoutChecker() {
+    this.timeoutChecker = setInterval(() => {
+      if (Date.now() - this.lastActivity > INACTIVITY_TIMEOUT) {
+        this.closeWebSocketConnection();
+      }
+    }, CHECK_INTERVAL) as unknown as number;
+  }
+
+  closeWebSocketConnection() {
+    if (this.ws) {
+      this.intentionallyClosed = true;
+      this.ws.close();
+      this.ws = null;
+    }
+  }
+
+  async handlePortMessage(port: MessagePort, data: any) {
     if (data.type === "send") {
       const message = data as WorkerMessage;
 
       // Store which port sent this request for response routing
       this.pendingRequests.set(message.nonce, port);
 
-      // Send the binary data over WebSocket
-      this.send(message.data);
+      // Decide transport: use WebSocket if already open, otherwise use HTTP
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        console.debug("RPC: Using WebSocket transport (already open)");
+        this.sendViaWebSocket(message.data);
+      } else {
+        console.debug("RPC: Using HTTP transport");
+        await this.sendViaHttp(message.data, message.nonce);
+      }
     }
   }
 }
 
-function main() {
-  const worker = new WebSocketWorker();
-  const { addEventListener } = self as unknown as SharedWorkerGlobalScope;
+const worker = new RpcWorker();
 
-  addEventListener("connect", (e) => {
-    const port = e.ports[0];
-    worker.ports.add(port);
-    worker.updateLastActivity();
+self.addEventListener("connect", (event: Event) => {
+  const connectEvent = event as MessageEvent;
+  const port = connectEvent.ports[0];
 
-    port.onmessage = (e) => {
-      worker.handlePortMessage(port, e.data);
-    };
+  worker.ports.add(port);
+  worker.updateLastActivity();
 
-    port.onmessageerror = (e) => {
-      console.error("Port message error:", e);
-    };
+  port.onmessage = (e) => {
+    worker.handlePortMessage(port, e.data);
+  };
 
-    // Clean up when port is closed
-    port.addEventListener("close", () => {
-      worker.ports.delete(port);
-    });
+  port.onmessageerror = (e) => {
+    console.error("Port message error:", e);
+  };
 
-    port.start();
+  // Clean up when port is closed
+  port.addEventListener("close", () => {
+    worker.ports.delete(port);
   });
-}
 
-main();
+  port.start();
+});
