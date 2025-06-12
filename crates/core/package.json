@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "build": "esbuild static/iframe.ts static/sdk.ts static/ws-worker.ts --bundle --outdir=static",
+    "build": "node esbuild.config.js",
     "test:iframe": "node test/server.js"
   },
   "dependencies": {

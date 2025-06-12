@@ -1,3 +1,5 @@
+import { generateWindowId } from "./helpers/broker";
+
 type ExecuteOutput = string | number | boolean | null | undefined;
 type WhoAmIResponse = { identity_address: string; account_addresses: string[] };
 
@@ -21,10 +23,7 @@ type IframeResponse = {
 
 // Additional message types for modal communication
 type ModalMessage = {
-  type:
-    | "open_registration_modal"
-    | "close_registration_modal"
-    | "registration_complete";
+  type: "open_registration_modal" | "close_registration_modal";
   success?: boolean;
   username?: string;
 };
@@ -36,6 +35,7 @@ export type ProvenSDK = {
     args?: any[]
   ) => Promise<ExecuteOutput>;
   whoAmI: () => Promise<WhoAmIResponse>;
+  initButton: (targetElement?: HTMLElement | string) => Promise<void>;
 };
 
 export type Logger = {
@@ -48,16 +48,29 @@ export type Logger = {
 
 export const ProvenSDK = (options: {
   logger?: Logger;
-  iframeUrl: string;
+  authGatewayOrigin: string;
   applicationId: string;
-  targetElement?: HTMLElement | string;
 }): ProvenSDK => {
-  const { logger, iframeUrl, applicationId, targetElement } = options;
+  const { logger, authGatewayOrigin, applicationId } = options;
 
-  let iframe: HTMLIFrameElement | null = null;
+  // Build iframe URLs from well-known paths
+  const bridgeIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/bridge.html`;
+  const buttonIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/button.html`;
+  const registerIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/register.html`;
+  const rpcIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/rpc.html`;
+
+  // Generate unique window ID for this SDK instance
+  const windowId = generateWindowId();
+  logger?.debug("SDK: Generated window ID:", windowId);
+
+  let bridgeIframe: HTMLIFrameElement | null = null;
+  let buttonIframe: HTMLIFrameElement | null = null;
+  let rpcIframe: HTMLIFrameElement | null = null;
   let modalIframe: HTMLIFrameElement | null = null;
   let modalOverlay: HTMLDivElement | null = null;
-  let iframeReady = false;
+  let bridgeIframeReady = false;
+  let rpcIframeReady = false;
+  let buttonIframeReady = false;
   let nonce = 0;
   const pendingCallbacks = new Map<
     number,
@@ -91,18 +104,12 @@ export const ProvenSDK = (options: {
 
     // Create modal iframe
     modalIframe = document.createElement("iframe");
-    const baseUrl =
-      iframeUrl.replace("/button.html", "") ||
-      iframeUrl.replace(/\/[^\/]*$/, "");
-    modalIframe.src = `${baseUrl}/register.html?app=${applicationId}`;
+    modalIframe.src = `${registerIframeUrl}?app=${applicationId}#window=${windowId}`;
     modalIframe.setAttribute(
       "sandbox",
       "allow-scripts allow-same-origin allow-forms"
     );
-    modalIframe.setAttribute(
-      "allow",
-      "publickey-credentials-create *; publickey-credentials-get *"
-    );
+    modalIframe.setAttribute("allow", "publickey-credentials-create *;");
 
     // Style the modal iframe to fill the screen
     modalIframe.style.cssText = `
@@ -141,37 +148,118 @@ export const ProvenSDK = (options: {
     modalOverlay = null;
   };
 
-  const createIframe = (): Promise<void> => {
+  const createBridgeIframe = (): Promise<void> => {
     return new Promise((resolve, reject) => {
-      if (iframe && iframeReady) {
+      if (bridgeIframe && bridgeIframeReady) {
         resolve();
         return;
       }
 
-      iframe = document.createElement("iframe");
-      iframe.src = `${iframeUrl}?app=${applicationId}`;
-      iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
-      iframe.setAttribute(
+      bridgeIframe = document.createElement("iframe");
+      bridgeIframe.src = `${bridgeIframeUrl}?app=${applicationId}#window=${windowId}`;
+      bridgeIframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      bridgeIframe.setAttribute(
         "allow",
         "publickey-credentials-create *; publickey-credentials-get *"
       );
 
-      // Set iframe dimensions for the smart auth button
-      iframe.style.width = "180px";
-      iframe.style.height = "65px";
-      iframe.style.border = "none";
-      iframe.style.background = "transparent";
+      // Hide the bridge iframe as it's only for communication
+      bridgeIframe.style.cssText = `
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        top: -1000px;
+        left: -1000px;
+        border: none;
+        visibility: hidden;
+      `;
 
-      iframe.onload = () => {
+      bridgeIframe.onload = () => {
         // Wait a bit for iframe to initialize
         setTimeout(() => {
-          iframeReady = true;
+          bridgeIframeReady = true;
           resolve();
         }, 100);
       };
 
-      iframe.onerror = () => {
-        reject(new Error("Failed to load iframe"));
+      bridgeIframe.onerror = () => {
+        reject(new Error("Failed to load bridge iframe"));
+      };
+
+      // Append bridge iframe to document body (hidden)
+      document.body.appendChild(bridgeIframe);
+    });
+  };
+
+  const createRpcIframe = (): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (rpcIframe && rpcIframeReady) {
+        resolve();
+        return;
+      }
+
+      rpcIframe = document.createElement("iframe");
+      rpcIframe.src = `${rpcIframeUrl}?app=${applicationId}#window=${windowId}`;
+      rpcIframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+
+      // Hide the RPC iframe as it's only for communication
+      rpcIframe.style.cssText = `
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        top: -1000px;
+        left: -1000px;
+        border: none;
+        visibility: hidden;
+      `;
+
+      rpcIframe.onload = () => {
+        // Wait a bit for iframe to initialize
+        setTimeout(() => {
+          rpcIframeReady = true;
+          resolve();
+        }, 100);
+      };
+
+      rpcIframe.onerror = () => {
+        reject(new Error("Failed to load RPC iframe"));
+      };
+
+      // Append RPC iframe to document body (hidden)
+      document.body.appendChild(rpcIframe);
+    });
+  };
+
+  const createButtonIframe = (
+    targetElement?: HTMLElement | string
+  ): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      if (buttonIframe && buttonIframeReady) {
+        resolve();
+        return;
+      }
+
+      buttonIframe = document.createElement("iframe");
+      buttonIframe.src = `${buttonIframeUrl}?app=${applicationId}#window=${windowId}`;
+      buttonIframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      buttonIframe.setAttribute("allow", "publickey-credentials-get *");
+
+      // Set iframe dimensions for the smart auth button
+      buttonIframe.style.width = "180px";
+      buttonIframe.style.height = "65px";
+      buttonIframe.style.border = "none";
+      buttonIframe.style.background = "transparent";
+
+      buttonIframe.onload = () => {
+        // Wait a bit for iframe to initialize
+        setTimeout(() => {
+          buttonIframeReady = true;
+          resolve();
+        }, 100);
+      };
+
+      buttonIframe.onerror = () => {
+        reject(new Error("Failed to load button iframe"));
       };
 
       // Append iframe to target element or document body
@@ -186,73 +274,62 @@ export const ProvenSDK = (options: {
           target = targetElement;
         }
       }
-      target.appendChild(iframe);
-
-      // Listen for messages from iframe
-      window.addEventListener("message", handleIframeMessage);
+      target.appendChild(buttonIframe);
     });
   };
 
   const handleIframeMessage = (event: MessageEvent) => {
-    // Handle messages from button iframe
-    if (iframe && event.source === iframe.contentWindow) {
-      const message = event.data as IframeResponse | ModalMessage;
+    // Handle messages from bridge iframe
+    if (bridgeIframe && event.source === bridgeIframe.contentWindow) {
+      const message = event.data;
 
       if (message.type === "response") {
-        const response = message as IframeResponse;
-        const callback = pendingCallbacks.get(response.nonce);
+        // Handle API responses
+        const callback = pendingCallbacks.get(message.nonce);
         if (callback) {
-          pendingCallbacks.delete(response.nonce);
+          pendingCallbacks.delete(message.nonce);
 
-          if (response.success) {
-            callback.resolve(response.data);
+          if (message.success) {
+            callback.resolve(message.data);
           } else {
-            callback.reject(new Error(response.error || "Unknown error"));
+            callback.reject(new Error(message.error || "Unknown error"));
           }
         }
       } else if (message.type === "open_registration_modal") {
+        // Handle modal open requests from button iframe (via bridge)
+        openRegistrationModal();
+      } else if (message.type === "close_registration_modal") {
+        // Handle modal close requests from registration iframe (via bridge)
+        closeRegistrationModal();
+      }
+      return;
+    }
+
+    // Handle messages from button iframe (for backwards compatibility during transition)
+    if (buttonIframe && event.source === buttonIframe.contentWindow) {
+      const message = event.data as ModalMessage;
+
+      if (message.type === "open_registration_modal") {
         openRegistrationModal();
       }
       return;
     }
 
-    // Handle messages from modal iframe
+    // Handle messages from modal iframe (for backwards compatibility during transition)
     if (modalIframe && event.source === modalIframe.contentWindow) {
       const message = event.data as ModalMessage;
 
       if (message.type === "close_registration_modal") {
         closeRegistrationModal();
-      } else if (message.type === "registration_complete") {
-        logger?.debug("SDK: Registration completed", {
-          success: message.success,
-          username: message.username,
-        });
-
-        // Notify the button iframe about registration completion
-        if (iframe && iframe.contentWindow) {
-          iframe.contentWindow.postMessage(
-            {
-              type: "registration_complete",
-              success: message.success,
-              username: message.username,
-            },
-            "*"
-          );
-        }
-
-        // Close modal after successful registration
-        if (message.success) {
-          closeRegistrationModal();
-        }
       }
       return;
     }
   };
 
   const sendMessage = async (message: SdkMessage): Promise<any> => {
-    // Wait for iframe to be ready if it's not already
-    if (!iframeReady) {
-      await createIframe();
+    // Wait for bridge iframe to be ready if it's not already
+    if (!bridgeIframeReady) {
+      await createBridgeIframe();
     }
 
     return new Promise((resolve, reject) => {
@@ -269,7 +346,7 @@ export const ProvenSDK = (options: {
         }
       }, 30000); // 30 second timeout
 
-      iframe!.contentWindow!.postMessage(message, "*");
+      bridgeIframe!.contentWindow!.postMessage(message, "*");
     });
   };
 
@@ -304,10 +381,25 @@ export const ProvenSDK = (options: {
     return response;
   };
 
-  // Initialize iframe immediately
-  createIframe().catch((error) => {
-    logger?.error("Failed to initialize iframe:", error);
-  });
+  const initButton = async (
+    targetElement?: HTMLElement | string
+  ): Promise<void> => {
+    logger?.debug("SDK: Initializing button iframe");
+    await createButtonIframe(targetElement);
+  };
+
+  // Initialize bridge and RPC iframes immediately
+  Promise.all([
+    createBridgeIframe().catch((error) => {
+      logger?.error("Failed to initialize bridge iframe:", error);
+    }),
+    createRpcIframe().catch((error) => {
+      logger?.error("Failed to initialize RPC iframe:", error);
+    }),
+  ]);
+
+  // Listen for messages from iframes
+  window.addEventListener("message", handleIframeMessage);
 
   // Handle ESC key to close modal
   document.addEventListener("keydown", (event) => {
@@ -319,6 +411,7 @@ export const ProvenSDK = (options: {
   return {
     execute,
     whoAmI,
+    initButton,
   };
 };
 

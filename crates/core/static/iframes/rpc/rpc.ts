@@ -1,7 +1,7 @@
-import { createSession, getSession } from "./sessions";
-import { CoseSign1Decoder, CoseSign1Encoder } from "./helpers/cose";
+import { createSession, getSession } from "../../helpers/sessions";
+import { CoseSign1Decoder, CoseSign1Encoder } from "../../helpers/cose";
 import { bytesToHex, hexToBytes } from "@noble/curves/abstract/utils";
-import { WebAuthnClient } from "./webauthn";
+import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
 
 type WhoAmI = "WhoAmI";
 type WhoAmIResponse = { identity_address: string; account_addresses: string[] };
@@ -44,19 +44,6 @@ type IframeResponse = {
   error?: string;
 };
 
-type WorkerRequest = {
-  nonce: number;
-  data: Uint8Array;
-};
-
-type WorkerResponse = {
-  nonce: number;
-  data: any;
-  error?: string;
-};
-
-const iframeId = Math.floor(Math.random() * 1000000);
-
 function isSdkMessage(data: unknown): data is SdkMessage {
   return (
     typeof data === "object" &&
@@ -68,19 +55,25 @@ function isSdkMessage(data: unknown): data is SdkMessage {
   );
 }
 
-class IframeClient {
-  worker: SharedWorker;
+class RpcClient {
+  worker: SharedWorker | null = null;
   session: any;
   coseEncoder: any;
   coseDecoder: any;
-  webAuthnClient: WebAuthnClient;
+  broker: MessageBroker;
+  windowId: string;
   pendingRequests = new Map<
     number,
     { resolve: (data: any) => void; reject: (error: Error) => void }
   >();
 
   constructor() {
-    this.webAuthnClient = new WebAuthnClient();
+    // Extract window ID from URL fragment
+    this.windowId = getWindowIdFromUrl() || "unknown";
+
+    // Initialize broker synchronously - will throw if it fails
+    this.broker = new MessageBroker(this.windowId, "rpc");
+
     this.initializeSession();
   }
 
@@ -92,19 +85,19 @@ class IframeClient {
       let session = await getSession(applicationId);
 
       if (!session) {
-        console.log("Creating new session...");
+        console.log("RPC: Creating new session...");
         session = await createSession(applicationId);
-        console.log("Session created!", session);
+        console.log("RPC: Session created!", session);
       }
 
       this.session = session;
       await this.setupCose();
       await this.setupWorkerCommunication();
-      this.setupParentCommunication();
+      await this.initializeBroker();
 
-      console.log("Iframe client initialized successfully");
+      console.log("RPC: Client initialized successfully");
     } catch (error) {
-      console.error("Failed to initialize session:", error);
+      console.error("RPC: Failed to initialize session:", error);
     }
   }
 
@@ -117,7 +110,7 @@ class IframeClient {
 
   async setupWorkerCommunication() {
     this.worker = new SharedWorker(
-      `./ws-worker.js?session=${this.session.sessionId}`
+      `../workers/rpc-worker.js?session=${this.session.sessionId}`
     );
 
     this.worker.port.start();
@@ -126,20 +119,30 @@ class IframeClient {
     };
   }
 
-  setupParentCommunication() {
-    window.addEventListener("message", (event: MessageEvent<unknown>) => {
-      // Only handle messages from parent window
-      if (event.source !== window.parent) {
-        return;
-      }
+  async initializeBroker() {
+    try {
+      await this.broker.connect();
 
-      if (!isSdkMessage(event.data)) {
-        console.error("Invalid message format:", event.data);
-        return;
-      }
+      // Set up message handlers for direct SDK requests from bridge
+      this.broker.on("execute", (message) => {
+        if (isSdkMessage(message.data)) {
+          this.handleSdkMessage(message.data);
+        }
+      });
 
-      this.handleSdkMessage(event.data);
-    });
+      this.broker.on("whoAmI", (message) => {
+        if (isSdkMessage(message.data)) {
+          this.handleSdkMessage(message.data);
+        }
+      });
+
+      console.log("RPC: Broker initialized successfully");
+    } catch (error) {
+      console.error("RPC: Failed to initialize broker:", error);
+      throw new Error(
+        `RPC: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
   }
 
   async handleSdkMessage(message: SdkMessage) {
@@ -160,7 +163,7 @@ class IframeClient {
 
       await this.sendRpcCall(message.nonce, rpcCall, message);
     } catch (error) {
-      this.sendResponseToParent({
+      this.sendResponse({
         type: "response",
         nonce: message.nonce,
         success: false,
@@ -194,7 +197,7 @@ class IframeClient {
           this.handleRpcResponse(nonce, data, originalMessage);
         },
         reject: (error) => {
-          this.sendResponseToParent({
+          this.sendResponse({
             type: "response",
             nonce,
             success: false,
@@ -204,13 +207,15 @@ class IframeClient {
       });
 
       // Send to worker
-      this.worker.port.postMessage({
-        type: "send",
-        nonce,
-        data: encodedData,
-      });
+      if (this.worker) {
+        this.worker.port.postMessage({
+          type: "send",
+          nonce,
+          data: encodedData,
+        });
+      }
     } catch (error) {
-      this.sendResponseToParent({
+      this.sendResponse({
         type: "response",
         nonce,
         success: false,
@@ -237,10 +242,13 @@ class IframeClient {
             }
           }
         } else {
-          console.error("Failed to decode COSE message:", decodedResult.error);
+          console.error(
+            "RPC: Failed to decode COSE message:",
+            decodedResult.error
+          );
         }
       } catch (error) {
-        console.error("Error handling WebSocket message:", error);
+        console.error("RPC: Error handling WebSocket message:", error);
       }
     }
   }
@@ -257,7 +265,7 @@ class IframeClient {
           const result = data.ExecuteSuccess.Ok as ExecuteSuccess;
           this.processExecuteLogs(result.logs);
 
-          this.sendResponseToParent({
+          this.sendResponse({
             type: "response",
             nonce,
             success: true,
@@ -272,14 +280,14 @@ class IframeClient {
 
           await this.sendRpcCall(nonce, fullRpcCall, originalMessage);
         } else if (data.ExecuteFailure) {
-          this.sendResponseToParent({
+          this.sendResponse({
             type: "response",
             nonce,
             success: false,
             error: data.ExecuteFailure,
           });
         } else {
-          this.sendResponseToParent({
+          this.sendResponse({
             type: "response",
             nonce,
             success: false,
@@ -289,14 +297,14 @@ class IframeClient {
       } else if (originalMessage?.type === "whoAmI") {
         // Handle whoAmI responses
         if (data.WhoAmI) {
-          this.sendResponseToParent({
+          this.sendResponse({
             type: "response",
             nonce,
             success: true,
             data: data.WhoAmI as WhoAmIResponse,
           });
         } else {
-          this.sendResponseToParent({
+          this.sendResponse({
             type: "response",
             nonce,
             success: false,
@@ -305,7 +313,7 @@ class IframeClient {
         }
       }
     } catch (error) {
-      this.sendResponseToParent({
+      this.sendResponse({
         type: "response",
         nonce,
         success: false,
@@ -330,20 +338,23 @@ class IframeClient {
     });
   }
 
-  sendResponseToParent(response: IframeResponse) {
-    window.parent.postMessage(response, "*");
+  async sendResponse(response: IframeResponse) {
+    await this.broker.send("response", response, "sdk");
   }
 
   // Initialize the client when the page loads
   static init() {
-    globalThis.iframeClient = new IframeClient();
+    const client = new RpcClient();
+
+    // Make client available globally for debugging
+    (globalThis as any).rpcClient = client;
   }
 }
 
 // Initialize when the page loads
 if (globalThis.addEventListener) {
-  globalThis.addEventListener("DOMContentLoaded", IframeClient.init);
+  globalThis.addEventListener("DOMContentLoaded", RpcClient.init);
 } else {
   // Fallback for cases where DOMContentLoaded has already fired
-  IframeClient.init();
+  RpcClient.init();
 }

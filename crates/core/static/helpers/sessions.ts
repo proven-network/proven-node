@@ -7,8 +7,8 @@ import {
 import { decode as cborDecode } from "cbor-x";
 import { X509Certificate, X509ChainBuilder } from "@peculiar/x509";
 import { Sign1 } from "@auth0/cose";
-import { mockCertificate } from "./pems/mock";
-import { usEast2Certificate } from "./pems/us-east-2";
+import { mockCertificate } from "../pems/mock";
+import { usEast2Certificate } from "../pems/us-east-2";
 
 type PcrIndex = 0 | 1 | 2 | 3 | 4 | 8;
 export type Pcrs = Record<PcrIndex, string>;

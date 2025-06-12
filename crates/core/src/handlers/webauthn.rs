@@ -1,7 +1,7 @@
 use crate::FullContext;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
@@ -196,7 +196,6 @@ where
 }
 
 pub(crate) async fn webauthn_registration_finish_handler<AM, RM, SM, A, G>(
-    Path(_application_id): Path<String>,
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     Json(register_public_key_credential): Json<RegisterPublicKeyCredential>,
 ) -> impl IntoResponse
@@ -426,7 +425,6 @@ where
 }
 
 pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, SM, A, G>(
-    Path(_application_id): Path<String>,
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     Json(auth_public_key_credential): Json<PublicKeyCredential>,
 ) -> impl IntoResponse

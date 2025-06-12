@@ -1,11 +1,14 @@
 use crate::error::{Error, Result};
 use crate::handlers::{
-    ApplicationHttpContext, application_http_handler, button_iframe_html_handler,
-    create_rola_challenge_handler, create_session_handler, http_rpc_handler, iframe_js_handler,
-    nats_cluster_endpoint_handler, register_iframe_html_handler, sdk_js_handler,
-    verify_rola_handler, webauthn_authentication_finish_handler,
-    webauthn_authentication_start_handler, webauthn_registration_finish_handler,
-    webauthn_registration_start_handler, whoami_handler, ws_rpc_handler, ws_worker_js_handler,
+    ApplicationHttpContext, application_http_handler, bridge_iframe_html_handler,
+    bridge_iframe_js_handler, broker_worker_js_handler, button_iframe_html_handler,
+    button_iframe_js_handler, create_rola_challenge_handler, create_session_handler,
+    http_rpc_handler, nats_cluster_endpoint_handler, register_iframe_html_handler,
+    register_iframe_js_handler, rpc_iframe_html_handler, rpc_iframe_js_handler,
+    rpc_worker_js_handler, sdk_js_handler, verify_rola_handler,
+    webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
+    webauthn_registration_finish_handler, webauthn_registration_start_handler, whoami_handler,
+    ws_rpc_handler,
 };
 use crate::{FullContext, LightContext};
 
@@ -251,53 +254,12 @@ where
 
         let primary_router = Router::new()
             .route("/", get(|| async { redirect_response }))
+            // ** Sessions **
             .route(
                 "/app/{application_id}/auth/create_session",
                 post(create_session_handler).with_state(full_ctx.clone()),
             )
-            .route(
-                "/auth/rola/challenge",
-                get(create_rola_challenge_handler).with_state(full_ctx.clone()),
-            )
-            .route(
-                "/auth/rola/verify",
-                post(verify_rola_handler).with_state(full_ctx.clone()),
-            )
-            .route(
-                "/app/{application_id}/iframe/button.html",
-                get(button_iframe_html_handler).with_state(full_ctx.clone()),
-            )
-            .route(
-                "/app/{application_id}/iframe/register.html",
-                get(register_iframe_html_handler).with_state(full_ctx.clone()),
-            )
-            // TODO: temporary - should be extracted to external package (not served via node)
-            .route("/sdk.js", get(sdk_js_handler))
-            .route(
-                "/app/{application_id}/iframe/iframe.js",
-                get(iframe_js_handler),
-            )
-            .route(
-                "/app/{application_id}/iframe/ws-worker.js",
-                get(ws_worker_js_handler),
-            )
-            .route(
-                "/app/{application_id}/iframe/register/start",
-                post(webauthn_registration_start_handler).with_state(full_ctx.clone()),
-            )
-            .route(
-                "/app/{application_id}/iframe/register/finish",
-                post(webauthn_registration_finish_handler).with_state(full_ctx.clone()),
-            )
-            .route(
-                "/app/{application_id}/iframe/auth/start",
-                post(webauthn_authentication_start_handler).with_state(full_ctx.clone()),
-            )
-            .route(
-                "/app/{application_id}/iframe/auth/finish",
-                post(webauthn_authentication_finish_handler).with_state(full_ctx.clone()),
-            )
-            .route("/whoami", get(whoami_handler).with_state(full_ctx.clone()))
+            // ** RPC **
             .route(
                 "/rpc/{application_id}",
                 post(http_rpc_handler).with_state(full_ctx.clone()),
@@ -307,8 +269,81 @@ where
                 get(ws_rpc_handler).with_state(full_ctx.clone()),
             )
             .route(
+                "/auth/rola/challenge",
+                get(create_rola_challenge_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/auth/rola/verify",
+                post(verify_rola_handler).with_state(full_ctx.clone()),
+            )
+            // ** WebAuthn **
+            .route(
+                "/webauthn/register/start",
+                post(webauthn_registration_start_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/webauthn/register/finish",
+                post(webauthn_registration_finish_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/webauthn/auth/start",
+                post(webauthn_authentication_start_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/webauthn/auth/finish",
+                post(webauthn_authentication_finish_handler).with_state(full_ctx.clone()),
+            )
+            // ** Inter-node communication **
+            .route("/whoami", get(whoami_handler).with_state(full_ctx.clone()))
+            .route(
                 NATS_CLUSTER_ENDPOINT_API_PATH,
                 get(nats_cluster_endpoint_handler).with_state(light_ctx.clone()),
+            )
+            // ** Static files **
+            // TODO: SDK is temporary - should be extracted to external package (not served via node)
+            .route("/sdk.js", get(sdk_js_handler))
+            // Iframe HTML
+            .route(
+                "/app/{application_id}/iframes/bridge.html",
+                get(bridge_iframe_html_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/iframes/button.html",
+                get(button_iframe_html_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/iframes/register.html",
+                get(register_iframe_html_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/app/{application_id}/iframes/rpc.html",
+                get(rpc_iframe_html_handler).with_state(full_ctx.clone()),
+            )
+            // Iframe JS
+            .route(
+                "/app/{application_id}/iframes/bridge.js",
+                get(bridge_iframe_js_handler),
+            )
+            .route(
+                "/app/{application_id}/iframes/button.js",
+                get(button_iframe_js_handler),
+            )
+            .route(
+                "/app/{application_id}/iframes/register.js",
+                get(register_iframe_js_handler),
+            )
+            .route(
+                "/app/{application_id}/iframes/rpc.js",
+                get(rpc_iframe_js_handler),
+            )
+            // Shared workers
+            .route(
+                "/app/{application_id}/workers/broker-worker.js",
+                get(broker_worker_js_handler),
+            )
+            .route(
+                "/app/{application_id}/workers/rpc-worker.js",
+                get(rpc_worker_js_handler),
             )
             .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
             .layer(CorsLayer::very_permissive());

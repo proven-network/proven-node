@@ -91,9 +91,15 @@
           warn: (...args) => console.warn('[SDK]', ...args),
           error: (...args) => console.error('[SDK]', ...args),
         },
-        iframeUrl: 'http://localhost:3200/app/application_id/iframe/button.html',
-        applicationId: 'application_id',
-        targetElement: '#auth-container'
+        authGatewayOrigin: 'http://localhost:3200',
+        applicationId: 'application_id'
+      });
+
+      // Initialize the button iframe
+      sdk.initButton('#auth-container').then(() => {
+        logMessage('Auth button initialized', 'success');
+      }).catch((error) => {
+        logMessage(`Failed to initialize auth button: ${error.message}`, 'error');
       });
 
       // Make SDK available globally for button handlers

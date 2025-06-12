@@ -1,8 +1,10 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="./iframe.js"></script>
+    <title>Registration Modal</title>
+    <script src="./register.js"></script>
     <style>
       * {
         box-sizing: border-box;
@@ -254,153 +256,5 @@
         </div>
       </form>
     </div>
-
-    <script>
-      let iframeClient;
-      let username = '';
-
-      function showError(message) {
-        const errorEl = document.getElementById('error-message');
-        errorEl.textContent = message;
-        errorEl.style.display = 'block';
-      }
-
-      function hideError() {
-        const errorEl = document.getElementById('error-message');
-        errorEl.style.display = 'none';
-      }
-
-      function setLoading(loading) {
-        const createBtn = document.getElementById('create-btn');
-        const cancelBtn = document.getElementById('cancel-btn');
-        
-        if (loading) {
-          createBtn.innerHTML = '<span class="loading-spinner"></span>Creating Account...';
-          createBtn.disabled = true;
-          cancelBtn.disabled = true;
-        } else {
-          createBtn.innerHTML = 'Create Account';
-          createBtn.disabled = false;
-          cancelBtn.disabled = false;
-        }
-      }
-
-      function closeModal() {
-        // Send message to parent to close modal
-        parent.postMessage({
-          type: 'close_registration_modal'
-        }, '*');
-      }
-
-      async function handleRegistration(event) {
-        event.preventDefault();
-        hideError();
-
-        const usernameInput = document.getElementById('username');
-        username = usernameInput.value.trim();
-
-        if (!username) {
-          showError('Please enter a username');
-          usernameInput.focus();
-          return;
-        }
-
-        if (username.length < 3) {
-          showError('Username must be at least 3 characters');
-          usernameInput.focus();
-          return;
-        }
-
-        if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
-          showError('Username can only contain letters, numbers, underscore, and dash');
-          usernameInput.focus();
-          return;
-        }
-
-        setLoading(true);
-
-        try {
-          // Call WebAuthn registration with the username
-          const response = await iframeClient.webAuthnClient.register(username);
-          
-          if (response.ok) {
-            console.log('Registration successful for username:', username);
-            
-            // Send success message to parent
-            parent.postMessage({
-              type: 'registration_complete',
-              success: true,
-              username: username
-            }, '*');
-            
-            // Close modal after short delay
-            setTimeout(closeModal, 500);
-          } else {
-            const errorText = await response.text();
-            showError(`Registration failed: ${errorText}`);
-          }
-        } catch (error) {
-          console.error('Registration error:', error);
-          
-          let errorMessage = 'Registration failed';
-          if (error.name === 'NotAllowedError') {
-            errorMessage = 'Registration was cancelled';
-          } else if (error.message) {
-            errorMessage = error.message;
-          }
-          
-          showError(errorMessage);
-        } finally {
-          setLoading(false);
-        }
-      }
-
-      // Event listeners
-      document.getElementById('registration-form').addEventListener('submit', handleRegistration);
-      document.getElementById('cancel-btn').addEventListener('click', closeModal);
-      document.getElementById('close-modal').addEventListener('click', closeModal);
-
-      // Close modal on Escape key
-      document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') {
-          closeModal();
-        }
-      });
-
-      // Close modal when clicking on background
-      document.body.addEventListener('click', (event) => {
-        // Only close if clicking directly on the body (background), not on the modal
-        if (event.target === document.body) {
-          closeModal();
-        }
-      });
-
-      // Auto-focus username input
-      document.addEventListener('DOMContentLoaded', () => {
-        document.getElementById('username').focus();
-      });
-
-      // Initialize iframe client
-      window.addEventListener('load', () => {
-        if (window.iframeClient) {
-          iframeClient = window.iframeClient;
-        } else {
-          // Wait for iframe client to initialize
-          const checkClient = setInterval(() => {
-            if (window.iframeClient) {
-              iframeClient = window.iframeClient;
-              clearInterval(checkClient);
-            }
-          }, 100);
-        }
-      });
-
-      // Listen for messages from parent
-      window.addEventListener('message', (event) => {
-        if (event.data.type === 'init_registration') {
-          console.log('Registration modal initialized');
-        }
-      });
-    </script>
   </body>
 </html> 
