@@ -1,10 +1,12 @@
-import { register } from "../../helpers/webauthn";
+import { register, getMasterSecret } from "../../helpers/webauthn";
+import { generateMnemonic } from "../../helpers/bip32";
 import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
 
 class RegisterClient {
   broker: MessageBroker;
   windowId: string;
   username: string = "";
+  private currentScreen: "registration" | "seed" = "registration";
 
   constructor() {
     // Extract window ID from URL fragment
@@ -39,6 +41,11 @@ class RegisterClient {
       "username"
     ) as HTMLInputElement;
 
+    // Seed screen elements
+    const revealOverlay = document.getElementById("reveal-overlay");
+    const writtenDownBtn = document.getElementById("written-down-btn");
+    const remindLaterBtn = document.getElementById("remind-later-btn");
+
     if (form) {
       form.addEventListener("submit", (e) => this.handleRegistration(e));
     }
@@ -49,6 +56,18 @@ class RegisterClient {
 
     if (closeBtn) {
       closeBtn.addEventListener("click", () => this.closeModal());
+    }
+
+    if (revealOverlay) {
+      revealOverlay.addEventListener("click", () => this.revealSeedWords());
+    }
+
+    if (writtenDownBtn) {
+      writtenDownBtn.addEventListener("click", () => this.handleWrittenDown());
+    }
+
+    if (remindLaterBtn) {
+      remindLaterBtn.addEventListener("click", () => this.handleRemindLater());
     }
 
     // Auto-focus username input
@@ -70,6 +89,29 @@ class RegisterClient {
         this.closeModal();
       }
     });
+  }
+
+  showScreen(screen: "registration" | "seed") {
+    const registrationScreen = document.getElementById("registration-screen");
+    const seedScreen = document.getElementById("seed-screen");
+    const modal = document.getElementById("modal");
+
+    if (registrationScreen && seedScreen && modal) {
+      // Remove active class from all screens
+      registrationScreen.classList.remove("active");
+      seedScreen.classList.remove("active");
+
+      // Add active class to target screen
+      if (screen === "registration") {
+        registrationScreen.classList.add("active");
+        modal.classList.remove("seed-screen");
+      } else {
+        seedScreen.classList.add("active");
+        modal.classList.add("seed-screen");
+      }
+
+      this.currentScreen = screen;
+    }
   }
 
   showError(message: string) {
@@ -107,6 +149,73 @@ class RegisterClient {
         cancelBtn.disabled = false;
       }
     }
+  }
+
+  revealSeedWords() {
+    const revealOverlay = document.getElementById("reveal-overlay");
+    const seedWordsGrid = document.getElementById("seed-words-grid");
+
+    if (revealOverlay) {
+      revealOverlay.style.display = "none";
+    }
+
+    if (seedWordsGrid) {
+      seedWordsGrid.classList.remove("blurred");
+    }
+  }
+
+  generateAndDisplaySeedWords() {
+    const masterSecret = getMasterSecret();
+    if (!masterSecret) {
+      console.error("No master secret available for seed generation");
+      this.showError("Unable to generate recovery seed. Please try again.");
+      return;
+    }
+
+    try {
+      // Generate 24-word mnemonic from master secret
+      const seedWords = generateMnemonic(masterSecret);
+      console.log("Generated seed words:", seedWords.length);
+
+      // Display the words in the grid
+      const seedWordsGrid = document.getElementById("seed-words-grid");
+      if (seedWordsGrid) {
+        seedWordsGrid.innerHTML = "";
+        seedWordsGrid.classList.add("blurred"); // Start with blur effect
+
+        seedWords.forEach((word, index) => {
+          const wordElement = document.createElement("div");
+          wordElement.className = "seed-word";
+
+          const numberElement = document.createElement("span");
+          numberElement.className = "seed-word-number";
+          numberElement.textContent = `${index + 1}.`;
+
+          const textElement = document.createElement("span");
+          textElement.className = "seed-word-text";
+          textElement.textContent = word;
+
+          wordElement.appendChild(numberElement);
+          wordElement.appendChild(textElement);
+          seedWordsGrid.appendChild(wordElement);
+        });
+      }
+    } catch (error) {
+      console.error("Error generating seed words:", error);
+      this.showError("Failed to generate recovery seed. Please try again.");
+    }
+  }
+
+  handleWrittenDown() {
+    console.log("User confirmed they've written down the seed words");
+    this.closeModal();
+  }
+
+  handleRemindLater() {
+    console.log("User chose to be reminded later about seed words");
+    // For now, just close the modal
+    // TODO: Implement reminder functionality
+    this.closeModal();
   }
 
   closeModal() {
@@ -162,8 +271,9 @@ class RegisterClient {
           "button"
         );
 
-        // Close modal after short delay
-        setTimeout(() => this.closeModal(), 500);
+        // Generate and display seed words, then show seed screen
+        this.generateAndDisplaySeedWords();
+        this.showScreen("seed");
       } else {
         const errorText = await response.text();
         this.showError(`Registration failed: ${errorText}`);

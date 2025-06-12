@@ -33,6 +33,10 @@
         animation: slideIn 0.3s ease-out;
       }
 
+      .modal.seed-screen {
+        max-width: 500px;
+      }
+
       @keyframes slideIn {
         from {
           transform: translateY(-20px);
@@ -204,6 +208,114 @@
         to { transform: rotate(360deg); }
       }
 
+      /* Screen management */
+      .screen {
+        display: none;
+      }
+
+      .screen.active {
+        display: block;
+      }
+
+      /* Seed words styling */
+      .seed-warning {
+        background: #fef3c7;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 24px;
+      }
+
+      .seed-warning-title {
+        font-weight: 600;
+        color: #92400e;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .seed-warning-text {
+        font-size: 14px;
+        color: #92400e;
+        line-height: 1.4;
+      }
+
+      .reveal-container {
+        position: relative;
+        margin-bottom: 24px;
+      }
+
+      .reveal-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.9);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: opacity 0.2s ease;
+        z-index: 1;
+      }
+
+      .reveal-overlay:hover {
+        background: rgba(0, 0, 0, 0.8);
+      }
+
+      .reveal-text {
+        color: white;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .seed-words-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        padding: 20px;
+        background: #f8fafc;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        min-height: 200px;
+        transition: filter 0.3s ease;
+      }
+
+      .seed-words-grid.blurred {
+        filter: blur(8px);
+      }
+
+      .seed-word {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: white;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+        font-size: 14px;
+      }
+
+      .seed-word-number {
+        font-size: 12px;
+        color: #64748b;
+        font-weight: 500;
+        min-width: 20px;
+      }
+
+      .seed-word-text {
+        font-weight: 500;
+        color: #1e293b;
+      }
+
+
+
       /* Responsive typography */
       @media (max-width: 480px) {
         .modal-title {
@@ -213,48 +325,99 @@
         .form-input {
           font-size: 16px; /* Prevents zoom on iOS */
         }
+
+        .seed-words-grid {
+          grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+          gap: 8px;
+          padding: 16px;
+        }
+
+        .seed-word {
+          padding: 6px 8px;
+          font-size: 13px;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="modal">
+    <div class="modal" id="modal">
       <button class="close-button" id="close-modal" aria-label="Close">&times;</button>
       
-      <div class="modal-header">
-        <h2 class="modal-title">Create Account</h2>
-        <p class="modal-subtitle">Choose a username for your new passkey</p>
+      <!-- Registration Screen -->
+      <div id="registration-screen" class="screen active">
+        <div class="modal-header">
+          <h2 class="modal-title">Create Account</h2>
+          <p class="modal-subtitle">Choose a username for your new passkey</p>
+        </div>
+
+        <div id="error-message" class="error-message"></div>
+
+        <form id="registration-form">
+          <div class="form-group">
+            <label for="username" class="form-label">Username</label>
+            <input 
+              type="text" 
+              id="username" 
+              class="form-input" 
+              placeholder="Enter your username"
+              autocomplete="username"
+              required
+              minlength="3"
+              maxlength="32"
+              pattern="[a-zA-Z0-9_-]+"
+            >
+            <div class="form-help">
+              3-32 characters, letters, numbers, underscore, and dash only
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button type="button" class="btn btn-secondary" id="cancel-btn">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary" id="create-btn">
+              Create Account
+            </button>
+          </div>
+        </form>
       </div>
 
-      <div id="error-message" class="error-message"></div>
+      <!-- Recovery Seed Screen -->
+      <div id="seed-screen" class="screen">
+        <div class="modal-header">
+          <h2 class="modal-title">Recovery Phrase</h2>
+          <p class="modal-subtitle">Write down these 24 words in case you lose access to your passkey</p>
+        </div>
 
-      <form id="registration-form">
-        <div class="form-group">
-          <label for="username" class="form-label">Username</label>
-          <input 
-            type="text" 
-            id="username" 
-            class="form-input" 
-            placeholder="Enter your username"
-            autocomplete="username"
-            required
-            minlength="3"
-            maxlength="32"
-            pattern="[a-zA-Z0-9_-]+"
-          >
-          <div class="form-help">
-            3-32 characters, letters, numbers, underscore, and dash only
+        <div class="reveal-container">
+          <div id="reveal-overlay" class="reveal-overlay">
+            <div class="reveal-text">
+              👁️ Click to reveal your recovery words
+            </div>
+          </div>
+          <div id="seed-words-grid" class="seed-words-grid">
+            <!-- Seed words will be populated here -->
+          </div>
+        </div>
+
+        <div class="seed-warning">
+          <div class="seed-warning-title">
+            ⚠️ Important Security Notice
+          </div>
+          <div class="seed-warning-text">
+            These words are the only way to recover your account if you lose access to your passkey. Store them safely and never share them with anyone.
           </div>
         </div>
 
         <div class="button-group">
-          <button type="button" class="btn btn-secondary" id="cancel-btn">
-            Cancel
+          <button type="button" class="btn btn-secondary" id="remind-later-btn">
+            Remind me later
           </button>
-          <button type="submit" class="btn btn-primary" id="create-btn">
-            Create Account
+          <button type="button" class="btn btn-primary" id="written-down-btn">
+            I've written it down
           </button>
         </div>
-      </form>
+      </div>
     </div>
   </body>
 </html> 
