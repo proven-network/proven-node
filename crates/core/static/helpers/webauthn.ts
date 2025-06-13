@@ -127,8 +127,11 @@ export function getMasterSecret(): Uint8Array | null {
 export async function authenticate(): Promise<Response> {
   console.log("Starting authentication...");
 
+  // Generate a random state parameter which will tie start and finish requests together
+  const state = crypto.randomUUID();
+
   // Get challenge from server - uses start_discoverable_authentication
-  const resp = await fetch("/webauthn/auth/start", {
+  const resp = await fetch(`/webauthn/auth/start?state=${state}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -172,7 +175,7 @@ export async function authenticate(): Promise<Response> {
   });
 
   // Send credential to server
-  const finishResp = await fetch("/webauthn/auth/finish", {
+  const finishResp = await fetch(`/webauthn/auth/finish?state=${state}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(credentialJson),
@@ -199,8 +202,11 @@ export async function authenticate(): Promise<Response> {
 export async function register(username: string): Promise<Response> {
   console.log("Starting registration...");
 
+  // Generate a random state parameter which will tie start and finish requests together
+  const state = crypto.randomUUID();
+
   // Get challenge from server
-  const resp = await fetch("/webauthn/register/start", {
+  const resp = await fetch(`/webauthn/register/start?state=${state}`, {
     body: JSON.stringify({ user_name: username }),
     headers: { "Content-Type": "application/json" },
     method: "POST",
@@ -249,7 +255,7 @@ export async function register(username: string): Promise<Response> {
   });
 
   // Send credential to server
-  const finishResp = await fetch("/webauthn/register/finish", {
+  const finishResp = await fetch(`/webauthn/register/finish?state=${state}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(credentialJson),

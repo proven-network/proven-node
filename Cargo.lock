@@ -9677,6 +9677,7 @@ dependencies = [
  "headers",
  "hex",
  "http-body-util",
+ "once_cell",
  "proven-applications",
  "proven-attestation",
  "proven-bootable",

@@ -1,17 +1,21 @@
 use crate::FullContext;
 
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use headers::Origin;
+use once_cell::sync::Lazy;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use url::Url;
 use uuid::Uuid;
 use webauthn_rs::prelude::*;
@@ -20,14 +24,27 @@ use webauthn_rs::prelude::*;
 // TODO: Tie this to a network parameter or something
 const PRF_EVAL_FIRST_B64URL: &str = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 
+// In-memory state storage
+// TODO: Switch to using proper KV store
+static REGISTRATION_STATES: Lazy<Arc<Mutex<HashMap<String, (PasskeyRegistration, Uuid)>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+static AUTHENTICATION_STATES: Lazy<Arc<Mutex<HashMap<String, DiscoverableAuthentication>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+
 #[derive(Deserialize)]
 pub struct RegistrationStartData {
     pub user_name: String,
 }
 
+#[derive(Deserialize)]
+pub struct StateQuery {
+    pub state: String,
+}
+
 pub(crate) async fn webauthn_registration_start_handler<AM, RM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
+    Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(RegistrationStartData { user_name }): Json<RegistrationStartData>,
 ) -> impl IntoResponse
 where
@@ -81,17 +98,11 @@ where
         .start_passkey_registration(user_unique_id, &user_name, &user_name, None)
         .expect("Failed to start registration");
 
-    // Store both the state and the user UUID for use in finish
-    let state_json = serde_json::to_string(&state).unwrap();
-    std::fs::write("/tmp/registration_state.json", state_json.as_bytes()).unwrap();
-
-    // Store the user UUID separately so we can access it in the finish handler
-    let user_uuid_json = serde_json::to_string(&user_unique_id).unwrap();
-    std::fs::write(
-        "/tmp/registration_user_uuid.json",
-        user_uuid_json.as_bytes(),
-    )
-    .unwrap();
+    // Store both the state and the user UUID using the state_id
+    REGISTRATION_STATES
+        .lock()
+        .await
+        .insert(state_id.clone(), (state, user_unique_id));
 
     // Convert CCR to Value for modification
     let mut ccr_val = match serde_json::to_value(&ccr) {
@@ -214,6 +225,7 @@ where
 pub(crate) async fn webauthn_registration_finish_handler<AM, RM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
+    Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(register_public_key_credential): Json<RegisterPublicKeyCredential>,
 ) -> impl IntoResponse
 where
@@ -260,38 +272,21 @@ where
         .build()
         .unwrap();
 
-    // Deserialize the state from /tmp with serde_json for testing
-    let registration_state = std::fs::read("/tmp/registration_state.json").unwrap();
-    let registration_state: PasskeyRegistration =
-        serde_json::from_slice(&registration_state).unwrap();
+    // Get the registration state and user UUID from our in-memory storage
+    let (registration_state, user_uuid) = match REGISTRATION_STATES.lock().await.remove(&state_id) {
+        Some(state) => state,
+        None => {
+            return Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .body("Registration session not found or expired".to_string())
+                .unwrap();
+        }
+    };
 
     // Complete the registration
     match webauthn.finish_passkey_registration(&register_public_key_credential, &registration_state)
     {
         Ok(passkey) => {
-            // Read the user UUID that we stored during registration start
-            let user_uuid_data = match std::fs::read("/tmp/registration_user_uuid.json") {
-                Ok(data) => data,
-                Err(e) => {
-                    eprintln!("Failed to read user UUID file: {}", e);
-                    return Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body("Failed to load user UUID".to_string())
-                        .unwrap();
-                }
-            };
-
-            let user_uuid: Uuid = match serde_json::from_slice(&user_uuid_data) {
-                Ok(uuid) => uuid,
-                Err(e) => {
-                    eprintln!("Failed to deserialize user UUID: {}", e);
-                    return Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body("Failed to parse user UUID".to_string())
-                        .unwrap();
-                }
-            };
-
             // Store the passkey with the user UUID for future authentication
             let passkey_json = serde_json::to_string(&passkey).unwrap();
             let passkey_filename = format!("/tmp/stored_passkey_{}.json", user_uuid);
@@ -316,6 +311,7 @@ where
 
 pub(crate) async fn webauthn_authentication_start_handler<AM, RM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
+    Query(StateQuery { state: state_id }): Query<StateQuery>,
     origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
 where
@@ -375,9 +371,11 @@ where
         }
     };
 
-    // Store the authentication state
-    let state_json = serde_json::to_string(&state).unwrap();
-    std::fs::write("/tmp/authentication_state.json", state_json.as_bytes()).unwrap();
+    // Store the authentication state using the state_id
+    AUTHENTICATION_STATES
+        .lock()
+        .await
+        .insert(state_id.clone(), state);
 
     // Convert RCR to Value for modification (add PRF extension)
     let mut rcr_val = match serde_json::to_value(&rcr) {
@@ -476,6 +474,7 @@ where
 pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
+    Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(auth_public_key_credential): Json<PublicKeyCredential>,
 ) -> impl IntoResponse
 where
@@ -522,28 +521,16 @@ where
         .build()
         .unwrap();
 
-    // Deserialize the authentication state from /tmp
-    let auth_state_data = match std::fs::read("/tmp/authentication_state.json") {
-        Ok(data) => data,
-        Err(_) => {
+    // Get the authentication state from our in-memory storage
+    let auth_state = match AUTHENTICATION_STATES.lock().await.remove(&state_id) {
+        Some(state) => state,
+        None => {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body("Authentication session not found".to_string())
+                .body("Authentication session not found or expired".to_string())
                 .unwrap();
         }
     };
-
-    let auth_state: webauthn_rs::prelude::DiscoverableAuthentication =
-        match serde_json::from_slice(&auth_state_data) {
-            Ok(state) => state,
-            Err(e) => {
-                eprintln!("Failed to deserialize authentication state: {}", e);
-                return Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body("Failed to load authentication session".to_string())
-                    .unwrap();
-            }
-        };
 
     // First, identify which user is trying to authenticate
     let (user_unique_id, _user_handle) =
