@@ -51,10 +51,6 @@ pub enum Error {
     #[error("overlapping routes detected: {0} and {1}")]
     OverlappingRoutes(String, String),
 
-    /// RPC error.
-    #[error(transparent)]
-    Rpc(#[from] crate::rpc::RpcHandlerError),
-
     /// Runtime error.
     #[error(transparent)]
     Runtime(#[from] proven_runtime::Error),
