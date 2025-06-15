@@ -8,6 +8,8 @@ interface BrokerMessage {
   fromIframe: string;
   toIframe?: string; // Optional - if not specified, broadcast to all iframes
   data: any;
+  messageId?: string; // For request-response correlation
+  isResponse?: boolean; // To distinguish responses from regular messages
 }
 
 interface IframeConnection {
@@ -58,16 +60,43 @@ class MessageBroker {
       message
     );
 
+    // Handle responses - these should be routed back to the original requester
+    if (message.isResponse && message.messageId) {
+      // For responses, we need to route back to the original sender
+      // The original sender is determined by looking at the message history
+      // Since we don't track request origins, we'll broadcast responses to all other connections
+      // and let the client-side broker handle the correlation
+      this.routeMessage(message, fromConnection, true);
+      return;
+    }
+
+    // Handle regular messages and requests
+    this.routeMessage(message, fromConnection, false);
+  }
+
+  private routeMessage(
+    message: BrokerMessage,
+    fromConnection: IframeConnection,
+    isResponse: boolean
+  ) {
     // Route message to appropriate iframe(s)
     for (const connection of this.connections) {
-      // Don't send message back to sender
-      if (connection === fromConnection) {
+      // Don't send message back to sender (unless it's a response being routed)
+      if (connection === fromConnection && !isResponse) {
         continue;
       }
 
-      // If toIframe is specified, only send to that iframe type
-      if (message.toIframe && connection.iframeType !== message.toIframe) {
-        continue;
+      // For responses, broadcast to all other connections and let client handle correlation
+      if (isResponse) {
+        if (connection === fromConnection) {
+          continue; // Don't send response back to the responder
+        }
+      } else {
+        // For regular messages/requests, apply normal routing rules
+        // If toIframe is specified, only send to that iframe type
+        if (message.toIframe && connection.iframeType !== message.toIframe) {
+          continue;
+        }
       }
 
       try {
@@ -76,7 +105,7 @@ class MessageBroker {
           fromIframe: fromConnection.iframeType,
         });
         console.log(
-          `SharedWorker: Forwarded message to ${connection.iframeType}`
+          `SharedWorker: Forwarded ${isResponse ? "response" : "message"} to ${connection.iframeType}`
         );
       } catch (error) {
         console.error(

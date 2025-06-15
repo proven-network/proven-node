@@ -10,6 +10,7 @@ type PasskeyPrfPublicKey = String;
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct IdentifyCommand {
     pub passkey_prf_public_key: PasskeyPrfPublicKey,
+    pub session_id_signature: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -34,7 +35,7 @@ impl RpcCommand for IdentifyCommand {
             .get_identity_by_passkey_prf_public_key(&self.passkey_prf_public_key)
             .await
         {
-            Ok(Some(whoami)) => IdentifyResponse::IdentifySuccess(whoami),
+            Ok(Some(identity)) => IdentifyResponse::IdentifySuccess(identity),
             Ok(None) => IdentifyResponse::IdentifyFailure("Identity not found".to_string()),
             Err(e) => IdentifyResponse::IdentifyFailure(e.to_string()),
         }

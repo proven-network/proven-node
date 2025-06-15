@@ -1,32 +1,13 @@
 import { generateWindowId } from "./helpers/broker";
-
-type ExecuteOutput = string | number | boolean | null | undefined;
-type WhoAmIResponse = { identity_address: string; account_addresses: string[] };
-
-type SdkMessage = {
-  type: "execute" | "whoAmI";
-  nonce: number;
-  data?: {
-    script?: string;
-    handler?: string;
-    args?: any[];
-  };
-};
-
-type IframeResponse = {
-  type: "response";
-  nonce: number;
-  success: boolean;
-  data?: any;
-  error?: string;
-};
-
-// Additional message types for modal communication
-type ModalMessage = {
-  type: "open_registration_modal" | "close_registration_modal";
-  success?: boolean;
-  username?: string;
-};
+import type {
+  ExecuteOutput,
+  WhoAmIResponse,
+  ParentToBridgeMessage,
+  BridgeToParentMessage,
+  ResponseMessage,
+  OpenModalMessage,
+  CloseModalMessage,
+} from "./iframes/bridge/bridge";
 
 export type ProvenSDK = {
   execute: (
@@ -307,7 +288,7 @@ export const ProvenSDK = (options: {
 
     // Handle messages from button iframe (for backwards compatibility during transition)
     if (buttonIframe && event.source === buttonIframe.contentWindow) {
-      const message = event.data as ModalMessage;
+      const message = event.data as OpenModalMessage;
 
       if (message.type === "open_registration_modal") {
         openRegistrationModal();
@@ -317,7 +298,7 @@ export const ProvenSDK = (options: {
 
     // Handle messages from modal iframe (for backwards compatibility during transition)
     if (modalIframe && event.source === modalIframe.contentWindow) {
-      const message = event.data as ModalMessage;
+      const message = event.data as CloseModalMessage;
 
       if (message.type === "close_registration_modal") {
         closeRegistrationModal();
@@ -326,7 +307,7 @@ export const ProvenSDK = (options: {
     }
   };
 
-  const sendMessage = async (message: SdkMessage): Promise<any> => {
+  const sendMessage = async (message: ParentToBridgeMessage): Promise<any> => {
     // Wait for bridge iframe to be ready if it's not already
     if (!bridgeIframeReady) {
       await createBridgeIframe();

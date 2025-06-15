@@ -3,57 +3,17 @@ import { CoseSign1Decoder, CoseSign1Encoder } from "../../helpers/cose";
 import { bytesToHex, hexToBytes } from "@noble/curves/abstract/utils";
 import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
 
-type WhoAmI = "WhoAmI";
-type WhoAmIResponse = { identity_address: string; account_addresses: string[] };
-
-type ExecuteHash = { ExecuteHash: [string, string, any[]] };
-type Execute = {
-  Execute: [string, string, any[]];
-};
-type ExecuteOutput = string | number | boolean | null | undefined;
-type ExecuteLog = {
-  level: string;
-  args: ExecuteOutput[];
-};
-type ExecuteSuccess = {
-  output: ExecuteOutput;
-  duration: {
-    secs: number;
-    nanos: number;
-  };
-  logs: ExecuteLog[];
+// Generic message types for broker communication
+type RpcRequest = {
+  type: "rpc_request";
+  data: any; // The raw RPC call data to be signed
 };
 
-type RpcCall = WhoAmI | ExecuteHash | Execute;
-
-type SdkMessage = {
-  type: "execute" | "whoAmI";
-  nonce: number;
-  data?: {
-    script?: string;
-    handler?: string;
-    args?: any[];
-  };
-};
-
-type IframeResponse = {
-  type: "response";
-  nonce: number;
+type RpcResponse = {
   success: boolean;
   data?: any;
   error?: string;
 };
-
-function isSdkMessage(data: unknown): data is SdkMessage {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "type" in data &&
-    "nonce" in data &&
-    typeof (data as SdkMessage).nonce === "number" &&
-    ["execute", "whoAmI"].includes((data as SdkMessage).type)
-  );
-}
 
 class RpcClient {
   worker: SharedWorker | null = null;
@@ -66,6 +26,7 @@ class RpcClient {
     number,
     { resolve: (data: any) => void; reject: (error: Error) => void }
   >();
+  private requestCounter = 0;
 
   constructor() {
     // Extract window ID from URL fragment
@@ -123,16 +84,18 @@ class RpcClient {
     try {
       await this.broker.connect();
 
-      // Set up message handlers for direct SDK requests from bridge
-      this.broker.on("execute", (message) => {
-        if (isSdkMessage(message.data)) {
-          this.handleSdkMessage(message.data);
-        }
-      });
-
-      this.broker.on("whoAmI", (message) => {
-        if (isSdkMessage(message.data)) {
-          this.handleSdkMessage(message.data);
+      // Set up generic message handler for rpc_request requests
+      this.broker.on("rpc_request", async (message, respond) => {
+        if (respond) {
+          try {
+            const result = await this.handleRpcRequest(message.data);
+            respond(result);
+          } catch (error) {
+            respond({
+              success: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+            });
+          }
         }
       });
 
@@ -145,83 +108,55 @@ class RpcClient {
     }
   }
 
-  async handleSdkMessage(message: SdkMessage) {
-    try {
-      let rpcCall: RpcCall;
-
-      if (message.type === "whoAmI") {
-        rpcCall = "WhoAmI";
-      } else if (message.type === "execute") {
-        const { script, handler, args } = message.data!;
-
-        // Hash the script and handler for ExecuteHash first
-        const moduleHash = await this.hashScript(script!);
-        rpcCall = { ExecuteHash: [moduleHash, handler!, args || []] };
-      } else {
-        throw new Error(`Unknown message type: ${message.type}`);
-      }
-
-      await this.sendRpcCall(message.nonce, rpcCall, message);
-    } catch (error) {
-      this.sendResponse({
-        type: "response",
-        nonce: message.nonce,
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
+  private getNextRequestId(): number {
+    return ++this.requestCounter;
   }
 
-  async hashScript(script: string): Promise<string> {
-    const rawHash = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(`${script}`)
-    );
-    return bytesToHex(new Uint8Array(rawHash));
-  }
-
-  async sendRpcCall(
-    nonce: number,
-    rpcCall: RpcCall,
-    originalMessage?: SdkMessage
-  ) {
+  async handleRpcRequest(rpcCallData: any): Promise<RpcResponse> {
     try {
-      // Encode the RPC call with COSE
-      const encodedData = await this.coseEncoder.encode(rpcCall, {
-        seq: nonce,
+      const requestId = this.getNextRequestId();
+
+      // Sign the RPC call data with COSE
+      const encodedData = await this.coseEncoder.encode(rpcCallData, {
+        seq: requestId,
       });
 
-      // Store the pending request
-      this.pendingRequests.set(nonce, {
-        resolve: (data) => {
-          this.handleRpcResponse(nonce, data, originalMessage);
-        },
-        reject: (error) => {
-          this.sendResponse({
-            type: "response",
-            nonce,
-            success: false,
-            error: error.message,
-          });
-        },
+      // Create promise for the response
+      const responsePromise = new Promise<any>((resolve, reject) => {
+        this.pendingRequests.set(requestId, { resolve, reject });
+
+        // Set timeout
+        setTimeout(() => {
+          if (this.pendingRequests.has(requestId)) {
+            this.pendingRequests.delete(requestId);
+            reject(new Error("Request timeout"));
+          }
+        }, 30000); // 30 second timeout
       });
 
       // Send to worker
       if (this.worker) {
         this.worker.port.postMessage({
           type: "send",
-          nonce,
+          nonce: requestId,
           data: encodedData,
         });
+      } else {
+        throw new Error("Worker not initialized");
       }
+
+      // Wait for response
+      const responseData = await responsePromise;
+
+      return {
+        success: true,
+        data: responseData,
+      };
     } catch (error) {
-      this.sendResponse({
-        type: "response",
-        nonce,
+      return {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to encode request",
-      });
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
     }
   }
 
@@ -258,95 +193,6 @@ class RpcClient {
         pendingRequest.reject(new Error(message.error));
       }
     }
-  }
-
-  async handleRpcResponse(
-    nonce: number,
-    data: any,
-    originalMessage?: SdkMessage
-  ) {
-    try {
-      if (originalMessage?.type === "execute") {
-        // Handle execute responses
-        if (data.ExecuteSuccess) {
-          const result = data.ExecuteSuccess.Ok as ExecuteSuccess;
-          this.processExecuteLogs(result.logs);
-
-          this.sendResponse({
-            type: "response",
-            nonce,
-            success: true,
-            data: result.output,
-          });
-        } else if (data === "ExecuteHashUnknown") {
-          // Retry with full script
-          const { script, handler, args } = originalMessage.data!;
-          const fullRpcCall: Execute = {
-            Execute: [script!, handler!, args || []],
-          };
-
-          await this.sendRpcCall(nonce, fullRpcCall, originalMessage);
-        } else if (data.ExecuteFailure) {
-          this.sendResponse({
-            type: "response",
-            nonce,
-            success: false,
-            error: data.ExecuteFailure,
-          });
-        } else {
-          this.sendResponse({
-            type: "response",
-            nonce,
-            success: false,
-            error: "Unexpected response from execute",
-          });
-        }
-      } else if (originalMessage?.type === "whoAmI") {
-        // Handle whoAmI responses
-        if (data.WhoAmI) {
-          this.sendResponse({
-            type: "response",
-            nonce,
-            success: true,
-            data: data.WhoAmI as WhoAmIResponse,
-          });
-        } else {
-          this.sendResponse({
-            type: "response",
-            nonce,
-            success: false,
-            error: "WhoAmI response is missing",
-          });
-        }
-      }
-    } catch (error) {
-      this.sendResponse({
-        type: "response",
-        nonce,
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  }
-
-  processExecuteLogs(logs: ExecuteLog[]) {
-    logs.forEach((log) => {
-      if (log.level === "log") {
-        console.log(...log.args);
-      } else if (log.level === "error") {
-        console.error(...log.args);
-      } else if (log.level === "warn") {
-        console.warn(...log.args);
-      } else if (log.level === "debug") {
-        console.debug(...log.args);
-      } else if (log.level === "info") {
-        console.info(...log.args);
-      }
-    });
-  }
-
-  async sendResponse(response: IframeResponse) {
-    await this.broker.send("response", response, "sdk");
   }
 
   // Initialize the client when the page loads
