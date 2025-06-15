@@ -41,8 +41,8 @@ pub struct StateQuery {
     pub state: String,
 }
 
-pub(crate) async fn webauthn_registration_start_handler<AM, RM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
+pub(crate) async fn webauthn_registration_start_handler<AM, RM, IM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(RegistrationStartData { user_name }): Json<RegistrationStartData>,
@@ -50,7 +50,7 @@ pub(crate) async fn webauthn_registration_start_handler<AM, RM, SM, A, G>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -222,8 +222,8 @@ where
         .unwrap()
 }
 
-pub(crate) async fn webauthn_registration_finish_handler<AM, RM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
+pub(crate) async fn webauthn_registration_finish_handler<AM, RM, IM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(register_public_key_credential): Json<RegisterPublicKeyCredential>,
@@ -231,7 +231,7 @@ pub(crate) async fn webauthn_registration_finish_handler<AM, RM, SM, A, G>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -309,15 +309,15 @@ where
     }
 }
 
-pub(crate) async fn webauthn_authentication_start_handler<AM, RM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
+pub(crate) async fn webauthn_authentication_start_handler<AM, RM, IM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -471,8 +471,8 @@ where
         .unwrap()
 }
 
-pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
+pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, IM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(auth_public_key_credential): Json<PublicKeyCredential>,
@@ -480,7 +480,7 @@ pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, SM, A, G>(
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {

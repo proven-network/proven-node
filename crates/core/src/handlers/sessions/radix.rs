@@ -27,17 +27,17 @@ pub struct SessionRequest {
     signed_challenge: String,
 }
 
-pub(crate) async fn create_rola_challenge_handler<AM, RM, SM, A, G>(
+pub(crate) async fn create_rola_challenge_handler<AM, RM, IM, A, G>(
     Path(application_id): Path<String>,
     State(FullContext {
-        session_manager, ..
-    }): State<FullContext<AM, RM, SM, A, G>>,
+        identity_manager, ..
+    }): State<FullContext<AM, RM, IM, A, G>>,
     headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -69,7 +69,7 @@ where
     };
 
     let _maybe_session = if let Some(session_id) = maybe_session_id {
-        match session_manager
+        match identity_manager
             .get_session(&application_id, &session_id)
             .await
         {
@@ -94,7 +94,7 @@ where
             .unwrap();
     };
 
-    match session_manager
+    match identity_manager
         .create_rola_challenge("application_id", &origin)
         .await
     {
@@ -116,18 +116,18 @@ where
     }
 }
 
-pub(crate) async fn verify_rola_handler<AM, RM, SM, A, G>(
+pub(crate) async fn verify_rola_handler<AM, RM, IM, A, G>(
     Path(application_id): Path<String>,
     State(FullContext {
-        session_manager, ..
-    }): State<FullContext<AM, RM, SM, A, G>>,
+        identity_manager, ..
+    }): State<FullContext<AM, RM, IM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     data: TypedMultipart<SessionRequest>,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -161,7 +161,7 @@ where
     let signed_challenges: Vec<SignedChallenge> =
         serde_json::from_str(data.signed_challenge.as_str()).unwrap();
 
-    match session_manager
+    match identity_manager
         .identify_session_via_rola(IdentifySessionViaRadixOptions {
             application_id: &application_id,
             application_name: data.application_name.as_deref(),

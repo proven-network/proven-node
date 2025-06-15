@@ -30,9 +30,9 @@ where
     G: Governance,
 {
     pub application_manager: AM,
+    pub identity_manager: SM,
     pub network: ProvenNetwork<G, A>,
     pub runtime_pool_manager: RM,
-    pub session_manager: SM,
 }
 
 #[derive(Clone)]

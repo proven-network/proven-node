@@ -9,18 +9,16 @@ use crate::rpc::context::RpcContext;
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WhoAmICommand;
 
-#[derive(Debug, Serialize)]
-pub struct WhoAmIResponse(pub WhoAmI);
-
 #[async_trait]
 impl RpcCommand for WhoAmICommand {
-    type Response = WhoAmIResponse;
+    type Response = WhoAmI;
 
-    async fn execute<AM, RM>(&self, context: &mut RpcContext<AM, RM>) -> Self::Response
+    async fn execute<AM, IM, RM>(&self, context: &mut RpcContext<AM, IM, RM>) -> Self::Response
     where
         AM: proven_applications::ApplicationManagement,
+        IM: proven_identity::IdentityManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
-        WhoAmIResponse(context.session.clone().into())
+        context.session.clone().into()
     }
 }

@@ -60,15 +60,15 @@ pub(crate) async fn rpc_iframe_js_handler() -> impl IntoResponse {
     ([("Content-Type", "application/javascript")], RPC_IFRAME_JS)
 }
 
-pub(crate) async fn bridge_iframe_html_handler<AM, RM, SM, A, G>(
+pub(crate) async fn bridge_iframe_html_handler<AM, RM, IM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
+    State(FullContext { .. }): State<FullContext<AM, RM, IM, A, G>>,
     headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -91,15 +91,15 @@ where
     )
 }
 
-pub(crate) async fn button_iframe_html_handler<AM, RM, SM, A, G>(
+pub(crate) async fn button_iframe_html_handler<AM, RM, IM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
+    State(FullContext { .. }): State<FullContext<AM, RM, IM, A, G>>,
     headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -122,15 +122,15 @@ where
     )
 }
 
-pub(crate) async fn register_iframe_html_handler<AM, RM, SM, A, G>(
+pub(crate) async fn register_iframe_html_handler<AM, RM, IM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
+    State(FullContext { .. }): State<FullContext<AM, RM, IM, A, G>>,
     headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -153,15 +153,15 @@ where
     )
 }
 
-pub(crate) async fn rpc_iframe_html_handler<AM, RM, SM, A, G>(
+pub(crate) async fn rpc_iframe_html_handler<AM, RM, IM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, SM, A, G>>,
+    State(FullContext { .. }): State<FullContext<AM, RM, IM, A, G>>,
     headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {

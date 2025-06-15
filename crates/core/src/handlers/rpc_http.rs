@@ -18,7 +18,7 @@ pub struct SessionQuery {
     pub session: String,
 }
 
-pub(crate) async fn http_rpc_handler<AM, RM, SM, A, G>(
+pub(crate) async fn http_rpc_handler<AM, RM, IM, A, G>(
     Path(application_id): Path<String>,
     Query(SessionQuery {
         session: session_id,
@@ -26,20 +26,20 @@ pub(crate) async fn http_rpc_handler<AM, RM, SM, A, G>(
     State(FullContext {
         application_manager,
         runtime_pool_manager,
-        session_manager,
+        identity_manager,
         ..
-    }): State<FullContext<AM, RM, SM, A, G>>,
+    }): State<FullContext<AM, RM, IM, A, G>>,
     body: Bytes,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
     // TODO: Could probably do a local LRU cache for sessions to avoid lookup on every request
-    let session = match session_manager
+    let session = match identity_manager
         .get_session(&application_id, &session_id)
         .await
     {
@@ -62,6 +62,7 @@ where
     let Ok(mut rpc_handler) = RpcHandler::new(
         application_manager,
         runtime_pool_manager,
+        identity_manager,
         application_id,
         session,
     ) else {

@@ -31,27 +31,27 @@ async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
         .ok();
 }
 
-pub(crate) async fn ws_rpc_handler<AM, RM, SM, A, G>(
+pub(crate) async fn ws_rpc_handler<AM, RM, IM, A, G>(
     Path(application_id): Path<String>,
     Query(SessionQuery {
         session: session_id,
     }): Query<SessionQuery>,
     State(FullContext {
         application_manager,
+        identity_manager,
         runtime_pool_manager,
-        session_manager,
         ..
-    }): State<FullContext<AM, RM, SM, A, G>>,
+    }): State<FullContext<AM, RM, IM, A, G>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
-    let session = match session_manager
+    let session = match identity_manager
         .get_session(&application_id, &session_id)
         .await
     {
@@ -68,6 +68,7 @@ where
     let Ok(rpc_handler) = RpcHandler::new(
         application_manager,
         runtime_pool_manager,
+        identity_manager,
         application_id,
         session,
     ) else {
@@ -78,10 +79,12 @@ where
     ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
 }
 
-async fn handle_socket<AM: ApplicationManagement, RM: RuntimePoolManagement>(
-    socket: WebSocket,
-    mut rpc_handler: RpcHandler<AM, RM>,
-) {
+async fn handle_socket<AM, IM, RM>(socket: WebSocket, mut rpc_handler: RpcHandler<AM, IM, RM>)
+where
+    AM: ApplicationManagement,
+    IM: IdentityManagement,
+    RM: RuntimePoolManagement,
+{
     let (mut sender, mut receiver) = socket.split();
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Bytes>(100);

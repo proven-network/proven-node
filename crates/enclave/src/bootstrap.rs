@@ -865,7 +865,7 @@ impl Bootstrap {
             persist: true,
         });
 
-        let session_manager = IdentityManager::new(IdentityManagerOptions {
+        let identity_manager = IdentityManager::new(IdentityManagerOptions {
             attestor: self.attestor.clone(),
             challenge_store,
             sessions_store,
@@ -1088,10 +1088,10 @@ impl Bootstrap {
         let core = Core::new(CoreOptions {
             application_manager,
             attestor: self.attestor.clone(),
+            identity_manager,
             http_server,
             network: network.clone(),
             runtime_pool_manager,
-            session_manager,
         });
         core.start().await?;
 

@@ -5,7 +5,7 @@ mod error;
 
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
-use proven_identity::Session;
+use proven_identity::{Identity, IdentityManagement, Session, WhoAmI};
 use proven_runtime::{ExecutionResult, RuntimePoolManagement};
 use serde::{Deserialize, Serialize};
 
@@ -15,8 +15,8 @@ pub use context::RpcContext;
 pub use error::Error;
 
 use crate::rpc::commands::{
-    ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse, ExecuteResponse, WhoAmICommand,
-    WhoAmIResponse,
+    ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse, ExecuteResponse, IdentifyCommand,
+    IdentifyResponse, WhoAmICommand,
 };
 
 #[repr(u8)]
@@ -26,6 +26,8 @@ pub enum Request {
     Execute(String, String, Vec<serde_json::Value>),
     // module_hash, handler_specifier, args
     ExecuteHash(String, String, Vec<serde_json::Value>),
+    // passkey_prf_public_key
+    Identify(String),
     // no args
     WhoAmI,
 }
@@ -34,6 +36,7 @@ pub enum Request {
 pub enum Command {
     Execute(ExecuteCommand),
     ExecuteHash(ExecuteHashCommand),
+    Identify(IdentifyCommand),
     WhoAmI(WhoAmICommand),
 }
 
@@ -41,9 +44,10 @@ pub enum Command {
 impl RpcCommand for Command {
     type Response = Response;
 
-    async fn execute<AM, RM>(&self, context: &mut RpcContext<AM, RM>) -> Response
+    async fn execute<AM, IM, RM>(&self, context: &mut RpcContext<AM, IM, RM>) -> Response
     where
         AM: ApplicationManagement,
+        IM: IdentityManagement,
         RM: RuntimePoolManagement,
     {
         match self {
@@ -62,6 +66,15 @@ impl RpcCommand for Command {
                     ExecuteHashResponse::Failure(err) => Response::ExecuteFailure(err),
                     ExecuteHashResponse::HashUnknown => Response::ExecuteHashUnknown,
                     ExecuteHashResponse::Success(result) => Response::ExecuteSuccess(result),
+                }
+            }
+            Command::Identify(cmd) => {
+                let r = cmd.execute(context).await;
+                match r {
+                    IdentifyResponse::IdentifyFailure(err) => Response::IdentifyFailure(err),
+                    IdentifyResponse::IdentifySuccess(identity) => {
+                        Response::IdentifySuccess(identity)
+                    }
                 }
             }
             Command::WhoAmI(cmd) => Response::WhoAmI(cmd.execute(context).await),
@@ -84,6 +97,9 @@ impl Request {
                     args,
                 })
             }
+            Request::Identify(passkey_prf_public_key) => Command::Identify(IdentifyCommand {
+                passkey_prf_public_key,
+            }),
             Request::WhoAmI => Command::WhoAmI(WhoAmICommand),
         }
     }
@@ -95,27 +111,33 @@ pub enum Response {
     ExecuteFailure(String),
     ExecuteHashUnknown,
     ExecuteSuccess(ExecutionResult),
-    WhoAmI(WhoAmIResponse),
+    IdentifyFailure(String),
+    // TODO: strip this down to something client-safe
+    IdentifySuccess(Identity),
+    WhoAmI(WhoAmI),
 }
 
 /// Main RPC handler that coordinates authentication and command execution
-pub struct RpcHandler<AM, RM>
+pub struct RpcHandler<AM, IM, RM>
 where
     AM: ApplicationManagement,
+    IM: IdentityManagement,
     RM: RuntimePoolManagement,
 {
     auth: RpcAuth,
-    context: RpcContext<AM, RM>,
+    context: RpcContext<AM, IM, RM>,
 }
 
-impl<AM, RM> RpcHandler<AM, RM>
+impl<AM, IM, RM> RpcHandler<AM, IM, RM>
 where
     AM: ApplicationManagement,
+    IM: IdentityManagement,
     RM: RuntimePoolManagement,
 {
     pub fn new(
         application_manager: AM,
         runtime_pool_manager: RM,
+        identity_manager: IM,
         application_id: String,
         session: Session,
     ) -> Result<Self, Error> {
@@ -123,6 +145,7 @@ where
         let context = RpcContext::new(
             application_id,
             application_manager,
+            identity_manager,
             runtime_pool_manager,
             session,
         );

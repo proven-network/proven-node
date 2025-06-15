@@ -25,17 +25,17 @@ pub struct CreateSessionRequest {
     public_key: Bytes,
 }
 
-pub(crate) async fn create_session_handler<AM, RM, SM, A, G>(
+pub(crate) async fn create_session_handler<AM, RM, IM, A, G>(
     State(FullContext {
-        session_manager, ..
-    }): State<FullContext<AM, RM, SM, A, G>>,
+        identity_manager, ..
+    }): State<FullContext<AM, RM, IM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     data: TypedMultipart<CreateSessionRequest>,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
@@ -66,7 +66,7 @@ where
             .unwrap();
     };
 
-    match session_manager
+    match identity_manager
         .create_anonymous_session(CreateAnonymousSessionOptions {
             application_id: &data.application_id,
             nonce: &data.nonce,

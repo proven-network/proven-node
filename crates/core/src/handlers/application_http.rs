@@ -13,10 +13,10 @@ use proven_runtime::{
 };
 
 #[derive(Clone)]
-pub(crate) struct ApplicationHttpContext<RM, SM, A>
+pub(crate) struct ApplicationHttpContext<RM, IM, A>
 where
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
 {
     pub application_id: String,
     pub attestor: A,
@@ -24,11 +24,11 @@ where
     pub module_loader: ModuleLoader,
     pub requires_session: bool,
     pub runtime_pool_manager: RM,
-    pub session_manager: SM,
+    pub identity_manager: IM,
 }
 
 #[allow(clippy::too_many_lines)]
-pub(crate) async fn application_http_handler<RM, SM, A>(
+pub(crate) async fn application_http_handler<RM, IM, A>(
     State(ApplicationHttpContext {
         application_id,
         attestor,
@@ -36,8 +36,8 @@ pub(crate) async fn application_http_handler<RM, SM, A>(
         module_loader,
         requires_session,
         runtime_pool_manager,
-        session_manager,
-    }): State<ApplicationHttpContext<RM, SM, A>>,
+        identity_manager,
+    }): State<ApplicationHttpContext<RM, IM, A>>,
     headers: HeaderMap,
     method: Method,
     uri: Uri,
@@ -45,7 +45,7 @@ pub(crate) async fn application_http_handler<RM, SM, A>(
 ) -> impl IntoResponse
 where
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
 {
     let maybe_session_id = match headers.get("Authorization") {
@@ -65,7 +65,7 @@ where
     };
 
     let maybe_session = if let Some(session_id) = maybe_session_id {
-        match session_manager
+        match identity_manager
             .get_session(&application_id, &session_id)
             .await
         {

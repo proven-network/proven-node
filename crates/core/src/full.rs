@@ -35,11 +35,11 @@ use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 
 /// Options for creating a new core.
-pub struct CoreOptions<AM, RM, SM, A, G, HS>
+pub struct CoreOptions<AM, RM, IM, A, G, HS>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
     HS: HttpServer,
@@ -53,23 +53,23 @@ where
     /// The HTTP server.
     pub http_server: HS,
 
+    /// The session manager.
+    pub identity_manager: IM,
+
     /// The network for peer discovery.
     pub network: ProvenNetwork<G, A>,
 
     /// The runtime pool manager.
     pub runtime_pool_manager: RM,
-
-    /// The session manager.
-    pub session_manager: SM,
 }
 
 /// Core logic for handling user interactions.
 #[derive(Clone)]
-pub struct Core<AM, RM, SM, A, G, HS>
+pub struct Core<AM, RM, IM, A, G, HS>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
     HS: HttpServer,
@@ -77,18 +77,18 @@ where
     application_manager: AM,
     attestor: A,
     http_server: HS,
+    identity_manager: IM,
     network: ProvenNetwork<G, A>,
     runtime_pool_manager: RM,
-    session_manager: SM,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl<AM, RM, SM, A, G, HS> Core<AM, RM, SM, A, G, HS>
+impl<AM, RM, IM, A, G, HS> Core<AM, RM, IM, A, G, HS>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
     HS: HttpServer,
@@ -101,8 +101,8 @@ where
             http_server,
             network,
             runtime_pool_manager,
-            session_manager,
-        }: CoreOptions<AM, RM, SM, A, G, HS>,
+            identity_manager,
+        }: CoreOptions<AM, RM, IM, A, G, HS>,
     ) -> Self {
         Self {
             application_manager,
@@ -110,7 +110,7 @@ where
             http_server,
             network,
             runtime_pool_manager,
-            session_manager,
+            identity_manager,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
         }
@@ -145,7 +145,7 @@ where
                 module_loader: ModuleLoader::new(code_package.clone()),
                 requires_session: false, // TODO: Make this configurable
                 runtime_pool_manager: self.runtime_pool_manager.clone(),
-                session_manager: self.session_manager.clone(),
+                identity_manager: self.identity_manager.clone(),
             };
 
             let method_router = match endpoint.method.as_deref() {
@@ -213,11 +213,11 @@ where
 }
 
 #[async_trait]
-impl<AM, RM, SM, A, G, HS> Bootable for Core<AM, RM, SM, A, G, HS>
+impl<AM, RM, IM, A, G, HS> Bootable for Core<AM, RM, IM, A, G, HS>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
     HS: HttpServer,
@@ -245,7 +245,7 @@ where
             application_manager: self.application_manager.clone(),
             network: self.network.clone(),
             runtime_pool_manager: self.runtime_pool_manager.clone(),
-            session_manager: self.session_manager.clone(),
+            identity_manager: self.identity_manager.clone(),
         };
 
         let light_ctx = LightContext {

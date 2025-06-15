@@ -128,6 +128,12 @@ where
     /// Gets an identity by ID.
     async fn get_identity(&self, identity_id: &str) -> Result<Option<Identity>, Error>;
 
+    /// Gets an identity by passkey PRF public key.
+    async fn get_identity_by_passkey_prf_public_key(
+        &self,
+        passkey_prf_public_key: &str,
+    ) -> Result<Option<Identity>, Error>;
+
     /// Gets an identity by Radix identity address.
     async fn get_identity_by_radix_identity_address(
         &self,
@@ -279,6 +285,13 @@ where
 
     async fn get_identity(&self, _identity_id: &str) -> Result<Option<Identity>, Error> {
         unimplemented!()
+    }
+
+    async fn get_identity_by_passkey_prf_public_key(
+        &self,
+        _passkey_prf_public_key: &str,
+    ) -> Result<Option<Identity>, Error> {
+        todo!()
     }
 
     async fn get_identity_by_radix_identity_address(

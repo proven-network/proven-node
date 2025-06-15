@@ -1321,7 +1321,7 @@ impl Bootstrap {
             persist: true,
         });
 
-        let session_manager = IdentityManager::new(IdentityManagerOptions {
+        let identity_manager = IdentityManager::new(IdentityManagerOptions {
             attestor: self.attestor.clone(),
             challenge_store,
             sessions_store,
@@ -1497,9 +1497,9 @@ impl Bootstrap {
             application_manager,
             attestor: self.attestor.clone(),
             http_server,
+            identity_manager,
             network: network.clone(),
             runtime_pool_manager,
-            session_manager,
         });
 
         // Shutdown the light core and free the port before starting the full core

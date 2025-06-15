@@ -15,13 +15,13 @@ use proven_runtime::RuntimePoolManagement;
 
 /// Handler for the `/whoami` endpoint.
 /// Returns the node information from network.get_self().
-pub async fn whoami_handler<AM, RM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, SM, A, G>>,
+pub async fn whoami_handler<AM, RM, IM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
 ) -> Result<Json<serde_json::Value>, Response>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
-    SM: IdentityManagement,
+    IM: IdentityManagement,
     A: Attestor,
     G: Governance,
 {
