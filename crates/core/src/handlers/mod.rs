@@ -11,9 +11,7 @@ pub(crate) use application_http::{ApplicationHttpContext, application_http_handl
 pub(crate) use node::nats_cluster_endpoint_handler;
 pub(crate) use rpc_http::http_rpc_handler;
 pub(crate) use rpc_ws::ws_rpc_handler;
-pub(crate) use sessions::{
-    create_rola_challenge_handler, create_session_handler, verify_rola_handler,
-};
+pub(crate) use sessions::create_session_handler;
 pub(crate) use static_files::{
     bridge_iframe_html_handler, bridge_iframe_js_handler, broker_worker_js_handler,
     button_iframe_html_handler, button_iframe_js_handler, register_iframe_html_handler,

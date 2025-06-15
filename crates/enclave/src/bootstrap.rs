@@ -869,8 +869,6 @@ impl Bootstrap {
             attestor: self.attestor.clone(),
             challenge_store,
             sessions_store,
-            radix_gateway_origin: GATEWAY_URL,
-            radix_network_definition: &radix_common::network::NetworkDefinition::stokenet(),
         });
 
         let cert_store = CertStore::new(

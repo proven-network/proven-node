@@ -1325,8 +1325,6 @@ impl Bootstrap {
             attestor: self.attestor.clone(),
             challenge_store,
             sessions_store,
-            radix_gateway_origin: GATEWAY_URL,
-            radix_network_definition: &NetworkDefinition::stokenet(),
         });
 
         let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, self.args.port));

@@ -1,7 +1,4 @@
-mod radix;
-
 use crate::FullContext;
-pub(crate) use radix::{create_rola_challenge_handler, verify_rola_handler};
 
 use axum::body::Body;
 use axum::extract::State;

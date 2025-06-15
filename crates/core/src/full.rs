@@ -2,10 +2,9 @@ use crate::error::{Error, Result};
 use crate::handlers::{
     ApplicationHttpContext, application_http_handler, bridge_iframe_html_handler,
     bridge_iframe_js_handler, broker_worker_js_handler, button_iframe_html_handler,
-    button_iframe_js_handler, create_rola_challenge_handler, create_session_handler,
-    http_rpc_handler, nats_cluster_endpoint_handler, register_iframe_html_handler,
-    register_iframe_js_handler, rpc_iframe_html_handler, rpc_iframe_js_handler,
-    rpc_worker_js_handler, sdk_js_handler, verify_rola_handler,
+    button_iframe_js_handler, create_session_handler, http_rpc_handler,
+    nats_cluster_endpoint_handler, register_iframe_html_handler, register_iframe_js_handler,
+    rpc_iframe_html_handler, rpc_iframe_js_handler, rpc_worker_js_handler, sdk_js_handler,
     webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
     webauthn_registration_finish_handler, webauthn_registration_start_handler, whoami_handler,
     ws_rpc_handler,
@@ -267,14 +266,6 @@ where
             .route(
                 "/app/{application_id}/rpc/ws",
                 get(ws_rpc_handler).with_state(full_ctx.clone()),
-            )
-            .route(
-                "/auth/rola/challenge",
-                get(create_rola_challenge_handler).with_state(full_ctx.clone()),
-            )
-            .route(
-                "/auth/rola/verify",
-                post(verify_rola_handler).with_state(full_ctx.clone()),
             )
             // ** WebAuthn **
             .route(
