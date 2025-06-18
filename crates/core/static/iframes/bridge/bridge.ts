@@ -1,5 +1,14 @@
 import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
 import { bytesToHex } from "@noble/curves/abstract/utils";
+import type {
+  WhoAmI,
+  WhoAmIResponse,
+  ExecuteHash,
+  Execute,
+  ExecuteOutput,
+  ExecuteLog,
+  ExecuteSuccess,
+} from "../../common";
 
 // Message types for parent ↔ bridge communication
 export type WhoAmIMessage = {
@@ -39,33 +48,6 @@ export type BridgeToParentMessage =
   | ResponseMessage
   | OpenModalMessage
   | CloseModalMessage;
-
-// RPC types that bridge knows about
-type WhoAmI = "WhoAmI";
-export type WhoAmIResponse = {
-  identity_address: string;
-  account_addresses: string[];
-};
-
-type ExecuteHash = { ExecuteHash: [string, string, any[]] };
-type Execute = {
-  Execute: [string, string, any[]];
-};
-export type ExecuteOutput = string | number | boolean | null | undefined;
-type ExecuteLog = {
-  level: string;
-  args: ExecuteOutput[];
-};
-type ExecuteSuccess = {
-  output: ExecuteOutput;
-  duration: {
-    secs: number;
-    nanos: number;
-  };
-  logs: ExecuteLog[];
-};
-
-type RpcCall = WhoAmI | ExecuteHash | Execute;
 
 function isParentMessage(data: unknown): data is ParentToBridgeMessage {
   if (
@@ -220,7 +202,9 @@ class BridgeClient {
 
       // Start with ExecuteHash (optimized path)
       const moduleHash = await this.hashScript(script);
-      let rpcCall: RpcCall = { ExecuteHash: [moduleHash, handler, args || []] };
+      let rpcCall: ExecuteHash = {
+        ExecuteHash: [moduleHash, handler, args || []],
+      };
 
       const response = await this.broker.request<{
         success: boolean;

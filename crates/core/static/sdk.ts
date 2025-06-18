@@ -1,7 +1,6 @@
 import { generateWindowId } from "./helpers/broker";
+import type { ExecuteOutput, WhoAmIResponse } from "./common";
 import type {
-  ExecuteOutput,
-  WhoAmIResponse,
   ParentToBridgeMessage,
   BridgeToParentMessage,
   ResponseMessage,
