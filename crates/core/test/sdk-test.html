@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <title>Proven SDK Test</title>
@@ -63,80 +63,89 @@
   </head>
   <body>
     <h1>Proven SDK Test</h1>
-    
+
     <div class="auth-section">
       <h3>Authentication</h3>
       <p>Click the button below to sign in or out:</p>
       <div id="auth-container"></div>
     </div>
-    
+
     <div class="controls">
       <h3>API Calls</h3>
       <button onclick="testWhoAmI()">Who Am I</button>
       <button onclick="testExecute()">Test Execute</button>
       <button onclick="clearMessages()">Clear Messages</button>
     </div>
-    
+
     <div id="messages"></div>
 
     <!-- Load the SDK -->
     <script src="http://localhost:3200/sdk.js"></script>
-    
+
     <script>
       // Initialize the SDK
       const sdk = ProvenSDK({
         logger: {
-          debug: (...args) => console.debug('[SDK]', ...args),
-          info: (...args) => console.info('[SDK]', ...args),
-          warn: (...args) => console.warn('[SDK]', ...args),
-          error: (...args) => console.error('[SDK]', ...args),
+          debug: (...args) => console.debug("[SDK]", ...args),
+          info: (...args) => console.info("[SDK]", ...args),
+          warn: (...args) => console.warn("[SDK]", ...args),
+          error: (...args) => console.error("[SDK]", ...args),
         },
-        authGatewayOrigin: 'http://localhost:3200',
-        applicationId: 'application_id'
+        authGatewayOrigin: "http://localhost:3200",
+        applicationId: "application_id",
       });
 
       // Initialize the button iframe
-      sdk.initButton('#auth-container').then(() => {
-        logMessage('Auth button initialized', 'success');
-      }).catch((error) => {
-        logMessage(`Failed to initialize auth button: ${error.message}`, 'error');
-      });
+      sdk
+        .initConnectButton("#auth-container")
+        .then(() => {
+          logMessage("Auth button initialized", "success");
+        })
+        .catch((error) => {
+          logMessage(
+            `Failed to initialize auth button: ${error.message}`,
+            "error"
+          );
+        });
 
       // Make SDK available globally for button handlers
       window.sdk = sdk;
 
-      function logMessage(message, type = 'info') {
-        const div = document.createElement('div');
+      function logMessage(message, type = "info") {
+        const div = document.createElement("div");
         div.className = `message ${type}`;
         div.innerHTML = `
           <strong>${new Date().toLocaleTimeString()}</strong><br>
-          ${typeof message === 'object' ? JSON.stringify(message, null, 2) : message}
+          ${typeof message === "object" ? JSON.stringify(message, null, 2) : message}
         `;
-        document.getElementById('messages').prepend(div);
+        document.getElementById("messages").prepend(div);
       }
 
-      window.testWhoAmI = async function() {
+      window.testWhoAmI = async function () {
         const button = event.target;
         button.disabled = true;
-        
+
         try {
-          logMessage('Calling whoAmI...', 'info');
+          logMessage("Calling whoAmI...", "info");
           const result = await sdk.whoAmI();
-          logMessage(`WhoAmI Result: ${JSON.stringify(result, null, 2)}`, 'success');
+          logMessage(
+            `WhoAmI Result: ${JSON.stringify(result, null, 2)}`,
+            "success"
+          );
         } catch (error) {
-          logMessage(`WhoAmI Error: ${error.message}`, 'error');
+          logMessage(`WhoAmI Error: ${error.message}`, "error");
         } finally {
           button.disabled = false;
         }
       };
 
-      window.testExecute = async function() {
+      window.testExecute = async function () {
         const button = event.target;
         button.disabled = true;
-        
+
         try {
-          logMessage('Calling execute with test script...', 'info');
-          
+          logMessage("Calling execute with test script...", "info");
+
           const script = `
             import { run } from "@proven-network/handler";
 
@@ -146,22 +155,25 @@
               return "Hello from Proven!";
             });
           `;
-          
-          const result = await sdk.execute(script, 'file:///main.ts#test', []);
-          logMessage(`Execute Result: ${JSON.stringify(result, null, 2)}`, 'success');
+
+          const result = await sdk.execute(script, "file:///main.ts#test", []);
+          logMessage(
+            `Execute Result: ${JSON.stringify(result, null, 2)}`,
+            "success"
+          );
         } catch (error) {
-          logMessage(`Execute Error: ${error.message}`, 'error');
+          logMessage(`Execute Error: ${error.message}`, "error");
         } finally {
           button.disabled = false;
         }
       };
 
-      window.clearMessages = function() {
-        document.getElementById('messages').innerHTML = '';
+      window.clearMessages = function () {
+        document.getElementById("messages").innerHTML = "";
       };
 
       // Log SDK initialization
-      logMessage('Proven SDK initialized', 'success');
+      logMessage("Proven SDK initialized", "success");
     </script>
   </body>
-</html> 
+</html>

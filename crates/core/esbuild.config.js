@@ -4,7 +4,7 @@ const config = {
   entryPoints: [
     'static/sdk.ts',
     'static/iframes/bridge/bridge.ts',
-    'static/iframes/button/button.ts',
+    'static/iframes/connect/connect.ts',
     'static/iframes/register/register.ts',
     'static/iframes/rpc/rpc.ts',
     'static/workers/broker-worker.ts',

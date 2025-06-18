@@ -21,7 +21,7 @@ export function getMasterSecret(): Uint8Array | null {
   return null;
 }
 
-class ButtonClient {
+class ConnectClient {
   broker: MessageBroker;
   windowId: string;
 
@@ -30,7 +30,7 @@ class ButtonClient {
     this.windowId = getWindowIdFromUrl() || "unknown";
 
     // Initialize broker synchronously - will throw if it fails
-    this.broker = new MessageBroker(this.windowId, "button");
+    this.broker = new MessageBroker(this.windowId, "connect");
 
     this.initializeBroker();
   }
@@ -41,26 +41,26 @@ class ButtonClient {
 
       // Set up message handlers
       this.broker.on("registration_complete", (message) => {
-        console.log("Button: Registration completed", message.data);
+        console.log("Connect: Registration completed", message.data);
 
         // Store the PRF result if provided
         if (message.data.prfResult) {
-          console.log("Button: Registration successful with PRF result");
+          console.log("Connect: Registration successful with PRF result");
           this.handleSuccessfulAuth(message.data.prfResult);
         }
       });
 
-      console.log("Button: Broker initialized successfully");
+      console.log("Connect: Broker initialized successfully");
     } catch (error) {
-      console.error("Button: Failed to initialize broker:", error);
+      console.error("Connect: Failed to initialize broker:", error);
       throw new Error(
-        `Button: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`
+        `Connect: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     }
   }
 
   handleSuccessfulAuth(prfResult: Uint8Array) {
-    console.log("Button: Storing master secret and updating UI");
+    console.log("Connect: Storing master secret and updating UI");
     storeMasterSecret(prfResult);
     this.updateAuthUI();
   }
@@ -136,7 +136,7 @@ class ButtonClient {
 
   // Initialize the client when the page loads
   static init() {
-    const client = new ButtonClient();
+    const client = new ConnectClient();
 
     // Set up event listeners
     window.addEventListener("load", () => {
@@ -162,8 +162,8 @@ class ButtonClient {
 
 // Initialize when the page loads
 if (globalThis.addEventListener) {
-  globalThis.addEventListener("DOMContentLoaded", ButtonClient.init);
+  globalThis.addEventListener("DOMContentLoaded", ConnectClient.init);
 } else {
   // Fallback for cases where DOMContentLoaded has already fired
-  ButtonClient.init();
+  ConnectClient.init();
 }

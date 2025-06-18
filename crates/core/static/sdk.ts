@@ -15,7 +15,7 @@ export type ProvenSDK = {
     args?: any[]
   ) => Promise<ExecuteOutput>;
   whoAmI: () => Promise<WhoAmIResponse>;
-  initButton: (targetElement?: HTMLElement | string) => Promise<void>;
+  initConnectButton: (targetElement?: HTMLElement | string) => Promise<void>;
 };
 
 export type Logger = {
@@ -35,7 +35,7 @@ export const ProvenSDK = (options: {
 
   // Build iframe URLs from well-known paths
   const bridgeIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/bridge.html`;
-  const buttonIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/button.html`;
+  const connectIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/connect.html`;
   const registerIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/register.html`;
   const rpcIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/rpc.html`;
 
@@ -44,13 +44,13 @@ export const ProvenSDK = (options: {
   logger?.debug("SDK: Generated window ID:", windowId);
 
   let bridgeIframe: HTMLIFrameElement | null = null;
-  let buttonIframe: HTMLIFrameElement | null = null;
+  let connectIframe: HTMLIFrameElement | null = null;
   let rpcIframe: HTMLIFrameElement | null = null;
   let modalIframe: HTMLIFrameElement | null = null;
   let modalOverlay: HTMLDivElement | null = null;
   let bridgeIframeReady = false;
   let rpcIframeReady = false;
-  let buttonIframeReady = false;
+  let connectIframeReady = false;
   let nonce = 0;
   const pendingCallbacks = new Map<
     number,
@@ -210,36 +210,36 @@ export const ProvenSDK = (options: {
     });
   };
 
-  const createButtonIframe = (
+  const createConnectIframe = (
     targetElement?: HTMLElement | string
   ): Promise<void> => {
     return new Promise((resolve, reject) => {
-      if (buttonIframe && buttonIframeReady) {
+      if (connectIframe && connectIframeReady) {
         resolve();
         return;
       }
 
-      buttonIframe = document.createElement("iframe");
-      buttonIframe.src = `${buttonIframeUrl}?app=${applicationId}#window=${windowId}`;
-      buttonIframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
-      buttonIframe.setAttribute("allow", "publickey-credentials-get *");
+      connectIframe = document.createElement("iframe");
+      connectIframe.src = `${connectIframeUrl}?app=${applicationId}#window=${windowId}`;
+      connectIframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+      connectIframe.setAttribute("allow", "publickey-credentials-get *");
 
       // Set iframe dimensions for the smart auth button
-      buttonIframe.style.width = "180px";
-      buttonIframe.style.height = "65px";
-      buttonIframe.style.border = "none";
-      buttonIframe.style.background = "transparent";
+      connectIframe.style.width = "180px";
+      connectIframe.style.height = "65px";
+      connectIframe.style.border = "none";
+      connectIframe.style.background = "transparent";
 
-      buttonIframe.onload = () => {
+      connectIframe.onload = () => {
         // Wait a bit for iframe to initialize
         setTimeout(() => {
-          buttonIframeReady = true;
+          connectIframeReady = true;
           resolve();
         }, 100);
       };
 
-      buttonIframe.onerror = () => {
-        reject(new Error("Failed to load button iframe"));
+      connectIframe.onerror = () => {
+        reject(new Error("Failed to load connect iframe"));
       };
 
       // Append iframe to target element or document body
@@ -254,7 +254,7 @@ export const ProvenSDK = (options: {
           target = targetElement;
         }
       }
-      target.appendChild(buttonIframe);
+      target.appendChild(connectIframe);
     });
   };
 
@@ -286,7 +286,7 @@ export const ProvenSDK = (options: {
     }
 
     // Handle messages from button iframe (for backwards compatibility during transition)
-    if (buttonIframe && event.source === buttonIframe.contentWindow) {
+    if (connectIframe && event.source === connectIframe.contentWindow) {
       const message = event.data as OpenModalMessage;
 
       if (message.type === "open_registration_modal") {
@@ -361,11 +361,11 @@ export const ProvenSDK = (options: {
     return response;
   };
 
-  const initButton = async (
+  const initConnectButton = async (
     targetElement?: HTMLElement | string
   ): Promise<void> => {
     logger?.debug("SDK: Initializing button iframe");
-    await createButtonIframe(targetElement);
+    await createConnectIframe(targetElement);
   };
 
   // Initialize bridge and RPC iframes immediately
@@ -390,8 +390,8 @@ export const ProvenSDK = (options: {
 
   return {
     execute,
+    initConnectButton,
     whoAmI,
-    initButton,
   };
 };
 

@@ -261,7 +261,7 @@ class RegisterClient {
           username: this.username,
           prfResult: prfResult,
         },
-        "button"
+        "connect"
       );
 
       // Generate and display seed words, then show seed screen

@@ -16,13 +16,13 @@ const SDK_JS: &str = include_str!("../../static/sdk.js");
 
 // Iframe HTML
 const BRIDGE_IFRAME_HTML: &str = include_str!("../../static/iframes/bridge/bridge.html");
-const BUTTON_IFRAME_HTML: &str = include_str!("../../static/iframes/button/button.html");
+const CONNECT_IFRAME_HTML: &str = include_str!("../../static/iframes/connect/connect.html");
 const REGISTER_IFRAME_HTML: &str = include_str!("../../static/iframes/register/register.html");
 const RPC_IFRAME_HTML: &str = include_str!("../../static/iframes/rpc/rpc.html");
 
 // Iframe JS
 const BRIDGE_IFRAME_JS: &str = include_str!("../../static/iframes/bridge/bridge.js");
-const BUTTON_IFRAME_JS: &str = include_str!("../../static/iframes/button/button.js");
+const CONNECT_IFRAME_JS: &str = include_str!("../../static/iframes/connect/connect.js");
 const REGISTER_IFRAME_JS: &str = include_str!("../../static/iframes/register/register.js");
 const RPC_IFRAME_JS: &str = include_str!("../../static/iframes/rpc/rpc.js");
 
@@ -42,10 +42,10 @@ pub(crate) async fn bridge_iframe_js_handler() -> impl IntoResponse {
     )
 }
 
-pub(crate) async fn button_iframe_js_handler() -> impl IntoResponse {
+pub(crate) async fn connect_iframe_js_handler() -> impl IntoResponse {
     (
         [("Content-Type", "application/javascript")],
-        BUTTON_IFRAME_JS,
+        CONNECT_IFRAME_JS,
     )
 }
 
@@ -91,7 +91,7 @@ where
     )
 }
 
-pub(crate) async fn button_iframe_html_handler<AM, RM, IM, A, G>(
+pub(crate) async fn connect_iframe_html_handler<AM, RM, IM, A, G>(
     Path(_application_id): Path<String>,
     State(FullContext { .. }): State<FullContext<AM, RM, IM, A, G>>,
     headers: HeaderMap,
@@ -118,7 +118,7 @@ where
                 format!("ALLOW-FROM frame-ancestors {referer}"),
             ),
         ],
-        Html(BUTTON_IFRAME_HTML),
+        Html(CONNECT_IFRAME_HTML),
     )
 }
 

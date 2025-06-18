@@ -1,8 +1,8 @@
 use crate::error::{Error, Result};
 use crate::handlers::{
     ApplicationHttpContext, application_http_handler, bridge_iframe_html_handler,
-    bridge_iframe_js_handler, broker_worker_js_handler, button_iframe_html_handler,
-    button_iframe_js_handler, create_session_handler, http_rpc_handler,
+    bridge_iframe_js_handler, broker_worker_js_handler, connect_iframe_html_handler,
+    connect_iframe_js_handler, create_session_handler, http_rpc_handler,
     nats_cluster_endpoint_handler, register_iframe_html_handler, register_iframe_js_handler,
     rpc_iframe_html_handler, rpc_iframe_js_handler, rpc_worker_js_handler, sdk_js_handler,
     webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
@@ -299,8 +299,8 @@ where
                 get(bridge_iframe_html_handler).with_state(full_ctx.clone()),
             )
             .route(
-                "/app/{application_id}/iframes/button.html",
-                get(button_iframe_html_handler).with_state(full_ctx.clone()),
+                "/app/{application_id}/iframes/connect.html",
+                get(connect_iframe_html_handler).with_state(full_ctx.clone()),
             )
             .route(
                 "/app/{application_id}/iframes/register.html",
@@ -316,8 +316,8 @@ where
                 get(bridge_iframe_js_handler),
             )
             .route(
-                "/app/{application_id}/iframes/button.js",
-                get(button_iframe_js_handler),
+                "/app/{application_id}/iframes/connect.js",
+                get(connect_iframe_js_handler),
             )
             .route(
                 "/app/{application_id}/iframes/register.js",
