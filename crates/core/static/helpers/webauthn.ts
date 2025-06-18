@@ -107,24 +107,8 @@ export function signOut(): void {
   console.log("Signed out - cleared master secret");
 }
 
-// Master secret functions
-export function storeMasterSecret(masterSecretBytes: Uint8Array): void {
-  const masterSecretHex = bytesToHex(masterSecretBytes);
-  sessionStorage.setItem(MASTER_SECRET_KEY, masterSecretHex);
-}
-
-export function getMasterSecret(): Uint8Array | null {
-  const masterSecretHex = sessionStorage.getItem(MASTER_SECRET_KEY);
-  if (masterSecretHex) {
-    return new Uint8Array(
-      masterSecretHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-    );
-  }
-  return null;
-}
-
-// Authentication function
-export async function authenticate(): Promise<Response> {
+// Authentication function - returns PRF result as Promise
+export async function authenticate(): Promise<Uint8Array> {
   console.log("Starting authentication...");
 
   // Generate a random state parameter which will tie start and finish requests together
@@ -181,25 +165,31 @@ export async function authenticate(): Promise<Response> {
     body: JSON.stringify(credentialJson),
   });
 
-  if (finishResp.ok) {
-    console.log("Authentication successful!");
-
-    // Process PRF results if available
-    const extensionResults = (credential as any).getClientExtensionResults?.();
-    if (extensionResults?.prf?.results?.first) {
-      const masterSecretBytes = new Uint8Array(
-        extensionResults.prf.results.first
-      );
-      storeMasterSecret(masterSecretBytes);
-      console.log("Stored master secret from PRF");
-    }
+  if (!finishResp.ok) {
+    throw new Error(
+      `Authentication finish failed: ${finishResp.status} ${finishResp.statusText}`
+    );
   }
 
-  return finishResp;
+  console.log("Authentication successful!");
+
+  // Return PRF results if available
+  const extensionResults = (credential as any).getClientExtensionResults?.();
+  if (extensionResults?.prf?.results?.first) {
+    const masterSecretBytes = new Uint8Array(
+      extensionResults.prf.results.first
+    );
+    console.log("Returning master secret from PRF");
+    return masterSecretBytes;
+  }
+
+  throw new Error(
+    "PRF extension result not available - master secret cannot be generated"
+  );
 }
 
 // Registration function
-export async function register(username: string): Promise<Response> {
+export async function register(username: string): Promise<Uint8Array> {
   console.log("Starting registration...");
 
   // Generate a random state parameter which will tie start and finish requests together
@@ -261,18 +251,24 @@ export async function register(username: string): Promise<Response> {
     body: JSON.stringify(credentialJson),
   });
 
-  if (finishResp.ok) {
-    console.log("Registration successful!");
-
-    // Process PRF results if available
-    if (extensionResults?.prf?.results?.first) {
-      const masterSecretBytes = new Uint8Array(
-        extensionResults.prf.results.first
-      );
-      storeMasterSecret(masterSecretBytes);
-      console.log("Stored master secret from PRF");
-    }
+  if (!finishResp.ok) {
+    throw new Error(
+      `Registration finish failed: ${finishResp.status} ${finishResp.statusText}`
+    );
   }
 
-  return finishResp;
+  console.log("Registration successful!");
+
+  // Return PRF results if available
+  if (extensionResults?.prf?.results?.first) {
+    const masterSecretBytes = new Uint8Array(
+      extensionResults.prf.results.first
+    );
+    console.log("Returning master secret from PRF");
+    return masterSecretBytes;
+  }
+
+  throw new Error(
+    "PRF extension result not available - master secret cannot be generated"
+  );
 }

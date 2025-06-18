@@ -1,5 +1,25 @@
 import { isSignedIn, authenticate, signOut } from "../../helpers/webauthn";
 import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
+import { bytesToHex } from "@noble/curves/abstract/utils";
+
+// Constants
+const MASTER_SECRET_KEY = "webauthn_master_secret";
+
+// Master secret functions
+function storeMasterSecret(masterSecretBytes: Uint8Array): void {
+  const masterSecretHex = bytesToHex(masterSecretBytes);
+  sessionStorage.setItem(MASTER_SECRET_KEY, masterSecretHex);
+}
+
+export function getMasterSecret(): Uint8Array | null {
+  const masterSecretHex = sessionStorage.getItem(MASTER_SECRET_KEY);
+  if (masterSecretHex) {
+    return new Uint8Array(
+      masterSecretHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+    );
+  }
+  return null;
+}
 
 class ButtonClient {
   broker: MessageBroker;
@@ -22,8 +42,12 @@ class ButtonClient {
       // Set up message handlers
       this.broker.on("registration_complete", (message) => {
         console.log("Button: Registration completed", message.data);
-        // Update UI state after registration
-        this.updateAuthUI();
+
+        // Store the PRF result if provided
+        if (message.data.prfResult) {
+          console.log("Button: Registration successful with PRF result");
+          this.handleSuccessfulAuth(message.data.prfResult);
+        }
       });
 
       console.log("Button: Broker initialized successfully");
@@ -33,6 +57,12 @@ class ButtonClient {
         `Button: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     }
+  }
+
+  handleSuccessfulAuth(prfResult: Uint8Array) {
+    console.log("Button: Storing master secret and updating UI");
+    storeMasterSecret(prfResult);
+    this.updateAuthUI();
   }
 
   updateAuthUI() {
@@ -68,14 +98,9 @@ class ButtonClient {
     button.textContent = "Signing in...";
 
     try {
-      const response = await authenticate();
-      if (response.ok) {
-        console.log("Authentication successful");
-        this.updateAuthUI();
-      } else {
-        console.error("Authentication failed:", await response.text());
-        this.resetSignInButton();
-      }
+      const prfResult = await authenticate();
+      console.log("Authentication successful with PRF result");
+      this.handleSuccessfulAuth(prfResult);
     } catch (error) {
       console.error("Authentication error:", error);
 
@@ -91,7 +116,7 @@ class ButtonClient {
         await this.broker.send("open_registration_modal", null, "sdk");
         this.resetSignInButton();
       } else {
-        // Other error (user cancelled, etc.)
+        // Other error (user cancelled, PRF not available, etc.)
         let errorMessage = "Sign-in failed";
         if ((error as Error).name === "NotAllowedError") {
           errorMessage = "Sign-in was cancelled";

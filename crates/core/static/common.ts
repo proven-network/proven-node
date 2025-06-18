@@ -30,5 +30,20 @@ export type ExecuteSuccess = {
   logs: ExecuteLog[];
 };
 
+// Identify command and response
+export type Identify = {
+  Identify: [string, string];
+};
+
+export type IdentifyResponse = {
+  IdentifySuccess: {
+    session_id: string;
+    identity: any;
+  };
+  IdentifyFailure: {
+    error: string;
+  };
+};
+
 // Union of all RPC commands
-export type RpcCall = WhoAmI | ExecuteHash | Execute;
+export type RpcCall = Execute | ExecuteHash | Identify | WhoAmI;

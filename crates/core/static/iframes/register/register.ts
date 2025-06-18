@@ -1,4 +1,4 @@
-import { register, getMasterSecret } from "../../helpers/webauthn";
+import { register } from "../../helpers/webauthn";
 import { generateMnemonic } from "../../helpers/bip32";
 import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
 
@@ -164,17 +164,10 @@ class RegisterClient {
     }
   }
 
-  generateAndDisplaySeedWords() {
-    const masterSecret = getMasterSecret();
-    if (!masterSecret) {
-      console.error("No master secret available for seed generation");
-      this.showError("Unable to generate recovery seed. Please try again.");
-      return;
-    }
-
+  generateAndDisplaySeedWords(prfResult: Uint8Array) {
     try {
-      // Generate 24-word mnemonic from master secret
-      const seedWords = generateMnemonic(masterSecret);
+      // Generate 24-word mnemonic from PRF result
+      const seedWords = generateMnemonic(prfResult);
       console.log("Generated seed words:", seedWords.length);
 
       // Display the words in the grid
@@ -255,29 +248,25 @@ class RegisterClient {
     this.setLoading(true);
 
     try {
-      // Call WebAuthn registration with the username
-      const response = await register(this.username);
+      // Call WebAuthn registration with the username - returns PRF result
+      const prfResult = await register(this.username);
 
-      if (response.ok) {
-        console.log("Registration successful for username:", this.username);
+      console.log("Registration successful for username:", this.username);
 
-        // Send success message directly to button iframe via broker
-        await this.broker.send(
-          "registration_complete",
-          {
-            success: true,
-            username: this.username,
-          },
-          "button"
-        );
+      // Send success message with PRF result directly to button iframe via broker
+      await this.broker.send(
+        "registration_complete",
+        {
+          success: true,
+          username: this.username,
+          prfResult: prfResult,
+        },
+        "button"
+      );
 
-        // Generate and display seed words, then show seed screen
-        this.generateAndDisplaySeedWords();
-        this.showScreen("seed");
-      } else {
-        const errorText = await response.text();
-        this.showError(`Registration failed: ${errorText}`);
-      }
+      // Generate and display seed words, then show seed screen
+      this.generateAndDisplaySeedWords(prfResult);
+      this.showScreen("seed");
     } catch (error) {
       console.error("Registration error:", error);
 
