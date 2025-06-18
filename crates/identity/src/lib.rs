@@ -97,7 +97,7 @@ where
     /// Gets an identity by passkey PRF public key.
     async fn get_identity_by_passkey_prf_public_key(
         &self,
-        passkey_prf_public_key: &str,
+        passkey_prf_public_key_bytes: &Bytes,
     ) -> Result<Option<Identity>, Error>;
 
     /// Gets a session by ID.
@@ -222,7 +222,7 @@ where
 
     async fn get_identity_by_passkey_prf_public_key(
         &self,
-        _passkey_prf_public_key: &str,
+        _passkey_prf_public_key_bytes: &Bytes,
     ) -> Result<Option<Identity>, Error> {
         todo!()
     }

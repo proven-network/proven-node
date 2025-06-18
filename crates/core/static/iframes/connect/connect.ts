@@ -1,6 +1,9 @@
 import { isSignedIn, authenticate, signOut } from "../../helpers/webauthn";
 import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
-import { bytesToHex } from "@noble/curves/abstract/utils";
+import { bytesToHex, hexToBytes } from "@noble/curves/abstract/utils";
+import { Identify } from "../../common";
+import { signAsync, getPublicKeyAsync } from "@noble/ed25519";
+import { getSession } from "../../helpers/sessions";
 
 // Constants
 const MASTER_SECRET_KEY = "webauthn_master_secret";
@@ -22,10 +25,15 @@ export function getMasterSecret(): Uint8Array | null {
 }
 
 class ConnectClient {
+  applicationId: string;
   broker: MessageBroker;
   windowId: string;
 
   constructor() {
+    // Extract application ID from URL path
+    this.applicationId =
+      globalThis.location.pathname.split("/")[2] || "unknown";
+
     // Extract window ID from URL fragment
     this.windowId = getWindowIdFromUrl() || "unknown";
 
@@ -40,13 +48,13 @@ class ConnectClient {
       await this.broker.connect();
 
       // Set up message handlers
-      this.broker.on("registration_complete", (message) => {
+      this.broker.on("registration_complete", async (message) => {
         console.log("Connect: Registration completed", message.data);
 
         // Store the PRF result if provided
         if (message.data.prfResult) {
           console.log("Connect: Registration successful with PRF result");
-          this.handleSuccessfulAuth(message.data.prfResult);
+          await this.handleSuccessfulAuth(message.data.prfResult);
         }
       });
 
@@ -59,10 +67,41 @@ class ConnectClient {
     }
   }
 
-  handleSuccessfulAuth(prfResult: Uint8Array) {
+  async handleSuccessfulAuth(prfResult: Uint8Array) {
     console.log("Connect: Storing master secret and updating UI");
     storeMasterSecret(prfResult);
     this.updateAuthUI();
+
+    // Send identify RPC request
+    try {
+      // Just use 32 bytes of zeros for the session ID for now
+      const session = await getSession(this.applicationId);
+
+      if (!session) {
+        throw new Error("Session not found");
+      }
+
+      const sessionId = hexToBytes(session.sessionId.replace(/-/g, ""));
+
+      // Get the public key from the PRF result
+      const publicKey = await getPublicKeyAsync(prfResult);
+
+      // Sign the session ID with the PRF result
+      const sessionIdSignature = await signAsync(sessionId, prfResult);
+
+      const identifyRequest: Identify = {
+        Identify: [publicKey, sessionIdSignature],
+      };
+
+      const response = await this.broker.request(
+        "rpc_request",
+        identifyRequest,
+        "rpc"
+      );
+      console.log("Connect: Identify RPC response:", response);
+    } catch (error) {
+      console.error("Connect: Failed to send identify RPC request:", error);
+    }
   }
 
   updateAuthUI() {
@@ -100,7 +139,7 @@ class ConnectClient {
     try {
       const prfResult = await authenticate();
       console.log("Authentication successful with PRF result");
-      this.handleSuccessfulAuth(prfResult);
+      await this.handleSuccessfulAuth(prfResult);
     } catch (error) {
       console.error("Authentication error:", error);
 

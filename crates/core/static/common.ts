@@ -32,7 +32,7 @@ export type ExecuteSuccess = {
 
 // Identify command and response
 export type Identify = {
-  Identify: [string, string];
+  Identify: [Uint8Array, Uint8Array];
 };
 
 export type IdentifyResponse = {

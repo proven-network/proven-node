@@ -27,7 +27,7 @@ pub enum Request {
     // module_hash, handler_specifier, args
     ExecuteHash(String, String, Vec<serde_json::Value>),
     // passkey_prf_public_key, session_id_signature
-    Identify(String, String),
+    Identify(Bytes, Bytes),
     // no args
     WhoAmI,
 }
@@ -97,10 +97,10 @@ impl Request {
                     args,
                 })
             }
-            Request::Identify(passkey_prf_public_key, session_id_signature) => {
+            Request::Identify(passkey_prf_public_key_bytes, session_id_signature_bytes) => {
                 Command::Identify(IdentifyCommand {
-                    passkey_prf_public_key,
-                    session_id_signature,
+                    passkey_prf_public_key_bytes,
+                    session_id_signature_bytes,
                 })
             }
             Request::WhoAmI => Command::WhoAmI(WhoAmICommand),
