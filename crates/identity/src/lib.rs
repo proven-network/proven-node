@@ -6,38 +6,42 @@
 
 mod error;
 mod identity;
-mod ledger_identity;
 mod session;
 mod whoami;
 
 pub use error::Error;
 pub use identity::Identity;
-pub use ledger_identity::LedgerIdentity;
-pub use ledger_identity::radix::RadixIdentityDetails;
 pub use session::Session;
 pub use whoami::WhoAmI;
+
+use std::time::SystemTime;
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
+use futures::StreamExt;
 use proven_attestation::{AttestationParams, Attestor};
-use proven_store::{Store, Store1, Store2};
-use rand::{Rng, thread_rng};
+use proven_sql::{SqlConnection, SqlParam, SqlStore};
+use proven_store::{Store, Store1};
+use rand::thread_rng;
 use tracing::{debug, info};
 use uuid::Uuid;
 
+static CREATE_IDENTITIES_SQL: &str = include_str!("../sql/01_create_identities.sql");
+static CREATE_LINKED_PASSKEYS_SQL: &str = include_str!("../sql/02_create_linked_passkeys.sql");
+
 /// Options for creating a new `IdentityManager`
-pub struct IdentityManagerOptions<A, CS, SS>
+pub struct IdentityManagerOptions<A, IS, SS>
 where
     A: Attestor,
-    CS: Store2,
+    IS: SqlStore,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     /// The attestor to use for remote attestation.
     pub attestor: A,
 
-    /// The KV store to use for storing challenges.
-    pub challenge_store: CS,
+    /// The SQL store to use for storing identities.
+    pub identity_store: IS,
 
     /// The KV store to use for storing sessions.
     pub sessions_store: SS,
@@ -67,15 +71,15 @@ where
     /// Attestor type.
     type Attestor: Attestor;
 
-    /// Challenge store type.
-    type ChallengeStore: Store2;
+    /// Identity store type.
+    type IdentityStore: SqlStore;
 
     /// Session store type.
     type SessionStore: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>;
 
     /// Creates a new instance of the session manager.
     fn new(
-        options: IdentityManagerOptions<Self::Attestor, Self::ChallengeStore, Self::SessionStore>,
+        options: IdentityManagerOptions<Self::Attestor, Self::IdentityStore, Self::SessionStore>,
     ) -> Self;
 
     /// Creates a new anonymous session.
@@ -84,67 +88,65 @@ where
         options: CreateAnonymousSessionOptions<'_>,
     ) -> Result<Bytes, Error>;
 
-    /// Creates a new ROLA challenge to use for session identifiction.
-    async fn create_rola_challenge(
-        &self,
-        application_id: &str,
-        origin: &str,
-    ) -> Result<String, Error>;
-
     /// Gets an identity by ID.
     async fn get_identity(&self, identity_id: &str) -> Result<Option<Identity>, Error>;
 
-    /// Gets an identity by passkey PRF public key.
-    async fn get_identity_by_passkey_prf_public_key(
+    /// Gets an identity by passkey PRF public key, or creates a new one if it doesn't exist.
+    async fn get_or_create_identity_by_passkey_prf_public_key(
         &self,
         passkey_prf_public_key_bytes: &Bytes,
-    ) -> Result<Option<Identity>, Error>;
+    ) -> Result<Identity, Error>;
 
     /// Gets a session by ID.
     async fn get_session(
         &self,
-        application_id: &str,
-        session_id: &str,
+        application_id: &Uuid,
+        session_id: &Uuid,
     ) -> Result<Option<Session>, Error>;
 
     /// Identifies a session
-    async fn identify_session(&self, session_id: &str, identity_id: &str) -> Result<Bytes, Error>;
+    async fn identify_session(
+        &self,
+        application_id: &Uuid,
+        session_id: &Uuid,
+        identity_id: &Uuid,
+    ) -> Result<Session, Error>;
 }
 
 /// Manages all user sessions (created via ROLA) and their associated data.
 #[derive(Clone)]
-pub struct IdentityManager<A, CS, SS>
+pub struct IdentityManager<A, IS, SS>
 where
     A: Attestor,
-    CS: Store2,
+    IS: SqlStore,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     attestor: A,
-    challenge_store: CS,
+    identity_store: IS,
     sessions_store: SS,
 }
 
 #[async_trait]
-impl<A, CS, SS> IdentityManagement for IdentityManager<A, CS, SS>
+impl<A, IS, SS> IdentityManagement for IdentityManager<A, IS, SS>
 where
     A: Attestor,
-    CS: Store2,
+    IS: SqlStore,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     type Attestor = A;
-    type ChallengeStore = CS;
+    type IdentityStore = IS;
     type SessionStore = SS;
 
     fn new(
         IdentityManagerOptions {
             attestor,
-            challenge_store,
+            identity_store,
             sessions_store,
-        }: IdentityManagerOptions<A, CS, SS>,
+        }: IdentityManagerOptions<A, IS, SS>,
     ) -> Self {
         Self {
             attestor,
-            challenge_store,
+            identity_store,
             sessions_store,
         }
     }
@@ -195,42 +197,105 @@ where
         }
     }
 
-    async fn create_rola_challenge(
-        &self,
-        application_id: &str,
-        origin: &str,
-    ) -> Result<String, Error> {
-        let mut challenge = String::new();
-
-        for _ in 0..32 {
-            challenge.push_str(&format!("{:02x}", thread_rng().r#gen::<u8>()));
-        }
-
-        self.challenge_store
-            .scope(application_id)
-            .scope(origin)
-            .put(challenge.clone(), Bytes::from_static(&[1u8]))
-            .await
-            .map_err(|e| Error::ChallengeStore(e.to_string()))?;
-
-        Ok(challenge)
-    }
-
     async fn get_identity(&self, _identity_id: &str) -> Result<Option<Identity>, Error> {
         unimplemented!()
     }
 
-    async fn get_identity_by_passkey_prf_public_key(
+    async fn get_or_create_identity_by_passkey_prf_public_key(
         &self,
-        _passkey_prf_public_key_bytes: &Bytes,
-    ) -> Result<Option<Identity>, Error> {
-        todo!()
+        passkey_prf_public_key_bytes: &Bytes,
+    ) -> Result<Identity, Error> {
+        let connection = self
+            .identity_store
+            .connect(vec![CREATE_IDENTITIES_SQL, CREATE_LINKED_PASSKEYS_SQL])
+            .await
+            .map_err(|e| Error::IdentityStore(e.to_string()))?;
+
+        let mut rows = connection
+            .query(
+                r"
+                    SELECT id
+                    FROM identities
+                    JOIN linked_passkeys ON identities.id = linked_passkeys.identity_id
+                    WHERE linked_passkeys.prf_public_key = ?1
+                "
+                .trim(),
+                vec![SqlParam::Blob(passkey_prf_public_key_bytes.clone())],
+            )
+            .await
+            .map_err(|e| Error::IdentityStore(e.to_string()))?;
+
+        // Create new identity if no rows found
+        let Some(first_row) = rows.next().await else {
+            let identity_id = Uuid::new_v4();
+
+            connection
+                .execute(
+                    "INSERT INTO identities (id, created_at, updated_at) VALUES (?1, ?2, ?3)",
+                    vec![
+                        SqlParam::Blob(identity_id.as_bytes().to_vec().into()),
+                        SqlParam::Integer(
+                            SystemTime::now()
+                                .duration_since(SystemTime::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs() as i64,
+                        ),
+                        SqlParam::Integer(
+                            SystemTime::now()
+                                .duration_since(SystemTime::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs() as i64,
+                        ),
+                    ],
+                )
+                .await
+                .map_err(|e| Error::IdentityStore(e.to_string()))?;
+
+            connection
+                .execute(
+                    "INSERT INTO linked_passkeys (prf_public_key, identity_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4)",
+                    vec![
+                        SqlParam::Blob(passkey_prf_public_key_bytes.clone()),
+                        SqlParam::Blob(identity_id.as_bytes().to_vec().into()),
+                        SqlParam::Integer(
+                            SystemTime::now()
+                                .duration_since(SystemTime::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs() as i64,
+                        ),
+                        SqlParam::Integer(
+                            SystemTime::now()
+                                .duration_since(SystemTime::UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs() as i64,
+                        ),
+                    ],
+                )
+                .await
+                .map_err(|e| Error::IdentityStore(e.to_string()))?;
+
+            return Ok(Identity {
+                identity_id,
+                passkeys: vec![],
+            });
+        };
+
+        // Get identity ID from first row
+        let identity_id = match &first_row[0] {
+            SqlParam::Blob(blob) => Uuid::from_slice(blob).unwrap(),
+            _ => unreachable!(),
+        };
+
+        Ok(Identity {
+            identity_id,
+            passkeys: vec![],
+        })
     }
 
     async fn get_session(
         &self,
-        application_id: &str,
-        session_id: &str,
+        application_id: &Uuid,
+        session_id: &Uuid,
     ) -> Result<Option<Session>, Error> {
         debug!(
             "Getting session (id: {}) for application: {}",
@@ -251,9 +316,45 @@ where
 
     async fn identify_session(
         &self,
-        _session_id: &str,
-        _identity_id: &str,
-    ) -> Result<Bytes, Error> {
-        unimplemented!()
+        application_id: &Uuid,
+        session_id: &Uuid,
+        identity_id: &Uuid,
+    ) -> Result<Session, Error> {
+        let new_session = match self.get_session(application_id, session_id).await? {
+            Some(session) => match session {
+                Session::Anonymous {
+                    origin,
+                    session_id,
+                    signing_key,
+                    verifying_key,
+                } => {
+                    let new_session = Session::Identified {
+                        identity_id: identity_id.clone(),
+                        origin,
+                        session_id,
+                        signing_key,
+                        verifying_key,
+                    };
+
+                    self.sessions_store
+                        .scope(application_id.to_string())
+                        .put(session_id.to_string(), new_session.clone())
+                        .await
+                        .map_err(|e| Error::SessionStore(e.to_string()))?;
+
+                    new_session
+                }
+                Session::Identified { .. } => {
+                    return Err(Error::SessionStore(
+                        "Session already identified".to_string(),
+                    ));
+                }
+            },
+            None => {
+                return Err(Error::SessionStore("Session not found".to_string()));
+            }
+        };
+
+        Ok(new_session)
     }
 }

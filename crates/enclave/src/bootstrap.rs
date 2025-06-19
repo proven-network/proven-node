@@ -29,11 +29,14 @@ use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOption
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::{Kms, KmsOptions};
+use proven_messaging::stream::Stream;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
 use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
-use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions};
+use proven_messaging_nats::stream::{
+    NatsStream, NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions,
+};
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{Peer, ProvenNetwork, ProvenNetworkOptions};
 use proven_postgres::{Postgres, PostgresOptions};
@@ -44,7 +47,9 @@ use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{
     RpcEndpoints, RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions,
 };
-use proven_sql_streamed::{StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3};
+use proven_sql_streamed::{
+    StreamedSqlStore, StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3,
+};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
@@ -849,26 +854,44 @@ impl Bootstrap {
             panic!("node config not set before core");
         });
 
-        let challenge_store = NatsStore2::new(NatsStoreOptions {
-            bucket: "challenges".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::from_secs(5 * 60),
-            num_replicas: 1,
-            persist: false,
-        });
-
-        let sessions_store = NatsStore1::new(NatsStoreOptions {
-            bucket: "sessions".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::ZERO,
-            num_replicas: 1,
-            persist: true,
-        });
-
         let identity_manager = IdentityManager::new(IdentityManagerOptions {
             attestor: self.attestor.clone(),
-            challenge_store,
-            sessions_store,
+            identity_store: StreamedSqlStore::new(
+                NatsStream::new(
+                    "IDENTITY_MANAGER_SQL",
+                    NatsStreamOptions {
+                        client: nats_client.clone(),
+                        num_replicas: 1,
+                    },
+                ),
+                NatsServiceOptions {
+                    client: nats_client.clone(),
+                    durable_name: None,
+                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+                },
+                NatsClientOptions {
+                    client: nats_client.clone(),
+                },
+                S3Store::new(S3StoreOptions {
+                    bucket: self.args.certificates_bucket.clone(),
+                    prefix: Some("identity_manager".to_string()),
+                    region: id.region.clone(),
+                    secret_key: get_or_init_encrypted_key(
+                        id.region.clone(),
+                        self.args.kms_key_id.clone(),
+                        "IDENTITY_MANAGER_SNAPSHOTS_KEY".to_string(),
+                    )
+                    .await?,
+                })
+                .await,
+            ),
+            sessions_store: NatsStore1::new(NatsStoreOptions {
+                bucket: "sessions".to_string(),
+                client: nats_client.clone(),
+                max_age: Duration::ZERO,
+                num_replicas: 1,
+                persist: true,
+            }),
         });
 
         let cert_store = CertStore::new(

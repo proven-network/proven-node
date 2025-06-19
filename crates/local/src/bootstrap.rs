@@ -51,7 +51,9 @@ use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{
     RpcEndpoints, RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions,
 };
-use proven_sql_streamed::{StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3};
+use proven_sql_streamed::{
+    StreamedSqlStore, StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3,
+};
 use proven_store_fs::{FsStore, FsStore1, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
 use radix_common::prelude::NetworkDefinition;
@@ -1305,26 +1307,33 @@ impl Bootstrap {
             panic!("light core not fetched before core");
         });
 
-        let challenge_store = NatsStore2::new(NatsStoreOptions {
-            bucket: "challenges".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::from_secs(5 * 60),
-            num_replicas: self.num_replicas,
-            persist: false,
-        });
-
-        let sessions_store = NatsStore1::new(NatsStoreOptions {
-            bucket: "sessions".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::ZERO,
-            num_replicas: self.num_replicas,
-            persist: true,
-        });
-
         let identity_manager = IdentityManager::new(IdentityManagerOptions {
             attestor: self.attestor.clone(),
-            challenge_store,
-            sessions_store,
+            identity_store: StreamedSqlStore::new(
+                NatsStream::new(
+                    "IDENTITY_MANAGER_SQL",
+                    NatsStreamOptions {
+                        client: nats_client.clone(),
+                        num_replicas: self.num_replicas,
+                    },
+                ),
+                NatsServiceOptions {
+                    client: nats_client.clone(),
+                    durable_name: None,
+                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+                },
+                NatsClientOptions {
+                    client: nats_client.clone(),
+                },
+                FsStore::new("/tmp/proven/identity_manager_snapshots"),
+            ),
+            sessions_store: NatsStore1::new(NatsStoreOptions {
+                bucket: "sessions".to_string(),
+                client: nats_client.clone(),
+                max_age: Duration::ZERO,
+                num_replicas: self.num_replicas,
+                persist: true,
+            }),
         });
 
         let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, self.args.port));

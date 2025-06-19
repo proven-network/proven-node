@@ -13,6 +13,7 @@ pub use auth::RpcAuth;
 pub use commands::RpcCommand;
 pub use context::RpcContext;
 pub use error::Error;
+use uuid::Uuid;
 
 use crate::rpc::commands::{
     ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse, ExecuteResponse, IdentifyCommand,
@@ -138,10 +139,10 @@ where
     RM: RuntimePoolManagement,
 {
     pub fn new(
+        application_id: Uuid,
         application_manager: AM,
         runtime_pool_manager: RM,
         identity_manager: IM,
-        application_id: String,
         session: Session,
     ) -> Result<Self, Error> {
         let auth = RpcAuth::new(session.clone())?;

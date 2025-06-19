@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use proven_code_package::CodePackage;
-use proven_identity::{Identity, LedgerIdentity, RadixIdentityDetails, Session};
+use proven_identity::Session;
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
@@ -74,32 +74,11 @@ async fn main() -> Result<(), Error> {
             pool.execute(
                 module_loader.clone(),
                 ExecutionRequest::Rpc {
-                    application_id: "application_id".to_string(),
+                    application_id: Uuid::max(),
                     args: vec![json!(10), json!(20)],
                     handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
                     session: Session::Identified {
-                        identity: Identity {
-                            identity_id: "identity_id".to_string(),
-                            ledger_identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
-                                account_addresses: vec![
-                                    "my_account_1".to_string(),
-                                    "my_account_2".to_string(),
-                                ],
-                                dapp_definition_address: "dapp_definition_address".to_string(),
-                                expected_origin: "origin".to_string(),
-                                identity_address: "my_identity".to_string(),
-                            })],
-                            passkeys: vec![],
-                        },
-                        ledger_identity: LedgerIdentity::Radix(RadixIdentityDetails {
-                            account_addresses: vec![
-                                "my_account_1".to_string(),
-                                "my_account_2".to_string(),
-                            ],
-                            dapp_definition_address: "dapp_definition_address".to_string(),
-                            expected_origin: "origin".to_string(),
-                            identity_address: "my_identity".to_string(),
-                        }),
+                        identity_id: Uuid::max(),
                         origin: "origin".to_string(),
                         session_id: Uuid::new_v4(),
                         signing_key: random_signing_key.clone(),
@@ -123,32 +102,11 @@ async fn main() -> Result<(), Error> {
 
         let handle = tokio::spawn(async move {
             let request = ExecutionRequest::Rpc {
-                application_id: "application_id".to_string(),
+                application_id: Uuid::max(),
                 args: vec![json!(10), json!(20)],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
                 session: Session::Identified {
-                    identity: Identity {
-                        identity_id: "identity_id".to_string(),
-                        ledger_identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
-                            account_addresses: vec![
-                                "my_account_1".to_string(),
-                                "my_account_2".to_string(),
-                            ],
-                            dapp_definition_address: "dapp_definition_address".to_string(),
-                            expected_origin: "origin".to_string(),
-                            identity_address: "my_identity".to_string(),
-                        })],
-                        passkeys: vec![],
-                    },
-                    ledger_identity: LedgerIdentity::Radix(RadixIdentityDetails {
-                        account_addresses: vec![
-                            "my_account_1".to_string(),
-                            "my_account_2".to_string(),
-                        ],
-                        dapp_definition_address: "dapp_definition_address".to_string(),
-                        expected_origin: "origin".to_string(),
-                        identity_address: "my_identity".to_string(),
-                    }),
+                    identity_id: Uuid::max(),
                     origin: "origin".to_string(),
                     session_id: Uuid::new_v4(),
                     signing_key: random_signing_key,

@@ -12,7 +12,7 @@ use proven_ethereum_reth::RethNode;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_identity::{IdentityManager, Session};
-use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3};
+use proven_messaging_nats::stream::{NatsStream, NatsStream1, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
@@ -21,7 +21,8 @@ use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_radix_node::RadixNode;
 use proven_runtime::RuntimePoolManager;
 use proven_sql_streamed::{
-    Request as SqlRequest, StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3,
+    Request as SqlRequest, StreamedSqlStore, StreamedSqlStore1, StreamedSqlStore2,
+    StreamedSqlStore3,
 };
 use proven_store_fs::{FsStore, FsStore1, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
@@ -84,7 +85,14 @@ pub type LocalNodeCore = Core<
     >,
     IdentityManager<
         MockAttestor,
-        NatsStore2,
+        StreamedSqlStore<
+            NatsStream<
+                SqlRequest,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >,
+            FsStore<Bytes, Infallible, Infallible>,
+        >,
         NatsStore1<
             Session,
             ciborium::de::Error<std::io::Error>,

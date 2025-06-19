@@ -90,7 +90,7 @@ where
 /// ```rust
 /// use ed25519_dalek::{SigningKey, VerifyingKey};
 /// use proven_code_package::CodePackage;
-/// use proven_identity::{Identity, LedgerIdentity, RadixIdentityDetails, Session};
+/// use proven_identity::{Identity, Session};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Pool,
@@ -127,24 +127,9 @@ where
 ///         handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///         session: Session::Identified {
 ///             identity: Identity {
-///                 identity_id: "identity_id".to_string(),
-///                 ledger_identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
-///                     account_addresses: vec![
-///                         "my_account_1".to_string(),
-///                         "my_account_2".to_string(),
-///                     ],
-///                     dapp_definition_address: "dapp_definition_address".to_string(),
-///                     expected_origin: "origin".to_string(),
-///                     identity_address: "my_identity".to_string(),
-///                 })],
+///                 identity_id: Uuid::new_v4(),
 ///                 passkeys: vec![],
 ///             },
-///             ledger_identity: LedgerIdentity::Radix(RadixIdentityDetails {
-///                 account_addresses: vec!["my_account_1".to_string(), "my_account_2".to_string()],
-///                 dapp_definition_address: "dapp_definition_address".to_string(),
-///                 expected_origin: "origin".to_string(),
-///                 identity_address: "my_identity".to_string(),
-///             }),
 ///             origin: "origin".to_string(),
 ///             session_id: Uuid::new_v4(),
 ///             signing_key: SigningKey::generate(&mut rand::thread_rng()),
@@ -820,7 +805,8 @@ mod tests {
     async fn test_execute() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         let result = pool
             .execute(
@@ -846,7 +832,8 @@ mod tests {
             .await
             .insert(code_package_hash.clone(), module_loader);
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         let result = pool.execute_prehashed(code_package_hash, request).await;
         if let Err(err) = result {
@@ -858,7 +845,8 @@ mod tests {
     async fn test_queue_request() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         let (tx, rx) = oneshot::channel();
 
@@ -876,7 +864,8 @@ mod tests {
     async fn test_kill_idle_worker() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         let pool_clone = Arc::clone(&pool);
         let _ = pool_clone

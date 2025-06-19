@@ -153,6 +153,7 @@ mod tests {
 
     use bytes::Bytes;
     use serde::Deserialize;
+    use uuid::Uuid;
 
     #[tokio::test]
     async fn test_fetch_with_allowed_origins() {
@@ -160,7 +161,8 @@ mod tests {
             RuntimeOptions::for_test_code("handler/test_fetch_with_allowed_origins");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         let result = worker.execute(request).await;
 
@@ -175,7 +177,8 @@ mod tests {
             RuntimeOptions::for_test_code("handler/test_fetch_with_disallowed_origins");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Error { .. }) => {
@@ -196,7 +199,7 @@ mod tests {
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
-            application_id: "application_id".to_string(),
+            application_id: Uuid::new_v4(),
             body: Some(Bytes::from_static(b"Hello, world!")),
             handler_specifier: HandlerSpecifier::parse("file:///main.ts#test").unwrap(),
             method: http::Method::GET,
@@ -223,7 +226,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok {
@@ -258,7 +262,7 @@ mod tests {
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
-            ExecutionRequest::for_rpc_with_session_test("file:///main.ts#testNested", vec![]);
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#testNested", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok {

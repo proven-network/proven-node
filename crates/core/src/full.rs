@@ -32,6 +32,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
+use uuid::Uuid;
 
 /// Options for creating a new core.
 pub struct CoreOptions<AM, RM, IM, A, G, HS>
@@ -138,7 +139,7 @@ where
 
         for endpoint in module_options.http_endpoints {
             let ctx = ApplicationHttpContext {
-                application_id: "TODO".to_string(),
+                application_id: Uuid::max(), // TODO: Fix this
                 attestor: self.attestor.clone(),
                 handler_specifier: endpoint.handler_specifier.clone(),
                 module_loader: ModuleLoader::new(code_package.clone()),

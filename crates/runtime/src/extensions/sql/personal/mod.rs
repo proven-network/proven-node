@@ -193,7 +193,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request = ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { output, .. }) => {
@@ -213,7 +213,7 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_test("file:///main.ts#test", vec![]);
+        let request = ExecutionRequest::for_anonymous_session_rpc_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Error { .. }) => {}

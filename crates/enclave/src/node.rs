@@ -13,12 +13,13 @@ use proven_http_letsencrypt::LetsEncryptHttpServer;
 use proven_identity::{IdentityManager, Session};
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
-use proven_messaging_nats::stream::{NatsStream1, NatsStream2, NatsStream3};
+use proven_messaging_nats::stream::{NatsStream, NatsStream1, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_runtime::RuntimePoolManager;
 use proven_sql_streamed::{
-    Request as SqlRequest, StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3,
+    Request as SqlRequest, StreamedSqlStore, StreamedSqlStore1, StreamedSqlStore2,
+    StreamedSqlStore3,
 };
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
 // use proven_nats_monitor::NatsMonitor;
@@ -87,7 +88,14 @@ pub type EnclaveNodeCore = Core<
     >,
     IdentityManager<
         NsmAttestor,
-        NatsStore2,
+        StreamedSqlStore<
+            NatsStream<
+                SqlRequest,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >,
+            S3Store<Bytes, Infallible, Infallible>,
+        >,
         NatsStore1<
             Session,
             ciborium::de::Error<std::io::Error>,

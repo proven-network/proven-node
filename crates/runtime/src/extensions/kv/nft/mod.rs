@@ -5,7 +5,7 @@
 mod error;
 
 use super::StoredKey;
-use crate::extensions::{CryptoState, Key, SessionState};
+use crate::extensions::{CryptoState, IdentityState, Key};
 use error::Error;
 
 use std::cell::RefCell;
@@ -43,8 +43,8 @@ pub async fn op_nft_keys<NS: Store2, RNV: RadixNftVerifier>(
     #[string] resource_address: String,
     #[string] nft_id: String,
 ) -> Result<NftStoreGetResponse<Vec<String>>, Error> {
-    let accounts = match state.borrow().borrow::<SessionState>() {
-        SessionState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
+    let accounts = match state.borrow().borrow::<IdentityState>() {
+        IdentityState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
         _ => return Ok(NftStoreGetResponse::NoAccountsInContext),
     };
 
@@ -107,8 +107,8 @@ pub async fn op_get_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] key: String,
 ) -> Result<NftStoreGetResponse<Bytes>, Error> {
-    let accounts = match state.borrow().borrow::<SessionState>() {
-        SessionState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
+    let accounts = match state.borrow().borrow::<IdentityState>() {
+        IdentityState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
         _ => return Ok(NftStoreGetResponse::NoAccountsInContext),
     };
 
@@ -174,8 +174,8 @@ pub async fn op_set_nft_bytes<NS: Store2, RNV: RadixNftVerifier>(
     #[string] key: String,
     #[buffer(copy)] value: Bytes,
 ) -> Result<NftStoreSetResponse, Error> {
-    let accounts = match state.borrow().borrow::<SessionState>() {
-        SessionState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
+    let accounts = match state.borrow().borrow::<IdentityState>() {
+        IdentityState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
         _ => return Ok(NftStoreSetResponse::NoAccountsInContext),
     };
 
@@ -236,8 +236,8 @@ pub async fn op_get_nft_key<NS: Store2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] key: String,
 ) -> Result<NftStoreGetResponse<u32>, Error> {
-    let accounts = match state.borrow().borrow::<SessionState>() {
-        SessionState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
+    let accounts = match state.borrow().borrow::<IdentityState>() {
+        IdentityState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
         _ => return Ok(NftStoreGetResponse::NoAccountsInContext),
     };
 
@@ -336,8 +336,8 @@ pub async fn op_set_nft_key<NS: Store2, RNV: RadixNftVerifier>(
     }
     .freeze();
 
-    let accounts = match state.borrow().borrow::<SessionState>() {
-        SessionState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
+    let accounts = match state.borrow().borrow::<IdentityState>() {
+        IdentityState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
         _ => return Ok(NftStoreSetResponse::NoAccountsInContext),
     };
 
@@ -398,8 +398,8 @@ pub async fn op_get_nft_string<NS: Store2, RNV: RadixNftVerifier>(
     #[string] nft_id: String,
     #[string] key: String,
 ) -> Result<NftStoreGetResponse<String>, Error> {
-    let accounts = match state.borrow().borrow::<SessionState>() {
-        SessionState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
+    let accounts = match state.borrow().borrow::<IdentityState>() {
+        IdentityState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
         _ => return Ok(NftStoreGetResponse::NoAccountsInContext),
     };
 
@@ -467,8 +467,8 @@ pub async fn op_set_nft_string<NS: Store2, RNV: RadixNftVerifier>(
     #[string] key: String,
     #[string] value: String,
 ) -> Result<NftStoreSetResponse, Error> {
-    let accounts = match state.borrow().borrow::<SessionState>() {
-        SessionState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
+    let accounts = match state.borrow().borrow::<IdentityState>() {
+        IdentityState::Session { accounts, .. } if !accounts.is_empty() => accounts.clone(),
         _ => return Ok(NftStoreSetResponse::NoAccountsInContext),
     };
 
@@ -540,7 +540,8 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { .. }) => {}
@@ -558,7 +559,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_bytes_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Error { .. }) => {
@@ -588,7 +590,8 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -610,7 +613,7 @@ mod tests {
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
-            ExecutionRequest::for_rpc_with_session_test_no_accounts("file:///main.ts#test", vec![]);
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -641,7 +644,8 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         if let Err(err) = result {
@@ -654,7 +658,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_key_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -685,7 +690,8 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -707,7 +713,7 @@ mod tests {
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
-            ExecutionRequest::for_rpc_with_session_test_no_accounts("file:///main.ts#test", vec![]);
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -738,7 +744,8 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         if let Err(err) = result {
@@ -751,7 +758,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_nft_string_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -782,7 +790,8 @@ mod tests {
 
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {
@@ -804,7 +813,7 @@ mod tests {
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
-            ExecutionRequest::for_rpc_with_session_test_no_accounts("file:///main.ts#test", vec![]);
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         match result {

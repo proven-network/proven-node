@@ -1,6 +1,3 @@
-use crate::identity::Identity;
-use crate::ledger_identity::LedgerIdentity;
-
 use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
@@ -9,7 +6,7 @@ use uuid::Uuid;
 /// A session.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Session {
-    /// An anonymous session - yet to be identified via a ledger ID handshake.
+    /// An anonymous session.
     Anonymous {
         /// The origin of the session.
         origin: String,
@@ -24,13 +21,10 @@ pub enum Session {
         verifying_key: VerifyingKey,
     },
 
-    /// An identified session - identified via a ledger ID handshake.
+    /// An identified session.
     Identified {
         /// The Proven identity.
-        identity: Identity,
-
-        /// The active ledger identity.
-        ledger_identity: LedgerIdentity,
+        identity_id: Uuid,
 
         /// The origin of the session.
         origin: String,

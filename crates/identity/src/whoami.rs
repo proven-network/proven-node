@@ -1,8 +1,7 @@
-use crate::identity::Identity;
-use crate::ledger_identity::LedgerIdentity;
 use crate::session::Session;
 
 use serde::Serialize;
+use uuid::Uuid;
 
 /// Type returned to the client to identify the session which strips sensitive data (e.g. signing keys).
 /// A session.
@@ -19,11 +18,8 @@ pub enum WhoAmI {
 
     /// An identified session - identified via a ledger ID handshake.
     Identified {
-        /// The Proven identity.
-        identity: Identity,
-
-        /// The active ledger identity.
-        ledger_identity: LedgerIdentity,
+        /// The Proven identity ID.
+        identity_id: Uuid,
 
         /// The origin of the session.
         origin: String,
@@ -43,14 +39,12 @@ impl From<Session> for WhoAmI {
                 session_id: session_id.to_string(),
             },
             Session::Identified {
-                identity,
-                ledger_identity,
+                identity_id,
                 origin,
                 session_id,
                 ..
             } => WhoAmI::Identified {
-                identity,
-                ledger_identity,
+                identity_id,
                 origin,
                 session_id: session_id.to_string(),
             },

@@ -13,10 +13,11 @@ use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
 use serde::Deserialize;
 use tracing::{error, info};
+use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct SessionQuery {
-    pub session: String,
+    pub session: Uuid,
 }
 
 async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
@@ -32,7 +33,7 @@ async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
 }
 
 pub(crate) async fn ws_rpc_handler<AM, RM, IM, A, G>(
-    Path(application_id): Path<String>,
+    Path(application_id): Path<Uuid>,
     Query(SessionQuery {
         session: session_id,
     }): Query<SessionQuery>,
@@ -66,10 +67,10 @@ where
     };
 
     let Ok(rpc_handler) = RpcHandler::new(
+        application_id,
         application_manager,
         runtime_pool_manager,
         identity_manager,
-        application_id,
         session,
     ) else {
         error!("Error creating RpcHandler");

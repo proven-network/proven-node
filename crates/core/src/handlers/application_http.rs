@@ -11,6 +11,7 @@ use proven_identity::IdentityManagement;
 use proven_runtime::{
     ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
 };
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub(crate) struct ApplicationHttpContext<RM, IM, A>
@@ -18,7 +19,7 @@ where
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
 {
-    pub application_id: String,
+    pub application_id: Uuid,
     pub attestor: A,
     pub handler_specifier: HandlerSpecifier,
     pub module_loader: ModuleLoader,
@@ -66,7 +67,7 @@ where
 
     let maybe_session = if let Some(session_id) = maybe_session_id {
         match identity_manager
-            .get_session(&application_id, &session_id)
+            .get_session(&application_id, &Uuid::parse_str(&session_id).unwrap())
             .await
         {
             Ok(Some(session)) => Some(session),

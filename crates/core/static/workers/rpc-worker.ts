@@ -28,8 +28,12 @@ class RpcWorker {
     this.pendingRequests = new Map();
 
     const query = globalThis.location.search;
-    this.httpEndpoint = `http://${globalThis.location.host}/app/application_id/rpc/http${query}`;
-    this.wsEndpoint = `ws://${globalThis.location.host}/app/application_id/rpc/ws${query}`;
+    const host = globalThis.location.host;
+    const path = globalThis.location.pathname;
+    const applicationId = path.split("/")[2];
+
+    this.httpEndpoint = `http://${host}/app/${applicationId}/rpc/http${query}`;
+    this.wsEndpoint = `ws://${host}/app/${applicationId}/rpc/ws${query}`;
 
     this.startTimeoutChecker();
   }

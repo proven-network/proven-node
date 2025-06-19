@@ -1,8 +1,8 @@
 use crate::extensions::{
-    ApplicationSqlConnectionManager, ConsoleState, CryptoState, HandlerOutput,
-    NftSqlConnectionManager, PersonalSqlConnectionManager, SessionState, SqlParamListManager,
-    SqlQueryResultsManager, console_ext, crypto_ext, handler_runtime_ext, kv_runtime_ext,
-    openai_ext, radix_engine_toolkit_ext, session_ext, sql_runtime_ext, uuid_ext, zod_ext,
+    ApplicationSqlConnectionManager, ConsoleState, CryptoState, HandlerOutput, IdentityState,
+    PersonalSqlConnectionManager, SqlParamListManager, SqlQueryResultsManager, console_ext,
+    crypto_ext, handler_runtime_ext, kv_runtime_ext, openai_ext, radix_engine_toolkit_ext,
+    session_ext, sql_runtime_ext, uuid_ext, zod_ext,
 };
 use crate::file_system::{FileSystem, StoredEntry};
 use crate::module_loader::{ModuleLoader, ProcessingMode};
@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use proven_code_package::ModuleSpecifier;
-use proven_identity::{LedgerIdentity, Session};
+use proven_identity::Session;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
@@ -183,7 +183,7 @@ impl
 /// ```rust
 /// use ed25519_dalek::{SigningKey, VerifyingKey};
 /// use proven_code_package::CodePackage;
-/// use proven_identity::{Identity, LedgerIdentity, RadixIdentityDetails, Session};
+/// use proven_identity::{Identity, Session};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RpcEndpoints,
@@ -217,21 +217,9 @@ impl
 ///     handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///     session: Session::Identified {
 ///         identity: Identity {
-///             identity_id: "identity_id".to_string(),
-///             ledger_identities: vec![LedgerIdentity::Radix(RadixIdentityDetails {
-///                 account_addresses: vec!["my_account_1".to_string(), "my_account_2".to_string()],
-///                 dapp_definition_address: "dapp_definition_address".to_string(),
-///                 expected_origin: "origin".to_string(),
-///                 identity_address: "my_identity".to_string(),
-///             })],
+///             identity_id: Uuid::new_v4(),
 ///             passkeys: vec![],
 ///         },
-///         ledger_identity: LedgerIdentity::Radix(RadixIdentityDetails {
-///             account_addresses: vec!["my_account_1".to_string(), "my_account_2".to_string()],
-///             dapp_definition_address: "dapp_definition_address".to_string(),
-///             expected_origin: "origin".to_string(),
-///             identity_address: "my_identity".to_string(),
-///         }),
 ///         origin: "origin".to_string(),
 ///         session_id: Uuid::new_v4(),
 ///         signing_key: SigningKey::generate(&mut rand::thread_rng()),
@@ -258,8 +246,8 @@ where
     application_store: AS,
     module_handle_cache: HashMap<ModuleSpecifier, ModuleHandle>,
     module_loader: ModuleLoader,
-    nft_sql_store: NSS,
-    nft_store: NS,
+    _nft_sql_store: NSS,
+    _nft_store: NS,
     origin_allowlist_web_permissions: Arc<OriginAllowlistWebPermissions>,
     personal_sql_store: PSS,
     personal_store: PS,
@@ -370,8 +358,8 @@ where
             application_store,
             module_handle_cache: HashMap::new(),
             module_loader,
-            nft_sql_store,
-            nft_store,
+            _nft_sql_store: nft_sql_store,
+            _nft_store: nft_store,
             origin_allowlist_web_permissions,
             personal_sql_store,
             personal_store,
@@ -425,7 +413,7 @@ where
                     application_id,
                     args,
                     handler_specifier,
-                    SessionState::NoSession,
+                    IdentityState::NoIdentity,
                 )
             }
 
@@ -458,21 +446,14 @@ where
                         application_id,
                         args,
                         handler_specifier,
-                        SessionState::NoSession,
+                        IdentityState::NoIdentity,
                     ),
 
-                    Session::Identified {
-                        ledger_identity, ..
-                    } => (
+                    Session::Identified { identity_id, .. } => (
                         application_id,
                         args,
                         handler_specifier,
-                        match ledger_identity {
-                            LedgerIdentity::Radix(ledger_identity) => SessionState::Session {
-                                identity: ledger_identity.identity_address,
-                                accounts: ledger_identity.account_addresses,
-                            },
-                        },
+                        IdentityState::Identity(identity_id),
                     ),
                 }
             }
@@ -484,7 +465,7 @@ where
                 application_id,
                 vec![], // TODO: Should use transaction data for args
                 handler_specifier,
-                SessionState::NoSession,
+                IdentityState::NoIdentity,
             ),
 
             ExecutionRequest::Rpc {
@@ -497,21 +478,14 @@ where
                     application_id,
                     args,
                     handler_specifier,
-                    SessionState::NoSession,
+                    IdentityState::NoIdentity,
                 ),
 
-                Session::Identified {
-                    ledger_identity, ..
-                } => (
+                Session::Identified { identity_id, .. } => (
                     application_id,
                     args,
                     handler_specifier,
-                    match ledger_identity {
-                        LedgerIdentity::Radix(ledger_identity) => SessionState::Session {
-                            identity: ledger_identity.identity_address,
-                            accounts: ledger_identity.account_addresses,
-                        },
-                    },
+                    IdentityState::Identity(identity_id),
                 ),
             },
         };
@@ -563,31 +537,33 @@ where
         // Set the kv stores for the storage extension
         rustyscript::Runtime::put(
             &mut self.runtime,
-            self.application_store.clone().scope(application_id.clone()),
+            self.application_store
+                .clone()
+                .scope(application_id.to_string()),
         )?;
 
         rustyscript::Runtime::put(
             &mut self.runtime,
             match session_state {
-                SessionState::Session { ref identity, .. } => Some(
+                IdentityState::Identity(ref identity_id) => Some(
                     self.personal_store
                         .clone()
-                        .scope(application_id.clone())
-                        .scope(identity),
+                        .scope(application_id.to_string())
+                        .scope(identity_id.to_string()),
                 ),
-                SessionState::NoSession => None,
+                IdentityState::NoIdentity => None,
             },
         )?;
 
-        rustyscript::Runtime::put(
-            &mut self.runtime,
-            match session_state {
-                SessionState::Session { ref accounts, .. } if !accounts.is_empty() => {
-                    Some(self.nft_store.clone().scope(application_id.clone()))
-                }
-                _ => None,
-            },
-        )?;
+        // rustyscript::Runtime::put(
+        //     &mut self.runtime,
+        //     match session_state {
+        //         IdentityState::Identity(identity) => {
+        //             Some(self.nft_store.clone().scope(application_id.clone()))
+        //         }
+        //         _ => None,
+        //     },
+        // )?;
 
         // Set the sql stores for the storage extension
         rustyscript::Runtime::put(&mut self.runtime, SqlParamListManager::new())?;
@@ -596,7 +572,9 @@ where
         rustyscript::Runtime::put(
             &mut self.runtime,
             ApplicationSqlConnectionManager::new(
-                self.application_sql_store.clone().scope(&application_id),
+                self.application_sql_store
+                    .clone()
+                    .scope(&application_id.to_string()),
                 module_options.sql_migrations.application.clone(),
             ),
         )?;
@@ -604,31 +582,29 @@ where
         rustyscript::Runtime::put(
             &mut self.runtime,
             match session_state {
-                SessionState::Session { ref identity, .. } => {
+                IdentityState::Identity(ref identity_id) => {
                     Some(PersonalSqlConnectionManager::new(
                         self.personal_sql_store
                             .clone()
-                            .scope(&application_id)
-                            .scope(identity),
+                            .scope(&application_id.to_string())
+                            .scope(&identity_id.to_string()),
                         module_options.sql_migrations.personal.clone(),
                     ))
                 }
-                SessionState::NoSession => None,
+                IdentityState::NoIdentity => None,
             },
         )?;
 
-        rustyscript::Runtime::put(
-            &mut self.runtime,
-            match session_state {
-                SessionState::Session { ref accounts, .. } if !accounts.is_empty() => {
-                    Some(NftSqlConnectionManager::new(
-                        self.nft_sql_store.clone().scope(&application_id),
-                        module_options.sql_migrations.nft.clone(),
-                    ))
-                }
-                _ => None,
-            },
-        )?;
+        // rustyscript::Runtime::put(
+        //     &mut self.runtime,
+        //     match session_state {
+        //         IdentityState::Identity(identity) => Some(NftSqlConnectionManager::new(
+        //             self.nft_sql_store.clone().scope(&application_id),
+        //             module_options.sql_migrations.nft.clone(),
+        //         )),
+        //         _ => None,
+        //     },
+        // )?;
 
         // Set the context for the session extension
         rustyscript::Runtime::put(&mut self.runtime, session_state)?;
@@ -722,7 +698,7 @@ mod tests {
             let mut runtime = Runtime::new(options).unwrap();
 
             let request =
-                ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+                ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
             match runtime.execute(request) {
                 Ok(ExecutionResult::Ok { output, .. }) => {
@@ -757,7 +733,7 @@ mod tests {
             let mut runtime = Runtime::new(options).unwrap();
 
             let request =
-                ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+                ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
             match runtime.execute(request) {
                 Ok(ExecutionResult::Ok { output, .. }) => {
@@ -781,7 +757,8 @@ mod tests {
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
 
-            let request = ExecutionRequest::for_rpc_with_session_test("file:///main.ts", vec![]);
+            let request =
+                ExecutionRequest::for_identified_session_rpc_test("file:///main.ts", vec![]);
 
             match runtime.execute(request) {
                 Ok(ExecutionResult::Ok { .. }) => {}
@@ -804,7 +781,7 @@ mod tests {
             let mut runtime = Runtime::new(options).unwrap();
 
             let request =
-                ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+                ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
             match runtime.execute(request) {
                 Ok(ExecutionResult::Ok { .. }) => {}
@@ -826,7 +803,7 @@ mod tests {
             let mut runtime = Runtime::new(options).unwrap();
 
             let request =
-                ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+                ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
             match runtime.execute(request) {
                 Ok(ExecutionResult::Ok { .. }) => {
@@ -848,7 +825,7 @@ mod tests {
             let mut runtime = Runtime::new(options).unwrap();
 
             let request =
-                ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+                ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
             match runtime.execute(request) {
                 Ok(ExecutionResult::Ok { .. }) => {
@@ -872,7 +849,7 @@ mod tests {
             let mut runtime = Runtime::new(options).unwrap();
 
             let request =
-                ExecutionRequest::for_rpc_with_session_test("file:///main.ts#test", vec![]);
+                ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
             match runtime.execute(request) {
                 Ok(ExecutionResult::Ok { output, .. }) => {

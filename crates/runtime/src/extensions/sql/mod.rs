@@ -1,13 +1,13 @@
 mod application;
 mod migrations;
-mod nft;
+// mod nft;
 mod param_list_manager;
 mod personal;
 mod query_results_manager;
 
 pub use application::*;
 pub use migrations::sql_migrations_ext;
-pub use nft::*;
+// pub use nft::*;
 pub use param_list_manager::*;
 pub use personal::*;
 pub use query_results_manager::*;
@@ -39,8 +39,8 @@ extension!(
         op_get_row_batch,
         op_execute_application_sql<ASS>,
         op_query_application_sql<ASS>,
-        op_execute_nft_sql<NSS, RNV>,
-        op_query_nft_sql<NSS, RNV>,
+        // op_execute_nft_sql<NSS, RNV>,
+        // op_query_nft_sql<NSS, RNV>,
         op_execute_personal_sql<PSS>,
         op_query_personal_sql<PSS>,
     ],

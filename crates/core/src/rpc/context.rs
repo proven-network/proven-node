@@ -1,6 +1,7 @@
 use proven_applications::ApplicationManagement;
 use proven_identity::{IdentityManagement, Session};
 use proven_runtime::RuntimePoolManagement;
+use uuid::Uuid;
 
 /// Context object that holds all shared state and dependencies for RPC commands
 pub struct RpcContext<AM, IM, RM>
@@ -9,7 +10,7 @@ where
     IM: IdentityManagement,
     RM: RuntimePoolManagement,
 {
-    pub application_id: String,
+    pub application_id: Uuid,
     pub _application_manager: AM,
     pub identity_manager: IM,
     pub runtime_pool_manager: RM,
@@ -23,7 +24,7 @@ where
     RM: RuntimePoolManagement,
 {
     pub fn new(
-        application_id: String,
+        application_id: Uuid,
         application_manager: AM,
         identity_manager: IM,
         runtime_pool_manager: RM,

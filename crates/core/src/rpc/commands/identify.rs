@@ -69,14 +69,27 @@ impl RpcCommand for IdentifyCommand {
         }
 
         // Only if the signature is valid, look up the identity by public key
-        match context
+        let identity = match context
             .identity_manager
-            .get_identity_by_passkey_prf_public_key(&self.passkey_prf_public_key_bytes)
+            .get_or_create_identity_by_passkey_prf_public_key(&self.passkey_prf_public_key_bytes)
             .await
         {
-            Ok(Some(identity)) => IdentifyResponse::IdentifySuccess(identity),
-            Ok(None) => IdentifyResponse::IdentifyFailure("Identity not found".to_string()),
-            Err(e) => IdentifyResponse::IdentifyFailure(e.to_string()),
-        }
+            Ok(identity) => identity,
+            Err(e) => return IdentifyResponse::IdentifyFailure(e.to_string()),
+        };
+
+        let session = match context
+            .identity_manager
+            .identify_session(&context.application_id, &session_id, &identity.identity_id)
+            .await
+        {
+            Ok(session) => session,
+            Err(e) => return IdentifyResponse::IdentifyFailure(e.to_string()),
+        };
+
+        // Update context with new session
+        context.session = session;
+
+        IdentifyResponse::IdentifySuccess(identity)
     }
 }

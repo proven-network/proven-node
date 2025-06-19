@@ -17,6 +17,10 @@ pub enum Error {
     #[error(transparent)]
     CborSerialize(Arc<ciborium::ser::Error<std::io::Error>>),
 
+    /// Identity store error.
+    #[error("identity store error: {0}")]
+    IdentityStore(String),
+
     /// Challenge store error.
     #[error("challenge store error: {0}")]
     ChallengeStore(String),
