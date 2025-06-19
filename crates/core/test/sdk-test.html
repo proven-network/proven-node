@@ -7,18 +7,37 @@
         font-family: Arial, sans-serif;
         margin: 20px;
       }
-      .auth-section {
-        margin: 20px 0;
-        padding: 15px;
-        background: #e9ecef;
-        border-radius: 4px;
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #dee2e6;
       }
-      .auth-section h3 {
-        margin-top: 0;
-        margin-bottom: 10px;
+      .header h1 {
+        margin: 0;
+      }
+      .main-container {
+        display: flex;
+        gap: 20px;
+        margin-top: 20px;
+      }
+      .left-column {
+        flex: 1;
+        min-width: 0;
+      }
+      .right-column {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
       }
       .controls {
-        margin: 20px 0;
+        margin: 0 0 20px 0;
+      }
+      .controls h3 {
+        margin-top: 0;
       }
       button {
         margin: 5px;
@@ -42,8 +61,9 @@
         border-radius: 4px;
         padding: 15px;
         margin-top: 20px;
-        max-height: 400px;
+        flex: 1;
         overflow-y: auto;
+        min-height: 0;
       }
       .message {
         margin: 5px 0;
@@ -59,25 +79,205 @@
         border-left-color: #28a745;
         background: #d4edda;
       }
+      .script-section {
+        margin: 20px 0;
+        padding: 15px;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+      }
+      .script-section h4 {
+        margin-top: 0;
+        margin-bottom: 10px;
+      }
+      .script-container {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+      }
+      .script-textarea {
+        flex: 1;
+        min-height: 40px;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-family: "Courier New", monospace;
+        font-size: 16px;
+        line-height: 1.4;
+        resize: none;
+        overflow: hidden;
+      }
+      .CodeMirror {
+        flex: 1;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 16px;
+        line-height: 1.4;
+        height: auto;
+      }
+      .CodeMirror-scroll {
+        min-height: auto;
+        max-height: none;
+      }
+      .CodeMirror-sizer {
+        min-height: auto !important;
+      }
+      .execute-btn {
+        min-width: 100px;
+        height: 40px;
+      }
     </style>
   </head>
   <body>
-    <h1>Proven SDK Test</h1>
-
-    <div class="auth-section">
-      <h3>Authentication</h3>
-      <p>Click the button below to sign in or out:</p>
+    <div class="header">
+      <h1>Proven SDK Test</h1>
       <div id="auth-container"></div>
     </div>
 
-    <div class="controls">
-      <h3>API Calls</h3>
-      <button onclick="testWhoAmI()">Who Am I</button>
-      <button onclick="testExecute()">Test Execute</button>
-      <button onclick="clearMessages()">Clear Messages</button>
+    <div class="main-container">
+      <div class="left-column">
+        <div class="controls">
+          <h3>Script Testing</h3>
+
+          <div class="script-section">
+            <h4>Basic Hello World</h4>
+            <div class="script-container">
+              <textarea id="script1" class="script-textarea">
+import { run } from "@proven-network/handler";
+
+export const test = run(() => {
+  console.log("Hello, logs!");
+  return "Hello from Proven!";
+});</textarea
+              >
+              <button class="execute-btn" onclick="executeScript('script1')">
+                Execute
+              </button>
+            </div>
+          </div>
+
+          <div class="script-section">
+            <h4>Identity</h4>
+            <div class="script-container">
+              <textarea id="script2" class="script-textarea">
+import { run } from "@proven-network/handler";
+import { getCurrentIdentity } from "@proven-network/session";
+
+export const test = run(() => {
+  const identity = getCurrentIdentity();
+  console.log("Identity:", identity);
+  return identity ? "Logged in" : "Logged out";
+});</textarea
+              >
+              <button class="execute-btn" onclick="executeScript('script2')">
+                Execute
+              </button>
+            </div>
+          </div>
+
+          <div class="script-section">
+            <h4>Error Handling</h4>
+            <div class="script-container">
+              <textarea id="script3" class="script-textarea">
+import { run } from "@proven-network/handler";
+
+export const test = run(() => {
+  console.log("This will throw an error");
+  throw new Error("Test error message");
+});</textarea
+              >
+              <button class="execute-btn" onclick="executeScript('script3')">
+                Execute
+              </button>
+            </div>
+          </div>
+
+          <div class="script-section">
+            <h4>Async Operation</h4>
+            <div class="script-container">
+              <textarea id="script4" class="script-textarea">
+import { run } from "@proven-network/handler";
+
+export const test = run(async () => {
+  console.log("Starting async operation...");
+  
+  // Simulate async work
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  console.log("Async operation completed!");
+  return "Async result after 1 second delay";
+});</textarea
+              >
+              <button class="execute-btn" onclick="executeScript('script4')">
+                Execute
+              </button>
+            </div>
+          </div>
+
+          <div class="script-section">
+            <h4>Interact with external APIs</h4>
+            <div class="script-container">
+              <textarea id="script5" class="script-textarea">
+import { runWithOptions } from "@proven-network/handler";
+
+export const test = runWithOptions(
+  {
+    allowedOrigins: ["https://jsonplaceholder.typicode.com"],
+    timeout: 10000,
+  },
+  async () => {
+    const response = await fetch("https://jsonplaceholder.typicode.com/posts/1");
+    return response.json();
+  }
+);</textarea
+              >
+              <button class="execute-btn" onclick="executeScript('script5')">
+                Execute
+              </button>
+            </div>
+          </div>
+
+          <div class="script-section">
+            <h4>Custom Script (Edit Me!)</h4>
+            <div class="script-container">
+              <textarea id="script6" class="script-textarea">
+import { run } from "@proven-network/handler";
+
+export const test = run(() => {
+  // Edit this script to test your own code!
+  console.log("Custom script running...");
+  
+  return "Edit this script and test your own logic!";
+});</textarea
+              >
+              <button class="execute-btn" onclick="executeScript('script6')">
+                Execute
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-column">
+        <div class="controls">
+          <h3>API Calls</h3>
+          <button onclick="testWhoAmI()">Who Am I</button>
+          <button onclick="clearMessages()">Clear Messages</button>
+        </div>
+
+        <div id="messages"></div>
+      </div>
     </div>
 
-    <div id="messages"></div>
+    <!-- Load CodeMirror for syntax highlighting -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
 
     <!-- Load the SDK -->
     <script src="http://localhost:3200/sdk.js"></script>
@@ -171,6 +371,87 @@
       window.clearMessages = function () {
         document.getElementById("messages").innerHTML = "";
       };
+
+      window.executeScript = async function (textareaId) {
+        const button = event.target;
+        button.disabled = true;
+
+        try {
+          // Get script content from CodeMirror editor
+          const editor = codeEditors[textareaId];
+          const script = editor
+            ? editor.getValue()
+            : document.getElementById(textareaId).value;
+
+          logMessage(`Executing script from ${textareaId}...`, "info");
+
+          const result = await sdk.execute(script, "file:///main.ts#test", []);
+          logMessage(
+            `Execute Result (${textareaId}): ${JSON.stringify(result, null, 2)}`,
+            "success"
+          );
+        } catch (error) {
+          logMessage(
+            `Execute Error (${textareaId}): ${error.message}`,
+            "error"
+          );
+        } finally {
+          button.disabled = false;
+        }
+      };
+
+      // Store CodeMirror instances
+      const codeEditors = {};
+
+      // Auto-resize CodeMirror editor to fit content
+      function autoResizeEditor(editor) {
+        const lineCount = editor.lineCount();
+        const lineHeight = editor.defaultTextHeight();
+        const padding = 10; // Top and bottom padding
+        const newHeight = lineCount * lineHeight + padding;
+        editor.setSize(null, newHeight);
+      }
+
+      // Initialize CodeMirror for syntax highlighting
+      function initCodeEditors() {
+        const textareas = document.querySelectorAll(".script-textarea");
+        textareas.forEach((textarea) => {
+          const editor = CodeMirror.fromTextArea(textarea, {
+            mode: "javascript",
+            theme: "default",
+            lineNumbers: true,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            indentUnit: 2,
+            tabSize: 2,
+            lineWrapping: true,
+            scrollbarStyle: "null", // Hide scrollbars
+          });
+
+          // Store editor instance for later access
+          codeEditors[textarea.id] = editor;
+
+          // Initial auto-resize
+          setTimeout(() => {
+            autoResizeEditor(editor);
+          }, 100);
+
+          // Auto-resize when content changes
+          editor.on("change", () => {
+            setTimeout(() => {
+              autoResizeEditor(editor);
+            }, 0);
+          });
+
+          // Auto-resize on focus to handle any layout changes
+          editor.on("focus", () => {
+            autoResizeEditor(editor);
+          });
+        });
+      }
+
+      // Initialize CodeMirror after a short delay to ensure DOM is ready
+      setTimeout(initCodeEditors, 100);
 
       // Log SDK initialization
       logMessage("Proven SDK initialized", "success");
