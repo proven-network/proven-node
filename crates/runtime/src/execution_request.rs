@@ -92,7 +92,7 @@ impl ExecutionRequest {
             VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng()));
 
         Self::Rpc {
-            application_id: Uuid::new_v4(),
+            application_id: Uuid::max(),
             args,
             handler_specifier: HandlerSpecifier::parse(handler_specifier).unwrap(),
             session: Session::Anonymous {
@@ -117,7 +117,7 @@ impl ExecutionRequest {
             VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng()));
 
         Self::Rpc {
-            application_id: Uuid::new_v4(),
+            application_id: Uuid::max(),
             args,
             handler_specifier: HandlerSpecifier::parse(handler_specifier).unwrap(),
             session: Session::Identified {
