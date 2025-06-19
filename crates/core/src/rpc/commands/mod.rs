@@ -1,3 +1,4 @@
+mod anonymize;
 mod execute;
 mod execute_hash;
 mod identify;
@@ -21,6 +22,7 @@ pub trait RpcCommand {
 }
 
 // Re-export all command types
+pub use anonymize::{AnonymizeCommand, AnonymizeResponse};
 pub use execute::{ExecuteCommand, ExecuteResponse};
 pub use execute_hash::{ExecuteHashCommand, ExecuteHashResponse};
 pub use identify::{IdentifyCommand, IdentifyResponse};

@@ -1,7 +1,7 @@
 import { authenticate } from "../../helpers/webauthn";
 import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
-import { bytesToHex, hexToBytes } from "@noble/curves/abstract/utils";
-import { Identify, WhoAmI, WhoAmIResponse } from "../../common";
+import { hexToBytes } from "@noble/curves/abstract/utils";
+import { Anonymize, Identify, WhoAmI, WhoAmIResponse } from "../../common";
 import { signAsync, getPublicKeyAsync } from "@noble/ed25519";
 import { getSession } from "../../helpers/sessions";
 
@@ -50,7 +50,6 @@ class ConnectClient {
 
     // Send identify RPC request
     try {
-      // Just use 32 bytes of zeros for the session ID for now
       const session = await getSession(this.applicationId);
 
       if (!session) {
@@ -106,8 +105,19 @@ class ConnectClient {
     }
   }
 
-  signOut(): void {
-    console.log("Sign out not implemented yet");
+  async signOut(): Promise<void> {
+    try {
+      const anonymizeRequest: Anonymize = "Anonymize";
+      const response = await this.broker.request(
+        "rpc_request",
+        anonymizeRequest,
+        "rpc"
+      );
+      console.debug("Connect: Anonymize RPC response:", response);
+      await this.updateAuthUI();
+    } catch (error) {
+      console.error("Connect: Failed to sign out:", error);
+    }
   }
 
   async updateAuthUI() {
@@ -174,11 +184,6 @@ class ConnectClient {
     }
   }
 
-  async handleSignOut() {
-    this.signOut();
-    await this.updateAuthUI();
-  }
-
   // Initialize the client when the page loads
   static init() {
     const client = new ConnectClient();
@@ -193,7 +198,7 @@ class ConnectClient {
       }
 
       if (signoutButton) {
-        signoutButton.addEventListener("click", () => client.handleSignOut());
+        signoutButton.addEventListener("click", () => client.signOut());
       }
 
       // Initialize UI state

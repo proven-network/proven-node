@@ -96,6 +96,13 @@ where
         >,
     ) -> Self;
 
+    /// Anonymizes a session.
+    async fn anonymize_session(
+        &self,
+        application_id: &Uuid,
+        session_id: &Uuid,
+    ) -> Result<Session, Error>;
+
     /// Creates a new anonymous session.
     async fn create_anonymous_session(
         &self,
@@ -175,6 +182,47 @@ where
             passkeys_store: passkeys_store,
             sessions_store,
         }
+    }
+
+    async fn anonymize_session(
+        &self,
+        application_id: &Uuid,
+        session_id: &Uuid,
+    ) -> Result<Session, Error> {
+        let new_session = match self.get_session(application_id, session_id).await? {
+            Some(session) => match session {
+                Session::Identified {
+                    origin,
+                    session_id,
+                    signing_key,
+                    verifying_key,
+                    ..
+                } => {
+                    let new_session = Session::Anonymous {
+                        origin,
+                        session_id,
+                        signing_key,
+                        verifying_key,
+                    };
+
+                    self.sessions_store
+                        .scope(application_id.to_string())
+                        .put(session_id.to_string(), new_session.clone())
+                        .await
+                        .map_err(|e| Error::SessionStore(e.to_string()))?;
+
+                    new_session
+                }
+                Session::Anonymous { .. } => {
+                    return Err(Error::SessionStore("Session already anonymous".to_string()));
+                }
+            },
+            None => {
+                return Err(Error::SessionStore("Session not found".to_string()));
+            }
+        };
+
+        Ok(new_session)
     }
 
     async fn create_anonymous_session(

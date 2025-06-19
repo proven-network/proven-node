@@ -16,13 +16,15 @@ pub use error::Error;
 use uuid::Uuid;
 
 use crate::rpc::commands::{
-    ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse, ExecuteResponse, IdentifyCommand,
-    IdentifyResponse, WhoAmICommand,
+    AnonymizeCommand, AnonymizeResponse, ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse,
+    ExecuteResponse, IdentifyCommand, IdentifyResponse, WhoAmICommand,
 };
 
 #[repr(u8)]
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Request {
+    // no args
+    Anonymize,
     // module, handler_specifier, args
     Execute(String, String, Vec<serde_json::Value>),
     // module_hash, handler_specifier, args
@@ -35,6 +37,7 @@ pub enum Request {
 
 #[derive(Debug)]
 pub enum Command {
+    Anonymize(AnonymizeCommand),
     Execute(ExecuteCommand),
     ExecuteHash(ExecuteHashCommand),
     Identify(IdentifyCommand),
@@ -52,6 +55,13 @@ impl RpcCommand for Command {
         RM: RuntimePoolManagement,
     {
         match self {
+            Command::Anonymize(cmd) => {
+                let r = cmd.execute(context).await;
+                match r {
+                    AnonymizeResponse::AnonymizeFailure(err) => Response::AnonymizeFailure(err),
+                    AnonymizeResponse::AnonymizeSuccess => Response::AnonymizeSuccess,
+                }
+            }
             Command::Execute(cmd) => {
                 let r = cmd.execute(context).await;
                 match r {
@@ -86,6 +96,7 @@ impl RpcCommand for Command {
 impl Request {
     pub fn into_command(self) -> Command {
         match self {
+            Request::Anonymize => Command::Anonymize(AnonymizeCommand),
             Request::Execute(module, handler_specifier, args) => Command::Execute(ExecuteCommand {
                 module,
                 handler_specifier,
@@ -111,6 +122,8 @@ impl Request {
 
 #[derive(Debug, Serialize)]
 pub enum Response {
+    AnonymizeFailure(String),
+    AnonymizeSuccess,
     BadHandlerSpecifier,
     ExecuteFailure(String),
     ExecuteHashUnknown,

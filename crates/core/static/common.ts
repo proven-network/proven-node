@@ -3,6 +3,12 @@
 // Basic types
 export type ExecuteOutput = string | number | boolean | null | undefined;
 
+// Anonymize command and response
+export type Anonymize = "Anonymize";
+export type AnonymizeResponse =
+  | "AnonymizeSuccess"
+  | { AnonymizeFailure: string };
+
 // WhoAmI command and response
 export type WhoAmI = "WhoAmI";
 export type WhoAmIResponse =
@@ -46,4 +52,4 @@ export type IdentifyResponse = {
 };
 
 // Union of all RPC commands
-export type RpcCall = Execute | ExecuteHash | Identify | WhoAmI;
+export type RpcCall = Anonymize | Execute | ExecuteHash | Identify | WhoAmI;
