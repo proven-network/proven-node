@@ -6,6 +6,30 @@ use webauthn_rs::prelude::Passkey as WebauthnPasskey;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Passkey(WebauthnPasskey);
 
+impl Passkey {
+    /// Get a reference to the inner webauthn passkey.
+    pub fn inner(&self) -> &WebauthnPasskey {
+        &self.0
+    }
+
+    /// Convert to the inner webauthn passkey.
+    pub fn into_inner(self) -> WebauthnPasskey {
+        self.0
+    }
+}
+
+impl From<WebauthnPasskey> for Passkey {
+    fn from(passkey: WebauthnPasskey) -> Self {
+        Self(passkey)
+    }
+}
+
+impl From<Passkey> for WebauthnPasskey {
+    fn from(passkey: Passkey) -> Self {
+        passkey.0
+    }
+}
+
 impl TryFrom<Bytes> for Passkey {
     type Error = ciborium::de::Error<std::io::Error>;
 

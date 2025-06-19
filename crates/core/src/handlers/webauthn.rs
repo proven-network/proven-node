@@ -223,7 +223,11 @@ where
 }
 
 pub(crate) async fn webauthn_registration_finish_handler<AM, RM, IM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
+    State(FullContext {
+        identity_manager,
+        network,
+        ..
+    }): State<FullContext<AM, RM, IM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(register_public_key_credential): Json<RegisterPublicKeyCredential>,
@@ -287,20 +291,29 @@ where
     match webauthn.finish_passkey_registration(&register_public_key_credential, &registration_state)
     {
         Ok(passkey) => {
-            // Store the passkey with the user UUID for future authentication
-            let passkey_json = serde_json::to_string(&passkey).unwrap();
-            let passkey_filename = format!("/tmp/stored_passkey_{}.json", user_uuid);
-            std::fs::write(&passkey_filename, passkey_json.as_bytes()).unwrap();
+            // Convert webauthn_rs::Passkey to identity::Passkey
+            let identity_passkey = proven_identity::Passkey::from(passkey);
 
-            println!(
-                "Stored passkey for user {} at {}",
-                user_uuid, passkey_filename
-            );
-
-            Response::builder()
-                .status(StatusCode::OK)
-                .body("Registration successful".to_string())
-                .unwrap()
+            // Store the passkey using the user UUID as the passkey ID
+            match identity_manager
+                .save_passkey(&user_uuid, identity_passkey)
+                .await
+            {
+                Ok(()) => {
+                    println!("Stored passkey for user {}", user_uuid);
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .body("Registration successful".to_string())
+                        .unwrap()
+                }
+                Err(e) => {
+                    eprintln!("Failed to store passkey: {}", e);
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body("Failed to store passkey".to_string())
+                        .unwrap()
+                }
+            }
         }
         Err(e) => Response::builder()
             .status(StatusCode::BAD_REQUEST)
@@ -472,7 +485,11 @@ where
 }
 
 pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, IM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
+    State(FullContext {
+        identity_manager,
+        network,
+        ..
+    }): State<FullContext<AM, RM, IM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(auth_public_key_credential): Json<PublicKeyCredential>,
@@ -548,14 +565,11 @@ where
             }
         };
 
-    println!("Identified user: {:?}", user_unique_id);
-
-    // Load the stored passkey for this specific user
-    let passkey_filename = format!("/tmp/stored_passkey_{}.json", user_unique_id);
-    let passkey_data = match std::fs::read(&passkey_filename) {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("Failed to read passkey file {}: {}", passkey_filename, e);
+    // Load the stored passkey using the user UUID
+    let identity_passkey = match identity_manager.get_passkey(&user_unique_id).await {
+        Ok(Some(passkey)) => passkey,
+        Ok(None) => {
+            eprintln!("No stored passkey found for user {}", user_unique_id);
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(format!(
@@ -564,12 +578,8 @@ where
                 ))
                 .unwrap();
         }
-    };
-
-    let passkey: webauthn_rs::prelude::Passkey = match serde_json::from_slice(&passkey_data) {
-        Ok(pk) => pk,
         Err(e) => {
-            eprintln!("Failed to deserialize stored passkey: {}", e);
+            eprintln!("Failed to load passkey: {}", e);
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to load stored passkey".to_string())
@@ -577,13 +587,11 @@ where
         }
     };
 
+    // Convert back to webauthn_rs::Passkey
+    let passkey: webauthn_rs::prelude::Passkey = identity_passkey.into_inner();
+
     // Convert to DiscoverableKey
     let discoverable_key: webauthn_rs::prelude::DiscoverableKey = (&passkey).into();
-
-    println!(
-        "Loaded passkey for user {} from {}",
-        user_unique_id, passkey_filename
-    );
 
     // Complete the discoverable authentication
     match webauthn.finish_discoverable_authentication(
