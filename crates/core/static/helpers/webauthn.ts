@@ -18,12 +18,10 @@ function convertOptionsToBuffer(obj: any, path: string[] = []): any {
   if (typeof obj === "string") {
     // Get the full path
     const fullPath = path.join(".");
-    console.debug(`Checking field at path: ${fullPath} with value: ${obj}`);
 
     // Only convert if the full path matches one of our specified paths
     if (BASE64URL_FIELDS.has(fullPath)) {
       try {
-        console.debug(`Converting ${fullPath} from Base64URL to ArrayBuffer`);
         return base64UrlToUint8Array(obj);
       } catch (e) {
         console.warn(`Failed to convert ${fullPath} to ArrayBuffer:`, e);
@@ -39,9 +37,6 @@ function convertOptionsToBuffer(obj: any, path: string[] = []): any {
       return obj.map((item) => {
         if (item && typeof item === "object" && item.id) {
           try {
-            console.debug(
-              `Converting credential ID from Base64URL to ArrayBuffer`
-            );
             return {
               ...item,
               id: base64UrlToUint8Array(item.id),
@@ -91,8 +86,6 @@ function convertResultToBase64Url(obj: any): any {
 
 // Authentication function - returns PRF result as Promise
 export async function authenticate(): Promise<Uint8Array> {
-  console.log("Starting authentication...");
-
   // Generate a random state parameter which will tie start and finish requests together
   const state = crypto.randomUUID();
 
@@ -111,10 +104,6 @@ export async function authenticate(): Promise<Uint8Array> {
   const responseData = await resp.json();
   const options = convertOptionsToBuffer(responseData);
 
-  console.log("Server provided auth options:", options);
-  console.log("RP ID:", options?.publicKey?.rpId);
-  console.log("Allow credentials:", options?.publicKey?.allowCredentials);
-
   // Use navigator.credentials.get with discoverable auth options
   const credential = await navigator.credentials.get({
     publicKey: options.publicKey,
@@ -124,8 +113,6 @@ export async function authenticate(): Promise<Uint8Array> {
   if (!credential) {
     throw new Error("No credential received from authenticator");
   }
-
-  console.log("Received credential from authenticator");
 
   // Convert credential to JSON format for server
   const credentialJson = convertResultToBase64Url({
@@ -153,27 +140,19 @@ export async function authenticate(): Promise<Uint8Array> {
     );
   }
 
-  console.log("Authentication successful!");
-
   // Return PRF results if available
   const extensionResults = (credential as any).getClientExtensionResults?.();
   if (extensionResults?.prf?.results?.first) {
-    const masterSecretBytes = new Uint8Array(
-      extensionResults.prf.results.first
-    );
-    console.log("Returning master secret from PRF");
-    return masterSecretBytes;
+    const prfResult = new Uint8Array(extensionResults.prf.results.first);
+
+    return prfResult;
   }
 
-  throw new Error(
-    "PRF extension result not available - master secret cannot be generated"
-  );
+  throw new Error("PRF extension result not available");
 }
 
 // Registration function
 export async function register(username: string): Promise<Uint8Array> {
-  console.log("Starting registration...");
-
   // Generate a random state parameter which will tie start and finish requests together
   const state = crypto.randomUUID();
 
@@ -193,8 +172,6 @@ export async function register(username: string): Promise<Uint8Array> {
   const responseData = await resp.json();
   const options = convertOptionsToBuffer(responseData);
 
-  console.log("Server provided registration options:", options);
-
   // Use navigator.credentials.create
   const credential = await navigator.credentials.create({
     publicKey: options.publicKey,
@@ -204,16 +181,8 @@ export async function register(username: string): Promise<Uint8Array> {
     throw new Error("No credential received from authenticator");
   }
 
-  console.log("Received credential from authenticator");
-
   // Check if credential was created as discoverable (resident key)
   const extensionResults = (credential as any).getClientExtensionResults?.();
-  console.log("Extension results:", extensionResults);
-  if (extensionResults?.credProps?.rk !== undefined) {
-    console.log(
-      `Credential created as resident key: ${extensionResults.credProps.rk}`
-    );
-  }
 
   // Convert credential to JSON format for server
   const credentialJson = convertResultToBase64Url({
@@ -239,18 +208,11 @@ export async function register(username: string): Promise<Uint8Array> {
     );
   }
 
-  console.log("Registration successful!");
-
   // Return PRF results if available
   if (extensionResults?.prf?.results?.first) {
-    const masterSecretBytes = new Uint8Array(
-      extensionResults.prf.results.first
-    );
-    console.log("Returning master secret from PRF");
-    return masterSecretBytes;
+    const prfResult = new Uint8Array(extensionResults.prf.results.first);
+    return prfResult;
   }
 
-  throw new Error(
-    "PRF extension result not available - master secret cannot be generated"
-  );
+  throw new Error("PRF extension result not available");
 }
