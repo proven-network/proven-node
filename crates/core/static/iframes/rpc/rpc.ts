@@ -27,6 +27,13 @@ class RpcClient {
     { resolve: (data: any) => void; reject: (error: Error) => void }
   >();
   private requestCounter = 0;
+  private initializationPromise: Promise<void> | null = null;
+  private isInitialized = false;
+  private queuedRequests: Array<{
+    rpcCallData: any;
+    resolve: (response: RpcResponse) => void;
+    reject: (error: Error) => void;
+  }> = [];
 
   constructor() {
     // Extract window ID from URL fragment
@@ -35,14 +42,30 @@ class RpcClient {
     // Initialize broker synchronously - will throw if it fails
     this.broker = new MessageBroker(this.windowId, "rpc");
 
-    this.initializeSession();
+    // Initialize broker immediately but defer session initialization
+    this.initializeBroker();
   }
 
-  async initializeSession() {
+  private async ensureInitialized(): Promise<void> {
+    if (this.isInitialized) {
+      return;
+    }
+
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
+    this.initializationPromise = this.initializeSession();
+    return this.initializationPromise;
+  }
+
+  private async initializeSession(): Promise<void> {
     const urlParams = new URLSearchParams(window.location.search);
     const applicationId = urlParams.get("app") || "application_id";
 
     try {
+      console.log("RPC: Initializing session...");
+
       let session = await getSession(applicationId);
 
       if (!session) {
@@ -54,11 +77,36 @@ class RpcClient {
       this.session = session;
       await this.setupCose();
       await this.setupWorkerCommunication();
-      await this.initializeBroker();
 
+      this.isInitialized = true;
       console.log("RPC: Client initialized successfully");
+
+      // Process any queued requests
+      await this.processQueuedRequests();
     } catch (error) {
       console.error("RPC: Failed to initialize session:", error);
+      this.initializationPromise = null; // Allow retry
+      throw error;
+    }
+  }
+
+  private async processQueuedRequests(): Promise<void> {
+    console.log(
+      `RPC: Processing ${this.queuedRequests.length} queued requests`
+    );
+
+    const requests = [...this.queuedRequests];
+    this.queuedRequests = [];
+
+    for (const request of requests) {
+      try {
+        const response = await this.executeRpcRequest(request.rpcCallData);
+        request.resolve(response);
+      } catch (error) {
+        request.reject(
+          error instanceof Error ? error : new Error("Unknown error")
+        );
+      }
     }
   }
 
@@ -80,7 +128,7 @@ class RpcClient {
     };
   }
 
-  async initializeBroker() {
+  private async initializeBroker() {
     try {
       await this.broker.connect();
 
@@ -113,6 +161,35 @@ class RpcClient {
   }
 
   async handleRpcRequest(rpcCallData: any): Promise<RpcResponse> {
+    // Check if we're initialized
+    if (!this.isInitialized) {
+      // If not initialized, either queue the request or start initialization
+      return new Promise((resolve, reject) => {
+        // Queue this request
+        this.queuedRequests.push({
+          rpcCallData,
+          resolve,
+          reject,
+        });
+
+        // Start initialization if not already started
+        this.ensureInitialized().catch((error) => {
+          // If initialization fails, reject all queued requests
+          const requests = [...this.queuedRequests];
+          this.queuedRequests = [];
+
+          for (const request of requests) {
+            request.reject(error);
+          }
+        });
+      });
+    }
+
+    // If we're initialized, execute the request directly
+    return this.executeRpcRequest(rpcCallData);
+  }
+
+  private async executeRpcRequest(rpcCallData: any): Promise<RpcResponse> {
     try {
       const requestId = this.getNextRequestId();
 
