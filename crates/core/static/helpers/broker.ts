@@ -161,15 +161,6 @@ export class MessageBroker {
     this.port.postMessage(response);
   }
 
-  private generateMessageId(): string {
-    return (
-      "msg_" +
-      Date.now().toString(36) +
-      "_" +
-      Math.random().toString(36).substring(2, 15)
-    );
-  }
-
   async send(type: string, data: any, toIframe?: string): Promise<void> {
     if (!this.isConnected) {
       await this.connect();
@@ -207,7 +198,7 @@ export class MessageBroker {
       throw new Error("Broker: Not connected");
     }
 
-    const messageId = this.generateMessageId();
+    const messageId = crypto.randomUUID();
 
     // Create promise for the response
     const promise = new Promise<T>((resolve, reject) => {
