@@ -6,8 +6,8 @@ export type ExecuteOutput = string | number | boolean | null | undefined;
 // WhoAmI command and response
 export type WhoAmI = "WhoAmI";
 export type WhoAmIResponse =
-  | { Anonymous: { session_id: string } }
-  | { Identified: { session_id: string; identity: any } };
+  | { Anonymous: { session_id: Uint8Array } }
+  | { Identified: { session_id: Uint8Array; identity_id: Uint8Array } };
 
 // Execute commands
 export type ExecuteHash = { ExecuteHash: [string, string, any[]] };

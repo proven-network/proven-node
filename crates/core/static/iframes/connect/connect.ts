@@ -1,28 +1,9 @@
-import { isSignedIn, authenticate, signOut } from "../../helpers/webauthn";
+import { authenticate } from "../../helpers/webauthn";
 import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
 import { bytesToHex, hexToBytes } from "@noble/curves/abstract/utils";
-import { Identify } from "../../common";
+import { Identify, WhoAmI, WhoAmIResponse } from "../../common";
 import { signAsync, getPublicKeyAsync } from "@noble/ed25519";
 import { getSession } from "../../helpers/sessions";
-
-// Constants
-const MASTER_SECRET_KEY = "webauthn_master_secret";
-
-// Master secret functions
-function storeMasterSecret(masterSecretBytes: Uint8Array): void {
-  const masterSecretHex = bytesToHex(masterSecretBytes);
-  sessionStorage.setItem(MASTER_SECRET_KEY, masterSecretHex);
-}
-
-export function getMasterSecret(): Uint8Array | null {
-  const masterSecretHex = sessionStorage.getItem(MASTER_SECRET_KEY);
-  if (masterSecretHex) {
-    return new Uint8Array(
-      masterSecretHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-    );
-  }
-  return null;
-}
 
 class ConnectClient {
   applicationId: string;
@@ -68,9 +49,7 @@ class ConnectClient {
   }
 
   async handleSuccessfulAuth(prfResult: Uint8Array) {
-    console.log("Connect: Storing master secret and updating UI");
-    storeMasterSecret(prfResult);
-    this.updateAuthUI();
+    console.log("Connect: Authentication successful, sending identify RPC");
 
     // Send identify RPC request
     try {
@@ -99,13 +78,43 @@ class ConnectClient {
         "rpc"
       );
       console.log("Connect: Identify RPC response:", response);
+
+      // Only update UI after successful identify RPC
+      console.log("Connect: Identify successful, updating UI");
+      await this.updateAuthUI();
     } catch (error) {
       console.error("Connect: Failed to send identify RPC request:", error);
     }
   }
 
-  updateAuthUI() {
-    const userSignedIn = isSignedIn();
+  // Auth state methods
+  async isSignedIn(): Promise<boolean> {
+    try {
+      const whoAmIRequest: WhoAmI = "WhoAmI";
+      const response = await this.broker.request(
+        "rpc_request",
+        whoAmIRequest,
+        "rpc"
+      );
+
+      const whoAmIResponse = response.data.WhoAmI as WhoAmIResponse;
+
+      console.log("Connect: WhoAmI response:", whoAmIResponse);
+
+      // If the response has an "Identified" variant, user is signed in
+      return "Identified" in whoAmIResponse;
+    } catch (error) {
+      console.error("Connect: Failed to check auth status:", error);
+      return false;
+    }
+  }
+
+  signOut(): void {
+    console.log("Sign out not implemented yet");
+  }
+
+  async updateAuthUI() {
+    const userSignedIn = await this.isSignedIn();
     const signedOutView = document.getElementById("signed-out-view");
     const signedInView = document.getElementById("signed-in-view");
     const container = document.getElementById("auth-container");
@@ -168,9 +177,9 @@ class ConnectClient {
     }
   }
 
-  handleSignOut() {
-    signOut();
-    this.updateAuthUI();
+  async handleSignOut() {
+    this.signOut();
+    await this.updateAuthUI();
   }
 
   // Initialize the client when the page loads
@@ -191,7 +200,7 @@ class ConnectClient {
       }
 
       // Initialize UI state
-      client.updateAuthUI();
+      client.updateAuthUI().catch(console.error);
     });
 
     // Make client available globally for debugging

@@ -1,8 +1,4 @@
 import { base64UrlToUint8Array, uint8ArrayToBase64Url } from "./uint8array";
-import { bytesToHex } from "@noble/curves/abstract/utils";
-
-// Constants
-const MASTER_SECRET_KEY = "webauthn_master_secret";
 
 // Fields that should be converted from Base64URL to ArrayBuffer
 const BASE64URL_FIELDS = new Set([
@@ -91,20 +87,6 @@ function convertResultToBase64Url(obj: any): any {
     return newObj;
   }
   return obj;
-}
-
-// Auth state functions
-export function isSignedIn(): boolean {
-  return sessionStorage.getItem(MASTER_SECRET_KEY) !== null;
-}
-
-export function getAuthState(): "signed_in" | "not_signed_in" {
-  return isSignedIn() ? "signed_in" : "not_signed_in";
-}
-
-export function signOut(): void {
-  sessionStorage.removeItem(MASTER_SECRET_KEY);
-  console.log("Signed out - cleared master secret");
 }
 
 // Authentication function - returns PRF result as Promise
