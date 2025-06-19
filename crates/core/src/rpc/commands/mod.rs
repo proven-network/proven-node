@@ -26,4 +26,4 @@ pub use anonymize::{AnonymizeCommand, AnonymizeResponse};
 pub use execute::{ExecuteCommand, ExecuteResponse};
 pub use execute_hash::{ExecuteHashCommand, ExecuteHashResponse};
 pub use identify::{IdentifyCommand, IdentifyResponse};
-pub use who_am_i::WhoAmICommand;
+pub use who_am_i::{WhoAmICommand, WhoAmIResponse};

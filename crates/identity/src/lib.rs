@@ -8,13 +8,11 @@ mod error;
 mod identity;
 mod passkey;
 mod session;
-mod whoami;
 
 pub use error::Error;
 pub use identity::Identity;
 pub use passkey::Passkey;
 pub use session::Session;
-pub use whoami::WhoAmI;
 
 use std::time::SystemTime;
 

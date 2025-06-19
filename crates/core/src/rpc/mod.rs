@@ -5,7 +5,7 @@ mod error;
 
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
-use proven_identity::{Identity, IdentityManagement, Session, WhoAmI};
+use proven_identity::{Identity, IdentityManagement, Session};
 use proven_runtime::{ExecutionResult, RuntimePoolManagement};
 use serde::{Deserialize, Serialize};
 
@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::rpc::commands::{
     AnonymizeCommand, AnonymizeResponse, ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse,
-    ExecuteResponse, IdentifyCommand, IdentifyResponse, WhoAmICommand,
+    ExecuteResponse, IdentifyCommand, IdentifyResponse, WhoAmICommand, WhoAmIResponse,
 };
 
 #[repr(u8)]
@@ -131,7 +131,7 @@ pub enum Response {
     IdentifyFailure(String),
     // TODO: strip this down to something client-safe
     IdentifySuccess(Identity),
-    WhoAmI(WhoAmI),
+    WhoAmI(WhoAmIResponse),
 }
 
 /// Main RPC handler that coordinates authentication and command execution
