@@ -243,6 +243,18 @@ where
             .last_sequence)
     }
 
+    /// The number of messages in the stream.
+    async fn messages(&self) -> Result<u64, Self::Error> {
+        Ok(self
+            .nats_stream
+            .clone()
+            .info()
+            .await
+            .map_err(|e| Error::Info(e.kind()))?
+            .state
+            .messages)
+    }
+
     /// Returns the name of the stream.
     fn name(&self) -> String {
         self.name.clone()

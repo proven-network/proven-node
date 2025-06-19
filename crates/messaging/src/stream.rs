@@ -104,6 +104,9 @@ where
     /// The last sequence number in the stream.
     async fn last_seq(&self) -> Result<u64, Self::Error>;
 
+    /// The number of messages in the stream.
+    async fn messages(&self) -> Result<u64, Self::Error>;
+
     /// Returns the name of the stream.
     fn name(&self) -> String;
 

@@ -296,8 +296,22 @@ where
             .find_map(Clone::clone))
     }
 
+    /// The last sequence number in the stream.
     async fn last_seq(&self) -> Result<u64, Self::Error> {
         Ok(self.messages.lock().await.len().try_into().unwrap())
+    }
+
+    /// The number of messages in the stream.
+    async fn messages(&self) -> Result<u64, Self::Error> {
+        Ok(self
+            .messages
+            .lock()
+            .await
+            .iter()
+            .filter(|message| message.is_some())
+            .count()
+            .try_into()
+            .unwrap())
     }
 
     /// Returns the name of the stream.
