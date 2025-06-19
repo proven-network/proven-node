@@ -111,7 +111,7 @@ class BridgeClient {
         });
       });
 
-      console.log("Bridge: Broker initialized successfully");
+      console.debug("Bridge: Broker initialized successfully");
     } catch (error) {
       console.error("Bridge: Failed to initialize broker:", error);
       throw new Error(
@@ -132,7 +132,7 @@ class BridgeClient {
 
   async handleParentMessage(message: ParentToBridgeMessage) {
     try {
-      console.log("Bridge: Received message from parent:", message);
+      console.debug("Bridge: Received message from parent:", message);
 
       if (message.type === "whoAmI") {
         await this.handleWhoAmI(message);
@@ -229,7 +229,7 @@ class BridgeClient {
         });
       } else if (response.data === "ExecuteHashUnknown") {
         // Retry with full script
-        console.log("Bridge: ExecuteHash unknown, retrying with full script");
+        console.debug("Bridge: ExecuteHash unknown, retrying with full script");
         await this.retryWithFullScript(message, script, handler, args || []);
       } else if (response.data?.ExecuteFailure) {
         this.forwardToParent({
@@ -341,7 +341,7 @@ class BridgeClient {
   }
 
   forwardToParent(message: BridgeToParentMessage) {
-    console.log("Bridge: Forwarding to parent:", message);
+    console.debug("Bridge: Forwarding to parent:", message);
     parent.postMessage(message, "*");
   }
 

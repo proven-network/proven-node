@@ -64,14 +64,14 @@ class RpcClient {
     const applicationId = urlParams.get("app") || "application_id";
 
     try {
-      console.log("RPC: Initializing session...");
+      console.debug("RPC: Initializing session...");
 
       let session = await getSession(applicationId);
 
       if (!session) {
-        console.log("RPC: Creating new session...");
+        console.debug("RPC: Creating new session...");
         session = await createSession(applicationId);
-        console.log("RPC: Session created!", session);
+        console.debug("RPC: Session created!", session);
       }
 
       this.session = session;
@@ -79,7 +79,7 @@ class RpcClient {
       await this.setupWorkerCommunication();
 
       this.isInitialized = true;
-      console.log("RPC: Client initialized successfully");
+      console.debug("RPC: Client initialized successfully");
 
       // Process any queued requests
       await this.processQueuedRequests();
@@ -91,7 +91,7 @@ class RpcClient {
   }
 
   private async processQueuedRequests(): Promise<void> {
-    console.log(
+    console.debug(
       `RPC: Processing ${this.queuedRequests.length} queued requests`
     );
 
@@ -147,7 +147,7 @@ class RpcClient {
         }
       });
 
-      console.log("RPC: Broker initialized successfully");
+      console.debug("RPC: Broker initialized successfully");
     } catch (error) {
       console.error("RPC: Failed to initialize broker:", error);
       throw new Error(

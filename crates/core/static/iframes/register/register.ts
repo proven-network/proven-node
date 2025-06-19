@@ -23,7 +23,7 @@ class RegisterClient {
     try {
       await this.broker.connect();
 
-      console.log("Register: Broker initialized successfully");
+      console.debug("Register: Broker initialized successfully");
     } catch (error) {
       console.error("Register: Failed to initialize broker:", error);
       throw new Error(
@@ -168,7 +168,6 @@ class RegisterClient {
     try {
       // Generate 24-word mnemonic from PRF result
       const seedWords = generateMnemonic(prfResult);
-      console.log("Generated seed words:", seedWords.length);
 
       // Display the words in the grid
       const seedWordsGrid = document.getElementById("seed-words-grid");
@@ -200,12 +199,12 @@ class RegisterClient {
   }
 
   handleWrittenDown() {
-    console.log("User confirmed they've written down the seed words");
+    console.debug("User confirmed they've written down the seed words");
     this.closeModal();
   }
 
   handleRemindLater() {
-    console.log("User chose to be reminded later about seed words");
+    console.debug("User chose to be reminded later about seed words");
     // For now, just close the modal
     // TODO: Implement reminder functionality
     this.closeModal();
@@ -251,7 +250,7 @@ class RegisterClient {
       // Call WebAuthn registration with the username - returns PRF result
       const prfResult = await register(this.username);
 
-      console.log("Registration successful for username:", this.username);
+      console.debug("Registration successful for username:", this.username);
 
       // Send success message with PRF result directly to button iframe via broker
       await this.broker.send(

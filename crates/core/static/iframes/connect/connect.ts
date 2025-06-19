@@ -30,16 +30,13 @@ class ConnectClient {
 
       // Set up message handlers
       this.broker.on("registration_complete", async (message) => {
-        console.log("Connect: Registration completed", message.data);
+        console.debug("Connect: Registration completed", message.data);
 
-        // Store the PRF result if provided
+        // Handle successful registration
         if (message.data.prfResult) {
-          console.log("Connect: Registration successful with PRF result");
           await this.handleSuccessfulAuth(message.data.prfResult);
         }
       });
-
-      console.log("Connect: Broker initialized successfully");
     } catch (error) {
       console.error("Connect: Failed to initialize broker:", error);
       throw new Error(
@@ -49,7 +46,7 @@ class ConnectClient {
   }
 
   async handleSuccessfulAuth(prfResult: Uint8Array) {
-    console.log("Connect: Authentication successful, sending identify RPC");
+    console.debug("Connect: Authentication successful, sending identify RPC");
 
     // Send identify RPC request
     try {
@@ -77,10 +74,10 @@ class ConnectClient {
         identifyRequest,
         "rpc"
       );
-      console.log("Connect: Identify RPC response:", response);
+      console.debug("Connect: Identify RPC response:", response);
 
       // Only update UI after successful identify RPC
-      console.log("Connect: Identify successful, updating UI");
+      console.debug("Connect: Identify successful, updating UI");
       await this.updateAuthUI();
     } catch (error) {
       console.error("Connect: Failed to send identify RPC request:", error);
@@ -99,7 +96,7 @@ class ConnectClient {
 
       const whoAmIResponse = response.data.WhoAmI as WhoAmIResponse;
 
-      console.log("Connect: WhoAmI response:", whoAmIResponse);
+      console.debug("Connect: WhoAmI response:", whoAmIResponse);
 
       // If the response has an "Identified" variant, user is signed in
       return "Identified" in whoAmIResponse;
@@ -147,7 +144,7 @@ class ConnectClient {
 
     try {
       const prfResult = await authenticate();
-      console.log("Authentication successful with PRF result");
+      console.debug("Authentication successful with PRF result");
       await this.handleSuccessfulAuth(prfResult);
     } catch (error) {
       console.error("Authentication error:", error);
@@ -159,7 +156,7 @@ class ConnectClient {
         errorMessage.includes("immediate");
 
       if (isNoCredentialsError) {
-        console.log("No credentials found, opening registration modal");
+        console.debug("No credentials found, opening registration modal");
         // Send message directly to sdk via broker
         await this.broker.send("open_registration_modal", null, "sdk");
         this.resetSignInButton();
