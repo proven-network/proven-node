@@ -1327,6 +1327,13 @@ impl Bootstrap {
                 },
                 FsStore::new("/tmp/proven/identity_manager_snapshots"),
             ),
+            passkeys_store: NatsStore::new(NatsStoreOptions {
+                bucket: "passkeys".to_string(),
+                client: nats_client.clone(),
+                max_age: Duration::ZERO,
+                num_replicas: self.num_replicas,
+                persist: true,
+            }),
             sessions_store: NatsStore1::new(NatsStoreOptions {
                 bucket: "sessions".to_string(),
                 client: nats_client.clone(),

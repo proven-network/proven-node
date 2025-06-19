@@ -6,11 +6,13 @@
 
 mod error;
 mod identity;
+mod passkey;
 mod session;
 mod whoami;
 
 pub use error::Error;
 pub use identity::Identity;
+pub use passkey::Passkey;
 pub use session::Session;
 pub use whoami::WhoAmI;
 
@@ -31,10 +33,11 @@ static CREATE_IDENTITIES_SQL: &str = include_str!("../sql/01_create_identities.s
 static CREATE_LINKED_PASSKEYS_SQL: &str = include_str!("../sql/02_create_linked_passkeys.sql");
 
 /// Options for creating a new `IdentityManager`
-pub struct IdentityManagerOptions<A, IS, SS>
+pub struct IdentityManagerOptions<A, IS, PS, SS>
 where
     A: Attestor,
     IS: SqlStore,
+    PS: Store<Passkey, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     /// The attestor to use for remote attestation.
@@ -42,6 +45,9 @@ where
 
     /// The SQL store to use for storing identities.
     pub identity_store: IS,
+
+    /// The KV store to use for storing passkeys.
+    pub passkeys_store: PS,
 
     /// The KV store to use for storing sessions.
     pub sessions_store: SS,
@@ -74,12 +80,20 @@ where
     /// Identity store type.
     type IdentityStore: SqlStore;
 
+    /// Passkey store type.
+    type PasskeyStore: Store<Passkey, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>;
+
     /// Session store type.
     type SessionStore: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>;
 
     /// Creates a new instance of the session manager.
     fn new(
-        options: IdentityManagerOptions<Self::Attestor, Self::IdentityStore, Self::SessionStore>,
+        options: IdentityManagerOptions<
+            Self::Attestor,
+            Self::IdentityStore,
+            Self::PasskeyStore,
+            Self::SessionStore,
+        >,
     ) -> Self;
 
     /// Creates a new anonymous session.
@@ -115,38 +129,44 @@ where
 
 /// Manages all user sessions (created via ROLA) and their associated data.
 #[derive(Clone)]
-pub struct IdentityManager<A, IS, SS>
+pub struct IdentityManager<A, IS, PS, SS>
 where
     A: Attestor,
     IS: SqlStore,
+    PS: Store<Passkey, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     attestor: A,
     identity_store: IS,
+    _passkeys_store: PS,
     sessions_store: SS,
 }
 
 #[async_trait]
-impl<A, IS, SS> IdentityManagement for IdentityManager<A, IS, SS>
+impl<A, IS, PS, SS> IdentityManagement for IdentityManager<A, IS, PS, SS>
 where
     A: Attestor,
     IS: SqlStore,
+    PS: Store<Passkey, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
     SS: Store1<Session, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     type Attestor = A;
     type IdentityStore = IS;
+    type PasskeyStore = PS;
     type SessionStore = SS;
 
     fn new(
         IdentityManagerOptions {
             attestor,
             identity_store,
+            passkeys_store,
             sessions_store,
-        }: IdentityManagerOptions<A, IS, SS>,
+        }: IdentityManagerOptions<A, IS, PS, SS>,
     ) -> Self {
         Self {
             attestor,
             identity_store,
+            _passkeys_store: passkeys_store,
             sessions_store,
         }
     }

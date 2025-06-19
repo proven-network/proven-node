@@ -885,6 +885,13 @@ impl Bootstrap {
                 })
                 .await,
             ),
+            passkeys_store: NatsStore::new(NatsStoreOptions {
+                bucket: "passkeys".to_string(),
+                client: nats_client.clone(),
+                max_age: Duration::ZERO,
+                num_replicas: 1,
+                persist: true,
+            }),
             sessions_store: NatsStore1::new(NatsStoreOptions {
                 bucket: "sessions".to_string(),
                 client: nats_client.clone(),

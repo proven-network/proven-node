@@ -11,7 +11,7 @@ use proven_ethereum_lighthouse::LighthouseNode;
 use proven_ethereum_reth::RethNode;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
-use proven_identity::{IdentityManager, Session};
+use proven_identity::{IdentityManager, Passkey, Session};
 use proven_messaging_nats::stream::{NatsStream, NatsStream1, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_postgres::Postgres;
@@ -92,6 +92,11 @@ pub type LocalNodeCore = Core<
                 ciborium::ser::Error<std::io::Error>,
             >,
             FsStore<Bytes, Infallible, Infallible>,
+        >,
+        NatsStore<
+            Passkey,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
         >,
         NatsStore1<
             Session,
