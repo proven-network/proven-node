@@ -66,7 +66,8 @@ impl Drop for MemoryLockGuard {
                 debug!("Lock for key '{}' released.", self.key);
             } else {
                 debug!(
-                    "Lock for key '{}' not found in map during guard drop. Already released or never properly acquired.", self.key
+                    "Lock for key '{}' not found in map during guard drop. Already released or never properly acquired.",
+                    self.key
                 );
             }
         } else {

@@ -10,9 +10,9 @@ mod guard;
 pub use error::Error;
 pub use guard::NatsLockGuard;
 
-use async_nats::jetstream::kv::{Config as KvConfig, CreateErrorKind, Store as KvStore};
-use async_nats::jetstream::Context as JetStreamContext;
 use async_nats::Client;
+use async_nats::jetstream::Context as JetStreamContext;
+use async_nats::jetstream::kv::{Config as KvConfig, CreateErrorKind, Store as KvStore};
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_locks::{LockManager, LockManager1, LockManager2, LockManager3, LockStatus};
@@ -344,7 +344,9 @@ mod tests {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
 
-        info!("Guard dropped. Waiting briefly for potential cleanup/TTL to ensure release is checked properly.");
+        info!(
+            "Guard dropped. Waiting briefly for potential cleanup/TTL to ensure release is checked properly."
+        );
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let status_after_drop = manager
@@ -630,8 +632,11 @@ mod tests {
             .check(lock_key_scoped.clone())
             .await
             .expect("Base manager checking for lock_key_scoped in its own bucket failed");
-        assert_eq!(status_in_base_bucket, LockStatus::Free,
-            "Base manager should find lock_key_scoped to be Free in its own bucket, as the scoped lock is in a different bucket.");
+        assert_eq!(
+            status_in_base_bucket,
+            LockStatus::Free,
+            "Base manager should find lock_key_scoped to be Free in its own bucket, as the scoped lock is in a different bucket."
+        );
 
         // Base manager acquires its own lock (different key)
         let lock_key_base = "my_base_resource".to_string();
@@ -703,8 +708,10 @@ mod tests {
         let lock_key = "my_resource_renewal".to_string();
 
         let guard = manager.lock(lock_key.clone()).await.expect("Lock failed");
-        info!("Lock acquired for renewal test. Bucket max_age: {:?}, Expected renewal interval: {:?}, Wait time for check: {:?}", 
-            bucket_max_age_for_test, expected_renewal_interval, renewal_check_wait_time);
+        info!(
+            "Lock acquired for renewal test. Bucket max_age: {:?}, Expected renewal interval: {:?}, Wait time for check: {:?}",
+            bucket_max_age_for_test, expected_renewal_interval, renewal_check_wait_time
+        );
 
         tokio::time::sleep(renewal_check_wait_time).await;
 

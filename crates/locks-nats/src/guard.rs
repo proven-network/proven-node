@@ -142,6 +142,9 @@ impl Drop for NatsLockGuard {
             }
         });
 
-        debug!("Lock for key '{}' (revision {}) conditional release attempted. TTL is the fallback release mechanism.", self.key, revision_to_update);
+        debug!(
+            "Lock for key '{}' (revision {}) conditional release attempted. TTL is the fallback release mechanism.",
+            self.key, revision_to_update
+        );
     }
 }

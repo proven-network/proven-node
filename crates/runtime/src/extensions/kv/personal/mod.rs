@@ -353,7 +353,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_personal_bytes_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
 
         match worker.execute(request).await {
             Ok(ExecutionResult::Ok { .. }) => {}
@@ -392,7 +393,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_personal_key_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         if let Err(err) = result {
@@ -426,7 +428,8 @@ mod tests {
         let runtime_options = RuntimeOptions::for_test_code("kv/test_personal_string_store");
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
-        let request = ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
+        let request =
+            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
         let result = worker.execute(request).await;
 
         if let Err(err) = result {
