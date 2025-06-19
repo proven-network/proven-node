@@ -111,6 +111,9 @@ where
         passkey_prf_public_key_bytes: &Bytes,
     ) -> Result<Identity, Error>;
 
+    /// Gets a passkey by ID.
+    async fn get_passkey(&self, passkey_id: &Uuid) -> Result<Option<Passkey>, Error>;
+
     /// Gets a session by ID.
     async fn get_session(
         &self,
@@ -125,6 +128,9 @@ where
         session_id: &Uuid,
         identity_id: &Uuid,
     ) -> Result<Session, Error>;
+
+    /// Saves a passkey.
+    async fn save_passkey(&self, passkey_id: &Uuid, passkey: Passkey) -> Result<(), Error>;
 }
 
 /// Manages all user sessions (created via ROLA) and their associated data.
@@ -138,7 +144,7 @@ where
 {
     attestor: A,
     identity_store: IS,
-    _passkeys_store: PS,
+    passkeys_store: PS,
     sessions_store: SS,
 }
 
@@ -166,7 +172,7 @@ where
         Self {
             attestor,
             identity_store,
-            _passkeys_store: passkeys_store,
+            passkeys_store: passkeys_store,
             sessions_store,
         }
     }
@@ -313,6 +319,13 @@ where
         })
     }
 
+    async fn get_passkey(&self, passkey_id: &Uuid) -> Result<Option<Passkey>, Error> {
+        self.passkeys_store
+            .get(passkey_id.to_string())
+            .await
+            .map_err(|e| Error::PasskeyStore(e.to_string()))
+    }
+
     async fn get_session(
         &self,
         application_id: &Uuid,
@@ -377,5 +390,12 @@ where
         };
 
         Ok(new_session)
+    }
+
+    async fn save_passkey(&self, passkey_id: &Uuid, passkey: Passkey) -> Result<(), Error> {
+        self.passkeys_store
+            .put(passkey_id.to_string(), passkey)
+            .await
+            .map_err(|e| Error::PasskeyStore(e.to_string()))
     }
 }
