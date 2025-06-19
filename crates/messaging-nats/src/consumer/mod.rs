@@ -8,8 +8,8 @@ use std::fmt::Debug;
 use crate::stream::InitializedNatsStream;
 use async_nats::Client as NatsClient;
 use async_nats::jetstream::Context;
-use async_nats::jetstream::consumer::Consumer as NatsConsumerType;
 use async_nats::jetstream::consumer::pull::Config as NatsConsumerConfig;
+use async_nats::jetstream::consumer::{Consumer as NatsConsumerType, DeliverPolicy};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
@@ -105,8 +105,9 @@ where
         stream: InitializedNatsStream<T, D, S>,
         shutdown_token: CancellationToken,
     ) -> Result<(), Error> {
-        let initial_stream_seq = stream.last_seq().await.unwrap_or(0);
-        let mut caught_up = initial_stream_seq == 0;
+        let initial_stream_msgs = stream.messages().await.unwrap_or(0);
+        let mut caught_up = initial_stream_msgs == 0;
+        let mut msgs_processed = 0;
 
         if caught_up {
             let _ = handler.on_caught_up().await;
@@ -129,16 +130,22 @@ where
                         let message = message.map_err(|e| Error::Messages(e.kind()))?;
                         let payload: T = message.payload.clone().try_into().unwrap();
 
-                    handler.handle(payload).await.map_err(|_| Error::Handler)?;
+                        handler.handle(payload).await.map_err(|_| Error::Handler)?;
 
-                    message.ack().await.unwrap();
+                        message.ack().await.unwrap();
 
-                    if !caught_up
-                        && message.info().unwrap().stream_sequence >= initial_stream_seq
-                        && stream.last_seq().await.unwrap_or(0) == message.info().unwrap().stream_sequence
-                    {
-                        caught_up = true;
-                            let _ = handler.on_caught_up().await;
+                        if !caught_up {
+                            // Only count while not caught up
+                            msgs_processed += 1;
+
+                            // This check will re-fetch the messages count from the
+                            // stream in case it's changed since the service initialized
+                            if msgs_processed >= initial_stream_msgs
+                                && msgs_processed >= stream.messages().await.unwrap_or(0)
+                            {
+                                caught_up = true;
+                                let _ = handler.on_caught_up().await;
+                            }
                         }
                     } else {
                         // Stream closed
@@ -174,7 +181,7 @@ where
 
     #[allow(clippy::significant_drop_tightening)]
     async fn new(
-        name: String,
+        _name: String,
         stream: Self::StreamType,
         options: NatsConsumerOptions,
         handler: X,
@@ -183,7 +190,8 @@ where
             .jetstream_context
             .create_consumer_on_stream(
                 NatsConsumerConfig {
-                    name: Some(name),
+                    name: None, // Setting to none as it interferes with deliver_policy. TODO: Investigate more later.
+                    deliver_policy: DeliverPolicy::All,
                     durable_name: options.durable_name,
                     ..Default::default()
                 },
