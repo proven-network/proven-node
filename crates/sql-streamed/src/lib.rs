@@ -16,12 +16,14 @@ pub use error::Error;
 pub use request::Request;
 pub use response::Response;
 
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::fmt::Debug;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use once_cell::sync::Lazy;
 use proven_bootable::Bootable;
 use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::service::Service;
@@ -30,9 +32,15 @@ use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
 use service_handler::SqlServiceHandler;
 use tokio::sync::{Mutex, oneshot};
+use tracing::{debug, info};
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
 type SerializeError = ciborium::ser::Error<std::io::Error>;
+
+/// Global registry to track running SQL services by stream name.
+/// This ensures that only one service runs per stream name within the same program.
+static RUNNING_SERVICES: Lazy<Arc<Mutex<HashSet<String>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashSet::new())));
 
 /// A SQL store that uses a stream as an append-only log.
 #[derive(Clone, Debug)]
@@ -130,11 +138,30 @@ where
             .await
             .unwrap();
 
-        // TODO: Use distributed locks to decide if this machine should run the service
-        // Just assume single-node operation for now
-        let run_service = true;
+        // Check if a service is already running for this stream name.
+        // This ensures that only one SQL service runs per stream name within the same program,
+        // preventing conflicts and duplicate service instances.
+        let stream_name = stream.name();
+        let mut running_services = RUNNING_SERVICES.lock().await;
+        let run_service = !running_services.contains(&stream_name);
+
+        debug!(
+            "Checking service for stream '{}': run_service={}, current_services={:?}",
+            stream_name, run_service, *running_services
+        );
 
         if run_service {
+            // Register this service as running to prevent duplicate services
+            running_services.insert(stream_name.clone());
+            info!("Registered SQL service for stream '{}'", stream_name);
+        } else {
+            info!("SQL service already running for stream '{}'", stream_name);
+        }
+        drop(running_services);
+
+        if run_service {
+            info!("Starting SQL service for stream '{}'", stream_name);
+
             let handler = SqlServiceHandler::new(
                 applied_migrations.clone(),
                 caught_up_tx,
@@ -145,12 +172,30 @@ where
             let service = stream
                 .service("SQL_SERVICE", self.service_options.clone(), handler.clone())
                 .await
-                .map_err(|e| Error::Service(e.to_string()))?;
+                .map_err(|e| {
+                    // If service creation fails, remove from registry
+                    let stream_name_clone = stream_name.clone();
+                    tokio::spawn(async move {
+                        let mut running_services = RUNNING_SERVICES.lock().await;
+                        running_services.remove(&stream_name_clone);
+                    });
+                    Error::Service(e.to_string())
+                })?;
 
-            service
-                .start()
-                .await
-                .map_err(|e| Error::Service(e.to_string()))?;
+            service.start().await.map_err(|e| {
+                // If service start fails, remove from registry
+                let stream_name_clone = stream_name.clone();
+                tokio::spawn(async move {
+                    let mut running_services = RUNNING_SERVICES.lock().await;
+                    running_services.remove(&stream_name_clone);
+                });
+                Error::Service(e.to_string())
+            })?;
+
+            info!(
+                "Successfully started SQL service for stream '{}'",
+                stream_name
+            );
 
             // Wait for the stream to catch up before applying migrations
             caught_up_rx
@@ -723,6 +768,75 @@ mod tests {
             // Check that the snapshot store has one key
             let keys = snapshot_store.keys().await.unwrap();
             assert_eq!(keys.len(), 1);
+        })
+        .await;
+
+        assert!(result.is_ok(), "Test timed out");
+    }
+
+    #[tokio::test]
+    async fn test_single_service_per_stream() {
+        let result = timeout(Duration::from_secs(5), async {
+            let stream_name = "test_single_service";
+
+            // Create two sql stores with the same stream name
+            let stream = MemoryStream::new(stream_name, MemoryStreamOptions);
+
+            let sql_store1 = StreamedSqlStore::new(
+                stream.clone(),
+                MemoryServiceOptions,
+                MemoryClientOptions,
+                MemoryStore::new(),
+            );
+
+            let sql_store2 = StreamedSqlStore::new(
+                stream,
+                MemoryServiceOptions,
+                MemoryClientOptions,
+                MemoryStore::new(),
+            );
+
+            // Connect the first one - this should start the service
+            let _connection1 = sql_store1
+                .connect(vec![
+                    "CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)",
+                ])
+                .await
+                .unwrap();
+
+            // Connect the second one - this should NOT start a new service (the service should already be running)
+            let _connection2 = sql_store2
+                .connect(vec![
+                    "CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)",
+                ])
+                .await
+                .unwrap();
+
+            // Both connections should work
+            let response1 = _connection1
+                .execute(
+                    "INSERT INTO users (id, email) VALUES (?1, ?2)".to_string(),
+                    vec![
+                        SqlParam::Integer(1),
+                        SqlParam::Text("alice@example.com".to_string()),
+                    ],
+                )
+                .await
+                .unwrap();
+
+            let response2 = _connection2
+                .execute(
+                    "INSERT INTO users (id, email) VALUES (?1, ?2)".to_string(),
+                    vec![
+                        SqlParam::Integer(2),
+                        SqlParam::Text("bob@example.com".to_string()),
+                    ],
+                )
+                .await
+                .unwrap();
+
+            assert_eq!(response1, 1);
+            assert_eq!(response2, 1);
         })
         .await;
 

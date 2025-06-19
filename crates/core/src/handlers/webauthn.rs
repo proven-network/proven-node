@@ -599,15 +599,10 @@ where
         auth_state,
         &[discoverable_key],
     ) {
-        Ok(auth_result) => {
-            // Authentication successful
-            println!("Discoverable authentication successful: {:?}", auth_result);
-
-            Response::builder()
-                .status(StatusCode::OK)
-                .body("Authentication successful".to_string())
-                .unwrap()
-        }
+        Ok(_) => Response::builder()
+            .status(StatusCode::OK)
+            .body("Authentication successful".to_string())
+            .unwrap(),
         Err(e) => Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .body(format!("Authentication failed: {e}"))

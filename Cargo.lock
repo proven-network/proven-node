@@ -10539,6 +10539,7 @@ dependencies = [
  "criterion 0.6.0",
  "deno_error",
  "futures",
+ "once_cell",
  "paste",
  "proven-bootable",
  "proven-libsql",
@@ -10552,6 +10553,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
