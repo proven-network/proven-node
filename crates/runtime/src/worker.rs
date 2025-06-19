@@ -55,14 +55,11 @@ use tokio::sync::oneshot;
 ///
 ///     worker
 ///         .execute(ExecutionRequest::Rpc {
-///             application_id: "application_id".to_string(),
+///             application_id: Uuid::new_v4(),
 ///             args: vec![json!(10), json!(20)],
 ///             handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
 ///             session: Session::Identified {
-///                 identity: Identity {
-///                     identity_id: Uuid::new_v4(),
-///                     passkeys: vec![],
-///                 },
+///                 identity_id: Uuid::new_v4(),
 ///                 origin: "origin".to_string(),
 ///                 session_id: Uuid::new_v4(),
 ///                 signing_key: SigningKey::generate(&mut rand::thread_rng()),
