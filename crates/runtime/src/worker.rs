@@ -39,13 +39,13 @@ use tokio::sync::oneshot;
 ///         CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
 ///
 ///     let mut worker = Worker::new(RuntimeOptions {
-///         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().into_path()),
+///         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().keep()),
 ///         application_store: MemoryStore2::new(),
 ///         file_system_store: MemoryStore::new(),
 ///         module_loader: ModuleLoader::new(code_package),
-///         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+///         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
 ///         nft_store: MemoryStore3::new(),
-///         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().into_path()),
+///         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
 ///         personal_store: MemoryStore3::new(),
 ///         radix_nft_verifier: MockRadixNftVerifier::new(),
 ///         rpc_endpoints: RpcEndpoints::external(),
