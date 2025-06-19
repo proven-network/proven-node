@@ -83,6 +83,16 @@ export class MessageBroker {
 
     // Handle responses to pending requests
     if (message.isResponse && message.messageId) {
+      // Responses should always be directed to a particular iframe
+      if (!message.toIframe) {
+        return;
+      }
+
+      // Ignore responses to messages that are not directed to this iframe
+      if (message.toIframe !== this.iframeType) {
+        return;
+      }
+
       const pendingRequest = this.pendingRequests.get(message.messageId);
       if (pendingRequest) {
         clearTimeout(pendingRequest.timeout);
@@ -105,7 +115,11 @@ export class MessageBroker {
           // Create respond function if this message has a messageId (indicating it's a request)
           const respond = message.messageId
             ? (responseData: any) => {
-                this.sendResponse(message.messageId!, responseData);
+                this.sendResponse(
+                  message.messageId!,
+                  message.fromIframe,
+                  responseData
+                );
               }
             : undefined;
 
@@ -117,7 +131,12 @@ export class MessageBroker {
           );
           // If this was a request and there was an error, send error response
           if (message.messageId) {
-            this.sendResponse(message.messageId, null, error.message);
+            this.sendResponse(
+              message.messageId,
+              message.fromIframe,
+              null,
+              error.message
+            );
           }
         }
       });
@@ -129,6 +148,7 @@ export class MessageBroker {
       if (message.messageId) {
         this.sendResponse(
           message.messageId,
+          message.fromIframe,
           null,
           `No handler for message type: ${message.type}`
         );
@@ -138,6 +158,7 @@ export class MessageBroker {
 
   private async sendResponse(
     messageId: string,
+    respondingTo: string,
     responseData: any,
     error?: string
   ): Promise<void> {
@@ -152,6 +173,7 @@ export class MessageBroker {
     const response: BrokerMessage = {
       type: "response",
       fromIframe: this.iframeType,
+      toIframe: respondingTo,
       data: error ? { error } : responseData,
       messageId,
       isResponse: true,
