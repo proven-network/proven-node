@@ -283,7 +283,8 @@ where
         // Get identity ID from first row
         let identity_id = match &first_row[0] {
             SqlParam::Blob(blob) => Uuid::from_slice(blob).unwrap(),
-            _ => unreachable!(),
+            SqlParam::BlobWithName(_, blob) => Uuid::from_slice(blob).unwrap(),
+            other => unreachable!("Unexpected SQL param: {:?}", other),
         };
 
         Ok(Identity {
