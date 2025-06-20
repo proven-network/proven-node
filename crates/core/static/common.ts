@@ -36,6 +36,23 @@ export type ExecuteSuccess = {
   logs: ExecuteLog[];
 };
 
+export type ExecuteError = {
+  duration: {
+    secs: number;
+    nanos: number;
+  };
+  logs: ExecuteLog[];
+  error: {
+    name: string;
+    message: string;
+    stack?: string;
+    // There are more fields, but we don't need them for now
+  };
+};
+
+// ExecutionResult can be either Ok or Error
+export type ExecutionResult = { Ok: ExecuteSuccess } | { Error: ExecuteError };
+
 // Identify command and response
 export type Identify = {
   Identify: [Uint8Array, Uint8Array];

@@ -5,9 +5,8 @@ import type {
   WhoAmIResponse,
   ExecuteHash,
   Execute,
-  ExecuteOutput,
   ExecuteLog,
-  ExecuteSuccess,
+  ExecutionResult,
 } from "../../common";
 
 // Message types for parent ↔ bridge communication
@@ -218,15 +217,8 @@ class BridgeClient {
 
       // Handle the response
       if (response.data?.ExecuteSuccess) {
-        const result = response.data.ExecuteSuccess.Ok as ExecuteSuccess;
-        this.processExecuteLogs(result.logs);
-
-        this.forwardToParent({
-          type: "response",
-          nonce: message.nonce,
-          success: true,
-          data: result.output,
-        });
+        const result = response.data.ExecuteSuccess as ExecutionResult;
+        this.handleExecutionResult(result, message.nonce);
       } else if (response.data === "ExecuteHashUnknown") {
         // Retry with full script
         console.debug("Bridge: ExecuteHash unknown, retrying with full script");
@@ -279,15 +271,8 @@ class BridgeClient {
       }
 
       if (response.data?.ExecuteSuccess) {
-        const result = response.data.ExecuteSuccess.Ok as ExecuteSuccess;
-        this.processExecuteLogs(result.logs);
-
-        this.forwardToParent({
-          type: "response",
-          nonce: originalMessage.nonce,
-          success: true,
-          data: result.output,
-        });
+        const result = response.data.ExecuteSuccess as ExecutionResult;
+        this.handleExecutionResult(result, originalMessage.nonce);
       } else if (response.data?.ExecuteFailure) {
         this.forwardToParent({
           type: "response",
@@ -312,6 +297,40 @@ class BridgeClient {
           error instanceof Error
             ? error.message
             : "Failed to retry with full script",
+      });
+    }
+  }
+
+  handleExecutionResult(result: ExecutionResult, nonce: number) {
+    if ("Ok" in result) {
+      // Handle successful execution
+      const successResult = result.Ok;
+      this.processExecuteLogs(successResult.logs);
+
+      this.forwardToParent({
+        type: "response",
+        nonce: nonce,
+        success: true,
+        data: successResult.output,
+      });
+    } else if ("Error" in result) {
+      // Handle runtime error
+      const errorResult = result.Error;
+      this.processExecuteLogs(errorResult.logs);
+
+      this.forwardToParent({
+        type: "response",
+        nonce: nonce,
+        success: false,
+        error: `Runtime error: ${errorResult.error.message}`,
+      });
+    } else {
+      // This should never happen, but handle it gracefully
+      this.forwardToParent({
+        type: "response",
+        nonce: nonce,
+        success: false,
+        error: "Invalid execution result format",
       });
     }
   }
