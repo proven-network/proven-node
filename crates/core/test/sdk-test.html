@@ -395,6 +395,7 @@ export const test = run(() => {
             `Execute Error (${textareaId}): ${error.message}`,
             "error"
           );
+          throw error;
         } finally {
           button.disabled = false;
         }

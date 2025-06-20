@@ -7,6 +7,7 @@ import type {
   Execute,
   ExecuteLog,
   ExecutionResult,
+  ExecuteError,
 } from "../../common";
 
 // Message types for parent ↔ bridge communication
@@ -302,37 +303,13 @@ class BridgeClient {
   }
 
   handleExecutionResult(result: ExecutionResult, nonce: number) {
-    if ("Ok" in result) {
-      // Handle successful execution
-      const successResult = result.Ok;
-      this.processExecuteLogs(successResult.logs);
-
-      this.forwardToParent({
-        type: "response",
-        nonce: nonce,
-        success: true,
-        data: successResult.output,
-      });
-    } else if ("Error" in result) {
-      // Handle runtime error
-      const errorResult = result.Error;
-      this.processExecuteLogs(errorResult.logs);
-
-      this.forwardToParent({
-        type: "response",
-        nonce: nonce,
-        success: false,
-        error: `Runtime error: ${errorResult.error.message}`,
-      });
-    } else {
-      // This should never happen, but handle it gracefully
-      this.forwardToParent({
-        type: "response",
-        nonce: nonce,
-        success: false,
-        error: "Invalid execution result format",
-      });
-    }
+    // Send the full ExecutionResult back to the SDK to handle
+    this.forwardToParent({
+      type: "response",
+      nonce: nonce,
+      success: true,
+      data: result,
+    });
   }
 
   async hashScript(script: string): Promise<string> {

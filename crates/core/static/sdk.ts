@@ -1,5 +1,10 @@
 import { generateWindowId } from "./helpers/broker";
-import type { ExecuteOutput, WhoAmIResponse } from "./common";
+import type {
+  ExecuteOutput,
+  WhoAmIResponse,
+  ExecutionResult,
+  ExecuteError,
+} from "./common";
 import type {
   ParentToBridgeMessage,
   BridgeToParentMessage,
@@ -330,6 +335,44 @@ export const ProvenSDK = (options: {
     });
   };
 
+  /**
+   * Creates a proper JavaScript Error object from ExecuteError details.
+   * This error can be thrown and will behave like a normal browser error.
+   */
+  const createErrorFromExecuteError = (executeError: ExecuteError): Error => {
+    const error = new Error(executeError.error.message);
+    error.name = executeError.error.name;
+
+    // Set the stack trace if available
+    if (executeError.error.stack) {
+      error.stack = executeError.error.stack;
+    }
+
+    // Add duration as a custom property for debugging
+    (error as any).executionDuration = executeError.duration;
+
+    return error;
+  };
+
+  /**
+   * Processes execution logs and outputs them to the console
+   */
+  const processExecuteLogs = (logs: any[]) => {
+    logs.forEach((log) => {
+      if (log.level === "log") {
+        console.log(...log.args);
+      } else if (log.level === "error") {
+        console.error(...log.args);
+      } else if (log.level === "warn") {
+        console.warn(...log.args);
+      } else if (log.level === "debug") {
+        console.debug(...log.args);
+      } else if (log.level === "info") {
+        console.info(...log.args);
+      }
+    });
+  };
+
   const execute = async (
     script: string,
     handler: string,
@@ -347,7 +390,26 @@ export const ProvenSDK = (options: {
       },
     });
 
-    return response;
+    // The response now contains the full ExecutionResult
+    const result = response as ExecutionResult;
+
+    if ("Ok" in result) {
+      // Handle successful execution
+      const successResult = result.Ok;
+      processExecuteLogs(successResult.logs);
+      return successResult.output as ExecuteOutput;
+    } else if ("Error" in result) {
+      // Handle runtime error - process logs then throw error
+      const errorResult = result.Error;
+      processExecuteLogs(errorResult.logs);
+
+      // Create and throw a proper JavaScript Error
+      const jsError = createErrorFromExecuteError(errorResult);
+      throw jsError;
+    } else {
+      // This should never happen, but handle it gracefully
+      throw new Error("Invalid execution result format");
+    }
   };
 
   const whoAmI = async (): Promise<WhoAmIResponse> => {
