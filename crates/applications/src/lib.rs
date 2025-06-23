@@ -13,7 +13,7 @@ pub use error::Error;
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use proven_sql::{SqlConnection, SqlParam, SqlStore, SqlStore1};
+use proven_sql::{SqlConnection, SqlParam, SqlStore};
 use proven_store::Store;
 use uuid::Uuid;
 
@@ -43,7 +43,7 @@ where
         >;
 
     /// The SQL store type.
-    type SqlStore: SqlStore1;
+    type SqlStore: SqlStore;
 
     /// Create a new application manager.
     fn new(store: Self::Store, sql_store: Self::SqlStore) -> Self;
@@ -67,7 +67,7 @@ where
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
-    SS: SqlStore1,
+    SS: SqlStore,
 {
     store: S,
     sql_store: SS,
@@ -81,7 +81,7 @@ where
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
-    SS: SqlStore1,
+    SS: SqlStore,
 {
     type Store = S;
 
@@ -102,7 +102,6 @@ where
 
         let connection = self
             .sql_store
-            .scope(&application_id)
             .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
             .await
             .map_err(|e| Error::SqlStore(e.to_string()))?;
@@ -153,7 +152,6 @@ where
 
         let connection = self
             .sql_store
-            .scope(&application_id)
             .connect(vec![CREATE_APPLICATIONS_SQL, CREATE_DAPP_DEFININITIONS_SQL])
             .await
             .map_err(|e| Error::SqlStore(e.to_string()))?;

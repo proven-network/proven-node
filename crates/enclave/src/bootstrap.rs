@@ -34,9 +34,7 @@ use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
 use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
-use proven_messaging_nats::stream::{
-    NatsStream, NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions,
-};
+use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{Peer, ProvenNetwork, ProvenNetworkOptions};
 use proven_postgres::{Postgres, PostgresOptions};
@@ -47,13 +45,11 @@ use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{
     RpcEndpoints, RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions,
 };
-use proven_sql_streamed::{
-    StreamedSqlStore, StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3,
-};
+use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
-use proven_store_s3::{S3Store, S3Store1, S3Store2, S3Store3, S3StoreOptions};
+use proven_store_s3::{S3Store, S3Store2, S3Store3, S3StoreOptions};
 use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc::InitializeRequest;
 use tokio::sync::Mutex;
@@ -939,8 +935,8 @@ impl Bootstrap {
                 num_replicas: 1,
                 persist: true,
             }),
-            StreamedSqlStore1::new(
-                NatsStream1::new(
+            StreamedSqlStore::new(
+                NatsStream::new(
                     "APPLICATION_MANAGER_SQL",
                     NatsStreamOptions {
                         client: nats_client.clone(),
@@ -955,7 +951,7 @@ impl Bootstrap {
                 NatsClientOptions {
                     client: nats_client.clone(),
                 },
-                S3Store1::new(S3StoreOptions {
+                S3Store::new(S3StoreOptions {
                     bucket: self.args.certificates_bucket.clone(),
                     prefix: Some("application_manager".to_string()),
                     region: id.region.clone(),

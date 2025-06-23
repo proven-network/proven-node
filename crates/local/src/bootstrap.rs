@@ -39,7 +39,7 @@ use proven_messaging::stream::Stream;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 use proven_messaging_nats::stream::{
-    InitializedNatsStream, NatsStream, NatsStream1, NatsStream2, NatsStream3, NatsStreamOptions,
+    InitializedNatsStream, NatsStream, NatsStream2, NatsStream3, NatsStreamOptions,
 };
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{ProvenNetwork, ProvenNetworkOptions};
@@ -51,10 +51,8 @@ use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{
     RpcEndpoints, RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions,
 };
-use proven_sql_streamed::{
-    StreamedSqlStore, StreamedSqlStore1, StreamedSqlStore2, StreamedSqlStore3,
-};
-use proven_store_fs::{FsStore, FsStore1, FsStore2, FsStore3};
+use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
+use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
 use radix_common::prelude::NetworkDefinition;
 use tokio::sync::Mutex;
@@ -1359,8 +1357,8 @@ impl Bootstrap {
                 num_replicas: self.num_replicas,
                 persist: true,
             }),
-            StreamedSqlStore1::new(
-                NatsStream1::new(
+            StreamedSqlStore::new(
+                NatsStream::new(
                     "APPLICATION_MANAGER_SQL",
                     NatsStreamOptions {
                         client: nats_client.clone(),
@@ -1375,7 +1373,7 @@ impl Bootstrap {
                 NatsClientOptions {
                     client: nats_client.clone(),
                 },
-                FsStore1::new("/tmp/proven/application_manager_snapshots"),
+                FsStore::new("/tmp/proven/application_manager_snapshots"),
             ),
         );
 
