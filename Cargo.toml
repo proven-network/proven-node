@@ -552,7 +552,7 @@ twox-hash = "2.1.1"
 typenum = "1.18.0"
 url = { version = "2.5.4", features = ["serde", "expose_internals"] }
 urlpattern = "0.3.0"
-uuid = { version = "1.17.0", features = ["v4"] }
+uuid = { version = "1.17.0", features = ["serde", "v4"] }
 v8_valueserializer = "0.1.1"
 web-transport-proto = "0.2.6"
 webauthn-rs = { git = "https://github.com/proven-network/webauthn-rs", features = ["conditional-ui", "danger-allow-state-serialisation"] }

@@ -6,10 +6,19 @@ edition = "2024"
 [dependencies]
 async-trait.workspace = true
 bytes.workspace = true
+chrono.workspace = true
 ciborium.workspace = true
 futures.workspace = true
+once_cell.workspace = true
 proven-sql.workspace = true
 proven-store.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+proven-messaging.workspace = true
+proven-messaging-memory.workspace = true
+proven-sql-streamed.workspace = true
+proven-store-memory.workspace = true

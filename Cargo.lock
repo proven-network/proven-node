@@ -9714,12 +9714,19 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "chrono",
  "ciborium",
  "futures",
+ "once_cell",
+ "proven-messaging",
+ "proven-messaging-memory",
  "proven-sql",
+ "proven-sql-streamed",
  "proven-store",
+ "proven-store-memory",
  "serde",
  "thiserror 2.0.12",
+ "tokio",
  "uuid",
 ]
 

@@ -1,17 +1,15 @@
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Represents an application.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Application {
     /// The unique identifier for the application.
-    pub id: String,
+    pub id: Uuid,
 
-    /// The address of the owner's identity.
-    pub owner_identity_address: String,
-
-    /// The addresses of the dApp definitions.
-    pub dapp_definition_addresses: Vec<String>,
+    /// The ID of the owner's identity.
+    pub owner_identity_id: Uuid,
 }
 
 impl TryFrom<Bytes> for Application {
