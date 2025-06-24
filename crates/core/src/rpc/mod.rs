@@ -4,7 +4,7 @@ mod context;
 mod error;
 
 use bytes::Bytes;
-use proven_applications::ApplicationManagement;
+use proven_applications::{Application, ApplicationManagement};
 use proven_identity::{Identity, IdentityManagement, Session};
 use proven_runtime::{ExecutionResult, RuntimePoolManagement};
 use serde::{Deserialize, Serialize};
@@ -16,8 +16,9 @@ pub use error::Error;
 use uuid::Uuid;
 
 use crate::rpc::commands::{
-    AnonymizeCommand, AnonymizeResponse, ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse,
-    ExecuteResponse, IdentifyCommand, IdentifyResponse, WhoAmICommand, WhoAmIResponse,
+    AnonymizeCommand, AnonymizeResponse, CreateApplicationCommand, CreateApplicationResponse,
+    ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse, ExecuteResponse, IdentifyCommand,
+    IdentifyResponse, WhoAmICommand, WhoAmIResponse,
 };
 
 #[repr(u8)]
@@ -25,6 +26,8 @@ use crate::rpc::commands::{
 pub enum Request {
     // no args
     Anonymize,
+    // no args
+    CreateApplication,
     // module, handler_specifier, args
     Execute(String, String, Vec<serde_json::Value>),
     // module_hash, handler_specifier, args
@@ -38,6 +41,7 @@ pub enum Request {
 #[derive(Debug)]
 pub enum Command {
     Anonymize(AnonymizeCommand),
+    CreateApplication(CreateApplicationCommand),
     Execute(ExecuteCommand),
     ExecuteHash(ExecuteHashCommand),
     Identify(IdentifyCommand),
@@ -60,6 +64,17 @@ impl RpcCommand for Command {
                 match r {
                     AnonymizeResponse::AnonymizeFailure(err) => Response::AnonymizeFailure(err),
                     AnonymizeResponse::AnonymizeSuccess => Response::AnonymizeSuccess,
+                }
+            }
+            Command::CreateApplication(cmd) => {
+                let r = cmd.execute(context).await;
+                match r {
+                    CreateApplicationResponse::CreateApplicationFailure(err) => {
+                        Response::CreateApplicationFailure(err)
+                    }
+                    CreateApplicationResponse::CreateApplicationSuccess(application) => {
+                        Response::CreateApplicationSuccess(application)
+                    }
                 }
             }
             Command::Execute(cmd) => {
@@ -97,6 +112,7 @@ impl Request {
     pub fn into_command(self) -> Command {
         match self {
             Request::Anonymize => Command::Anonymize(AnonymizeCommand),
+            Request::CreateApplication => Command::CreateApplication(CreateApplicationCommand),
             Request::Execute(module, handler_specifier, args) => Command::Execute(ExecuteCommand {
                 module,
                 handler_specifier,
@@ -125,6 +141,8 @@ pub enum Response {
     AnonymizeFailure(String),
     AnonymizeSuccess,
     BadHandlerSpecifier,
+    CreateApplicationFailure(String),
+    CreateApplicationSuccess(Application),
     ExecuteFailure(String),
     ExecuteHashUnknown,
     ExecuteSuccess(ExecutionResult),

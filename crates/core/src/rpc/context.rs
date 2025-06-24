@@ -11,7 +11,7 @@ where
     RM: RuntimePoolManagement,
 {
     pub application_id: Uuid,
-    pub _application_manager: AM,
+    pub application_manager: AM,
     pub identity_manager: IM,
     pub runtime_pool_manager: RM,
     pub session: Session,
@@ -32,7 +32,7 @@ where
     ) -> Self {
         Self {
             application_id,
-            _application_manager: application_manager,
+            application_manager,
             identity_manager,
             runtime_pool_manager,
             session,
