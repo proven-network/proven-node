@@ -31,8 +31,8 @@ use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stre
 use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
 use service_handler::SqlServiceHandler;
-use tokio::sync::{Mutex, oneshot};
-use tracing::{debug, info};
+use tokio::sync::{Mutex, Notify, oneshot};
+use tracing::debug;
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
 type SerializeError = ciborium::ser::Error<std::io::Error>;
@@ -41,6 +41,11 @@ type SerializeError = ciborium::ser::Error<std::io::Error>;
 /// This ensures that only one service runs per stream name within the same program.
 static RUNNING_SERVICES: Lazy<Arc<Mutex<HashSet<String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashSet::new())));
+
+/// Global registry to track services that are currently starting up and applying migrations.
+/// This allows non-primary connections to wait for the primary connection to finish migrations.
+static STARTING_SERVICES: Lazy<Arc<Mutex<std::collections::HashMap<String, Arc<Notify>>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(std::collections::HashMap::new())));
 
 /// A SQL store that uses a stream as an append-only log.
 #[derive(Clone, Debug)]
@@ -143,7 +148,10 @@ where
         // preventing conflicts and duplicate service instances.
         let stream_name = stream.name();
         let mut running_services = RUNNING_SERVICES.lock().await;
+        let mut starting_services = STARTING_SERVICES.lock().await;
+
         let run_service = !running_services.contains(&stream_name);
+        let mut startup_notify = None;
 
         debug!(
             "Checking service for stream '{}': run_service={}, current_services={:?}",
@@ -151,72 +159,128 @@ where
         );
 
         if run_service {
-            // Register this service as running to prevent duplicate services
-            running_services.insert(stream_name.clone());
-            info!("Registered SQL service for stream '{}'", stream_name);
-        } else {
-            info!("SQL service already running for stream '{}'", stream_name);
-        }
-        drop(running_services);
+            // Use entry API to atomically check and insert, preventing race conditions
+            match starting_services.entry(stream_name.clone()) {
+                std::collections::hash_map::Entry::Occupied(entry) => {
+                    // Another connection is already starting this service, wait for it
+                    startup_notify = Some(entry.get().clone());
+                    println!(
+                        "Another connection is starting SQL service for stream '{}', waiting...",
+                        stream_name
+                    );
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    // We are the primary connection that will start the service
+                    let startup_notify_arc = Arc::new(Notify::new());
+                    entry.insert(startup_notify_arc.clone());
+                    running_services.insert(stream_name.clone());
+                    debug!("Registered SQL service for stream '{}'", stream_name);
 
-        if run_service {
-            info!("Starting SQL service for stream '{}'", stream_name);
+                    // Store the notify so we can notify waiting connections when done
+                    drop(starting_services);
+                    drop(running_services);
 
-            let handler = SqlServiceHandler::new(
-                applied_migrations.clone(),
-                caught_up_tx,
-                self.snapshot_store.clone(),
-                stream.clone(),
-            );
+                    // Start the service and apply migrations
+                    debug!("Starting SQL service for stream '{}'", stream_name);
 
-            let service = stream
-                .service("SQL_SERVICE", self.service_options.clone(), handler.clone())
-                .await
-                .map_err(|e| {
-                    // If service creation fails, remove from registry
-                    let stream_name_clone = stream_name.clone();
-                    tokio::spawn(async move {
-                        let mut running_services = RUNNING_SERVICES.lock().await;
-                        running_services.remove(&stream_name_clone);
-                    });
-                    Error::Service(e.to_string())
-                })?;
+                    let handler = SqlServiceHandler::new(
+                        applied_migrations.clone(),
+                        caught_up_tx,
+                        self.snapshot_store.clone(),
+                        stream.clone(),
+                    );
 
-            service.start().await.map_err(|e| {
-                // If service start fails, remove from registry
-                let stream_name_clone = stream_name.clone();
-                tokio::spawn(async move {
-                    let mut running_services = RUNNING_SERVICES.lock().await;
-                    running_services.remove(&stream_name_clone);
-                });
-                Error::Service(e.to_string())
-            })?;
-
-            info!(
-                "Successfully started SQL service for stream '{}'",
-                stream_name
-            );
-
-            // Wait for the stream to catch up before applying migrations
-            caught_up_rx
-                .await
-                .map_err(|_| Error::CaughtUpChannelClosed)?;
-
-            let applied_migrations = applied_migrations.lock().await.clone();
-            for migration in migrations {
-                let migration_sql = migration.into();
-                if !applied_migrations.contains(&migration_sql) {
-                    let request = Request::Migrate(migration_sql);
-
-                    if let ClientResponseType::Response(Response::Failed(error)) = client
-                        .request(request)
+                    let service = stream
+                        .service("SQL_SERVICE", self.service_options.clone(), handler.clone())
                         .await
-                        .map_err(|e| Error::Client(e.to_string()))?
-                    {
-                        return Err(Error::Libsql(error));
+                        .map_err(|e| {
+                            // If service creation fails, remove from registry
+                            let stream_name_clone = stream_name.clone();
+                            tokio::spawn(async move {
+                                let mut running_services = RUNNING_SERVICES.lock().await;
+                                let mut starting_services = STARTING_SERVICES.lock().await;
+                                running_services.remove(&stream_name_clone);
+                                starting_services.remove(&stream_name_clone);
+                            });
+                            Error::Service(e.to_string())
+                        })?;
+
+                    service.start().await.map_err(|e| {
+                        // If service start fails, remove from registry
+                        let stream_name_clone = stream_name.clone();
+                        tokio::spawn(async move {
+                            let mut running_services = RUNNING_SERVICES.lock().await;
+                            let mut starting_services = STARTING_SERVICES.lock().await;
+                            running_services.remove(&stream_name_clone);
+                            starting_services.remove(&stream_name_clone);
+                        });
+                        Error::Service(e.to_string())
+                    })?;
+
+                    debug!(
+                        "Successfully started SQL service for stream '{}'",
+                        stream_name
+                    );
+
+                    // Wait for the stream to catch up before applying migrations
+                    caught_up_rx
+                        .await
+                        .map_err(|_| Error::CaughtUpChannelClosed)?;
+
+                    // Apply migrations
+                    let applied_migrations = applied_migrations.lock().await.clone();
+                    for migration in migrations {
+                        let migration_sql = migration.into();
+                        if !applied_migrations.contains(&migration_sql) {
+                            let request = Request::Migrate(migration_sql);
+
+                            if let ClientResponseType::Response(Response::Failed(error)) = client
+                                .request(request)
+                                .await
+                                .map_err(|e| Error::Client(e.to_string()))?
+                            {
+                                return Err(Error::Libsql(error));
+                            }
+                        }
                     }
+
+                    // Notify waiting connections that startup is complete
+                    startup_notify_arc.notify_waiters();
+
+                    // Remove from starting services registry
+                    let mut starting_services = STARTING_SERVICES.lock().await;
+                    starting_services.remove(&stream_name);
+
+                    return Ok(Connection::new(client));
                 }
             }
+        } else {
+            // Service is already running, but check if it's still starting up
+            if let Some(notify) = starting_services.get(&stream_name) {
+                startup_notify = Some(notify.clone());
+                debug!(
+                    "SQL service already running for stream '{}' but still starting up, waiting...",
+                    stream_name
+                );
+            } else {
+                debug!("SQL service already running for stream '{}'", stream_name);
+            }
+        }
+
+        drop(starting_services);
+        drop(running_services);
+
+        // If we have a startup notify, wait for the primary connection to finish
+        if let Some(notify) = startup_notify {
+            println!(
+                "Waiting for primary connection to finish startup for stream '{}'",
+                stream_name
+            );
+            notify.notified().await; // Wait for startup completion signal
+            println!(
+                "Primary connection finished startup for stream '{}'",
+                stream_name
+            );
         }
 
         Ok(Connection::new(client))
