@@ -11,11 +11,11 @@ mod pem;
 pub use error::{Error, Result};
 use pem::REGION_PEMS;
 
+use aws_lc_rs::signature;
+use aws_lc_rs::signature::UnparsedPublicKey;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use reqwest::Client;
-use ring::signature;
-use ring::signature::UnparsedPublicKey;
 use serde::Deserialize;
 use x509_parser::prelude::*;
 

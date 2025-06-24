@@ -32,7 +32,6 @@ proven-runtime.workspace = true
 proven-sql.workspace = true
 proven-store.workspace = true
 rand.workspace = true
-ring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -11,11 +11,11 @@ pub use error::Error;
 use std::convert::Infallible;
 
 use async_trait::async_trait;
+use aws_lc_rs::digest::{Context, SHA256};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use bytes::Bytes;
 use proven_store::Store;
-use ring::digest::{Context, SHA256};
 use tokio_rustls_acme::{AccountCache, CertCache};
 
 /// A store for certificates.

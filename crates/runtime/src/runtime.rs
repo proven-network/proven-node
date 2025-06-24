@@ -292,6 +292,10 @@ where
             radix_nft_verifier,
         }: RuntimeOptions<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>,
     ) -> Result<Self> {
+        // TODO: Remove this after tracking down and removing all instances of ring.
+        // Install the default crypto provider for rustls.
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
         // Allow outbound requests to all endpoints
         let origin_allowlist_web_permissions = Arc::new(OriginAllowlistWebPermissions::new(
             rpc_endpoints
