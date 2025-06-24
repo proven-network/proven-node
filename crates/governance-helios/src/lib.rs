@@ -13,14 +13,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::vec::Vec;
 
+use alloy::eips::BlockNumberOrTag;
 use alloy::primitives::Address;
 use alloy::rpc::types::TransactionRequest;
-use alloy_sol_types::{SolCall, sol};
+use alloy::sol_types::{SolCall, sol};
 use async_trait::async_trait;
-use helios_common::types::BlockTag;
-use helios_ethereum::{
-    EthereumClient, EthereumClientBuilder, config::networks::Network, database::FileDB,
-};
+use helios_ethereum::{EthereumClient, EthereumClientBuilder, config::networks::Network};
 use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
 
 /// Configuration options for the Helios governance client.
@@ -79,7 +77,7 @@ sol! {
 /// A governance client that uses Helios to interact with the Ethereum network.
 #[derive(Clone)]
 pub struct HeliosGovernance {
-    client: Arc<EthereumClient<FileDB>>,
+    client: Arc<EthereumClient>,
     node_governance_address: Address,
     version_governance_address: Address,
 }
@@ -93,17 +91,17 @@ impl HeliosGovernance {
     /// - The Helios client fails to build or start
     /// - The provided contract addresses cannot be parsed
     pub async fn new(options: HeliosGovernanceOptions) -> Result<Self, Error> {
-        let mut client = EthereumClientBuilder::new()
+        let client = EthereumClientBuilder::new()
             .network(options.network)
             .data_dir(options.data_dir.clone())
-            .consensus_rpc(&options.consensus_rpc)
-            .execution_rpc(&options.execution_rpc)
+            .consensus_rpc(&options.consensus_rpc)?
+            .execution_rpc(&options.execution_rpc)?
             .load_external_fallback()
+            .with_file_db()
             .build()
             .map_err(Error::Helios)?;
 
-        // Start the client and wait for sync before wrapping in Arc
-        client.start().await.map_err(Error::Helios)?;
+        // Wait for sync before wrapping in Arc
         client.wait_synced().await;
 
         // Now wrap in Arc after initialization is complete
@@ -151,7 +149,7 @@ impl HeliosGovernance {
         // Execute call
         let result = self
             .client
-            .call(&tx, BlockTag::Latest)
+            .call(&tx, BlockNumberOrTag::Latest.into())
             .await
             .map_err(Error::Helios)?;
 
@@ -170,14 +168,14 @@ impl Governance for HeliosGovernance {
             .call_contract_function(self.version_governance_address, &selector)
             .await?;
 
-        let versions_result = getActiveVersionsCall::abi_decode_returns(&result, true)
+        let versions_result = getActiveVersionsCall::abi_decode_returns(&result)
             .map_err(|e| Error::ContractDataDecode(format!("Error decoding versions: {e}")))?;
 
         // Extract the version structs from the result
         let mut versions = Vec::new();
 
         // getActiveVersions returns VersionStruct[] memory, so versions_result._0 is the array
-        for version_struct in &versions_result._0 {
+        for version_struct in &versions_result {
             if version_struct.active {
                 versions.push(Version {
                     ne_pcr0: version_struct.nePcr0.clone().into(),
@@ -205,14 +203,14 @@ impl Governance for HeliosGovernance {
             .call_contract_function(self.node_governance_address, &selector)
             .await?;
 
-        let nodes_result = getNodesCall::abi_decode_returns(&result, true)
+        let nodes_result = getNodesCall::abi_decode_returns(&result)
             .map_err(|e| Error::ContractDataDecode(format!("Error decoding nodes: {e}")))?;
 
         // Extract the node structs from the result
         let mut nodes = Vec::new();
 
         // getNodes returns NodeStruct[] memory, so nodes_result._0 is the array
-        for node_struct in &nodes_result._0 {
+        for node_struct in &nodes_result {
             let mut specializations = HashSet::new();
 
             // Parse specializations from bytes32 array
