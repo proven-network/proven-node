@@ -1,6 +1,7 @@
 mod error;
 mod subscription_handler;
 
+use crate::GLOBAL_STATE;
 use crate::client::MemoryClient;
 use crate::consumer::{MemoryConsumer, MemoryConsumerOptions};
 use crate::service::{MemoryService, MemoryServiceOptions};
@@ -10,6 +11,7 @@ pub use error::Error;
 use proven_messaging::service::Service;
 use subscription_handler::StreamSubscriptionHandler;
 
+use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -475,10 +477,39 @@ where
     async fn init(
         &self,
     ) -> Result<Self::Initialized, <Self::Initialized as InitializedStream<T, D, S>>::Error> {
-        let stream =
-            InitializedMemoryStream::<T, D, S>::new(self.full_name.clone(), self.options.clone())
-                .await?;
-        Ok(stream)
+        let stream_name = self.full_name.clone();
+        let options = self.options.clone();
+
+        // Always create the stream first
+        let new_stream =
+            InitializedMemoryStream::<T, D, S>::new(stream_name.clone(), options).await?;
+
+        // Atomically check-and-insert into global cache
+        let mut global_state = GLOBAL_STATE.lock().await;
+
+        // Check if stream already exists (another thread may have created it while we were creating ours)
+        if let Some(stream_map) =
+            global_state.try_borrow::<HashMap<String, InitializedMemoryStream<T, D, S>>>()
+        {
+            if let Some(existing_stream) = stream_map.get(&stream_name) {
+                // Use the existing stream and discard the one we just created
+                return Ok(existing_stream.clone());
+            }
+        }
+
+        // Initialize the map if it doesn't exist
+        if !global_state.has::<HashMap<String, InitializedMemoryStream<T, D, S>>>() {
+            global_state.put(HashMap::<String, InitializedMemoryStream<T, D, S>>::new());
+        }
+
+        // Store the stream we created
+        if let Some(stream_map) =
+            global_state.try_borrow_mut::<HashMap<String, InitializedMemoryStream<T, D, S>>>()
+        {
+            stream_map.insert(stream_name, new_stream.clone());
+        }
+
+        Ok(new_stream)
     }
 
     async fn init_with_subjects<J>(
@@ -488,13 +519,43 @@ where
     where
         J: Into<Self::Subject> + Clone + Send,
     {
-        let stream = InitializedMemoryStream::<T, D, S>::new_with_subjects(
-            self.full_name.clone(),
-            self.options.clone(),
+        let stream_name = self.full_name.clone();
+        let options = self.options.clone();
+
+        // Always create the stream first
+        let new_stream = InitializedMemoryStream::<T, D, S>::new_with_subjects(
+            stream_name.clone(),
+            options,
             subjects,
         )
         .await?;
-        Ok(stream)
+
+        // Atomically check-and-insert into global cache
+        let mut global_state = GLOBAL_STATE.lock().await;
+
+        // Check if stream already exists (another thread may have created it while we were creating ours)
+        if let Some(stream_map) =
+            global_state.try_borrow::<HashMap<String, InitializedMemoryStream<T, D, S>>>()
+        {
+            if let Some(existing_stream) = stream_map.get(&stream_name) {
+                // Use the existing stream and discard the one we just created
+                return Ok(existing_stream.clone());
+            }
+        }
+
+        // Initialize the map if it doesn't exist
+        if !global_state.has::<HashMap<String, InitializedMemoryStream<T, D, S>>>() {
+            global_state.put(HashMap::<String, InitializedMemoryStream<T, D, S>>::new());
+        }
+
+        // Store the stream we created
+        if let Some(stream_map) =
+            global_state.try_borrow_mut::<HashMap<String, InitializedMemoryStream<T, D, S>>>()
+        {
+            stream_map.insert(stream_name, new_stream.clone());
+        }
+
+        Ok(new_stream)
     }
 }
 
