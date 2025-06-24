@@ -20,8 +20,8 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use proven_code_package::ModuleSpecifier;
-use proven_identity::Session;
 use proven_radix_nft_verifier::RadixNftVerifier;
+use proven_sessions::Session;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
 use rustyscript::js_value::Value;

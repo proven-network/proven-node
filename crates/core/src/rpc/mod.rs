@@ -5,8 +5,9 @@ mod error;
 
 use bytes::Bytes;
 use proven_applications::{Application, ApplicationManagement};
-use proven_identity::{Identity, IdentityManagement, Session};
+use proven_identity::{Identity, IdentityManagement};
 use proven_runtime::{ExecutionResult, RuntimePoolManagement};
+use proven_sessions::{Session, SessionManagement};
 use serde::{Deserialize, Serialize};
 
 pub use auth::RpcAuth;
@@ -52,10 +53,11 @@ pub enum Command {
 impl RpcCommand for Command {
     type Response = Response;
 
-    async fn execute<AM, IM, RM>(&self, context: &mut RpcContext<AM, IM, RM>) -> Response
+    async fn execute<AM, IM, SM, RM>(&self, context: &mut RpcContext<AM, IM, SM, RM>) -> Response
     where
         AM: ApplicationManagement,
         IM: IdentityManagement,
+        SM: SessionManagement,
         RM: RuntimePoolManagement,
     {
         match self {
@@ -153,20 +155,22 @@ pub enum Response {
 }
 
 /// Main RPC handler that coordinates authentication and command execution
-pub struct RpcHandler<AM, IM, RM>
+pub struct RpcHandler<AM, IM, SM, RM>
 where
     AM: ApplicationManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     RM: RuntimePoolManagement,
 {
     auth: RpcAuth,
-    context: RpcContext<AM, IM, RM>,
+    context: RpcContext<AM, IM, SM, RM>,
 }
 
-impl<AM, IM, RM> RpcHandler<AM, IM, RM>
+impl<AM, IM, SM, RM> RpcHandler<AM, IM, SM, RM>
 where
     AM: ApplicationManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     RM: RuntimePoolManagement,
 {
     pub fn new(
@@ -174,6 +178,7 @@ where
         application_manager: AM,
         runtime_pool_manager: RM,
         identity_manager: IM,
+        sessions_manager: SM,
         session: Session,
     ) -> Result<Self, Error> {
         let auth = RpcAuth::new(session.clone())?;
@@ -181,6 +186,7 @@ where
             application_id,
             application_manager,
             identity_manager,
+            sessions_manager,
             runtime_pool_manager,
             session,
         );

@@ -2,7 +2,7 @@ use crate::HandlerSpecifier;
 
 use bytes::Bytes;
 use http::Method;
-use proven_identity::Session;
+use proven_sessions::Session;
 use serde_json::Value;
 use uuid::Uuid;
 

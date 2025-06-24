@@ -24,10 +24,14 @@ pub enum IdentifyResponse {
 impl RpcCommand for IdentifyCommand {
     type Response = IdentifyResponse;
 
-    async fn execute<AM, IM, RM>(&self, context: &mut RpcContext<AM, IM, RM>) -> Self::Response
+    async fn execute<AM, IM, SM, RM>(
+        &self,
+        context: &mut RpcContext<AM, IM, SM, RM>,
+    ) -> Self::Response
     where
         AM: proven_applications::ApplicationManagement,
         IM: proven_identity::IdentityManagement,
+        SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
         // Turn passkey_prf_public_key_bytes into [u8;32]
@@ -79,7 +83,7 @@ impl RpcCommand for IdentifyCommand {
         };
 
         let session = match context
-            .identity_manager
+            .sessions_manager
             .identify_session(&context.application_id, &session_id, &identity.identity_id)
             .await
         {

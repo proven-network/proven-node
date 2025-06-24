@@ -8,6 +8,7 @@ use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
+use proven_sessions::SessionManagement;
 
 use axum::extract::Path;
 
@@ -60,15 +61,16 @@ pub(crate) async fn rpc_iframe_js_handler() -> impl IntoResponse {
     ([("Content-Type", "application/javascript")], RPC_IFRAME_JS)
 }
 
-pub(crate) async fn bridge_iframe_html_handler<AM, RM, IM, A, G>(
+pub(crate) async fn bridge_iframe_html_handler<AM, RM, IM, SM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, IM, A, G>>,
+    State(FullContext { .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
     headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
@@ -91,15 +93,16 @@ where
     )
 }
 
-pub(crate) async fn connect_iframe_html_handler<AM, RM, IM, A, G>(
+pub(crate) async fn connect_iframe_html_handler<AM, RM, IM, SM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, IM, A, G>>,
+    State(FullContext { .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
     headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
@@ -122,15 +125,16 @@ where
     )
 }
 
-pub(crate) async fn register_iframe_html_handler<AM, RM, IM, A, G>(
+pub(crate) async fn register_iframe_html_handler<AM, RM, IM, SM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, IM, A, G>>,
+    State(FullContext { .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
     headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
@@ -153,15 +157,16 @@ where
     )
 }
 
-pub(crate) async fn rpc_iframe_html_handler<AM, RM, IM, A, G>(
+pub(crate) async fn rpc_iframe_html_handler<AM, RM, IM, SM, A, G>(
     Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, IM, A, G>>,
+    State(FullContext { .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
     headers: HeaderMap,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {

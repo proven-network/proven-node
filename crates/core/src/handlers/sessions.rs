@@ -11,8 +11,9 @@ use headers::Origin;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
-use proven_identity::{CreateAnonymousSessionOptions, IdentityManagement};
+use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
+use proven_sessions::{CreateAnonymousSessionOptions, SessionManagement};
 use tracing::info;
 
 #[derive(TryFromMultipart)]
@@ -22,10 +23,10 @@ pub struct CreateSessionRequest {
     public_key: Bytes,
 }
 
-pub(crate) async fn create_session_handler<AM, RM, IM, A, G>(
+pub(crate) async fn create_session_handler<AM, RM, IM, SM, A, G>(
     State(FullContext {
-        identity_manager, ..
-    }): State<FullContext<AM, RM, IM, A, G>>,
+        sessions_manager, ..
+    }): State<FullContext<AM, RM, IM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     data: TypedMultipart<CreateSessionRequest>,
 ) -> impl IntoResponse
@@ -33,6 +34,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
@@ -63,7 +65,7 @@ where
             .unwrap();
     };
 
-    match identity_manager
+    match sessions_manager
         .create_anonymous_session(CreateAnonymousSessionOptions {
             application_id: &data.application_id,
             nonce: &data.nonce,

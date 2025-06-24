@@ -1,5 +1,5 @@
 [package]
-name = "proven-identity"
+name = "proven-sessions"
 version.workspace = true
 edition = "2024"
 
@@ -7,10 +7,11 @@ edition = "2024"
 async-trait.workspace = true
 bytes.workspace = true
 ciborium.workspace = true
-futures.workspace = true
-proven-sql.workspace = true
+ed25519-dalek.workspace = true
+proven-attestation.workspace = true
 proven-store.workspace = true
+rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
 uuid.workspace = true
-webauthn-rs.workspace = true

@@ -2,7 +2,7 @@ use crate::rpc::commands::RpcCommand;
 use crate::rpc::context::RpcContext;
 
 use async_trait::async_trait;
-use proven_identity::Session;
+use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
 
 /// Type returned to the client to identify the session which strips sensitive data (e.g. signing keys).
@@ -60,10 +60,14 @@ pub struct WhoAmICommand;
 impl RpcCommand for WhoAmICommand {
     type Response = WhoAmIResponse;
 
-    async fn execute<AM, IM, RM>(&self, context: &mut RpcContext<AM, IM, RM>) -> Self::Response
+    async fn execute<AM, IM, SM, RM>(
+        &self,
+        context: &mut RpcContext<AM, IM, SM, RM>,
+    ) -> Self::Response
     where
         AM: proven_applications::ApplicationManagement,
         IM: proven_identity::IdentityManagement,
+        SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
         context.session.clone().into()

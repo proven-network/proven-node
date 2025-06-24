@@ -11,13 +11,15 @@ use proven_identity::IdentityManagement;
 use proven_runtime::{
     ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
 };
+use proven_sessions::SessionManagement;
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub(crate) struct ApplicationHttpContext<RM, IM, A>
+pub(crate) struct ApplicationHttpContext<RM, IM, SM, A>
 where
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
 {
     pub application_id: Uuid,
     pub attestor: A,
@@ -25,11 +27,12 @@ where
     pub module_loader: ModuleLoader,
     pub requires_session: bool,
     pub runtime_pool_manager: RM,
-    pub identity_manager: IM,
+    pub _identity_manager: IM,
+    pub sessions_manager: SM,
 }
 
 #[allow(clippy::too_many_lines)]
-pub(crate) async fn application_http_handler<RM, IM, A>(
+pub(crate) async fn application_http_handler<RM, IM, SM, A>(
     State(ApplicationHttpContext {
         application_id,
         attestor,
@@ -37,8 +40,9 @@ pub(crate) async fn application_http_handler<RM, IM, A>(
         module_loader,
         requires_session,
         runtime_pool_manager,
-        identity_manager,
-    }): State<ApplicationHttpContext<RM, IM, A>>,
+        sessions_manager,
+        ..
+    }): State<ApplicationHttpContext<RM, IM, SM, A>>,
     headers: HeaderMap,
     method: Method,
     uri: Uri,
@@ -47,6 +51,7 @@ pub(crate) async fn application_http_handler<RM, IM, A>(
 where
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
 {
     let maybe_session_id = match headers.get("Authorization") {
@@ -66,7 +71,7 @@ where
     };
 
     let maybe_session = if let Some(session_id) = maybe_session_id {
-        match identity_manager
+        match sessions_manager
             .get_session(&application_id, &Uuid::parse_str(&session_id).unwrap())
             .await
         {

@@ -11,6 +11,7 @@ use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
+use proven_sessions::SessionManagement;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
@@ -40,8 +41,8 @@ pub struct StateQuery {
     pub state: String,
 }
 
-pub(crate) async fn webauthn_registration_start_handler<AM, RM, IM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
+pub(crate) async fn webauthn_registration_start_handler<AM, RM, IM, SM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(RegistrationStartData { user_name }): Json<RegistrationStartData>,
@@ -50,6 +51,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
@@ -221,12 +223,12 @@ where
         .unwrap()
 }
 
-pub(crate) async fn webauthn_registration_finish_handler<AM, RM, IM, A, G>(
+pub(crate) async fn webauthn_registration_finish_handler<AM, RM, IM, SM, A, G>(
     State(FullContext {
         identity_manager,
         network,
         ..
-    }): State<FullContext<AM, RM, IM, A, G>>,
+    }): State<FullContext<AM, RM, IM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(register_public_key_credential): Json<RegisterPublicKeyCredential>,
@@ -235,6 +237,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
@@ -321,8 +324,8 @@ where
     }
 }
 
-pub(crate) async fn webauthn_authentication_start_handler<AM, RM, IM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
+pub(crate) async fn webauthn_authentication_start_handler<AM, RM, IM, SM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
@@ -330,6 +333,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
@@ -483,12 +487,12 @@ where
         .unwrap()
 }
 
-pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, IM, A, G>(
+pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, IM, SM, A, G>(
     State(FullContext {
         identity_manager,
         network,
         ..
-    }): State<FullContext<AM, RM, IM, A, G>>,
+    }): State<FullContext<AM, RM, IM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(auth_public_key_credential): Json<PublicKeyCredential>,
@@ -497,6 +501,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {

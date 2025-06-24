@@ -46,6 +46,7 @@ use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_runtime::{
     RpcEndpoints, RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions,
 };
+use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
@@ -852,7 +853,6 @@ impl Bootstrap {
         });
 
         let identity_manager = IdentityManager::new(IdentityManagerOptions {
-            attestor: self.attestor.clone(),
             identity_store: StreamedSqlStore::new(
                 NatsStream::new(
                     "IDENTITY_MANAGER_SQL",
@@ -889,6 +889,10 @@ impl Bootstrap {
                 num_replicas: 1,
                 persist: true,
             }),
+        });
+
+        let sessions_manager = SessionManager::new(SessionManagerOptions {
+            attestor: self.attestor.clone(),
             sessions_store: NatsStore1::new(NatsStoreOptions {
                 bucket: "sessions".to_string(),
                 client: nats_client.clone(),
@@ -1110,6 +1114,7 @@ impl Bootstrap {
             application_manager,
             attestor: self.attestor.clone(),
             identity_manager,
+            sessions_manager,
             http_server,
             network: network.clone(),
             runtime_pool_manager,

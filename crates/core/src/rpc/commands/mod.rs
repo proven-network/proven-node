@@ -15,10 +15,14 @@ pub trait RpcCommand {
     type Response;
 
     /// Execute the command with the given context
-    async fn execute<AM, IM, RM>(&self, context: &mut RpcContext<AM, IM, RM>) -> Self::Response
+    async fn execute<AM, IM, SM, RM>(
+        &self,
+        context: &mut RpcContext<AM, IM, SM, RM>,
+    ) -> Self::Response
     where
         AM: proven_applications::ApplicationManagement,
         IM: proven_identity::IdentityManagement,
+        SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement;
 }
 

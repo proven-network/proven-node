@@ -19,18 +19,21 @@ use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_network::ProvenNetwork;
 use proven_runtime::RuntimePoolManagement;
+use proven_sessions::SessionManagement;
 
 #[derive(Clone)]
-pub(crate) struct FullContext<AM, RM, IM, A, G>
+pub(crate) struct FullContext<AM, RM, IM, SM, A, G>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
     pub application_manager: AM,
     pub identity_manager: IM,
+    pub sessions_manager: SM,
     pub network: ProvenNetwork<G, A>,
     pub runtime_pool_manager: RM,
 }

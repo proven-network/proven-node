@@ -27,6 +27,7 @@ proven-governance-mock.workspace = true
 proven-http-letsencrypt.workspace = true
 proven-identity.workspace = true
 proven-imds.workspace = true
+proven-sessions.workspace = true
 proven-instance-details.workspace = true
 proven-kms.workspace = true
 proven-messaging.workspace = true

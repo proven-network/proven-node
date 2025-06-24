@@ -9847,6 +9847,7 @@ dependencies = [
  "proven-identity",
  "proven-network",
  "proven-runtime",
+ "proven-sessions",
  "proven-sql",
  "proven-store",
  "rand 0.8.5",
@@ -9917,6 +9918,7 @@ dependencies = [
  "proven-radix-nft-verifier-gateway",
  "proven-radix-node",
  "proven-runtime",
+ "proven-sessions",
  "proven-sql",
  "proven-sql-streamed",
  "proven-store",
@@ -10158,16 +10160,11 @@ dependencies = [
  "async-trait",
  "bytes",
  "ciborium",
- "ed25519-dalek",
  "futures",
- "hex",
- "proven-attestation",
  "proven-sql",
  "proven-store",
- "rand 0.8.5",
  "serde",
  "thiserror 2.0.12",
- "tracing",
  "uuid",
  "webauthn-rs",
 ]
@@ -10287,6 +10284,7 @@ dependencies = [
  "proven-radix-nft-verifier-gateway",
  "proven-radix-node",
  "proven-runtime",
+ "proven-sessions",
  "proven-sql-streamed",
  "proven-store",
  "proven-store-fs",
@@ -10635,6 +10633,7 @@ dependencies = [
  "proven-identity",
  "proven-radix-nft-verifier",
  "proven-radix-nft-verifier-mock",
+ "proven-sessions",
  "proven-sql",
  "proven-sql-direct",
  "proven-store",
@@ -10650,6 +10649,23 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "proven-sessions"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "ciborium",
+ "ed25519-dalek",
+ "proven-attestation",
+ "proven-store",
+ "rand 0.8.5",
+ "serde",
+ "thiserror 2.0.12",
+ "tracing",
  "uuid",
 ]
 

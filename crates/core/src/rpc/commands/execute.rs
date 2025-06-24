@@ -29,10 +29,14 @@ pub enum ExecuteResponse {
 impl RpcCommand for ExecuteCommand {
     type Response = ExecuteResponse;
 
-    async fn execute<AM, IM, RM>(&self, context: &mut RpcContext<AM, IM, RM>) -> Self::Response
+    async fn execute<AM, IM, SM, RM>(
+        &self,
+        context: &mut RpcContext<AM, IM, SM, RM>,
+    ) -> Self::Response
     where
         AM: proven_applications::ApplicationManagement,
         IM: proven_identity::IdentityManagement,
+        SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
         let handler_specifier = match HandlerSpecifier::parse(&self.handler_specifier) {

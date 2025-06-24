@@ -28,6 +28,7 @@ proven-http-insecure.workspace = true
 proven-http-proxy.workspace = true
 proven-identity.workspace = true
 proven-messaging.workspace = true
+proven-sessions.workspace = true
 proven-messaging-nats.workspace = true
 proven-nats-server.workspace = true
 proven-network.workspace = true

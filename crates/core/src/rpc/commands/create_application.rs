@@ -3,7 +3,7 @@ use crate::rpc::context::RpcContext;
 
 use async_trait::async_trait;
 use proven_applications::{Application, CreateApplicationOptions};
-use proven_identity::Session;
+use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -19,10 +19,14 @@ pub enum CreateApplicationResponse {
 impl RpcCommand for CreateApplicationCommand {
     type Response = CreateApplicationResponse;
 
-    async fn execute<AM, IM, RM>(&self, context: &mut RpcContext<AM, IM, RM>) -> Self::Response
+    async fn execute<AM, IM, SM, RM>(
+        &self,
+        context: &mut RpcContext<AM, IM, SM, RM>,
+    ) -> Self::Response
     where
         AM: proven_applications::ApplicationManagement,
         IM: proven_identity::IdentityManagement,
+        SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
         let identity_id = match context.session {

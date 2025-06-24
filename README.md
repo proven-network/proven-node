@@ -110,6 +110,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [http-insecure](crates/http-insecure): Implementation of simple non-secure HTTP for local development.
 - [http-letsencrypt](crates/http-letsencrypt): Implementation of secure HTTPS server using Let's Encrypt and enclave-only storage of certificates provisioned using draft-ietf-acme-tls-alpn-01.
 - [http-proxy](crates/http-proxy): Routes local HTTP requests from loopback to target services over messaging primitives.
+- [identity](crates/identity): Manages user identities and associated data. 
 - [imds](crates/imds): Helper crate to interact with the Instance Metadata Service. Verifies all recieved data via embedded public certificates.
 - [instance-details](crates/instance-details): Helper crate to interact with the EC2 APIs and securely retrieve info about runtime environment.
 - [isolation](crates/isolation): Isolation primitives for spawning untrusted processes (particularly third-party nodes) in a secure manner.
@@ -136,7 +137,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [radix-rola](crates/radix-rola): Rust port of the Radix ROLA example code.
 - [radix-stream](crates/radix-stream): Handles processing transactions and events from Radix DLT.
 - [runtime](crates/runtime): Manages a pool of V8 isolates for running proven application code.
-- [sessions](crates/sessions): Manages all user sessions (created via ROLA) and their associated data.
+- [sessions](crates/sessions): Manages RPC sessions and associated data.
 - [sql](crates/sql): Abstract interface for managing SQL storage.
 - [sql-direct](crates/sql-direct): Implementation of SQL storage using files on disk, for local development.
 - [sql-streamed](crates/sql-streamed): Implementation of SQL storage using a streams as an append-only log.

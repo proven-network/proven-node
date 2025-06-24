@@ -2,7 +2,7 @@ use bytes::Bytes;
 use coset::{CborSerializable, Label, cbor::Value};
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{Signature, Verifier};
-use proven_identity::Session;
+use proven_sessions::Session;
 
 use crate::rpc::error::Error;
 

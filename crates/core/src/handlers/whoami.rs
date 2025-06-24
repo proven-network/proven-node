@@ -12,16 +12,18 @@ use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
+use proven_sessions::SessionManagement;
 
 /// Handler for the `/whoami` endpoint.
 /// Returns the node information from network.get_self().
-pub async fn whoami_handler<AM, RM, IM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, A, G>>,
+pub async fn whoami_handler<AM, RM, IM, SM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
 ) -> Result<Json<serde_json::Value>, Response>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {

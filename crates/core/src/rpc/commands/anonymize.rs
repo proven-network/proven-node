@@ -17,14 +17,18 @@ pub enum AnonymizeResponse {
 impl RpcCommand for AnonymizeCommand {
     type Response = AnonymizeResponse;
 
-    async fn execute<AM, IM, RM>(&self, context: &mut RpcContext<AM, IM, RM>) -> Self::Response
+    async fn execute<AM, IM, SM, RM>(
+        &self,
+        context: &mut RpcContext<AM, IM, SM, RM>,
+    ) -> Self::Response
     where
         AM: proven_applications::ApplicationManagement,
         IM: proven_identity::IdentityManagement,
+        SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
         let session = match context
-            .identity_manager
+            .sessions_manager
             .anonymize_session(&context.application_id, &context.session.session_id())
             .await
         {

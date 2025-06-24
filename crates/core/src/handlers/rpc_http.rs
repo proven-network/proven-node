@@ -10,6 +10,7 @@ use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
+use proven_sessions::SessionManagement;
 use serde::Deserialize;
 use tracing::error;
 use uuid::Uuid;
@@ -19,7 +20,7 @@ pub struct SessionQuery {
     pub session: Uuid,
 }
 
-pub(crate) async fn http_rpc_handler<AM, RM, IM, A, G>(
+pub(crate) async fn http_rpc_handler<AM, RM, IM, SM, A, G>(
     Path(application_id): Path<Uuid>,
     Query(SessionQuery {
         session: session_id,
@@ -28,19 +29,21 @@ pub(crate) async fn http_rpc_handler<AM, RM, IM, A, G>(
         application_manager,
         runtime_pool_manager,
         identity_manager,
+        sessions_manager,
         ..
-    }): State<FullContext<AM, RM, IM, A, G>>,
+    }): State<FullContext<AM, RM, IM, SM, A, G>>,
     body: Bytes,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
     // TODO: Could probably do a local LRU cache for sessions to avoid lookup on every request
-    let session = match identity_manager
+    let session = match sessions_manager
         .get_session(&application_id, &session_id)
         .await
     {
@@ -65,6 +68,7 @@ where
         application_manager,
         runtime_pool_manager,
         identity_manager,
+        sessions_manager,
         session,
     ) else {
         error!("Error creating RpcHandler");

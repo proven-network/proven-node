@@ -11,6 +11,7 @@ use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
+use proven_sessions::SessionManagement;
 use serde::Deserialize;
 use tracing::{error, info};
 use uuid::Uuid;
@@ -32,7 +33,7 @@ async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
         .ok();
 }
 
-pub(crate) async fn ws_rpc_handler<AM, RM, IM, A, G>(
+pub(crate) async fn ws_rpc_handler<AM, RM, IM, SM, A, G>(
     Path(application_id): Path<Uuid>,
     Query(SessionQuery {
         session: session_id,
@@ -40,19 +41,21 @@ pub(crate) async fn ws_rpc_handler<AM, RM, IM, A, G>(
     State(FullContext {
         application_manager,
         identity_manager,
+        sessions_manager,
         runtime_pool_manager,
         ..
-    }): State<FullContext<AM, RM, IM, A, G>>,
+    }): State<FullContext<AM, RM, IM, SM, A, G>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     A: Attestor,
     G: Governance,
 {
-    let session = match identity_manager
+    let session = match sessions_manager
         .get_session(&application_id, &session_id)
         .await
     {
@@ -71,6 +74,7 @@ where
         application_manager,
         runtime_pool_manager,
         identity_manager,
+        sessions_manager,
         session,
     ) else {
         error!("Error creating RpcHandler");
@@ -80,10 +84,13 @@ where
     ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
 }
 
-async fn handle_socket<AM, IM, RM>(socket: WebSocket, mut rpc_handler: RpcHandler<AM, IM, RM>)
-where
+async fn handle_socket<AM, IM, SM, RM>(
+    socket: WebSocket,
+    mut rpc_handler: RpcHandler<AM, IM, SM, RM>,
+) where
     AM: ApplicationManagement,
     IM: IdentityManagement,
+    SM: SessionManagement,
     RM: RuntimePoolManagement,
 {
     let (mut sender, mut receiver) = socket.split();
