@@ -3,7 +3,7 @@
 use std::convert::Infallible;
 
 use bytes::Bytes;
-use proven_applications::{Application, ApplicationManager};
+use proven_applications::{ApplicationCommand, ApplicationEvent, ApplicationManager};
 use proven_attestation_mock::MockAttestor;
 use proven_bitcoin_core::BitcoinNode;
 use proven_core::Core;
@@ -33,18 +33,15 @@ use tracing::info;
 
 pub type LocalNodeCore = Core<
     ApplicationManager<
-        NatsStore<
-            Application,
+        NatsStream<
+            ApplicationCommand,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
-        StreamedSqlStore<
-            NatsStream<
-                SqlRequest,
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >,
-            FsStore<Bytes, Infallible, Infallible>,
+        NatsStream<
+            ApplicationEvent,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
         >,
     >,
     RuntimePoolManager<

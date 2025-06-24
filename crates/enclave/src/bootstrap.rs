@@ -16,7 +16,7 @@ use axum::routing::any;
 use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use http::StatusCode;
-use proven_applications::{ApplicationManagement, ApplicationManager};
+use proven_applications::ApplicationManager;
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_bootable::Bootable;
@@ -31,6 +31,7 @@ use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::{Kms, KmsOptions};
 use proven_messaging::stream::Stream;
 use proven_messaging_nats::client::NatsClientOptions;
+use proven_messaging_nats::consumer::NatsConsumerOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
 use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
@@ -928,42 +929,38 @@ impl Bootstrap {
         });
 
         let application_manager = ApplicationManager::new(
-            NatsStore::new(NatsStoreOptions {
-                bucket: "APPLICATION_MANAGER_KV".to_string(),
-                client: nats_client.clone(),
-                max_age: Duration::ZERO,
-                num_replicas: 1,
-                persist: true,
-            }),
-            StreamedSqlStore::new(
-                NatsStream::new(
-                    "APPLICATION_MANAGER_SQL",
-                    NatsStreamOptions {
-                        client: nats_client.clone(),
-                        num_replicas: 1,
-                    },
-                ),
-                NatsServiceOptions {
+            // Command stream for processing application commands
+            NatsStream::new(
+                "APPLICATION_COMMANDS",
+                NatsStreamOptions {
                     client: nats_client.clone(),
-                    durable_name: None,
-                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+                    num_replicas: 1,
                 },
-                NatsClientOptions {
-                    client: nats_client.clone(),
-                },
-                S3Store::new(S3StoreOptions {
-                    bucket: self.args.certificates_bucket.clone(),
-                    prefix: Some("application_manager".to_string()),
-                    region: id.region.clone(),
-                    secret_key: get_or_init_encrypted_key(
-                        id.region.clone(),
-                        self.args.kms_key_id.clone(),
-                        "APPLICATION_MANAGER_SNAPSHOTS_KEY".to_string(),
-                    )
-                    .await?,
-                })
-                .await,
             ),
+            // Event stream for publishing and consuming application events
+            NatsStream::new(
+                "APPLICATION_EVENTS",
+                NatsStreamOptions {
+                    client: nats_client.clone(),
+                    num_replicas: 1,
+                },
+            ),
+            // Service options for command processing
+            NatsServiceOptions {
+                client: nats_client.clone(),
+                durable_name: Some("APPLICATION_SERVICE".to_string()),
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
+            // Client options for sending commands
+            NatsClientOptions {
+                client: nats_client.clone(),
+            },
+            // Consumer options for event processing
+            NatsConsumerOptions {
+                client: nats_client.clone(),
+                durable_name: Some("APPLICATION_VIEW_CONSUMER".to_string()),
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
         );
 
         let application_store = NatsStore2::new(NatsStoreOptions {

@@ -3,7 +3,7 @@
 use std::convert::Infallible;
 
 use bytes::Bytes;
-use proven_applications::{Application, ApplicationManager};
+use proven_applications::{ApplicationCommand, ApplicationEvent, ApplicationManager};
 use proven_attestation_nsm::NsmAttestor;
 use proven_core::Core;
 use proven_dnscrypt_proxy::DnscryptProxy;
@@ -36,18 +36,15 @@ use tracing::info;
 
 pub type EnclaveNodeCore = Core<
     ApplicationManager<
-        NatsStore<
-            Application,
+        NatsStream<
+            ApplicationCommand,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
-        StreamedSqlStore<
-            NatsStream<
-                SqlRequest,
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >,
-            S3Store<Bytes, Infallible, Infallible>,
+        NatsStream<
+            ApplicationEvent,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
         >,
     >,
     RuntimePoolManager<
