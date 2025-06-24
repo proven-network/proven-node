@@ -19,11 +19,10 @@ pub use response::Response;
 use std::collections::HashSet;
 use std::convert::Infallible;
 use std::fmt::Debug;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use once_cell::sync::Lazy;
 use proven_bootable::Bootable;
 use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::service::Service;
@@ -39,13 +38,13 @@ type SerializeError = ciborium::ser::Error<std::io::Error>;
 
 /// Global registry to track running SQL services by stream name.
 /// This ensures that only one service runs per stream name within the same program.
-static RUNNING_SERVICES: Lazy<Arc<Mutex<HashSet<String>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashSet::new())));
+static RUNNING_SERVICES: LazyLock<Arc<Mutex<HashSet<String>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(HashSet::new())));
 
 /// Global registry to track services that are currently starting up and applying migrations.
 /// This allows non-primary connections to wait for the primary connection to finish migrations.
-static STARTING_SERVICES: Lazy<Arc<Mutex<std::collections::HashMap<String, Arc<Notify>>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(std::collections::HashMap::new())));
+static STARTING_SERVICES: LazyLock<Arc<Mutex<std::collections::HashMap<String, Arc<Notify>>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(std::collections::HashMap::new())));
 
 /// A SQL store that uses a stream as an append-only log.
 #[derive(Clone, Debug)]

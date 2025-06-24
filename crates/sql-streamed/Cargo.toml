@@ -9,7 +9,6 @@ bytes.workspace = true
 ciborium.workspace = true
 deno_error.workspace = true
 futures.workspace = true
-once_cell.workspace = true
 paste.workspace = true
 proven-bootable.workspace = true
 proven-libsql.workspace = true

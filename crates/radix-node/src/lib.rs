@@ -13,7 +13,7 @@ use tokio::sync::Mutex;
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use radix_common::network::NetworkDefinition;
 use regex::Regex;
@@ -23,7 +23,6 @@ use tokio::process::Command;
 use tracing::{debug, error, info, trace, warn};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 
 // Default filenames
@@ -61,12 +60,12 @@ static JAVA_OPTS: &[&str] = &[
 ];
 
 // Java log regexp
-static JAVA_LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
+static JAVA_LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2},\d{3} \[(\w+).+\] - (.*)").unwrap()
 });
 
 // Rust log regexp
-static RUST_LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
+static RUST_LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) .+: (.*)").unwrap()
 });
 

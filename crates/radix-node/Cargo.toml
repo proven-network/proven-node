@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 async-trait.workspace = true
 nix.workspace = true
-once_cell.workspace = true
 proven-bootable.workspace = true
 proven-isolation.workspace = true
 radix-common.workspace = true

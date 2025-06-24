@@ -9717,7 +9717,6 @@ dependencies = [
  "chrono",
  "ciborium",
  "futures",
- "once_cell",
  "proven-messaging",
  "proven-messaging-memory",
  "proven-sql",
@@ -9770,7 +9769,6 @@ name = "proven-bitcoin-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "once_cell",
  "proven-bootable",
  "proven-isolation",
  "regex",
@@ -9842,7 +9840,6 @@ dependencies = [
  "headers",
  "hex",
  "http-body-util",
- "once_cell",
  "proven-applications",
  "proven-attestation",
  "proven-bootable",
@@ -9953,7 +9950,6 @@ name = "proven-ethereum-lighthouse"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "once_cell",
  "proven-bootable",
  "proven-ethereum-reth",
  "proven-isolation",
@@ -9973,7 +9969,6 @@ name = "proven-ethereum-reth"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "once_cell",
  "proven-bootable",
  "proven-isolation",
  "regex",
@@ -10421,7 +10416,6 @@ dependencies = [
  "bytes",
  "ed25519-dalek",
  "nix 0.27.1",
- "once_cell",
  "pem",
  "proven-attestation",
  "proven-attestation-mock",
@@ -10472,7 +10466,6 @@ name = "proven-postgres"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "once_cell",
  "proven-bootable",
  "proven-isolation",
  "regex",
@@ -10490,7 +10483,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "nix 0.27.1",
- "once_cell",
  "proven-bootable",
  "proven-isolation",
  "proven-postgres",
@@ -10511,7 +10503,6 @@ name = "proven-radix-gateway"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "once_cell",
  "proven-bootable",
  "proven-isolation",
  "regex",
@@ -10576,7 +10567,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "nix 0.27.1",
- "once_cell",
  "proven-bootable",
  "proven-isolation",
  "radix-common 1.3.0",
@@ -10704,7 +10694,6 @@ dependencies = [
  "criterion 0.6.0",
  "deno_error",
  "futures",
- "once_cell",
  "paste",
  "proven-bootable",
  "proven-libsql",

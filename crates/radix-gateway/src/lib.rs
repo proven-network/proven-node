@@ -9,10 +9,10 @@ mod error;
 
 pub use error::Error;
 
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
@@ -26,7 +26,7 @@ static GATEWAY_API_DIR: &str = "/apps/radix-gateway/v1.9.2/GatewayApi";
 static GATEWAY_API_PATH: &str = "/apps/radix-gateway/v1.9.2/GatewayApi/GatewayApi";
 
 /// Regex pattern for matching Gateway log lines
-static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+): (.*)").unwrap());
+static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+): (.*)").unwrap());
 
 /// Application struct for running the Radix Gateway in isolation
 struct RadixGatewayApp;
@@ -43,7 +43,7 @@ impl IsolatedApplication for RadixGatewayApp {
 
     fn handle_stdout(&self, line: &str) {
         // Use the static log pattern to parse log lines
-        if let Some(caps) = LOG_PATTERN.captures(line) {
+        if let Some(caps) = LOG_REGEX.captures(line) {
             let label = caps.get(1).map_or("unkw", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {

@@ -8,7 +8,6 @@ async-nats.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
 nix.workspace = true
-once_cell.workspace = true
 pem.workspace = true
 proven-attestation.workspace = true
 proven-bootable.workspace = true

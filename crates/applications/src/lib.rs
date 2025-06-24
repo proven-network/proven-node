@@ -12,11 +12,10 @@ pub use application::Application;
 use bytes::Bytes;
 pub use error::Error;
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use once_cell::sync::OnceCell;
 use proven_sql::{SqlConnection, SqlParam, SqlStore};
 use proven_store::Store;
 use uuid::Uuid;
@@ -71,7 +70,7 @@ where
 {
     store: S,
     sql_store: SS,
-    sql_connection: Arc<OnceCell<SS::Connection>>,
+    sql_connection: Arc<OnceLock<SS::Connection>>,
 }
 
 impl<S, SS> ApplicationManager<S, SS>
@@ -124,7 +123,7 @@ where
         Self {
             store,
             sql_store,
-            sql_connection: Arc::new(OnceCell::new()),
+            sql_connection: Arc::new(OnceLock::new()),
         }
     }
 

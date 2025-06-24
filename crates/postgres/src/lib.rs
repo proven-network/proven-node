@@ -11,10 +11,9 @@ pub use error::Error;
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
@@ -24,7 +23,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 /// Regex pattern for matching Postgres log lines
-static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d{3} (?:UTC|[+-]\d{2}) \[\d+\] (\w+):  (.*)")
         .expect("Invalid regex pattern")
 });
@@ -60,7 +59,7 @@ impl IsolatedApplication for PostgresApp {
     }
 
     fn handle_stdout(&self, line: &str) {
-        if let Some(caps) = LOG_PATTERN.captures(line) {
+        if let Some(caps) = LOG_REGEX.captures(line) {
             let label = caps.get(1).map_or("UNKNOWN", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {

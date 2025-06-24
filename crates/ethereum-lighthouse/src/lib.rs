@@ -13,11 +13,9 @@ use regex::Regex;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::RwLock;
+use std::sync::{Arc, LazyLock, RwLock};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use reqwest::Client;
@@ -27,7 +25,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace, warn};
 
 // Rust log regexp
-static LOG_REGEX: Lazy<Regex> = Lazy::new(|| {
+static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\.\d{3}\s+(\w+)\s+(.*)").unwrap()
 });
 

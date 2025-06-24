@@ -14,10 +14,9 @@ use tokio::sync::Mutex;
 
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
 use serde_json::json;
@@ -35,7 +34,7 @@ static MIGRATIONS_DIR: &str = "/apps/radix-gateway/v1.9.2/DatabaseMigrations";
 static MIGRATIONS_PATH: &str = "/apps/radix-gateway/v1.9.2/DatabaseMigrations/DatabaseMigrations";
 
 /// Regex pattern for matching Radix Aggregator log lines
-static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\w+): (.*)").unwrap());
+static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\w+): (.*)").unwrap());
 
 /// Application struct for running the Radix Aggregator in isolation
 struct RadixAggregatorApp;
@@ -52,7 +51,7 @@ impl IsolatedApplication for RadixAggregatorApp {
 
     fn handle_stdout(&self, line: &str) {
         // Use the static log pattern to parse log lines
-        if let Some(caps) = LOG_PATTERN.captures(line) {
+        if let Some(caps) = LOG_REGEX.captures(line) {
             let label = caps.get(1).map_or("unkw", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {

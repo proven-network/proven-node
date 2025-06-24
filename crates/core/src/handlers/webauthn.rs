@@ -6,7 +6,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use headers::Origin;
-use once_cell::sync::Lazy;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
@@ -14,7 +13,7 @@ use proven_identity::IdentityManagement;
 use proven_runtime::RuntimePoolManagement;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
 use url::Url;
 use uuid::Uuid;
@@ -26,10 +25,10 @@ const PRF_EVAL_FIRST_B64URL: &str = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE
 
 // In-memory state storage
 // TODO: Switch to using proper KV store
-static REGISTRATION_STATES: Lazy<Arc<Mutex<HashMap<String, (PasskeyRegistration, Uuid)>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
-static AUTHENTICATION_STATES: Lazy<Arc<Mutex<HashMap<String, DiscoverableAuthentication>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+static REGISTRATION_STATES: LazyLock<Arc<Mutex<HashMap<String, (PasskeyRegistration, Uuid)>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+static AUTHENTICATION_STATES: LazyLock<Arc<Mutex<HashMap<String, DiscoverableAuthentication>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 #[derive(Deserialize)]
 pub struct RegistrationStartData {

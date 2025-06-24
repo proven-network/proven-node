@@ -9,7 +9,6 @@ bytes.workspace = true
 chrono.workspace = true
 ciborium.workspace = true
 futures.workspace = true
-once_cell.workspace = true
 proven-sql.workspace = true
 proven-store.workspace = true
 serde.workspace = true

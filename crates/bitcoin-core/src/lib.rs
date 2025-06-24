@@ -11,10 +11,9 @@ pub use error::Error;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
@@ -31,8 +30,8 @@ static RPC_USER: &str = "proven";
 static RPC_PASSWORD: &str = "proven";
 
 /// Regex pattern for matching Bitcoin Core log timestamps
-static TIMESTAMP_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s+").unwrap());
+static LOG_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s+").unwrap());
 
 /// Represents a Bitcoin network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,12 +117,12 @@ impl IsolatedApplication for BitcoinCoreApp {
     }
 
     fn handle_stderr(&self, line: &str) {
-        let message = TIMESTAMP_REGEX.replace(line, "").into_owned();
+        let message = LOG_REGEX.replace(line, "").into_owned();
         error!(target: "bitcoind", "{}", message);
     }
 
     fn handle_stdout(&self, line: &str) {
-        let message = TIMESTAMP_REGEX.replace(line, "").into_owned();
+        let message = LOG_REGEX.replace(line, "").into_owned();
         info!(target: "bitcoind", "{}", message);
     }
 

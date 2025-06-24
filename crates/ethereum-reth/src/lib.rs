@@ -14,23 +14,22 @@ use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, RwLock};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use regex::Regex;
 use reqwest::Client;
-use std::sync::RwLock;
 use strip_ansi_escapes::strip_str;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace, warn};
 use url::Url;
 
 // Rust log regexp
-static LOG_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) (.*)").unwrap());
+static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{6}Z\s+(\w+) (.*)").unwrap()
+});
 
 /// Represents an Ethereum network
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

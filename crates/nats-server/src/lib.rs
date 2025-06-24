@@ -14,14 +14,13 @@ use proven_nats_monitor::NatsMonitor;
 use proven_store::Store;
 
 use std::convert::Infallible;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::{net::SocketAddr, path::PathBuf};
 
 use async_nats::Client;
 use async_trait::async_trait;
 use bytes::Bytes;
 use nix::sys::signal::Signal;
-use once_cell::sync::Lazy;
 use pem::{Pem, encode};
 use proven_attestation::Attestor;
 use proven_governance::Governance;
@@ -42,7 +41,7 @@ static CLUSTER_NO_TLS_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster
 const PEER_DISCOVERY_INTERVAL: u64 = 300; // 5 minutes
 
 /// Regex pattern for matching NATS server log lines
-static LOG_PATTERN: Lazy<Regex> = Lazy::new(|| {
+static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\[\d+\] \d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6} (\[[A-Z]+\]) (.*)")
         .expect("Invalid regex pattern")
 });
@@ -135,7 +134,7 @@ impl IsolatedApplication for NatsServerApp {
     }
 
     fn handle_stderr(&self, line: &str) {
-        if let Some(caps) = LOG_PATTERN.captures(line) {
+        if let Some(caps) = LOG_REGEX.captures(line) {
             let label = caps.get(1).map_or("[UKW]", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {
