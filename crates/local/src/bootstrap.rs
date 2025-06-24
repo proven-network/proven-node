@@ -44,6 +44,7 @@ use proven_messaging_nats::stream::{
 };
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{ProvenNetwork, ProvenNetworkOptions};
+use proven_passkeys::{PasskeyManagement, PasskeyManager, PasskeyManagerOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
@@ -1326,6 +1327,9 @@ impl Bootstrap {
                 },
                 FsStore::new("/tmp/proven/identity_manager_snapshots"),
             ),
+        });
+
+        let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
             passkeys_store: NatsStore::new(NatsStoreOptions {
                 bucket: "passkeys".to_string(),
                 client: nats_client.clone(),
@@ -1522,6 +1526,7 @@ impl Bootstrap {
             attestor: self.attestor.clone(),
             http_server,
             identity_manager,
+            passkey_manager,
             sessions_manager,
             network: network.clone(),
             runtime_pool_manager,

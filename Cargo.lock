@@ -9846,6 +9846,7 @@ dependencies = [
  "proven-http",
  "proven-identity",
  "proven-network",
+ "proven-passkeys",
  "proven-runtime",
  "proven-sessions",
  "proven-sql",
@@ -9912,6 +9913,7 @@ dependencies = [
  "proven-nats-monitor",
  "proven-nats-server",
  "proven-network",
+ "proven-passkeys",
  "proven-postgres",
  "proven-radix-aggregator",
  "proven-radix-gateway",
@@ -10159,14 +10161,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "ciborium",
  "futures",
  "proven-sql",
- "proven-store",
  "serde",
  "thiserror 2.0.12",
  "uuid",
- "webauthn-rs",
 ]
 
 [[package]]
@@ -10278,6 +10277,7 @@ dependencies = [
  "proven-messaging-nats",
  "proven-nats-server",
  "proven-network",
+ "proven-passkeys",
  "proven-postgres",
  "proven-radix-aggregator",
  "proven-radix-gateway",
@@ -10454,6 +10454,20 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "proven-passkeys"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "ciborium",
+ "proven-store",
+ "serde",
+ "thiserror 2.0.12",
+ "uuid",
+ "webauthn-rs",
 ]
 
 [[package]]

@@ -1,13 +1,14 @@
 [package]
-name = "proven-identity"
+name = "proven-passkeys"
 version.workspace = true
 edition = "2024"
 
 [dependencies]
 async-trait.workspace = true
 bytes.workspace = true
-futures.workspace = true
-proven-sql.workspace = true
+ciborium.workspace = true
+proven-store.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+webauthn-rs.workspace = true

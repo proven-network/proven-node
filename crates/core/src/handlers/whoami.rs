@@ -11,18 +11,20 @@ use crate::FullContext;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_identity::IdentityManagement;
+use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 
 /// Handler for the `/whoami` endpoint.
 /// Returns the node information from network.get_self().
-pub async fn whoami_handler<AM, RM, IM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
+pub async fn whoami_handler<AM, RM, IM, PM, SM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
 ) -> Result<Json<serde_json::Value>, Response>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,

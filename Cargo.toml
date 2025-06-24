@@ -48,6 +48,7 @@ members = [
     "crates/nats-monitor",
     "crates/nats-server",
     "crates/network",
+    "crates/passkeys",
     "crates/postgres",
     "crates/radix-aggregator",
     "crates/radix-gateway",
@@ -113,6 +114,7 @@ default-members = [
     "crates/nats-monitor",
     "crates/nats-server",
     "crates/network",
+    "crates/passkeys",
     "crates/postgres",
     "crates/radix-aggregator",
     "crates/radix-gateway",
@@ -437,6 +439,7 @@ proven-messaging-nats = { path = "crates/messaging-nats" }
 proven-nats-monitor = { path = "crates/nats-monitor" }
 proven-nats-server = { path = "crates/nats-server" }
 proven-network = { path = "crates/network" }
+proven-passkeys = { path = "crates/passkeys" }
 proven-postgres = { path = "crates/postgres" }
 proven-radix-aggregator = { path = "crates/radix-aggregator" }
 proven-radix-gateway = { path = "crates/radix-gateway" }

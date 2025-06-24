@@ -126,6 +126,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [nats-monitor](crates/nats-monitor): Helper crate for querying NATS HTTP monitoring endpoints.
 - [nats-server](crates/nats-server): Configures and runs a NATS server for inter-node communication.
 - [network](crates/network): Manages network configuration and point-to-point node communication.
+- [passkeys](crates/passkeys): Manages active passkeys for discoverable WebAuthn.
 - [postgres](crates/postgres): Configures and runs a Postgres server to provide storage for Radix Gateway.
 - [radix-aggregator](crates/radix-aggregator): Configures and runs Radix Gateway's data aggregator. Also manages migration process as part of boot.
 - [radix-gateway](crates/radix-gateway): Configures and runs a local Radix Gateway.

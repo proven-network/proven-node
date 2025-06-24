@@ -9,6 +9,7 @@ use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
+use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 use serde::Deserialize;
@@ -20,7 +21,7 @@ pub struct SessionQuery {
     pub session: Uuid,
 }
 
-pub(crate) async fn http_rpc_handler<AM, RM, IM, SM, A, G>(
+pub(crate) async fn http_rpc_handler<AM, RM, IM, PM, SM, A, G>(
     Path(application_id): Path<Uuid>,
     Query(SessionQuery {
         session: session_id,
@@ -31,13 +32,14 @@ pub(crate) async fn http_rpc_handler<AM, RM, IM, SM, A, G>(
         identity_manager,
         sessions_manager,
         ..
-    }): State<FullContext<AM, RM, IM, SM, A, G>>,
+    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
     body: Bytes,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,

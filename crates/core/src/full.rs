@@ -26,6 +26,7 @@ use proven_governance::Governance;
 use proven_http::HttpServer;
 use proven_identity::IdentityManagement;
 use proven_network::{NATS_CLUSTER_ENDPOINT_API_PATH, ProvenNetwork};
+use proven_passkeys::PasskeyManagement;
 use proven_runtime::{HttpEndpoint, ModuleLoader, ModuleOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
 use serde_json::json;
@@ -36,11 +37,12 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 /// Options for creating a new core.
-pub struct CoreOptions<AM, RM, IM, SM, A, G, HS>
+pub struct CoreOptions<AM, RM, IM, PM, SM, A, G, HS>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,
@@ -58,6 +60,9 @@ where
     /// The identity manager.
     pub identity_manager: IM,
 
+    /// The passkey manager.
+    pub passkey_manager: PM,
+
     /// The sessions manager.
     pub sessions_manager: SM,
 
@@ -70,11 +75,12 @@ where
 
 /// Core logic for handling user interactions.
 #[derive(Clone)]
-pub struct Core<AM, RM, IM, SM, A, G, HS>
+pub struct Core<AM, RM, IM, PM, SM, A, G, HS>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,
@@ -84,6 +90,7 @@ where
     attestor: A,
     http_server: HS,
     identity_manager: IM,
+    passkey_manager: PM,
     sessions_manager: SM,
     network: ProvenNetwork<G, A>,
     runtime_pool_manager: RM,
@@ -91,11 +98,12 @@ where
     task_tracker: TaskTracker,
 }
 
-impl<AM, RM, IM, SM, A, G, HS> Core<AM, RM, IM, SM, A, G, HS>
+impl<AM, RM, IM, PM, SM, A, G, HS> Core<AM, RM, IM, PM, SM, A, G, HS>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,
@@ -110,8 +118,9 @@ where
             network,
             runtime_pool_manager,
             identity_manager,
+            passkey_manager,
             sessions_manager,
-        }: CoreOptions<AM, RM, IM, SM, A, G, HS>,
+        }: CoreOptions<AM, RM, IM, PM, SM, A, G, HS>,
     ) -> Self {
         Self {
             application_manager,
@@ -120,6 +129,7 @@ where
             network,
             runtime_pool_manager,
             identity_manager,
+            passkey_manager,
             sessions_manager,
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
@@ -224,11 +234,12 @@ where
 }
 
 #[async_trait]
-impl<AM, RM, IM, SM, A, G, HS> Bootable for Core<AM, RM, IM, SM, A, G, HS>
+impl<AM, RM, IM, PM, SM, A, G, HS> Bootable for Core<AM, RM, IM, PM, SM, A, G, HS>
 where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,
@@ -258,6 +269,7 @@ where
             network: self.network.clone(),
             runtime_pool_manager: self.runtime_pool_manager.clone(),
             identity_manager: self.identity_manager.clone(),
+            passkey_manager: self.passkey_manager.clone(),
             sessions_manager: self.sessions_manager.clone(),
         };
 

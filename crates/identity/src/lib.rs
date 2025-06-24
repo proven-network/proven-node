@@ -1,4 +1,4 @@
-//! Manages user identities and passkeys.
+//! Manages user identities.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -6,11 +6,9 @@
 
 mod error;
 mod identity;
-mod passkey;
 
 pub use error::Error;
 pub use identity::Identity;
-pub use passkey::Passkey;
 
 use std::time::SystemTime;
 
@@ -18,26 +16,21 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;
 use proven_sql::{SqlConnection, SqlParam, SqlStore};
-use proven_store::Store;
 use uuid::Uuid;
 
 static CREATE_IDENTITIES_SQL: &str = include_str!("../sql/01_create_identities.sql");
 static CREATE_LINKED_PASSKEYS_SQL: &str = include_str!("../sql/02_create_linked_passkeys.sql");
 
 /// Options for creating a new `IdentityManager`
-pub struct IdentityManagerOptions<IS, PS>
+pub struct IdentityManagerOptions<IS>
 where
     IS: SqlStore,
-    PS: Store<Passkey, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     /// The SQL store to use for storing identities.
     pub identity_store: IS,
-
-    /// The KV store to use for storing passkeys.
-    pub passkeys_store: PS,
 }
 
-/// Trait for managing user identities and passkeys.
+/// Trait for managing user identities.
 #[async_trait]
 pub trait IdentityManagement
 where
@@ -46,11 +39,8 @@ where
     /// Identity store type.
     type IdentityStore: SqlStore;
 
-    /// Passkey store type.
-    type PasskeyStore: Store<Passkey, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>;
-
     /// Creates a new instance of the identity manager.
-    fn new(options: IdentityManagerOptions<Self::IdentityStore, Self::PasskeyStore>) -> Self;
+    fn new(options: IdentityManagerOptions<Self::IdentityStore>) -> Self;
 
     /// Gets an identity by ID.
     async fn get_identity(&self, identity_id: &str) -> Result<Option<Identity>, Error>;
@@ -60,44 +50,26 @@ where
         &self,
         passkey_prf_public_key_bytes: &Bytes,
     ) -> Result<Identity, Error>;
-
-    /// Gets a passkey by ID.
-    async fn get_passkey(&self, passkey_id: &Uuid) -> Result<Option<Passkey>, Error>;
-
-    /// Saves a passkey.
-    async fn save_passkey(&self, passkey_id: &Uuid, passkey: Passkey) -> Result<(), Error>;
 }
 
-/// Manages user identities and passkeys.
+/// Manages user identities.
 #[derive(Clone)]
-pub struct IdentityManager<IS, PS>
+pub struct IdentityManager<IS>
 where
     IS: SqlStore,
-    PS: Store<Passkey, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     identity_store: IS,
-    passkeys_store: PS,
 }
 
 #[async_trait]
-impl<IS, PS> IdentityManagement for IdentityManager<IS, PS>
+impl<IS> IdentityManagement for IdentityManager<IS>
 where
     IS: SqlStore,
-    PS: Store<Passkey, ciborium::de::Error<std::io::Error>, ciborium::ser::Error<std::io::Error>>,
 {
     type IdentityStore = IS;
-    type PasskeyStore = PS;
 
-    fn new(
-        IdentityManagerOptions {
-            identity_store,
-            passkeys_store,
-        }: IdentityManagerOptions<IS, PS>,
-    ) -> Self {
-        Self {
-            identity_store,
-            passkeys_store,
-        }
+    fn new(IdentityManagerOptions { identity_store }: IdentityManagerOptions<IS>) -> Self {
+        Self { identity_store }
     }
 
     async fn get_identity(&self, _identity_id: &str) -> Result<Option<Identity>, Error> {
@@ -177,10 +149,7 @@ where
                 .await
                 .map_err(|e| Error::IdentityStore(e.to_string()))?;
 
-            return Ok(Identity {
-                identity_id,
-                passkeys: vec![],
-            });
+            return Ok(Identity { identity_id });
         };
 
         // Get identity ID from first row
@@ -190,23 +159,6 @@ where
             other => unreachable!("Unexpected SQL param: {:?}", other),
         };
 
-        Ok(Identity {
-            identity_id,
-            passkeys: vec![],
-        })
-    }
-
-    async fn get_passkey(&self, passkey_id: &Uuid) -> Result<Option<Passkey>, Error> {
-        self.passkeys_store
-            .get(passkey_id.to_string())
-            .await
-            .map_err(|e| Error::PasskeyStore(e.to_string()))
-    }
-
-    async fn save_passkey(&self, passkey_id: &Uuid, passkey: Passkey) -> Result<(), Error> {
-        self.passkeys_store
-            .put(passkey_id.to_string(), passkey)
-            .await
-            .map_err(|e| Error::PasskeyStore(e.to_string()))
+        Ok(Identity { identity_id })
     }
 }

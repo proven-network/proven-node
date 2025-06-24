@@ -10,6 +10,7 @@ use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
+use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 use serde::Deserialize;
@@ -41,8 +42,8 @@ pub struct StateQuery {
     pub state: String,
 }
 
-pub(crate) async fn webauthn_registration_start_handler<AM, RM, IM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
+pub(crate) async fn webauthn_registration_start_handler<AM, RM, IM, PM, SM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(RegistrationStartData { user_name }): Json<RegistrationStartData>,
@@ -51,6 +52,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,
@@ -223,12 +225,12 @@ where
         .unwrap()
 }
 
-pub(crate) async fn webauthn_registration_finish_handler<AM, RM, IM, SM, A, G>(
+pub(crate) async fn webauthn_registration_finish_handler<AM, RM, IM, PM, SM, A, G>(
     State(FullContext {
-        identity_manager,
+        passkey_manager,
         network,
         ..
-    }): State<FullContext<AM, RM, IM, SM, A, G>>,
+    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(register_public_key_credential): Json<RegisterPublicKeyCredential>,
@@ -237,6 +239,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,
@@ -294,10 +297,10 @@ where
     {
         Ok(passkey) => {
             // Convert webauthn_rs::Passkey to identity::Passkey
-            let identity_passkey = proven_identity::Passkey::from(passkey);
+            let identity_passkey = proven_passkeys::Passkey::from(passkey);
 
             // Store the passkey using the user UUID as the passkey ID
-            match identity_manager
+            match passkey_manager
                 .save_passkey(&user_uuid, identity_passkey)
                 .await
             {
@@ -324,8 +327,8 @@ where
     }
 }
 
-pub(crate) async fn webauthn_authentication_start_handler<AM, RM, IM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, SM, A, G>>,
+pub(crate) async fn webauthn_authentication_start_handler<AM, RM, IM, PM, SM, A, G>(
+    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
@@ -333,6 +336,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,
@@ -487,12 +491,12 @@ where
         .unwrap()
 }
 
-pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, IM, SM, A, G>(
+pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, IM, PM, SM, A, G>(
     State(FullContext {
-        identity_manager,
+        passkey_manager,
         network,
         ..
-    }): State<FullContext<AM, RM, IM, SM, A, G>>,
+    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(auth_public_key_credential): Json<PublicKeyCredential>,
@@ -501,6 +505,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,
@@ -570,7 +575,7 @@ where
         };
 
     // Load the stored passkey using the user UUID
-    let identity_passkey = match identity_manager.get_passkey(&user_unique_id).await {
+    let identity_passkey = match passkey_manager.get_passkey(&user_unique_id).await {
         Ok(Some(passkey)) => passkey,
         Ok(None) => {
             eprintln!("No stored passkey found for user {}", user_unique_id);

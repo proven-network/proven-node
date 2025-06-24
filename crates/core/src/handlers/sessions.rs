@@ -12,6 +12,7 @@ use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
+use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::{CreateAnonymousSessionOptions, SessionManagement};
 use tracing::info;
@@ -23,10 +24,10 @@ pub struct CreateSessionRequest {
     public_key: Bytes,
 }
 
-pub(crate) async fn create_session_handler<AM, RM, IM, SM, A, G>(
+pub(crate) async fn create_session_handler<AM, RM, IM, PM, SM, A, G>(
     State(FullContext {
         sessions_manager, ..
-    }): State<FullContext<AM, RM, IM, SM, A, G>>,
+    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
     data: TypedMultipart<CreateSessionRequest>,
 ) -> impl IntoResponse
@@ -34,6 +35,7 @@ where
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
+    PM: PasskeyManagement,
     SM: SessionManagement,
     A: Attestor,
     G: Governance,

@@ -11,9 +11,10 @@ use proven_ethereum_lighthouse::LighthouseNode;
 use proven_ethereum_reth::RethNode;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
-use proven_identity::{IdentityManager, Passkey};
+use proven_identity::IdentityManager;
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
+use proven_passkeys::{Passkey, PasskeyManager};
 use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
 use proven_radix_gateway::RadixGateway;
@@ -89,6 +90,8 @@ pub type LocalNodeCore = Core<
             >,
             FsStore<Bytes, Infallible, Infallible>,
         >,
+    >,
+    PasskeyManager<
         NatsStore<
             Passkey,
             ciborium::de::Error<std::io::Error>,
