@@ -34,7 +34,7 @@ use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::consumer::NatsConsumerOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
-use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
+use proven_identity::IdentityManager;
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{Peer, ProvenNetwork, ProvenNetworkOptions};
@@ -48,7 +48,7 @@ use proven_runtime::{
     RpcEndpoints, RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions,
 };
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
-use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
+use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
@@ -853,37 +853,40 @@ impl Bootstrap {
             panic!("node config not set before core");
         });
 
-        let identity_manager = IdentityManager::new(IdentityManagerOptions {
-            identity_store: StreamedSqlStore::new(
-                NatsStream::new(
-                    "IDENTITY_MANAGER_SQL",
-                    NatsStreamOptions {
-                        client: nats_client.clone(),
-                        num_replicas: 1,
-                    },
-                ),
-                NatsServiceOptions {
+        let identity_manager = IdentityManager::new(
+            // Command stream for processing identity commands
+            NatsStream::new(
+                "IDENTITY_COMMANDS",
+                NatsStreamOptions {
                     client: nats_client.clone(),
-                    durable_name: None,
-                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+                    num_replicas: 1,
                 },
-                NatsClientOptions {
-                    client: nats_client.clone(),
-                },
-                S3Store::new(S3StoreOptions {
-                    bucket: self.args.certificates_bucket.clone(),
-                    prefix: Some("identity_manager".to_string()),
-                    region: id.region.clone(),
-                    secret_key: get_or_init_encrypted_key(
-                        id.region.clone(),
-                        self.args.kms_key_id.clone(),
-                        "IDENTITY_MANAGER_SNAPSHOTS_KEY".to_string(),
-                    )
-                    .await?,
-                })
-                .await,
             ),
-        });
+            // Event stream for publishing identity events
+            NatsStream::new(
+                "IDENTITY_EVENTS",
+                NatsStreamOptions {
+                    client: nats_client.clone(),
+                    num_replicas: 1,
+                },
+            ),
+            // Service options for the command processing service
+            NatsServiceOptions {
+                client: nats_client.clone(),
+                durable_name: None,
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
+            // Client options for the command client
+            NatsClientOptions {
+                client: nats_client.clone(),
+            },
+            // Consumer options for the event consumer
+            NatsConsumerOptions {
+                client: nats_client.clone(),
+                durable_name: Some("IDENTITY_VIEW_CONSUMER".to_string()),
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
+        );
 
         let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
             passkeys_store: NatsStore::new(NatsStoreOptions {
@@ -1117,12 +1120,12 @@ impl Bootstrap {
         let core = Core::new(CoreOptions {
             application_manager,
             attestor: self.attestor.clone(),
-            identity_manager,
-            passkey_manager,
-            sessions_manager,
             http_server,
+            identity_manager,
             network: network.clone(),
+            passkey_manager,
             runtime_pool_manager,
+            sessions_manager,
         });
         core.start().await?;
 

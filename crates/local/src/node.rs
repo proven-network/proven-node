@@ -11,7 +11,7 @@ use proven_ethereum_lighthouse::LighthouseNode;
 use proven_ethereum_reth::RethNode;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
-use proven_identity::IdentityManager;
+use proven_identity::{IdentityCommand, IdentityEvent, IdentityManager};
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_passkeys::{Passkey, PasskeyManager};
@@ -22,9 +22,7 @@ use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_radix_node::RadixNode;
 use proven_runtime::RuntimePoolManager;
 use proven_sessions::{Session, SessionManager};
-use proven_sql_streamed::{
-    Request as SqlRequest, StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3,
-};
+use proven_sql_streamed::{Request as SqlRequest, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
 use std::sync::Arc;
@@ -82,13 +80,15 @@ pub type LocalNodeCore = Core<
         GatewayRadixNftVerifier,
     >,
     IdentityManager<
-        StreamedSqlStore<
-            NatsStream<
-                SqlRequest,
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >,
-            FsStore<Bytes, Infallible, Infallible>,
+        NatsStream<
+            IdentityCommand,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
+        NatsStream<
+            IdentityEvent,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
         >,
     >,
     PasskeyManager<

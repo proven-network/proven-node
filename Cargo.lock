@@ -10161,10 +10161,15 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "chrono",
+ "ciborium",
  "futures",
- "proven-sql",
+ "proven-bootable",
+ "proven-messaging",
+ "proven-messaging-memory",
  "serde",
  "thiserror 2.0.12",
+ "tokio",
  "uuid",
 ]
 

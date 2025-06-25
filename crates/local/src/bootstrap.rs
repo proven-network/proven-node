@@ -34,7 +34,7 @@ use proven_http_proxy::{
     HttpProxyService, HttpProxyServiceOptions, Request as HttpProxyRequest,
     SerializeError as HttpProxySerializeError,
 };
-use proven_identity::{IdentityManagement, IdentityManager, IdentityManagerOptions};
+use proven_identity::IdentityManager;
 use proven_messaging::stream::Stream;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::consumer::NatsConsumerOptions;
@@ -54,7 +54,7 @@ use proven_runtime::{
     RpcEndpoints, RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions,
 };
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
-use proven_sql_streamed::{StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3};
+use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
 use radix_common::prelude::NetworkDefinition;
@@ -1308,26 +1308,40 @@ impl Bootstrap {
             panic!("light core not fetched before core");
         });
 
-        let identity_manager = IdentityManager::new(IdentityManagerOptions {
-            identity_store: StreamedSqlStore::new(
-                NatsStream::new(
-                    "IDENTITY_MANAGER_SQL",
-                    NatsStreamOptions {
-                        client: nats_client.clone(),
-                        num_replicas: self.num_replicas,
-                    },
-                ),
-                NatsServiceOptions {
+        let identity_manager = IdentityManager::new(
+            // Command stream for processing identity commands
+            NatsStream::new(
+                "IDENTITY_COMMANDS",
+                NatsStreamOptions {
                     client: nats_client.clone(),
-                    durable_name: None,
-                    jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+                    num_replicas: self.num_replicas,
                 },
-                NatsClientOptions {
-                    client: nats_client.clone(),
-                },
-                FsStore::new("/tmp/proven/identity_manager_snapshots"),
             ),
-        });
+            // Event stream for publishing identity events
+            NatsStream::new(
+                "IDENTITY_EVENTS",
+                NatsStreamOptions {
+                    client: nats_client.clone(),
+                    num_replicas: self.num_replicas,
+                },
+            ),
+            // Service options for the command processing service
+            NatsServiceOptions {
+                client: nats_client.clone(),
+                durable_name: None,
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
+            // Client options for the command client
+            NatsClientOptions {
+                client: nats_client.clone(),
+            },
+            // Consumer options for the event consumer
+            NatsConsumerOptions {
+                client: nats_client.clone(),
+                durable_name: Some("IDENTITY_VIEW_CONSUMER".to_string()),
+                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+            },
+        );
 
         let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
             passkeys_store: NatsStore::new(NatsStoreOptions {
@@ -1526,10 +1540,10 @@ impl Bootstrap {
             attestor: self.attestor.clone(),
             http_server,
             identity_manager,
-            passkey_manager,
-            sessions_manager,
             network: network.clone(),
+            passkey_manager,
             runtime_pool_manager,
+            sessions_manager,
         });
 
         // Shutdown the light core and free the port before starting the full core

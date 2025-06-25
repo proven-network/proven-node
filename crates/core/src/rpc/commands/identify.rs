@@ -75,7 +75,7 @@ impl RpcCommand for IdentifyCommand {
         // Only if the signature is valid, look up the identity by public key
         let identity = match context
             .identity_manager
-            .get_or_create_identity_by_passkey_prf_public_key(&self.passkey_prf_public_key_bytes)
+            .get_or_create_identity_by_prf_public_key(&self.passkey_prf_public_key_bytes)
             .await
         {
             Ok(identity) => identity,
@@ -84,7 +84,7 @@ impl RpcCommand for IdentifyCommand {
 
         let session = match context
             .sessions_manager
-            .identify_session(&context.application_id, &session_id, &identity.identity_id)
+            .identify_session(&context.application_id, &session_id, &identity.id)
             .await
         {
             Ok(session) => session,

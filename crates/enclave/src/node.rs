@@ -10,7 +10,7 @@ use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
 use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
-use proven_identity::IdentityManager;
+use proven_identity::{IdentityCommand, IdentityEvent, IdentityManager};
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
@@ -19,9 +19,7 @@ use proven_passkeys::{Passkey, PasskeyManager};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_runtime::RuntimePoolManager;
 use proven_sessions::{Session, SessionManager};
-use proven_sql_streamed::{
-    Request as SqlRequest, StreamedSqlStore, StreamedSqlStore2, StreamedSqlStore3,
-};
+use proven_sql_streamed::{Request as SqlRequest, StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
 // use proven_nats_monitor::NatsMonitor;
 use proven_postgres::Postgres;
@@ -85,13 +83,15 @@ pub type EnclaveNodeCore = Core<
         GatewayRadixNftVerifier,
     >,
     IdentityManager<
-        StreamedSqlStore<
-            NatsStream<
-                SqlRequest,
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >,
-            S3Store<Bytes, Infallible, Infallible>,
+        NatsStream<
+            IdentityCommand,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
+        >,
+        NatsStream<
+            IdentityEvent,
+            ciborium::de::Error<std::io::Error>,
+            ciborium::ser::Error<std::io::Error>,
         >,
     >,
     PasskeyManager<
