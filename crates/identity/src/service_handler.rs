@@ -78,29 +78,24 @@ where
 
                 // Create new identity
                 let identity_id = Uuid::new_v4();
+                let now = chrono::Utc::now();
 
-                // Create identity creation event
-                let create_event = IdentityEvent::Created {
-                    identity_id,
-                    created_at: chrono::Utc::now(),
-                };
+                // Create both events for atomic publishing
+                let events = vec![
+                    IdentityEvent::Created {
+                        created_at: now,
+                        identity_id,
+                    },
+                    IdentityEvent::PrfPublicKeyLinked {
+                        identity_id,
+                        linked_at: now,
+                        prf_public_key: prf_public_key.clone(),
+                    },
+                ];
 
-                // Publish identity creation event
+                // Publish both events atomically
                 self.event_stream
-                    .publish(create_event)
-                    .await
-                    .map_err(|e| Error::Stream(e.to_string()))?;
-
-                // Create PRF public key linking event
-                let link_event = IdentityEvent::PrfPublicKeyLinked {
-                    identity_id,
-                    prf_public_key: prf_public_key.clone(),
-                    linked_at: chrono::Utc::now(),
-                };
-
-                // Publish PRF public key linking event
-                self.event_stream
-                    .publish(link_event)
+                    .publish_batch(events)
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
