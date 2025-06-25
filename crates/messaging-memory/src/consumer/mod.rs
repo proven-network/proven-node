@@ -194,7 +194,7 @@ where
 
         self.task_tracker.spawn(Self::process_messages(
             self.last_seq.clone(),
-            self.stream.messages().await,
+            self.stream.message_stream().await,
             self.handler.clone(),
             self.shutdown_token.clone(),
         ));

@@ -95,7 +95,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     /// Returns a stream of messages from the beginning.
-    pub async fn messages(&self) -> ReceiverStream<T> {
+    pub async fn message_stream(&self) -> ReceiverStream<T> {
         let messages = self.messages.lock().await.clone();
         let (sender, receiver) = mpsc::channel::<T>(100);
 
