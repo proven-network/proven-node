@@ -8,12 +8,18 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum ApplicationCommandResponse {
     /// Application was successfully archived.
-    ApplicationArchived,
+    ApplicationArchived {
+        /// The sequence number of the last event published for this command.
+        last_event_seq: u64,
+    },
 
     /// An application was successfully created.
     ApplicationCreated {
         /// The newly created application.
         application: Application,
+
+        /// The sequence number of the last event published for this command.
+        last_event_seq: u64,
     },
 
     /// Command failed with an error message.
@@ -23,7 +29,10 @@ pub enum ApplicationCommandResponse {
     },
 
     /// Ownership transfer completed successfully.
-    OwnershipTransferred,
+    OwnershipTransferred {
+        /// The sequence number of the last event published for this command.
+        last_event_seq: u64,
+    },
 }
 
 impl TryFrom<Bytes> for ApplicationCommandResponse {

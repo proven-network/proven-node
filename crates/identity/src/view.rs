@@ -2,11 +2,12 @@ use crate::{Error, Identity, events::IdentityEvent};
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_messaging::consumer_handler::ConsumerHandler;
-use tokio::sync::RwLock;
+use tokio::sync::{Notify, RwLock};
 use uuid::Uuid;
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
@@ -17,8 +18,15 @@ type SerializeError = ciborium::ser::Error<std::io::Error>;
 pub struct IdentityView {
     // Use RwLock for efficient concurrent reads
     identities: Arc<RwLock<HashMap<Uuid, Identity>>>,
+
+    // Track the sequence number of the last processed event
+    last_processed_seq: Arc<AtomicU64>,
+
     // Map from PRF public key to identity ID
     prf_to_identity: Arc<RwLock<HashMap<Bytes, Uuid>>>,
+
+    // Notifier for when sequence number advances (for consistency waiting)
+    seq_notifier: Arc<Notify>,
 }
 
 impl IdentityView {
@@ -26,7 +34,9 @@ impl IdentityView {
     pub fn new() -> Self {
         Self {
             identities: Arc::new(RwLock::new(HashMap::new())),
+            last_processed_seq: Arc::new(AtomicU64::new(0)),
             prf_to_identity: Arc::new(RwLock::new(HashMap::new())),
+            seq_notifier: Arc::new(Notify::new()),
         }
     }
 
@@ -69,6 +79,33 @@ impl IdentityView {
     /// Get the count of linked PRF public keys
     pub async fn prf_public_key_count(&self) -> usize {
         self.prf_to_identity.read().await.len()
+    }
+
+    /// Get the sequence number of the last processed event
+    /// Useful for read-your-own-writes consistency
+    pub fn last_processed_seq(&self) -> u64 {
+        self.last_processed_seq.load(Ordering::SeqCst)
+    }
+
+    /// Wait until the view has processed at least the given sequence number
+    /// Used for strong consistency guarantees in service handlers
+    pub async fn wait_for_seq(&self, min_seq: u64) -> Result<(), Error> {
+        if self.last_processed_seq() >= min_seq {
+            return Ok(()); // Already caught up
+        }
+
+        // Use notification-based waiting to avoid polling
+        loop {
+            let notified = self.seq_notifier.notified();
+
+            // Check again in case we missed a notification
+            if self.last_processed_seq() >= min_seq {
+                return Ok(());
+            }
+
+            // Wait for next notification
+            notified.await;
+        }
     }
 
     /// Apply an event to update the view state
@@ -126,9 +163,18 @@ impl ConsumerHandler<IdentityEvent, DeserializeError, SerializeError>
 {
     type Error = Error;
 
-    async fn handle(&self, event: IdentityEvent, _stream_sequence: u64) -> Result<(), Self::Error> {
+    async fn handle(&self, event: IdentityEvent, stream_sequence: u64) -> Result<(), Self::Error> {
         // Apply the event to update the view
         self.view.apply_event(&event).await;
+
+        // Update the last processed sequence number
+        self.view
+            .last_processed_seq
+            .store(stream_sequence, Ordering::SeqCst);
+
+        // Notify any waiters that the sequence has advanced
+        self.view.seq_notifier.notify_waiters();
+
         Ok(())
     }
 

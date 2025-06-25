@@ -347,7 +347,9 @@ where
             .await
             .map_err(|e| Error::Client(e.to_string()))?
         {
-            ClientResponseType::Response(ApplicationCommandResponse::ApplicationArchived) => Ok(()),
+            ClientResponseType::Response(ApplicationCommandResponse::ApplicationArchived {
+                ..
+            }) => Ok(()),
             ClientResponseType::Response(ApplicationCommandResponse::Error { message }) => {
                 Err(Error::Command(message))
             }
@@ -372,6 +374,7 @@ where
         {
             ClientResponseType::Response(ApplicationCommandResponse::ApplicationCreated {
                 application,
+                ..
             }) => Ok(application),
             ClientResponseType::Response(ApplicationCommandResponse::Error { message }) => {
                 Err(Error::Command(message))
@@ -406,9 +409,9 @@ where
             .await
             .map_err(|e| Error::Client(e.to_string()))?
         {
-            ClientResponseType::Response(ApplicationCommandResponse::OwnershipTransferred) => {
-                Ok(())
-            }
+            ClientResponseType::Response(ApplicationCommandResponse::OwnershipTransferred {
+                ..
+            }) => Ok(()),
             ClientResponseType::Response(ApplicationCommandResponse::Error { message }) => {
                 Err(Error::Command(message))
             }
@@ -617,5 +620,87 @@ mod tests {
                 .len(),
             5
         );
+    }
+
+    #[tokio::test]
+    async fn test_last_processed_seq_tracking() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Initially, no events processed
+        assert_eq!(manager.view().last_processed_seq(), 0);
+
+        // Create application (publishes 1 event)
+        let _app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Should have processed sequence 0 (first event in memory streams)
+        assert_eq!(manager.view().last_processed_seq(), 1);
+
+        // Create another application (publishes 1 more event)
+        let app2 = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Should have processed sequence 1 (second event)
+        assert_eq!(manager.view().last_processed_seq(), 2);
+
+        // Transfer ownership (publishes 1 more event)
+        let _result = manager.transfer_ownership(app2.id, Uuid::new_v4()).await;
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Should have processed sequence 2 (third event)
+        assert_eq!(manager.view().last_processed_seq(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_strong_consistency_commands() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Create application (does not require strong consistency)
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Now test commands that require strong consistency
+        // Transfer ownership (requires strong consistency)
+        let new_owner_id = Uuid::new_v4();
+        let result = manager.transfer_ownership(app.id, new_owner_id).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Archive application (requires strong consistency)
+        let result = manager.archive_application(app.id).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify application is gone
+        assert!(!manager.view().application_exists(app.id).await);
     }
 }

@@ -17,10 +17,16 @@ pub enum IdentityCommandResponse {
     IdentityRetrieved {
         /// The retrieved or created identity.
         identity: Identity,
+
+        /// The sequence number of the last event published for this command.
+        last_event_seq: u64,
     },
 
     /// PRF public key was successfully linked to an identity.
-    PrfPublicKeyLinked,
+    PrfPublicKeyLinked {
+        /// The sequence number of the last event published for this command.
+        last_event_seq: u64,
+    },
 }
 
 impl TryFrom<Bytes> for IdentityCommandResponse {

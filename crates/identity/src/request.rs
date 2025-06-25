@@ -16,6 +16,7 @@ pub enum IdentityCommand {
     LinkPrfPublicKey {
         /// The unique identifier of the identity.
         identity_id: Uuid,
+
         /// The PRF public key bytes (32 bytes).
         prf_public_key: Bytes,
     },

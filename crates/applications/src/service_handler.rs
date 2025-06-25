@@ -60,6 +60,16 @@ where
         self.last_processed_seq.load(Ordering::SeqCst)
     }
 
+    /// Determines if a command requires strong consistency (view synchronization)
+    /// before processing to prevent conflicts or ensure accurate reads.
+    fn requires_strong_consistency(&self, command: &ApplicationCommand) -> bool {
+        matches!(
+            command,
+            ApplicationCommand::ArchiveApplication { .. }
+                | ApplicationCommand::TransferOwnership { .. }
+        )
+    }
+
     /// Handle commands by generating and publishing events
     async fn handle_command(
         &self,
@@ -77,7 +87,8 @@ where
                 };
 
                 // Publish event to event stream
-                self.event_stream
+                let last_event_seq = self
+                    .event_stream
                     .publish(event)
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
@@ -87,7 +98,10 @@ where
                     owner_identity_id,
                 };
 
-                Ok(ApplicationCommandResponse::ApplicationCreated { application })
+                Ok(ApplicationCommandResponse::ApplicationCreated {
+                    application,
+                    last_event_seq,
+                })
             }
 
             ApplicationCommand::TransferOwnership {
@@ -117,12 +131,13 @@ where
                 };
 
                 // Publish event to event stream
-                self.event_stream
+                let last_event_seq = self
+                    .event_stream
                     .publish(event)
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
-                Ok(ApplicationCommandResponse::OwnershipTransferred)
+                Ok(ApplicationCommandResponse::OwnershipTransferred { last_event_seq })
             }
 
             ApplicationCommand::ArchiveApplication { application_id } => {
@@ -138,12 +153,13 @@ where
                 };
 
                 // Publish event to event stream
-                self.event_stream
+                let last_event_seq = self
+                    .event_stream
                     .publish(event)
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
-                Ok(ApplicationCommandResponse::ApplicationArchived)
+                Ok(ApplicationCommandResponse::ApplicationArchived { last_event_seq })
             }
         }
     }
@@ -175,6 +191,17 @@ where
                 Self::ResponseSerializationError,
             >,
     {
+        // If this command requires strong consistency, ensure view is caught up
+        if self.requires_strong_consistency(&command) {
+            let current_seq = self
+                .event_stream
+                .last_seq()
+                .await
+                .map_err(|e| Error::Stream(e.to_string()))?;
+
+            self.view.wait_for_seq(current_seq).await?;
+        }
+
         // Handle the command
         let response = self.handle_command(command).await?;
 

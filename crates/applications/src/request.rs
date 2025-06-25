@@ -22,6 +22,7 @@ pub enum ApplicationCommand {
     TransferOwnership {
         /// The unique identifier of the application to transfer.
         application_id: Uuid,
+
         /// The identity ID of the new owner.
         new_owner_id: Uuid,
     },

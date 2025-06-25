@@ -332,6 +332,7 @@ where
         {
             ClientResponseType::Response(IdentityCommandResponse::IdentityRetrieved {
                 identity,
+                ..
             }) => Ok(identity),
             ClientResponseType::Response(IdentityCommandResponse::Error { message }) => {
                 Err(Error::Command(message))
@@ -507,5 +508,74 @@ mod tests {
         let all_identities = manager.list_identities().await.unwrap();
         assert_eq!(all_identities.len(), 5);
         assert_eq!(manager.view().prf_public_key_count().await, 5);
+    }
+
+    #[tokio::test]
+    async fn test_last_processed_seq_tracking() {
+        let manager = create_test_manager().await;
+
+        // Initially, no events processed
+        assert_eq!(manager.view().last_processed_seq(), 0);
+
+        // Create identity (publishes 2 events via publish_batch: Created + PrfPublicKeyLinked)
+        let prf_key1 = Bytes::from(vec![1u8; 32]);
+        let _identity1 = manager
+            .get_or_create_identity_by_prf_public_key(&prf_key1)
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Should have processed sequence 2 (last of the 2 batched events: seq 1 and 2)
+        assert_eq!(manager.view().last_processed_seq(), 2);
+
+        // Create another identity (publishes 2 more events)
+        let prf_key2 = Bytes::from(vec![2u8; 32]);
+        let _identity2 = manager
+            .get_or_create_identity_by_prf_public_key(&prf_key2)
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Should have processed sequence 4 (last of the next 2 batched events: seq 3 and 4)
+        assert_eq!(manager.view().last_processed_seq(), 4);
+    }
+
+    #[tokio::test]
+    async fn test_strong_consistency_commands() {
+        let manager = create_test_manager().await;
+
+        // Both identity command variants require strong consistency
+        // Test GetOrCreateIdentityByPrfPublicKey (requires strong consistency)
+        let prf_key1 = Bytes::from(vec![1u8; 32]);
+        let identity1 = manager
+            .get_or_create_identity_by_prf_public_key(&prf_key1)
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify identity was created and is in view
+        assert!(manager.view().identity_exists(identity1.id).await);
+        assert!(manager.view().prf_public_key_exists(&prf_key1).await);
+
+        // Test that getting the same PRF key returns the same identity (no duplicate creation)
+        let identity1_again = manager
+            .get_or_create_identity_by_prf_public_key(&prf_key1)
+            .await
+            .unwrap();
+
+        assert_eq!(identity1.id, identity1_again.id);
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Should still only have 1 identity (no duplicate was created)
+        assert_eq!(manager.view().identity_count().await, 1);
+        assert_eq!(manager.view().prf_public_key_count().await, 1);
     }
 }

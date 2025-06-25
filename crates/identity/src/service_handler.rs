@@ -60,6 +60,16 @@ where
         self.last_processed_seq.load(Ordering::SeqCst)
     }
 
+    /// Determines if a command requires strong consistency (view synchronization)
+    /// before processing to prevent conflicts or ensure accurate reads.
+    fn requires_strong_consistency(&self, command: &IdentityCommand) -> bool {
+        matches!(
+            command,
+            IdentityCommand::GetOrCreateIdentityByPrfPublicKey { .. }
+                | IdentityCommand::LinkPrfPublicKey { .. }
+        )
+    }
+
     /// Handle commands by generating and publishing events
     async fn handle_command(
         &self,
@@ -73,7 +83,12 @@ where
                     .get_identity_by_prf_public_key(&prf_public_key)
                     .await
                 {
-                    return Ok(IdentityCommandResponse::IdentityRetrieved { identity });
+                    // For existing identities, we don't publish events, so use 0 as placeholder
+                    // TODO: Consider how to handle this case for read-your-own-writes consistency
+                    return Ok(IdentityCommandResponse::IdentityRetrieved {
+                        identity,
+                        last_event_seq: 0,
+                    });
                 }
 
                 // Create new identity
@@ -94,13 +109,17 @@ where
                 ];
 
                 // Publish both events atomically
-                self.event_stream
+                let last_event_seq = self
+                    .event_stream
                     .publish_batch(events)
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
                 let identity = Identity { id: identity_id };
-                Ok(IdentityCommandResponse::IdentityRetrieved { identity })
+                Ok(IdentityCommandResponse::IdentityRetrieved {
+                    identity,
+                    last_event_seq,
+                })
             }
 
             IdentityCommand::LinkPrfPublicKey {
@@ -128,12 +147,13 @@ where
                 };
 
                 // Publish event to event stream
-                self.event_stream
+                let last_event_seq = self
+                    .event_stream
                     .publish(event)
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
-                Ok(IdentityCommandResponse::PrfPublicKeyLinked)
+                Ok(IdentityCommandResponse::PrfPublicKeyLinked { last_event_seq })
             }
         }
     }
@@ -165,6 +185,17 @@ where
                 Self::ResponseSerializationError,
             >,
     {
+        // If this command requires strong consistency, ensure view is caught up
+        if self.requires_strong_consistency(&command) {
+            let current_seq = self
+                .event_stream
+                .last_seq()
+                .await
+                .map_err(|e| Error::Stream(e.to_string()))?;
+
+            self.view.wait_for_seq(current_seq).await?;
+        }
+
         // Handle the command
         let response = self.handle_command(command).await?;
 
