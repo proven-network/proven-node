@@ -13,6 +13,7 @@ use proven_http_letsencrypt::LetsEncryptHttpServer;
 use proven_identity::{IdentityCommand, IdentityEvent, IdentityManager};
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
+use proven_locks_nats::NatsLockManager;
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_passkeys::{Passkey, PasskeyManager};
@@ -46,6 +47,7 @@ pub type EnclaveNodeCore = Core<
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
+        NatsLockManager,
     >,
     RuntimePoolManager<
         NatsStore2,
@@ -93,6 +95,7 @@ pub type EnclaveNodeCore = Core<
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
+        NatsLockManager,
     >,
     PasskeyManager<
         NatsStore<

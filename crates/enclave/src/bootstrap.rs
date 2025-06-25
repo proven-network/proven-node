@@ -35,6 +35,7 @@ use proven_messaging_nats::consumer::NatsConsumerOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
 // use proven_nats_monitor::NatsMonitor;
 use proven_identity::IdentityManager;
+use proven_locks_nats::{NatsLockManager, NatsLockManagerConfig};
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{Peer, ProvenNetwork, ProvenNetworkOptions};
@@ -62,6 +63,7 @@ use tokio_util::task::TaskTracker;
 use tokio_vsock::{VsockAddr, VsockStream};
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
+use uuid::Uuid;
 
 static VMADDR_CID_EC2_HOST: u32 = 3;
 
@@ -853,6 +855,15 @@ impl Bootstrap {
             panic!("node config not set before core");
         });
 
+        let lock_manager = NatsLockManager::new(NatsLockManagerConfig {
+            bucket: "GLOBAL_LOCKS".to_string(),
+            client: nats_client.clone(),
+            local_identifier: format!("enclave-{}", Uuid::new_v4()),
+            num_replicas: 1,
+            persist: true,
+            ttl: Duration::from_secs(30),
+        });
+
         let identity_manager = IdentityManager::new(
             // Command stream for processing identity commands
             NatsStream::new(
@@ -886,6 +897,8 @@ impl Bootstrap {
                 durable_name: Some("IDENTITY_VIEW_CONSUMER".to_string()),
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
+            // Lock manager for distributed leadership
+            lock_manager.clone(),
         );
 
         let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
@@ -972,6 +985,8 @@ impl Bootstrap {
                 durable_name: Some("APPLICATION_VIEW_CONSUMER".to_string()),
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
+            // Lock manager for distributed leadership
+            lock_manager,
         );
 
         let application_store = NatsStore2::new(NatsStoreOptions {

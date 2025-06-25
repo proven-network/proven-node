@@ -9718,11 +9718,14 @@ dependencies = [
  "ciborium",
  "futures",
  "proven-bootable",
+ "proven-locks",
+ "proven-locks-memory",
  "proven-messaging",
  "proven-messaging-memory",
  "serde",
  "thiserror 2.0.12",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -9908,6 +9911,7 @@ dependencies = [
  "proven-imds",
  "proven-instance-details",
  "proven-kms",
+ "proven-locks-nats",
  "proven-messaging",
  "proven-messaging-nats",
  "proven-nats-monitor",
@@ -9944,6 +9948,7 @@ dependencies = [
  "tracing",
  "tracing-panic",
  "tracing-subscriber 0.3.19",
+ "uuid",
 ]
 
 [[package]]
@@ -10165,11 +10170,14 @@ dependencies = [
  "ciborium",
  "futures",
  "proven-bootable",
+ "proven-locks",
+ "proven-locks-memory",
  "proven-messaging",
  "proven-messaging-memory",
  "serde",
  "thiserror 2.0.12",
  "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -10278,6 +10286,7 @@ dependencies = [
  "proven-http-insecure",
  "proven-http-proxy",
  "proven-identity",
+ "proven-locks-nats",
  "proven-messaging",
  "proven-messaging-nats",
  "proven-nats-server",
@@ -10306,6 +10315,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber 0.3.19",
  "url",
+ "uuid",
 ]
 
 [[package]]

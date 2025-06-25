@@ -12,6 +12,7 @@ use proven_ethereum_reth::RethNode;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_identity::{IdentityCommand, IdentityEvent, IdentityManager};
+use proven_locks_nats::NatsLockManager;
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
 use proven_passkeys::{Passkey, PasskeyManager};
@@ -43,6 +44,7 @@ pub type LocalNodeCore = Core<
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
+        NatsLockManager,
     >,
     RuntimePoolManager<
         NatsStore2,
@@ -90,6 +92,7 @@ pub type LocalNodeCore = Core<
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
+        NatsLockManager,
     >,
     PasskeyManager<
         NatsStore<

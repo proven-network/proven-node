@@ -35,6 +35,7 @@ use proven_http_proxy::{
     SerializeError as HttpProxySerializeError,
 };
 use proven_identity::IdentityManager;
+use proven_locks_nats::{NatsLockManager, NatsLockManagerConfig};
 use proven_messaging::stream::Stream;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::consumer::NatsConsumerOptions;
@@ -64,6 +65,7 @@ use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 use url::Url;
+use uuid::Uuid;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
@@ -1308,6 +1310,15 @@ impl Bootstrap {
             panic!("light core not fetched before core");
         });
 
+        let lock_manager = NatsLockManager::new(NatsLockManagerConfig {
+            bucket: "GLOBAL_LOCKS".to_string(),
+            client: nats_client.clone(),
+            local_identifier: format!("node-{}", Uuid::new_v4()),
+            num_replicas: self.num_replicas,
+            persist: true,
+            ttl: Duration::from_secs(30),
+        });
+
         let identity_manager = IdentityManager::new(
             // Command stream for processing identity commands
             NatsStream::new(
@@ -1341,6 +1352,8 @@ impl Bootstrap {
                 durable_name: Some("IDENTITY_VIEW_CONSUMER".to_string()),
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
+            // Lock manager for distributed leadership
+            lock_manager.clone(),
         );
 
         let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
@@ -1405,6 +1418,8 @@ impl Bootstrap {
                 durable_name: Some("APPLICATION_VIEW_CONSUMER".to_string()),
                 jetstream_context: async_nats::jetstream::new(nats_client.clone()),
             },
+            // Lock manager for distributed leadership
+            lock_manager,
         );
 
         let application_store = NatsStore2::new(NatsStoreOptions {

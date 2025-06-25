@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
