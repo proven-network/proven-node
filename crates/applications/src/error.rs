@@ -16,17 +16,9 @@ pub enum Error {
     #[error("command error: {0}")]
     Command(String),
 
-    /// Query processing error
-    #[error("query error: {0}")]
-    Query(String),
-
     /// Messaging service error
     #[error("messaging service error: {0}")]
     Service(String),
-
-    /// Serialization error
-    #[error("serialization error: {0}")]
-    Serialization(String),
 
     /// Stream error
     #[error("stream error: {0}")]

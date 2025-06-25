@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// Responses returned by the identity service after processing commands.
 /// These indicate the result of command execution.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum IdentityCommandResponse {
+pub enum Response {
     /// Command failed with an error message.
     Error {
         /// Description of what went wrong.
@@ -29,7 +29,7 @@ pub enum IdentityCommandResponse {
     },
 }
 
-impl TryFrom<Bytes> for IdentityCommandResponse {
+impl TryFrom<Bytes> for Response {
     type Error = ciborium::de::Error<std::io::Error>;
 
     fn try_from(bytes: Bytes) -> Result<Self, <Self as TryFrom<Bytes>>::Error> {
@@ -38,7 +38,7 @@ impl TryFrom<Bytes> for IdentityCommandResponse {
     }
 }
 
-impl TryInto<Bytes> for IdentityCommandResponse {
+impl TryInto<Bytes> for Response {
     type Error = ciborium::ser::Error<std::io::Error>;
 
     fn try_into(self) -> Result<Bytes, <Self as TryInto<Bytes>>::Error> {

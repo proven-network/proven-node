@@ -5,18 +5,18 @@
 #![warn(clippy::nursery)]
 
 mod application;
+mod command;
 mod error;
-mod events;
-mod request;
+mod event;
 mod response;
 mod service_handler;
 mod view;
 
 pub use application::Application;
+pub use command::Command;
 pub use error::Error;
-pub use events::ApplicationEvent;
-pub use request::ApplicationCommand;
-pub use response::ApplicationCommandResponse;
+pub use event::Event;
+pub use response::Response;
 pub use service_handler::ApplicationServiceHandler;
 pub use view::{ApplicationView, ApplicationViewConsumerHandler};
 
@@ -77,6 +77,20 @@ where
         application_id: Uuid,
         new_owner_id: Uuid,
     ) -> Result<(), Error>;
+
+    /// Link an HTTP domain to an application.
+    async fn link_http_domain(
+        &self,
+        application_id: Uuid,
+        http_domain: String,
+    ) -> Result<(), Error>;
+
+    /// Unlink an HTTP domain from an application.
+    async fn unlink_http_domain(
+        &self,
+        application_id: Uuid,
+        http_domain: String,
+    ) -> Result<(), Error>;
 }
 
 /// Event-driven application manager using dual messaging streams and distributed leadership.
@@ -85,51 +99,46 @@ where
 /// Only the leader node runs the command service.
 pub struct ApplicationManager<CS, ES, LM>
 where
-    CS: Stream<ApplicationCommand, DeserializeError, SerializeError>,
-    ES: Stream<ApplicationEvent, DeserializeError, SerializeError>,
+    CS: Stream<Command, DeserializeError, SerializeError>,
+    ES: Stream<Event, DeserializeError, SerializeError>,
     LM: LockManager + Clone,
 {
     /// Cached command client
     client: OnceLock<
-        <CS::Initialized as InitializedStream<
-            ApplicationCommand,
-            DeserializeError,
-            SerializeError,
-        >>::Client<ApplicationServiceHandler<ES::Initialized>>,
+        <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
+            ApplicationServiceHandler<ES::Initialized>,
+        >,
     >,
 
     /// Client options for the command client
-    client_options: <<CS::Initialized as InitializedStream<
-        ApplicationCommand,
-        DeserializeError,
-        SerializeError,
-    >>::Client<ApplicationServiceHandler<ES::Initialized>> as Client<
-        ApplicationServiceHandler<ES::Initialized>,
-        ApplicationCommand,
-        DeserializeError,
-        SerializeError,
-    >>::Options,
+    client_options:
+        <<CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
+            ApplicationServiceHandler<ES::Initialized>,
+        > as Client<
+            ApplicationServiceHandler<ES::Initialized>,
+            Command,
+            DeserializeError,
+            SerializeError,
+        >>::Options,
 
     /// Command stream for processing commands
     command_stream: CS,
 
     /// Cached consumer (to ensure it only starts once)
     consumer: OnceLock<
-        <ES::Initialized as InitializedStream<
-            ApplicationEvent,
-            DeserializeError,
-            SerializeError,
-        >>::Consumer<ApplicationViewConsumerHandler>,
+        <ES::Initialized as InitializedStream<Event, DeserializeError, SerializeError>>::Consumer<
+            ApplicationViewConsumerHandler,
+        >,
     >,
 
     /// Consumer options for the event consumer
     consumer_options: <<ES::Initialized as InitializedStream<
-        ApplicationEvent,
+        Event,
         DeserializeError,
         SerializeError,
     >>::Consumer<ApplicationViewConsumerHandler> as Consumer<
         ApplicationViewConsumerHandler,
-        ApplicationEvent,
+        Event,
         DeserializeError,
         SerializeError,
     >>::Options,
@@ -148,21 +157,19 @@ where
 
     /// Cached service (to ensure it only starts once)
     service: OnceLock<
-        <CS::Initialized as InitializedStream<
-            ApplicationCommand,
-            DeserializeError,
-            SerializeError,
-        >>::Service<ApplicationServiceHandler<ES::Initialized>>,
+        <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Service<
+            ApplicationServiceHandler<ES::Initialized>,
+        >,
     >,
 
     /// Service options for the command service
     service_options: <<CS::Initialized as InitializedStream<
-        ApplicationCommand,
+        Command,
         DeserializeError,
         SerializeError,
     >>::Service<ApplicationServiceHandler<ES::Initialized>> as Service<
         ApplicationServiceHandler<ES::Initialized>,
-        ApplicationCommand,
+        Command,
         DeserializeError,
         SerializeError,
     >>::Options,
@@ -173,8 +180,8 @@ where
 
 impl<CS, ES, LM> ApplicationManager<CS, ES, LM>
 where
-    CS: Stream<ApplicationCommand, DeserializeError, SerializeError>,
-    ES: Stream<ApplicationEvent, DeserializeError, SerializeError>,
+    CS: Stream<Command, DeserializeError, SerializeError>,
+    ES: Stream<Event, DeserializeError, SerializeError>,
     LM: LockManager + Clone,
 {
     /// Create a new application manager with dual streams and distributed leadership.
@@ -197,32 +204,32 @@ where
         command_stream: CS,
         event_stream: ES,
         service_options: <<CS::Initialized as InitializedStream<
-            ApplicationCommand,
+            Command,
             DeserializeError,
             SerializeError,
         >>::Service<ApplicationServiceHandler<ES::Initialized>> as Service<
             ApplicationServiceHandler<ES::Initialized>,
-            ApplicationCommand,
+            Command,
             DeserializeError,
             SerializeError,
         >>::Options,
         client_options: <<CS::Initialized as InitializedStream<
-            ApplicationCommand,
+            Command,
             DeserializeError,
             SerializeError,
         >>::Client<ApplicationServiceHandler<ES::Initialized>> as Client<
             ApplicationServiceHandler<ES::Initialized>,
-            ApplicationCommand,
+            Command,
             DeserializeError,
             SerializeError,
         >>::Options,
         consumer_options: <<ES::Initialized as InitializedStream<
-            ApplicationEvent,
+            Event,
             DeserializeError,
             SerializeError,
         >>::Consumer<ApplicationViewConsumerHandler> as Consumer<
             ApplicationViewConsumerHandler,
-            ApplicationEvent,
+            Event,
             DeserializeError,
             SerializeError,
         >>::Options,
@@ -258,11 +265,9 @@ where
     async fn get_client(
         &self,
     ) -> Result<
-        <CS::Initialized as InitializedStream<
-            ApplicationCommand,
-            DeserializeError,
-            SerializeError,
-        >>::Client<ApplicationServiceHandler<ES::Initialized>>,
+        <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
+            ApplicationServiceHandler<ES::Initialized>,
+        >,
         Error,
     > {
         if let Some(client) = self.client.get() {
@@ -489,8 +494,8 @@ where
 
 impl<CS, ES, LM> Clone for ApplicationManager<CS, ES, LM>
 where
-    CS: Stream<ApplicationCommand, DeserializeError, SerializeError> + Clone,
-    ES: Stream<ApplicationEvent, DeserializeError, SerializeError> + Clone,
+    CS: Stream<Command, DeserializeError, SerializeError> + Clone,
+    ES: Stream<Event, DeserializeError, SerializeError> + Clone,
     LM: LockManager + Clone,
 {
     fn clone(&self) -> Self {
@@ -514,8 +519,8 @@ where
 #[async_trait]
 impl<CS, ES, LM> ApplicationManagement for ApplicationManager<CS, ES, LM>
 where
-    CS: Stream<ApplicationCommand, DeserializeError, SerializeError>,
-    ES: Stream<ApplicationEvent, DeserializeError, SerializeError>,
+    CS: Stream<Command, DeserializeError, SerializeError>,
+    ES: Stream<Event, DeserializeError, SerializeError>,
     LM: LockManager + Clone,
 {
     async fn application_exists(&self, application_id: Uuid) -> Result<bool, Error> {
@@ -525,17 +530,15 @@ where
     async fn archive_application(&self, application_id: Uuid) -> Result<(), Error> {
         let client = self.get_client().await?;
 
-        let command = ApplicationCommand::ArchiveApplication { application_id };
+        let command = Command::Archive { application_id };
 
         match client
             .request(command)
             .await
             .map_err(|e| Error::Client(e.to_string()))?
         {
-            ClientResponseType::Response(ApplicationCommandResponse::ApplicationArchived {
-                ..
-            }) => Ok(()),
-            ClientResponseType::Response(ApplicationCommandResponse::Error { message }) => {
+            ClientResponseType::Response(Response::Archived { .. }) => Ok(()),
+            ClientResponseType::Response(Response::Error { message }) => {
                 Err(Error::Command(message))
             }
             _ => Err(Error::UnexpectedResponse),
@@ -548,24 +551,33 @@ where
     ) -> Result<Application, Error> {
         let client = self.get_client().await?;
 
-        let command = ApplicationCommand::CreateApplication {
+        let command = Command::Create {
             owner_identity_id: options.owner_identity_id,
         };
 
-        match client
+        let (application_id, last_event_seq) = match client
             .request(command)
             .await
             .map_err(|e| Error::Client(e.to_string()))?
         {
-            ClientResponseType::Response(ApplicationCommandResponse::ApplicationCreated {
-                application,
+            ClientResponseType::Response(Response::Created {
+                application_id,
+                last_event_seq,
                 ..
-            }) => Ok(application),
-            ClientResponseType::Response(ApplicationCommandResponse::Error { message }) => {
-                Err(Error::Command(message))
+            }) => (application_id, last_event_seq),
+            ClientResponseType::Response(Response::Error { message }) => {
+                return Err(Error::Command(message));
             }
-            _ => Err(Error::UnexpectedResponse),
-        }
+            _ => return Err(Error::UnexpectedResponse),
+        };
+
+        self.view.wait_for_seq(last_event_seq).await?;
+
+        Ok(self
+            .view
+            .get_application(application_id)
+            .await
+            .ok_or(Error::UnexpectedResponse)?)
     }
 
     async fn get_application(&self, application_id: Uuid) -> Result<Option<Application>, Error> {
@@ -584,7 +596,7 @@ where
     ) -> Result<(), Error> {
         let client = self.get_client().await?;
 
-        let command = ApplicationCommand::TransferOwnership {
+        let command = Command::TransferOwnership {
             application_id,
             new_owner_id,
         };
@@ -594,10 +606,58 @@ where
             .await
             .map_err(|e| Error::Client(e.to_string()))?
         {
-            ClientResponseType::Response(ApplicationCommandResponse::OwnershipTransferred {
-                ..
-            }) => Ok(()),
-            ClientResponseType::Response(ApplicationCommandResponse::Error { message }) => {
+            ClientResponseType::Response(Response::OwnershipTransferred { .. }) => Ok(()),
+            ClientResponseType::Response(Response::Error { message }) => {
+                Err(Error::Command(message))
+            }
+            _ => Err(Error::UnexpectedResponse),
+        }
+    }
+
+    async fn link_http_domain(
+        &self,
+        application_id: Uuid,
+        http_domain: String,
+    ) -> Result<(), Error> {
+        let client = self.get_client().await?;
+
+        let command = Command::LinkHttpDomain {
+            application_id,
+            http_domain,
+        };
+
+        match client
+            .request(command)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
+            ClientResponseType::Response(Response::HttpDomainLinked { .. }) => Ok(()),
+            ClientResponseType::Response(Response::Error { message }) => {
+                Err(Error::Command(message))
+            }
+            _ => Err(Error::UnexpectedResponse),
+        }
+    }
+
+    async fn unlink_http_domain(
+        &self,
+        application_id: Uuid,
+        http_domain: String,
+    ) -> Result<(), Error> {
+        let client = self.get_client().await?;
+
+        let command = Command::UnlinkHttpDomain {
+            application_id,
+            http_domain,
+        };
+
+        match client
+            .request(command)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
+            ClientResponseType::Response(Response::HttpDomainUnlinked { .. }) => Ok(()),
+            ClientResponseType::Response(Response::Error { message }) => {
                 Err(Error::Command(message))
             }
             _ => Err(Error::UnexpectedResponse),
@@ -619,8 +679,8 @@ mod tests {
     };
     use uuid::Uuid;
 
-    type TestCommandStream = MemoryStream<ApplicationCommand, DeserializeError, SerializeError>;
-    type TestEventStream = MemoryStream<ApplicationEvent, DeserializeError, SerializeError>;
+    type TestCommandStream = MemoryStream<Command, DeserializeError, SerializeError>;
+    type TestEventStream = MemoryStream<Event, DeserializeError, SerializeError>;
     type TestApplicationManager =
         ApplicationManager<TestCommandStream, TestEventStream, MemoryLockManager>;
 
@@ -654,7 +714,7 @@ mod tests {
 
         assert!(result.is_ok());
         let app = result.unwrap();
-        assert_eq!(app.owner_identity_id, owner_id);
+        assert_eq!(app.owner_id, owner_id);
     }
 
     #[tokio::test]
@@ -676,7 +736,7 @@ mod tests {
         // Get from view
         let retrieved = manager.get_application(app.id).await.unwrap();
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap().owner_identity_id, owner_id);
+        assert_eq!(retrieved.unwrap().owner_id, owner_id);
     }
 
     #[tokio::test]
@@ -737,7 +797,7 @@ mod tests {
 
         // Verify ownership changed in view
         let updated_app = manager.view().get_application(app.id).await.unwrap();
-        assert_eq!(updated_app.owner_identity_id, new_owner_id);
+        assert_eq!(updated_app.owner_id, new_owner_id);
     }
 
     #[tokio::test]
@@ -986,5 +1046,422 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
         assert_eq!(manager1.view().application_count().await, 2);
         assert_eq!(manager2.view().application_count().await, 2);
+    }
+
+    #[tokio::test]
+    async fn test_link_http_domain_success() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+        let domain = "example.com".to_string();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Link HTTP domain
+        let result = manager.link_http_domain(app.id, domain.clone()).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify domain is linked in view
+        assert!(manager.view().http_domain_linked(&domain).await);
+        assert_eq!(
+            manager
+                .view()
+                .get_application_id_for_http_domain(&domain)
+                .await,
+            Some(app.id)
+        );
+
+        // Verify application has the domain in its linked domains
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.linked_http_domains, vec![domain]);
+    }
+
+    #[tokio::test]
+    async fn test_link_http_domain_to_nonexistent_application() {
+        let manager = create_test_manager().await;
+        let nonexistent_app_id = Uuid::new_v4();
+        let domain = "example.com".to_string();
+
+        // Try to link domain to non-existent application
+        let result = manager.link_http_domain(nonexistent_app_id, domain).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::Command(msg) => assert_eq!(msg, "Application not found"),
+            _ => panic!("Expected command error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_link_already_linked_domain() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+        let domain = "example.com".to_string();
+
+        // Create first application
+        let app1 = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Create second application
+        let app2 = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Link domain to first application
+        let result = manager.link_http_domain(app1.id, domain.clone()).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Try to link same domain to second application (should fail)
+        let result = manager.link_http_domain(app2.id, domain).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::Command(msg) => assert_eq!(msg, "HTTP domain already linked"),
+            _ => panic!("Expected command error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_unlink_http_domain_success() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+        let domain = "example.com".to_string();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Link HTTP domain
+        let result = manager.link_http_domain(app.id, domain.clone()).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify domain is linked
+        assert!(manager.view().http_domain_linked(&domain).await);
+
+        // Unlink HTTP domain
+        let result = manager.unlink_http_domain(app.id, domain.clone()).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify domain is no longer linked
+        assert!(!manager.view().http_domain_linked(&domain).await);
+        assert_eq!(
+            manager
+                .view()
+                .get_application_id_for_http_domain(&domain)
+                .await,
+            None
+        );
+
+        // Verify application no longer has the domain
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.linked_http_domains, Vec::<String>::new());
+    }
+
+    #[tokio::test]
+    async fn test_unlink_http_domain_from_nonexistent_application() {
+        let manager = create_test_manager().await;
+        let nonexistent_app_id = Uuid::new_v4();
+        let domain = "example.com".to_string();
+
+        // Try to unlink domain from non-existent application
+        let result = manager.unlink_http_domain(nonexistent_app_id, domain).await;
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::Command(msg) => assert_eq!(msg, "Application not found"),
+            _ => panic!("Expected command error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_unlink_non_linked_domain() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+        let domain = "example.com".to_string();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Try to unlink domain that was never linked
+        let result = manager.unlink_http_domain(app.id, domain).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::Command(msg) => assert_eq!(msg, "HTTP domain not linked to this application"),
+            _ => panic!("Expected command error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_unlink_domain_from_wrong_application() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+        let domain = "example.com".to_string();
+
+        // Create two applications
+        let app1 = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        let app2 = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Link domain to first application
+        let result = manager.link_http_domain(app1.id, domain.clone()).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Try to unlink domain from second application (should fail)
+        let result = manager.unlink_http_domain(app2.id, domain).await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::Command(msg) => assert_eq!(msg, "HTTP domain not linked to this application"),
+            _ => panic!("Expected command error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_multiple_domains_per_application() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+        let domain1 = "example.com".to_string();
+        let domain2 = "test.com".to_string();
+        let domain3 = "demo.org".to_string();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Link multiple domains
+        assert!(
+            manager
+                .link_http_domain(app.id, domain1.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        assert!(
+            manager
+                .link_http_domain(app.id, domain2.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        assert!(
+            manager
+                .link_http_domain(app.id, domain3.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify all domains are linked
+        assert!(manager.view().http_domain_linked(&domain1).await);
+        assert!(manager.view().http_domain_linked(&domain2).await);
+        assert!(manager.view().http_domain_linked(&domain3).await);
+
+        // Verify all domains point to the same application
+        assert_eq!(
+            manager
+                .view()
+                .get_application_id_for_http_domain(&domain1)
+                .await,
+            Some(app.id)
+        );
+        assert_eq!(
+            manager
+                .view()
+                .get_application_id_for_http_domain(&domain2)
+                .await,
+            Some(app.id)
+        );
+        assert_eq!(
+            manager
+                .view()
+                .get_application_id_for_http_domain(&domain3)
+                .await,
+            Some(app.id)
+        );
+
+        // Verify application has all domains
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.linked_http_domains.len(), 3);
+        assert!(updated_app.linked_http_domains.contains(&domain1));
+        assert!(updated_app.linked_http_domains.contains(&domain2));
+        assert!(updated_app.linked_http_domains.contains(&domain3));
+
+        // Unlink one domain
+        assert!(
+            manager
+                .unlink_http_domain(app.id, domain2.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify only domain2 is unlinked
+        assert!(manager.view().http_domain_linked(&domain1).await);
+        assert!(!manager.view().http_domain_linked(&domain2).await);
+        assert!(manager.view().http_domain_linked(&domain3).await);
+
+        // Verify application only has remaining domains
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.linked_http_domains.len(), 2);
+        assert!(updated_app.linked_http_domains.contains(&domain1));
+        assert!(!updated_app.linked_http_domains.contains(&domain2));
+        assert!(updated_app.linked_http_domains.contains(&domain3));
+    }
+
+    #[tokio::test]
+    async fn test_domain_linking_with_application_archival() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+        let domain = "example.com".to_string();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Link domain to application
+        assert!(
+            manager
+                .link_http_domain(app.id, domain.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify domain is linked
+        assert!(manager.view().http_domain_linked(&domain).await);
+
+        // Archive the application
+        assert!(manager.archive_application(app.id).await.is_ok());
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify application is archived and domain is no longer linked
+        assert!(!manager.view().application_exists(app.id).await);
+        assert!(!manager.view().http_domain_linked(&domain).await);
+        assert_eq!(
+            manager
+                .view()
+                .get_application_id_for_http_domain(&domain)
+                .await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_domain_linking() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Try to link the same domain concurrently (should only succeed once)
+        let domain = "example.com".to_string();
+        let manager_clone = manager.clone();
+        let domain_clone = domain.clone();
+
+        let handle1 = tokio::spawn(async move { manager.link_http_domain(app.id, domain).await });
+
+        let handle2 =
+            tokio::spawn(async move { manager_clone.link_http_domain(app.id, domain_clone).await });
+
+        let results = futures::future::join_all([handle1, handle2]).await;
+
+        // One should succeed, one should fail
+        let results: Vec<Result<(), Error>> = results.into_iter().map(|r| r.unwrap()).collect();
+        let success_count = results.iter().filter(|r| r.is_ok()).count();
+        let error_count = results.iter().filter(|r| r.is_err()).count();
+
+        assert_eq!(success_count, 1);
+        assert_eq!(error_count, 1);
+
+        // Verify the error is the expected one
+        let error_result = results.iter().find(|r| r.is_err()).unwrap();
+        match error_result.as_ref().unwrap_err() {
+            Error::Command(msg) => assert_eq!(msg, "HTTP domain already linked"),
+            _ => panic!("Expected command error"),
+        }
     }
 }

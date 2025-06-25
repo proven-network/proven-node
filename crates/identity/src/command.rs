@@ -5,7 +5,7 @@ use uuid::Uuid;
 /// Commands that can be sent to the identity service to modify identity state.
 /// These commands are processed through the command stream and may succeed or fail.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum IdentityCommand {
+pub enum Command {
     /// Get an existing identity by PRF public key, or create a new one if it doesn't exist.
     GetOrCreateIdentityByPrfPublicKey {
         /// The PRF public key bytes (32 bytes).
@@ -22,7 +22,7 @@ pub enum IdentityCommand {
     },
 }
 
-impl TryFrom<Bytes> for IdentityCommand {
+impl TryFrom<Bytes> for Command {
     type Error = ciborium::de::Error<std::io::Error>;
 
     fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
@@ -31,7 +31,7 @@ impl TryFrom<Bytes> for IdentityCommand {
     }
 }
 
-impl TryInto<Bytes> for IdentityCommand {
+impl TryInto<Bytes> for Command {
     type Error = ciborium::ser::Error<std::io::Error>;
 
     fn try_into(self) -> Result<Bytes, Self::Error> {

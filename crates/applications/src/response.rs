@@ -1,22 +1,21 @@
-use crate::Application;
-
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Responses returned by the application service after processing commands.
 /// These indicate the result of command execution.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum ApplicationCommandResponse {
+pub enum Response {
     /// Application was successfully archived.
-    ApplicationArchived {
+    Archived {
         /// The sequence number of the last event published for this command.
         last_event_seq: u64,
     },
 
     /// An application was successfully created.
-    ApplicationCreated {
-        /// The newly created application.
-        application: Application,
+    Created {
+        /// The ID of the newly created application.
+        application_id: Uuid,
 
         /// The sequence number of the last event published for this command.
         last_event_seq: u64,
@@ -28,6 +27,18 @@ pub enum ApplicationCommandResponse {
         message: String,
     },
 
+    /// An HTTP domain was successfully linked to an application.
+    HttpDomainLinked {
+        /// The sequence number of the last event published for this command.
+        last_event_seq: u64,
+    },
+
+    /// An HTTP domain was successfully unlinked from an application.
+    HttpDomainUnlinked {
+        /// The sequence number of the last event published for this command.
+        last_event_seq: u64,
+    },
+
     /// Ownership transfer completed successfully.
     OwnershipTransferred {
         /// The sequence number of the last event published for this command.
@@ -35,7 +46,7 @@ pub enum ApplicationCommandResponse {
     },
 }
 
-impl TryFrom<Bytes> for ApplicationCommandResponse {
+impl TryFrom<Bytes> for Response {
     type Error = ciborium::de::Error<std::io::Error>;
 
     fn try_from(bytes: Bytes) -> Result<Self, <Self as TryFrom<Bytes>>::Error> {
@@ -44,7 +55,7 @@ impl TryFrom<Bytes> for ApplicationCommandResponse {
     }
 }
 
-impl TryInto<Bytes> for ApplicationCommandResponse {
+impl TryInto<Bytes> for Response {
     type Error = ciborium::ser::Error<std::io::Error>;
 
     fn try_into(self) -> Result<Bytes, <Self as TryInto<Bytes>>::Error> {

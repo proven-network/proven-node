@@ -1,4 +1,4 @@
-use crate::{Error, Identity, events::IdentityEvent};
+use crate::{Error, Event, Identity};
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -110,14 +110,14 @@ impl IdentityView {
 
     /// Apply an event to update the view state
     /// This is called by the consumer handler when processing events
-    async fn apply_event(&self, event: &IdentityEvent) {
+    async fn apply_event(&self, event: &Event) {
         match event {
-            IdentityEvent::Created { identity_id, .. } => {
+            Event::Created { identity_id, .. } => {
                 let identity = Identity { id: *identity_id };
                 let mut identities = self.identities.write().await;
                 identities.insert(*identity_id, identity);
             }
-            IdentityEvent::PrfPublicKeyLinked {
+            Event::PrfPublicKeyLinked {
                 identity_id,
                 prf_public_key,
                 ..
@@ -158,12 +158,10 @@ impl IdentityViewConsumerHandler {
 }
 
 #[async_trait]
-impl ConsumerHandler<IdentityEvent, DeserializeError, SerializeError>
-    for IdentityViewConsumerHandler
-{
+impl ConsumerHandler<Event, DeserializeError, SerializeError> for IdentityViewConsumerHandler {
     type Error = Error;
 
-    async fn handle(&self, event: IdentityEvent, stream_sequence: u64) -> Result<(), Self::Error> {
+    async fn handle(&self, event: Event, stream_sequence: u64) -> Result<(), Self::Error> {
         // Apply the event to update the view
         self.view.apply_event(&event).await;
 

@@ -1,7 +1,4 @@
-use crate::{
-    Error, Identity, events::IdentityEvent, request::IdentityCommand,
-    response::IdentityCommandResponse, view::IdentityView,
-};
+use crate::{Command, Error, Event, Identity, IdentityView, Response};
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,7 +16,7 @@ type SerializeError = ciborium::ser::Error<std::io::Error>;
 #[derive(Clone, Debug)]
 pub struct IdentityServiceHandler<ES>
 where
-    ES: InitializedStream<IdentityEvent, DeserializeError, SerializeError>,
+    ES: InitializedStream<Event, DeserializeError, SerializeError>,
 {
     /// Event stream for publishing events
     event_stream: ES,
@@ -33,7 +30,7 @@ where
 
 impl<ES> IdentityServiceHandler<ES>
 where
-    ES: InitializedStream<IdentityEvent, DeserializeError, SerializeError>,
+    ES: InitializedStream<Event, DeserializeError, SerializeError>,
 {
     /// Creates a new identity service handler.
     ///
@@ -62,21 +59,17 @@ where
 
     /// Determines if a command requires strong consistency (view synchronization)
     /// before processing to prevent conflicts or ensure accurate reads.
-    fn requires_strong_consistency(&self, command: &IdentityCommand) -> bool {
+    fn requires_strong_consistency(&self, command: &Command) -> bool {
         matches!(
             command,
-            IdentityCommand::GetOrCreateIdentityByPrfPublicKey { .. }
-                | IdentityCommand::LinkPrfPublicKey { .. }
+            Command::GetOrCreateIdentityByPrfPublicKey { .. } | Command::LinkPrfPublicKey { .. }
         )
     }
 
     /// Handle commands by generating and publishing events
-    async fn handle_command(
-        &self,
-        command: IdentityCommand,
-    ) -> Result<IdentityCommandResponse, Error> {
+    async fn handle_command(&self, command: Command) -> Result<Response, Error> {
         match command {
-            IdentityCommand::GetOrCreateIdentityByPrfPublicKey { prf_public_key } => {
+            Command::GetOrCreateIdentityByPrfPublicKey { prf_public_key } => {
                 // Check if identity already exists for this PRF public key
                 if let Some(identity) = self
                     .view
@@ -85,7 +78,7 @@ where
                 {
                     // For existing identities, we don't publish events, so use 0 as placeholder
                     // TODO: Consider how to handle this case for read-your-own-writes consistency
-                    return Ok(IdentityCommandResponse::IdentityRetrieved {
+                    return Ok(Response::IdentityRetrieved {
                         identity,
                         last_event_seq: 0,
                     });
@@ -97,11 +90,11 @@ where
 
                 // Create both events for atomic publishing
                 let events = vec![
-                    IdentityEvent::Created {
+                    Event::Created {
                         created_at: now,
                         identity_id,
                     },
-                    IdentityEvent::PrfPublicKeyLinked {
+                    Event::PrfPublicKeyLinked {
                         identity_id,
                         linked_at: now,
                         prf_public_key: prf_public_key.clone(),
@@ -116,31 +109,31 @@ where
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
                 let identity = Identity { id: identity_id };
-                Ok(IdentityCommandResponse::IdentityRetrieved {
+                Ok(Response::IdentityRetrieved {
                     identity,
                     last_event_seq,
                 })
             }
 
-            IdentityCommand::LinkPrfPublicKey {
+            Command::LinkPrfPublicKey {
                 identity_id,
                 prf_public_key,
             } => {
                 // Validate identity exists
                 if !self.view.identity_exists(identity_id).await {
-                    return Ok(IdentityCommandResponse::Error {
+                    return Ok(Response::Error {
                         message: "Identity not found".to_string(),
                     });
                 }
 
                 // Check if PRF public key is already linked
                 if self.view.prf_public_key_exists(&prf_public_key).await {
-                    return Ok(IdentityCommandResponse::Error {
+                    return Ok(Response::Error {
                         message: "PRF public key already linked to an identity".to_string(),
                     });
                 }
 
-                let event = IdentityEvent::PrfPublicKeyLinked {
+                let event = Event::PrfPublicKeyLinked {
                     identity_id,
                     prf_public_key,
                     linked_at: chrono::Utc::now(),
@@ -153,31 +146,30 @@ where
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
-                Ok(IdentityCommandResponse::PrfPublicKeyLinked { last_event_seq })
+                Ok(Response::PrfPublicKeyLinked { last_event_seq })
             }
         }
     }
 }
 
 #[async_trait]
-impl<ES> ServiceHandler<IdentityCommand, DeserializeError, SerializeError>
-    for IdentityServiceHandler<ES>
+impl<ES> ServiceHandler<Command, DeserializeError, SerializeError> for IdentityServiceHandler<ES>
 where
-    ES: InitializedStream<IdentityEvent, DeserializeError, SerializeError>,
+    ES: InitializedStream<Event, DeserializeError, SerializeError>,
 {
     type Error = Error;
-    type ResponseType = IdentityCommandResponse;
+    type ResponseType = Response;
     type ResponseDeserializationError = DeserializeError;
     type ResponseSerializationError = SerializeError;
 
     async fn handle<R>(
         &self,
-        command: IdentityCommand,
+        command: Command,
         responder: R,
     ) -> Result<R::UsedResponder, Self::Error>
     where
         R: ServiceResponder<
-                IdentityCommand,
+                Command,
                 DeserializeError,
                 SerializeError,
                 Self::ResponseType,

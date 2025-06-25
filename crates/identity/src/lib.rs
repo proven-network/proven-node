@@ -4,19 +4,19 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
+mod command;
 mod error;
-mod events;
+mod event;
 mod identity;
-mod request;
 mod response;
 mod service_handler;
 mod view;
 
+pub use command::Command;
 pub use error::Error;
-pub use events::IdentityEvent;
+pub use event::Event;
 pub use identity::Identity;
-pub use request::IdentityCommand;
-pub use response::IdentityCommandResponse;
+pub use response::Response;
 pub use service_handler::IdentityServiceHandler;
 pub use view::{IdentityView, IdentityViewConsumerHandler};
 
@@ -70,53 +70,46 @@ where
 /// Only the leader node runs the command service.
 pub struct IdentityManager<CS, ES, LM>
 where
-    CS: Stream<IdentityCommand, DeserializeError, SerializeError>,
-    ES: Stream<IdentityEvent, DeserializeError, SerializeError>,
+    CS: Stream<Command, DeserializeError, SerializeError>,
+    ES: Stream<Event, DeserializeError, SerializeError>,
     LM: LockManager + Clone,
 {
     /// Cached command client
-    client:
-        OnceLock<
-            <CS::Initialized as InitializedStream<
-                IdentityCommand,
-                DeserializeError,
-                SerializeError,
-            >>::Client<IdentityServiceHandler<ES::Initialized>>,
+    client: OnceLock<
+        <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
+            IdentityServiceHandler<ES::Initialized>,
         >,
+    >,
 
     /// Client options for the command client
-    client_options: <<CS::Initialized as InitializedStream<
-        IdentityCommand,
-        DeserializeError,
-        SerializeError,
-    >>::Client<IdentityServiceHandler<ES::Initialized>> as Client<
-        IdentityServiceHandler<ES::Initialized>,
-        IdentityCommand,
-        DeserializeError,
-        SerializeError,
-    >>::Options,
+    client_options:
+        <<CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
+            IdentityServiceHandler<ES::Initialized>,
+        > as Client<
+            IdentityServiceHandler<ES::Initialized>,
+            Command,
+            DeserializeError,
+            SerializeError,
+        >>::Options,
 
     /// Command stream for processing commands
     command_stream: CS,
 
     /// Cached consumer (to ensure it only starts once)
-    consumer:
-        OnceLock<
-            <ES::Initialized as InitializedStream<
-                IdentityEvent,
-                DeserializeError,
-                SerializeError,
-            >>::Consumer<IdentityViewConsumerHandler>,
+    consumer: OnceLock<
+        <ES::Initialized as InitializedStream<Event, DeserializeError, SerializeError>>::Consumer<
+            IdentityViewConsumerHandler,
         >,
+    >,
 
     /// Consumer options for the event consumer
     consumer_options: <<ES::Initialized as InitializedStream<
-        IdentityEvent,
+        Event,
         DeserializeError,
         SerializeError,
     >>::Consumer<IdentityViewConsumerHandler> as Consumer<
         IdentityViewConsumerHandler,
-        IdentityEvent,
+        Event,
         DeserializeError,
         SerializeError,
     >>::Options,
@@ -134,23 +127,20 @@ where
     lock_manager: LM,
 
     /// Cached service (to ensure it only starts once)
-    service:
-        OnceLock<
-            <CS::Initialized as InitializedStream<
-                IdentityCommand,
-                DeserializeError,
-                SerializeError,
-            >>::Service<IdentityServiceHandler<ES::Initialized>>,
+    service: OnceLock<
+        <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Service<
+            IdentityServiceHandler<ES::Initialized>,
         >,
+    >,
 
     /// Service options for the command service
     service_options: <<CS::Initialized as InitializedStream<
-        IdentityCommand,
+        Command,
         DeserializeError,
         SerializeError,
     >>::Service<IdentityServiceHandler<ES::Initialized>> as Service<
         IdentityServiceHandler<ES::Initialized>,
-        IdentityCommand,
+        Command,
         DeserializeError,
         SerializeError,
     >>::Options,
@@ -161,8 +151,8 @@ where
 
 impl<CS, ES, LM> IdentityManager<CS, ES, LM>
 where
-    CS: Stream<IdentityCommand, DeserializeError, SerializeError>,
-    ES: Stream<IdentityEvent, DeserializeError, SerializeError>,
+    CS: Stream<Command, DeserializeError, SerializeError>,
+    ES: Stream<Event, DeserializeError, SerializeError>,
     LM: LockManager + Clone,
 {
     /// Create a new identity manager with dual streams and distributed leadership.
@@ -185,32 +175,32 @@ where
         command_stream: CS,
         event_stream: ES,
         service_options: <<CS::Initialized as InitializedStream<
-            IdentityCommand,
+            Command,
             DeserializeError,
             SerializeError,
         >>::Service<IdentityServiceHandler<ES::Initialized>> as Service<
             IdentityServiceHandler<ES::Initialized>,
-            IdentityCommand,
+            Command,
             DeserializeError,
             SerializeError,
         >>::Options,
         client_options: <<CS::Initialized as InitializedStream<
-            IdentityCommand,
+            Command,
             DeserializeError,
             SerializeError,
         >>::Client<IdentityServiceHandler<ES::Initialized>> as Client<
             IdentityServiceHandler<ES::Initialized>,
-            IdentityCommand,
+            Command,
             DeserializeError,
             SerializeError,
         >>::Options,
         consumer_options: <<ES::Initialized as InitializedStream<
-            IdentityEvent,
+            Event,
             DeserializeError,
             SerializeError,
         >>::Consumer<IdentityViewConsumerHandler> as Consumer<
             IdentityViewConsumerHandler,
-            IdentityEvent,
+            Event,
             DeserializeError,
             SerializeError,
         >>::Options,
@@ -242,13 +232,11 @@ where
     async fn get_client(
         &self,
     ) -> Result<
-        <CS::Initialized as InitializedStream<
-            IdentityCommand,
-            DeserializeError,
-            SerializeError,
-        >>::Client<IdentityServiceHandler<ES::Initialized>>,
+        <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
+            IdentityServiceHandler<ES::Initialized>,
+        >,
         Error,
-    >{
+    > {
         if let Some(client) = self.client.get() {
             return Ok(client.clone());
         }
@@ -469,8 +457,8 @@ where
 
 impl<CS, ES, LM> Clone for IdentityManager<CS, ES, LM>
 where
-    CS: Stream<IdentityCommand, DeserializeError, SerializeError> + Clone,
-    ES: Stream<IdentityEvent, DeserializeError, SerializeError> + Clone,
+    CS: Stream<Command, DeserializeError, SerializeError> + Clone,
+    ES: Stream<Event, DeserializeError, SerializeError> + Clone,
     LM: LockManager + Clone,
 {
     fn clone(&self) -> Self {
@@ -494,8 +482,8 @@ where
 #[async_trait]
 impl<CS, ES, LM> IdentityManagement for IdentityManager<CS, ES, LM>
 where
-    CS: Stream<IdentityCommand, DeserializeError, SerializeError>,
-    ES: Stream<IdentityEvent, DeserializeError, SerializeError>,
+    CS: Stream<Command, DeserializeError, SerializeError>,
+    ES: Stream<Event, DeserializeError, SerializeError>,
     LM: LockManager + Clone,
 {
     async fn get_identity(&self, identity_id: Uuid) -> Result<Option<Identity>, Error> {
@@ -509,7 +497,7 @@ where
     ) -> Result<Identity, Error> {
         let client = self.get_client().await?;
 
-        let command = IdentityCommand::GetOrCreateIdentityByPrfPublicKey {
+        let command = Command::GetOrCreateIdentityByPrfPublicKey {
             prf_public_key: prf_public_key.clone(),
         };
 
@@ -518,11 +506,10 @@ where
             .await
             .map_err(|e| Error::Client(e.to_string()))?
         {
-            ClientResponseType::Response(IdentityCommandResponse::IdentityRetrieved {
-                identity,
-                ..
-            }) => Ok(identity),
-            ClientResponseType::Response(IdentityCommandResponse::Error { message }) => {
+            ClientResponseType::Response(Response::IdentityRetrieved { identity, .. }) => {
+                Ok(identity)
+            }
+            ClientResponseType::Response(Response::Error { message }) => {
                 Err(Error::Command(message))
             }
             _ => Err(Error::UnexpectedResponse),
@@ -552,8 +539,8 @@ mod tests {
     };
     use uuid::Uuid;
 
-    type TestCommandStream = MemoryStream<IdentityCommand, DeserializeError, SerializeError>;
-    type TestEventStream = MemoryStream<IdentityEvent, DeserializeError, SerializeError>;
+    type TestCommandStream = MemoryStream<Command, DeserializeError, SerializeError>;
+    type TestEventStream = MemoryStream<Event, DeserializeError, SerializeError>;
     type TestIdentityManager =
         IdentityManager<TestCommandStream, TestEventStream, MemoryLockManager>;
 

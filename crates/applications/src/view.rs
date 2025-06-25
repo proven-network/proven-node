@@ -1,4 +1,4 @@
-use crate::{Application, Error, events::ApplicationEvent};
+use crate::{Application, Error, event::Event};
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,6 +18,9 @@ pub struct ApplicationView {
     // Use RwLock for efficient concurrent reads
     applications: Arc<RwLock<HashMap<Uuid, Application>>>,
 
+    // Map from HTTP domain to application ID
+    http_domain_to_application: Arc<RwLock<HashMap<String, Uuid>>>,
+
     // Track the sequence number of the last processed event
     last_processed_seq: Arc<AtomicU64>,
 
@@ -30,14 +33,42 @@ impl ApplicationView {
     pub fn new() -> Self {
         Self {
             applications: Arc::new(RwLock::new(HashMap::new())),
+            http_domain_to_application: Arc::new(RwLock::new(HashMap::new())),
             last_processed_seq: Arc::new(AtomicU64::new(0)),
             seq_notifier: Arc::new(Notify::new()),
         }
     }
 
+    /// Check if an application exists
+    pub async fn application_exists(&self, application_id: Uuid) -> bool {
+        self.applications.read().await.contains_key(&application_id)
+    }
+
     /// Get a single application by ID
     pub async fn get_application(&self, application_id: Uuid) -> Option<Application> {
         self.applications.read().await.get(&application_id).cloned()
+    }
+
+    /// Get an application by HTTP domain
+    pub async fn get_application_id_for_http_domain(&self, http_domain: &str) -> Option<Uuid> {
+        self.http_domain_to_application
+            .read()
+            .await
+            .get(http_domain)
+            .cloned()
+    }
+
+    /// Check if an HTTP domain is linked to an application
+    pub async fn http_domain_linked(&self, http_domain: &str) -> bool {
+        self.http_domain_to_application
+            .read()
+            .await
+            .contains_key(http_domain)
+    }
+
+    /// Get all applications (for admin/debugging purposes)
+    pub async fn list_all_applications(&self) -> Vec<Application> {
+        self.applications.read().await.values().cloned().collect()
     }
 
     /// List all applications owned by a specific user
@@ -46,19 +77,9 @@ impl ApplicationView {
             .read()
             .await
             .values()
-            .filter(|app| app.owner_identity_id == owner_id)
+            .filter(|app| app.owner_id == owner_id)
             .cloned()
             .collect()
-    }
-
-    /// Check if an application exists
-    pub async fn application_exists(&self, application_id: Uuid) -> bool {
-        self.applications.read().await.contains_key(&application_id)
-    }
-
-    /// Get all applications (for admin/debugging purposes)
-    pub async fn list_all_applications(&self) -> Vec<Application> {
-        self.applications.read().await.values().cloned().collect()
     }
 
     /// Get the count of applications
@@ -95,32 +116,71 @@ impl ApplicationView {
 
     /// Apply an event to update the view state
     /// This is called by the consumer handler when processing events
-    async fn apply_event(&self, event: &ApplicationEvent) {
+    async fn apply_event(&self, event: &Event) {
         let mut apps = self.applications.write().await;
 
         match event {
-            ApplicationEvent::Created {
+            Event::Archived { application_id, .. } => {
+                // Clean up linked domains for this application
+                if let Some(app) = apps.get(application_id) {
+                    let mut domain_map = self.http_domain_to_application.write().await;
+                    for domain in &app.linked_http_domains {
+                        domain_map.remove(domain);
+                    }
+                }
+                apps.remove(application_id);
+            }
+            Event::Created {
                 application_id,
+                created_at,
                 owner_identity_id,
                 ..
             } => {
                 let app = Application {
+                    created_at: *created_at,
                     id: *application_id,
-                    owner_identity_id: *owner_identity_id,
+                    linked_http_domains: vec![],
+                    owner_id: *owner_identity_id,
                 };
                 apps.insert(*application_id, app);
             }
-            ApplicationEvent::OwnershipTransferred {
+            Event::HttpDomainLinked {
+                application_id,
+                http_domain,
+                ..
+            } => {
+                if let Some(app) = apps.get_mut(application_id) {
+                    app.linked_http_domains.push(http_domain.clone());
+                }
+
+                self.http_domain_to_application
+                    .write()
+                    .await
+                    .insert(http_domain.clone(), *application_id);
+            }
+            Event::HttpDomainUnlinked {
+                application_id,
+                http_domain,
+                ..
+            } => {
+                if let Some(app) = apps.get_mut(application_id) {
+                    app.linked_http_domains
+                        .retain(|domain| domain != http_domain);
+                }
+
+                self.http_domain_to_application
+                    .write()
+                    .await
+                    .remove(http_domain);
+            }
+            Event::OwnershipTransferred {
                 application_id,
                 new_owner_id,
                 ..
             } => {
                 if let Some(app) = apps.get_mut(application_id) {
-                    app.owner_identity_id = *new_owner_id;
+                    app.owner_id = *new_owner_id;
                 }
-            }
-            ApplicationEvent::Archived { application_id, .. } => {
-                apps.remove(application_id);
             }
         }
     }
@@ -155,16 +215,10 @@ impl ApplicationViewConsumerHandler {
 }
 
 #[async_trait]
-impl ConsumerHandler<ApplicationEvent, DeserializeError, SerializeError>
-    for ApplicationViewConsumerHandler
-{
+impl ConsumerHandler<Event, DeserializeError, SerializeError> for ApplicationViewConsumerHandler {
     type Error = Error;
 
-    async fn handle(
-        &self,
-        event: ApplicationEvent,
-        stream_sequence: u64,
-    ) -> Result<(), Self::Error> {
+    async fn handle(&self, event: Event, stream_sequence: u64) -> Result<(), Self::Error> {
         // Apply the event to update the view
         self.view.apply_event(&event).await;
 

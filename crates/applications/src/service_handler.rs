@@ -1,7 +1,4 @@
-use crate::{
-    Application, Error, events::ApplicationEvent, request::ApplicationCommand,
-    response::ApplicationCommandResponse, view::ApplicationView,
-};
+use crate::{Error, command::Command, event::Event, response::Response, view::ApplicationView};
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,7 +16,7 @@ type SerializeError = ciborium::ser::Error<std::io::Error>;
 #[derive(Clone, Debug)]
 pub struct ApplicationServiceHandler<ES>
 where
-    ES: InitializedStream<ApplicationEvent, DeserializeError, SerializeError>,
+    ES: InitializedStream<Event, DeserializeError, SerializeError>,
 {
     /// Event stream for publishing events
     event_stream: ES,
@@ -33,7 +30,7 @@ where
 
 impl<ES> ApplicationServiceHandler<ES>
 where
-    ES: InitializedStream<ApplicationEvent, DeserializeError, SerializeError>,
+    ES: InitializedStream<Event, DeserializeError, SerializeError>,
 {
     /// Creates a new application service handler.
     ///
@@ -62,28 +59,29 @@ where
 
     /// Determines if a command requires strong consistency (view synchronization)
     /// before processing to prevent conflicts or ensure accurate reads.
-    fn requires_strong_consistency(&self, command: &ApplicationCommand) -> bool {
-        matches!(
-            command,
-            ApplicationCommand::ArchiveApplication { .. }
-                | ApplicationCommand::TransferOwnership { .. }
-        )
+    fn requires_strong_consistency(&self, command: &Command) -> bool {
+        match command {
+            Command::Archive { .. }
+            | Command::TransferOwnership { .. }
+            | Command::LinkHttpDomain { .. }
+            | Command::UnlinkHttpDomain { .. } => true,
+            Command::Create { .. } => false,
+        }
     }
 
     /// Handle commands by generating and publishing events
-    async fn handle_command(
-        &self,
-        command: ApplicationCommand,
-    ) -> Result<ApplicationCommandResponse, Error> {
+    async fn handle_command(&self, command: Command) -> Result<Response, Error> {
         match command {
-            ApplicationCommand::CreateApplication { owner_identity_id } => {
-                let application_id = Uuid::new_v4();
+            Command::Archive { application_id } => {
+                if !self.view.application_exists(application_id).await {
+                    return Ok(Response::Error {
+                        message: "Application not found".to_string(),
+                    });
+                }
 
-                // Create event
-                let event = ApplicationEvent::Created {
+                let event = Event::Archived {
                     application_id,
-                    owner_identity_id,
-                    created_at: chrono::Utc::now(),
+                    archived_at: chrono::Utc::now(),
                 };
 
                 // Publish event to event stream
@@ -93,24 +91,70 @@ where
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
-                let application = Application {
-                    id: application_id,
-                    owner_identity_id,
-                };
+                Ok(Response::Archived { last_event_seq })
+            }
 
-                Ok(ApplicationCommandResponse::ApplicationCreated {
-                    application,
+            Command::Create { owner_identity_id } => {
+                let application_id = Uuid::new_v4();
+
+                // Publish event to event stream
+                let last_event_seq = self
+                    .event_stream
+                    .publish(Event::Created {
+                        application_id,
+                        owner_identity_id,
+                        created_at: chrono::Utc::now(),
+                    })
+                    .await
+                    .map_err(|e| Error::Stream(e.to_string()))?;
+
+                Ok(Response::Created {
+                    application_id,
                     last_event_seq,
                 })
             }
 
-            ApplicationCommand::TransferOwnership {
+            Command::LinkHttpDomain {
+                application_id,
+                http_domain,
+            } => {
+                // Validate application exists
+                if !self.view.application_exists(application_id).await {
+                    return Ok(Response::Error {
+                        message: "Application not found".to_string(),
+                    });
+                }
+
+                // Validate HTTP domain is not already linked
+                if self.view.http_domain_linked(&http_domain).await {
+                    return Ok(Response::Error {
+                        message: "HTTP domain already linked".to_string(),
+                    });
+                }
+
+                let event = Event::HttpDomainLinked {
+                    application_id,
+                    http_domain,
+                    linked_at: chrono::Utc::now(),
+                };
+
+                // Publish event to event stream
+                let last_event_seq = self
+                    .event_stream
+                    .publish(event)
+                    .await
+                    .map_err(|e| Error::Stream(e.to_string()))?;
+
+                Ok(Response::HttpDomainLinked { last_event_seq })
+            }
+
+            Command::TransferOwnership {
                 application_id,
                 new_owner_id,
             } => {
                 // Validate application exists
                 if !self.view.application_exists(application_id).await {
-                    return Ok(ApplicationCommandResponse::Error {
+                    return Ok(Response::Error {
                         message: "Application not found".to_string(),
                     });
                 }
@@ -120,10 +164,10 @@ where
                     .view
                     .get_application(application_id)
                     .await
-                    .map(|app| app.owner_identity_id)
+                    .map(|app| app.owner_id)
                     .ok_or_else(|| Error::ApplicationNotFound(application_id))?;
 
-                let event = ApplicationEvent::OwnershipTransferred {
+                let event = Event::OwnershipTransferred {
                     application_id,
                     old_owner_id,
                     new_owner_id,
@@ -137,19 +181,41 @@ where
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
-                Ok(ApplicationCommandResponse::OwnershipTransferred { last_event_seq })
+                Ok(Response::OwnershipTransferred { last_event_seq })
             }
 
-            ApplicationCommand::ArchiveApplication { application_id } => {
+            Command::UnlinkHttpDomain {
+                application_id,
+                http_domain,
+            } => {
+                // Validate application exists
                 if !self.view.application_exists(application_id).await {
-                    return Ok(ApplicationCommandResponse::Error {
+                    return Ok(Response::Error {
                         message: "Application not found".to_string(),
                     });
                 }
 
-                let event = ApplicationEvent::Archived {
+                // Validate HTTP domain is linked to this particular application
+                if let Some(app_id) = self
+                    .view
+                    .get_application_id_for_http_domain(&http_domain)
+                    .await
+                {
+                    if app_id != application_id {
+                        return Ok(Response::Error {
+                            message: "HTTP domain not linked to this application".to_string(),
+                        });
+                    }
+                } else {
+                    return Ok(Response::Error {
+                        message: "HTTP domain not linked to this application".to_string(),
+                    });
+                }
+
+                let event = Event::HttpDomainUnlinked {
                     application_id,
-                    archived_at: chrono::Utc::now(),
+                    http_domain,
+                    unlinked_at: chrono::Utc::now(),
                 };
 
                 // Publish event to event stream
@@ -159,31 +225,30 @@ where
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
-                Ok(ApplicationCommandResponse::ApplicationArchived { last_event_seq })
+                Ok(Response::HttpDomainUnlinked { last_event_seq })
             }
         }
     }
 }
 
 #[async_trait]
-impl<ES> ServiceHandler<ApplicationCommand, DeserializeError, SerializeError>
-    for ApplicationServiceHandler<ES>
+impl<ES> ServiceHandler<Command, DeserializeError, SerializeError> for ApplicationServiceHandler<ES>
 where
-    ES: InitializedStream<ApplicationEvent, DeserializeError, SerializeError>,
+    ES: InitializedStream<Event, DeserializeError, SerializeError>,
 {
     type Error = Error;
-    type ResponseType = ApplicationCommandResponse;
+    type ResponseType = Response;
     type ResponseDeserializationError = DeserializeError;
     type ResponseSerializationError = SerializeError;
 
     async fn handle<R>(
         &self,
-        command: ApplicationCommand,
+        command: Command,
         responder: R,
     ) -> Result<R::UsedResponder, Self::Error>
     where
         R: ServiceResponder<
-                ApplicationCommand,
+                Command,
                 DeserializeError,
                 SerializeError,
                 Self::ResponseType,

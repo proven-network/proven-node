@@ -5,7 +5,7 @@ use uuid::Uuid;
 /// Events that represent state changes in the identity lifecycle.
 /// These events are published to the event stream and consumed by various subsystems.
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub enum IdentityEvent {
+pub enum Event {
     /// An identity was successfully created.
     Created {
         /// The unique identifier of the created identity.
@@ -28,7 +28,7 @@ pub enum IdentityEvent {
     },
 }
 
-impl TryFrom<Bytes> for IdentityEvent {
+impl TryFrom<Bytes> for Event {
     type Error = ciborium::de::Error<std::io::Error>;
 
     fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
@@ -37,7 +37,7 @@ impl TryFrom<Bytes> for IdentityEvent {
     }
 }
 
-impl TryInto<Bytes> for IdentityEvent {
+impl TryInto<Bytes> for Event {
     type Error = ciborium::ser::Error<std::io::Error>;
 
     fn try_into(self) -> Result<Bytes, Self::Error> {

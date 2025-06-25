@@ -12,17 +12,9 @@ pub enum Error {
     #[error("command error: {0}")]
     Command(String),
 
-    /// Command failed with error message
-    #[error("command failed: {0}")]
-    CommandFailed(String),
-
     /// Identity not found
     #[error("identity not found: {0}")]
     IdentityNotFound(Uuid),
-
-    /// Query processing error
-    #[error("query error: {0}")]
-    Query(String),
 
     /// Messaging service error
     #[error("messaging service error: {0}")]

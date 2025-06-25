@@ -3,14 +3,14 @@
 use std::convert::Infallible;
 
 use bytes::Bytes;
-use proven_applications::{ApplicationCommand, ApplicationEvent, ApplicationManager};
+use proven_applications::ApplicationManager;
 use proven_attestation_nsm::NsmAttestor;
 use proven_core::Core;
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
 use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
-use proven_identity::{IdentityCommand, IdentityEvent, IdentityManager};
+use proven_identity::{Command, Event, IdentityManager};
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
 use proven_locks_nats::NatsLockManager;
@@ -38,12 +38,12 @@ use tracing::info;
 pub type EnclaveNodeCore = Core<
     ApplicationManager<
         NatsStream<
-            ApplicationCommand,
+            proven_applications::Command,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
         NatsStream<
-            ApplicationEvent,
+            proven_applications::Event,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
@@ -86,12 +86,12 @@ pub type EnclaveNodeCore = Core<
     >,
     IdentityManager<
         NatsStream<
-            IdentityCommand,
+            Command,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
         NatsStream<
-            IdentityEvent,
+            Event,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,

@@ -3,7 +3,7 @@
 use std::convert::Infallible;
 
 use bytes::Bytes;
-use proven_applications::{ApplicationCommand, ApplicationEvent, ApplicationManager};
+use proven_applications::ApplicationManager;
 use proven_attestation_mock::MockAttestor;
 use proven_bitcoin_core::BitcoinNode;
 use proven_core::Core;
@@ -11,7 +11,7 @@ use proven_ethereum_lighthouse::LighthouseNode;
 use proven_ethereum_reth::RethNode;
 use proven_governance_mock::MockGovernance;
 use proven_http_insecure::InsecureHttpServer;
-use proven_identity::{IdentityCommand, IdentityEvent, IdentityManager};
+use proven_identity::IdentityManager;
 use proven_locks_nats::NatsLockManager;
 use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
@@ -35,12 +35,12 @@ use tracing::info;
 pub type LocalNodeCore = Core<
     ApplicationManager<
         NatsStream<
-            ApplicationCommand,
+            proven_applications::Command,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
         NatsStream<
-            ApplicationEvent,
+            proven_applications::Event,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
@@ -83,12 +83,12 @@ pub type LocalNodeCore = Core<
     >,
     IdentityManager<
         NatsStream<
-            IdentityCommand,
+            proven_identity::Command,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
         NatsStream<
-            IdentityEvent,
+            proven_identity::Event,
             ciborium::de::Error<std::io::Error>,
             ciborium::ser::Error<std::io::Error>,
         >,
