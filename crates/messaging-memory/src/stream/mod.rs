@@ -300,7 +300,13 @@ where
 
     /// The last sequence number in the stream.
     async fn last_seq(&self) -> Result<u64, Self::Error> {
-        Ok(self.messages.lock().await.len().try_into().unwrap())
+        let messages = self.messages.lock().await;
+        if messages.is_empty() {
+            Ok(0)
+        } else {
+            // Return the sequence number of the last message (0-indexed)
+            Ok((messages.len() - 1).try_into().unwrap())
+        }
     }
 
     /// The number of messages in the stream.
@@ -342,6 +348,41 @@ where
         let seq: u64 = seq_usize.try_into().unwrap();
 
         Ok(seq)
+    }
+
+    /// Publishes a batch of messages atomically to the stream.
+    /// Returns the sequence number of the last published message.
+    async fn publish_batch(&self, messages: Vec<T>) -> Result<u64, Self::Error> {
+        if messages.is_empty() {
+            return Err(Error::EmptyBatch);
+        }
+
+        let last_seq = {
+            let mut stream_messages = self.messages.lock().await;
+
+            // Add all messages atomically
+            for message in &messages {
+                stream_messages.push(Some(message.clone()));
+            }
+
+            // Return the sequence of the last message
+            stream_messages.len() - 1
+        };
+
+        // Broadcast all messages to consumers
+        let mut channels = self.consumer_channels.lock().await;
+        for message in &messages {
+            channels.retain_mut(|sender| {
+                let message = message.clone();
+                sender.try_send(message).is_ok()
+            });
+        }
+        drop(channels);
+
+        // TODO: Add error handling for sequence number conversion
+        let last_seq: u64 = last_seq.try_into().unwrap();
+
+        Ok(last_seq)
     }
 
     /// Publishes a rollup message directly to the stream - purges all prior messages.
@@ -999,6 +1040,57 @@ mod tests {
             assert_eq!(expected_seq, 1);
         } else {
             panic!("Expected Error::OutdatedSeq");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_publish_batch() {
+        let subject: MemorySubject<Bytes, std::convert::Infallible, std::convert::Infallible> =
+            MemorySubject::new("test_publish_batch").unwrap();
+        let stream = InitializedMemoryStream::new_with_subjects(
+            "test_stream",
+            MemoryStreamOptions,
+            vec![subject],
+        )
+        .await
+        .unwrap();
+
+        let message1 = Bytes::from("batch_message1");
+        let message2 = Bytes::from("batch_message2");
+        let message3 = Bytes::from("batch_message3");
+        let messages = vec![message1.clone(), message2.clone(), message3.clone()];
+
+        // Publish batch
+        let last_seq = stream.publish_batch(messages).await.unwrap();
+        assert_eq!(last_seq, 2); // Last sequence should be 2 (0-indexed)
+
+        // Verify all messages were stored
+        assert_eq!(stream.get(0).await.unwrap(), Some(message1));
+        assert_eq!(stream.get(1).await.unwrap(), Some(message2));
+        assert_eq!(stream.get(2).await.unwrap(), Some(message3));
+        assert_eq!(stream.last_seq().await.unwrap(), 2);
+        assert_eq!(stream.messages().await.unwrap(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_publish_batch_empty() {
+        let subject: MemorySubject<Bytes, std::convert::Infallible, std::convert::Infallible> =
+            MemorySubject::new("test_publish_batch_empty").unwrap();
+        let stream = InitializedMemoryStream::new_with_subjects(
+            "test_stream",
+            MemoryStreamOptions,
+            vec![subject],
+        )
+        .await
+        .unwrap();
+
+        // Attempt to publish empty batch
+        let result: Result<u64, Error> = stream.publish_batch(vec![]).await;
+        assert!(result.is_err());
+        if let Err(Error::EmptyBatch) = result {
+            // Expected error
+        } else {
+            panic!("Expected Error::EmptyBatch");
         }
     }
 }

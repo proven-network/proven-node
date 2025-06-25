@@ -10,6 +10,10 @@ pub enum Error {
     #[error("error starting consumer")]
     Consumer,
 
+    /// Attempted to publish an empty batch of messages.
+    #[error("cannot publish empty batch")]
+    EmptyBatch,
+
     /// Did an operation on a seq that doesn't exist yet.
     #[error("invalid seq. requested: {0}, current: {1}")]
     InvalidSeq(usize, usize),

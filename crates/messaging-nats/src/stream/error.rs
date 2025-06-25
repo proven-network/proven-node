@@ -22,6 +22,10 @@ pub enum Error {
     #[error("failed to get message: {0}")]
     DirectGet(async_nats::jetstream::stream::DirectGetErrorKind),
 
+    /// Attempted to publish an empty batch of messages.
+    #[error("cannot publish empty batch")]
+    EmptyBatch,
+
     /// Stream info error.
     #[error("failed to get stream info: {0}")]
     Info(async_nats::jetstream::context::RequestErrorKind),

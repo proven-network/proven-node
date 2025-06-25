@@ -113,6 +113,10 @@ where
     /// Publishes a message directly to the stream.
     async fn publish(&self, message: T) -> Result<u64, Self::Error>;
 
+    /// Publishes a batch of messages atomically to the stream.
+    /// Returns the sequence number of the last published message.
+    async fn publish_batch(&self, messages: Vec<T>) -> Result<u64, Self::Error>;
+
     /// Publishes a rollup message directly to the stream - purges all prior messages.
     /// Must provide expected sequence number for optimistic concurrency control.
     async fn rollup(&self, message: T, expected_seq: u64) -> Result<u64, Self::Error>;

@@ -278,6 +278,27 @@ where
         Ok(seq)
     }
 
+    /// Publishes a batch of messages atomically to the stream.
+    /// Returns the sequence number of the last published message.
+    ///
+    /// TODO: Update this implementation once NATS JetStream supports atomic batch publishing.
+    /// For now, we publish messages sequentially and return the last sequence number.
+    async fn publish_batch(&self, messages: Vec<T>) -> Result<u64, Self::Error> {
+        if messages.is_empty() {
+            return Err(Error::EmptyBatch);
+        }
+
+        let mut last_seq = 0;
+
+        // Publish each message sequentially
+        // TODO: Replace with atomic batch publish when NATS supports it
+        for message in messages {
+            last_seq = self.publish(message).await?;
+        }
+
+        Ok(last_seq)
+    }
+
     /// Publishes a rollup message directly to the stream - purges all prior messages.
     /// Must provide expected sequence number for optimistic concurrency control.
     async fn rollup(&self, message: T, expected_seq: u64) -> Result<u64, Self::Error> {
@@ -765,5 +786,99 @@ mod tests {
 
         // Verify that an error is returned
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_publish_batch() {
+        // Connect to NATS
+        let client = ConnectOptions::default()
+            .connection_timeout(Duration::from_secs(5))
+            .connect("localhost:4222")
+            .await
+            .expect("Failed to connect to NATS");
+
+        cleanup_stream(&client, "test_publish_batch").await;
+
+        // Create stream
+        let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
+            "test_publish_batch",
+            NatsStreamOptions {
+                client,
+                num_replicas: 1,
+            },
+        );
+
+        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
+
+        let message1 = TestMessage {
+            content: "batch_message1".to_string(),
+        };
+        let message2 = TestMessage {
+            content: "batch_message2".to_string(),
+        };
+        let message3 = TestMessage {
+            content: "batch_message3".to_string(),
+        };
+        let messages = vec![message1.clone(), message2.clone(), message3.clone()];
+
+        // Publish batch (currently sequential, but will be atomic when NATS supports it)
+        let last_seq = initialized_stream
+            .publish_batch(messages)
+            .await
+            .expect("Failed to publish batch");
+
+        // Verify all messages were stored and last_seq is correct
+        // Note: NATS sequences are 1-indexed, so first message is seq 1
+        assert_eq!(last_seq, 3); // Last sequence should be 3
+
+        // Verify all messages can be retrieved
+        assert_eq!(initialized_stream.get(1).await.unwrap(), Some(message1));
+        assert_eq!(initialized_stream.get(2).await.unwrap(), Some(message2));
+        assert_eq!(
+            initialized_stream.get(3).await.unwrap(),
+            Some(message3.clone())
+        );
+
+        // Verify stream metadata
+        assert_eq!(initialized_stream.last_seq().await.unwrap(), 3);
+        assert_eq!(initialized_stream.messages().await.unwrap(), 3);
+        assert_eq!(
+            initialized_stream.last_message().await.unwrap(),
+            Some(message3)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_publish_batch_empty() {
+        // Connect to NATS
+        let client = ConnectOptions::default()
+            .connection_timeout(Duration::from_secs(5))
+            .connect("localhost:4222")
+            .await
+            .expect("Failed to connect to NATS");
+
+        cleanup_stream(&client, "test_publish_batch_empty").await;
+
+        // Create stream
+        let stream = NatsStream::<TestMessage, serde_json::Error, serde_json::Error>::new(
+            "test_publish_batch_empty",
+            NatsStreamOptions {
+                client,
+                num_replicas: 1,
+            },
+        );
+
+        let initialized_stream = stream.init().await.expect("Failed to initialize stream");
+
+        // Attempt to publish empty batch
+        let result = initialized_stream.publish_batch(vec![]).await;
+
+        // Verify that an error is returned
+        assert!(result.is_err());
+        if let Err(Error::EmptyBatch) = result {
+            // Expected error
+        } else {
+            panic!("Expected Error::EmptyBatch");
+        }
     }
 }
