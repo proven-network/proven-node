@@ -826,7 +826,11 @@ mod tests {
         impl ConsumerHandler<Bytes, Infallible, Infallible> for TestHandler {
             type Error = TestHandlerError;
 
-            async fn handle(&self, message: Bytes) -> Result<(), Self::Error> {
+            async fn handle(
+                &self,
+                message: Bytes,
+                _stream_sequence: u64,
+            ) -> Result<(), Self::Error> {
                 self.received_messages.lock().await.push(message);
                 Ok(())
             }

@@ -124,7 +124,11 @@ impl ConsumerHandler<ApplicationEvent, DeserializeError, SerializeError>
 {
     type Error = Error;
 
-    async fn handle(&self, event: ApplicationEvent) -> Result<(), Self::Error> {
+    async fn handle(
+        &self,
+        event: ApplicationEvent,
+        _stream_sequence: u64,
+    ) -> Result<(), Self::Error> {
         // Apply the event to update the view
         self.view.apply_event(&event).await;
         Ok(())

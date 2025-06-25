@@ -103,12 +103,15 @@ where
                 }
                 maybe_message = receiver_stream.next() => {
                     if let Some(message) = maybe_message {
-                        if let Err(e) = handler.handle(message).await {
+                        let mut seq = last_seq.lock().await;
+                        *seq += 1;
+                        let current_seq = *seq;
+                        drop(seq); // Release lock before calling handler
+
+                        if let Err(e) = handler.handle(message, current_seq).await {
                             error!("error handling message: {}", e);
                             return Err(Error::Handler);
                         }
-                        let mut seq = last_seq.lock().await;
-                        *seq += 1;
                     } else {
                         // Stream closed
                         break;

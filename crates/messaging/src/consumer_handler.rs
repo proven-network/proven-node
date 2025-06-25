@@ -23,7 +23,7 @@ where
     type Error: Error + Send + Sync + 'static;
 
     /// Handles the given data.
-    async fn handle(&self, message: T) -> Result<(), Self::Error>;
+    async fn handle(&self, message: T, stream_sequence: u64) -> Result<(), Self::Error>;
 
     /// Hook for when the consumer is caught up.
     async fn on_caught_up(&self) -> Result<(), Self::Error> {

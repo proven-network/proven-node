@@ -129,8 +129,9 @@ where
                     if let Some(message) = message {
                         let message = message.map_err(|e| Error::Messages(e.kind()))?;
                         let payload: T = message.payload.clone().try_into().unwrap();
+                        let stream_sequence = message.info().unwrap().stream_sequence;
 
-                        handler.handle(payload).await.map_err(|_| Error::Handler)?;
+                        handler.handle(payload, stream_sequence).await.map_err(|_| Error::Handler)?;
 
                         message.ack().await.unwrap();
 
@@ -326,7 +327,11 @@ mod tests {
     impl ConsumerHandler<TestMessage, serde_json::Error, serde_json::Error> for MockHandler {
         type Error = serde_json::Error;
 
-        async fn handle(&self, _msg: TestMessage) -> Result<(), Self::Error> {
+        async fn handle(
+            &self,
+            _msg: TestMessage,
+            _stream_sequence: u64,
+        ) -> Result<(), Self::Error> {
             let mut count = self.messages_processed.lock().await;
             *count += 1;
             drop(count);
