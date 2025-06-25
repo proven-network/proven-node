@@ -7,7 +7,7 @@ use axum::response::IntoResponse;
 use axum::response::Response;
 use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor};
-use proven_identity::IdentityManagement;
+use proven_identity::{Identity, IdentityManagement};
 use proven_runtime::{
     ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RuntimePoolManagement,
 };
@@ -102,15 +102,16 @@ where
     let query = uri.query();
     let body = if body.is_empty() { None } else { Some(body) };
 
-    let execution_request = if let Some(session) = maybe_session {
-        ExecutionRequest::HttpWithSession {
+    let execution_request = if let Some(_session) = maybe_session {
+        ExecutionRequest::HttpWithIdentity {
             application_id,
             body,
             handler_specifier,
             method,
             path: path.to_string(),
             query: query.map(String::from),
-            session,
+            // TODO: placeholder - fix up later when working out JWT stuff
+            identity: Identity { id: Uuid::max() },
         }
     } else {
         ExecutionRequest::Http {

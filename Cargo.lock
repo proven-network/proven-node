@@ -10662,7 +10662,6 @@ dependencies = [
  "proven-identity",
  "proven-radix-nft-verifier",
  "proven-radix-nft-verifier-mock",
- "proven-sessions",
  "proven-sql",
  "proven-sql-direct",
  "proven-store",

@@ -5,10 +5,8 @@ use proven_runtime::{
 
 use std::sync::Arc;
 
-use ed25519_dalek::{SigningKey, VerifyingKey};
 use proven_code_package::CodePackage;
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
-use proven_sessions::Session;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 use serde_json::json;
@@ -64,9 +62,6 @@ async fn main() -> Result<(), Error> {
             ModuleLoader::new(CodePackage::from_str(base_script).unwrap())
         };
 
-        let random_signing_key = SigningKey::generate(&mut rand::thread_rng());
-        let random_verifying_key =
-            VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng()));
         let pool = Arc::clone(&pool);
         let durations = Arc::clone(&durations);
         let handle = tokio::spawn(async move {
@@ -74,13 +69,6 @@ async fn main() -> Result<(), Error> {
                 application_id: Uuid::max(),
                 args: vec![json!(10), json!(20)],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-                session: Session::Identified {
-                    identity_id: Uuid::max(),
-                    origin: "origin".to_string(),
-                    session_id: Uuid::new_v4(),
-                    signing_key: random_signing_key.clone(),
-                    verifying_key: random_verifying_key,
-                },
             };
 
             match pool.execute(module_loader, request).await {

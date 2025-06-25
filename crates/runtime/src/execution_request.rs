@@ -2,7 +2,7 @@ use crate::HandlerSpecifier;
 
 use bytes::Bytes;
 use http::Method;
-use proven_sessions::Session;
+use proven_identity::Identity;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -30,7 +30,7 @@ pub enum ExecutionRequest {
         query: Option<String>,
     },
     /// A request received from an HTTP endpoint with authenticated user context.
-    HttpWithSession {
+    HttpWithIdentity {
         /// The application ID.
         application_id: Uuid,
 
@@ -40,14 +40,14 @@ pub enum ExecutionRequest {
         /// The handler specifier to execute.
         handler_specifier: HandlerSpecifier,
 
+        /// The active identity.
+        identity: Identity,
+
         /// The HTTP method.
         method: Method,
 
         /// The path of the HTTP request.
         path: String,
-
-        /// The active session.
-        session: Session,
 
         /// The query string of the HTTP request.
         query: Option<String>,
@@ -71,9 +71,20 @@ pub enum ExecutionRequest {
 
         /// The handler specifier to execute.
         handler_specifier: HandlerSpecifier,
+    },
+    /// A request received over and RPC session with authenticated user context.
+    RpcWithIdentity {
+        /// The application ID.
+        application_id: Uuid,
 
-        /// The session of the authenticated user.
-        session: Session,
+        /// The arguments to the handler.
+        args: Vec<Value>,
+
+        /// The handler specifier to execute.
+        handler_specifier: HandlerSpecifier,
+
+        /// The active identity.
+        identity: Identity,
     },
 }
 
@@ -84,23 +95,12 @@ impl ExecutionRequest {
         handler_specifier: &str,
         args: Vec<Value>,
     ) -> Self {
-        use ed25519_dalek::{SigningKey, VerifyingKey};
         use uuid::Uuid;
-
-        let random_signing_key = SigningKey::generate(&mut rand::thread_rng());
-        let random_verifying_key =
-            VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng()));
 
         Self::Rpc {
             application_id: Uuid::max(),
             args,
             handler_specifier: HandlerSpecifier::parse(handler_specifier).unwrap(),
-            session: Session::Anonymous {
-                origin: "origin".to_string(),
-                session_id: Uuid::new_v4(),
-                signing_key: random_signing_key,
-                verifying_key: random_verifying_key,
-            },
         }
     }
 
@@ -109,24 +109,13 @@ impl ExecutionRequest {
         handler_specifier: &str,
         args: Vec<Value>,
     ) -> Self {
-        use ed25519_dalek::{SigningKey, VerifyingKey};
         use uuid::Uuid;
 
-        let random_signing_key = SigningKey::generate(&mut rand::thread_rng());
-        let random_verifying_key =
-            VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng()));
-
-        Self::Rpc {
+        Self::RpcWithIdentity {
             application_id: Uuid::max(),
             args,
             handler_specifier: HandlerSpecifier::parse(handler_specifier).unwrap(),
-            session: Session::Identified {
-                identity_id: Uuid::max(),
-                origin: "origin".to_string(),
-                session_id: Uuid::new_v4(),
-                signing_key: random_signing_key,
-                verifying_key: random_verifying_key,
-            },
+            identity: Identity { id: Uuid::max() },
         }
     }
 }

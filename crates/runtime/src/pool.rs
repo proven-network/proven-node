@@ -88,9 +88,7 @@ where
 /// # Example
 ///
 /// ```rust
-/// use ed25519_dalek::{SigningKey, VerifyingKey};
 /// use proven_code_package::CodePackage;
-/// use proven_identity::{Identity, Session};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, Pool,
@@ -125,13 +123,6 @@ where
 ///         application_id: Uuid::new_v4(),
 ///         args: vec![json!(10), json!(20)],
 ///         handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-///         session: Session::Identified {
-///             identity_id: Uuid::new_v4(),
-///             origin: "origin".to_string(),
-///             session_id: Uuid::new_v4(),
-///             signing_key: SigningKey::generate(&mut rand::thread_rng()),
-///             verifying_key: VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng())),
-///         },
 ///     };
 ///
 ///     pool.execute(ModuleLoader::new(code_package), request).await;

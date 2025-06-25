@@ -21,7 +21,6 @@ use std::time::Duration;
 use bytes::Bytes;
 use proven_code_package::ModuleSpecifier;
 use proven_radix_nft_verifier::RadixNftVerifier;
-use proven_sessions::Session;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
 use rustyscript::js_value::Value;
@@ -181,9 +180,7 @@ impl
 ///
 /// # Example
 /// ```rust
-/// use ed25519_dalek::{SigningKey, VerifyingKey};
 /// use proven_code_package::CodePackage;
-/// use proven_identity::{Identity, Session};
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RpcEndpoints,
@@ -215,13 +212,6 @@ impl
 ///     application_id: Uuid::new_v4(),
 ///     args: vec![json!(10), json!(20)],
 ///     handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-///     session: Session::Identified {
-///         identity_id: Uuid::new_v4(),
-///         origin: "origin".to_string(),
-///         session_id: Uuid::new_v4(),
-///         signing_key: SigningKey::generate(&mut rand::thread_rng()),
-///         verifying_key: VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng())),
-///     },
 /// });
 /// ```
 pub struct Runtime<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
@@ -418,14 +408,14 @@ where
                 )
             }
 
-            ExecutionRequest::HttpWithSession {
+            ExecutionRequest::HttpWithIdentity {
                 application_id,
                 body,
                 handler_specifier,
+                identity,
                 method,
                 path,
                 query,
-                session,
             } => {
                 let mut args = vec![];
 
@@ -442,21 +432,12 @@ where
                     args.push(json!(body));
                 }
 
-                match session {
-                    Session::Anonymous { .. } => (
-                        application_id,
-                        args,
-                        handler_specifier,
-                        IdentityState::NoIdentity,
-                    ),
-
-                    Session::Identified { identity_id, .. } => (
-                        application_id,
-                        args,
-                        handler_specifier,
-                        IdentityState::Identity(identity_id),
-                    ),
-                }
+                (
+                    application_id,
+                    args,
+                    handler_specifier,
+                    IdentityState::Identity(identity.id),
+                )
             }
 
             ExecutionRequest::RadixEvent {
@@ -473,22 +454,24 @@ where
                 application_id,
                 args,
                 handler_specifier,
-                session,
-            } => match session {
-                Session::Anonymous { .. } => (
-                    application_id,
-                    args,
-                    handler_specifier,
-                    IdentityState::NoIdentity,
-                ),
+            } => (
+                application_id,
+                args,
+                handler_specifier,
+                IdentityState::NoIdentity,
+            ),
 
-                Session::Identified { identity_id, .. } => (
-                    application_id,
-                    args,
-                    handler_specifier,
-                    IdentityState::Identity(identity_id),
-                ),
-            },
+            ExecutionRequest::RpcWithIdentity {
+                application_id,
+                args,
+                handler_specifier,
+                identity,
+            } => (
+                application_id,
+                args,
+                handler_specifier,
+                IdentityState::Identity(identity.id),
+            ),
         };
 
         let module_specifier = handler_specifier.module_specifier();

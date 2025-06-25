@@ -5,11 +5,9 @@ use proven_runtime::{
 
 use std::sync::Arc;
 
-use ed25519_dalek::{SigningKey, VerifyingKey};
 use futures::future::join_all;
 use proven_code_package::CodePackage;
 use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
-use proven_sessions::Session;
 use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
 use rustyscript::Error;
@@ -61,25 +59,14 @@ async fn main() -> Result<(), Error> {
     let mut handles = vec![];
     let durations = Arc::new(Mutex::new(vec![]));
 
-    let random_signing_key = SigningKey::generate(&mut rand::thread_rng());
-    let random_verifying_key = VerifyingKey::from(&SigningKey::generate(&mut rand::thread_rng()));
-
     for _ in 0..EXECUTIONS {
         let worker = Arc::clone(&worker);
         let durations = Arc::clone(&durations);
-        let random_signing_key = random_signing_key.clone();
         let handle = tokio::spawn(async move {
             let request = ExecutionRequest::Rpc {
                 application_id: Uuid::max(),
                 args: vec![json!(10), json!(20)],
                 handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-                session: Session::Identified {
-                    identity_id: Uuid::max(),
-                    origin: "origin".to_string(),
-                    session_id: Uuid::new_v4(),
-                    signing_key: random_signing_key,
-                    verifying_key: random_verifying_key,
-                },
             };
 
             let start = Instant::now();
