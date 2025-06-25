@@ -11,7 +11,7 @@ pub use error::Error;
 
 use std::convert::Infallible;
 use std::error::Error as StdError;
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::fmt::{Debug, Formatter, Result as FmtResult, Write};
 use std::marker::PhantomData;
 use std::time::Duration;
 
@@ -376,7 +376,7 @@ macro_rules! impl_scoped_store {
                     K: AsRef<str> + Send,
                 {
                     let mut bucket = self.bucket.clone();
-                    bucket.push_str(&format!("_{}", scope.as_ref()));
+                    write!(bucket, "_{}", scope.as_ref()).unwrap();
 
                     Self::Scoped::new(NatsStoreOptions {
                         client: self.client.clone(),

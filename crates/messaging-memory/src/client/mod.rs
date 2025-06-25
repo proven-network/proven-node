@@ -256,14 +256,15 @@ where
         drop(client_requests);
         drop(state);
 
-        match tokio::time::timeout(std::time::Duration::from_secs(5), receiver).await {
-            Ok(Ok(response)) => Ok(response),
-            _ => {
-                let mut map = self.response_map.lock().await;
-                map.remove(&request_id);
-                drop(map);
-                Err(Error::NoResponse)
-            }
+        if let Ok(Ok(response)) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), receiver).await
+        {
+            Ok(response)
+        } else {
+            let mut map = self.response_map.lock().await;
+            map.remove(&request_id);
+            drop(map);
+            Err(Error::NoResponse)
         }
     }
 }
@@ -348,9 +349,7 @@ mod tests {
             ClientResponseType::Response(response) => {
                 assert_eq!(response, Bytes::from("response: hello"));
             }
-            _ => {
-                panic!("Expected single response");
-            }
+            ClientResponseType::Stream(_) => panic!("Expected single response"),
         }
     }
 

@@ -71,7 +71,7 @@ pub struct BitcoinNodeOptions {
     pub rpc_port: Option<u16>,
 }
 
-/// Bitcoin Core application implementing the IsolatedApplication trait
+/// Bitcoin Core application implementing the `IsolatedApplication` trait
 struct BitcoinCoreApp {
     /// The path to the bitcoind executable
     executable_path: String,
@@ -107,7 +107,7 @@ impl IsolatedApplication for BitcoinCoreApp {
             BitcoinNetwork::Testnet => args.push("--testnet".to_string()),
             BitcoinNetwork::Regtest => args.push("--regtest".to_string()),
             BitcoinNetwork::Signet => args.push("--signet".to_string()),
-        };
+        }
 
         args
     }
@@ -126,7 +126,7 @@ impl IsolatedApplication for BitcoinCoreApp {
         info!(target: "bitcoind", "{}", message);
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "bitcoind"
     }
 
@@ -142,7 +142,7 @@ impl IsolatedApplication for BitcoinCoreApp {
 
         let client = reqwest::Client::new();
 
-        let response = match client
+        let Ok(response) = client
             .post(&rpc_url)
             .basic_auth(RPC_USER, Some(RPC_PASSWORD))
             .json(&serde_json::json!({
@@ -153,9 +153,8 @@ impl IsolatedApplication for BitcoinCoreApp {
             }))
             .send()
             .await
-        {
-            Ok(resp) => resp,
-            Err(_) => return false, // Not ready yet
+        else {
+            return false; // Not ready yet
         };
 
         // If we get a 200 response, the node is up and running
@@ -207,7 +206,7 @@ impl BitcoinNode {
         }
     }
 
-    async fn prepare_config(&self) -> Result<(), Error> {
+    fn prepare_config(&self) -> Result<(), Error> {
         // Create the data directory if it doesn't exist
         let data_dir = Path::new(&self.store_dir);
         if !data_dir.exists() {
@@ -228,6 +227,12 @@ impl BitcoinNode {
         method: &str,
         params: T,
     ) -> Result<R, Error> {
+        #[derive(Deserialize)]
+        struct RpcResponse<T> {
+            result: T,
+            error: Option<Value>,
+        }
+
         let client = reqwest::Client::new();
 
         let response = client
@@ -241,7 +246,7 @@ impl BitcoinNode {
             }))
             .send()
             .await
-            .map_err(|e| Error::RpcCall(format!("failed to send request: {}", e)))?;
+            .map_err(|e| Error::RpcCall(format!("failed to send request: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -251,31 +256,27 @@ impl BitcoinNode {
                 .unwrap_or_else(|_| "could not read response body".to_string());
 
             return Err(Error::RpcCall(format!(
-                "RPC call failed with status {}: {}",
-                status, text
+                "RPC call failed with status {status}: {text}"
             )));
-        }
-
-        #[derive(Deserialize)]
-        struct RpcResponse<T> {
-            result: T,
-            error: Option<Value>,
         }
 
         let rpc_response: RpcResponse<R> = response
             .json()
             .await
-            .map_err(|e| Error::RpcCall(format!("failed to parse response: {}", e)))?;
+            .map_err(|e| Error::RpcCall(format!("failed to parse response: {e}")))?;
 
         if let Some(error) = rpc_response.error {
-            return Err(Error::RpcCall(format!("RPC error: {:#?}", error)));
+            return Err(Error::RpcCall(format!("RPC error: {error:#?}")));
         }
 
         Ok(rpc_response.result)
     }
 
     /// Returns the RPC URL for the Bitcoin Core node.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the URL cannot be parsed.
     pub async fn rpc_url(&self) -> Result<Url, Error> {
         self.rpc_socket_addr().await.and_then(|socket_addr| {
             Url::parse(&format!("http://{}:{}", socket_addr.ip(), self.rpc_port))
@@ -284,7 +285,10 @@ impl BitcoinNode {
     }
 
     /// Returns the socket address of the Bitcoin Core node's RPC server.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the node is not started.
     pub async fn rpc_socket_addr(&self) -> Result<SocketAddr, Error> {
         self.process
             .lock()
@@ -313,7 +317,7 @@ impl Bootable for BitcoinNode {
 
         debug!("Starting isolated Bitcoin Core node...");
 
-        self.prepare_config().await?;
+        self.prepare_config()?;
 
         let app = BitcoinCoreApp {
             executable_path: "/apps/bitcoin/v28.1/bitcoind".to_string(),
@@ -342,7 +346,8 @@ impl Bootable for BitcoinNode {
     async fn shutdown(&self) -> Result<(), Error> {
         info!("Shutting down isolated Bitcoin Core node...");
 
-        if let Some(process) = self.process.lock().await.take() {
+        let taken_process = self.process.lock().await.take();
+        if let Some(process) = taken_process {
             process.shutdown().await.map_err(Error::Isolation)?;
             info!("Bitcoin Core node shut down successfully");
         } else {

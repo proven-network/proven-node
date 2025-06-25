@@ -29,7 +29,7 @@ where
     A: Attestor,
 {
     /// Create a new Peer instance.
-    pub fn new(node: TopologyNode, versions: Vec<Version>, attestor: A) -> Self {
+    pub const fn new(node: TopologyNode, versions: Vec<Version>, attestor: A) -> Self {
         Self {
             attestor,
             node,
@@ -38,11 +38,18 @@ where
     }
 
     /// Get the availability zone of the node.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn availability_zone(&self) -> &str {
         &self.node.availability_zone
     }
 
     /// FQDN of the node.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to parse origin
+    /// - Failed to get host string from URL
     pub fn fqdn(&self) -> Result<String> {
         let url = Url::parse(self.origin())?;
 
@@ -50,6 +57,11 @@ where
     }
 
     /// Get the nats cluster endpoint of the node.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to request info
     pub async fn nats_cluster_endpoint(&self) -> Result<String> {
         let response = self.request_info(NATS_CLUSTER_ENDPOINT_API_PATH).await?;
 
@@ -57,22 +69,25 @@ where
     }
 
     /// Get the origin of the node.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn origin(&self) -> &str {
         &self.node.origin
     }
 
     /// Get the public key of the node.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn public_key(&self) -> &str {
         &self.node.public_key
     }
 
     /// Get the region of the node.
+    #[allow(clippy::missing_const_for_fn)]
     pub fn region(&self) -> &str {
         &self.node.region
     }
 
     /// Get the specializations of the node.
-    pub fn specializations(&self) -> &HashSet<NodeSpecialization> {
+    pub const fn specializations(&self) -> &HashSet<NodeSpecialization> {
         &self.node.specializations
     }
 

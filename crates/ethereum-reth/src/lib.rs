@@ -77,7 +77,7 @@ pub struct RethNodeOptions {
     pub store_dir: PathBuf,
 }
 
-/// Reth application implementing the IsolatedApplication trait
+/// Reth application implementing the `IsolatedApplication` trait
 struct RethApp {
     /// The path to the reth executable
     executable_path: String,
@@ -163,12 +163,13 @@ impl IsolatedApplication for RethApp {
         &self.executable_path
     }
 
-    fn handle_stderr(&self, line: &str) -> () {
+    fn handle_stderr(&self, line: &str) {
         self.handle_stdout(line);
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn handle_stdout(&self, line: &str) {
-        if let Some(caps) = LOG_REGEX.captures(&strip_str(&line)) {
+        if let Some(caps) = LOG_REGEX.captures(&strip_str(line)) {
             let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             *self.last_log_level.write().unwrap() = label.to_string();
@@ -193,7 +194,7 @@ impl IsolatedApplication for RethApp {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "reth"
     }
 
@@ -314,24 +315,32 @@ impl RethNode {
     }
 
     /// Returns the IP address of the Reth node.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the Reth node is not started.
     #[must_use]
     pub async fn ip_address(&self) -> IpAddr {
         self.process
             .lock()
             .await
             .as_ref()
-            .map(|p| p.container_ip().unwrap())
-            .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+            .map_or(IpAddr::V4(Ipv4Addr::LOCALHOST), |p| {
+                p.container_ip().unwrap()
+            })
     }
 
     /// Returns the port of the Reth node's HTTP RPC server.
     #[must_use]
-    pub fn http_port(&self) -> u16 {
+    pub const fn http_port(&self) -> u16 {
         self.http_port
     }
 
     /// Returns the HTTP RPC URL for the Reth node.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the URL cannot be parsed.
     pub async fn http_url(&self) -> Result<Url, Error> {
         self.http_socket_addr().await.and_then(|socket_addr| {
             Url::parse(&format!("http://{}:{}", socket_addr.ip(), self.http_port))
@@ -340,7 +349,10 @@ impl RethNode {
     }
 
     /// Returns the socket address of the Reth node's HTTP RPC server.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Reth node is not started.
     pub async fn http_socket_addr(&self) -> Result<SocketAddr, Error> {
         self.process
             .lock()
@@ -353,7 +365,10 @@ impl RethNode {
     }
 
     /// Returns the JWT hex value for auth RPC.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the JWT hex value cannot be read.
     pub async fn jwt_hex(&self) -> Result<String, Error> {
         let jwt_hex = tokio::fs::read_to_string(self.store_dir.join("jwt.hex"))
             .await
@@ -362,7 +377,7 @@ impl RethNode {
         Ok(jwt_hex)
     }
 
-    async fn prepare_config(&self) -> Result<(), Error> {
+    fn prepare_config(&self) -> Result<(), Error> {
         // Create the data directory if it doesn't exist
         if !self.store_dir.exists() {
             fs::create_dir_all(&self.store_dir)
@@ -373,12 +388,15 @@ impl RethNode {
 
     /// Returns the port of the Reth node's RPC server.
     #[must_use]
-    pub fn rpc_port(&self) -> u16 {
+    pub const fn rpc_port(&self) -> u16 {
         self.rpc_port
     }
 
     /// Returns the RPC URL for the Reth node.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the URL cannot be parsed.
     pub async fn rpc_url(&self) -> Result<Url, Error> {
         self.rpc_socket_addr().await.and_then(|socket_addr| {
             Url::parse(&format!("http://{}:{}", socket_addr.ip(), self.rpc_port))
@@ -387,7 +405,10 @@ impl RethNode {
     }
 
     /// Returns the socket address of the Reth node's RPC server.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Reth node is not started.
     pub async fn rpc_socket_addr(&self) -> Result<SocketAddr, Error> {
         self.process
             .lock()
@@ -414,7 +435,7 @@ impl Bootable for RethNode {
 
         info!("Starting Reth node...");
 
-        self.prepare_config().await?;
+        self.prepare_config()?;
 
         let app = RethApp {
             executable_path: "/apps/ethereum-reth/v1.3.12/reth".to_string(),
@@ -440,7 +461,8 @@ impl Bootable for RethNode {
     async fn shutdown(&self) -> Result<(), Error> {
         info!("Reth node shutting down...");
 
-        if let Some(process) = self.process.lock().await.take() {
+        let taken_process = self.process.lock().await.take();
+        if let Some(process) = taken_process {
             process.shutdown().await.map_err(Error::Isolation)?;
             info!("Reth node shutdown");
         } else {

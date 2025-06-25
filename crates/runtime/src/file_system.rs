@@ -122,7 +122,7 @@ where
             .store
             .keys_with_prefix(&prefix)
             .await
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
 
         // Extract just the immediate children
         Ok(keys
@@ -166,11 +166,7 @@ where
         while let Some(entry) = self.get_stored_entry(&path).await? {
             if let Some(target) = entry.symlink_target() {
                 if !seen.insert(path.clone()) {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Symlink loop detected",
-                    )
-                    .into());
+                    return Err(std::io::Error::other("Symlink loop detected").into());
                 }
                 path = PathBuf::from(target);
             } else {
@@ -343,7 +339,7 @@ where
 
         match entry {
             Entry::File(file) => Ok(Rc::new(file)),
-            _ => Err(std::io::Error::new(std::io::ErrorKind::Other, "Not a file").into()),
+            _ => Err(std::io::Error::other("Not a file").into()),
         }
     }
 
@@ -624,7 +620,7 @@ mod tests {
             Err(error) => {
                 panic!("Unexpected error: {error:?}");
             }
-        };
+        }
     }
 
     fn setup() -> FileSystem<

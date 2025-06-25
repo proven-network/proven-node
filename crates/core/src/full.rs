@@ -147,8 +147,9 @@ where
         code_package: CodePackage,
         module_specifier: ModuleSpecifier,
     ) -> Result<Router> {
-        let module_options =
-            ModuleOptions::from_code_package(&code_package, &module_specifier).await?;
+        let module_options = ModuleOptions::from_code_package(&code_package, &module_specifier)
+            .await
+            .map_err(|e| Error::Runtime(e.to_string()))?;
 
         // Validate before creating the router
         Self::ensure_no_overlapping_routes(&module_options.http_endpoints)?;
@@ -253,6 +254,7 @@ where
     ///
     /// This function will return an error if the core has already been started or if the HTTP server fails to start.
     #[allow(clippy::missing_panics_doc)] // TODO: Remove with test code
+    #[allow(clippy::too_many_lines)] // TODO: Refactor this to be more readable
     async fn start(&self) -> Result<()> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);
@@ -464,7 +466,7 @@ where
 
                     Ok(())
                 }
-                _ = http_server.wait() => {
+                () = http_server.wait() => {
                     error!("https server stopped unexpectedly");
 
                     Err(Error::HttpServer("https server stopped unexpectedly".to_string()))

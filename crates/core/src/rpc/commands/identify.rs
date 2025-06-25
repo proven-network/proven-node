@@ -36,15 +36,14 @@ impl RpcCommand for IdentifyCommand {
     {
         // Turn passkey_prf_public_key_bytes into [u8;32]
         let passkey_prf_public_key_bytes = self.passkey_prf_public_key_bytes.to_vec();
-        let passkey_prf_public_key_bytes = match passkey_prf_public_key_bytes.try_into() {
-            Ok(bytes) => bytes,
-            Err(_) => return IdentifyResponse::IdentifyFailure("Invalid public key".to_string()),
+        let Ok(passkey_prf_public_key_bytes) = passkey_prf_public_key_bytes.try_into() else {
+            return IdentifyResponse::IdentifyFailure("Invalid public key".to_string());
         };
 
         // Turn passkey_prf_public_key_bytes into a VerifyingKey
-        let passkey_prf_public_key = match VerifyingKey::from_bytes(&passkey_prf_public_key_bytes) {
-            Ok(key) => key,
-            Err(_) => return IdentifyResponse::IdentifyFailure("Invalid public key".to_string()),
+        let Ok(passkey_prf_public_key) = VerifyingKey::from_bytes(&passkey_prf_public_key_bytes)
+        else {
+            return IdentifyResponse::IdentifyFailure("Invalid public key".to_string());
         };
 
         // Get the session ID as bytes for signature verification
@@ -53,13 +52,8 @@ impl RpcCommand for IdentifyCommand {
 
         // Turn session_id_signature_bytes into a Signature
         let signature_bytes = self.session_id_signature_bytes.to_vec();
-        let signature = match Signature::from_slice(&signature_bytes) {
-            Ok(sig) => sig,
-            Err(_) => {
-                return IdentifyResponse::IdentifyFailure(
-                    "Invalid session ID signature".to_string(),
-                );
-            }
+        let Ok(signature) = Signature::from_slice(&signature_bytes) else {
+            return IdentifyResponse::IdentifyFailure("Invalid session ID signature".to_string());
         };
 
         // Verify the session ID signature
@@ -84,7 +78,7 @@ impl RpcCommand for IdentifyCommand {
 
         let session = match context
             .sessions_manager
-            .identify_session(&context.application_id, &session_id, &identity.id)
+            .identify_session(&context.application_id, session_id, &identity.id)
             .await
         {
             Ok(session) => session,

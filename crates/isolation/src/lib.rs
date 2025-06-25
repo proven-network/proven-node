@@ -82,9 +82,10 @@ static IP_COUNTER: AtomicU32 = AtomicU32::new(2);
 /// # Errors
 ///
 /// Returns an error if the process could not be spawned or if the readiness checks fail.
+#[allow(clippy::cast_possible_truncation)]
 pub async fn spawn<A: IsolatedApplication>(application: A) -> Result<IsolatedProcess> {
     let counter = IP_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let host_veth_interface_name = format!("veth{}", counter);
+    let host_veth_interface_name = format!("veth{counter}");
     let isolated_veth_interface_name = format!("veth{}", counter + 1);
 
     // Use a unique subnet for each veth pair to avoid conflicts

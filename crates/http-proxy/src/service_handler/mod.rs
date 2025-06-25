@@ -25,7 +25,7 @@ pub struct HttpServiceHandler {
 impl HttpServiceHandler {
     pub fn new(target_addr: SocketAddr) -> Self {
         Self {
-            base_url: format!("http://{}", target_addr),
+            base_url: format!("http://{target_addr}"),
             client: Arc::new(Client::new()),
         }
     }

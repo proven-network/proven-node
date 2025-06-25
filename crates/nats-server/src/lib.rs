@@ -14,6 +14,7 @@ use proven_nats_monitor::NatsMonitor;
 use proven_store::Store;
 
 use std::convert::Infallible;
+use std::fmt::Write;
 use std::sync::{Arc, LazyLock};
 use std::{net::SocketAddr, path::PathBuf};
 
@@ -81,7 +82,7 @@ where
     pub store_dir: PathBuf,
 }
 
-/// NATS server application implementing the IsolatedApplication trait
+/// NATS server application implementing the `IsolatedApplication` trait
 struct NatsServerApp {
     /// The path to the nats-server executable
     bin_dir: PathBuf,
@@ -133,6 +134,7 @@ impl IsolatedApplication for NatsServerApp {
         &self.executable_path
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn handle_stderr(&self, line: &str) {
         if let Some(caps) = LOG_REGEX.captures(line) {
             let label = caps.get(1).map_or("[UKW]", |m| m.as_str());
@@ -152,10 +154,10 @@ impl IsolatedApplication for NatsServerApp {
     }
 
     fn handle_stdout(&self, line: &str) {
-        self.handle_stderr(line)
+        self.handle_stderr(line);
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "nats-server"
     }
 
@@ -276,7 +278,14 @@ where
     S: Store<Bytes, Infallible, Infallible>,
 {
     /// Creates a new `NatsServer` with the specified options.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the NATS server binary is not found.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the NATS server binary is not found and `bin_dir` is `None`.
     pub fn new(
         NatsServerOptions {
             bin_dir,
@@ -337,14 +346,14 @@ where
     /// # Errors
     ///
     /// This function will return an error if it fails to start the task.
-    fn start_topology_update_task(&self) -> Result<JoinHandle<()>, Error> {
+    fn start_topology_update_task(&self) -> JoinHandle<()> {
         let server_name = self.server_name.clone();
 
         // We need self reference for updating config
         let self_clone = self.clone();
         let process = self.process.clone();
 
-        let join_handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             let update_interval = Duration::from_secs(PEER_DISCOVERY_INTERVAL);
             let mut interval = tokio::time::interval(update_interval);
 
@@ -375,9 +384,7 @@ where
 
                 interval.tick().await;
             }
-        });
-
-        Ok(join_handle)
+        })
     }
 
     /// Updates the NATS server configuration with peer nodes from the topology.
@@ -398,7 +405,7 @@ where
             // Try to get the NATS cluster endpoint
             match peer.nats_cluster_endpoint().await {
                 Ok(endpoint) => {
-                    routes.push_str(&format!("\"{}\"\n    ", endpoint));
+                    write!(routes, "\"{endpoint}\"\n    ").unwrap();
                     valid_peer_count += 1;
                 }
                 Err(e) => {
@@ -461,6 +468,7 @@ where
                         .await
                         .map_err(|e| Error::Io("failed to write key file", e))?;
 
+                    #[allow(clippy::literal_string_with_formatting_args)]
                     CLUSTER_CONFIG_TEMPLATE
                         .replace("{cert_file}", &cert_file.to_string_lossy())
                         .replace("{key_file}", &key_file.to_string_lossy())
@@ -478,18 +486,19 @@ where
                 CLUSTER_NO_TLS_CONFIG_TEMPLATE.to_string()
             };
 
+            #[allow(clippy::literal_string_with_formatting_args)]
             config.push_str(
                 &cluster_config
                     .replace(
                         "{cluster_port}",
                         &nats_cluster_endpoint.port().unwrap().to_string(),
                     )
-                    .replace("{cluster_node_user}", &nats_cluster_endpoint.username())
+                    .replace("{cluster_node_user}", nats_cluster_endpoint.username())
                     .replace(
                         "{cluster_node_password}",
-                        &nats_cluster_endpoint.password().unwrap(),
+                        nats_cluster_endpoint.password().unwrap(),
                     )
-                    .replace("{cluster_routes}", &routes.trim()),
+                    .replace("{cluster_routes}", routes.trim()),
             );
         }
 
@@ -498,8 +507,7 @@ where
             .map_err(|e| Error::Io("failed to write nats-server.conf", e))?;
 
         // Reload the configuration if the server is running
-        let process_guard = self.process.lock().await;
-        if let Some(process) = &*process_guard {
+        if let Some(process) = &*self.process.lock().await {
             // Send SIGHUP to reload configuration
             if let Err(e) = process.signal(Signal::SIGHUP) {
                 warn!(
@@ -517,16 +525,15 @@ where
     /// Returns the client URL for the NATS server.
     #[must_use]
     pub async fn get_client_url(&self) -> String {
-        match &*self.process.lock().await {
-            Some(process) => {
-                if let Some(container_ip) = process.container_ip() {
-                    return format!("nats://{}:{}", container_ip, self.client_port);
-                } else {
-                    return format!("nats://127.0.0.1:{}", self.client_port);
-                }
-            }
-            None => format!("nats://127.0.0.1:{}", self.client_port),
-        }
+        (*self.process.lock().await).as_ref().map_or_else(
+            || format!("nats://127.0.0.1:{}", self.client_port),
+            |process| {
+                process.container_ip().map_or_else(
+                    || format!("nats://127.0.0.1:{}", self.client_port),
+                    |container_ip| format!("nats://{}:{}", container_ip, self.client_port),
+                )
+            },
+        )
     }
 
     /// Builds a NATS client.
@@ -605,7 +612,7 @@ where
         self.process.lock().await.replace(process);
 
         // // Start periodic topology update task
-        let topology_update_task = self.start_topology_update_task()?;
+        let topology_update_task = self.start_topology_update_task();
         self.topology_update_task
             .lock()
             .await
@@ -625,13 +632,14 @@ where
         info!("Shutting down isolated NATS server...");
 
         // Stop the topology update task
-        if let Some(task) = self.topology_update_task.lock().await.take() {
+        let taken_task = self.topology_update_task.lock().await.take();
+        if let Some(task) = taken_task {
             task.abort();
         }
 
         // Get the process and shut it down
-        let mut process_guard = self.process.lock().await;
-        if let Some(process) = process_guard.take() {
+        let taken_process = self.process.lock().await.take();
+        if let Some(process) = taken_process {
             process.shutdown().await.map_err(Error::Isolation)?;
             info!("NATS server shut down successfully");
         } else {

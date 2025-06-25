@@ -64,7 +64,7 @@ mod tests {
     ) -> impl IntoResponse {
         let path = uri
             .path_and_query()
-            .map_or_else(|| uri.path().to_string(), |pq| pq.to_string());
+            .map_or_else(|| uri.path().to_string(), std::string::ToString::to_string);
 
         let echo_response = EchoResponse {
             method: method.to_string(),
@@ -157,7 +157,7 @@ mod tests {
             let http_client = reqwest::Client::new();
             let test_path = "/test/path?query=1";
             let test_body = "Hello, Proxy!";
-            let test_url = format!("http://{}{}", client_addr, test_path);
+            let test_url = format!("http://{client_addr}{test_path}");
 
             let response = http_client
                 .post(&test_url)
@@ -205,6 +205,6 @@ mod tests {
         })
         .await;
 
-        assert!(result.is_ok(), "Test timed out after {:?}", test_timeout);
+        assert!(result.is_ok(), "Test timed out after {test_timeout:?}");
     }
 }

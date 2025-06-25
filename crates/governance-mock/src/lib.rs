@@ -33,7 +33,7 @@ pub struct MockGovernance {
 impl MockGovernance {
     /// Create a new mock governance implementation with the given nodes and versions.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         nodes: Vec<TopologyNode>,
         versions: Vec<Version>,
         primary_auth_gateway: String,
@@ -49,7 +49,7 @@ impl MockGovernance {
 
     /// Create a new mock governance implementation with a single node.
     #[must_use]
-    pub fn for_single_node(origin: String, private_key: SigningKey, version: Version) -> Self {
+    pub fn for_single_node(origin: String, private_key: &SigningKey, version: Version) -> Self {
         let node = TopologyNode {
             availability_zone: "local".to_string(),
             origin,
@@ -73,20 +73,22 @@ impl MockGovernance {
     /// Returns an error if:
     /// - The network config file cannot be read
     /// - The network config file contains invalid JSON
+    ///
+    /// # Panics
+    ///
+    /// Panics if the network config file cannot be read.
     pub fn from_network_config_file<P: AsRef<Path>>(network_config_path: P) -> Result<Self, Error> {
         // Read the network config file
-        let mut file = File::open(network_config_path).map_err(|e| {
-            Error::TopologyFile(format!("Failed to open network config file: {}", e))
-        })?;
+        let mut file = File::open(network_config_path)
+            .map_err(|e| Error::TopologyFile(format!("Failed to open network config file: {e}")))?;
 
         let mut content = String::new();
-        file.read_to_string(&mut content).map_err(|e| {
-            Error::TopologyFile(format!("Failed to read network config file: {}", e))
-        })?;
+        file.read_to_string(&mut content)
+            .map_err(|e| Error::TopologyFile(format!("Failed to read network config file: {e}")))?;
 
         // Parse the network config file
         let network_config: Config = serde_json::from_str(&content).map_err(|e| {
-            Error::TopologyFile(format!("Failed to parse network config file: {}", e))
+            Error::TopologyFile(format!("Failed to parse network config file: {e}"))
         })?;
 
         // Convert to governance nodes

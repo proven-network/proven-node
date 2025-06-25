@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let version = Version::from_pcrs(pcrs);
     let governance = MockGovernance::for_single_node(
         format!("http://localhost:{}", 3300),
-        private_key.clone(),
+        &private_key,
         version,
     );
     let network = ProvenNetwork::new(ProvenNetworkOptions {

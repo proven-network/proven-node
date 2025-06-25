@@ -51,6 +51,10 @@ where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
     /// Create a new HTTP proxy service.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the service setup fails.
     pub async fn new(
         HttpProxyServiceOptions {
             service_options,

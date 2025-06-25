@@ -5,7 +5,6 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum_extra::TypedHeader;
-use bytes::Bytes;
 use headers::{Header, HeaderValue};
 use proven_attestation::Attestor;
 use proven_governance::Governance;
@@ -29,7 +28,7 @@ where
 {
     let nonce = nonce_header
         .map(|TypedHeader(Nonce(bytes))| bytes)
-        .unwrap_or_else(Bytes::new);
+        .unwrap_or_default();
 
     match network.attested_nats_cluster_endpoint(nonce).await {
         Ok(attested_data) => {
@@ -46,10 +45,10 @@ where
                 .unwrap()
         }
         Err(e) => {
-            tracing::error!("Failed to get NATS cluster endpoint: {}", e);
+            tracing::error!("Failed to get NATS cluster endpoint: {e}");
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get NATS cluster endpoint: {}", e),
+                format!("Failed to get NATS cluster endpoint: {e}"),
             )
         }
     }

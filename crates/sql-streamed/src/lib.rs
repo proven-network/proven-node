@@ -124,6 +124,7 @@ where
 
     type Connection = Connection<S, SS>;
 
+    #[allow(clippy::too_many_lines)] // TODO: Potential refactor
     async fn connect<Q: Clone + Into<String> + Send>(
         &self,
         migrations: Vec<Q>,
@@ -164,8 +165,7 @@ where
                     // Another connection is already starting this service, wait for it
                     startup_notify = Some(entry.get().clone());
                     println!(
-                        "Another connection is starting SQL service for stream '{}', waiting...",
-                        stream_name
+                        "Another connection is starting SQL service for stream '{stream_name}', waiting..."
                     );
                 }
                 std::collections::hash_map::Entry::Vacant(entry) => {
@@ -199,7 +199,9 @@ where
                                 let mut running_services = RUNNING_SERVICES.lock().await;
                                 let mut starting_services = STARTING_SERVICES.lock().await;
                                 running_services.remove(&stream_name_clone);
+                                drop(running_services);
                                 starting_services.remove(&stream_name_clone);
+                                drop(starting_services);
                             });
                             Error::Service(e.to_string())
                         })?;
@@ -211,7 +213,9 @@ where
                             let mut running_services = RUNNING_SERVICES.lock().await;
                             let mut starting_services = STARTING_SERVICES.lock().await;
                             running_services.remove(&stream_name_clone);
+                            drop(running_services);
                             starting_services.remove(&stream_name_clone);
+                            drop(starting_services);
                         });
                         Error::Service(e.to_string())
                     })?;
@@ -249,6 +253,7 @@ where
                     // Remove from starting services registry
                     let mut starting_services = STARTING_SERVICES.lock().await;
                     starting_services.remove(&stream_name);
+                    drop(starting_services);
 
                     return Ok(Connection::new(client));
                 }
@@ -271,15 +276,9 @@ where
 
         // If we have a startup notify, wait for the primary connection to finish
         if let Some(notify) = startup_notify {
-            println!(
-                "Waiting for primary connection to finish startup for stream '{}'",
-                stream_name
-            );
+            println!("Waiting for primary connection to finish startup for stream '{stream_name}'");
             notify.notified().await; // Wait for startup completion signal
-            println!(
-                "Primary connection finished startup for stream '{}'",
-                stream_name
-            );
+            println!("Primary connection finished startup for stream '{stream_name}'");
         }
 
         Ok(Connection::new(client))
@@ -860,7 +859,7 @@ mod tests {
             );
 
             // Connect the first one - this should start the service
-            let _connection1 = sql_store1
+            let connection1 = sql_store1
                 .connect(vec![
                     "CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)",
                 ])
@@ -868,7 +867,7 @@ mod tests {
                 .unwrap();
 
             // Connect the second one - this should NOT start a new service (the service should already be running)
-            let _connection2 = sql_store2
+            let connection2 = sql_store2
                 .connect(vec![
                     "CREATE TABLE IF NOT EXISTS users (id INTEGER, email TEXT)",
                 ])
@@ -876,7 +875,7 @@ mod tests {
                 .unwrap();
 
             // Both connections should work
-            let response1 = _connection1
+            let response1 = connection1
                 .execute(
                     "INSERT INTO users (id, email) VALUES (?1, ?2)".to_string(),
                     vec![
@@ -887,7 +886,7 @@ mod tests {
                 .await
                 .unwrap();
 
-            let response2 = _connection2
+            let response2 = connection2
                 .execute(
                     "INSERT INTO users (id, email) VALUES (?1, ?2)".to_string(),
                     vec![

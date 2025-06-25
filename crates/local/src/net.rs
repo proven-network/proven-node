@@ -6,12 +6,12 @@ use tracing::info;
 pub async fn fetch_external_ip() -> Result<std::net::IpAddr> {
     let response = reqwest::get("https://api.myip.com")
         .await
-        .map_err(|e| Error::Io(format!("Failed to fetch external IP: {}", e)))?;
+        .map_err(|e| Error::Io(format!("Failed to fetch external IP: {e}")))?;
 
     let json_response = response
         .json::<serde_json::Value>()
         .await
-        .map_err(|e| Error::Io(format!("Failed to parse JSON response: {}", e)))?;
+        .map_err(|e| Error::Io(format!("Failed to parse JSON response: {e}")))?;
 
     let ip_text = json_response["ip"]
         .as_str()
@@ -19,7 +19,7 @@ pub async fn fetch_external_ip() -> Result<std::net::IpAddr> {
 
     let ip_addr = ip_text
         .parse::<std::net::IpAddr>()
-        .map_err(|e| Error::Io(format!("Failed to parse external IP: {}", e)))?;
+        .map_err(|e| Error::Io(format!("Failed to parse external IP: {e}")))?;
 
     info!("External IP detected: {}", ip_addr);
 

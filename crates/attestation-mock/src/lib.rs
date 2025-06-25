@@ -38,6 +38,10 @@ pub struct MockAttestor {
 
 impl MockAttestor {
     /// Create a new mock attestor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the embedded signing key cannot be parsed as a valid PKCS#8 key.
     #[must_use]
     pub fn new() -> Self {
         let int_certs = INT_CERTS
@@ -47,13 +51,13 @@ impl MockAttestor {
 
         let end_cert = ByteBuf::from(END_CERT);
 
-        let signing_key = SecretKey::from_pkcs8_der(&SIGNING_KEY).unwrap();
+        let signing_key = SecretKey::from_pkcs8_der(SIGNING_KEY).unwrap();
 
         let version = env!("CARGO_PKG_VERSION");
         let driver_pcrs = DriverPcrs::seed(BTreeMap::from([
-            (PcrIndex::Zero, format!("pcr0:{}", version)),
-            (PcrIndex::One, format!("pcr1:{}", version)),
-            (PcrIndex::Two, format!("pcr2:{}", version)),
+            (PcrIndex::Zero, format!("pcr0:{version}")),
+            (PcrIndex::One, format!("pcr1:{version}")),
+            (PcrIndex::Two, format!("pcr2:{version}")),
         ]));
 
         let pcrs = Pcrs {
@@ -74,6 +78,12 @@ impl MockAttestor {
             driver: Arc::new(driver),
             pcrs,
         }
+    }
+}
+
+impl Default for MockAttestor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

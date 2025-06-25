@@ -164,7 +164,6 @@ where
                         let string: String = subject.into();
                         string
                     })
-                    .map(Into::into)
                     .collect(),
                 ..Default::default()
             })
@@ -819,11 +818,11 @@ mod tests {
         let message3 = TestMessage {
             content: "batch_message3".to_string(),
         };
-        let messages = vec![message1.clone(), message2.clone(), message3.clone()];
+        let all_messages = vec![message1.clone(), message2.clone(), message3.clone()];
 
         // Publish batch (currently sequential, but will be atomic when NATS supports it)
         let last_seq = initialized_stream
-            .publish_batch(messages)
+            .publish_batch(all_messages)
             .await
             .expect("Failed to publish batch");
 
@@ -875,7 +874,7 @@ mod tests {
 
         // Verify that an error is returned
         assert!(result.is_err());
-        if let Err(Error::EmptyBatch) = result {
+        if matches!(result, Err(Error::EmptyBatch)) {
             // Expected error
         } else {
             panic!("Expected Error::EmptyBatch");

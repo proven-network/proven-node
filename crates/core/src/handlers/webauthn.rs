@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use crate::FullContext;
 
 use axum::Json;
@@ -42,6 +44,7 @@ pub struct StateQuery {
     pub state: String,
 }
 
+#[allow(clippy::too_many_lines)] // TODO: Refactor this to be more readable
 pub(crate) async fn webauthn_registration_start_handler<AM, RM, IM, PM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
@@ -88,7 +91,7 @@ where
             .unwrap();
     }
 
-    let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
+    let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
         .unwrap()
         .rp_name("Proven Network")
         .allow_cross_origin(true)
@@ -108,15 +111,11 @@ where
         .insert(state_id.clone(), (state, user_unique_id));
 
     // Convert CCR to Value for modification
-    let mut ccr_val = match serde_json::to_value(&ccr) {
-        Ok(val) => val,
-        Err(e) => {
-            eprintln!("Failed to serialize CCR to JSON value: {}", e);
-            return Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to prepare registration options".to_string())
-                .unwrap();
-        }
+    let Ok(mut ccr_val) = serde_json::to_value(&ccr) else {
+        return Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body("Failed to prepare registration options".to_string())
+            .unwrap();
     };
 
     // Manually override to require resident keys (discoverable credentials)
@@ -147,7 +146,7 @@ where
             ccr_val
                 .pointer_mut("/publicKey")
                 .and_then(|pk_val| pk_val.as_object_mut())
-                .map(|pk_obj| {
+                .is_some_and(|pk_obj| {
                     let auth_selection = serde_json::json!({
                         "residentKey": "required",
                         "requireResidentKey": true,
@@ -157,7 +156,6 @@ where
                     pk_obj.insert("authenticatorSelection".to_string(), auth_selection);
                     true
                 })
-                .unwrap_or(false)
         });
 
     if !resident_key_set {
@@ -185,7 +183,7 @@ where
             ccr_val
                 .pointer_mut("/publicKey")
                 .and_then(|pk_val| pk_val.as_object_mut())
-                .map(|pk_obj| {
+                .is_some_and(|pk_obj| {
                     // Create extensions object with PRF
                     let extensions = serde_json::json!({
                         "prf": {
@@ -195,7 +193,6 @@ where
                     pk_obj.insert("extensions".to_string(), extensions);
                     true
                 })
-                .unwrap_or(false)
         });
 
     if !prf_inserted {
@@ -207,15 +204,11 @@ where
     }
 
     // Serialize the modified CCR directly (no additional wrapping needed)
-    let final_response_json = match serde_json::to_string(&ccr_val) {
-        Ok(json_str) => json_str,
-        Err(e) => {
-            eprintln!("Failed to serialize modified CCR: {}", e);
-            return Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body("Failed to serialize registration options".to_string())
-                .unwrap();
-        }
+    let Ok(final_response_json) = serde_json::to_string(&ccr_val) else {
+        return Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body("Failed to serialize registration options".to_string())
+            .unwrap();
     };
 
     Response::builder()
@@ -273,7 +266,7 @@ where
             .unwrap();
     }
 
-    let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
+    let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
         .unwrap()
         .rp_name("Proven Network")
         .allow_cross_origin(true)
@@ -282,14 +275,12 @@ where
         .unwrap();
 
     // Get the registration state and user UUID from our in-memory storage
-    let (registration_state, user_uuid) = match REGISTRATION_STATES.lock().await.remove(&state_id) {
-        Some(state) => state,
-        None => {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body("Registration session not found or expired".to_string())
-                .unwrap();
-        }
+    let Some((registration_state, user_uuid)) = REGISTRATION_STATES.lock().await.remove(&state_id)
+    else {
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body("Registration session not found or expired".to_string())
+            .unwrap();
     };
 
     // Complete the registration
@@ -305,14 +296,14 @@ where
                 .await
             {
                 Ok(()) => {
-                    println!("Stored passkey for user {}", user_uuid);
+                    println!("Stored passkey for user {user_uuid}");
                     Response::builder()
                         .status(StatusCode::OK)
                         .body("Registration successful".to_string())
                         .unwrap()
                 }
                 Err(e) => {
-                    eprintln!("Failed to store passkey: {}", e);
+                    eprintln!("Failed to store passkey: {e}");
                     Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .body("Failed to store passkey".to_string())
@@ -327,6 +318,7 @@ where
     }
 }
 
+#[allow(clippy::too_many_lines)] // TODO: Refactor this to be more readable
 pub(crate) async fn webauthn_authentication_start_handler<AM, RM, IM, PM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
@@ -370,7 +362,7 @@ where
             .unwrap();
     }
 
-    let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
+    let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
         .unwrap()
         .rp_name("Proven Network")
         .allow_cross_origin(true)
@@ -383,7 +375,7 @@ where
     let (rcr, state) = match webauthn.start_discoverable_authentication() {
         Ok((rcr, state)) => (rcr, state),
         Err(e) => {
-            eprintln!("Failed to start discoverable authentication: {}", e);
+            eprintln!("Failed to start discoverable authentication: {e}");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to start authentication".to_string())
@@ -401,7 +393,7 @@ where
     let mut rcr_val = match serde_json::to_value(&rcr) {
         Ok(val) => val,
         Err(e) => {
-            eprintln!("Failed to serialize RCR to JSON value: {}", e);
+            eprintln!("Failed to serialize RCR to JSON value: {e}");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to prepare authentication options".to_string())
@@ -426,7 +418,7 @@ where
             rcr_val
                 .pointer_mut("/publicKey")
                 .and_then(|pk_val| pk_val.as_object_mut())
-                .map(|pk_obj| {
+                .is_some_and(|pk_obj| {
                     // Create extensions object with PRF
                     let extensions = serde_json::json!({
                         "prf": {
@@ -436,7 +428,6 @@ where
                     pk_obj.insert("extensions".to_string(), extensions);
                     true
                 })
-                .unwrap_or(false)
         });
 
     if !prf_inserted {
@@ -451,7 +442,7 @@ where
     let hints_set = rcr_val
         .pointer_mut("/publicKey")
         .and_then(|pk_val| pk_val.as_object_mut())
-        .map(|pk_obj| {
+        .is_some_and(|pk_obj| {
             pk_obj.insert(
                 "hints".to_string(),
                 serde_json::Value::Array(vec![serde_json::Value::String(
@@ -459,8 +450,7 @@ where
                 )]),
             );
             true
-        })
-        .unwrap_or(false);
+        });
 
     if !hints_set {
         eprintln!("Failed to insert userVerification");
@@ -476,7 +466,7 @@ where
     let final_response_json = match serde_json::to_string(&rcr_val) {
         Ok(json_str) => json_str,
         Err(e) => {
-            eprintln!("Failed to serialize modified RCR: {}", e);
+            eprintln!("Failed to serialize modified RCR: {e}");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to serialize authentication options".to_string())
@@ -539,7 +529,7 @@ where
             .unwrap();
     }
 
-    let webauthn = WebauthnBuilder::new(&rp_id, &rp_origin)
+    let webauthn = WebauthnBuilder::new(rp_id, &rp_origin)
         .unwrap()
         .rp_name("Proven Network")
         .allow_cross_origin(true)
@@ -548,14 +538,11 @@ where
         .unwrap();
 
     // Get the authentication state from our in-memory storage
-    let auth_state = match AUTHENTICATION_STATES.lock().await.remove(&state_id) {
-        Some(state) => state,
-        None => {
-            return Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .body("Authentication session not found or expired".to_string())
-                .unwrap();
-        }
+    let Some(auth_state) = AUTHENTICATION_STATES.lock().await.remove(&state_id) else {
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body("Authentication session not found or expired".to_string())
+            .unwrap();
     };
 
     // First, identify which user is trying to authenticate
@@ -563,10 +550,7 @@ where
         match webauthn.identify_discoverable_authentication(&auth_public_key_credential) {
             Ok(user_data) => user_data,
             Err(e) => {
-                eprintln!(
-                    "Failed to identify user from discoverable authentication: {}",
-                    e
-                );
+                eprintln!("Failed to identify user from discoverable authentication: {e}");
                 return Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .body(format!("Failed to identify user: {e}"))
@@ -578,17 +562,14 @@ where
     let identity_passkey = match passkey_manager.get_passkey(&user_unique_id).await {
         Ok(Some(passkey)) => passkey,
         Ok(None) => {
-            eprintln!("No stored passkey found for user {}", user_unique_id);
+            eprintln!("No stored passkey found for user {user_unique_id}");
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .body(format!(
-                    "No stored passkey found for user {}",
-                    user_unique_id
-                ))
+                .body(format!("No stored passkey found for user {user_unique_id}"))
                 .unwrap();
         }
         Err(e) => {
-            eprintln!("Failed to load passkey: {}", e);
+            eprintln!("Failed to load passkey: {e}");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to load stored passkey".to_string())

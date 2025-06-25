@@ -147,7 +147,7 @@ where
             let store = inner
                 .store
                 .as_ref()
-                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Store is None"))?
+                .ok_or_else(|| std::io::Error::other("Store is None"))?
                 .clone();
             let path = inner.path.clone();
             (entry, store, path)
@@ -157,7 +157,7 @@ where
         store
             .put(key, storage_entry)
             .await
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
 
         Ok(())
     }

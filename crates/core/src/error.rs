@@ -52,8 +52,8 @@ pub enum Error {
     OverlappingRoutes(String, String),
 
     /// Runtime error.
-    #[error(transparent)]
-    Runtime(#[from] proven_runtime::Error),
+    #[error("runtime error: {0}")]
+    Runtime(String),
 }
 
 impl BootableError for Error {}

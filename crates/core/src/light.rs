@@ -162,7 +162,7 @@ where
 
                     Ok(())
                 }
-                _ = http_server.wait() => {
+                () = http_server.wait() => {
                     error!("https server stopped unexpectedly");
 
                     Err(Error::HttpServer("https server stopped unexpectedly".to_string()))

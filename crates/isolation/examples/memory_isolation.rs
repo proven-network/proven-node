@@ -59,7 +59,7 @@ impl MemoryStressTest {
         if !output.status.success() {
             return Err(Error::Io(
                 "Failed to compile memory test program",
-                std::io::Error::new(std::io::ErrorKind::Other, "Compilation failed"),
+                std::io::Error::other("Compilation failed"),
             ));
         }
 

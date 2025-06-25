@@ -30,6 +30,7 @@ pub struct ApplicationView {
 
 impl ApplicationView {
     /// Creates a new empty application view.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             applications: Arc::new(RwLock::new(HashMap::new())),
@@ -55,7 +56,7 @@ impl ApplicationView {
             .read()
             .await
             .get(http_domain)
-            .cloned()
+            .copied()
     }
 
     /// Check if an HTTP domain is linked to an application
@@ -89,15 +90,16 @@ impl ApplicationView {
 
     /// Get the sequence number of the last processed event
     /// Useful for read-your-own-writes consistency
+    #[must_use]
     pub fn last_processed_seq(&self) -> u64 {
         self.last_processed_seq.load(Ordering::SeqCst)
     }
 
     /// Wait until the view has processed at least the given sequence number
     /// Used for strong consistency guarantees in service handlers
-    pub async fn wait_for_seq(&self, min_seq: u64) -> Result<(), Error> {
+    pub async fn wait_for_seq(&self, min_seq: u64) {
         if self.last_processed_seq() >= min_seq {
-            return Ok(()); // Already caught up
+            return; // Already caught up
         }
 
         // Use notification-based waiting to avoid polling
@@ -106,7 +108,7 @@ impl ApplicationView {
 
             // Check again in case we missed a notification
             if self.last_processed_seq() >= min_seq {
-                return Ok(());
+                return;
             }
 
             // Wait for next notification
@@ -204,12 +206,14 @@ impl ApplicationViewConsumerHandler {
     /// # Arguments
     ///
     /// * `view` - The application view to update when events are processed
-    pub fn new(view: ApplicationView) -> Self {
+    #[must_use]
+    pub const fn new(view: ApplicationView) -> Self {
         Self { view }
     }
 
     /// Gets a reference to the application view.
-    pub fn view(&self) -> &ApplicationView {
+    #[must_use]
+    pub const fn view(&self) -> &ApplicationView {
         &self.view
     }
 }

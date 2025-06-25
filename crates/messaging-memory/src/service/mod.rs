@@ -100,7 +100,7 @@ where
         loop {
             tokio::select! {
                 biased;
-                _ = shutdown_token.cancelled() => {
+                () = shutdown_token.cancelled() => {
                     debug!("shutdown token cancelled, exiting service message processing loop");
                     break;
                 }
@@ -134,7 +134,6 @@ where
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
                             error!("Service request receiver lagged by {} messages.", n);
-                            continue;
                         }
                     }
                 }
@@ -260,12 +259,12 @@ where
         debug!("shutting down in-memory service");
 
         self.shutdown_token.cancel();
-        let _ = self.task_tracker.wait();
+        self.task_tracker.wait().await;
 
         Ok(())
     }
 
     async fn wait(&self) {
-        let _ = self.task_tracker.wait();
+        self.task_tracker.wait().await;
     }
 }

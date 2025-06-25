@@ -111,12 +111,13 @@ impl IsolatedApplication for RadixNodeApp {
         ]
     }
 
-    fn executable(&self) -> &str {
+    fn executable(&self) -> &'static str {
         "/apps/radix-node/v1.3.0.2/core-v1.3.0.2/bin/core"
     }
 
-    fn handle_stdout(&self, line: &str) -> () {
-        if let Some(caps) = JAVA_LOG_REGEX.captures(&line) {
+    #[allow(clippy::cognitive_complexity)]
+    fn handle_stdout(&self, line: &str) {
+        if let Some(caps) = JAVA_LOG_REGEX.captures(line) {
             let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {
@@ -129,7 +130,7 @@ impl IsolatedApplication for RadixNodeApp {
                 "TRACE" => trace!("{}", message),
                 _ => error!("{}", line),
             }
-        } else if let Some(caps) = RUST_LOG_REGEX.captures(&strip_str(&line)) {
+        } else if let Some(caps) = RUST_LOG_REGEX.captures(&strip_str(line)) {
             let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {
@@ -145,7 +146,7 @@ impl IsolatedApplication for RadixNodeApp {
         }
     }
 
-    fn handle_stderr(&self, line: &str) -> () {
+    fn handle_stderr(&self, line: &str) {
         self.handle_stdout(line);
     }
 
@@ -161,25 +162,19 @@ impl IsolatedApplication for RadixNodeApp {
             info.ip_address, self.http_port
         );
 
-        let response = match client
+        matches!(client
             .post(&url)
             .body(payload)
             .header("Content-Type", "application/json")
             .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => true,
-            _ => false,
-        };
-
-        response
+            .await, Ok(resp) if resp.status().is_success())
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {
         5000 // Check every 5 seconds
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "radix-node"
     }
 
@@ -263,24 +258,29 @@ impl RadixNode {
 
     /// Returns the HTTP port of the Radix Node.
     #[must_use]
-    pub fn http_port(&self) -> u16 {
+    pub const fn http_port(&self) -> u16 {
         self.http_port
     }
 
     /// Returns the IP address of the Radix Node.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the IP address cannot be determined.
     #[must_use]
     pub async fn ip_address(&self) -> IpAddr {
         self.process
             .lock()
             .await
             .as_ref()
-            .map(|p| p.container_ip().unwrap())
-            .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+            .map_or(IpAddr::V4(Ipv4Addr::LOCALHOST), |p| {
+                p.container_ip().unwrap()
+            })
     }
 
     /// Returns the port of the Radix Node.
     #[must_use]
-    pub fn p2p_port(&self) -> u16 {
+    pub const fn p2p_port(&self) -> u16 {
         self.p2p_port
     }
 
@@ -395,7 +395,8 @@ impl Bootable for RadixNode {
     async fn shutdown(&self) -> Result<(), Error> {
         info!("radix-node shutting down...");
 
-        if let Some(process) = self.process.lock().await.take() {
+        let taken_process = self.process.lock().await.take();
+        if let Some(process) = taken_process {
             process.shutdown().await.map_err(Error::Isolation)?;
             info!("radix-node shutdown");
         } else {

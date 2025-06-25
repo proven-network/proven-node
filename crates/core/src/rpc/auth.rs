@@ -13,11 +13,11 @@ pub struct RpcAuth {
 }
 
 impl RpcAuth {
-    pub fn new(session: Session) -> Result<Self, Error> {
-        Ok(Self {
+    pub fn new(session: Session) -> Self {
+        Self {
             aad: session.session_id().as_bytes().to_vec(),
             session,
-        })
+        }
     }
 
     /// Verify and extract the payload from a signed request

@@ -550,6 +550,8 @@ where
             stream_map.insert(stream_name, new_stream.clone());
         }
 
+        drop(global_state);
+
         Ok(new_stream)
     }
 
@@ -595,6 +597,8 @@ where
         {
             stream_map.insert(stream_name, new_stream.clone());
         }
+
+        drop(global_state);
 
         Ok(new_stream)
     }
@@ -1058,10 +1062,10 @@ mod tests {
         let message1 = Bytes::from("batch_message1");
         let message2 = Bytes::from("batch_message2");
         let message3 = Bytes::from("batch_message3");
-        let messages = vec![message1.clone(), message2.clone(), message3.clone()];
+        let all_messages = vec![message1.clone(), message2.clone(), message3.clone()];
 
         // Publish batch
-        let last_seq = stream.publish_batch(messages).await.unwrap();
+        let last_seq = stream.publish_batch(all_messages).await.unwrap();
         assert_eq!(last_seq, 2); // Last sequence should be 2 (0-indexed)
 
         // Verify all messages were stored
@@ -1087,7 +1091,7 @@ mod tests {
         // Attempt to publish empty batch
         let result: Result<u64, Error> = stream.publish_batch(vec![]).await;
         assert!(result.is_err());
-        if let Err(Error::EmptyBatch) = result {
+        if matches!(result, Err(Error::EmptyBatch)) {
             // Expected error
         } else {
             panic!("Expected Error::EmptyBatch");

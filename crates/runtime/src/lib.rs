@@ -3,6 +3,7 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
+#![allow(clippy::result_large_err)]
 
 mod error;
 mod execution_request;

@@ -1,6 +1,5 @@
 use crate::error::Error;
 use crate::request::Request;
-use crate::response::Response;
 use crate::service_handler::HttpServiceHandler;
 use crate::{DeserializeError, SERVICE_NAME, SerializeError};
 
@@ -136,22 +135,12 @@ where
                 method,
                 path: uri
                     .path_and_query()
-                    .map_or_else(|| uri.path().to_string(), |pq| pq.to_string()),
+                    .map_or_else(|| uri.path().to_string(), std::string::ToString::to_string),
             };
 
             match client.request(proxy_request).await {
                 Ok(response_type) => match response_type {
-                    ClientResponseType::Response(payload) => match Response::try_from(payload) {
-                        Ok(proxy_response) => proxy_response.into_response(),
-                        Err(e) => {
-                            error!("Failed to deserialize NATS response: {}", e);
-                            (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                format!("Failed to process backend response: {}", e),
-                            )
-                                .into_response()
-                        }
-                    },
+                    ClientResponseType::Response(payload) => payload.into_response(),
                     ClientResponseType::Stream(_) => {
                         unimplemented!("Stream response type not supported");
                     }
@@ -160,7 +149,7 @@ where
                     error!("Failed to send request via NATS: {}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to communicate with backend: {}", e),
+                        format!("Failed to communicate with backend: {e}"),
                     )
                         .into_response()
                 }

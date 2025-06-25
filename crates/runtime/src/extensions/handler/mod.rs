@@ -218,7 +218,7 @@ mod tests {
             Err(error) => {
                 panic!("Unexpected error: {error:?}");
             }
-        };
+        }
     }
 
     #[tokio::test]
@@ -248,7 +248,7 @@ mod tests {
             Err(error) => {
                 panic!("Unexpected error: {error:?}");
             }
-        };
+        }
     }
 
     #[tokio::test]
@@ -286,6 +286,6 @@ mod tests {
             Err(error) => {
                 panic!("Unexpected error: {error:?}");
             }
-        };
+        }
     }
 }

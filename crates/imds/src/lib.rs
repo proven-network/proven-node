@@ -83,7 +83,7 @@ impl Imds {
         let client = Client::new();
 
         let token_response = client
-            .put(format!("{}{}", IMDS_BASE_URL, IMDS_TOKEN_PATH))
+            .put(format!("{IMDS_BASE_URL}{IMDS_TOKEN_PATH}"))
             .header("X-aws-ec2-metadata-token-ttl-seconds", "21600")
             .send()
             .await?;
@@ -141,7 +141,7 @@ impl Imds {
     async fn get_from_endpoint(&self, path: &str) -> Result<String> {
         let response = self
             .client
-            .get(format!("{}{}", IMDS_BASE_URL, path))
+            .get(format!("{IMDS_BASE_URL}{path}"))
             .header("X-aws-ec2-metadata-token", &self.token)
             .send()
             .await?;

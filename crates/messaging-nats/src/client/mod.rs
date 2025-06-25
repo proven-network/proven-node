@@ -184,7 +184,6 @@ where
                 Err(mpsc::error::TrySendError::Full(_)) => {
                     retries += 1;
                     sleep(Duration::from_millis(10 * retries as u64)).await;
-                    continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) | Ok(()) => return,
             }
@@ -440,15 +439,14 @@ where
             .unwrap();
 
         // Wait for response with cleanup
-        match timeout(Duration::from_secs(5), receiver).await {
-            Ok(Ok(response)) => Ok(response),
-            _ => {
-                // Clean up map on timeout/error
-                let mut map = self.response_map.lock().await;
-                map.remove(&request_id);
-                drop(map);
-                Err(Error::NoResponse)
-            }
+        if let Ok(Ok(response)) = timeout(Duration::from_secs(5), receiver).await {
+            Ok(response)
+        } else {
+            // Clean up map on timeout/error
+            let mut map = self.response_map.lock().await;
+            map.remove(&request_id);
+            drop(map);
+            Err(Error::NoResponse)
         }
     }
 }
@@ -669,7 +667,7 @@ mod tests {
                     }
                 );
             }
-            _ => {
+            ClientResponseType::Stream(_) => {
                 panic!("Expected single response");
             }
         }
@@ -799,7 +797,7 @@ mod tests {
                     ]
                 );
             }
-            _ => {
+            ClientResponseType::Response(_) => {
                 panic!("Expected stream response");
             }
         }
@@ -873,7 +871,7 @@ mod tests {
 
                 assert_eq!(responses.len(), 0);
             }
-            _ => {
+            ClientResponseType::Response(_) => {
                 panic!("Expected stream response");
             }
         }

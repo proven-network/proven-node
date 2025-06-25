@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(clippy::type_complexity)]
 
 use std::convert::Infallible;
 

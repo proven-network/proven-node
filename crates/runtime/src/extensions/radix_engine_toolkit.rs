@@ -35,6 +35,6 @@ mod tests {
             Err(error) => {
                 panic!("Unexpected error: {error:?}");
             }
-        };
+        }
     }
 }

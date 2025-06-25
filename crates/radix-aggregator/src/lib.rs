@@ -49,6 +49,7 @@ impl IsolatedApplication for RadixAggregatorApp {
         AGGREGATOR_PATH
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn handle_stdout(&self, line: &str) {
         // Use the static log pattern to parse log lines
         if let Some(caps) = LOG_REGEX.captures(line) {
@@ -76,21 +77,18 @@ impl IsolatedApplication for RadixAggregatorApp {
         // Check if the service is responding on port 8080
         let client = reqwest::Client::new();
 
-        match client
+        (client
             .get(format!("http://{}:8080/health", info.ip_address))
             .send()
-            .await
-        {
-            Ok(response) => response.status().is_success(),
-            Err(_) => false, // Not ready yet
-        }
+            .await)
+            .is_ok_and(|response| response.status().is_success())
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {
         5000 // Check every 5 seconds
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "radix-aggregator"
     }
 
@@ -377,7 +375,8 @@ impl Bootable for RadixAggregator {
     async fn shutdown(&self) -> Result<(), Error> {
         info!("radix-aggregator shutting down...");
 
-        if let Some(process) = self.process.lock().await.take() {
+        let taken_process = self.process.lock().await.take();
+        if let Some(process) = taken_process {
             process.shutdown().await.map_err(Error::Isolation)?;
             info!("radix-aggregator shutdown");
         } else {

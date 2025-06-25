@@ -3,6 +3,7 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
+#![allow(clippy::type_complexity)]
 
 mod application;
 mod command;
@@ -32,7 +33,6 @@ use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing;
 use uuid::Uuid;
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
@@ -94,6 +94,7 @@ where
 }
 
 /// Event-driven application manager using dual messaging streams and distributed leadership.
+///
 /// Commands go through the command stream, events are published to the event stream.
 /// The view is built by consuming events from the event stream.
 /// Only the leader node runs the command service.
@@ -257,7 +258,7 @@ where
     ///
     /// This provides direct access to the in-memory view for fast queries
     /// without going through the request/response cycle.
-    pub fn view(&self) -> &ApplicationView {
+    pub const fn view(&self) -> &ApplicationView {
         &self.view
     }
 
@@ -361,8 +362,7 @@ where
             Err(e) => {
                 tracing::error!("Failed to acquire application service leadership: {:?}", e);
                 Err(Error::Service(format!(
-                    "Leadership acquisition failed: {}",
-                    e
+                    "Leadership acquisition failed: {e}"
                 )))
             }
         }
@@ -412,8 +412,8 @@ where
             Self::leadership_monitor_task(leadership_guard, lock_manager).await;
         });
 
-        *monitor_guard = Some(handle);
         tracing::debug!("Started application service leadership monitor");
+        *monitor_guard = Some(handle);
     }
 
     /// Background task to monitor leadership status.
@@ -571,7 +571,7 @@ where
             _ => return Err(Error::UnexpectedResponse),
         };
 
-        self.view.wait_for_seq(last_event_seq).await?;
+        self.view.wait_for_seq(last_event_seq).await;
 
         Ok(self
             .view
@@ -669,7 +669,6 @@ where
 mod tests {
     use super::*;
 
-    use futures;
     use proven_locks_memory::MemoryLockManager;
     use proven_messaging_memory::{
         client::MemoryClientOptions,
@@ -684,7 +683,7 @@ mod tests {
     type TestApplicationManager =
         ApplicationManager<TestCommandStream, TestEventStream, MemoryLockManager>;
 
-    async fn create_test_manager() -> TestApplicationManager {
+    fn create_test_manager() -> TestApplicationManager {
         let stream_name = format!("test-stream-{}", Uuid::new_v4());
         let command_stream =
             MemoryStream::new(stream_name.clone() + "-commands", MemoryStreamOptions);
@@ -703,7 +702,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_application() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
 
         let result = manager
@@ -719,7 +718,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_application_from_view() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
 
         // Create application
@@ -741,7 +740,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_direct_view_queries() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
 
         // Direct view access should work immediately (no async required since view is shared)
@@ -773,7 +772,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_transfer_ownership() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
         let new_owner_id = Uuid::new_v4();
 
@@ -802,7 +801,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_archive_application() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
 
         // Create application
@@ -832,7 +831,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_application_creation() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
 
         // Create multiple applications concurrently
@@ -873,7 +872,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_last_processed_seq_tracking() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
 
         // Initially, no events processed
@@ -919,7 +918,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_strong_consistency_commands() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
 
         // Create application (does not require strong consistency)
@@ -955,7 +954,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_leadership_functionality() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
 
         // Initially not a leader
         assert!(!manager.is_leader().await);
@@ -1050,7 +1049,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_link_http_domain_success() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1089,7 +1088,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_link_http_domain_to_nonexistent_application() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let nonexistent_app_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1105,7 +1104,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_link_already_linked_domain() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1146,7 +1145,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unlink_http_domain_success() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1195,7 +1194,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unlink_http_domain_from_nonexistent_application() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let nonexistent_app_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1211,7 +1210,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unlink_non_linked_domain() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1237,7 +1236,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unlink_domain_from_wrong_application() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1277,7 +1276,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_domains_per_application() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
         let domain1 = "example.com".to_string();
         let domain2 = "test.com".to_string();
@@ -1378,7 +1377,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_domain_linking_with_application_archival() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1423,7 +1422,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_domain_linking() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let owner_id = Uuid::new_v4();
 
         // Create application

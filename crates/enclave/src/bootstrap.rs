@@ -1,3 +1,5 @@
+#![allow(clippy::significant_drop_tightening)]
+
 use super::error::{Error, Result};
 use super::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 use super::node::{EnclaveNode, EnclaveNodeCore, Services};
@@ -622,9 +624,8 @@ impl Bootstrap {
 
     async fn get_network_topology(&mut self) -> Result<()> {
         // Parse the private key and calculate public key
-        let private_key_bytes = hex::decode(self.args.node_key.trim()).map_err(|e| {
-            Error::PrivateKey(format!("Failed to decode private key as hex: {}", e))
-        })?;
+        let private_key_bytes = hex::decode(self.args.node_key.trim())
+            .map_err(|e| Error::PrivateKey(format!("Failed to decode private key as hex: {e}")))?;
 
         // We need exactly 32 bytes for ed25519 private key
         let private_key = SigningKey::try_from(private_key_bytes.as_slice()).map_err(|_| {

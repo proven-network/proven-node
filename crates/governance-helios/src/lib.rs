@@ -216,7 +216,7 @@ impl Governance for HeliosGovernance {
             // Parse specializations from bytes32 array
             for spec_bytes in &node_struct.specializations {
                 // Convert the bytes32 to a string representation
-                let spec_str = format!("{:x}", spec_bytes);
+                let spec_str = format!("{spec_bytes:x}");
 
                 // Match the hash to known specializations
                 // Note: In a real implementation, you would use a mapping from hash to specialization

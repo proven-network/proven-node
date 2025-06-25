@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use proven_runtime::{
     ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RpcEndpoints,
     RuntimeOptions, Worker,

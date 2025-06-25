@@ -4,6 +4,7 @@
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::redundant_pub_crate)]
+#![allow(clippy::large_futures)] // TODO: Potential refactor
 
 mod bootstrap;
 mod error;
@@ -408,6 +409,7 @@ struct Args {
 }
 
 #[tokio::main(worker_threads = 8)]
+#[allow(clippy::large_stack_frames)] // TODO: Look into this
 async fn main() -> Result<()> {
     // Initialize tracing for better logging
     tracing_subscriber::fmt::init();

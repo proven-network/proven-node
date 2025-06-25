@@ -239,11 +239,9 @@ where
                 // --- Check for existing worker ---
                 let worker_opt = {
                     let mut worker_map = pool.workers.lock().await;
-                    if let Some(workers) = worker_map.get_mut(&code_package_hash) {
-                        workers.pop()
-                    } else {
-                        None
-                    }
+                    worker_map
+                        .get_mut(&code_package_hash)
+                        .map_or_else(|| None, Vec::pop)
                 };
 
                 if let Some(mut worker) = worker_opt {
@@ -340,11 +338,11 @@ where
                             continue 'outer;
                         }
                     }
-                } else {
-                    // Could not find or create worker, queue request (pushes to overflow if needed)
-                    pool.queue_request(module_loader, request, sender, true)
-                        .await;
                 }
+
+                // Could not find or create worker, queue request (pushes to overflow if needed)
+                pool.queue_request(module_loader, request, sender, true)
+                    .await;
             }
         });
 
@@ -402,11 +400,9 @@ where
         // --- Check for existing worker ---
         let worker_opt = {
             let mut worker_map = self.workers.lock().await;
-            if let Some(workers) = worker_map.get_mut(&code_package_hash) {
-                workers.pop()
-            } else {
-                None
-            }
+            worker_map
+                .get_mut(&code_package_hash)
+                .map_or_else(|| None, Vec::pop)
         };
 
         if let Some(mut worker) = worker_opt {
@@ -550,11 +546,9 @@ where
         // --- Check for existing worker ---
         let worker_opt = {
             let mut worker_map = self.workers.lock().await;
-            if let Some(workers) = worker_map.get_mut(&code_package_hash) {
-                workers.pop()
-            } else {
-                None
-            }
+            worker_map
+                .get_mut(&code_package_hash)
+                .map_or_else(|| None, Vec::pop)
         };
 
         if let Some(mut worker) = worker_opt {
@@ -732,12 +726,12 @@ where
                 }
                 // If list was empty, remove it
                 workers.remove(&module_key);
-                self.last_used.lock().await.remove(&module_key);
-            } else {
-                // If not in workers map, remove stale last_used entry
-                self.last_used.lock().await.remove(&module_key);
             }
+
+            self.last_used.lock().await.remove(&module_key);
         }
+        drop(workers);
+
         false // No suitable idle worker found to kill
     }
 }

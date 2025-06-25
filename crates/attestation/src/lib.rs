@@ -81,5 +81,9 @@ where
     async fn secure_random(&self) -> Result<Bytes, Self::Error>;
 
     /// Verify an attestation document.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the attestation document is invalid or verification fails.
     fn verify(&self, attestation: Bytes) -> Result<VerifiedAttestation, Self::Error>;
 }

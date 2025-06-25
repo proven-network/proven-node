@@ -1,4 +1,5 @@
 //! Process spawning functionality for isolated applications.
+#![allow(clippy::type_complexity)]
 
 use crate::ReadyCheckInfo;
 use crate::cgroups::{CgroupMemoryConfig, CgroupsController};
@@ -124,16 +125,18 @@ pub struct IsolatedProcess {
 impl IsolatedProcess {
     /// Returns the process ID.
     #[must_use]
-    pub fn pid(&self) -> u32 {
+    pub const fn pid(&self) -> u32 {
         self.pid
     }
 
     /// Get the container's IP address (as reachable from the host)
+    #[must_use]
     pub fn container_ip(&self) -> Option<IpAddr> {
         self.veth_pair.as_ref().map(|veth| veth.container_ip())
     }
 
     /// Get the host's IP address (as reachable from the container)
+    #[must_use]
     pub fn host_ip(&self) -> Option<IpAddr> {
         self.veth_pair.as_ref().map(|veth| veth.host_ip())
     }
@@ -149,10 +152,8 @@ impl IsolatedProcess {
 
         // Loop until there's an exit status
         loop {
-            let exit_status = self.exit_status.lock().await;
-
-            if let Some(exit_status) = exit_status.as_ref() {
-                return exit_status.clone();
+            if let Some(exit_status) = self.exit_status.lock().await.as_ref() {
+                return *exit_status;
             }
 
             // Process still exists, wait a bit and try again
@@ -166,11 +167,12 @@ impl IsolatedProcess {
     ///
     /// Returns an error if the signal could not be sent.
     pub fn signal(&self, signal: Signal) -> Result<(), Error> {
+        #[allow(clippy::cast_possible_wrap)]
         let pid = Pid::from_raw(self.pid as i32);
         signal::kill(pid, signal).map_err(|e| {
             Error::Io(
                 "Failed to send signal to process",
-                std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                std::io::Error::other(e.to_string()),
             )
         })
     }
@@ -197,7 +199,7 @@ impl IsolatedProcess {
     /// # Errors
     ///
     /// Returns an error if the memory usage could not be retrieved.
-    pub fn current_memory_usage(&self) -> Result<Option<usize>, Error> {
+    pub const fn current_memory_usage(&self) -> Result<Option<usize>, Error> {
         if let Some(ref controller) = self.cgroups_controller {
             controller.current_memory_usage()
         } else {
@@ -211,20 +213,20 @@ impl IsolatedProcess {
     ///
     /// Returns an error if the memory usage could not be retrieved.
     pub fn current_memory_usage_mb(&self) -> Result<Option<f64>, Error> {
-        if let Some(bytes) = self.current_memory_usage()? {
+        (self.current_memory_usage()?).map_or(Ok(None), |bytes| {
             // Convert bytes to MB
+            #[allow(clippy::cast_precision_loss)] // TODO: Check if this is correct
             let mb = bytes as f64 / (1024.0 * 1024.0);
             Ok(Some(mb))
-        } else {
-            Ok(None)
-        }
+        })
     }
 
     /// Returns whether memory control is active for this process.
+    #[must_use]
     pub fn has_memory_control(&self) -> bool {
         self.cgroups_controller
             .as_ref()
-            .map_or(false, |c| c.is_active())
+            .is_some_and(CgroupsController::is_active)
     }
 }
 
@@ -309,12 +311,19 @@ impl std::fmt::Debug for IsolatedProcessSpawner {
             .field("chroot_dir", &self.chroot_dir)
             .field("env", &self.env)
             .field("executable", &self.executable)
+            .field("host_ip_address", &self.host_ip_address)
+            .field("host_veth_interface_name", &self.host_veth_interface_name)
             .field("is_ready_check", &"<function>")
             .field(
                 "is_ready_check_interval_ms",
                 &self.is_ready_check_interval_ms,
             )
             .field("is_ready_check_max", &self.is_ready_check_max)
+            .field("isolated_ip_address", &self.isolated_ip_address)
+            .field(
+                "isolated_veth_interface_name",
+                &self.isolated_veth_interface_name,
+            )
             .field("memory_control", &self.memory_control)
             .field("namespaces", &self.namespaces)
             .field("stderr_handler", &"<function>")
@@ -358,7 +367,7 @@ impl IsolatedProcessSpawner {
         }: IsolatedProcessOptions,
     ) -> Self {
         // Generate a random string for the chroot directory
-        let chroot_dir = format!("/tmp/chroot/{}", uuid::Uuid::new_v4().to_string());
+        let chroot_dir = format!("/tmp/chroot/{}", uuid::Uuid::new_v4());
 
         Self {
             args,
@@ -592,6 +601,7 @@ impl IsolatedProcessSpawner {
     /// # Errors
     ///
     /// Returns an error if the process could not be spawned.
+    #[allow(clippy::too_many_lines)] // TODO: Potential refactor
     pub async fn spawn(&mut self) -> Result<IsolatedProcess, Error> {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
@@ -800,6 +810,7 @@ impl IsolatedProcessSpawner {
                 }
                 () = shutdown_token_for_task.cancelled() => {
                     info!("Shutdown requested for process {}, terminating...", pid_for_task);
+                    #[allow(clippy::cast_possible_wrap)]
                     let pid = Pid::from_raw(pid_for_task as i32);
                     debug!("Sending {} to process {}", shutdown_signal, pid);
                     if let Err(err) = signal::kill(pid, shutdown_signal) {
@@ -813,6 +824,7 @@ impl IsolatedProcessSpawner {
                     let mut killed_by_timeout = false;
 
                     loop {
+                        #[allow(clippy::cast_possible_wrap)]
                         let pid_for_wait = Pid::from_raw(pid_for_task as i32);
                         match waitpid(pid_for_wait, Some(WaitPidFlag::WNOHANG)) {
                             Ok(WaitStatus::Exited(_, status)) => {
@@ -879,17 +891,16 @@ impl IsolatedProcessSpawner {
                                 if killed_by_timeout {
                                      warn!("Process {} was killed due to timeout. Final status from wait: {}", pid_for_task, final_status);
                                      // We trust the final_status from wait() as the most accurate.
-                                     *exit_status_guard = Some(final_status);
                                 } else if let Some(_graceful_status) = graceful_exit_status {
                                      // Prefer the status obtained via waitpid if available and consistent?
                                      // Let's trust the final wait() status as the definitive one from the OS.
                                      info!("Process {} exited after signal. Final status from wait: {}", pid_for_task, final_status);
-                                     *exit_status_guard = Some(final_status);
                                 } else {
-                                      // Process exited/disappeared during waitpid loop (e.g., ECHILD or other error)
-                                      info!("Process {} status unclear from waitpid loop. Final status from wait: {}", pid_for_task, final_status);
-                                      *exit_status_guard = Some(final_status);
+                                    // Process exited/disappeared during waitpid loop (e.g., ECHILD or other error)
+                                    info!("Process {} status unclear from waitpid loop. Final status from wait: {}", pid_for_task, final_status);
                                 }
+
+                                *exit_status_guard = Some(final_status);
                             } else {
                                  // Status was already set, likely by the normal exit path race condition. Log if different.
                                  if Some(final_status) != *exit_status_guard {
@@ -928,8 +939,9 @@ impl IsolatedProcessSpawner {
         task_tracker.close();
 
         // Create a cgroups controller if memory control is configured
-        let cgroups_controller = if let Some(ref memory_config) = self.memory_control {
-            match CgroupsController::new(pid, memory_config) {
+        let cgroups_controller = self.memory_control.as_ref().map_or_else(
+            || None,
+            |memory_config| match CgroupsController::new(pid, memory_config) {
                 Ok(controller) => {
                     if controller.is_active() {
                         debug!("Cgroups memory controller activated for process {}", pid);
@@ -943,10 +955,8 @@ impl IsolatedProcessSpawner {
                     error!("Failed to create cgroups controller: {}", e);
                     None
                 }
-            }
-        } else {
-            None
-        };
+            },
+        );
 
         // Create the IsolatedProcess instance
         let process = IsolatedProcess {
@@ -984,6 +994,7 @@ impl IsolatedProcessSpawner {
 
         loop {
             // Check if process has exited while we were waiting
+            #[allow(clippy::cast_possible_wrap)]
             if unsafe { libc::kill(pid as i32, 0) } != 0 {
                 return Err(Error::ReadinessCheck(
                     "Process exited during readiness checks".to_string(),
@@ -1029,25 +1040,23 @@ impl IsolatedProcessSpawner {
                 pid,
             };
 
-            match (self.is_ready_check)(ready_check_info).await {
-                true => {
-                    debug!("Application reported ready after {} attempts", attempts + 1);
-                    break;
-                }
-                false => {
-                    attempts += 1;
-                    if let Some(max) = max_attempts {
-                        if attempts >= max {
-                            return Err(Error::ReadinessCheck(format!(
-                                "Application not ready after {} attempts",
-                                attempts
-                            )));
-                        }
-                    }
-                    debug!("Application not ready, attempt {}, waiting...", attempts);
-                    tokio::time::sleep(interval).await;
+            if (self.is_ready_check)(ready_check_info).await {
+                debug!("Application reported ready after {} attempts", attempts + 1);
+                break;
+            }
+
+            attempts += 1;
+
+            if let Some(max) = max_attempts {
+                if attempts >= max {
+                    return Err(Error::ReadinessCheck(format!(
+                        "Application not ready after {attempts} attempts"
+                    )));
                 }
             }
+
+            debug!("Application not ready, attempt {}, waiting...", attempts);
+            tokio::time::sleep(interval).await;
         }
 
         Ok(process)

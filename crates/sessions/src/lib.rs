@@ -180,7 +180,7 @@ where
 
         let session = Session::Anonymous {
             origin: origin.to_string(),
-            session_id: session_id.clone(),
+            session_id,
             signing_key: server_signing_key.clone(),
             verifying_key: *verifying_key,
         };
@@ -247,7 +247,7 @@ where
                     verifying_key,
                 } => {
                     let new_session = Session::Identified {
-                        identity_id: identity_id.clone(),
+                        identity_id: *identity_id,
                         origin,
                         session_id,
                         signing_key,

@@ -16,7 +16,6 @@ pub use peer::Peer;
 use bytes::Bytes;
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use hex;
 use proven_attestation::{AttestationParams, Attestor};
 use proven_governance::{Governance, NodeSpecialization, Version};
 use serde::{Deserialize, Serialize};
@@ -46,7 +45,7 @@ pub struct SignedData {
     pub signature: Bytes,
 }
 
-/// Options for creating a ProvenNetwork instance.
+/// Options for creating a `ProvenNetwork` instance.
 #[derive(Debug, Clone)]
 pub struct ProvenNetworkOptions<G, A>
 where
@@ -101,7 +100,7 @@ where
     G: Governance,
     A: Attestor,
 {
-    /// Create a new ProvenNetwork instance.
+    /// Create a new `ProvenNetwork` instance.
     ///
     /// # Errors
     ///
@@ -121,7 +120,7 @@ where
         let random_bytes = attestor
             .secure_random()
             .await
-            .map_err(|e| Error::Attestation(format!("Failed to generate random bytes: {}", e)))?;
+            .map_err(|e| Error::Attestation(format!("Failed to generate random bytes: {e}")))?;
         let nats_cluster_password = hex::encode(random_bytes);
 
         Ok(Self {
@@ -136,6 +135,11 @@ where
     }
 
     /// Get the active versions of the node.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to get active versions from governance
     pub async fn get_active_versions(&self) -> Result<Vec<Version>, Error> {
         self.governance
             .get_active_versions()
@@ -144,6 +148,12 @@ where
     }
 
     /// Attest the nats cluster endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to get nats cluster endpoint
+    /// - Failed to attest data
     pub async fn attested_nats_cluster_endpoint(
         &self,
         nonce: Bytes,
@@ -151,20 +161,22 @@ where
         let nats_cluster_endpoint = self.nats_cluster_endpoint().await?;
         let nats_cluster_endpoint_bytes = nats_cluster_endpoint.to_string().as_bytes().to_vec();
 
-        Ok(self
-            .attest_data(&nonce, &nats_cluster_endpoint_bytes)
-            .await?)
+        self.attest_data(&nonce, &nats_cluster_endpoint_bytes).await
     }
 
     /// Get the availability zone of this node.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to get self node
     pub async fn availability_zone(&self) -> Result<String, Error> {
         Ok(self.get_self().await?.availability_zone().to_string())
     }
 
     /// Get the attestor instance used by this network.
     #[must_use]
-    pub fn attestor(&self) -> &A {
+    pub const fn attestor(&self) -> &A {
         &self.attestor
     }
 
@@ -194,6 +206,12 @@ where
     }
 
     /// FQDN of the node.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to parse origin
+    /// - Failed to get host string from URL
     pub async fn fqdn(&self) -> Result<String, Error> {
         let url = Url::parse(self.origin().await?.as_str())?;
 
@@ -202,39 +220,53 @@ where
 
     /// Get the governance implementation used by this network.
     #[must_use]
-    pub fn governance(&self) -> &G {
+    pub const fn governance(&self) -> &G {
         &self.governance
     }
 
     /// Get the nats cluster endpoint of this node.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to parse origin
+    /// - Failed to set username
+    /// - Failed to set password
     pub async fn nats_cluster_endpoint(&self) -> Result<Url, Error> {
         let fqdn = self.fqdn().await?;
         let mut url = Url::parse(&format!("nats://{}:{}", fqdn, self.nats_cluster_port))?;
 
         url.set_username(&self.nats_cluster_username)
-            .map_err(|_| Error::GenerateClusterEndpoint("failed to set username"))?;
+            .map_err(|()| Error::GenerateClusterEndpoint("failed to set username"))?;
         url.set_password(Some(&self.nats_cluster_password))
-            .map_err(|_| Error::GenerateClusterEndpoint("failed to set password"))?;
+            .map_err(|()| Error::GenerateClusterEndpoint("failed to set password"))?;
 
         Ok(url)
     }
 
     /// Get the origin of this node.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to get self node
     pub async fn origin(&self) -> Result<String, Error> {
         Ok(self.get_self().await?.origin().to_string())
     }
 
     /// Get the private key used by this node.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to get private key
     pub async fn private_key(&self) -> tokio::sync::MutexGuard<'_, SigningKey> {
         self.private_key.lock().await
     }
 
     /// Get the public key used by this node.
     #[must_use]
-    pub fn public_key(&self) -> &VerifyingKey {
+    pub const fn public_key(&self) -> &VerifyingKey {
         &self.public_key
     }
 
@@ -245,13 +277,21 @@ where
     }
 
     /// Get the region of this node.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to get self node
     pub async fn region(&self) -> Result<String, Error> {
         Ok(self.get_self().await?.region().to_string())
     }
 
     /// Get the specializations of this node.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Failed to get self node
     pub async fn specializations(&self) -> Result<HashSet<NodeSpecialization>, Error> {
         Ok(self.get_self().await?.specializations().clone())
     }

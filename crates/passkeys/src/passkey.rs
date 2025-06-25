@@ -8,11 +8,13 @@ pub struct Passkey(WebauthnPasskey);
 
 impl Passkey {
     /// Get a reference to the inner webauthn passkey.
-    pub fn inner(&self) -> &WebauthnPasskey {
+    #[must_use]
+    pub const fn inner(&self) -> &WebauthnPasskey {
         &self.0
     }
 
     /// Convert to the inner webauthn passkey.
+    #[must_use]
     pub fn into_inner(self) -> WebauthnPasskey {
         self.0
     }

@@ -50,14 +50,15 @@ impl IsolatedApplication for PostgresApp {
         ]
     }
 
-    fn executable(&self) -> &str {
+    fn executable(&self) -> &'static str {
         "/apps/postgres/v17.4/bin/postgres"
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "postgres"
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn handle_stdout(&self, line: &str) {
         if let Some(caps) = LOG_REGEX.captures(line) {
             let label = caps.get(1).map_or("UNKNOWN", |m| m.as_str());
@@ -83,7 +84,7 @@ impl IsolatedApplication for PostgresApp {
     }
 
     fn handle_stderr(&self, line: &str) {
-        self.handle_stdout(line) // Postgres sends all logs to stderr, so handle them the same way
+        self.handle_stdout(line); // Postgres sends all logs to stderr, so handle them the same way
     }
 
     async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
@@ -147,11 +148,11 @@ impl IsolatedApplication for PostgresInitApp {
         ]
     }
 
-    fn executable(&self) -> &str {
+    fn executable(&self) -> &'static str {
         "/apps/postgres/v17.4/bin/initdb"
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "postgres-init"
     }
 
@@ -206,11 +207,11 @@ impl IsolatedApplication for PostgresVacuumApp {
         vec![("PGPASSWORD".to_string(), self.password.clone())]
     }
 
-    fn executable(&self) -> &str {
+    fn executable(&self) -> &'static str {
         "/apps/postgres/v17.4/bin/vacuumdb"
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "postgres-vacuum"
     }
 
@@ -286,19 +287,24 @@ impl Postgres {
     }
 
     /// Returns the IP address of the Postgres server.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the Postgres server is not running.
     #[must_use]
     pub async fn ip_address(&self) -> IpAddr {
         self.process
             .lock()
             .await
             .as_ref()
-            .map(|p| p.container_ip().unwrap())
-            .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+            .map_or(IpAddr::V4(Ipv4Addr::LOCALHOST), |p| {
+                p.container_ip().unwrap()
+            })
     }
 
     /// Returns the port of the Postgres server.
     #[must_use]
-    pub fn port(&self) -> u16 {
+    pub const fn port(&self) -> u16 {
         self.port
     }
 
@@ -325,7 +331,7 @@ impl Postgres {
 
         let exit_status = process.wait().await;
 
-        println!("exit status: {:?}", exit_status);
+        println!("exit status: {exit_status:?}");
 
         if exit_status.success() {
             info!("database initialization completed");
@@ -342,12 +348,12 @@ impl Postgres {
         let pg_hba_path = std::path::Path::new(&self.store_dir).join("pg_hba.conf");
 
         // Create a pg_hba.conf that allows connections from anywhere
-        let pg_hba_content = format!(
+        let pg_hba_content =
             "# TYPE  DATABASE        USER            ADDRESS                 METHOD\n\
              local   all             all                                     trust\n\
              host    all             all             0.0.0.0/0               md5\n\
              host    all             all             ::/0                    md5\n"
-        );
+                .to_string();
 
         tokio::fs::write(&pg_hba_path, pg_hba_content)
             .await
@@ -366,7 +372,7 @@ impl Postgres {
                 .exists()
     }
 
-    async fn prepare_config(&self) -> Result<(), Error> {
+    fn prepare_config(&self) -> Result<(), Error> {
         // Create data directory if it doesn't exist
         let data_dir = Path::new(&self.store_dir);
         if !data_dir.exists() {
@@ -426,7 +432,7 @@ impl Bootable for Postgres {
 
         debug!("starting Postgres server...");
 
-        self.prepare_config().await?;
+        self.prepare_config()?;
 
         if !self.is_initialized() {
             info!("initializing database...");
@@ -468,7 +474,8 @@ impl Bootable for Postgres {
 
     /// Shuts down the server.
     async fn shutdown(&self) -> Result<(), Error> {
-        if let Some(process) = self.process.lock().await.take() {
+        let taken_process = self.process.lock().await.take();
+        if let Some(process) = taken_process {
             info!("postgres shutting down...");
             process.shutdown().await.map_err(Error::Isolation)?;
             info!("postgres shutdown");

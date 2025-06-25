@@ -32,7 +32,10 @@ pub struct NsmAttestor {
 
 impl NsmAttestor {
     /// Create a new `NsmAttestor`.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Nitro driver cannot be initialized or if the PCRs cannot be retrieved.
     pub fn new() -> Result<Self> {
         let driver = nsm_nitro_enclave_utils::driver::nitro::Nitro::init();
 
@@ -72,18 +75,16 @@ impl NsmAttestor {
             _ => return Err(Error::InvalidResponse),
         };
 
-        let pcrs = Pcrs {
-            pcr0: pcr0.into(),
-            pcr1: pcr1.into(),
-            pcr2: pcr2.into(),
-            pcr3: pcr3.into(),
-            pcr4: pcr4.into(),
-            pcr8: pcr8.into(),
-        };
-
         Ok(Self {
             driver: Arc::new(Mutex::new(driver)),
-            pcrs,
+            pcrs: Pcrs {
+                pcr0: pcr0.into(),
+                pcr1: pcr1.into(),
+                pcr2: pcr2.into(),
+                pcr3: pcr3.into(),
+                pcr4: pcr4.into(),
+                pcr8: pcr8.into(),
+            },
         })
     }
 }
@@ -101,6 +102,8 @@ impl Attestor for NsmAttestor {
             user_data: params.user_data.map(ByteBuf::from),
         });
 
+        drop(driver);
+
         match attestation {
             Response::Attestation { document } => Ok(document.into()),
             Response::Error(e) => Err(Error::from(e)),
@@ -116,6 +119,8 @@ impl Attestor for NsmAttestor {
         let driver = self.driver.lock().await;
 
         let random = driver.process_request(Request::GetRandom);
+
+        drop(driver);
 
         match random {
             Response::GetRandom { random } => Ok(random.into()),

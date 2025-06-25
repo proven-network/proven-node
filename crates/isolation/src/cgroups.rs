@@ -266,6 +266,10 @@ impl CgroupsController {
     }
 
     /// Create a new cgroups controller for non-Linux platforms (no-op)
+    ///
+    /// # Errors
+    ///
+    /// None - just returns a Result for compatibility with the Linux implementation.
     #[cfg(not(target_os = "linux"))]
     pub fn new(_pid: u32, _memory_config: &CgroupMemoryConfig) -> Result<Self> {
         warn!("Cgroups are only available on Linux. Memory limits will not be applied.");
@@ -389,8 +393,13 @@ impl CgroupsController {
     }
 
     /// Get the current memory usage of the process in bytes (non-Linux platforms)
+    ///
+    /// # Errors
+    ///
+    /// None - just returns a Result for compatibility with the Linux implementation.
     #[cfg(not(target_os = "linux"))]
-    pub fn current_memory_usage(&self) -> Result<Option<usize>> {
+    #[allow(clippy::unused_self)]
+    pub const fn current_memory_usage(&self) -> Result<Option<usize>> {
         Ok(None)
     }
 
@@ -427,12 +436,14 @@ impl CgroupsController {
 
     /// Clean up the cgroup (non-Linux platforms)
     #[cfg(not(target_os = "linux"))]
-    fn cleanup(&self) {
+    #[allow(clippy::unused_self)]
+    const fn cleanup(&self) {
         // No-op
     }
 
     /// Check if the cgroup controller is active
-    pub fn is_active(&self) -> bool {
+    #[must_use]
+    pub const fn is_active(&self) -> bool {
         self.is_active
     }
 }
@@ -498,7 +509,7 @@ fn move_all_procs(source_cgroup: &Path, dest_cgroup: &Path) {
 impl Drop for CgroupsController {
     fn drop(&mut self) {
         if self.is_active {
-            let _ = self.cleanup();
+            let () = self.cleanup();
         }
     }
 }

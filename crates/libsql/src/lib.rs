@@ -695,10 +695,7 @@ mod tests {
         let backup_fn = |path: PathBuf| async move {
             // Simulate a failed backup operation
             assert_eq!(path, db_path);
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Backup failed",
-            ))
+            Err(std::io::Error::other("Backup failed"))
         };
 
         let result = db.backup(backup_fn).await.unwrap();

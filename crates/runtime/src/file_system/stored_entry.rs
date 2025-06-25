@@ -58,7 +58,7 @@ impl StoredEntry {
         }
     }
 
-    pub(crate) fn content_mut(&mut self) -> Option<&mut Bytes> {
+    pub(crate) const fn content_mut(&mut self) -> Option<&mut Bytes> {
         match self {
             Self::File { content, .. } => Some(content),
             _ => None,
@@ -85,6 +85,7 @@ impl StoredEntry {
         matches!(self, Self::Symlink { .. })
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub(crate) fn symlink_target(&self) -> Option<&str> {
         match self {
             Self::Symlink { target, .. } => Some(target),

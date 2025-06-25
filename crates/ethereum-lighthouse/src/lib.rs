@@ -19,7 +19,6 @@ use async_trait::async_trait;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use reqwest::Client;
-use serde_json;
 use strip_ansi_escapes::strip_str;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, trace, warn};
@@ -79,7 +78,7 @@ pub struct LighthouseNodeOptions {
     pub store_dir: PathBuf,
 }
 
-/// Lighthouse application implementing the IsolatedApplication trait
+/// Lighthouse application implementing the `IsolatedApplication` trait
 struct LighthouseApp {
     /// The path to the lighthouse executable
     executable_path: String,
@@ -193,12 +192,13 @@ impl IsolatedApplication for LighthouseApp {
         &self.executable_path
     }
 
-    fn handle_stderr(&self, line: &str) -> () {
+    fn handle_stderr(&self, line: &str) {
         self.handle_stdout(line);
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn handle_stdout(&self, line: &str) {
-        if let Some(caps) = LOG_REGEX.captures(&strip_str(&line)) {
+        if let Some(caps) = LOG_REGEX.captures(&strip_str(line)) {
             let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             *self.last_log_level.write().unwrap() = label.to_string();
@@ -223,7 +223,7 @@ impl IsolatedApplication for LighthouseApp {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "lighthouse"
     }
 
@@ -236,49 +236,41 @@ impl IsolatedApplication for LighthouseApp {
         let http_url = format!("http://{}:{}", info.ip_address, self.http_port);
 
         let client = Client::new();
-        match client
-            .get(format!("{}/lighthouse/syncing", http_url))
+        if let Ok(response) = client
+            .get(format!("{http_url}/lighthouse/syncing"))
             .send()
             .await
         {
-            Ok(response) => {
-                if response.status() == 200 {
-                    match response.json::<serde_json::Value>().await {
-                        Ok(json) => {
-                            debug!("Response from /lighthouse/syncing: {:?}", json);
-                            if let Some(data) = json.get("data") {
-                                if data.is_string() {
-                                    match data.as_str() {
-                                        Some("Synced") => return true,
-                                        Some("Stalled") => return false,
-                                        _ => return false,
-                                    }
-                                } else if data.is_object()
-                                    && (data.get("SyncingFinalized").is_some()
-                                        || data.get("BackFillSyncing").is_some())
-                                {
-                                    // Lighthouse is syncing, but we can still consider it ready
-                                    return true;
-                                }
+            if response.status() == 200 {
+                if let Ok(json) = response.json::<serde_json::Value>().await {
+                    debug!("Response from /lighthouse/syncing: {:?}", json);
+                    if let Some(data) = json.get("data") {
+                        if data.is_string() {
+                            match data.as_str() {
+                                Some("Synced") => return true,
+                                _ => return false,
                             }
-                        }
-                        Err(_) => {
-                            warn!("Error parsing /lighthouse/syncing response");
-
-                            return false;
+                        } else if data.is_object()
+                            && (data.get("SyncingFinalized").is_some()
+                                || data.get("BackFillSyncing").is_some())
+                        {
+                            // Lighthouse is syncing, but we can still consider it ready
+                            return true;
                         }
                     }
                 } else {
-                    warn!("Response from /lighthouse/syncing: {:?}", response.status());
-                }
+                    warn!("Error parsing /lighthouse/syncing response");
 
-                false
+                    return false;
+                }
+            } else {
+                warn!("Response from /lighthouse/syncing: {:?}", response.status());
             }
-            Err(_) => {
-                debug!("Error getting /lighthouse/syncing");
-                false
-            }
+        } else {
+            debug!("Error getting /lighthouse/syncing");
         }
+
+        false
     }
 
     fn is_ready_check_interval_ms(&self) -> u64 {
@@ -364,7 +356,7 @@ impl LighthouseNode {
         }
     }
 
-    async fn prepare_config(&self) -> Result<(), Error> {
+    fn prepare_config(&self) -> Result<(), Error> {
         // Create the data directory if it doesn't exist
         if !self.store_dir.exists() {
             fs::create_dir_all(&self.store_dir)
@@ -392,7 +384,7 @@ impl Bootable for LighthouseNode {
 
         info!("Starting Lighthouse node...");
 
-        self.prepare_config().await?;
+        self.prepare_config()?;
 
         let app = LighthouseApp {
             executable_path: "/apps/ethereum-lighthouse/v7.0.0/lighthouse".to_string(),
@@ -420,7 +412,8 @@ impl Bootable for LighthouseNode {
     async fn shutdown(&self) -> Result<(), Error> {
         info!("Lighthouse node shutting down...");
 
-        if let Some(process) = self.process.lock().await.take() {
+        let taken_process = self.process.lock().await.take();
+        if let Some(process) = taken_process {
             process.shutdown().await.map_err(Error::Isolation)?;
             info!("Lighthouse node shutdown");
         } else {

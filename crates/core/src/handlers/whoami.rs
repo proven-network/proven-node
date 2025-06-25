@@ -16,7 +16,12 @@ use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 
 /// Handler for the `/whoami` endpoint.
-/// Returns the node information from network.get_self().
+///
+/// Returns the node information from `network.get_self()`.
+///
+/// # Errors
+///
+/// Returns an error if the node information cannot be retrieved.
 pub async fn whoami_handler<AM, RM, IM, PM, SM, A, G>(
     State(FullContext { network, .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
 ) -> Result<Json<serde_json::Value>, Response>

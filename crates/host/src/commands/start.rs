@@ -86,7 +86,7 @@ pub async fn start(args: StartArgs) -> Result<()> {
     let http_server_clone = http_server.clone();
     let critical_tasks = tokio::spawn(async move {
         tokio::select! {
-            _ = http_server_clone.wait() => {
+            () = http_server_clone.wait() => {
                 error!("http_server exited");
             }
             () = proxy_handle => {

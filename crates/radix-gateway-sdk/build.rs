@@ -55,7 +55,7 @@ fn split_out_inherited_discriminated_types(schema: &mut Value) {
     for type_name in &original_type_names {
         if let Some(type_data) = types.get(type_name) {
             let has_discriminator = type_data.get("discriminator").is_some();
-            let is_object = type_data.get("type").map_or(false, |t| t == "object");
+            let is_object = type_data.get("type").is_some_and(|t| t == "object");
             let has_inheritance = type_data.get("allOf").is_some()
                 || type_data.get("anyOf").is_some()
                 || type_data.get("oneOf").is_some();
@@ -161,7 +161,7 @@ fn split_out_inherited_discriminated_types(schema: &mut Value) {
 
                                 // Find or create inner type data
                                 let inner_type_idx = all_of_seq.iter().position(|v| {
-                                    v.get("type").map_or(false, |t| t == "object")
+                                    v.get("type").is_some_and(|t| t == "object")
                                         && v.get("properties").is_some()
                                 });
 

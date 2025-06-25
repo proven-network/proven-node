@@ -9,20 +9,16 @@ pub use error::Error;
 
 use async_trait::async_trait;
 use proven_locks::{LockManager, LockManager1, LockManager2, LockManager3, LockStatus};
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, instrument};
-
-/// Represents the details of a lock held in-memory.
-#[derive(Clone, Debug)]
-struct Lock;
 
 /// In-memory (single node) implementation of locks for local development.
 #[derive(Clone, Debug)]
 pub struct MemoryLockManager {
     /// Store current locks.
-    locks: Arc<Mutex<HashMap<String, Lock>>>,
+    locks: Arc<Mutex<HashSet<String>>>,
 
     /// Optional prefix for keys, to simulate scoping.
     prefix: Option<String>,
@@ -30,18 +26,24 @@ pub struct MemoryLockManager {
 
 impl MemoryLockManager {
     /// Creates a new instance of `MemoryLockManager`.
+    #[must_use]
     pub fn new() -> Self {
         Self {
-            locks: Arc::new(Mutex::new(HashMap::new())),
+            locks: Arc::new(Mutex::new(HashSet::new())),
             prefix: None,
         }
     }
 
     fn get_full_key(&self, resource_id: &str) -> String {
-        match &self.prefix {
-            Some(p) => format!("{}:{}", p, resource_id),
-            None => resource_id.to_string(),
-        }
+        self.prefix
+            .as_ref()
+            .map_or_else(|| resource_id.to_string(), |p| format!("{p}:{resource_id}"))
+    }
+}
+
+impl Default for MemoryLockManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -53,16 +55,17 @@ pub struct MemoryLockGuard {
     key: String,
 
     /// The map of locks being held.
-    locks_map: Arc<Mutex<HashMap<String, Lock>>>,
+    locks_map: Arc<Mutex<HashSet<String>>>,
 }
 
 impl Drop for MemoryLockGuard {
+    #[allow(clippy::cognitive_complexity)]
     #[instrument(skip(self), fields(key = %self.key))]
     fn drop(&mut self) {
         debug!("Dropping MemoryLockGuard, attempting release.");
         if let Ok(mut locked_map) = self.locks_map.try_lock() {
             // Simple removal, as there's no ref counting
-            if locked_map.remove(&self.key).is_some() {
+            if locked_map.remove(&self.key) {
                 debug!("Lock for key '{}' released.", self.key);
             } else {
                 debug!(
@@ -87,7 +90,7 @@ impl LockManager for MemoryLockManager {
         let locked_map = self.locks.lock().await;
 
         // If key exists, it's held by self (no expiration logic)
-        if locked_map.contains_key(&key) {
+        if locked_map.contains(&key) {
             debug!("Lock for key '{}' is HeldBySelf.", key);
             Ok(LockStatus::HeldBySelf)
         } else {
@@ -103,10 +106,10 @@ impl LockManager for MemoryLockManager {
 
         loop {
             let mut locked_map = self.locks.lock().await;
-            if !locked_map.contains_key(&key) {
+            if !locked_map.contains(&key) {
                 // Lock is free, acquire it
                 debug!("Acquiring new lock for key '{}' (lock operation).", key);
-                locked_map.insert(key.clone(), Lock {});
+                locked_map.insert(key.clone());
                 return Ok(MemoryLockGuard {
                     locks_map: Arc::clone(&self.locks),
                     key,
@@ -124,14 +127,15 @@ impl LockManager for MemoryLockManager {
         let key = self.get_full_key(&resource_id);
         let mut locked_map = self.locks.lock().await;
 
-        if locked_map.contains_key(&key) {
+        if locked_map.contains(&key) {
             // Lock is held
             debug!("try_lock failed for key '{}': Held.", key);
             Ok(None)
         } else {
             // Lock is free, acquire it.
             debug!("try_lock: acquiring new lock for key '{}'.", key);
-            locked_map.insert(key.clone(), Lock {});
+            locked_map.insert(key.clone());
+            drop(locked_map);
             Ok(Some(MemoryLockGuard {
                 locks_map: Arc::clone(&self.locks),
                 key,
@@ -260,8 +264,8 @@ mod tests {
             Ok(Ok(())) => {
                 // Task completed successfully
             }
-            Ok(Err(e)) => panic!("Lock task panicked: {:?}", e),
-            Err(_) => panic!("Lock task timed out after guard1 was dropped"),
+            Ok(Err(e)) => panic!("Lock task panicked: {e:?}"),
+            _ => panic!("Lock task timed out after guard1 was dropped"),
         }
 
         // After task completes, guard2 (from the task) is dropped, so lock should be free
@@ -365,11 +369,11 @@ mod tests {
             .expect("Failed to lock");
 
         let locks_map_clone = Arc::clone(&manager.locks);
-        let _map_guard = locks_map_clone.lock().await;
+        let map_guard = locks_map_clone.lock().await;
 
         drop(guard);
 
-        drop(_map_guard);
+        drop(map_guard);
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let status = manager.check(lock_key.clone()).await.expect("Check failed");

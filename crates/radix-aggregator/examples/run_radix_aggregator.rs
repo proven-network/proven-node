@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         skip_vacuum: true,
         store_dir: PathBuf::from("/tmp/postgres-data"),
     });
-    let _ = postgres.start().await?;
+    let () = postgres.start().await?;
     println!("Postgres is ready!");
 
     println!("Starting Radix Node...");
@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         store_dir: PathBuf::from("/tmp/radix-node-stokenet-data"),
         config_dir: PathBuf::from("/tmp/radix-node-stokenet-config"),
     });
-    let _ = radix_node.start().await?;
+    let () = radix_node.start().await?;
     println!("Radix Node is ready!");
 
     println!("Starting Radix Aggregator...");
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         radix_node_ip_address: radix_node.ip_address().await.to_string(),
         radix_node_port: radix_node.http_port(),
     });
-    let _ = aggregator.start().await?;
+    let () = aggregator.start().await?;
     println!("Radix Aggregator is ready!");
 
     // Keep the aggregator running until user interrupts with Ctrl+C

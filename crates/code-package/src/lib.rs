@@ -246,6 +246,7 @@ impl CodePackage {
 
     /// Returns the hash of the code package.
     #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn hash(&self) -> &str {
         &self.hash
     }

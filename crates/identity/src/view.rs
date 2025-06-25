@@ -31,6 +31,7 @@ pub struct IdentityView {
 
 impl IdentityView {
     /// Creates a new empty identity view.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             identities: Arc::new(RwLock::new(HashMap::new())),
@@ -47,10 +48,12 @@ impl IdentityView {
 
     /// Get an identity by PRF public key
     pub async fn get_identity_by_prf_public_key(&self, prf_public_key: &Bytes) -> Option<Identity> {
-        let prf_map = self.prf_to_identity.read().await;
-        let identity_id = prf_map.get(prf_public_key)?;
+        let identity_id = {
+            let prf_map = self.prf_to_identity.read().await;
+            *prf_map.get(prf_public_key)?
+        };
         let identities = self.identities.read().await;
-        identities.get(identity_id).cloned()
+        identities.get(&identity_id).cloned()
     }
 
     /// List all identities
@@ -83,15 +86,16 @@ impl IdentityView {
 
     /// Get the sequence number of the last processed event
     /// Useful for read-your-own-writes consistency
+    #[must_use]
     pub fn last_processed_seq(&self) -> u64 {
         self.last_processed_seq.load(Ordering::SeqCst)
     }
 
     /// Wait until the view has processed at least the given sequence number
     /// Used for strong consistency guarantees in service handlers
-    pub async fn wait_for_seq(&self, min_seq: u64) -> Result<(), Error> {
+    pub async fn wait_for_seq(&self, min_seq: u64) {
         if self.last_processed_seq() >= min_seq {
-            return Ok(()); // Already caught up
+            return; // Already caught up
         }
 
         // Use notification-based waiting to avoid polling
@@ -100,7 +104,7 @@ impl IdentityView {
 
             // Check again in case we missed a notification
             if self.last_processed_seq() >= min_seq {
-                return Ok(());
+                return;
             }
 
             // Wait for next notification
@@ -147,12 +151,14 @@ impl IdentityViewConsumerHandler {
     /// # Arguments
     ///
     /// * `view` - The identity view to update when events are processed
-    pub fn new(view: IdentityView) -> Self {
+    #[must_use]
+    pub const fn new(view: IdentityView) -> Self {
         Self { view }
     }
 
     /// Gets a reference to the identity view.
-    pub fn view(&self) -> &IdentityView {
+    #[must_use]
+    pub const fn view(&self) -> &IdentityView {
         &self.view
     }
 }

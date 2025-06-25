@@ -116,15 +116,15 @@ impl Request {
             Request::Anonymize => Command::Anonymize(AnonymizeCommand),
             Request::CreateApplication => Command::CreateApplication(CreateApplicationCommand),
             Request::Execute(module, handler_specifier, args) => Command::Execute(ExecuteCommand {
-                module,
-                handler_specifier,
                 args,
+                handler_specifier,
+                module,
             }),
             Request::ExecuteHash(module_hash, handler_specifier, args) => {
                 Command::ExecuteHash(ExecuteHashCommand {
-                    module_hash,
-                    handler_specifier,
                     args,
+                    handler_specifier,
+                    module_hash,
                 })
             }
             Request::Identify(passkey_prf_public_key_bytes, session_id_signature_bytes) => {
@@ -180,8 +180,8 @@ where
         identity_manager: IM,
         sessions_manager: SM,
         session: Session,
-    ) -> Result<Self, Error> {
-        let auth = RpcAuth::new(session.clone())?;
+    ) -> Self {
+        let auth = RpcAuth::new(session.clone());
         let context = RpcContext::new(
             application_id,
             application_manager,
@@ -191,7 +191,7 @@ where
             session,
         );
 
-        Ok(Self { auth, context })
+        Self { auth, context }
     }
 
     pub async fn handle_rpc(&mut self, bytes: Bytes) -> Result<Bytes, Error> {

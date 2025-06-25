@@ -1,3 +1,5 @@
+#![allow(clippy::large_futures)] // TODO: Potential refactor
+
 use super::error::{Error, Result};
 use crate::Args;
 use crate::hosts::check_hostname_resolution;
@@ -389,133 +391,133 @@ impl Bootstrap {
             // Tasks that must be running for the enclave to function
             let critical_tasks = tokio::spawn(async move {
                 tokio::select! {
-                    _ = async {
+                    () = async {
                         if let Some(nats_server) = self.nats_server {
                             nats_server.wait().await;
                             error!("nats_server exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(postgres) = self.postgres {
                             postgres.wait().await;
                             error!("postgres exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(bitcoin_node) = self.bitcoin_testnet_node {
                             bitcoin_node.wait().await;
                             error!("bitcoin node exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(ethereum_mainnet_reth_node) = self.ethereum_mainnet_reth_node {
                             ethereum_mainnet_reth_node.wait().await;
                             error!("ethereum mainnet reth node exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(ethereum_mainnet_lighthouse_node) = self.ethereum_mainnet_lighthouse_node {
                             ethereum_mainnet_lighthouse_node.wait().await;
                             error!("ethereum mainnet lighthouse node exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(ethereum_holesky_reth_node) = self.ethereum_holesky_reth_node {
                             ethereum_holesky_reth_node.wait().await;
                             error!("ethereum holesky reth node exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(ethereum_holesky_lighthouse_node) = self.ethereum_holesky_lighthouse_node {
                             ethereum_holesky_lighthouse_node.wait().await;
                             error!("ethereum holesky lighthouse node exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(ethereum_sepolia_reth_node) = self.ethereum_sepolia_reth_node {
                             ethereum_sepolia_reth_node.wait().await;
                             error!("ethereum sepolia reth node exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(ethereum_sepolia_lighthouse_node) = self.ethereum_sepolia_lighthouse_node {
                             ethereum_sepolia_lighthouse_node.wait().await;
                             error!("ethereum sepolia lighthouse node exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(radix_mainnet_node) = self.radix_mainnet_node {
                             radix_mainnet_node.wait().await;
                             error!("radix mainnet node exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(radix_mainnet_aggregator) = self.radix_mainnet_aggregator {
                             radix_mainnet_aggregator.wait().await;
                             error!("radix mainnet aggregator exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(radix_mainnet_gateway) = self.radix_mainnet_gateway {
                             radix_mainnet_gateway.wait().await;
                             error!("radix mainnet gateway exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(radix_stokenet_node) = self.radix_stokenet_node {
                             radix_stokenet_node.wait().await;
                             error!("radix stokenet node exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(radix_stokenet_aggregator) = self.radix_stokenet_aggregator {
                             radix_stokenet_aggregator.wait().await;
                             error!("radix stokenet aggregator exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(radix_stokenet_gateway) = self.radix_stokenet_gateway {
                             radix_stokenet_gateway.wait().await;
                             error!("radix stokenet gateway exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
-                    _ = async {
+                    () = async {
                         if let Some(core) = self.core {
                             core.wait().await;
                             error!("core exited");
                             return;
                         }
-                        std::future::pending::<()>().await
+                        std::future::pending::<()>().await;
                     } => {},
                     else => {
                         info!("enclave shutdown cleanly. goodbye.");
@@ -683,9 +685,8 @@ impl Bootstrap {
 
     async fn start_network_cluster(&mut self) -> Result<()> {
         // Parse the private key and calculate public key
-        let private_key_bytes = hex::decode(self.args.node_key.trim()).map_err(|e| {
-            Error::PrivateKey(format!("Failed to decode private key as hex: {}", e))
-        })?;
+        let private_key_bytes = hex::decode(self.args.node_key.trim())
+            .map_err(|e| Error::PrivateKey(format!("Failed to decode private key as hex: {e}")))?;
 
         // We need exactly 32 bytes for ed25519 private key
         let private_key = SigningKey::try_from(private_key_bytes.as_slice()).map_err(|_| {
@@ -697,27 +698,24 @@ impl Bootstrap {
             .attestor
             .pcrs()
             .await
-            .map_err(|e| Error::Attestation(format!("failed to get PCRs: {}", e)))?;
+            .map_err(|e| Error::Attestation(format!("failed to get PCRs: {e}")))?;
         let version = Version::from_pcrs(pcrs);
 
-        let governance = match self.args.network_config_path {
-            Some(ref network_config_path) => {
-                info!(
-                    "using replication factor 3 with network config from file: {}",
-                    network_config_path.display()
-                );
-                MockGovernance::from_network_config_file(network_config_path)
-                    .map_err(|e| Error::Io(format!("Failed to load network config: {}", e)))?
-            }
-            None => {
-                info!("using replication factor 1 as no network config file provided");
-                self.num_replicas = 1;
-                MockGovernance::for_single_node(
-                    format!("http://localhost:{}", self.args.port),
-                    private_key.clone(),
-                    version.clone(),
-                )
-            }
+        let governance = if let Some(ref network_config_path) = self.args.network_config_path {
+            info!(
+                "using replication factor 3 with network config from file: {}",
+                network_config_path.display()
+            );
+            MockGovernance::from_network_config_file(network_config_path)
+                .map_err(|e| Error::Io(format!("Failed to load network config: {e}")))?
+        } else {
+            info!("using replication factor 1 as no network config file provided");
+            self.num_replicas = 1;
+            MockGovernance::for_single_node(
+                format!("http://localhost:{}", self.args.port),
+                &private_key,
+                version.clone(),
+            )
         };
 
         // Check that governance contains the version from attestor
@@ -728,8 +726,7 @@ impl Bootstrap {
             .contains(&version)
         {
             return Err(Error::Governance(format!(
-                "governance does not contain version from attestor: {:?}",
-                version
+                "governance does not contain version from attestor: {version:?}"
             )));
         }
 
@@ -1014,7 +1011,7 @@ impl Bootstrap {
             ethereum_reth_node
                 .start()
                 .await
-                .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
+                .map_err(|e| Error::Io(format!("Failed to start Reth node: {e}")))?;
 
             let execution_rpc_jwt_hex = ethereum_reth_node.jwt_hex().await?;
             let execution_rpc_socket_addr = ethereum_reth_node.rpc_socket_addr().await?;
@@ -1038,7 +1035,7 @@ impl Bootstrap {
             ethereum_lighthouse_node
                 .start()
                 .await
-                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
+                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {e}")))?;
 
             self.ethereum_holesky_lighthouse_node = Some(ethereum_lighthouse_node);
 
@@ -1071,7 +1068,7 @@ impl Bootstrap {
             ethereum_reth_node
                 .start()
                 .await
-                .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
+                .map_err(|e| Error::Io(format!("Failed to start Reth node: {e}")))?;
 
             let execution_rpc_jwt_hex = ethereum_reth_node.jwt_hex().await?;
             let execution_rpc_socket_addr = ethereum_reth_node.rpc_socket_addr().await?;
@@ -1095,7 +1092,7 @@ impl Bootstrap {
             ethereum_lighthouse_node
                 .start()
                 .await
-                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
+                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {e}")))?;
 
             self.ethereum_mainnet_lighthouse_node = Some(ethereum_lighthouse_node);
 
@@ -1128,7 +1125,7 @@ impl Bootstrap {
             ethereum_reth_node
                 .start()
                 .await
-                .map_err(|e| Error::Io(format!("Failed to start Reth node: {}", e)))?;
+                .map_err(|e| Error::Io(format!("Failed to start Reth node: {e}")))?;
 
             let execution_rpc_jwt_hex = ethereum_reth_node.jwt_hex().await?;
             let execution_rpc_socket_addr = ethereum_reth_node.rpc_socket_addr().await?;
@@ -1152,7 +1149,7 @@ impl Bootstrap {
             ethereum_lighthouse_node
                 .start()
                 .await
-                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {}", e)))?;
+                .map_err(|e| Error::Io(format!("Failed to start Lighthouse node: {e}")))?;
 
             self.ethereum_sepolia_lighthouse_node = Some(ethereum_lighthouse_node);
 
@@ -1507,48 +1504,46 @@ impl Bootstrap {
 
         let radix_nft_verifier = GatewayRadixNftVerifier::new(GATEWAY_URL);
 
-        let runtime_pool_manager = RuntimePoolManager::new(RuntimePoolManagerOptions {
-            application_sql_store,
-            application_store,
-            file_system_store,
-            max_workers: 10,
-            nft_sql_store,
-            nft_store,
-            personal_sql_store,
-            personal_store,
-            radix_nft_verifier,
-            rpc_endpoints: RpcEndpoints {
-                bitcoin_mainnet: self
-                    .bitcoin_testnet_node_rpc_endpoint
-                    .take()
-                    .unwrap_or(self.args.bitcoin_mainnet_fallback_rpc_endpoint.clone()),
-                bitcoin_testnet: self
-                    .bitcoin_testnet_node_rpc_endpoint
-                    .take()
-                    .unwrap_or(self.args.bitcoin_testnet_fallback_rpc_endpoint.clone()),
-                ethereum_holesky: self
-                    .ethereum_holesky_rpc_endpoint
-                    .take()
-                    .unwrap_or(self.args.ethereum_holesky_fallback_rpc_endpoint.clone()),
-                ethereum_mainnet: self
-                    .ethereum_mainnet_rpc_endpoint
-                    .take()
-                    .unwrap_or(self.args.ethereum_mainnet_fallback_rpc_endpoint.clone()),
-                ethereum_sepolia: self
-                    .ethereum_sepolia_rpc_endpoint
-                    .take()
-                    .unwrap_or(self.args.ethereum_sepolia_fallback_rpc_endpoint.clone()),
-                radix_mainnet: self
-                    .radix_mainnet_rpc_endpoint
-                    .take()
-                    .unwrap_or(self.args.radix_mainnet_fallback_rpc_endpoint.clone()),
-                radix_stokenet: self
-                    .radix_stokenet_rpc_endpoint
-                    .take()
-                    .unwrap_or(self.args.radix_stokenet_fallback_rpc_endpoint.clone()),
-            },
-        })
-        .await;
+        let runtime_pool_manager =
+            RuntimePoolManager::new(RuntimePoolManagerOptions {
+                application_sql_store,
+                application_store,
+                file_system_store,
+                max_workers: 10,
+                nft_sql_store,
+                nft_store,
+                personal_sql_store,
+                personal_store,
+                radix_nft_verifier,
+                rpc_endpoints: RpcEndpoints {
+                    bitcoin_mainnet: self
+                        .bitcoin_mainnet_node_rpc_endpoint
+                        .take()
+                        .unwrap_or_else(|| self.args.bitcoin_mainnet_fallback_rpc_endpoint.clone()),
+                    bitcoin_testnet: self
+                        .bitcoin_testnet_node_rpc_endpoint
+                        .take()
+                        .unwrap_or_else(|| self.args.bitcoin_testnet_fallback_rpc_endpoint.clone()),
+                    ethereum_holesky: self.ethereum_holesky_rpc_endpoint.take().unwrap_or_else(
+                        || self.args.ethereum_holesky_fallback_rpc_endpoint.clone(),
+                    ),
+                    ethereum_mainnet: self.ethereum_mainnet_rpc_endpoint.take().unwrap_or_else(
+                        || self.args.ethereum_mainnet_fallback_rpc_endpoint.clone(),
+                    ),
+                    ethereum_sepolia: self.ethereum_sepolia_rpc_endpoint.take().unwrap_or_else(
+                        || self.args.ethereum_sepolia_fallback_rpc_endpoint.clone(),
+                    ),
+                    radix_mainnet: self
+                        .radix_mainnet_rpc_endpoint
+                        .take()
+                        .unwrap_or_else(|| self.args.radix_mainnet_fallback_rpc_endpoint.clone()),
+                    radix_stokenet: self
+                        .radix_stokenet_rpc_endpoint
+                        .take()
+                        .unwrap_or_else(|| self.args.radix_stokenet_fallback_rpc_endpoint.clone()),
+                },
+            })
+            .await;
 
         let core = Core::new(CoreOptions {
             application_manager,

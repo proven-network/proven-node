@@ -71,17 +71,14 @@ where
         }
     };
 
-    let Ok(rpc_handler) = RpcHandler::new(
+    let rpc_handler = RpcHandler::new(
         application_id,
         application_manager,
         runtime_pool_manager,
         identity_manager,
         sessions_manager,
         session,
-    ) else {
-        error!("Error creating RpcHandler");
-        return ws.on_upgrade(|socket| handle_socket_error(socket, "Unrecoverable error."));
-    };
+    );
 
     ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
 }

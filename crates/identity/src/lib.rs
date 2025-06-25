@@ -3,6 +3,7 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
+#![allow(clippy::type_complexity)]
 
 mod command;
 mod error;
@@ -33,7 +34,6 @@ use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing;
 use uuid::Uuid;
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
@@ -65,6 +65,7 @@ where
 }
 
 /// Event-driven identity manager using dual messaging streams and distributed leadership.
+///
 /// Commands go through the command stream, events are published to the event stream.
 /// The view is built by consuming events from the event stream.
 /// Only the leader node runs the command service.
@@ -224,7 +225,7 @@ where
     }
 
     /// Get direct access to the view for queries.
-    pub fn view(&self) -> &IdentityView {
+    pub const fn view(&self) -> &IdentityView {
         &self.view
     }
 
@@ -328,8 +329,7 @@ where
             Err(e) => {
                 tracing::error!("Failed to acquire identity service leadership: {:?}", e);
                 Err(Error::Service(format!(
-                    "Leadership acquisition failed: {}",
-                    e
+                    "Leadership acquisition failed: {e}"
                 )))
             }
         }
@@ -379,8 +379,8 @@ where
             Self::leadership_monitor_task(leadership_guard, lock_manager).await;
         });
 
-        *monitor_guard = Some(handle);
         tracing::debug!("Started identity service leadership monitor");
+        *monitor_guard = Some(handle);
     }
 
     /// Background task to monitor leadership status.
@@ -529,7 +529,6 @@ where
 mod tests {
     use super::*;
 
-    use futures;
     use proven_locks_memory::MemoryLockManager;
     use proven_messaging_memory::{
         client::MemoryClientOptions,
@@ -544,7 +543,7 @@ mod tests {
     type TestIdentityManager =
         IdentityManager<TestCommandStream, TestEventStream, MemoryLockManager>;
 
-    async fn create_test_manager() -> TestIdentityManager {
+    fn create_test_manager() -> TestIdentityManager {
         let stream_name = format!("test-stream-{}", Uuid::new_v4());
         let command_stream =
             MemoryStream::new(stream_name.clone() + "-commands", MemoryStreamOptions);
@@ -562,7 +561,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_or_create_identity_by_prf_public_key() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let prf_public_key = Bytes::from(vec![1u8; 32]);
 
         // First call should create the identity
@@ -585,7 +584,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_identity_from_view() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let prf_public_key = Bytes::from(vec![2u8; 32]);
 
         let created_identity = manager
@@ -604,7 +603,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_direct_view_queries() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
 
         // Direct view access should work immediately (no async required since view is shared)
         assert_eq!(manager.view().identity_count().await, 0);
@@ -640,7 +639,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_prf_public_key_lookup() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
         let prf_public_key = Bytes::from(vec![5u8; 32]);
 
         let created_identity = manager
@@ -662,13 +661,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_identity_creation() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
 
         // Create multiple identities concurrently with different PRF keys
         let tasks: Vec<_> = (0..5)
             .map(|i| {
                 let manager = manager.clone();
                 tokio::spawn(async move {
+                    #[allow(clippy::cast_possible_truncation)]
+                    #[allow(clippy::cast_sign_loss)]
                     let prf_key = Bytes::from(vec![i as u8 + 10; 32]);
                     manager
                         .get_or_create_identity_by_prf_public_key(&prf_key)
@@ -678,7 +679,7 @@ mod tests {
             .collect();
 
         let results: Vec<_> = futures::future::try_join_all(tasks).await.unwrap();
-        assert!(results.iter().all(|r| r.is_ok()));
+        assert!(results.iter().all(Result::is_ok));
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -690,7 +691,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_last_processed_seq_tracking() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
 
         // Initially, no events processed
         assert_eq!(manager.view().last_processed_seq(), 0);
@@ -724,7 +725,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_strong_consistency_commands() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
 
         // Both identity command variants require strong consistency
         // Test GetOrCreateIdentityByPrfPublicKey (requires strong consistency)
@@ -759,7 +760,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_leadership_functionality() {
-        let manager = create_test_manager().await;
+        let manager = create_test_manager();
 
         // Initially not a leader
         assert!(!manager.is_leader().await);

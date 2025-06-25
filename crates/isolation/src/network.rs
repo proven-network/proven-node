@@ -58,6 +58,11 @@ pub struct VethPair {
 
 impl VethPair {
     /// Create a new veth pair
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the setup fails
+    #[allow(clippy::too_many_lines)] // TODO: Potential refactor
     pub async fn new(
         VethPairOptions {
             host_ip_address,
@@ -74,7 +79,7 @@ impl VethPair {
             Ok(content) => content,
             Err(e) => {
                 debug!("Failed to read host's resolv.conf: {}", e);
-                return Err(Error::Network(format!("Failed to configure DNS: {}", e)));
+                return Err(Error::Network(format!("Failed to configure DNS: {e}")));
             }
         };
 
@@ -120,39 +125,37 @@ impl VethPair {
 
         // Create /var/run/netns directory if it doesn't exist
         let output = Command::new("mkdir")
-            .args(&["-p", "/var/run/netns"])
+            .args(["-p", "/var/run/netns"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to create netns directory: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to create netns directory: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to create netns directory: {}",
-                stderr
+                "Failed to create netns directory: {stderr}"
             )));
         }
 
         // Create symlink to the network namespace
-        let ns_path = format!("/proc/{}/ns/net", isolated_pid);
-        let ns_name = format!("container_{}", isolated_pid);
-        let ns_link = format!("/var/run/netns/{}", ns_name);
+        let ns_path = format!("/proc/{isolated_pid}/ns/net");
+        let ns_name = format!("container_{isolated_pid}");
+        let ns_link = format!("/var/run/netns/{ns_name}");
 
         let output = Command::new("ln")
-            .args(&["-sfT", &ns_path, &ns_link])
+            .args(["-sfT", &ns_path, &ns_link])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to create netns symlink: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to create netns symlink: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to create netns symlink: {}",
-                stderr
+                "Failed to create netns symlink: {stderr}"
             )));
         }
 
         // Create veth pair
         let output = Command::new("ip")
-            .args(&[
+            .args([
                 "link",
                 "add",
                 &veth.host_veth_interface_name,
@@ -163,13 +166,12 @@ impl VethPair {
                 &veth.isolated_veth_interface_name,
             ])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to create veth pair: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to create veth pair: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to create veth pair: {}",
-                stderr
+                "Failed to create veth pair: {stderr}"
             )));
         }
 
@@ -179,28 +181,28 @@ impl VethPair {
         let retry_delay = Duration::from_millis(100);
 
         while retries < max_retries {
-            let ns_path = format!("/proc/{}/ns/net", isolated_pid);
+            let ns_path = format!("/proc/{isolated_pid}/ns/net");
             if std::path::Path::new(&ns_path).exists() {
                 // Verify network namespace is different from host
                 let output = Command::new("readlink")
-                    .args(&["-f", &ns_path])
+                    .args(["-f", &ns_path])
                     .output()
-                    .map_err(|e| Error::Network(format!("Failed to read namespace link: {}", e)))?;
+                    .map_err(|e| Error::Network(format!("Failed to read namespace link: {e}")))?;
 
                 let container_ns = String::from_utf8_lossy(&output.stdout);
 
                 let output = Command::new("readlink")
-                    .args(&["-f", "/proc/1/ns/net"])
+                    .args(["-f", "/proc/1/ns/net"])
                     .output()
                     .map_err(|e| {
-                        Error::Network(format!("Failed to read host namespace link: {}", e))
+                        Error::Network(format!("Failed to read host namespace link: {e}"))
                     })?;
 
                 let host_ns = String::from_utf8_lossy(&output.stdout);
 
                 if container_ns != host_ns {
-                    debug!("Container network namespace: {}", container_ns.trim());
-                    debug!("Host network namespace: {}", host_ns.trim());
+                    debug!("Container network namespace: {container_ns}");
+                    debug!("Host network namespace: {host_ns}");
                     break;
                 }
             }
@@ -215,7 +217,7 @@ impl VethPair {
 
         // Move container end to namespace
         let output = Command::new("ip")
-            .args(&[
+            .args([
                 "link",
                 "set",
                 &veth.isolated_veth_interface_name,
@@ -223,32 +225,33 @@ impl VethPair {
                 &ns_name,
             ])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to move veth to namespace: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to move veth to namespace: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to move veth to namespace: {}",
-                stderr
+                "Failed to move veth to namespace: {stderr}"
             )));
         }
 
         // Set up container network
-        veth.setup_container_network(isolated_pid).await?;
+        veth.setup_container_network(isolated_pid)?;
 
         // Set up host network
-        veth.setup_host_network().await?;
+        veth.setup_host_network()?;
 
         Ok(veth)
     }
 
     /// Get the container's IP address (as reachable from the host)
-    pub fn container_ip(&self) -> IpAddr {
+    #[must_use]
+    pub const fn container_ip(&self) -> IpAddr {
         self.isolated_ip_address
     }
 
     /// Get the host's IP address (as reachable from the container)
-    pub fn host_ip(&self) -> IpAddr {
+    #[must_use]
+    pub const fn host_ip(&self) -> IpAddr {
         self.host_ip_address
     }
 
@@ -257,10 +260,12 @@ impl VethPair {
     /// # Errors
     ///
     /// Returns an error if the setup fails
-    async fn setup_container_network(&self, pid: u32) -> Result<()> {
-        let ns_path = format!("/proc/{}/ns/net", pid);
-        let ns_name = format!("container_{}", pid);
-        let ns_link = format!("/var/run/netns/{}", ns_name);
+    #[allow(clippy::too_many_lines)] // TODO: Potential refactor
+    #[allow(clippy::cognitive_complexity)] // TODO: Potential refactor
+    fn setup_container_network(&self, pid: u32) -> Result<()> {
+        let ns_path = format!("/proc/{pid}/ns/net");
+        let ns_name = format!("container_{pid}");
+        let ns_link = format!("/var/run/netns/{ns_name}");
 
         debug!(
             "Setting up container network for PID {} in namespace {}",
@@ -269,29 +274,27 @@ impl VethPair {
 
         // Create /var/run/netns directory if it doesn't exist
         let output = Command::new("mkdir")
-            .args(&["-p", "/var/run/netns"])
+            .args(["-p", "/var/run/netns"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to create netns directory: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to create netns directory: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to create netns directory: {}",
-                stderr
+                "Failed to create netns directory: {stderr}"
             )));
         }
 
         // Create symlink to the network namespace
         let output = Command::new("ln")
-            .args(&["-sfT", &ns_path, &ns_link])
+            .args(["-sfT", &ns_path, &ns_link])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to create netns symlink: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to create netns symlink: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to create netns symlink: {}",
-                stderr
+                "Failed to create netns symlink: {stderr}"
             )));
         }
 
@@ -299,15 +302,14 @@ impl VethPair {
 
         // Verify network namespace exists
         let output = Command::new("ip")
-            .args(&["netns", "list"])
+            .args(["netns", "list"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to list network namespaces: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to list network namespaces: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to list network namespaces: {}",
-                stderr
+                "Failed to list network namespaces: {stderr}"
             )));
         }
 
@@ -316,7 +318,7 @@ impl VethPair {
 
         // Set container IP
         let output = Command::new("ip")
-            .args(&[
+            .args([
                 "netns",
                 "exec",
                 &ns_name,
@@ -328,13 +330,12 @@ impl VethPair {
                 &self.isolated_veth_interface_name,
             ])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to set container IP: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to set container IP: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to set container IP: {}",
-                stderr
+                "Failed to set container IP: {stderr}"
             )));
         }
 
@@ -342,7 +343,7 @@ impl VethPair {
 
         // Verify container IP was set correctly
         let output = Command::new("ip")
-            .args(&[
+            .args([
                 "netns",
                 "exec",
                 &ns_name,
@@ -352,13 +353,12 @@ impl VethPair {
                 &self.isolated_veth_interface_name,
             ])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to verify container IP: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to verify container IP: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to verify container IP: {}",
-                stderr
+                "Failed to verify container IP: {stderr}"
             )));
         }
 
@@ -367,7 +367,7 @@ impl VethPair {
 
         // Bring up container interface
         let output = Command::new("ip")
-            .args(&[
+            .args([
                 "netns",
                 "exec",
                 &ns_name,
@@ -378,15 +378,12 @@ impl VethPair {
                 "up",
             ])
             .output()
-            .map_err(|e| {
-                Error::Network(format!("Failed to bring up container interface: {}", e))
-            })?;
+            .map_err(|e| Error::Network(format!("Failed to bring up container interface: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to bring up container interface: {}",
-                stderr
+                "Failed to bring up container interface: {stderr}"
             )));
         }
 
@@ -397,7 +394,7 @@ impl VethPair {
 
         // Set default route
         let output = Command::new("ip")
-            .args(&[
+            .args([
                 "netns",
                 "exec",
                 &ns_name,
@@ -409,13 +406,12 @@ impl VethPair {
                 &self.host_ip_address.to_string(),
             ])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to set default route: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to set default route: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to set default route: {}",
-                stderr
+                "Failed to set default route: {stderr}"
             )));
         }
 
@@ -423,15 +419,14 @@ impl VethPair {
 
         // Verify routing table
         let output = Command::new("ip")
-            .args(&["netns", "exec", &ns_name, "ip", "route", "show"])
+            .args(["netns", "exec", &ns_name, "ip", "route", "show"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to show routing table: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to show routing table: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to show routing table: {}",
-                stderr
+                "Failed to show routing table: {stderr}"
             )));
         }
 
@@ -440,15 +435,14 @@ impl VethPair {
 
         // Bring up loopback interface in container
         let output = Command::new("ip")
-            .args(&["netns", "exec", &ns_name, "ip", "link", "set", "lo", "up"])
+            .args(["netns", "exec", &ns_name, "ip", "link", "set", "lo", "up"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to bring up loopback interface: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to bring up loopback interface: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to bring up loopback interface: {}",
-                stderr
+                "Failed to bring up loopback interface: {stderr}"
             )));
         }
 
@@ -465,6 +459,8 @@ impl VethPair {
     /// # Errors
     ///
     /// Returns an error if setup fails
+    #[allow(clippy::too_many_lines)] // TODO: Potential refactor
+    #[allow(clippy::cognitive_complexity)] // TODO: Potential refactor
     fn setup_dns_forwarding(&self) -> Result<()> {
         debug!("Setting up DNS forwarding for container");
 
@@ -473,7 +469,7 @@ impl VethPair {
             Ok(content) => content,
             Err(e) => {
                 debug!("Failed to read host's resolv.conf: {}", e);
-                return Err(Error::Network(format!("Failed to configure DNS: {}", e)));
+                return Err(Error::Network(format!("Failed to configure DNS: {e}")));
             }
         };
 
@@ -505,10 +501,11 @@ impl VethPair {
         for nameserver in nameservers {
             if nameserver == "127.0.0.1" {
                 continue;
-            } else if nameserver == "127.0.0.11" {
+            }
+            if nameserver == "127.0.0.11" {
                 // Forward UDP DNS queries (port 53)
                 let output = Command::new("iptables")
-                    .args(&[
+                    .args([
                         "-t",
                         "nat",
                         "-A",
@@ -525,9 +522,7 @@ impl VethPair {
                         &format!("{}:{}", nameserver, self.docker_dns_udp_port.unwrap_or(53)),
                     ])
                     .output()
-                    .map_err(|e| {
-                        Error::Network(format!("Failed to set up DNS forwarding: {}", e))
-                    })?;
+                    .map_err(|e| Error::Network(format!("Failed to set up DNS forwarding: {e}")))?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -540,7 +535,7 @@ impl VethPair {
 
                 // Forward TCP DNS queries (less common but sometimes used)
                 let output = Command::new("iptables")
-                    .args(&[
+                    .args([
                         "-t",
                         "nat",
                         "-A",
@@ -558,86 +553,79 @@ impl VethPair {
                     ])
                     .output()
                     .map_err(|e| {
-                        Error::Network(format!("Failed to set up TCP DNS forwarding: {}", e))
+                        Error::Network(format!("Failed to set up TCP DNS forwarding: {e}"))
                     })?;
 
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    debug!(
-                        "Failed to set up TCP DNS forwarding to {}: {}",
-                        nameserver, stderr
-                    );
-                } else {
+                if output.status.success() {
                     debug!("Set up DNS forwarding to {}", nameserver);
                     return Ok(()); // Success with this nameserver, stop here
                 }
-            } else {
-                // Forward UDP DNS queries (port 53)
-                let output = Command::new("iptables")
-                    .args(&[
-                        "-t",
-                        "nat",
-                        "-A",
-                        "PREROUTING",
-                        "-s",
-                        &self.isolated_ip_address.to_string(),
-                        "-p",
-                        "udp",
-                        "--dport",
-                        "53",
-                        "-j",
-                        "DNAT",
-                        "--to",
-                        &format!("{}:53", nameserver),
-                    ])
-                    .output()
-                    .map_err(|e| {
-                        Error::Network(format!("Failed to set up DNS forwarding: {}", e))
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    debug!(
-                        "Failed to set up UDP DNS forwarding to {}: {}",
-                        nameserver, stderr
-                    );
-                    continue; // Try the next nameserver if this one fails
-                }
-
-                // Forward TCP DNS queries (less common but sometimes used)
-                let output = Command::new("iptables")
-                    .args(&[
-                        "-t",
-                        "nat",
-                        "-A",
-                        "PREROUTING",
-                        "-s",
-                        &self.isolated_ip_address.to_string(),
-                        "-p",
-                        "tcp",
-                        "--dport",
-                        "53",
-                        "-j",
-                        "DNAT",
-                        "--to",
-                        &format!("{}:53", nameserver),
-                    ])
-                    .output()
-                    .map_err(|e| {
-                        Error::Network(format!("Failed to set up TCP DNS forwarding: {}", e))
-                    })?;
-
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    debug!(
-                        "Failed to set up TCP DNS forwarding to {}: {}",
-                        nameserver, stderr
-                    );
-                } else {
-                    debug!("Set up DNS forwarding to {}", nameserver);
-                    return Ok(()); // Success with this nameserver, stop here
-                }
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                debug!(
+                    "Failed to set up TCP DNS forwarding to {}: {}",
+                    nameserver, stderr
+                );
             }
+            // Forward UDP DNS queries (port 53)
+            let output = Command::new("iptables")
+                .args([
+                    "-t",
+                    "nat",
+                    "-A",
+                    "PREROUTING",
+                    "-s",
+                    &self.isolated_ip_address.to_string(),
+                    "-p",
+                    "udp",
+                    "--dport",
+                    "53",
+                    "-j",
+                    "DNAT",
+                    "--to",
+                    &format!("{nameserver}:53"),
+                ])
+                .output()
+                .map_err(|e| Error::Network(format!("Failed to set up DNS forwarding: {e}")))?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                debug!(
+                    "Failed to set up UDP DNS forwarding to {}: {}",
+                    nameserver, stderr
+                );
+                continue; // Try the next nameserver if this one fails
+            }
+
+            // Forward TCP DNS queries (less common but sometimes used)
+            let output = Command::new("iptables")
+                .args([
+                    "-t",
+                    "nat",
+                    "-A",
+                    "PREROUTING",
+                    "-s",
+                    &self.isolated_ip_address.to_string(),
+                    "-p",
+                    "tcp",
+                    "--dport",
+                    "53",
+                    "-j",
+                    "DNAT",
+                    "--to",
+                    &format!("{nameserver}:53"),
+                ])
+                .output()
+                .map_err(|e| Error::Network(format!("Failed to set up TCP DNS forwarding: {e}")))?;
+
+            if output.status.success() {
+                debug!("Set up DNS forwarding to {}", nameserver);
+                return Ok(()); // Success with this nameserver, stop here
+            }
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            debug!(
+                "Failed to set up TCP DNS forwarding to {}: {}",
+                nameserver, stderr
+            );
         }
 
         debug!("Failed to set up DNS forwarding to any nameserver");
@@ -650,7 +638,9 @@ impl VethPair {
     /// # Errors
     ///
     /// Returns an error if the setup fails
-    async fn setup_host_network(&self) -> Result<()> {
+    #[allow(clippy::too_many_lines)] // TODO: Potential refactor
+    #[allow(clippy::cognitive_complexity)] // TODO: Potential refactor
+    fn setup_host_network(&self) -> Result<()> {
         debug!(
             "Setting up host network for interface {}",
             self.host_veth_interface_name
@@ -658,7 +648,7 @@ impl VethPair {
 
         // Set host IP
         let output = Command::new("ip")
-            .args(&[
+            .args([
                 "addr",
                 "add",
                 &format!("{}/24", self.host_ip_address),
@@ -666,26 +656,25 @@ impl VethPair {
                 &self.host_veth_interface_name,
             ])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to set host IP: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to set host IP: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(Error::Network(format!("Failed to set host IP: {}", stderr)));
+            return Err(Error::Network(format!("Failed to set host IP: {stderr}")));
         }
 
         debug!("Set host IP to {}", self.host_ip_address);
 
         // Verify host IP was set correctly
         let output = Command::new("ip")
-            .args(&["addr", "show", &self.host_veth_interface_name])
+            .args(["addr", "show", &self.host_veth_interface_name])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to verify host IP: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to verify host IP: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to verify host IP: {}",
-                stderr
+                "Failed to verify host IP: {stderr}"
             )));
         }
 
@@ -694,15 +683,14 @@ impl VethPair {
 
         // Bring up host interface
         let output = Command::new("ip")
-            .args(&["link", "set", &self.host_veth_interface_name, "up"])
+            .args(["link", "set", &self.host_veth_interface_name, "up"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to bring up host interface: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to bring up host interface: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to bring up host interface: {}",
-                stderr
+                "Failed to bring up host interface: {stderr}"
             )));
         }
 
@@ -713,14 +701,13 @@ impl VethPair {
 
         // Enable IPv4 forwarding
         let output = Command::new("sysctl")
-            .args(&["-w", "net.ipv4.ip_forward=1"])
+            .args(["-w", "net.ipv4.ip_forward=1"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to enable IPv4 forwarding: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to enable IPv4 forwarding: {e}")))?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to enable IPv4 forwarding: {}",
-                stderr
+                "Failed to enable IPv4 forwarding: {stderr}"
             )));
         }
         debug!("Enabled IPv4 forwarding");
@@ -728,17 +715,14 @@ impl VethPair {
         // Enable route_localnet for loopback and veth to handle NAT'd localhost traffic
         debug!("Enabling route_localnet");
         for iface in &["lo", &self.host_veth_interface_name] {
-            let setting = format!("net.ipv4.conf.{}.route_localnet=1", iface);
+            let setting = format!("net.ipv4.conf.{iface}.route_localnet=1");
             let output = Command::new("sysctl")
-                .args(&["-w", &setting])
+                .args(["-w", &setting])
                 .output()
-                .map_err(|e| Error::Network(format!("Failed to set {}: {}", setting, e)))?;
+                .map_err(|e| Error::Network(format!("Failed to set {setting}: {e}")))?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(Error::Network(format!(
-                    "Failed to set {}: {}",
-                    setting, stderr
-                )));
+                return Err(Error::Network(format!("Failed to set {setting}: {stderr}")));
             }
         }
 
@@ -758,7 +742,7 @@ impl VethPair {
 
             // 1. DNAT for external traffic (e.g., coming from eth0)
             let output = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-A",
@@ -779,18 +763,17 @@ impl VethPair {
                     &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output()
-                .map_err(|e| Error::Network(format!("Failed to set NAT PREROUTING rule: {}", e)))?;
+                .map_err(|e| Error::Network(format!("Failed to set NAT PREROUTING rule: {e}")))?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(Error::Network(format!(
-                    "Failed to set NAT PREROUTING rule: {}",
-                    stderr
+                    "Failed to set NAT PREROUTING rule: {stderr}"
                 )));
             }
 
             // 2. DNAT for localhost traffic
             let output = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-A",
@@ -809,18 +792,17 @@ impl VethPair {
                     &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output()
-                .map_err(|e| Error::Network(format!("Failed to set NAT OUTPUT rule: {}", e)))?;
+                .map_err(|e| Error::Network(format!("Failed to set NAT OUTPUT rule: {e}")))?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(Error::Network(format!(
-                    "Failed to set NAT OUTPUT rule: {}",
-                    stderr
+                    "Failed to set NAT OUTPUT rule: {stderr}"
                 )));
             }
 
             // 3. SNAT for localhost -> container traffic
             let output = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-A",
@@ -840,13 +822,12 @@ impl VethPair {
                 ])
                 .output()
                 .map_err(|e| {
-                    Error::Network(format!("Failed to set NAT POSTROUTING SNAT rule: {}", e))
+                    Error::Network(format!("Failed to set NAT POSTROUTING SNAT rule: {e}"))
                 })?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(Error::Network(format!(
-                    "Failed to set NAT POSTROUTING SNAT rule: {}",
-                    stderr
+                    "Failed to set NAT POSTROUTING SNAT rule: {stderr}"
                 )));
             }
 
@@ -854,7 +835,7 @@ impl VethPair {
 
             // 4. Allow NEW connections forwarding TO container (covers external and localhost)
             let output = Command::new("iptables")
-                .args(&[
+                .args([
                     "-A",
                     "FORWARD",
                     "-d",
@@ -872,13 +853,12 @@ impl VethPair {
                 ])
                 .output()
                 .map_err(|e| {
-                    Error::Network(format!("Failed to set filter FORWARD NEW rule: {}", e))
+                    Error::Network(format!("Failed to set filter FORWARD NEW rule: {e}"))
                 })?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(Error::Network(format!(
-                    "Failed to set filter FORWARD NEW rule: {}",
-                    stderr
+                    "Failed to set filter FORWARD NEW rule: {stderr}"
                 )));
             }
         }
@@ -891,7 +871,7 @@ impl VethPair {
 
             // 1. DNAT for external traffic
             let output = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-A",
@@ -913,19 +893,18 @@ impl VethPair {
                 ])
                 .output()
                 .map_err(|e| {
-                    Error::Network(format!("Failed to set UDP NAT PREROUTING rule: {}", e))
+                    Error::Network(format!("Failed to set UDP NAT PREROUTING rule: {e}"))
                 })?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(Error::Network(format!(
-                    "Failed to set UDP NAT PREROUTING rule: {}",
-                    stderr
+                    "Failed to set UDP NAT PREROUTING rule: {stderr}"
                 )));
             }
 
             // 2. DNAT for localhost traffic
             let output = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-A",
@@ -944,18 +923,17 @@ impl VethPair {
                     &format!("{}:{}", self.isolated_ip_address, port),
                 ])
                 .output()
-                .map_err(|e| Error::Network(format!("Failed to set UDP NAT OUTPUT rule: {}", e)))?;
+                .map_err(|e| Error::Network(format!("Failed to set UDP NAT OUTPUT rule: {e}")))?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(Error::Network(format!(
-                    "Failed to set UDP NAT OUTPUT rule: {}",
-                    stderr
+                    "Failed to set UDP NAT OUTPUT rule: {stderr}"
                 )));
             }
 
             // 3. SNAT for localhost -> container traffic
             let output = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-A",
@@ -975,16 +953,12 @@ impl VethPair {
                 ])
                 .output()
                 .map_err(|e| {
-                    Error::Network(format!(
-                        "Failed to set UDP NAT POSTROUTING SNAT rule: {}",
-                        e
-                    ))
+                    Error::Network(format!("Failed to set UDP NAT POSTROUTING SNAT rule: {e}"))
                 })?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(Error::Network(format!(
-                    "Failed to set UDP NAT POSTROUTING SNAT rule: {}",
-                    stderr
+                    "Failed to set UDP NAT POSTROUTING SNAT rule: {stderr}"
                 )));
             }
 
@@ -994,7 +968,7 @@ impl VethPair {
 
             // 4. Allow forwarding TO container (covers external and localhost)
             let output = Command::new("iptables")
-                .args(&[
+                .args([
                     "-A",
                     "FORWARD",
                     "-d",
@@ -1009,15 +983,13 @@ impl VethPair {
                 .output()
                 .map_err(|e| {
                     Error::Network(format!(
-                        "Failed to set UDP filter FORWARD rule (to container): {}",
-                        e
+                        "Failed to set UDP filter FORWARD rule (to container): {e}"
                     ))
                 })?;
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(Error::Network(format!(
-                    "Failed to set UDP filter FORWARD rule (to container): {}",
-                    stderr
+                    "Failed to set UDP filter FORWARD rule (to container): {stderr}"
                 )));
             }
         }
@@ -1027,7 +999,7 @@ impl VethPair {
         // 5. MASQUERADE for container outbound traffic (POSTROUTING)
         debug!("Setting up MASQUERADE for container outbound traffic");
         let output = Command::new("iptables")
-            .args(&[
+            .args([
                 "-t",
                 "nat",
                 "-A",
@@ -1043,22 +1015,20 @@ impl VethPair {
             .output()
             .map_err(|e| {
                 Error::Network(format!(
-                    "Failed to set NAT POSTROUTING MASQUERADE rule: {}",
-                    e
+                    "Failed to set NAT POSTROUTING MASQUERADE rule: {e}"
                 ))
             })?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to set NAT POSTROUTING MASQUERADE rule: {}",
-                stderr
+                "Failed to set NAT POSTROUTING MASQUERADE rule: {stderr}"
             )));
         }
 
         // 6. Allow ESTABLISHED/RELATED traffic in FORWARD chain (Handles return traffic)
         debug!("Allowing ESTABLISHED/RELATED traffic in FORWARD chain");
         let output = Command::new("iptables")
-            .args(&[
+            .args([
                 "-A",
                 "FORWARD",
                 "-m",
@@ -1071,15 +1041,13 @@ impl VethPair {
             .output()
             .map_err(|e| {
                 Error::Network(format!(
-                    "Failed to set filter FORWARD ESTABLISHED rule: {}",
-                    e
+                    "Failed to set filter FORWARD ESTABLISHED rule: {e}"
                 ))
             })?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to set filter FORWARD ESTABLISHED rule: {}",
-                stderr
+                "Failed to set filter FORWARD ESTABLISHED rule: {stderr}"
             )));
         }
 
@@ -1088,15 +1056,14 @@ impl VethPair {
 
         // Check NAT table rules
         let output = Command::new("iptables")
-            .args(&["-t", "nat", "-L", "-n", "-v"])
+            .args(["-t", "nat", "-L", "-n", "-v"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to list NAT rules: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to list NAT rules: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to list NAT rules: {}",
-                stderr
+                "Failed to list NAT rules: {stderr}"
             )));
         }
 
@@ -1105,15 +1072,14 @@ impl VethPair {
 
         // Check default table rules
         let output = Command::new("iptables")
-            .args(&["-L", "-n", "-v"])
+            .args(["-L", "-n", "-v"])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to list filter rules: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to list filter rules: {e}")))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Network(format!(
-                "Failed to list filter rules: {}",
-                stderr
+                "Failed to list filter rules: {stderr}"
             )));
         }
 
@@ -1128,6 +1094,8 @@ impl VethPair {
     /// # Errors
     ///
     /// Returns an error if the cleanup fails
+    #[allow(clippy::too_many_lines)] // TODO: Potential refactor
+    #[allow(clippy::cognitive_complexity)] // TODO: Potential refactor
     fn cleanup(&self) -> Result<()> {
         debug!("Cleaning up veth pair: {}", self.host_veth_interface_name);
 
@@ -1140,7 +1108,7 @@ impl VethPair {
 
             // 1. Remove NAT PREROUTING rule (External DNAT)
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-D",
@@ -1164,7 +1132,7 @@ impl VethPair {
 
             // 2. Remove NAT OUTPUT rule (Localhost DNAT)
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-D",
@@ -1186,7 +1154,7 @@ impl VethPair {
 
             // 3. Remove NAT POSTROUTING rule (Localhost SNAT)
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-D",
@@ -1208,7 +1176,7 @@ impl VethPair {
 
             // 4. Remove Filter FORWARD NEW rule
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-D",
                     "FORWARD",
                     "-d",
@@ -1233,7 +1201,7 @@ impl VethPair {
 
             // 1. Remove NAT PREROUTING rule (External DNAT)
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-D",
@@ -1257,7 +1225,7 @@ impl VethPair {
 
             // 2. Remove NAT OUTPUT rule (Localhost DNAT)
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-D",
@@ -1279,7 +1247,7 @@ impl VethPair {
 
             // 3. Remove NAT POSTROUTING rule (Localhost SNAT)
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-D",
@@ -1301,7 +1269,7 @@ impl VethPair {
 
             // 4. Remove Filter FORWARD rule (to container)
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-D",
                     "FORWARD",
                     "-d",
@@ -1326,7 +1294,7 @@ impl VethPair {
 
         // Try to remove the MASQUERADE rule for this specific subnet
         let _ = Command::new("iptables")
-            .args(&[
+            .args([
                 "-t",
                 "nat",
                 "-D",
@@ -1345,30 +1313,24 @@ impl VethPair {
         // remove the other end of the pair as well
         debug!("Deleting veth interface {}", self.host_veth_interface_name);
         let output = Command::new("ip")
-            .args(&["link", "delete", &self.host_veth_interface_name])
+            .args(["link", "delete", &self.host_veth_interface_name])
             .output()
-            .map_err(|e| Error::Network(format!("Failed to delete veth interface: {}", e)))?;
+            .map_err(|e| Error::Network(format!("Failed to delete veth interface: {e}")))?;
 
         if !output.status.success() {
             // Log error, but don't fail cleanup if interface is already gone
             let stderr = String::from_utf8_lossy(&output.stderr);
-            debug!(
-                "Failed to delete veth interface (might be already gone): {}",
-                stderr
-            );
+            debug!("Failed to delete veth interface (might be already gone): {stderr}");
         }
 
         // Clean up network namespace symlink
         let ns_name = format!("container_{}", self.isolated_pid);
-        let ns_link = format!("/var/run/netns/{}", ns_name);
+        let ns_link = format!("/var/run/netns/{ns_name}");
         if std::path::Path::new(&ns_link).exists() {
             debug!("Removing network namespace symlink: {}", ns_link);
             if let Err(e) = std::fs::remove_file(&ns_link) {
                 // Log error, but don't fail the whole cleanup
-                debug!(
-                    "Failed to remove network namespace symlink {}: {}",
-                    ns_link, e
-                );
+                debug!("Failed to remove network namespace symlink {ns_link}: {e}");
             }
         }
         // Note: We don't delete the actual netns (`ip netns del ...`) as it should be automatically
@@ -1382,6 +1344,8 @@ impl VethPair {
     }
 
     /// Clean up DNS forwarding rules
+    #[allow(clippy::cognitive_complexity)] // TODO: Potential refactor
+    #[allow(clippy::too_many_lines)] // TODO: Potential refactor
     fn cleanup_dns_forwarding(&self) {
         debug!("Cleaning up DNS forwarding rules for container");
 
@@ -1389,7 +1353,7 @@ impl VethPair {
         let resolv_conf = match std::fs::read_to_string("/etc/resolv.conf") {
             Ok(content) => content,
             Err(e) => {
-                debug!("Failed to read host's resolv.conf: {}", e);
+                debug!("Failed to read host's resolv.conf: {e}");
                 return;
             }
         };
@@ -1420,7 +1384,7 @@ impl VethPair {
         for nameserver in nameservers {
             // Forward UDP DNS queries (port 53)
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-D",
@@ -1434,13 +1398,13 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to",
-                    &format!("{}:53", nameserver),
+                    &format!("{nameserver}:53"),
                 ])
                 .output();
 
             // Forward TCP DNS queries (less common but sometimes used)
             let _ = Command::new("iptables")
-                .args(&[
+                .args([
                     "-t",
                     "nat",
                     "-D",
@@ -1454,7 +1418,7 @@ impl VethPair {
                     "-j",
                     "DNAT",
                     "--to",
-                    &format!("{}:53", nameserver),
+                    &format!("{nameserver}:53"),
                 ])
                 .output();
         }
@@ -1481,16 +1445,16 @@ pub fn check_root_permissions() -> Result<bool> {
     let uid = String::from_utf8_lossy(&output.stdout)
         .trim()
         .parse::<u32>()
-        .map_err(|e| Error::ParseInt(format!("Failed to parse uid: {}", e)))?;
+        .map_err(|e| Error::ParseInt(format!("Failed to parse uid: {e}")))?;
 
     Ok(uid == 0)
 }
 
 fn get_docker_dns_tcp_port() -> Result<Option<u16>> {
     let output = Command::new("iptables")
-        .args(&["-t", "nat", "-L", "DOCKER_POSTROUTING", "-n"])
+        .args(["-t", "nat", "-L", "DOCKER_POSTROUTING", "-n"])
         .output()
-        .map_err(|e| Error::Network(format!("Failed to get docker dns tcp port: {}", e)))?;
+        .map_err(|e| Error::Network(format!("Failed to get docker dns tcp port: {e}")))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -1517,9 +1481,9 @@ fn get_docker_dns_tcp_port() -> Result<Option<u16>> {
 
 fn get_docker_dns_udp_port() -> Result<Option<u16>> {
     let output = Command::new("iptables")
-        .args(&["-t", "nat", "-L", "DOCKER_POSTROUTING", "-n"])
+        .args(["-t", "nat", "-L", "DOCKER_POSTROUTING", "-n"])
         .output()
-        .map_err(|e| Error::Network(format!("Failed to get docker dns udp port: {}", e)))?;
+        .map_err(|e| Error::Network(format!("Failed to get docker dns udp port: {e}")))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 

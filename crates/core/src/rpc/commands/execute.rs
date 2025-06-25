@@ -20,6 +20,7 @@ pub struct ExecuteCommand {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum ExecuteResponse {
     BadHandlerSpecifier,
     Failure(String),
@@ -40,21 +41,20 @@ impl RpcCommand for ExecuteCommand {
         SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
-        let handler_specifier = match HandlerSpecifier::parse(&self.handler_specifier) {
-            Ok(hs) => hs,
-            Err(_) => return ExecuteResponse::BadHandlerSpecifier,
+        let Ok(handler_specifier) = HandlerSpecifier::parse(&self.handler_specifier) else {
+            return ExecuteResponse::BadHandlerSpecifier;
         };
 
         let execution_request = match context.session {
             Session::Anonymous { .. } => ExecutionRequest::Rpc {
-                application_id: context.application_id.clone(),
+                application_id: context.application_id,
                 args: self.args.clone(),
                 handler_specifier,
             },
             Session::Identified { identity_id, .. } => {
                 match context.identity_manager.get_identity(identity_id).await {
                     Ok(Some(identity)) => ExecutionRequest::RpcWithIdentity {
-                        application_id: context.application_id.clone(),
+                        application_id: context.application_id,
                         args: self.args.clone(),
                         handler_specifier,
                         identity,

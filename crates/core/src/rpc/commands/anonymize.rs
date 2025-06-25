@@ -29,7 +29,7 @@ impl RpcCommand for AnonymizeCommand {
     {
         let session = match context
             .sessions_manager
-            .anonymize_session(&context.application_id, &context.session.session_id())
+            .anonymize_session(&context.application_id, context.session.session_id())
             .await
         {
             Ok(session) => session,

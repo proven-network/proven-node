@@ -81,7 +81,7 @@ impl ExternalFs {
 
         // Paths specific to this instance
         let nfs_mount_dir = mnt_dir.join(&rand_id);
-        let passfile_path = passfile_dir.join(format!("{}.passfile", rand_id));
+        let passfile_path = passfile_dir.join(format!("{rand_id}.passfile"));
 
         // create directories
         std::fs::create_dir_all(&mount_dir)

@@ -81,6 +81,7 @@ where
         matches!(self, Self::Symlink { .. })
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     pub(crate) fn symlink_target(&self) -> Option<&str> {
         match self {
             Self::Symlink { target, .. } => Some(target),

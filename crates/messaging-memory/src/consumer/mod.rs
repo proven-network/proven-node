@@ -97,7 +97,7 @@ where
         loop {
             tokio::select! {
                 biased;
-                _ = shutdown_token.cancelled() => {
+                () = shutdown_token.cancelled() => {
                     debug!("shutdown token cancelled, exiting message processing loop");
                     break;
                 }
@@ -208,12 +208,12 @@ where
         debug!("shutting down in-memory consumer");
 
         self.shutdown_token.cancel();
-        let _ = self.task_tracker.wait();
+        self.task_tracker.wait().await;
 
         Ok(())
     }
 
     async fn wait(&self) {
-        let _ = self.task_tracker.wait();
+        self.task_tracker.wait().await;
     }
 }

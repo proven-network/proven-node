@@ -3,7 +3,7 @@ use http::{HeaderMap, Method};
 use serde::{Deserialize, Serialize};
 
 /// A request to a SQL store.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Request {
     /// The body of the request.
     pub body: Option<Bytes>,

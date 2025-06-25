@@ -115,7 +115,7 @@ where
         directory_url: &str,
     ) -> Result<Option<Vec<u8>>, Self::EA> {
         let key = Self::cached_account_key(contact, directory_url);
-        self.read_if_exist(key).await.map_err(Into::into)
+        self.read_if_exist(key).await
     }
 
     async fn store_account(
@@ -125,6 +125,6 @@ where
         account: &[u8],
     ) -> Result<(), Self::EA> {
         let key = Self::cached_account_key(contact, directory_url);
-        self.write(key, account.into()).await.map_err(Into::into)
+        self.write(key, account.into()).await
     }
 }

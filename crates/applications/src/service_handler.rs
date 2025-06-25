@@ -47,7 +47,7 @@ where
     }
 
     /// Gets a reference to the application view.
-    pub fn view(&self) -> &ApplicationView {
+    pub const fn view(&self) -> &ApplicationView {
         &self.view
     }
 
@@ -59,7 +59,7 @@ where
 
     /// Determines if a command requires strong consistency (view synchronization)
     /// before processing to prevent conflicts or ensure accurate reads.
-    fn requires_strong_consistency(&self, command: &Command) -> bool {
+    const fn requires_strong_consistency(command: &Command) -> bool {
         match command {
             Command::Archive { .. }
             | Command::TransferOwnership { .. }
@@ -70,6 +70,8 @@ where
     }
 
     /// Handle commands by generating and publishing events
+    // TODO: Refactor this to be more readable
+    #[allow(clippy::too_many_lines)]
     async fn handle_command(&self, command: Command) -> Result<Response, Error> {
         match command {
             Command::Archive { application_id } => {
@@ -165,7 +167,7 @@ where
                     .get_application(application_id)
                     .await
                     .map(|app| app.owner_id)
-                    .ok_or_else(|| Error::ApplicationNotFound(application_id))?;
+                    .ok_or(Error::ApplicationNotFound(application_id))?;
 
                 let event = Event::OwnershipTransferred {
                     application_id,
@@ -257,14 +259,14 @@ where
             >,
     {
         // If this command requires strong consistency, ensure view is caught up
-        if self.requires_strong_consistency(&command) {
+        if Self::requires_strong_consistency(&command) {
             let current_seq = self
                 .event_stream
                 .last_seq()
                 .await
                 .map_err(|e| Error::Stream(e.to_string()))?;
 
-            self.view.wait_for_seq(current_seq).await?;
+            self.view.wait_for_seq(current_seq).await;
         }
 
         // Handle the command

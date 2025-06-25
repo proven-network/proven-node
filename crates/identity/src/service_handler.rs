@@ -47,7 +47,7 @@ where
     }
 
     /// Gets a reference to the identity view.
-    pub fn view(&self) -> &IdentityView {
+    pub const fn view(&self) -> &IdentityView {
         &self.view
     }
 
@@ -59,7 +59,7 @@ where
 
     /// Determines if a command requires strong consistency (view synchronization)
     /// before processing to prevent conflicts or ensure accurate reads.
-    fn requires_strong_consistency(&self, command: &Command) -> bool {
+    const fn requires_strong_consistency(command: &Command) -> bool {
         matches!(
             command,
             Command::GetOrCreateIdentityByPrfPublicKey { .. } | Command::LinkPrfPublicKey { .. }
@@ -178,14 +178,14 @@ where
             >,
     {
         // If this command requires strong consistency, ensure view is caught up
-        if self.requires_strong_consistency(&command) {
+        if Self::requires_strong_consistency(&command) {
             let current_seq = self
                 .event_stream
                 .last_seq()
                 .await
                 .map_err(|e| Error::Stream(e.to_string()))?;
 
-            self.view.wait_for_seq(current_seq).await?;
+            self.view.wait_for_seq(current_seq).await;
         }
 
         // Handle the command

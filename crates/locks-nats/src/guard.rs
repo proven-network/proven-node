@@ -21,7 +21,7 @@ pub struct NatsLockGuard {
 }
 
 impl NatsLockGuard {
-    /// Create a new NatsLockGuard.
+    /// Create a new `NatsLockGuard`.
     ///
     /// # Arguments
     ///

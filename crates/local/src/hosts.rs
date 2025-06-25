@@ -15,25 +15,25 @@ pub async fn check_hostname_resolution(hostname: &str) -> Result<()> {
         Ok(resolver) => resolver,
         Err(e) => {
             error!("Failed to create DNS resolver: {}", e);
-            return Err(Error::Io(format!("Failed to create DNS resolver: {}", e)));
+            return Err(Error::Io(format!("Failed to create DNS resolver: {e}")));
         }
     };
     let dns_lookup_result = resolver.lookup_ip(hostname).await;
 
     if let Ok(lookup_result) = dns_lookup_result {
-        if !lookup_result.iter().collect::<Vec<_>>().is_empty() {
-            info!(
-                "Hostname {} can be resolved via DNS: {:?}",
-                hostname,
-                lookup_result.iter().collect::<Vec<_>>()
-            );
-        } else {
+        if lookup_result.iter().next().is_none() {
             error!("DNS resolution for {} returned no addresses", hostname);
             if !check_hosts_file(hostname) {
                 error!("{} is not configured in hosts file or DNS", hostname);
                 show_hosts_file_instructions(hostname);
                 std::process::exit(1);
             }
+        } else {
+            info!(
+                "Hostname {} can be resolved via DNS: {:?}",
+                hostname,
+                lookup_result.iter().collect::<Vec<_>>()
+            );
         }
     } else {
         error!(
@@ -66,7 +66,7 @@ fn check_hosts_file(hostname: &str) -> bool {
 }
 
 fn check_host_entry(hosts_path: &Path, hostname: &str) -> bool {
-    read_to_string(hosts_path).map_or(false, |contents| {
+    read_to_string(hosts_path).is_ok_and(|contents| {
         contents.lines().any(|line| {
             let line = line.trim();
             if line.starts_with('#') || line.is_empty() {
@@ -84,7 +84,7 @@ fn show_hosts_file_instructions(hostname: &str) {
     #[cfg(target_family = "unix")]
     error!(
         "Please add {} to {} or configure DNS properly",
-        style(format!("127.0.0.1 {}", hostname)).cyan(),
+        style(format!("127.0.0.1 {hostname}")).cyan(),
         style("/etc/hosts").blue(),
     );
     #[cfg(target_family = "windows")]

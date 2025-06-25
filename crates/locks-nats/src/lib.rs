@@ -16,13 +16,14 @@ use async_nats::jetstream::kv::{Config as KvConfig, CreateErrorKind, Store as Kv
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_locks::{LockManager, LockManager1, LockManager2, LockManager3, LockStatus};
+use std::fmt::Write;
 use std::time::Duration;
 use tracing::{debug, error, info, instrument, warn};
 
 // renew at 80% of bucket_max_age to avoid gap between renewal and expiration
 const RENEWAL_INTERVAL_RATIO_OF_BUCKET_MAX_AGE: f64 = 0.8;
 
-/// Configuration for the NatsLockManager.
+/// Configuration for the `NatsLockManager`.
 #[derive(Clone, Debug)]
 pub struct NatsLockManagerConfig {
     /// The bucket to use for the key-value store (may be refined through scopes)
@@ -44,7 +45,7 @@ pub struct NatsLockManagerConfig {
     pub ttl: Duration,
 }
 
-/// A distributed lock manager implemented using NATS JetStream KV Store.
+/// A distributed lock manager implemented using NATS jetstream KV Store.
 #[derive(Clone)]
 pub struct NatsLockManager {
     bucket: String,
@@ -60,6 +61,7 @@ pub struct NatsLockManager {
 impl NatsLockManager {
     /// Creates a new instance of `NatsLockManager`. This is a synchronous constructor.
     /// The actual KV bucket is created/accessed lazily on first operation.
+    #[must_use]
     pub fn new(
         NatsLockManagerConfig {
             bucket,
@@ -76,12 +78,12 @@ impl NatsLockManager {
         Self {
             bucket,
             client,
-            jetstream_context,
             local_identifier,
             local_identifier_bytes,
+            jetstream_context,
+            ttl,
             num_replicas,
             persist,
-            ttl,
         }
     }
 
@@ -102,7 +104,7 @@ impl NatsLockManager {
         self.jetstream_context
             .create_or_update_key_value(kv_config)
             .await
-            .map_err(|e| Error::CreateKvError(e))
+            .map_err(Error::CreateKvError)
     }
 
     #[instrument(skip(self), fields(bucket = %self.bucket, key = %resource_id, local_id = %self.local_identifier))]
@@ -267,7 +269,7 @@ macro_rules! impl_scoped_lock_manager_for_nats {
                 S: AsRef<str> + Send,
             {
                 let mut bucket = self.bucket.clone();
-                bucket.push_str(&format!("_{}", scope.as_ref()));
+                write!(bucket, "_{}", scope.as_ref()).unwrap();
 
                 Self::Scoped::new(NatsLockManagerConfig {
                     client: self.client.clone(),
@@ -304,7 +306,7 @@ mod tests {
         let bucket_name = format!(
             "test_locks_{}_{}",
             bucket_prefix,
-            Uuid::new_v4().as_hyphenated().to_string()
+            Uuid::new_v4().as_hyphenated()
         );
         (client, bucket_name)
     }
@@ -356,8 +358,7 @@ mod tests {
         assert_eq!(
             status_after_drop,
             LockStatus::Free,
-            "Lock should be free after drop. Status: {:?}",
-            status_after_drop
+            "Lock should be free after drop. Status: {status_after_drop:?}"
         );
 
         let js_context = async_nats::jetstream::new(client.clone());
@@ -462,7 +463,7 @@ mod tests {
 
         tokio::select! {
             biased;
-            _ = tokio::time::sleep(Duration::from_millis(500)) => {
+            () = tokio::time::sleep(Duration::from_millis(500)) => {
                 // manager2.lock should still be waiting
                 info!("Manager2 still waiting for lock as expected.");
                 // locked_by_m2 remains false here
@@ -472,7 +473,7 @@ mod tests {
             result = manager2_lock_future => {
                  match result {
                     Ok(_guard2) => panic!("Manager2 acquired lock too early, before manager1 released it."),
-                    Err(e) => panic!("Manager2 lock future failed unexpectedly while manager1 held lock: {:?}", e),
+                    Err(e) => panic!("Manager2 lock future failed unexpectedly while manager1 held lock: {e:?}"),
                  }
             }
         }
@@ -488,7 +489,7 @@ mod tests {
                 info!("Manager2 acquired lock after manager1 released it.");
                 locked_by_m2 = true; // Set the flag here
             }
-            Ok(Err(e)) => panic!("Manager2 failed to acquire lock after release: {:?}", e),
+            Ok(Err(e)) => panic!("Manager2 failed to acquire lock after release: {e:?}"),
             Err(_) => {
                 // If it times out here, locked_by_m2 remains false, and the assert below will catch it.
                 warn!("Manager2 timed out waiting for lock after release");
@@ -543,7 +544,7 @@ mod tests {
         );
 
         // 2. Self acquires, check self
-        let _guard_self = manager_self
+        let guard_self = manager_self
             .lock(lock_key.clone())
             .await
             .expect("Self lock failed");
@@ -567,7 +568,7 @@ mod tests {
             LockStatus::HeldByOther(local_id_self.clone()),
             "Lock should be HeldByOther(self)"
         );
-        drop(_guard_self);
+        drop(guard_self);
         tokio::time::sleep(Duration::from_millis(100)).await; // allow drop actions
 
         // 4. Other acquires, self checks
@@ -609,7 +610,7 @@ mod tests {
         let lock_key_scoped = "my_scoped_resource".to_string();
 
         // Acquire with scoped manager
-        let _guard_scoped = scoped_manager1
+        let guard_scoped = scoped_manager1
             .lock(lock_key_scoped.clone())
             .await
             .expect("Scoped lock failed");
@@ -640,7 +641,7 @@ mod tests {
 
         // Base manager acquires its own lock (different key)
         let lock_key_base = "my_base_resource".to_string();
-        let _guard_base = base_manager
+        let guard_base = base_manager
             .lock(lock_key_base.clone())
             .await
             .expect("Base lock failed");
@@ -665,8 +666,8 @@ mod tests {
             "Scoped manager should see base lock (non-prefixed from its perspective) as Free"
         );
 
-        drop(_guard_scoped);
-        drop(_guard_base);
+        drop(guard_scoped);
+        drop(guard_base);
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         assert_eq!(
@@ -722,8 +723,7 @@ mod tests {
         assert_eq!(
             status_after_wait,
             LockStatus::HeldBySelf,
-            "Lock should still be held by self due to renewal. Status: {:?}",
-            status_after_wait
+            "Lock should still be held by self due to renewal. Status: {status_after_wait:?}"
         );
 
         drop(guard);
@@ -739,8 +739,7 @@ mod tests {
         assert_eq!(
             status_after_drop,
             LockStatus::Free,
-            "Lock should be free after dropping the guard. Status: {:?}",
-            status_after_drop
+            "Lock should be free after dropping the guard. Status: {status_after_drop:?}"
         );
 
         let js_context = async_nats::jetstream::new(client.clone());

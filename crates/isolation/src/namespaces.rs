@@ -24,6 +24,7 @@ pub enum IsolationNamespaces {
 
 /// Options for namespace configuration
 #[derive(Debug, Clone, Copy)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct NamespaceOptions {
     /// Whether to use an IPC namespace
     pub use_ipc: bool,
@@ -66,7 +67,7 @@ impl NamespaceOptions {
 
     /// Creates a new `NamespaceOptions` with no namespaces enabled.
     #[must_use]
-    pub fn none() -> Self {
+    pub const fn none() -> Self {
         Self {
             use_ipc: false,
             use_mount: false,
@@ -78,6 +79,7 @@ impl NamespaceOptions {
     }
 
     /// Converts the options to unshare command-line arguments
+    #[must_use]
     pub fn to_unshare_args(&self) -> Vec<String> {
         let mut args = Vec::new();
 

@@ -1,7 +1,10 @@
 use serde::{Deserialize, Deserializer, Serializer};
+use std::fmt::Write;
 use std::time::Duration;
 
 /// Deserialize a duration string like "42.868726ms" or "8d19h55m4s" into Duration
+#[allow(clippy::cast_sign_loss)]
+#[allow(clippy::cast_possible_truncation)]
 pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Duration>, D::Error>
 where
     D: Deserializer<'de>,
@@ -28,18 +31,16 @@ where
         for c in s.chars() {
             if c.is_ascii_digit() || c == '.' {
                 current_num.push(c);
-            } else {
-                if !current_num.is_empty() {
-                    if let Ok(num) = current_num.parse::<f64>() {
-                        match c {
-                            'd' => total_secs += (num * 86400.0) as u64,
-                            'h' => total_secs += (num * 3600.0) as u64,
-                            'm' => total_secs += (num * 60.0) as u64,
-                            's' => total_secs += num as u64,
-                            _ => {}
-                        }
-                        current_num.clear();
+            } else if !current_num.is_empty() {
+                if let Ok(num) = current_num.parse::<f64>() {
+                    match c {
+                        'd' => total_secs += (num * 86400.0) as u64,
+                        'h' => total_secs += (num * 3600.0) as u64,
+                        'm' => total_secs += (num * 60.0) as u64,
+                        's' => total_secs += num as u64,
+                        _ => {}
                     }
+                    current_num.clear();
                 }
             }
         }
@@ -51,6 +52,7 @@ where
 }
 
 /// Serialize Duration back to string format like "42.868726ms" or "8d19h55m4s"
+#[allow(clippy::ref_option)] // Needed for serde
 pub fn serialize<S>(duration: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -63,29 +65,29 @@ where
                 if nanos == 0 {
                     serializer.serialize_str("0s")
                 } else {
-                    let ms = nanos as f64 / 1_000_000.0;
-                    serializer.serialize_str(&format!("{}ms", ms))
+                    let ms = f64::from(nanos) / 1_000_000.0;
+                    serializer.serialize_str(&format!("{ms}ms"))
                 }
             } else if secs < 60 {
-                serializer.serialize_str(&format!("{}s", secs))
+                serializer.serialize_str(&format!("{secs}s"))
             } else if secs < 3600 {
                 let mins = secs / 60;
                 let remaining_secs = secs % 60;
                 if remaining_secs == 0 {
-                    serializer.serialize_str(&format!("{}m", mins))
+                    serializer.serialize_str(&format!("{mins}m"))
                 } else {
-                    serializer.serialize_str(&format!("{}m{}s", mins, remaining_secs))
+                    serializer.serialize_str(&format!("{mins}m{remaining_secs}s"))
                 }
             } else if secs < 86400 {
                 let hours = secs / 3600;
                 let mins = (secs % 3600) / 60;
                 let remaining_secs = secs % 60;
-                let mut result = format!("{}h", hours);
+                let mut result = format!("{hours}h");
                 if mins > 0 {
-                    result.push_str(&format!("{}m", mins));
+                    write!(result, "{mins}m").unwrap();
                 }
                 if remaining_secs > 0 {
-                    result.push_str(&format!("{}s", remaining_secs));
+                    write!(result, "{remaining_secs}s").unwrap();
                 }
                 serializer.serialize_str(&result)
             } else {
@@ -93,15 +95,15 @@ where
                 let hours = (secs % 86400) / 3600;
                 let mins = (secs % 3600) / 60;
                 let remaining_secs = secs % 60;
-                let mut result = format!("{}d", days);
+                let mut result = format!("{days}d");
                 if hours > 0 {
-                    result.push_str(&format!("{}h", hours));
+                    write!(result, "{hours}h").unwrap();
                 }
                 if mins > 0 {
-                    result.push_str(&format!("{}m", mins));
+                    write!(result, "{mins}m").unwrap();
                 }
                 if remaining_secs > 0 {
-                    result.push_str(&format!("{}s", remaining_secs));
+                    write!(result, "{remaining_secs}s").unwrap();
                 }
                 serializer.serialize_str(&result)
             }

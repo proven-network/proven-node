@@ -43,6 +43,7 @@ pub enum Session {
 impl Session {
     /// The origin of the session.
     #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn origin(&self) -> &str {
         match self {
             Self::Anonymous { origin, .. } | Self::Identified { origin, .. } => origin,
@@ -51,7 +52,7 @@ impl Session {
 
     /// The session ID.
     #[must_use]
-    pub fn session_id(&self) -> &Uuid {
+    pub const fn session_id(&self) -> &Uuid {
         match self {
             Self::Anonymous { session_id, .. } | Self::Identified { session_id, .. } => session_id,
         }

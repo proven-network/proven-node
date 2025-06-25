@@ -65,20 +65,14 @@ where
         }
     };
 
-    let Ok(mut rpc_handler) = RpcHandler::new(
+    let mut rpc_handler = RpcHandler::new(
         application_id,
         application_manager,
         runtime_pool_manager,
         identity_manager,
         sessions_manager,
         session,
-    ) else {
-        error!("Error creating RpcHandler");
-        return Response::builder()
-            .status(400)
-            .body(Body::from("Unrecoverable error."))
-            .unwrap();
-    };
+    );
 
     match rpc_handler.handle_rpc(body).await {
         Ok(response) => {

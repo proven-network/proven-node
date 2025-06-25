@@ -30,6 +30,11 @@ pub struct RpcEndpoints {
 
 impl RpcEndpoints {
     /// Create a `RpcEndpoints` instance with all external endpoints (for testing purposes).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the URLs cannot be parsed.
+    #[must_use]
     pub fn external() -> Self {
         Self {
             bitcoin_mainnet: Url::parse("https://bitcoin-rpc.publicnode.com").unwrap(),
@@ -43,6 +48,7 @@ impl RpcEndpoints {
     }
 
     /// Convert the `RpcEndpoints` instance to a `Extension` which allows using the RPC endpoints in the Runtime.
+    #[must_use]
     pub fn into_extension(self) -> Extension {
         let mut extension = Extension::default();
 
@@ -73,6 +79,7 @@ impl RpcEndpoints {
     }
 
     /// Convert the `RpcEndpoints` instance to a vector of URLs.
+    #[must_use]
     pub fn into_vec(self) -> Vec<Url> {
         vec![
             self.bitcoin_mainnet,
