@@ -61,7 +61,9 @@ where
     /// before processing to prevent conflicts or ensure accurate reads.
     const fn requires_strong_consistency(command: &Command) -> bool {
         match command {
-            Command::Archive { .. }
+            Command::AddAllowedOrigin { .. }
+            | Command::Archive { .. }
+            | Command::RemoveAllowedOrigin { .. }
             | Command::TransferOwnership { .. }
             | Command::LinkHttpDomain { .. }
             | Command::UnlinkHttpDomain { .. } => true,
@@ -74,6 +76,42 @@ where
     #[allow(clippy::too_many_lines)]
     async fn handle_command(&self, command: Command) -> Result<Response, Error> {
         match command {
+            Command::AddAllowedOrigin {
+                application_id,
+                origin,
+            } => {
+                // Validate application exists
+                if !self.view.application_exists(application_id).await {
+                    return Ok(Response::Error {
+                        message: "Application not found".to_string(),
+                    });
+                }
+
+                // Check if origin is already in the allowed origins list
+                if let Some(app) = self.view.get_application(application_id).await {
+                    if app.allowed_origins.contains(&origin) {
+                        return Ok(Response::Error {
+                            message: "Origin already in allowed origins".to_string(),
+                        });
+                    }
+                }
+
+                let event = Event::AllowedOriginAdded {
+                    application_id,
+                    origin,
+                    added_at: chrono::Utc::now(),
+                };
+
+                // Publish event to event stream
+                let last_event_seq = self
+                    .event_stream
+                    .publish(event)
+                    .await
+                    .map_err(|e| Error::Stream(e.to_string()))?;
+
+                Ok(Response::AllowedOriginAdded { last_event_seq })
+            }
+
             Command::Archive { application_id } => {
                 if !self.view.application_exists(application_id).await {
                     return Ok(Response::Error {
@@ -148,6 +186,42 @@ where
                     .map_err(|e| Error::Stream(e.to_string()))?;
 
                 Ok(Response::HttpDomainLinked { last_event_seq })
+            }
+
+            Command::RemoveAllowedOrigin {
+                application_id,
+                origin,
+            } => {
+                // Validate application exists
+                if !self.view.application_exists(application_id).await {
+                    return Ok(Response::Error {
+                        message: "Application not found".to_string(),
+                    });
+                }
+
+                // Check if origin is in the allowed origins list
+                if let Some(app) = self.view.get_application(application_id).await {
+                    if !app.allowed_origins.contains(&origin) {
+                        return Ok(Response::Error {
+                            message: "Origin not in allowed origins".to_string(),
+                        });
+                    }
+                }
+
+                let event = Event::AllowedOriginRemoved {
+                    application_id,
+                    origin,
+                    removed_at: chrono::Utc::now(),
+                };
+
+                // Publish event to event stream
+                let last_event_seq = self
+                    .event_stream
+                    .publish(event)
+                    .await
+                    .map_err(|e| Error::Stream(e.to_string()))?;
+
+                Ok(Response::AllowedOriginRemoved { last_event_seq })
             }
 
             Command::TransferOwnership {

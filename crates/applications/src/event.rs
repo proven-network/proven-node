@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use proven_util::{Domain, Origin};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -6,6 +7,30 @@ use uuid::Uuid;
 /// These events are published to the event stream and consumed by various subsystems.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Event {
+    /// An allowed origin was added to an application.
+    AllowedOriginAdded {
+        /// The unique identifier of the application.
+        application_id: Uuid,
+
+        /// The origin that was added.
+        origin: Origin,
+
+        /// The timestamp when the origin was added.
+        added_at: chrono::DateTime<chrono::Utc>,
+    },
+
+    /// An allowed origin was removed from an application.
+    AllowedOriginRemoved {
+        /// The unique identifier of the application.
+        application_id: Uuid,
+
+        /// The origin that was removed.
+        origin: Origin,
+
+        /// The timestamp when the origin was removed.
+        removed_at: chrono::DateTime<chrono::Utc>,
+    },
+
     /// An application was archived and removed from active use.
     Archived {
         /// The unique identifier of the archived application.
@@ -33,7 +58,7 @@ pub enum Event {
         application_id: Uuid,
 
         /// The HTTP domain that was linked.
-        http_domain: String,
+        http_domain: Domain,
 
         /// The timestamp when the HTTP domain was linked.
         linked_at: chrono::DateTime<chrono::Utc>,
@@ -45,7 +70,7 @@ pub enum Event {
         application_id: Uuid,
 
         /// The HTTP domain that was unlinked.
-        http_domain: String,
+        http_domain: Domain,
 
         /// The timestamp when the HTTP domain was unlinked.
         unlinked_at: chrono::DateTime<chrono::Utc>,

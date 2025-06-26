@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use proven_messaging::consumer_handler::ConsumerHandler;
+use proven_util::Domain;
 use tokio::sync::{Notify, RwLock};
 use uuid::Uuid;
 
@@ -19,7 +20,7 @@ pub struct ApplicationView {
     applications: Arc<RwLock<HashMap<Uuid, Application>>>,
 
     // Map from HTTP domain to application ID
-    http_domain_to_application: Arc<RwLock<HashMap<String, Uuid>>>,
+    http_domain_to_application: Arc<RwLock<HashMap<Domain, Uuid>>>,
 
     // Track the sequence number of the last processed event
     last_processed_seq: Arc<AtomicU64>,
@@ -51,7 +52,7 @@ impl ApplicationView {
     }
 
     /// Get an application by HTTP domain
-    pub async fn get_application_id_for_http_domain(&self, http_domain: &str) -> Option<Uuid> {
+    pub async fn get_application_id_for_http_domain(&self, http_domain: &Domain) -> Option<Uuid> {
         self.http_domain_to_application
             .read()
             .await
@@ -60,7 +61,7 @@ impl ApplicationView {
     }
 
     /// Check if an HTTP domain is linked to an application
-    pub async fn http_domain_linked(&self, http_domain: &str) -> bool {
+    pub async fn http_domain_linked(&self, http_domain: &Domain) -> bool {
         self.http_domain_to_application
             .read()
             .await
@@ -122,6 +123,24 @@ impl ApplicationView {
         let mut apps = self.applications.write().await;
 
         match event {
+            Event::AllowedOriginAdded {
+                application_id,
+                origin,
+                ..
+            } => {
+                if let Some(app) = apps.get_mut(application_id) {
+                    app.allowed_origins.push(origin.clone());
+                }
+            }
+            Event::AllowedOriginRemoved {
+                application_id,
+                origin,
+                ..
+            } => {
+                if let Some(app) = apps.get_mut(application_id) {
+                    app.allowed_origins.retain(|o| o != origin);
+                }
+            }
             Event::Archived { application_id, .. } => {
                 // Clean up linked domains for this application
                 if let Some(app) = apps.get(application_id) {
@@ -142,6 +161,7 @@ impl ApplicationView {
                     created_at: *created_at,
                     id: *application_id,
                     linked_http_domains: vec![],
+                    allowed_origins: vec![],
                     owner_id: *owner_identity_id,
                 };
                 apps.insert(*application_id, app);

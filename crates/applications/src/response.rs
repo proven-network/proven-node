@@ -6,6 +6,18 @@ use uuid::Uuid;
 /// These indicate the result of command execution.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Response {
+    /// An allowed origin was successfully added to an application.
+    AllowedOriginAdded {
+        /// The sequence number of the last event published for this command.
+        last_event_seq: u64,
+    },
+
+    /// An allowed origin was successfully removed from an application.
+    AllowedOriginRemoved {
+        /// The sequence number of the last event published for this command.
+        last_event_seq: u64,
+    },
+
     /// Application was successfully archived.
     Archived {
         /// The sequence number of the last event published for this command.

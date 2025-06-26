@@ -12,6 +12,7 @@ futures.workspace = true
 proven-bootable.workspace = true
 proven-locks.workspace = true
 proven-messaging.workspace = true
+proven-util.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

@@ -31,6 +31,7 @@ use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::consumer::Consumer;
 use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream};
+use proven_util::{Domain, Origin};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -53,6 +54,9 @@ pub trait ApplicationManagement
 where
     Self: Clone + Send + Sync + 'static,
 {
+    /// Add an allowed origin to an application.
+    async fn add_allowed_origin(&self, application_id: Uuid, origin: Origin) -> Result<(), Error>;
+
     /// Check if an application exists.
     async fn application_exists(&self, application_id: Uuid) -> Result<bool, Error>;
 
@@ -68,11 +72,25 @@ where
     /// Get an application by its ID.
     async fn get_application(&self, application_id: Uuid) -> Result<Option<Application>, Error>;
 
+    /// Link an HTTP domain to an application.
+    async fn link_http_domain(
+        &self,
+        application_id: Uuid,
+        http_domain: Domain,
+    ) -> Result<(), Error>;
+
     /// List all applications.
     async fn list_all_applications(&self) -> Result<Vec<Application>, Error>;
 
     /// List all applications owned by a specific user.
     async fn list_applications_by_owner(&self, owner_id: Uuid) -> Result<Vec<Application>, Error>;
+
+    /// Remove an allowed origin from an application.
+    async fn remove_allowed_origin(
+        &self,
+        application_id: Uuid,
+        origin: Origin,
+    ) -> Result<(), Error>;
 
     /// Transfer ownership of an application.
     async fn transfer_ownership(
@@ -81,18 +99,11 @@ where
         new_owner_id: Uuid,
     ) -> Result<(), Error>;
 
-    /// Link an HTTP domain to an application.
-    async fn link_http_domain(
-        &self,
-        application_id: Uuid,
-        http_domain: String,
-    ) -> Result<(), Error>;
-
     /// Unlink an HTTP domain from an application.
     async fn unlink_http_domain(
         &self,
         application_id: Uuid,
-        http_domain: String,
+        http_domain: Domain,
     ) -> Result<(), Error>;
 }
 
@@ -488,6 +499,27 @@ where
     ES: Stream<Event, DeserializeError, SerializeError>,
     LM: LockManager + Clone,
 {
+    async fn add_allowed_origin(&self, application_id: Uuid, origin: Origin) -> Result<(), Error> {
+        let client = self.get_client().await?;
+
+        let command = Command::AddAllowedOrigin {
+            application_id,
+            origin,
+        };
+
+        match client
+            .request(command)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
+            ClientResponseType::Response(Response::AllowedOriginAdded { .. }) => Ok(()),
+            ClientResponseType::Response(Response::Error { message }) => {
+                Err(Error::Command(message))
+            }
+            _ => Err(Error::UnexpectedResponse),
+        }
+    }
+
     async fn application_exists(&self, application_id: Uuid) -> Result<bool, Error> {
         Ok(self.view.application_exists(application_id).await)
     }
@@ -549,12 +581,62 @@ where
         Ok(self.view.get_application(application_id).await)
     }
 
+    async fn link_http_domain(
+        &self,
+        application_id: Uuid,
+        http_domain: Domain,
+    ) -> Result<(), Error> {
+        let client = self.get_client().await?;
+
+        let command = Command::LinkHttpDomain {
+            application_id,
+            http_domain,
+        };
+
+        match client
+            .request(command)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
+            ClientResponseType::Response(Response::HttpDomainLinked { .. }) => Ok(()),
+            ClientResponseType::Response(Response::Error { message }) => {
+                Err(Error::Command(message))
+            }
+            _ => Err(Error::UnexpectedResponse),
+        }
+    }
+
     async fn list_all_applications(&self) -> Result<Vec<Application>, Error> {
         Ok(self.view.list_all_applications().await)
     }
 
     async fn list_applications_by_owner(&self, owner_id: Uuid) -> Result<Vec<Application>, Error> {
         Ok(self.view.list_applications_by_owner(owner_id).await)
+    }
+
+    async fn remove_allowed_origin(
+        &self,
+        application_id: Uuid,
+        origin: Origin,
+    ) -> Result<(), Error> {
+        let client = self.get_client().await?;
+
+        let command = Command::RemoveAllowedOrigin {
+            application_id,
+            origin,
+        };
+
+        match client
+            .request(command)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
+            ClientResponseType::Response(Response::AllowedOriginRemoved { .. }) => Ok(()),
+            ClientResponseType::Response(Response::Error { message }) => {
+                Err(Error::Command(message))
+            }
+            _ => Err(Error::UnexpectedResponse),
+        }
     }
 
     async fn transfer_ownership(
@@ -582,35 +664,10 @@ where
         }
     }
 
-    async fn link_http_domain(
-        &self,
-        application_id: Uuid,
-        http_domain: String,
-    ) -> Result<(), Error> {
-        let client = self.get_client().await?;
-
-        let command = Command::LinkHttpDomain {
-            application_id,
-            http_domain,
-        };
-
-        match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(Response::HttpDomainLinked { .. }) => Ok(()),
-            ClientResponseType::Response(Response::Error { message }) => {
-                Err(Error::Command(message))
-            }
-            _ => Err(Error::UnexpectedResponse),
-        }
-    }
-
     async fn unlink_http_domain(
         &self,
         application_id: Uuid,
-        http_domain: String,
+        http_domain: Domain,
     ) -> Result<(), Error> {
         let client = self.get_client().await?;
 
@@ -644,6 +701,7 @@ mod tests {
         service::MemoryServiceOptions,
         stream::{MemoryStream, MemoryStreamOptions},
     };
+    use std::str::FromStr;
     use uuid::Uuid;
 
     type TestCommandStream = MemoryStream<Command, DeserializeError, SerializeError>;
@@ -1020,7 +1078,7 @@ mod tests {
     async fn test_link_http_domain_success() {
         let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
-        let domain = "example.com".to_string();
+        let domain = Domain::from_str("example.com").unwrap();
 
         // Create application
         let app = manager
@@ -1059,7 +1117,7 @@ mod tests {
     async fn test_link_http_domain_to_nonexistent_application() {
         let manager = create_test_manager().await;
         let nonexistent_app_id = Uuid::new_v4();
-        let domain = "example.com".to_string();
+        let domain = Domain::from_str("example.com").unwrap();
 
         // Try to link domain to non-existent application
         let result = manager.link_http_domain(nonexistent_app_id, domain).await;
@@ -1075,7 +1133,7 @@ mod tests {
     async fn test_link_already_linked_domain() {
         let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
-        let domain = "example.com".to_string();
+        let domain = Domain::from_str("example.com").unwrap();
 
         // Create first application
         let app1 = manager
@@ -1116,7 +1174,7 @@ mod tests {
     async fn test_unlink_http_domain_success() {
         let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
-        let domain = "example.com".to_string();
+        let domain = Domain::from_str("example.com").unwrap();
 
         // Create application
         let app = manager
@@ -1158,14 +1216,14 @@ mod tests {
 
         // Verify application no longer has the domain
         let updated_app = manager.view().get_application(app.id).await.unwrap();
-        assert_eq!(updated_app.linked_http_domains, Vec::<String>::new());
+        assert_eq!(updated_app.linked_http_domains, Vec::<Domain>::new());
     }
 
     #[tokio::test]
     async fn test_unlink_http_domain_from_nonexistent_application() {
         let manager = create_test_manager().await;
         let nonexistent_app_id = Uuid::new_v4();
-        let domain = "example.com".to_string();
+        let domain = Domain::from_str("example.com").unwrap();
 
         // Try to unlink domain from non-existent application
         let result = manager.unlink_http_domain(nonexistent_app_id, domain).await;
@@ -1181,7 +1239,7 @@ mod tests {
     async fn test_unlink_non_linked_domain() {
         let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
-        let domain = "example.com".to_string();
+        let domain = Domain::from_str("example.com").unwrap();
 
         // Create application
         let app = manager
@@ -1207,7 +1265,7 @@ mod tests {
     async fn test_unlink_domain_from_wrong_application() {
         let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
-        let domain = "example.com".to_string();
+        let domain = Domain::from_str("example.com").unwrap();
 
         // Create two applications
         let app1 = manager
@@ -1247,9 +1305,9 @@ mod tests {
     async fn test_multiple_domains_per_application() {
         let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
-        let domain1 = "example.com".to_string();
-        let domain2 = "test.com".to_string();
-        let domain3 = "demo.org".to_string();
+        let domain1 = Domain::from_str("example.com").unwrap();
+        let domain2 = Domain::from_str("test.com").unwrap();
+        let domain3 = Domain::from_str("demo.org").unwrap();
 
         // Create application
         let app = manager
@@ -1348,7 +1406,7 @@ mod tests {
     async fn test_domain_linking_with_application_archival() {
         let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
-        let domain = "example.com".to_string();
+        let domain = Domain::from_str("example.com").unwrap();
 
         // Create application
         let app = manager
@@ -1406,7 +1464,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Try to link the same domain concurrently (should only succeed once)
-        let domain = "example.com".to_string();
+        let domain = Domain::from_str("example.com").unwrap();
         let manager_clone = manager.clone();
         let domain_clone = domain.clone();
 
@@ -1429,6 +1487,316 @@ mod tests {
         let error_result = results.iter().find(|r| r.is_err()).unwrap();
         match error_result.as_ref().unwrap_err() {
             Error::Command(msg) => assert_eq!(msg, "HTTP domain already linked"),
+            _ => panic!("Expected command error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_add_allowed_origin_success() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let origin = Origin::from_str("https://example.com").unwrap();
+
+        // Add allowed origin
+        let result = manager.add_allowed_origin(app.id, origin.clone()).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify origin was added
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.allowed_origins, vec![origin]);
+    }
+
+    #[tokio::test]
+    async fn test_add_allowed_origin_to_nonexistent_application() {
+        let manager = create_test_manager().await;
+        let nonexistent_id = Uuid::new_v4();
+        let origin = Origin::from_str("https://example.com").unwrap();
+
+        let result = manager.add_allowed_origin(nonexistent_id, origin).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::Command(_)));
+    }
+
+    #[tokio::test]
+    async fn test_add_duplicate_allowed_origin() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let origin = Origin::from_str("https://example.com").unwrap();
+
+        // Add allowed origin first time
+        let result = manager.add_allowed_origin(app.id, origin.clone()).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Try to add the same origin again
+        let result = manager.add_allowed_origin(app.id, origin.clone()).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::Command(_)));
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify origin appears only once
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.allowed_origins, vec![origin]);
+    }
+
+    #[tokio::test]
+    async fn test_remove_allowed_origin_success() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let origin = Origin::from_str("https://example.com").unwrap();
+
+        // Add allowed origin
+        let result = manager.add_allowed_origin(app.id, origin.clone()).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Remove allowed origin
+        let result = manager.remove_allowed_origin(app.id, origin.clone()).await;
+        assert!(result.is_ok());
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify origin was removed
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.allowed_origins, Vec::<Origin>::new());
+    }
+
+    #[tokio::test]
+    async fn test_remove_allowed_origin_from_nonexistent_application() {
+        let manager = create_test_manager().await;
+        let nonexistent_id = Uuid::new_v4();
+        let origin = Origin::from_str("https://example.com").unwrap();
+
+        let result = manager.remove_allowed_origin(nonexistent_id, origin).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::Command(_)));
+    }
+
+    #[tokio::test]
+    async fn test_remove_non_allowed_origin() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let origin = Origin::from_str("https://example.com").unwrap();
+
+        // Try to remove origin that was never added
+        let result = manager.remove_allowed_origin(app.id, origin).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::Command(_)));
+    }
+
+    #[tokio::test]
+    async fn test_multiple_allowed_origins_per_application() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let origin1 = Origin::from_str("https://example1.com").unwrap();
+        let origin2 = Origin::from_str("https://example2.com").unwrap();
+        let origin3 = Origin::from_str("https://example3.com").unwrap();
+
+        // Add multiple origins
+        assert!(
+            manager
+                .add_allowed_origin(app.id, origin1.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        assert!(
+            manager
+                .add_allowed_origin(app.id, origin2.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        assert!(
+            manager
+                .add_allowed_origin(app.id, origin3.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify all origins were added
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.allowed_origins.len(), 3);
+        assert!(updated_app.allowed_origins.contains(&origin1));
+        assert!(updated_app.allowed_origins.contains(&origin2));
+        assert!(updated_app.allowed_origins.contains(&origin3));
+
+        // Remove one origin
+        assert!(
+            manager
+                .remove_allowed_origin(app.id, origin2.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify only the specified origin was removed
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.allowed_origins.len(), 2);
+        assert!(updated_app.allowed_origins.contains(&origin1));
+        assert!(!updated_app.allowed_origins.contains(&origin2));
+        assert!(updated_app.allowed_origins.contains(&origin3));
+    }
+
+    #[tokio::test]
+    async fn test_allowed_origins_with_application_archival() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        let origin = Origin::from_str("https://example.com").unwrap();
+
+        // Add allowed origin
+        assert!(
+            manager
+                .add_allowed_origin(app.id, origin.clone())
+                .await
+                .is_ok()
+        );
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify origin was added
+        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        assert_eq!(updated_app.allowed_origins, vec![origin.clone()]);
+
+        // Archive application
+        assert!(manager.archive_application(app.id).await.is_ok());
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Verify application is gone
+        assert!(manager.view().get_application(app.id).await.is_none());
+
+        // Try to add origin to archived application (should fail)
+        let result = manager.add_allowed_origin(app.id, origin).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::Command(_)));
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_allowed_origin_operations() {
+        let manager = create_test_manager().await;
+        let owner_id = Uuid::new_v4();
+
+        // Create application
+        let app = manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: owner_id,
+            })
+            .await
+            .unwrap();
+
+        // Give event processing time to complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+        // Try to add the same origin concurrently (should only succeed once)
+        let origin = Origin::from_str("https://concurrent-test.com").unwrap();
+        let manager_clone = manager.clone();
+        let origin_clone = origin.clone();
+
+        let handle1 = tokio::spawn(async move { manager.add_allowed_origin(app.id, origin).await });
+
+        let handle2 =
+            tokio::spawn(
+                async move { manager_clone.add_allowed_origin(app.id, origin_clone).await },
+            );
+
+        let results = futures::future::join_all([handle1, handle2]).await;
+
+        // One should succeed, one should fail
+        let results: Vec<Result<(), Error>> = results.into_iter().map(|r| r.unwrap()).collect();
+        let success_count = results.iter().filter(|r| r.is_ok()).count();
+        let error_count = results.iter().filter(|r| r.is_err()).count();
+
+        assert_eq!(success_count, 1);
+        assert_eq!(error_count, 1);
+
+        // Verify the error is the expected one
+        let error_result = results.iter().find(|r| r.is_err()).unwrap();
+        match error_result.as_ref().unwrap_err() {
+            Error::Command(msg) => assert_eq!(msg, "Origin already in allowed origins"),
             _ => panic!("Expected command error"),
         }
     }

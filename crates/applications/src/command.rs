@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use proven_util::{Domain, Origin};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -6,6 +7,15 @@ use uuid::Uuid;
 /// These commands are processed through the command stream and may succeed or fail.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Command {
+    /// Add an allowed origin to an application.
+    AddAllowedOrigin {
+        /// The unique identifier of the application.
+        application_id: Uuid,
+
+        /// The origin to add to the allowed origins.
+        origin: Origin,
+    },
+
     /// Archive an application, removing it from active use.
     Archive {
         /// The unique identifier of the application to archive.
@@ -24,7 +34,16 @@ pub enum Command {
         application_id: Uuid,
 
         /// The HTTP domain to link to the application.
-        http_domain: String,
+        http_domain: Domain,
+    },
+
+    /// Remove an allowed origin from an application.
+    RemoveAllowedOrigin {
+        /// The unique identifier of the application.
+        application_id: Uuid,
+
+        /// The origin to remove from the allowed origins.
+        origin: Origin,
     },
 
     /// Transfer ownership of an application to a new owner.
@@ -42,7 +61,7 @@ pub enum Command {
         application_id: Uuid,
 
         /// The HTTP domain to unlink from the application.
-        http_domain: String,
+        http_domain: Domain,
     },
 }
 
