@@ -199,15 +199,13 @@ impl<S> Bootable for LetsEncryptHttpServer<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
-    type Error = Error;
-
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let acceptor = self.acceptor.clone();
         let listen_addr = self.listen_addr;
         let shutdown_token = self.shutdown_token.clone();
 
         if self.task_tracker.is_closed() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         let fallback_router = self.fallback_router.clone();
@@ -257,7 +255,7 @@ where
         Ok(())
     }
 
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("http server shutting down...");
 
         self.shutdown_token.cancel();

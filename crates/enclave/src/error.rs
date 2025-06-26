@@ -32,6 +32,10 @@ pub enum Error {
     #[error(transparent)]
     BadUtf8(#[from] std::string::FromUtf8Error),
 
+    /// Bootable error.
+    #[error(transparent)]
+    Bootable(Box<dyn std::error::Error + Send + Sync>),
+
     /// CIDR parsing error.
     #[error(transparent)]
     Cidr(#[from] cidr::errors::NetworkParseError),

@@ -1,4 +1,3 @@
-use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// Errors that can occur in this crate.
@@ -27,5 +26,3 @@ where
     #[error("vacuuming database failed")]
     Vacuum,
 }
-
-impl BootableError for Error {}

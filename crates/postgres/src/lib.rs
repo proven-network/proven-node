@@ -413,8 +413,6 @@ impl Postgres {
 
 #[async_trait]
 impl Bootable for Postgres {
-    type Error = Error;
-
     /// Starts the Postgres server.
     ///
     /// # Errors
@@ -425,9 +423,9 @@ impl Bootable for Postgres {
     /// # Returns
     ///
     /// Returns an error if postgres fails to start.
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.process.lock().await.is_some() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         debug!("starting Postgres server...");
@@ -465,7 +463,7 @@ impl Bootable for Postgres {
             if let Err(e) = self.vacuum_database().await {
                 let _ = self.shutdown().await;
 
-                return Err(e);
+                return Err(Box::new(e));
             }
         }
 
@@ -473,11 +471,15 @@ impl Bootable for Postgres {
     }
 
     /// Shuts down the server.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let taken_process = self.process.lock().await.take();
         if let Some(process) = taken_process {
             info!("postgres shutting down...");
-            process.shutdown().await.map_err(Error::Isolation)?;
+            process
+                .shutdown()
+                .await
+                .map_err(|e| Box::new(Error::Isolation(e)))?;
+
             info!("postgres shutdown");
         } else {
             debug!("no running Postgres server to shut down");

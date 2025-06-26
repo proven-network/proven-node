@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-use proven_bootable::BootableError;
 use proven_messaging::consumer::ConsumerError;
 use thiserror::Error;
 
@@ -32,5 +31,4 @@ pub enum Error {
     Stream(async_nats::jetstream::consumer::StreamErrorKind),
 }
 
-impl BootableError for Error {}
 impl ConsumerError for Error {}

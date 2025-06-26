@@ -303,16 +303,14 @@ impl BitcoinNode {
 
 #[async_trait]
 impl Bootable for BitcoinNode {
-    type Error = Error;
-
     /// Starts the Bitcoin Core node in an isolated environment.
     ///
     /// # Errors
     ///
     /// Returns an error if the node fails to start.
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.process.lock().await.is_some() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         debug!("Starting isolated Bitcoin Core node...");
@@ -343,12 +341,16 @@ impl Bootable for BitcoinNode {
     /// # Errors
     ///
     /// Returns an error if the node fails to shutdown.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Shutting down isolated Bitcoin Core node...");
 
         let taken_process = self.process.lock().await.take();
         if let Some(process) = taken_process {
-            process.shutdown().await.map_err(Error::Isolation)?;
+            process
+                .shutdown()
+                .await
+                .map_err(|e| Box::new(Error::Isolation(e)))?;
+
             info!("Bitcoin Core node shut down successfully");
         } else {
             debug!("No running Bitcoin Core node to shut down");

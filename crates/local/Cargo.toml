@@ -11,6 +11,7 @@ ciborium.workspace = true
 clap.workspace = true
 console.workspace = true
 ed25519-dalek.workspace = true
+futures.workspace = true
 hex.workspace = true
 hickory-resolver.workspace = true
 http.workspace = true

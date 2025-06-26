@@ -1,8 +1,4 @@
-use proven_bootable::BootableError;
 use thiserror::Error;
-
-/// The result type for this crate.
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
@@ -55,5 +51,3 @@ pub enum Error {
     #[error("runtime error: {0}")]
     Runtime(String),
 }
-
-impl BootableError for Error {}

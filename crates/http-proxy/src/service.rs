@@ -83,26 +83,28 @@ impl<S> Bootable for HttpProxyService<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
-    type Error = Error;
-
     /// Start the HTTP proxy.
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("http proxy service starting...");
 
         self.service.start().await.map_err(|e| {
             error!("HTTP proxy service setup failed: {}", e);
-            Error::Service(e.to_string())
-        })
+            Box::new(Error::Service(e.to_string()))
+        })?;
+
+        Ok(())
     }
 
     /// Shutdown the HTTP proxy service.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("http proxy service shutting down...");
 
         self.service.shutdown().await.map_err(|e| {
             error!("HTTP proxy service shutdown failed: {}", e);
-            Error::Service(e.to_string())
-        })
+            Box::new(Error::Service(e.to_string()))
+        })?;
+
+        Ok(())
     }
 
     /// Wait for the HTTP proxy to exit.

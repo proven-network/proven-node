@@ -80,7 +80,7 @@ pub async fn start(args: StartArgs) -> Result<()> {
         fallback_router,
     );
 
-    http_server.start().await?;
+    http_server.start().await.map_err(Error::Bootable)?;
 
     // Tasks that must be running for the host to function
     let http_server_clone = http_server.clone();

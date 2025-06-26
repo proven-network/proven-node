@@ -97,12 +97,10 @@ impl<S> Bootable for HttpProxyClient<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
-    type Error = Error;
-
     /// Start the HTTP proxy client's listener.
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.task_tracker.is_closed() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         info!("Initializing HTTP proxy client...");
@@ -184,7 +182,7 @@ where
     }
 
     /// Shutdown the HTTP proxy client.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("http proxy client shutting down...");
 
         self.shutdown_token.cancel();

@@ -10,6 +10,9 @@ pub enum Error {
     #[error(transparent)]
     BadUtf8(#[from] std::string::FromUtf8Error),
 
+    #[error(transparent)]
+    Bootable(Box<dyn std::error::Error + Send + Sync>),
+
     #[error("eif does not exist: {0:?}")]
     EifDoesNotExist(PathBuf),
 

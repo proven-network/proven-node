@@ -250,17 +250,15 @@ impl RadixGateway {
 
 #[async_trait]
 impl Bootable for RadixGateway {
-    type Error = Error;
-
     /// Starts the Radix Gateway server.
     ///
     /// # Errors
     ///
     /// Returns an `Error::AlreadyStarted` if the server is already running.
     /// Returns an `Error::Isolation` if there is an error starting the isolated process.
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.process.lock().await.is_some() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         info!("Starting radix-gateway...");
@@ -284,12 +282,16 @@ impl Bootable for RadixGateway {
     /// # Errors
     ///
     /// This function will return an error if there is an issue shutting down the isolated process.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("radix-gateway shutting down...");
 
         let taken_process = self.process.lock().await.take();
         if let Some(process) = taken_process {
-            process.shutdown().await.map_err(Error::Isolation)?;
+            process
+                .shutdown()
+                .await
+                .map_err(|e| Box::new(Error::Isolation(e)))?;
+
             info!("radix-gateway shutdown");
         } else {
             debug!("No running radix-gateway to shut down");

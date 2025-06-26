@@ -4,7 +4,7 @@ use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_bootable::Bootable;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Initialize tracing for better logging
     tracing_subscriber::fmt::init();
 

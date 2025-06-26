@@ -1,4 +1,4 @@
-use crate::error::{Error, Result};
+use crate::error::Error;
 use crate::handlers::{
     ApplicationHttpContext, application_http_handler, bridge_iframe_html_handler,
     bridge_iframe_js_handler, broker_worker_js_handler, connect_iframe_html_handler,
@@ -146,7 +146,7 @@ where
         &self,
         code_package: CodePackage,
         module_specifier: ModuleSpecifier,
-    ) -> Result<Router> {
+    ) -> Result<Router, Error> {
         let module_options = ModuleOptions::from_code_package(&code_package, &module_specifier)
             .await
             .map_err(|e| Error::Runtime(e.to_string()))?;
@@ -209,7 +209,7 @@ where
     /// # Errors
     ///
     /// Returns an error if any endpoints overlap in path or method.
-    fn ensure_no_overlapping_routes(endpoints: &HashSet<HttpEndpoint>) -> Result<()> {
+    fn ensure_no_overlapping_routes(endpoints: &HashSet<HttpEndpoint>) -> Result<(), Error> {
         let mut routes: Vec<(&str, &str)> = Vec::new();
 
         for endpoint in endpoints {
@@ -246,8 +246,6 @@ where
     G: Governance,
     HS: HttpServer,
 {
-    type Error = Error;
-
     /// Start the core.
     ///
     /// # Errors
@@ -255,9 +253,9 @@ where
     /// This function will return an error if the core has already been started or if the HTTP server fails to start.
     #[allow(clippy::missing_panics_doc)] // TODO: Remove with test code
     #[allow(clippy::too_many_lines)] // TODO: Refactor this to be more readable
-    async fn start(&self) -> Result<()> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.task_tracker.is_closed() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         let redirect_response = Response::builder()
@@ -480,7 +478,7 @@ where
     }
 
     /// Shutdown the core.
-    async fn shutdown(&self) -> Result<()> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("core shutting down...");
 
         self.shutdown_token.cancel();

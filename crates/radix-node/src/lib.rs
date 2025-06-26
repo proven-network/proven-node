@@ -354,17 +354,15 @@ api.core.port={}",
 
 #[async_trait]
 impl Bootable for RadixNode {
-    type Error = Error;
-
     /// Starts the Radix Babylon Node.
     ///
     /// # Errors
     ///
     /// This function will return an error if the node is already started, if there is an I/O error,
     /// or if the node process exits with a non-zero status code.
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.process.lock().await.is_some() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         info!("Starting Radix Node...");
@@ -392,12 +390,16 @@ impl Bootable for RadixNode {
     }
 
     /// Shuts down the server.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("radix-node shutting down...");
 
         let taken_process = self.process.lock().await.take();
         if let Some(process) = taken_process {
-            process.shutdown().await.map_err(Error::Isolation)?;
+            process
+                .shutdown()
+                .await
+                .map_err(|e| Box::new(Error::Isolation(e)))?;
+
             info!("radix-node shutdown");
         } else {
             debug!("No running radix-node to shut down");

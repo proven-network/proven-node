@@ -284,11 +284,9 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = Error;
-
-    async fn start(&self) -> Result<(), Self::Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.task_tracker.is_closed() {
-            return Err(Error::AlreadyRunning);
+            return Err(Box::new(Error::AlreadyRunning));
         }
 
         self.task_tracker.spawn(Self::process_requests(
@@ -304,7 +302,7 @@ where
         Ok(())
     }
 
-    async fn shutdown(&self) -> Result<(), Self::Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         debug!("shutting down nats service");
 
         self.shutdown_token.cancel();

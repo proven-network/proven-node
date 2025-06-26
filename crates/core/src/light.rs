@@ -1,5 +1,5 @@
 use crate::LightContext;
-use crate::error::{Error, Result};
+use crate::error::Error;
 use crate::handlers::nats_cluster_endpoint_handler;
 
 use async_trait::async_trait;
@@ -75,17 +75,15 @@ where
     G: Governance,
     HS: HttpServer,
 {
-    type Error = Error;
-
     /// Start the core.
     ///
     /// # Errors
     ///
     /// This function will return an error if the core has already been started or if the HTTP server fails to start.
     #[allow(clippy::missing_panics_doc)] // TODO: Remove with test code
-    async fn start(&self) -> Result<()> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.task_tracker.is_closed() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         let redirect_response = Response::builder()
@@ -176,7 +174,7 @@ where
     }
 
     /// Shutdown the core.
-    async fn shutdown(&self) -> Result<()> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("light core shutting down...");
 
         self.shutdown_token.cancel();

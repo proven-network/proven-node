@@ -561,16 +561,14 @@ where
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
-    type Error = Error;
-
     /// Starts the NATS server in an isolated environment.
     ///
     /// # Errors
     ///
     /// Returns an error if the server fails to start.
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.process.lock().await.is_some() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         debug!("Starting isolated NATS server...");
@@ -628,7 +626,7 @@ where
     /// # Errors
     ///
     /// Returns an error if the server fails to shutdown.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Shutting down isolated NATS server...");
 
         // Stop the topology update task
@@ -640,7 +638,11 @@ where
         // Get the process and shut it down
         let taken_process = self.process.lock().await.take();
         if let Some(process) = taken_process {
-            process.shutdown().await.map_err(Error::Isolation)?;
+            process
+                .shutdown()
+                .await
+                .map_err(|e| Box::new(Error::Isolation(e)))?;
+
             info!("NATS server shut down successfully");
         } else {
             debug!("No running NATS server to shut down");

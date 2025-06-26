@@ -12,7 +12,7 @@ use proven_network::{ProvenNetwork, ProvenNetworkOptions};
 use proven_store_memory::MemoryStore;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Initialize tracing for better logging
     tracing_subscriber::fmt::init();
 

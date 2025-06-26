@@ -8,6 +8,10 @@ pub enum Error {
     #[error("already started")]
     AlreadyStarted,
 
+    /// Shutdown requested
+    #[error("shutdown requested")]
+    Shutdown,
+
     /// Attestation error
     #[error("attestation error: {0}")]
     Attestation(String),
@@ -15,6 +19,10 @@ pub enum Error {
     /// Bitcoin node error
     #[error(transparent)]
     BitcoinNode(#[from] proven_bitcoin_core::Error),
+
+    /// Bootable error
+    #[error(transparent)]
+    Bootable(Box<dyn std::error::Error + Send + Sync>),
 
     /// Core error
     #[error(transparent)]

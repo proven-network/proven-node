@@ -423,14 +423,12 @@ impl RethNode {
 
 #[async_trait]
 impl Bootable for RethNode {
-    type Error = Error;
-
     /// Start the Reth node.
     ///
     /// Returns a handle to the task that is running the node.
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.process.lock().await.is_some() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         info!("Starting Reth node...");
@@ -458,12 +456,16 @@ impl Bootable for RethNode {
     }
 
     /// Shuts down the Reth node.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Reth node shutting down...");
 
         let taken_process = self.process.lock().await.take();
         if let Some(process) = taken_process {
-            process.shutdown().await.map_err(Error::Isolation)?;
+            process
+                .shutdown()
+                .await
+                .map_err(|e| Box::new(Error::Isolation(e)))?;
+
             info!("Reth node shutdown");
         } else {
             debug!("No running Reth node to shut down");

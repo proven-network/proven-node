@@ -2,7 +2,6 @@
 
 use std::io;
 
-use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// Error type for the isolated-bitcoin-core crate.
@@ -39,5 +38,3 @@ where
     #[error("failed to parse URL: {0}")]
     UrlParse(#[from] url::ParseError),
 }
-
-impl BootableError for Error {}

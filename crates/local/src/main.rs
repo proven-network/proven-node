@@ -10,7 +10,6 @@ mod bootstrap;
 mod error;
 mod hosts;
 mod net;
-mod node;
 
 use bootstrap::Bootstrap;
 use error::Result;
@@ -18,10 +17,11 @@ use error::Result;
 use std::path::PathBuf;
 
 use clap::Parser;
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 use url::Url;
 
-#[derive(Parser, Debug)]
+#[derive(Clone, Debug, Parser)]
 #[command(version, about, long_about = None)]
 struct Args {
     /// Bitcoin mainnet fallback RPC endpoint
@@ -416,30 +416,60 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
-    let bootstrap = Bootstrap::new(args).await?;
-    let node = bootstrap.initialize().await?;
+    // Create shared shutdown token
+    let shutdown_token = CancellationToken::new();
 
-    // Wait for either SIGINT (Ctrl-C) or SIGTERM
-    if cfg!(unix) {
-        use tokio::signal::unix::{SignalKind, signal};
+    // Set up signal handlers
+    let signal_shutdown_token = shutdown_token.clone();
+    tokio::spawn(async move {
+        if cfg!(unix) {
+            use tokio::signal::unix::{SignalKind, signal};
 
-        let mut sigterm = signal(SignalKind::terminate()).expect("SIGTERM handler failed");
-        let mut sigint = signal(SignalKind::interrupt()).expect("SIGINT handler failed");
+            let mut sigterm = signal(SignalKind::terminate()).expect("SIGTERM handler failed");
+            let mut sigint = signal(SignalKind::interrupt()).expect("SIGINT handler failed");
 
-        tokio::select! {
-            _ = sigterm.recv() => info!("Received SIGTERM"),
-            _ = sigint.recv() => info!("Received SIGINT"),
+            tokio::select! {
+                _ = sigterm.recv() => info!("Received SIGTERM"),
+                _ = sigint.recv() => info!("Received SIGINT"),
+            }
+        } else {
+            // Fall back to just ctrl-c on non-unix platforms
+            let _ = tokio::signal::ctrl_c().await;
+            info!("Received interrupt signal");
         }
-    } else {
-        // Fall back to just ctrl-c on non-unix platforms
-        let _ = tokio::signal::ctrl_c().await;
+
+        info!("Shutting down");
+        signal_shutdown_token.cancel();
+    });
+
+    // Start bootstrap with shared shutdown token
+    let bootstrap = Bootstrap::new(args).await?;
+    let initialization_result = tokio::select! {
+        result = bootstrap.initialize(shutdown_token.clone()) => {
+            result
+        }
+        () = shutdown_token.cancelled() => {
+            info!("Shutdown requested during initialization");
+            return Ok(());
+        }
+    };
+
+    match initialization_result {
+        Ok((_node, task_tracker)) => {
+            info!("Bootstrap completed successfully. Press Ctrl+C to shutdown...");
+
+            shutdown_token.cancelled().await;
+
+            task_tracker.wait().await;
+
+            info!("Shutdown complete");
+        }
+
+        Err(e) => {
+            info!("Bootstrap failed: {:?}", e);
+            return Err(e);
+        }
     }
-
-    info!("Shutting down");
-
-    let () = node.shutdown().await;
-
-    info!("Shutdown complete");
 
     Ok(())
 }

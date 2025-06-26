@@ -687,7 +687,7 @@ impl Bootstrap {
             store_dir: PathBuf::from(RADIX_NODE_STORE_DIR),
         });
 
-        radix_node.start().await?;
+        radix_node.start().await.map_err(Error::Bootable)?;
 
         self.radix_node = Some(radix_node);
 
@@ -723,7 +723,7 @@ impl Bootstrap {
             store_dir: PathBuf::from(POSTGRES_STORE_DIR),
         });
 
-        postgres.start().await?;
+        postgres.start().await.map_err(Error::Bootable)?;
 
         self.postgres = Some(postgres);
 
@@ -751,7 +751,7 @@ impl Bootstrap {
             radix_node_port: radix_node.http_port(),
         });
 
-        radix_aggregator.start().await?;
+        radix_aggregator.start().await.map_err(Error::Bootable)?;
 
         self.radix_aggregator = Some(radix_aggregator);
 
@@ -779,7 +779,7 @@ impl Bootstrap {
             radix_node_port: radix_node.http_port(),
         });
 
-        radix_gateway.start().await?;
+        radix_gateway.start().await.map_err(Error::Bootable)?;
 
         self.radix_gateway = Some(radix_gateway);
 
@@ -827,7 +827,7 @@ impl Bootstrap {
             store_dir: PathBuf::from("/var/lib/nats/nats"),
         })?;
 
-        nats_server.start().await?;
+        nats_server.start().await.map_err(Error::Bootable)?;
         let nats_client = nats_server.build_client().await?;
 
         self.nats_server = Some(nats_server);
@@ -1143,7 +1143,7 @@ impl Bootstrap {
             runtime_pool_manager,
             sessions_manager,
         });
-        core.start().await?;
+        core.start().await.map_err(Error::Bootable)?;
 
         self.core = Some(core);
 

@@ -368,8 +368,6 @@ impl LighthouseNode {
 
 #[async_trait]
 impl Bootable for LighthouseNode {
-    type Error = Error;
-
     /// Starts the Lighthouse consensus client.
     ///
     /// # Errors
@@ -377,9 +375,9 @@ impl Bootable for LighthouseNode {
     /// - Data directories cannot be created
     /// - The Lighthouse process fails to start
     /// - The Lighthouse HTTP endpoint fails to become available
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.process.lock().await.is_some() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         info!("Starting Lighthouse node...");
@@ -409,12 +407,16 @@ impl Bootable for LighthouseNode {
     }
 
     /// Shuts down the Lighthouse node.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Lighthouse node shutting down...");
 
         let taken_process = self.process.lock().await.take();
         if let Some(process) = taken_process {
-            process.shutdown().await.map_err(Error::Isolation)?;
+            process
+                .shutdown()
+                .await
+                .map_err(|e| Box::new(Error::Isolation(e)))?;
+
             info!("Lighthouse node shutdown");
         } else {
             debug!("No running Lighthouse node to shut down");

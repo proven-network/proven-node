@@ -10,7 +10,7 @@ mod handlers;
 mod light;
 mod rpc;
 
-pub use error::{Error, Result};
+pub use error::Error;
 pub use full::{Core, CoreOptions};
 pub use light::{LightCore, LightCoreOptions};
 use proven_applications::ApplicationManagement;

@@ -50,11 +50,9 @@ impl InsecureHttpServer {
 
 #[async_trait]
 impl Bootable for InsecureHttpServer {
-    type Error = Error;
-
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.task_tracker.is_closed() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         let routers = self.hostname_routers.clone();
@@ -109,7 +107,7 @@ impl Bootable for InsecureHttpServer {
         Ok(())
     }
 
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("http server shutting down...");
 
         self.shutdown_token.cancel();

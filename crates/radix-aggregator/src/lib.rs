@@ -331,8 +331,6 @@ impl RadixAggregator {
 
 #[async_trait]
 impl Bootable for RadixAggregator {
-    type Error = Error;
-
     /// Starts the Radix Aggregator.
     ///
     /// # Errors
@@ -343,9 +341,9 @@ impl Bootable for RadixAggregator {
     /// # Returns
     ///
     /// A `JoinHandle` to the spawned task.
-    async fn start(&self) -> Result<(), Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.process.lock().await.is_some() {
-            return Err(Error::AlreadyStarted);
+            return Err(Box::new(Error::AlreadyStarted));
         }
 
         info!("Starting radix-aggregator...");
@@ -372,12 +370,16 @@ impl Bootable for RadixAggregator {
     /// # Errors
     ///
     /// This function will return an error if there is an issue shutting down the isolated process.
-    async fn shutdown(&self) -> Result<(), Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("radix-aggregator shutting down...");
 
         let taken_process = self.process.lock().await.take();
         if let Some(process) = taken_process {
-            process.shutdown().await.map_err(Error::Isolation)?;
+            process
+                .shutdown()
+                .await
+                .map_err(|e| Box::new(Error::Isolation(e)))?;
+
             info!("radix-aggregator shutdown");
         } else {
             debug!("No running radix-aggregator to shut down");

@@ -1,6 +1,5 @@
 //! Error types for Reth integration.
 
-use proven_bootable::BootableError;
 use thiserror::Error;
 
 /// Errors that can occur when working with Reth.
@@ -34,5 +33,3 @@ pub enum Error {
     #[error("URL parse error: {0}")]
     UrlParse(#[from] url::ParseError),
 }
-
-impl BootableError for Error {}

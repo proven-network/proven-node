@@ -8,7 +8,7 @@ use radix_common::network::NetworkDefinition;
 use tracing::info;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Initialize tracing for better logging
     tracing_subscriber::fmt::init();
 

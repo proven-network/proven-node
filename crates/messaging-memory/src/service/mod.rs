@@ -232,11 +232,9 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = Error;
-
-    async fn start(&self) -> Result<(), Self::Error> {
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.task_tracker.is_closed() {
-            return Err(Error::AlreadyRunning);
+            return Err(Box::new(Error::AlreadyRunning));
         }
 
         let rx = self.rx.lock().await.resubscribe();
@@ -255,7 +253,7 @@ where
         Ok(())
     }
 
-    async fn shutdown(&self) -> Result<(), Self::Error> {
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         debug!("shutting down in-memory service");
 
         self.shutdown_token.cancel();
