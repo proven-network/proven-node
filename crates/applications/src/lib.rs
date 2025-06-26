@@ -108,11 +108,11 @@ where
     LM: LockManager + Clone,
 {
     /// Cached command client
-    client: OnceLock<
+    client: Arc<OnceLock<
         <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
             ApplicationServiceHandler<ES::Initialized>,
         >,
-    >,
+    >>,
 
     /// Client options for the command client
     client_options:
@@ -146,12 +146,12 @@ where
     /// Lock manager for leader election
     lock_manager: LM,
 
-    /// Cached service (to ensure it only starts once)
-    service: OnceLock<
+    /// Cached service
+    service: Arc<OnceLock<
         <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Service<
             ApplicationServiceHandler<ES::Initialized>,
         >,
-    >,
+    >>,
 
     /// Service options for the command service
     service_options: <<CS::Initialized as InitializedStream<
@@ -254,7 +254,7 @@ where
         view.wait_for_seq(last_event_seq).await;
 
         Ok(Self {
-            client: OnceLock::new(),
+            client: Arc::new(OnceLock::new()),
             client_options,
             command_stream,
             consumer,
@@ -262,7 +262,7 @@ where
             leadership_guard: Arc::new(Mutex::new(None)),
             leadership_monitor: Arc::new(Mutex::new(None)),
             lock_manager,
-            service: OnceLock::new(),
+            service: Arc::new(OnceLock::new()),
             service_options,
             view,
         })
@@ -285,7 +285,7 @@ where
         >,
         Error,
     > {
-        if let Some(client) = self.client.get() {
+        if let Some(client) = OnceLock::get(&self.client) {
             return Ok(client.clone());
         }
 
@@ -298,11 +298,11 @@ where
             .await
             .map_err(|e| Error::Client(e.to_string()))?;
 
-        match self.client.set(client.clone()) {
+        match OnceLock::set(&self.client, client.clone()) {
             Ok(()) => Ok(client),
             Err(_) => {
                 // Another thread set it first, use the one that was set
-                Ok(self.client.get().unwrap().clone())
+                Ok(OnceLock::get(&self.client).unwrap().clone())
             }
         }
     }
@@ -311,7 +311,7 @@ where
     /// Returns Ok(()) regardless of whether leadership was acquired.
     async fn ensure_leadership_and_service(&self) -> Result<(), Error> {
         // Check if service is already running
-        if self.service.get().is_some() {
+        if OnceLock::get(&self.service).is_some() {
             return Ok(());
         }
 
@@ -362,7 +362,7 @@ where
 
     /// Start the service as the leader.
     async fn start_service_as_leader(&self) -> Result<(), Error> {
-        if self.service.get().is_some() {
+        if OnceLock::get(&self.service).is_some() {
             return Ok(());
         }
 
@@ -466,7 +466,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            client: self.client.clone(),
+            client: Arc::clone(&self.client),
             client_options: self.client_options.clone(),
             command_stream: self.command_stream.clone(),
             consumer: self.consumer.clone(),
@@ -474,7 +474,7 @@ where
             leadership_guard: Arc::clone(&self.leadership_guard),
             leadership_monitor: Arc::clone(&self.leadership_monitor),
             lock_manager: self.lock_manager.clone(),
-            service: self.service.clone(),
+            service: Arc::clone(&self.service),
             service_options: self.service_options.clone(),
             view: self.view.clone(),
         }
