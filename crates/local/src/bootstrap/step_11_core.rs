@@ -19,7 +19,7 @@ use std::time::Duration;
 use axum::Router;
 use axum::routing::any;
 use http::StatusCode;
-use proven_applications::ApplicationManager;
+use proven_applications::{ApplicationManagement, ApplicationManager, CreateApplicationOptions};
 use proven_bootable::Bootable;
 use proven_core::{Core, CoreOptions};
 use proven_http_insecure::InsecureHttpServer;
@@ -170,6 +170,20 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
         // Lock manager for distributed leadership
         lock_manager,
     );
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let applications = application_manager.list_all_applications().await.unwrap();
+    println!("applications: {applications:?}");
+    // Create a test application if there are no applications
+    if applications.is_empty() {
+        let application = application_manager
+            .create_application(CreateApplicationOptions {
+                owner_identity_id: Uuid::new_v4(),
+            })
+            .await;
+        println!("created test application: {application:?}");
+    }
 
     let application_store = NatsStore2::new(NatsStoreOptions {
         bucket: "APPLICATION_KV".to_string(),

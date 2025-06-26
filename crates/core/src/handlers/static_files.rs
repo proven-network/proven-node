@@ -1,7 +1,7 @@
 use crate::FullContext;
 
 use axum::extract::State;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
@@ -12,195 +12,92 @@ use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 
 use axum::extract::Path;
+use uuid::Uuid;
 
-// SDK
-const SDK_JS: &str = include_str!("../../static/sdk.js");
+macro_rules! iframe_handler {
+    ($handler_name:ident, $html_const:ident) => {
+        pub(crate) async fn $handler_name<AM, RM, IM, PM, SM, A, G>(
+            Path(application_id): Path<Uuid>,
+            State(FullContext {
+                application_manager,
+                ..
+            }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+            headers: HeaderMap,
+        ) -> impl IntoResponse
+        where
+            AM: ApplicationManagement,
+            RM: RuntimePoolManagement,
+            IM: IdentityManagement,
+            PM: PasskeyManagement,
+            SM: SessionManagement,
+            A: Attestor,
+            G: Governance,
+        {
+            match application_manager.application_exists(application_id).await {
+                Ok(true) => (),
+                Ok(false) => {
+                    return (StatusCode::NOT_FOUND, "Application not found").into_response()
+                }
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            }
+
+            let referer = headers
+                .get("Referer")
+                .map_or("http://localhost:3200", |r| r.to_str().unwrap());
+
+            (
+                [
+                    (
+                        "Content-Security-Policy",
+                        format!("frame-ancestors {referer}"),
+                    ),
+                    (
+                        "X-Frame-Options",
+                        format!("ALLOW-FROM frame-ancestors {referer}"),
+                    ),
+                ],
+                Html($html_const),
+            )
+                .into_response()
+        }
+    };
+}
+
+macro_rules! js_handler {
+    ($handler_name:ident, $js_const:ident) => {
+        pub(crate) async fn $handler_name() -> impl IntoResponse {
+            ([("Content-Type", "application/javascript")], $js_const)
+        }
+    };
+}
 
 // Iframe HTML
 const BRIDGE_IFRAME_HTML: &str = include_str!("../../static/iframes/bridge/bridge.html");
 const CONNECT_IFRAME_HTML: &str = include_str!("../../static/iframes/connect/connect.html");
 const REGISTER_IFRAME_HTML: &str = include_str!("../../static/iframes/register/register.html");
 const RPC_IFRAME_HTML: &str = include_str!("../../static/iframes/rpc/rpc.html");
+iframe_handler!(bridge_iframe_html_handler, BRIDGE_IFRAME_HTML);
+iframe_handler!(connect_iframe_html_handler, CONNECT_IFRAME_HTML);
+iframe_handler!(register_iframe_html_handler, REGISTER_IFRAME_HTML);
+iframe_handler!(rpc_iframe_html_handler, RPC_IFRAME_HTML);
+
+// SDK
+// TODO: temporary - should be extracted to external package (not served via node)
+const SDK_JS: &str = include_str!("../../static/sdk.js");
+js_handler!(sdk_js_handler, SDK_JS);
 
 // Iframe JS
 const BRIDGE_IFRAME_JS: &str = include_str!("../../static/iframes/bridge/bridge.js");
 const CONNECT_IFRAME_JS: &str = include_str!("../../static/iframes/connect/connect.js");
 const REGISTER_IFRAME_JS: &str = include_str!("../../static/iframes/register/register.js");
 const RPC_IFRAME_JS: &str = include_str!("../../static/iframes/rpc/rpc.js");
+js_handler!(bridge_iframe_js_handler, BRIDGE_IFRAME_JS);
+js_handler!(connect_iframe_js_handler, CONNECT_IFRAME_JS);
+js_handler!(register_iframe_js_handler, REGISTER_IFRAME_JS);
+js_handler!(rpc_iframe_js_handler, RPC_IFRAME_JS);
 
 // Shared workers
 const BROKER_WORKER_JS: &str = include_str!("../../static/workers/broker-worker.js");
 const RPC_WORKER_JS: &str = include_str!("../../static/workers/rpc-worker.js");
-
-// TODO: temporary - should be extracted to external package (not served via node)
-pub(crate) async fn sdk_js_handler() -> impl IntoResponse {
-    ([("Content-Type", "application/javascript")], SDK_JS)
-}
-
-pub(crate) async fn bridge_iframe_js_handler() -> impl IntoResponse {
-    (
-        [("Content-Type", "application/javascript")],
-        BRIDGE_IFRAME_JS,
-    )
-}
-
-pub(crate) async fn connect_iframe_js_handler() -> impl IntoResponse {
-    (
-        [("Content-Type", "application/javascript")],
-        CONNECT_IFRAME_JS,
-    )
-}
-
-pub(crate) async fn register_iframe_js_handler() -> impl IntoResponse {
-    (
-        [("Content-Type", "application/javascript")],
-        REGISTER_IFRAME_JS,
-    )
-}
-
-pub(crate) async fn rpc_iframe_js_handler() -> impl IntoResponse {
-    ([("Content-Type", "application/javascript")], RPC_IFRAME_JS)
-}
-
-pub(crate) async fn bridge_iframe_html_handler<AM, RM, IM, PM, SM, A, G>(
-    Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
-    headers: HeaderMap,
-) -> impl IntoResponse
-where
-    AM: ApplicationManagement,
-    RM: RuntimePoolManagement,
-    IM: IdentityManagement,
-    PM: PasskeyManagement,
-    SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
-{
-    let referer = headers
-        .get("Referer")
-        .map_or("http://localhost:3200", |r| r.to_str().unwrap());
-
-    (
-        [
-            (
-                "Content-Security-Policy",
-                format!("frame-ancestors {referer}"),
-            ),
-            (
-                "X-Frame-Options",
-                format!("ALLOW-FROM frame-ancestors {referer}"),
-            ),
-        ],
-        Html(BRIDGE_IFRAME_HTML),
-    )
-}
-
-pub(crate) async fn connect_iframe_html_handler<AM, RM, IM, PM, SM, A, G>(
-    Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
-    headers: HeaderMap,
-) -> impl IntoResponse
-where
-    AM: ApplicationManagement,
-    RM: RuntimePoolManagement,
-    IM: IdentityManagement,
-    PM: PasskeyManagement,
-    SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
-{
-    let referer = headers
-        .get("Referer")
-        .map_or("http://localhost:3200", |r| r.to_str().unwrap());
-
-    (
-        [
-            (
-                "Content-Security-Policy",
-                format!("frame-ancestors {referer}"),
-            ),
-            (
-                "X-Frame-Options",
-                format!("ALLOW-FROM frame-ancestors {referer}"),
-            ),
-        ],
-        Html(CONNECT_IFRAME_HTML),
-    )
-}
-
-pub(crate) async fn register_iframe_html_handler<AM, RM, IM, PM, SM, A, G>(
-    Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
-    headers: HeaderMap,
-) -> impl IntoResponse
-where
-    AM: ApplicationManagement,
-    RM: RuntimePoolManagement,
-    IM: IdentityManagement,
-    PM: PasskeyManagement,
-    SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
-{
-    let referer = headers
-        .get("Referer")
-        .map_or("http://localhost:3200", |r| r.to_str().unwrap());
-
-    (
-        [
-            (
-                "Content-Security-Policy",
-                format!("frame-ancestors {referer}"),
-            ),
-            (
-                "X-Frame-Options",
-                format!("ALLOW-FROM frame-ancestors {referer}"),
-            ),
-        ],
-        Html(REGISTER_IFRAME_HTML),
-    )
-}
-
-pub(crate) async fn rpc_iframe_html_handler<AM, RM, IM, PM, SM, A, G>(
-    Path(_application_id): Path<String>,
-    State(FullContext { .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
-    headers: HeaderMap,
-) -> impl IntoResponse
-where
-    AM: ApplicationManagement,
-    RM: RuntimePoolManagement,
-    IM: IdentityManagement,
-    PM: PasskeyManagement,
-    SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
-{
-    let referer = headers
-        .get("Referer")
-        .map_or("http://localhost:3200", |r| r.to_str().unwrap());
-
-    (
-        [
-            (
-                "Content-Security-Policy",
-                format!("frame-ancestors {referer}"),
-            ),
-            (
-                "X-Frame-Options",
-                format!("ALLOW-FROM frame-ancestors {referer}"),
-            ),
-        ],
-        Html(RPC_IFRAME_HTML),
-    )
-}
-
-pub(crate) async fn broker_worker_js_handler() -> impl IntoResponse {
-    (
-        [("Content-Type", "application/javascript")],
-        BROKER_WORKER_JS,
-    )
-}
-
-pub(crate) async fn rpc_worker_js_handler() -> impl IntoResponse {
-    ([("Content-Type", "application/javascript")], RPC_WORKER_JS)
-}
+js_handler!(broker_worker_js_handler, BROKER_WORKER_JS);
+js_handler!(rpc_worker_js_handler, RPC_WORKER_JS);

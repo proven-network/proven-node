@@ -68,6 +68,9 @@ where
     /// Get an application by its ID.
     async fn get_application(&self, application_id: Uuid) -> Result<Option<Application>, Error>;
 
+    /// List all applications.
+    async fn list_all_applications(&self) -> Result<Vec<Application>, Error>;
+
     /// List all applications owned by a specific user.
     async fn list_applications_by_owner(&self, owner_id: Uuid) -> Result<Vec<Application>, Error>;
 
@@ -583,6 +586,10 @@ where
     async fn get_application(&self, application_id: Uuid) -> Result<Option<Application>, Error> {
         // Query directly from view - no request/response overhead
         Ok(self.view.get_application(application_id).await)
+    }
+
+    async fn list_all_applications(&self) -> Result<Vec<Application>, Error> {
+        Ok(self.view.list_all_applications().await)
     }
 
     async fn list_applications_by_owner(&self, owner_id: Uuid) -> Result<Vec<Application>, Error> {
