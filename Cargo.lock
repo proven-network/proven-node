@@ -9722,6 +9722,7 @@ dependencies = [
  "proven-locks-memory",
  "proven-messaging",
  "proven-messaging-memory",
+ "proven-util",
  "serde",
  "thiserror 2.0.12",
  "tokio",
@@ -10839,6 +10840,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-util"
+version = "0.1.0"
+dependencies = [
+ "public-suffix",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "url",
+]
+
+[[package]]
 name = "proven-vsock-proxy"
 version = "0.1.0"
 dependencies = [
@@ -10924,6 +10936,12 @@ dependencies = [
  "quote",
  "syn 2.0.104",
 ]
+
+[[package]]
+name = "public-suffix"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51315bca45305dd8aa64b831b33e71abac528ca8058c0651346a39b8d3009498"
 
 [[package]]
 name = "pulldown-cmark"

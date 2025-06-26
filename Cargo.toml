@@ -70,6 +70,7 @@ members = [
     "crates/store-memory",
     "crates/store-nats",
     "crates/store-s3",
+    "crates/util",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
     "crates/vsock-tracing",
@@ -136,6 +137,7 @@ default-members = [
     "crates/store-memory",
     "crates/store-nats",
     "crates/store-s3",
+    "crates/util",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
     "crates/vsock-tracing",
@@ -461,9 +463,11 @@ proven-store-fs = { path = "crates/store-fs" }
 proven-store-memory = { path = "crates/store-memory" }
 proven-store-nats = { path = "crates/store-nats" }
 proven-store-s3 = { path = "crates/store-s3" }
+proven-util = { path = "crates/util" }
 proven-vsock-proxy = { path = "crates/vsock-proxy" }
 proven-vsock-rpc = { path = "crates/vsock-rpc" }
 proven-vsock-tracing = { path = "crates/vsock-tracing" }
+public-suffix = "0.1.3"
 quinn = { version = "0.11.8", default-features = false }
 quote = "1.0.40"
 radix-common = { version = "1.3.0", features = ["secp256k1_sign_and_validate", "serde"] }
