@@ -19,11 +19,16 @@ pub struct ExecuteHashCommand {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "result", content = "data")]
 #[allow(clippy::large_enum_variant)]
 pub enum ExecuteHashResponse {
-    BadHandlerSpecifier,
+    #[serde(rename = "failure")]
     Failure(String),
+
+    #[serde(rename = "error")]
     HashUnknown,
+
+    #[serde(rename = "success")]
     Success(ExecutionResult),
 }
 
@@ -42,7 +47,7 @@ impl RpcCommand for ExecuteHashCommand {
         RM: proven_runtime::RuntimePoolManagement,
     {
         let Ok(handler_specifier) = HandlerSpecifier::parse(&self.handler_specifier) else {
-            return ExecuteHashResponse::BadHandlerSpecifier;
+            return ExecuteHashResponse::Failure("Invalid handler specifier".to_string());
         };
 
         let execution_request = match context.session {

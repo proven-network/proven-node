@@ -20,10 +20,13 @@ pub struct ExecuteCommand {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "result", content = "data")]
 #[allow(clippy::large_enum_variant)]
 pub enum ExecuteResponse {
-    BadHandlerSpecifier,
+    #[serde(rename = "failure")]
     Failure(String),
+
+    #[serde(rename = "success")]
     Success(ExecutionResult),
 }
 
@@ -42,7 +45,7 @@ impl RpcCommand for ExecuteCommand {
         RM: proven_runtime::RuntimePoolManagement,
     {
         let Ok(handler_specifier) = HandlerSpecifier::parse(&self.handler_specifier) else {
-            return ExecuteResponse::BadHandlerSpecifier;
+            return ExecuteResponse::Failure("Invalid handler specifier".to_string());
         };
 
         let execution_request = match context.session {

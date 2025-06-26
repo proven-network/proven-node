@@ -14,8 +14,12 @@ pub struct IdentifyCommand {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "result", content = "data")]
 pub enum IdentifyResponse {
+    #[serde(rename = "failure")]
     IdentifyFailure(String),
+
+    #[serde(rename = "success")]
     // TODO: strip this down to something client-safe
     IdentifySuccess(Identity),
 }

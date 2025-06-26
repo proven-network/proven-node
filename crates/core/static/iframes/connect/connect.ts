@@ -1,7 +1,15 @@
 import { authenticate } from "../../helpers/webauthn";
 import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
 import { hexToBytes } from "@noble/curves/abstract/utils";
-import { Anonymize, Identify, WhoAmI, WhoAmIResponse } from "../../common";
+import {
+  Anonymize,
+  Identify,
+  WhoAmI,
+  WhoAmIResult,
+  AnonymizeResponse,
+  IdentifyResponse,
+  RpcResponse,
+} from "../../common";
 import { signAsync, getPublicKeyAsync } from "@noble/ed25519";
 import { getSession } from "../../helpers/sessions";
 
@@ -65,15 +73,33 @@ class ConnectClient {
       const sessionIdSignature = await signAsync(sessionId, prfResult);
 
       const identifyRequest: Identify = {
-        Identify: [publicKey, sessionIdSignature],
+        type: "Identify",
+        data: {
+          passkey_prf_public_key_bytes: publicKey,
+          session_id_signature_bytes: sessionIdSignature,
+        },
       };
 
-      const response = await this.broker.request(
-        "rpc_request",
-        identifyRequest,
-        "rpc"
-      );
+      const response = await this.broker.request<{
+        success: boolean;
+        data?: IdentifyResponse;
+        error?: string;
+      }>("rpc_request", identifyRequest, "rpc");
+
       console.debug("Connect: Identify RPC response:", response);
+
+      if (!response.success) {
+        throw new Error(response.error || "Identify request failed");
+      }
+
+      if (!response.data || response.data.type !== "Identify") {
+        throw new Error("Invalid response format from Identify");
+      }
+
+      const identifyResult = response.data.data;
+      if (identifyResult.result !== "success") {
+        throw new Error(identifyResult.data as string);
+      }
 
       // Only update UI after successful identify RPC
       console.debug("Connect: Identify successful, updating UI");
@@ -86,19 +112,28 @@ class ConnectClient {
   // Auth state methods
   async isSignedIn(): Promise<boolean> {
     try {
-      const whoAmIRequest: WhoAmI = "WhoAmI";
-      const response = await this.broker.request(
-        "rpc_request",
-        whoAmIRequest,
-        "rpc"
-      );
+      const whoAmIRequest: WhoAmI = { type: "WhoAmI", data: null };
+      const response = await this.broker.request<{
+        success: boolean;
+        data?: RpcResponse<WhoAmIResult>;
+        error?: string;
+      }>("rpc_request", whoAmIRequest, "rpc");
 
-      const whoAmIResponse = response.data.WhoAmI as WhoAmIResponse;
+      if (!response.success) {
+        console.error("Connect: WhoAmI request failed:", response.error);
+        return false;
+      }
 
-      console.debug("Connect: WhoAmI response:", whoAmIResponse);
+      if (!response.data || response.data.type !== "WhoAmI") {
+        console.error("Connect: Invalid WhoAmI response format");
+        return false;
+      }
 
-      // If the response has an "Identified" variant, user is signed in
-      return "Identified" in whoAmIResponse;
+      const whoAmIResult = response.data.data;
+      console.debug("Connect: WhoAmI response:", whoAmIResult);
+
+      // Check if the user is identified (signed in)
+      return whoAmIResult.result === "identified";
     } catch (error) {
       console.error("Connect: Failed to check auth status:", error);
       return false;
@@ -107,13 +142,28 @@ class ConnectClient {
 
   async signOut(): Promise<void> {
     try {
-      const anonymizeRequest: Anonymize = "Anonymize";
-      const response = await this.broker.request(
-        "rpc_request",
-        anonymizeRequest,
-        "rpc"
-      );
+      const anonymizeRequest: Anonymize = { type: "Anonymize", data: null };
+      const response = await this.broker.request<{
+        success: boolean;
+        data?: AnonymizeResponse;
+        error?: string;
+      }>("rpc_request", anonymizeRequest, "rpc");
+
       console.debug("Connect: Anonymize RPC response:", response);
+
+      if (!response.success) {
+        throw new Error(response.error || "Anonymize request failed");
+      }
+
+      if (!response.data || response.data.type !== "Anonymize") {
+        throw new Error("Invalid response format from Anonymize");
+      }
+
+      const anonymizeResult = response.data.data;
+      if (anonymizeResult.result !== "success") {
+        throw new Error(anonymizeResult.data as string);
+      }
+
       await this.updateAuthUI();
     } catch (error) {
       console.error("Connect: Failed to sign out:", error);

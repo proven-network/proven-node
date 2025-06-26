@@ -2,12 +2,15 @@ import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
 import { bytesToHex } from "@noble/curves/abstract/utils";
 import type {
   WhoAmI,
-  WhoAmIResponse,
+  WhoAmIResult,
   ExecuteHash,
   Execute,
   ExecuteLog,
   ExecutionResult,
   ExecuteError,
+  ExecuteResult,
+  ExecuteHashResult,
+  RpcResponse,
 } from "../../common";
 
 // Message types for parent ↔ bridge communication
@@ -158,27 +161,27 @@ class BridgeClient {
 
   async handleWhoAmI(message: WhoAmIMessage) {
     try {
-      const rpcCall: WhoAmI = "WhoAmI";
+      const rpcCall: WhoAmI = { type: "WhoAmI", data: null };
 
       const response = await this.broker.request<{
         success: boolean;
-        data?: any;
+        data?: RpcResponse<WhoAmIResult>;
         error?: string;
       }>("rpc_request", rpcCall, "rpc");
 
-      if (response.success && response.data?.WhoAmI) {
+      if (response.success && response.data?.type === "WhoAmI") {
         this.forwardToParent({
           type: "response",
           nonce: message.nonce,
           success: true,
-          data: response.data.WhoAmI as WhoAmIResponse,
+          data: response.data.data, // Extract the WhoAmIResult from the tagged response
         });
       } else {
         this.forwardToParent({
           type: "response",
           nonce: message.nonce,
           success: false,
-          error: response.error || "WhoAmI response is missing",
+          error: response.error || "WhoAmI response is missing or malformed",
         });
       }
     } catch (error) {
@@ -203,12 +206,17 @@ class BridgeClient {
       // Start with ExecuteHash (optimized path)
       const moduleHash = await this.hashScript(script);
       let rpcCall: ExecuteHash = {
-        ExecuteHash: [moduleHash, handler, args || []],
+        type: "ExecuteHash",
+        data: {
+          args: args || [],
+          handler_specifier: handler,
+          module_hash: moduleHash,
+        },
       };
 
       const response = await this.broker.request<{
         success: boolean;
-        data?: any;
+        data?: RpcResponse<ExecuteHashResult>;
         error?: string;
       }>("rpc_request", rpcCall, "rpc");
 
@@ -216,27 +224,33 @@ class BridgeClient {
         throw new Error(response.error || "Failed to execute RPC call");
       }
 
-      // Handle the response
-      if (response.data?.ExecuteSuccess) {
-        const result = response.data.ExecuteSuccess as ExecutionResult;
-        this.handleExecutionResult(result, message.nonce);
-      } else if (response.data === "ExecuteHashUnknown") {
-        // Retry with full script
+      if (!response.data || response.data.type !== "ExecuteHash") {
+        throw new Error("Invalid response format from ExecuteHash");
+      }
+
+      const executeHashResult = response.data.data;
+
+      // Handle the different result types
+      if (executeHashResult.result === "success") {
+        const executionResult = executeHashResult.data as ExecutionResult;
+        this.handleExecutionResult(executionResult, message.nonce);
+      } else if (executeHashResult.result === "error") {
+        // This could be HashUnknown - retry with full script
         console.debug("Bridge: ExecuteHash unknown, retrying with full script");
         await this.retryWithFullScript(message, script, handler, args || []);
-      } else if (response.data?.ExecuteFailure) {
+      } else if (executeHashResult.result === "failure") {
         this.forwardToParent({
           type: "response",
           nonce: message.nonce,
           success: false,
-          error: response.data.ExecuteFailure,
+          error: executeHashResult.data as string,
         });
       } else {
         this.forwardToParent({
           type: "response",
           nonce: message.nonce,
           success: false,
-          error: "Unexpected response from execute",
+          error: "Unexpected response format from ExecuteHash",
         });
       }
     } catch (error) {
@@ -258,12 +272,17 @@ class BridgeClient {
   ) {
     try {
       const fullRpcCall: Execute = {
-        Execute: [script, handler, args],
+        type: "Execute",
+        data: {
+          module: script,
+          handler_specifier: handler,
+          args: args,
+        },
       };
 
       const response = await this.broker.request<{
         success: boolean;
-        data?: any;
+        data?: RpcResponse<ExecuteResult>;
         error?: string;
       }>("rpc_request", fullRpcCall, "rpc");
 
@@ -271,22 +290,31 @@ class BridgeClient {
         throw new Error(response.error || "Failed to execute full script");
       }
 
-      if (response.data?.ExecuteSuccess) {
-        const result = response.data.ExecuteSuccess as ExecutionResult;
-        this.handleExecutionResult(result, originalMessage.nonce);
-      } else if (response.data?.ExecuteFailure) {
+      if (!response.data || response.data.type !== "Execute") {
+        throw new Error("Invalid response format from Execute");
+      }
+
+      const executeResult = response.data.data;
+
+      if (executeResult.result === "success") {
+        const executionResult = executeResult.data as ExecutionResult;
+        this.handleExecutionResult(executionResult, originalMessage.nonce);
+      } else if (
+        executeResult.result === "failure" ||
+        executeResult.result === "error"
+      ) {
         this.forwardToParent({
           type: "response",
           nonce: originalMessage.nonce,
           success: false,
-          error: response.data.ExecuteFailure,
+          error: executeResult.data as string,
         });
       } else {
         this.forwardToParent({
           type: "response",
           nonce: originalMessage.nonce,
           success: false,
-          error: "Unexpected response from full script execute",
+          error: "Unexpected response format from Execute",
         });
       }
     } catch (error) {

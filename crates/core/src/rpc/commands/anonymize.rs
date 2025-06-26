@@ -8,8 +8,12 @@ use crate::rpc::context::RpcContext;
 pub struct AnonymizeCommand;
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "result", content = "data")]
 pub enum AnonymizeResponse {
+    #[serde(rename = "failure")]
     AnonymizeFailure(String),
+
+    #[serde(rename = "success")]
     AnonymizeSuccess,
 }
 

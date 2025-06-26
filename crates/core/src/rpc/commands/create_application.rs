@@ -10,8 +10,12 @@ use serde::{Deserialize, Serialize};
 pub struct CreateApplicationCommand;
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "result", content = "data")]
 pub enum CreateApplicationResponse {
+    #[serde(rename = "failure")]
     CreateApplicationFailure(String),
+
+    #[serde(rename = "success")]
     CreateApplicationSuccess(Application),
 }
 

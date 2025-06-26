@@ -1,7 +1,7 @@
 import { generateWindowId } from "./helpers/broker";
 import type {
   ExecuteOutput,
-  WhoAmIResponse,
+  WhoAmIResult,
   ExecutionResult,
   ExecuteError,
 } from "./common";
@@ -19,7 +19,7 @@ export type ProvenSDK = {
     handler: string,
     args?: any[]
   ) => Promise<ExecuteOutput>;
-  whoAmI: () => Promise<WhoAmIResponse>;
+  whoAmI: () => Promise<WhoAmIResult>;
   initConnectButton: (targetElement?: HTMLElement | string) => Promise<void>;
 };
 
@@ -412,7 +412,7 @@ export const ProvenSDK = (options: {
     }
   };
 
-  const whoAmI = async (): Promise<WhoAmIResponse> => {
+  const whoAmI = async (): Promise<WhoAmIResult> => {
     logger?.debug("SDK: Getting identity");
 
     const response = await sendMessage({

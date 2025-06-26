@@ -2,13 +2,16 @@ use crate::rpc::commands::RpcCommand;
 use crate::rpc::context::RpcContext;
 
 use async_trait::async_trait;
+use proven_identity::Identity;
 use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
 
 /// Type returned to the client to identify the session which strips sensitive data (e.g. signing keys).
 #[derive(Clone, Debug, Serialize)]
+#[serde(tag = "result", content = "data")]
 pub enum WhoAmIResponse {
     /// An anonymous session - yet to be identified via a ledger ID handshake.
+    #[serde(rename = "anonymous")]
     Anonymous {
         /// The origin of the session.
         origin: String,
@@ -17,10 +20,14 @@ pub enum WhoAmIResponse {
         session_id: String,
     },
 
+    #[serde(rename = "failure")]
+    Failure(String),
+
     /// An identified session - identified via a ledger ID handshake.
+    #[serde(rename = "identified")]
     Identified {
-        /// The Proven identity ID.
-        identity_id: String,
+        /// The Proven identity.
+        identity: Identity,
 
         /// The origin of the session.
         origin: String,
@@ -28,29 +35,6 @@ pub enum WhoAmIResponse {
         /// The session ID.
         session_id: String,
     },
-}
-
-impl From<Session> for WhoAmIResponse {
-    fn from(session: Session) -> Self {
-        match session {
-            Session::Anonymous {
-                origin, session_id, ..
-            } => WhoAmIResponse::Anonymous {
-                origin,
-                session_id: session_id.to_string(),
-            },
-            Session::Identified {
-                identity_id,
-                origin,
-                session_id,
-                ..
-            } => WhoAmIResponse::Identified {
-                identity_id: identity_id.to_string(),
-                origin,
-                session_id: session_id.to_string(),
-            },
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -70,6 +54,27 @@ impl RpcCommand for WhoAmICommand {
         SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
-        context.session.clone().into()
+        match context.session.clone() {
+            Session::Anonymous {
+                origin, session_id, ..
+            } => WhoAmIResponse::Anonymous {
+                origin,
+                session_id: session_id.to_string(),
+            },
+            Session::Identified {
+                identity_id,
+                origin,
+                session_id,
+                ..
+            } => match context.identity_manager.get_identity(identity_id).await {
+                Ok(Some(identity)) => WhoAmIResponse::Identified {
+                    identity,
+                    origin,
+                    session_id: session_id.to_string(),
+                },
+                Ok(None) => WhoAmIResponse::Failure("Identity not found".to_string()),
+                Err(e) => WhoAmIResponse::Failure(e.to_string()),
+            },
+        }
     }
 }

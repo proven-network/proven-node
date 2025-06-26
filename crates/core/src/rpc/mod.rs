@@ -4,9 +4,9 @@ mod context;
 mod error;
 
 use bytes::Bytes;
-use proven_applications::{Application, ApplicationManagement};
-use proven_identity::{Identity, IdentityManagement};
-use proven_runtime::{ExecutionResult, RuntimePoolManagement};
+use proven_applications::ApplicationManagement;
+use proven_identity::IdentityManagement;
+use proven_runtime::RuntimePoolManagement;
 use proven_sessions::{Session, SessionManagement};
 use serde::{Deserialize, Serialize};
 
@@ -22,24 +22,8 @@ use crate::rpc::commands::{
     IdentifyResponse, WhoAmICommand, WhoAmIResponse,
 };
 
-#[repr(u8)]
-#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Request {
-    // no args
-    Anonymize,
-    // no args
-    CreateApplication,
-    // module, handler_specifier, args
-    Execute(String, String, Vec<serde_json::Value>),
-    // module_hash, handler_specifier, args
-    ExecuteHash(String, String, Vec<serde_json::Value>),
-    // passkey_prf_public_key, session_id_signature
-    Identify(Bytes, Bytes),
-    // no args
-    WhoAmI,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum Command {
     Anonymize(AnonymizeCommand),
     CreateApplication(CreateApplicationCommand),
@@ -47,6 +31,17 @@ pub enum Command {
     ExecuteHash(ExecuteHashCommand),
     Identify(IdentifyCommand),
     WhoAmI(WhoAmICommand),
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", content = "data")]
+pub enum Response {
+    Anonymize(AnonymizeResponse),
+    CreateApplication(CreateApplicationResponse),
+    Execute(ExecuteResponse),
+    ExecuteHash(ExecuteHashResponse),
+    Identify(IdentifyResponse),
+    WhoAmI(WhoAmIResponse),
 }
 
 #[async_trait::async_trait]
@@ -61,97 +56,16 @@ impl RpcCommand for Command {
         RM: RuntimePoolManagement,
     {
         match self {
-            Command::Anonymize(cmd) => {
-                let r = cmd.execute(context).await;
-                match r {
-                    AnonymizeResponse::AnonymizeFailure(err) => Response::AnonymizeFailure(err),
-                    AnonymizeResponse::AnonymizeSuccess => Response::AnonymizeSuccess,
-                }
-            }
+            Command::Anonymize(cmd) => Response::Anonymize(cmd.execute(context).await),
             Command::CreateApplication(cmd) => {
-                let r = cmd.execute(context).await;
-                match r {
-                    CreateApplicationResponse::CreateApplicationFailure(err) => {
-                        Response::CreateApplicationFailure(err)
-                    }
-                    CreateApplicationResponse::CreateApplicationSuccess(application) => {
-                        Response::CreateApplicationSuccess(application)
-                    }
-                }
+                Response::CreateApplication(cmd.execute(context).await)
             }
-            Command::Execute(cmd) => {
-                let r = cmd.execute(context).await;
-                match r {
-                    ExecuteResponse::BadHandlerSpecifier => Response::BadHandlerSpecifier,
-                    ExecuteResponse::Failure(err) => Response::ExecuteFailure(err),
-                    ExecuteResponse::Success(result) => Response::ExecuteSuccess(result),
-                }
-            }
-            Command::ExecuteHash(cmd) => {
-                let r = cmd.execute(context).await;
-                match r {
-                    ExecuteHashResponse::BadHandlerSpecifier => Response::BadHandlerSpecifier,
-                    ExecuteHashResponse::Failure(err) => Response::ExecuteFailure(err),
-                    ExecuteHashResponse::HashUnknown => Response::ExecuteHashUnknown,
-                    ExecuteHashResponse::Success(result) => Response::ExecuteSuccess(result),
-                }
-            }
-            Command::Identify(cmd) => {
-                let r = cmd.execute(context).await;
-                match r {
-                    IdentifyResponse::IdentifyFailure(err) => Response::IdentifyFailure(err),
-                    IdentifyResponse::IdentifySuccess(identity) => {
-                        Response::IdentifySuccess(identity)
-                    }
-                }
-            }
+            Command::Execute(cmd) => Response::Execute(cmd.execute(context).await),
+            Command::ExecuteHash(cmd) => Response::ExecuteHash(cmd.execute(context).await),
+            Command::Identify(cmd) => Response::Identify(cmd.execute(context).await),
             Command::WhoAmI(cmd) => Response::WhoAmI(cmd.execute(context).await),
         }
     }
-}
-
-impl Request {
-    pub fn into_command(self) -> Command {
-        match self {
-            Request::Anonymize => Command::Anonymize(AnonymizeCommand),
-            Request::CreateApplication => Command::CreateApplication(CreateApplicationCommand),
-            Request::Execute(module, handler_specifier, args) => Command::Execute(ExecuteCommand {
-                args,
-                handler_specifier,
-                module,
-            }),
-            Request::ExecuteHash(module_hash, handler_specifier, args) => {
-                Command::ExecuteHash(ExecuteHashCommand {
-                    args,
-                    handler_specifier,
-                    module_hash,
-                })
-            }
-            Request::Identify(passkey_prf_public_key_bytes, session_id_signature_bytes) => {
-                Command::Identify(IdentifyCommand {
-                    passkey_prf_public_key_bytes,
-                    session_id_signature_bytes,
-                })
-            }
-            Request::WhoAmI => Command::WhoAmI(WhoAmICommand),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub enum Response {
-    AnonymizeFailure(String),
-    AnonymizeSuccess,
-    BadHandlerSpecifier,
-    CreateApplicationFailure(String),
-    CreateApplicationSuccess(Application),
-    ExecuteFailure(String),
-    ExecuteHashUnknown,
-    ExecuteSuccess(ExecutionResult),
-    IdentifyFailure(String),
-    // TODO: strip this down to something client-safe
-    IdentifySuccess(Identity),
-    WhoAmI(WhoAmIResponse),
 }
 
 /// Main RPC handler that coordinates authentication and command execution
@@ -198,12 +112,12 @@ where
         // Verify the incoming request
         let (payload, seq) = self.auth.verify(&bytes)?;
 
-        // Deserialize the request
-        let request: Request =
+        // Deserialize directly into Command
+        let command: Command =
             ciborium::de::from_reader(&payload[..]).map_err(|_| Error::Deserialize)?;
 
         // Execute the command and convert to response
-        let response = request.into_command().execute(&mut self.context).await;
+        let response = command.execute(&mut self.context).await;
 
         // Serialize the response
         let mut payload = Vec::new();
