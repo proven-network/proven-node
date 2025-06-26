@@ -1,8 +1,10 @@
 use crate::FullContext;
 
 use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
+use axum_extra::TypedHeader;
+use headers::Referer;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
@@ -22,7 +24,7 @@ macro_rules! iframe_handler {
                 application_manager,
                 ..
             }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
-            headers: HeaderMap,
+            referer_header: TypedHeader<Referer>,
         ) -> impl IntoResponse
         where
             AM: ApplicationManagement,
@@ -41,9 +43,7 @@ macro_rules! iframe_handler {
                 Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
             }
 
-            let referer = headers
-                .get("Referer")
-                .map_or("http://localhost:3200", |r| r.to_str().unwrap());
+            let referer = referer_header.0.to_string();
 
             (
                 [
