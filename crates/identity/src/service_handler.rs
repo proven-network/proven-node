@@ -196,7 +196,7 @@ where
             .store(responder.stream_sequence(), Ordering::SeqCst);
 
         // Send response
-        Ok(responder.reply(response).await)
+        Ok(responder.reply_and_delete_request(response).await)
     }
 
     /// Called when the service has processed all existing events

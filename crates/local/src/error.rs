@@ -8,6 +8,10 @@ pub enum Error {
     #[error("already started")]
     AlreadyStarted,
 
+    /// Application manager error.
+    #[error(transparent)]
+    ApplicationManager(#[from] proven_applications::Error),
+
     /// Shutdown requested
     #[error("shutdown requested")]
     Shutdown,
@@ -39,6 +43,10 @@ pub enum Error {
     /// HTTP proxy error
     #[error(transparent)]
     HttpProxy(#[from] proven_http_proxy::Error),
+
+    /// Identity manager error.
+    #[error(transparent)]
+    IdentityManager(#[from] proven_identity::Error),
 
     /// Could not set global default subscriber.
     #[error("could not set global default subscriber: {0}")]

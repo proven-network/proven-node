@@ -125,30 +125,17 @@ where
             SerializeError,
         >>::Options,
 
-    /// Command stream for processing commands
-    command_stream: CS,
+    /// Initialized command stream for processing commands
+    command_stream: CS::Initialized,
 
-    /// Cached consumer (to ensure it only starts once)
-    consumer: OnceLock<
+    /// Event consumer (started during initialization)
+    consumer:
         <ES::Initialized as InitializedStream<Event, DeserializeError, SerializeError>>::Consumer<
             ApplicationViewConsumerHandler,
         >,
-    >,
 
-    /// Consumer options for the event consumer
-    consumer_options: <<ES::Initialized as InitializedStream<
-        Event,
-        DeserializeError,
-        SerializeError,
-    >>::Consumer<ApplicationViewConsumerHandler> as Consumer<
-        ApplicationViewConsumerHandler,
-        Event,
-        DeserializeError,
-        SerializeError,
-    >>::Options,
-
-    /// Event stream for publishing/consuming events
-    event_stream: ES,
+    /// Initialized event stream for publishing/consuming events
+    event_stream: ES::Initialized,
 
     /// Current leadership guard (Some if we're the leader)
     leadership_guard: Arc<Mutex<Option<LM::Guard>>>,
@@ -196,15 +183,10 @@ where
     /// - Queries access the view directly for fast performance (all nodes)
     /// - Leadership is managed through the provided lock manager
     ///
-    /// # Arguments
+    /// # Errors
     ///
-    /// * `command_stream` - Stream for processing application commands
-    /// * `event_stream` - Stream for publishing and consuming application events
-    /// * `lock_manager` - Lock manager for distributed leadership coordination
-    /// * `service_options` - Options for the command processing service
-    /// * `client_options` - Options for the command client
-    /// * `consumer_options` - Options for the event consumer
-    pub fn new(
+    /// This function will return an error if the command stream or event stream cannot be initialized.
+    pub async fn new(
         command_stream: CS,
         event_stream: ES,
         service_options: <<CS::Initialized as InitializedStream<
@@ -238,15 +220,44 @@ where
             SerializeError,
         >>::Options,
         lock_manager: LM,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let view = ApplicationView::new();
 
-        Self {
+        // Initialize streams
+        let command_stream = command_stream
+            .init()
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
+
+        let event_stream = event_stream
+            .init()
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
+
+        // Create and start the event consumer
+        let handler = ApplicationViewConsumerHandler::new(view.clone());
+        let consumer = event_stream
+            .consumer("APPLICATION_VIEW", consumer_options, handler)
+            .await
+            .map_err(|e| Error::Service(e.to_string()))?;
+
+        consumer
+            .start()
+            .await
+            .map_err(|e| Error::Service(e.to_string()))?;
+
+        // Allow the view to initialize before returning
+        let last_event_seq = event_stream
+            .last_seq()
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
+        view.wait_for_seq(last_event_seq).await;
+
+        Ok(Self {
             client: OnceLock::new(),
             client_options,
             command_stream,
-            consumer: OnceLock::new(),
-            consumer_options,
+            consumer,
             event_stream,
             leadership_guard: Arc::new(Mutex::new(None)),
             leadership_monitor: Arc::new(Mutex::new(None)),
@@ -254,7 +265,7 @@ where
             service: OnceLock::new(),
             service_options,
             view,
-        }
+        })
     }
 
     /// Get the application view for direct queries.
@@ -278,26 +289,11 @@ where
             return Ok(client.clone());
         }
 
-        let command_stream = self
-            .command_stream
-            .init()
-            .await
-            .map_err(|e| Error::Stream(e.to_string()))?;
-
-        let event_stream = self
-            .event_stream
-            .init()
-            .await
-            .map_err(|e| Error::Stream(e.to_string()))?;
-
-        // Always ensure consumer is running (all nodes need views)
-        self.ensure_consumer_running(&event_stream).await?;
-
         // Try to acquire leadership and start service
-        self.ensure_leadership_and_service(&command_stream, &event_stream)
-            .await?;
+        self.ensure_leadership_and_service().await?;
 
-        let client = command_stream
+        let client = self
+            .command_stream
             .client("APPLICATION_SERVICE", self.client_options.clone())
             .await
             .map_err(|e| Error::Client(e.to_string()))?;
@@ -313,11 +309,7 @@ where
 
     /// Attempt to acquire leadership and start service if successful.
     /// Returns Ok(()) regardless of whether leadership was acquired.
-    async fn ensure_leadership_and_service(
-        &self,
-        command_stream: &CS::Initialized,
-        event_stream: &ES::Initialized,
-    ) -> Result<(), Error> {
+    async fn ensure_leadership_and_service(&self) -> Result<(), Error> {
         // Check if service is already running
         if self.service.get().is_some() {
             return Ok(());
@@ -328,9 +320,7 @@ where
             let guard = self.leadership_guard.lock().await;
             if guard.is_some() {
                 // We have leadership but no service - start it
-                return self
-                    .start_service_as_leader(command_stream, event_stream)
-                    .await;
+                return self.start_service_as_leader().await;
             }
         }
 
@@ -350,8 +340,7 @@ where
                 }
 
                 // Start the service
-                self.start_service_as_leader(command_stream, event_stream)
-                    .await?;
+                self.start_service_as_leader().await?;
 
                 // Start leadership monitoring
                 self.start_leadership_monitor().await;
@@ -372,18 +361,15 @@ where
     }
 
     /// Start the service as the leader.
-    async fn start_service_as_leader(
-        &self,
-        command_stream: &CS::Initialized,
-        event_stream: &ES::Initialized,
-    ) -> Result<(), Error> {
+    async fn start_service_as_leader(&self) -> Result<(), Error> {
         if self.service.get().is_some() {
             return Ok(());
         }
 
-        let handler = ApplicationServiceHandler::new(self.view.clone(), event_stream.clone());
+        let handler = ApplicationServiceHandler::new(self.view.clone(), self.event_stream.clone());
 
-        let service = command_stream
+        let service = self
+            .command_stream
             .service("APPLICATION_SERVICE", self.service_options.clone(), handler)
             .await
             .map_err(|e| Error::Service(e.to_string()))?;
@@ -468,37 +454,14 @@ where
         let guard = self.leadership_guard.lock().await;
         guard.is_some()
     }
-
-    /// Ensure the event consumer is running to update the view.
-    async fn ensure_consumer_running(&self, event_stream: &ES::Initialized) -> Result<(), Error> {
-        if self.consumer.get().is_some() {
-            return Ok(());
-        }
-
-        let handler = ApplicationViewConsumerHandler::new(self.view.clone());
-
-        let consumer = event_stream
-            .consumer("APPLICATION_VIEW", self.consumer_options.clone(), handler)
-            .await
-            .map_err(|e| Error::Service(e.to_string()))?;
-
-        // Start the consumer to begin processing events
-        consumer
-            .start()
-            .await
-            .map_err(|e| Error::Service(e.to_string()))?;
-
-        // Store the consumer (ignore result if another thread set it first)
-        let _ = self.consumer.set(consumer);
-
-        Ok(())
-    }
 }
 
 impl<CS, ES, LM> Clone for ApplicationManager<CS, ES, LM>
 where
-    CS: Stream<Command, DeserializeError, SerializeError> + Clone,
-    ES: Stream<Event, DeserializeError, SerializeError> + Clone,
+    CS: Stream<Command, DeserializeError, SerializeError>,
+    CS::Initialized: Clone,
+    ES: Stream<Event, DeserializeError, SerializeError>,
+    ES::Initialized: Clone,
     LM: LockManager + Clone,
 {
     fn clone(&self) -> Self {
@@ -507,7 +470,6 @@ where
             client_options: self.client_options.clone(),
             command_stream: self.command_stream.clone(),
             consumer: self.consumer.clone(),
-            consumer_options: self.consumer_options.clone(),
             event_stream: self.event_stream.clone(),
             leadership_guard: Arc::clone(&self.leadership_guard),
             leadership_monitor: Arc::clone(&self.leadership_monitor),
@@ -584,7 +546,6 @@ where
     }
 
     async fn get_application(&self, application_id: Uuid) -> Result<Option<Application>, Error> {
-        // Query directly from view - no request/response overhead
         Ok(self.view.get_application(application_id).await)
     }
 
@@ -690,7 +651,7 @@ mod tests {
     type TestApplicationManager =
         ApplicationManager<TestCommandStream, TestEventStream, MemoryLockManager>;
 
-    fn create_test_manager() -> TestApplicationManager {
+    async fn create_test_manager() -> TestApplicationManager {
         let stream_name = format!("test-stream-{}", Uuid::new_v4());
         let command_stream =
             MemoryStream::new(stream_name.clone() + "-commands", MemoryStreamOptions);
@@ -705,11 +666,13 @@ mod tests {
             MemoryConsumerOptions,
             lock_manager,
         )
+        .await
+        .unwrap()
     }
 
     #[tokio::test]
     async fn test_create_application() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
 
         let result = manager
@@ -725,7 +688,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_application_from_view() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
 
         // Create application
@@ -747,7 +710,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_direct_view_queries() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
 
         // Direct view access should work immediately (no async required since view is shared)
@@ -779,7 +742,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_transfer_ownership() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
         let new_owner_id = Uuid::new_v4();
 
@@ -808,7 +771,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_archive_application() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
 
         // Create application
@@ -838,7 +801,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_application_creation() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
 
         // Create multiple applications concurrently
@@ -879,7 +842,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_last_processed_seq_tracking() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
 
         // Initially, no events processed
@@ -925,7 +888,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_strong_consistency_commands() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
 
         // Create application (does not require strong consistency)
@@ -961,7 +924,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_leadership_functionality() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
 
         // Initially not a leader
         assert!(!manager.is_leader().await);
@@ -1000,7 +963,9 @@ mod tests {
             MemoryClientOptions,
             MemoryConsumerOptions,
             shared_lock_manager.clone(),
-        );
+        )
+        .await
+        .unwrap();
 
         let manager2 = ApplicationManager::new(
             command_stream.clone(),
@@ -1009,7 +974,9 @@ mod tests {
             MemoryClientOptions,
             MemoryConsumerOptions,
             shared_lock_manager.clone(),
-        );
+        )
+        .await
+        .unwrap();
 
         // Both start as non-leaders
         assert!(!manager1.is_leader().await);
@@ -1043,11 +1010,6 @@ mod tests {
         // Manager1 should have the service, manager2 should not
         assert!(manager1.service.get().is_some()); // Leader has service
 
-        // Both should have consumers for the shared event stream
-        // Give a moment for the consumer to start
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-        assert!(manager2.consumer.get().is_some()); // Both have consumers for views
-
         // Both should see the applications in their views (eventually)
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
         assert_eq!(manager1.view().application_count().await, 2);
@@ -1056,7 +1018,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_link_http_domain_success() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1095,7 +1057,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_link_http_domain_to_nonexistent_application() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let nonexistent_app_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1111,7 +1073,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_link_already_linked_domain() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1152,7 +1114,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unlink_http_domain_success() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1201,7 +1163,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unlink_http_domain_from_nonexistent_application() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let nonexistent_app_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1217,7 +1179,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unlink_non_linked_domain() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1243,7 +1205,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_unlink_domain_from_wrong_application() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1283,7 +1245,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multiple_domains_per_application() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
         let domain1 = "example.com".to_string();
         let domain2 = "test.com".to_string();
@@ -1384,7 +1346,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_domain_linking_with_application_archival() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
         let domain = "example.com".to_string();
 
@@ -1429,7 +1391,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_domain_linking() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let owner_id = Uuid::new_v4();
 
         // Create application

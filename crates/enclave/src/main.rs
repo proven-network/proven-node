@@ -46,6 +46,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::large_stack_frames)]
 async fn handle_initial_request(rpc_server: &RpcServer) -> Result<()> {
     match rpc_server.accept().await {
         Ok(RpcCall::Initialize(args, ack)) => {

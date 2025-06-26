@@ -93,30 +93,17 @@ where
             SerializeError,
         >>::Options,
 
-    /// Command stream for processing commands
-    command_stream: CS,
+    /// Initialized command stream for processing commands
+    command_stream: CS::Initialized,
 
-    /// Cached consumer (to ensure it only starts once)
-    consumer: OnceLock<
+    /// Event consumer (started during initialization)
+    consumer:
         <ES::Initialized as InitializedStream<Event, DeserializeError, SerializeError>>::Consumer<
             IdentityViewConsumerHandler,
         >,
-    >,
 
-    /// Consumer options for the event consumer
-    consumer_options: <<ES::Initialized as InitializedStream<
-        Event,
-        DeserializeError,
-        SerializeError,
-    >>::Consumer<IdentityViewConsumerHandler> as Consumer<
-        IdentityViewConsumerHandler,
-        Event,
-        DeserializeError,
-        SerializeError,
-    >>::Options,
-
-    /// Event stream for publishing/consuming events
-    event_stream: ES,
+    /// Initialized event stream for publishing/consuming events
+    event_stream: ES::Initialized,
 
     /// Leadership guard (Some when this node is the leader)
     leadership_guard: Arc<Mutex<Option<LM::Guard>>>,
@@ -164,15 +151,10 @@ where
     /// - Queries access the view directly for fast performance (all nodes)
     /// - Leadership is managed through the provided lock manager
     ///
-    /// # Arguments
+    /// # Errors
     ///
-    /// * `command_stream` - Stream for processing identity commands
-    /// * `event_stream` - Stream for publishing and consuming identity events
-    /// * `service_options` - Options for the command processing service
-    /// * `client_options` - Options for the command client
-    /// * `consumer_options` - Options for the event consumer
-    /// * `lock_manager` - Lock manager for distributed leadership coordination
-    pub fn new(
+    /// This function will return an error if the command stream or event stream cannot be initialized.
+    pub async fn new(
         command_stream: CS,
         event_stream: ES,
         service_options: <<CS::Initialized as InitializedStream<
@@ -206,14 +188,44 @@ where
             SerializeError,
         >>::Options,
         lock_manager: LM,
-    ) -> Self {
+    ) -> Result<Self, Error> {
         let view = IdentityView::new();
-        Self {
+
+        // Initialize streams
+        let command_stream = command_stream
+            .init()
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
+
+        let event_stream = event_stream
+            .init()
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
+
+        // Create and start the event consumer
+        let handler = IdentityViewConsumerHandler::new(view.clone());
+        let consumer = event_stream
+            .consumer("IDENTITY_VIEW", consumer_options, handler)
+            .await
+            .map_err(|e| Error::Service(e.to_string()))?;
+
+        consumer
+            .start()
+            .await
+            .map_err(|e| Error::Service(e.to_string()))?;
+
+        // Allow the view to initialize before returning
+        let last_event_seq = event_stream
+            .last_seq()
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
+        view.wait_for_seq(last_event_seq).await;
+
+        Ok(Self {
             client: OnceLock::new(),
             client_options,
             command_stream,
-            consumer: OnceLock::new(),
-            consumer_options,
+            consumer,
             event_stream,
             leadership_guard: Arc::new(Mutex::new(None)),
             leadership_monitor: Arc::new(Mutex::new(None)),
@@ -221,7 +233,7 @@ where
             service: OnceLock::new(),
             service_options,
             view,
-        }
+        })
     }
 
     /// Get direct access to the view for queries.
@@ -242,26 +254,11 @@ where
             return Ok(client.clone());
         }
 
-        let command_stream = self
-            .command_stream
-            .init()
-            .await
-            .map_err(|e| Error::Stream(e.to_string()))?;
-
-        let event_stream = self
-            .event_stream
-            .init()
-            .await
-            .map_err(|e| Error::Stream(e.to_string()))?;
-
-        // Always ensure consumer is running (all nodes need views)
-        self.ensure_consumer_running(&event_stream).await?;
-
         // Try to acquire leadership and start service
-        self.ensure_leadership_and_service(&command_stream, &event_stream)
-            .await?;
+        self.ensure_leadership_and_service().await?;
 
-        let client = command_stream
+        let client = self
+            .command_stream
             .client("IDENTITY_SERVICE", self.client_options.clone())
             .await
             .map_err(|e| Error::Client(e.to_string()))?;
@@ -277,11 +274,7 @@ where
 
     /// Attempt to acquire leadership and start service if successful.
     /// Returns Ok(()) regardless of whether leadership was acquired.
-    async fn ensure_leadership_and_service(
-        &self,
-        command_stream: &CS::Initialized,
-        event_stream: &ES::Initialized,
-    ) -> Result<(), Error> {
+    async fn ensure_leadership_and_service(&self) -> Result<(), Error> {
         // Check if service is already running
         if self.service.get().is_some() {
             return Ok(());
@@ -292,9 +285,7 @@ where
             let guard = self.leadership_guard.lock().await;
             if guard.is_some() {
                 // We have leadership but no service - start it
-                return self
-                    .start_service_as_leader(command_stream, event_stream)
-                    .await;
+                return self.start_service_as_leader().await;
             }
         }
 
@@ -314,8 +305,7 @@ where
                 }
 
                 // Start the service
-                self.start_service_as_leader(command_stream, event_stream)
-                    .await?;
+                self.start_service_as_leader().await?;
 
                 // Start leadership monitoring
                 self.start_leadership_monitor().await;
@@ -336,18 +326,15 @@ where
     }
 
     /// Start the service as the leader.
-    async fn start_service_as_leader(
-        &self,
-        command_stream: &CS::Initialized,
-        event_stream: &ES::Initialized,
-    ) -> Result<(), Error> {
+    async fn start_service_as_leader(&self) -> Result<(), Error> {
         if self.service.get().is_some() {
             return Ok(());
         }
 
-        let handler = IdentityServiceHandler::new(self.view.clone(), event_stream.clone());
+        let handler = IdentityServiceHandler::new(self.view.clone(), self.event_stream.clone());
 
-        let service = command_stream
+        let service = self
+            .command_stream
             .service("IDENTITY_SERVICE", self.service_options.clone(), handler)
             .await
             .map_err(|e| Error::Service(e.to_string()))?;
@@ -429,36 +416,14 @@ where
         let guard = self.leadership_guard.lock().await;
         guard.is_some()
     }
-
-    /// Ensure the event consumer is running to update the view.
-    async fn ensure_consumer_running(&self, event_stream: &ES::Initialized) -> Result<(), Error> {
-        if self.consumer.get().is_some() {
-            return Ok(());
-        }
-
-        let handler = IdentityViewConsumerHandler::new(self.view.clone());
-
-        let consumer = event_stream
-            .consumer("IDENTITY_VIEW", self.consumer_options.clone(), handler)
-            .await
-            .map_err(|e| Error::Service(e.to_string()))?;
-
-        // Start the consumer to begin processing events
-        consumer
-            .start()
-            .await
-            .map_err(|e| Error::Service(e.to_string()))?;
-
-        // Store the consumer (ignore result if another thread set it first)
-        let _ = self.consumer.set(consumer);
-        Ok(())
-    }
 }
 
 impl<CS, ES, LM> Clone for IdentityManager<CS, ES, LM>
 where
-    CS: Stream<Command, DeserializeError, SerializeError> + Clone,
-    ES: Stream<Event, DeserializeError, SerializeError> + Clone,
+    CS: Stream<Command, DeserializeError, SerializeError>,
+    CS::Initialized: Clone,
+    ES: Stream<Event, DeserializeError, SerializeError>,
+    ES::Initialized: Clone,
     LM: LockManager + Clone,
 {
     fn clone(&self) -> Self {
@@ -467,7 +432,6 @@ where
             client_options: self.client_options.clone(),
             command_stream: self.command_stream.clone(),
             consumer: self.consumer.clone(),
-            consumer_options: self.consumer_options.clone(),
             event_stream: self.event_stream.clone(),
             leadership_guard: Arc::clone(&self.leadership_guard),
             leadership_monitor: Arc::clone(&self.leadership_monitor),
@@ -543,7 +507,7 @@ mod tests {
     type TestIdentityManager =
         IdentityManager<TestCommandStream, TestEventStream, MemoryLockManager>;
 
-    fn create_test_manager() -> TestIdentityManager {
+    async fn create_test_manager() -> TestIdentityManager {
         let stream_name = format!("test-stream-{}", Uuid::new_v4());
         let command_stream =
             MemoryStream::new(stream_name.clone() + "-commands", MemoryStreamOptions);
@@ -557,11 +521,13 @@ mod tests {
             MemoryConsumerOptions,
             MemoryLockManager::new(),
         )
+        .await
+        .unwrap()
     }
 
     #[tokio::test]
     async fn test_get_or_create_identity_by_prf_public_key() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let prf_public_key = Bytes::from(vec![1u8; 32]);
 
         // First call should create the identity
@@ -584,7 +550,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_identity_from_view() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let prf_public_key = Bytes::from(vec![2u8; 32]);
 
         let created_identity = manager
@@ -603,7 +569,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_direct_view_queries() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
 
         // Direct view access should work immediately (no async required since view is shared)
         assert_eq!(manager.view().identity_count().await, 0);
@@ -639,7 +605,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_prf_public_key_lookup() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
         let prf_public_key = Bytes::from(vec![5u8; 32]);
 
         let created_identity = manager
@@ -661,7 +627,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_concurrent_identity_creation() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
 
         // Create multiple identities concurrently with different PRF keys
         let tasks: Vec<_> = (0..5)
@@ -691,7 +657,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_last_processed_seq_tracking() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
 
         // Initially, no events processed
         assert_eq!(manager.view().last_processed_seq(), 0);
@@ -725,7 +691,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_strong_consistency_commands() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
 
         // Both identity command variants require strong consistency
         // Test GetOrCreateIdentityByPrfPublicKey (requires strong consistency)
@@ -760,7 +726,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_leadership_functionality() {
-        let manager = create_test_manager();
+        let manager = create_test_manager().await;
 
         // Initially not a leader
         assert!(!manager.is_leader().await);
@@ -797,7 +763,9 @@ mod tests {
             MemoryClientOptions,
             MemoryConsumerOptions,
             shared_lock_manager.clone(),
-        );
+        )
+        .await
+        .unwrap();
 
         let manager2 = IdentityManager::new(
             command_stream.clone(),
@@ -806,7 +774,9 @@ mod tests {
             MemoryClientOptions,
             MemoryConsumerOptions,
             shared_lock_manager.clone(),
-        );
+        )
+        .await
+        .unwrap();
 
         // Both start as non-leaders
         assert!(!manager1.is_leader().await);
@@ -836,11 +806,6 @@ mod tests {
 
         // Manager1 should have the service, manager2 should not
         assert!(manager1.service.get().is_some()); // Leader has service
-
-        // Both should have consumers for the shared event stream
-        // Give a moment for the consumer to start
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-        assert!(manager2.consumer.get().is_some()); // Both have consumers for views
 
         // Both should see the identities in their views (eventually)
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;

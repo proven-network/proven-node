@@ -839,6 +839,7 @@ impl Bootstrap {
     }
 
     #[allow(clippy::too_many_lines)]
+    #[allow(clippy::large_stack_frames)]
     async fn start_core(&mut self) -> Result<()> {
         let id = self.imds_identity.as_ref().unwrap_or_else(|| {
             panic!("imds identity not fetched before core");
@@ -900,7 +901,8 @@ impl Bootstrap {
             },
             // Lock manager for distributed leadership
             lock_manager.clone(),
-        );
+        )
+        .await?;
 
         let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
             passkeys_store: NatsStore::new(NatsStoreOptions {
@@ -988,7 +990,8 @@ impl Bootstrap {
             },
             // Lock manager for distributed leadership
             lock_manager,
-        );
+        )
+        .await?;
 
         let application_store = NatsStore2::new(NatsStoreOptions {
             bucket: "APPLICATION_KV".to_string(),

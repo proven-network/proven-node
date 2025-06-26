@@ -16,6 +16,10 @@ pub enum Error {
     #[error(transparent)]
     AddrParse(#[from] std::net::AddrParseError),
 
+    /// Application manager error.
+    #[error(transparent)]
+    ApplicationManager(#[from] proven_applications::Error),
+
     /// AWS Secrets Manager error.
     #[error(transparent)]
     AsmStore(#[from] proven_store_asm::Error),
@@ -51,6 +55,10 @@ pub enum Error {
     /// External file system error.
     #[error(transparent)]
     ExternalFs(#[from] proven_external_fs::Error),
+
+    /// Identity manager error.
+    #[error(transparent)]
+    IdentityManager(#[from] proven_identity::Error),
 
     /// Instance metadata error.
     #[error(transparent)]

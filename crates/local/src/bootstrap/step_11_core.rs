@@ -98,12 +98,13 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
         // Consumer options for the event consumer
         NatsConsumerOptions {
             client: nats_client.clone(),
-            durable_name: Some("IDENTITY_VIEW_CONSUMER".to_string()),
+            durable_name: None,
             jetstream_context: async_nats::jetstream::new(nats_client.clone()),
         },
         // Lock manager for distributed leadership
         lock_manager.clone(),
-    );
+    )
+    .await?;
 
     let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
         passkeys_store: NatsStore::new(NatsStoreOptions {
@@ -164,17 +165,17 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
         // Consumer options for the event consumer
         NatsConsumerOptions {
             client: nats_client.clone(),
-            durable_name: Some("APPLICATION_VIEW_CONSUMER".to_string()),
+            durable_name: None,
             jetstream_context: async_nats::jetstream::new(nats_client.clone()),
         },
         // Lock manager for distributed leadership
         lock_manager,
-    );
-
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    )
+    .await?;
 
     let applications = application_manager.list_all_applications().await.unwrap();
-    println!("applications: {applications:?}");
+    info!("current application count: {}", applications.len());
+
     // Create a test application if there are no applications
     if applications.is_empty() {
         let application = application_manager
@@ -182,7 +183,8 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
                 owner_identity_id: Uuid::new_v4(),
             })
             .await;
-        println!("created test application: {application:?}");
+
+        info!("created test application: {application:?}");
     }
 
     let application_store = NatsStore2::new(NatsStoreOptions {
