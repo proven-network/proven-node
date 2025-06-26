@@ -7,8 +7,8 @@ use futures::StreamExt;
 use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt::Debug;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use async_nats::Client as AsyncNatsClient;
 use async_nats::HeaderMap;
@@ -21,12 +21,16 @@ use bytes::Bytes;
 use proven_messaging::client::{Client, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
-use tokio::sync::{Mutex, mpsc, oneshot};
+use tokio::sync::{Mutex as TokioMutex, mpsc, oneshot};
 use tokio::time::{Duration, sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::warn;
 
 use uuid::Uuid;
+
+// Global reference counter for reply streams
+static REPLY_STREAM_REFS: LazyLock<Mutex<HashMap<String, AtomicUsize>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 type ResponseMap<R> = HashMap<usize, oneshot::Sender<ClientResponseType<R>>>;
 type StreamMap<R> = HashMap<usize, StreamState<R>>;
@@ -68,8 +72,8 @@ where
     jetstream_context: Context,
     reply_stream_name: String,
     request_id_counter: Arc<AtomicUsize>,
-    response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
-    stream_map: Arc<Mutex<StreamMap<X::ResponseType>>>,
+    response_map: Arc<TokioMutex<ResponseMap<X::ResponseType>>>,
+    stream_map: Arc<TokioMutex<StreamMap<X::ResponseType>>>,
     stream_name: String,
 }
 
@@ -87,6 +91,14 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     fn clone(&self) -> Self {
+        // Increment reference count for this reply stream
+        {
+            let refs = REPLY_STREAM_REFS.lock().unwrap();
+            if let Some(counter) = refs.get(&self.reply_stream_name) {
+                counter.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
         Self {
             client_id: self.client_id.clone(),
             jetstream_context: self.jetstream_context.clone(),
@@ -113,11 +125,29 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     fn drop(&mut self) {
-        let reply_stream_name = self.reply_stream_name.clone();
-        let jetstream_context = self.jetstream_context.clone();
-        tokio::spawn(async move {
-            let _ = jetstream_context.delete_stream(&reply_stream_name).await;
-        });
+        let should_cleanup = {
+            let mut refs = REPLY_STREAM_REFS.lock().unwrap();
+            if let Some(counter) = refs.get(&self.reply_stream_name) {
+                let count = counter.fetch_sub(1, Ordering::SeqCst);
+                if count == 1 {
+                    // Was 1, now 0
+                    refs.remove(&self.reply_stream_name);
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+
+        if should_cleanup {
+            let reply_stream_name = self.reply_stream_name.clone();
+            let jetstream_context = self.jetstream_context.clone();
+            tokio::spawn(async move {
+                let _ = jetstream_context.delete_stream(&reply_stream_name).await;
+            });
+        }
     }
 }
 
@@ -193,8 +223,8 @@ where
     #[allow(clippy::too_many_lines)]
     fn spawn_response_handler(
         consumer: NatsConsumerType<NatsConsumerConfig>,
-        response_map: Arc<Mutex<ResponseMap<X::ResponseType>>>,
-        stream_map: Arc<Mutex<StreamMap<X::ResponseType>>>,
+        response_map: Arc<TokioMutex<ResponseMap<X::ResponseType>>>,
+        stream_map: Arc<TokioMutex<StreamMap<X::ResponseType>>>,
     ) {
         tokio::spawn(async move {
             let mut messages = consumer.messages().await.unwrap();
@@ -361,7 +391,7 @@ where
         options: Self::Options,
     ) -> Result<Self, Self::Error> {
         let client_id = Uuid::new_v4().to_string();
-        let response_map = Arc::new(Mutex::new(HashMap::new()));
+        let response_map = Arc::new(TokioMutex::new(HashMap::new()));
 
         let jetstream_context = async_nats::jetstream::new(options.client.clone());
         let reply_stream_name = format!("{name}_CLIENT_{client_id}");
@@ -386,7 +416,15 @@ where
             .await
             .unwrap();
 
-        let stream_map = Arc::new(Mutex::new(HashMap::new()));
+        let stream_map = Arc::new(TokioMutex::new(HashMap::new()));
+
+        // Increment reference count for this reply stream
+        {
+            let mut refs = REPLY_STREAM_REFS.lock().unwrap();
+            refs.entry(reply_stream_name.clone())
+                .or_insert_with(|| AtomicUsize::new(0))
+                .fetch_add(1, Ordering::SeqCst);
+        }
 
         // Spawn response handler
         Self::spawn_response_handler(
