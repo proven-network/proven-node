@@ -1,5 +1,4 @@
 use thiserror::Error;
-use uuid::Uuid;
 
 /// Errors that can occur in this crate.
 #[derive(Debug, Error)]
@@ -11,10 +10,6 @@ pub enum Error {
     /// Command processing error
     #[error("command error: {0}")]
     Command(String),
-
-    /// Identity not found
-    #[error("identity not found: {0}")]
-    IdentityNotFound(Uuid),
 
     /// Messaging service error
     #[error("messaging service error: {0}")]

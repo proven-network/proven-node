@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::service_responder::ServiceResponder;
 use proven_messaging::stream::InitializedStream;
@@ -67,88 +68,125 @@ where
     }
 
     /// Handle commands by generating and publishing events
-    async fn handle_command(&self, command: Command) -> Result<Response, Error> {
+    async fn handle_command(&self, command: Command) -> Response {
         match command {
             Command::GetOrCreateIdentityByPrfPublicKey { prf_public_key } => {
-                // Check if identity already exists for this PRF public key
-                if let Some(identity) = self
-                    .view
-                    .get_identity_by_prf_public_key(&prf_public_key)
+                self.handle_get_or_create_identity_by_prf_public_key(prf_public_key)
                     .await
-                {
-                    // For existing identities, we don't publish events, so use 0 as placeholder
-                    // TODO: Consider how to handle this case for read-your-own-writes consistency
-                    return Ok(Response::IdentityRetrieved {
-                        identity,
-                        last_event_seq: 0,
-                    });
-                }
-
-                // Create new identity
-                let identity_id = Uuid::new_v4();
-                let now = chrono::Utc::now();
-
-                // Create both events for atomic publishing
-                let events = vec![
-                    Event::Created {
-                        created_at: now,
-                        identity_id,
-                    },
-                    Event::PrfPublicKeyLinked {
-                        identity_id,
-                        linked_at: now,
-                        prf_public_key: prf_public_key.clone(),
-                    },
-                ];
-
-                // Publish both events atomically
-                let last_event_seq = self
-                    .event_stream
-                    .publish_batch(events)
-                    .await
-                    .map_err(|e| Error::Stream(e.to_string()))?;
-
-                let identity = Identity { id: identity_id };
-                Ok(Response::IdentityRetrieved {
-                    identity,
-                    last_event_seq,
-                })
             }
-
             Command::LinkPrfPublicKey {
                 identity_id,
                 prf_public_key,
             } => {
-                // Validate identity exists
-                if !self.view.identity_exists(&identity_id).await {
-                    return Ok(Response::Error {
-                        message: "Identity not found".to_string(),
-                    });
-                }
-
-                // Check if PRF public key is already linked
-                if self.view.prf_public_key_exists(&prf_public_key).await {
-                    return Ok(Response::Error {
-                        message: "PRF public key already linked to an identity".to_string(),
-                    });
-                }
-
-                let event = Event::PrfPublicKeyLinked {
-                    identity_id,
-                    prf_public_key,
-                    linked_at: chrono::Utc::now(),
-                };
-
-                // Publish event to event stream
-                let last_event_seq = self
-                    .event_stream
-                    .publish(event)
+                self.handle_link_prf_public_key(identity_id, prf_public_key)
                     .await
-                    .map_err(|e| Error::Stream(e.to_string()))?;
-
-                Ok(Response::PrfPublicKeyLinked { last_event_seq })
             }
         }
+    }
+
+    /// Handle `GetOrCreateIdentityByPrfPublicKey` command
+    async fn handle_get_or_create_identity_by_prf_public_key(
+        &self,
+        prf_public_key: Bytes,
+    ) -> Response {
+        // Check if identity already exists for this PRF public key
+        if let Some(identity) = self
+            .view
+            .get_identity_by_prf_public_key(&prf_public_key)
+            .await
+        {
+            // For existing identities, we don't publish events, so use 0 as placeholder
+            // TODO: Consider how to handle this case for read-your-own-writes consistency
+            return Response::IdentityRetrieved {
+                identity,
+                last_event_seq: 0,
+            };
+        }
+
+        // Create new identity
+        let identity_id = Uuid::new_v4();
+        let now = chrono::Utc::now();
+
+        // Create both events for atomic publishing
+        let events = vec![
+            Event::Created {
+                created_at: now,
+                identity_id,
+            },
+            Event::PrfPublicKeyLinked {
+                identity_id,
+                linked_at: now,
+                prf_public_key: prf_public_key.clone(),
+            },
+        ];
+
+        // Publish both events atomically
+        match self.publish_event_batch(events).await {
+            Ok(last_event_seq) => {
+                let identity = Identity { id: identity_id };
+                Response::IdentityRetrieved {
+                    identity,
+                    last_event_seq,
+                }
+            }
+            Err(error_msg) => Response::InternalError { message: error_msg },
+        }
+    }
+
+    /// Handle `LinkPrfPublicKey` command
+    async fn handle_link_prf_public_key(
+        &self,
+        identity_id: Uuid,
+        prf_public_key: Bytes,
+    ) -> Response {
+        // Validate identity exists
+        if let Err(error_response) = self.validate_identity_exists(&identity_id).await {
+            return error_response;
+        }
+
+        // Check if PRF public key is already linked
+        if self.view.prf_public_key_exists(&prf_public_key).await {
+            return Response::Error {
+                message: "PRF public key already linked to an identity".to_string(),
+            };
+        }
+
+        let event = Event::PrfPublicKeyLinked {
+            identity_id,
+            prf_public_key,
+            linked_at: chrono::Utc::now(),
+        };
+
+        match self.publish_event(event).await {
+            Ok(last_event_seq) => Response::PrfPublicKeyLinked { last_event_seq },
+            Err(error_msg) => Response::InternalError { message: error_msg },
+        }
+    }
+
+    /// Helper method to publish a single event and handle errors consistently
+    async fn publish_event(&self, event: Event) -> Result<u64, String> {
+        self.event_stream
+            .publish(event)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Helper method to publish multiple events in batch and handle errors consistently
+    async fn publish_event_batch(&self, events: Vec<Event>) -> Result<u64, String> {
+        self.event_stream
+            .publish_batch(events)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Helper method to validate that an identity exists
+    async fn validate_identity_exists(&self, identity_id: &Uuid) -> Result<(), Response> {
+        if !self.view.identity_exists(identity_id).await {
+            return Err(Response::Error {
+                message: "Identity not found".to_string(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -188,8 +226,8 @@ where
             self.view.wait_for_seq(current_seq).await;
         }
 
-        // Handle the command
-        let response = self.handle_command(command).await?;
+        // Handle the command (now returns Response directly)
+        let response = self.handle_command(command).await;
 
         // Update sequence tracking
         self.last_processed_seq

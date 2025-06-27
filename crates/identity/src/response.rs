@@ -22,6 +22,12 @@ pub enum Response {
         last_event_seq: u64,
     },
 
+    /// Internal error occurred while processing the command (e.g., stream publishing failed).
+    InternalError {
+        /// Description of the internal error.
+        message: String,
+    },
+
     /// PRF public key was successfully linked to an identity.
     PrfPublicKeyLinked {
         /// The sequence number of the last event published for this command.
