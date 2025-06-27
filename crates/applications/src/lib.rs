@@ -3,7 +3,6 @@
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
-#![allow(clippy::type_complexity)]
 
 mod application;
 mod command;
@@ -38,6 +37,53 @@ use uuid::Uuid;
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
 type SerializeError = ciborium::ser::Error<std::io::Error>;
+
+// Type aliases to simplify complex generic signatures
+type InitializedCommandStream<CS> =
+    <CS as Stream<Command, DeserializeError, SerializeError>>::Initialized;
+type InitializedEventStream<ES> =
+    <ES as Stream<Event, DeserializeError, SerializeError>>::Initialized;
+
+type ServiceHandler<ES> = ApplicationServiceHandler<InitializedEventStream<ES>>;
+
+type CommandClient<CS, ES> = <InitializedCommandStream<CS> as InitializedStream<
+    Command,
+    DeserializeError,
+    SerializeError,
+>>::Client<ServiceHandler<ES>>;
+
+type CommandService<CS, ES> = <InitializedCommandStream<CS> as InitializedStream<
+    Command,
+    DeserializeError,
+    SerializeError,
+>>::Service<ServiceHandler<ES>>;
+
+type EventConsumer<ES> = <InitializedEventStream<ES> as InitializedStream<
+    Event,
+    DeserializeError,
+    SerializeError,
+>>::Consumer<ApplicationViewConsumerHandler>;
+
+type ClientOptions<CS, ES> = <CommandClient<CS, ES> as Client<
+    ServiceHandler<ES>,
+    Command,
+    DeserializeError,
+    SerializeError,
+>>::Options;
+
+type ServiceOptions<CS, ES> = <CommandService<CS, ES> as Service<
+    ServiceHandler<ES>,
+    Command,
+    DeserializeError,
+    SerializeError,
+>>::Options;
+
+type ConsumerOptions<ES> = <EventConsumer<ES> as Consumer<
+    ApplicationViewConsumerHandler,
+    Event,
+    DeserializeError,
+    SerializeError,
+>>::Options;
 
 /// Lock resource ID for application service leadership
 const APPLICATION_SERVICE_LEADER_LOCK: &str = "application_service_leader";
@@ -120,34 +166,19 @@ where
     LM: LockManager + Clone,
 {
     /// Cached command client
-    client: Arc<OnceLock<
-        <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
-            ApplicationServiceHandler<ES::Initialized>,
-        >,
-    >>,
+    client: Arc<OnceLock<CommandClient<CS, ES>>>,
 
     /// Client options for the command client
-    client_options:
-        <<CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
-            ApplicationServiceHandler<ES::Initialized>,
-        > as Client<
-            ApplicationServiceHandler<ES::Initialized>,
-            Command,
-            DeserializeError,
-            SerializeError,
-        >>::Options,
+    client_options: ClientOptions<CS, ES>,
 
     /// Initialized command stream for processing commands
-    command_stream: CS::Initialized,
+    command_stream: InitializedCommandStream<CS>,
 
     /// Event consumer (started during initialization)
-    consumer:
-        <ES::Initialized as InitializedStream<Event, DeserializeError, SerializeError>>::Consumer<
-            ApplicationViewConsumerHandler,
-        >,
+    consumer: EventConsumer<ES>,
 
     /// Initialized event stream for publishing/consuming events
-    event_stream: ES::Initialized,
+    event_stream: InitializedEventStream<ES>,
 
     /// Current leadership guard (Some if we're the leader)
     leadership_guard: Arc<Mutex<Option<LM::Guard>>>,
@@ -159,23 +190,10 @@ where
     lock_manager: LM,
 
     /// Cached service
-    service: Arc<OnceLock<
-        <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Service<
-            ApplicationServiceHandler<ES::Initialized>,
-        >,
-    >>,
+    service: Arc<OnceLock<CommandService<CS, ES>>>,
 
     /// Service options for the command service
-    service_options: <<CS::Initialized as InitializedStream<
-        Command,
-        DeserializeError,
-        SerializeError,
-    >>::Service<ApplicationServiceHandler<ES::Initialized>> as Service<
-        ApplicationServiceHandler<ES::Initialized>,
-        Command,
-        DeserializeError,
-        SerializeError,
-    >>::Options,
+    service_options: ServiceOptions<CS, ES>,
 
     /// Direct access to the view for queries
     view: ApplicationView,
@@ -201,36 +219,9 @@ where
     pub async fn new(
         command_stream: CS,
         event_stream: ES,
-        service_options: <<CS::Initialized as InitializedStream<
-            Command,
-            DeserializeError,
-            SerializeError,
-        >>::Service<ApplicationServiceHandler<ES::Initialized>> as Service<
-            ApplicationServiceHandler<ES::Initialized>,
-            Command,
-            DeserializeError,
-            SerializeError,
-        >>::Options,
-        client_options: <<CS::Initialized as InitializedStream<
-            Command,
-            DeserializeError,
-            SerializeError,
-        >>::Client<ApplicationServiceHandler<ES::Initialized>> as Client<
-            ApplicationServiceHandler<ES::Initialized>,
-            Command,
-            DeserializeError,
-            SerializeError,
-        >>::Options,
-        consumer_options: <<ES::Initialized as InitializedStream<
-            Event,
-            DeserializeError,
-            SerializeError,
-        >>::Consumer<ApplicationViewConsumerHandler> as Consumer<
-            ApplicationViewConsumerHandler,
-            Event,
-            DeserializeError,
-            SerializeError,
-        >>::Options,
+        service_options: ServiceOptions<CS, ES>,
+        client_options: ClientOptions<CS, ES>,
+        consumer_options: ConsumerOptions<ES>,
         lock_manager: LM,
     ) -> Result<Self, Error> {
         let view = ApplicationView::new();
@@ -289,14 +280,7 @@ where
     }
 
     /// Get or create the client for sending commands.
-    async fn get_client(
-        &self,
-    ) -> Result<
-        <CS::Initialized as InitializedStream<Command, DeserializeError, SerializeError>>::Client<
-            ApplicationServiceHandler<ES::Initialized>,
-        >,
-        Error,
-    > {
+    async fn get_client(&self) -> Result<CommandClient<CS, ES>, Error> {
         if let Some(client) = OnceLock::get(&self.client) {
             return Ok(client.clone());
         }
@@ -471,9 +455,12 @@ where
 impl<CS, ES, LM> Clone for ApplicationManager<CS, ES, LM>
 where
     CS: Stream<Command, DeserializeError, SerializeError>,
-    CS::Initialized: Clone,
+    InitializedCommandStream<CS>: Clone,
     ES: Stream<Event, DeserializeError, SerializeError>,
-    ES::Initialized: Clone,
+    InitializedEventStream<ES>: Clone,
+    EventConsumer<ES>: Clone,
+    ClientOptions<CS, ES>: Clone,
+    ServiceOptions<CS, ES>: Clone,
     LM: LockManager + Clone,
 {
     fn clone(&self) -> Self {
