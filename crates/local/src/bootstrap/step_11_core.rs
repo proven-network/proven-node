@@ -181,7 +181,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
     // Create a test application if there are no applications
     if applications.is_empty() {
         let application = application_manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: Uuid::new_v4(),
             })
             .await

@@ -59,32 +59,32 @@ where
     -> Result<(), Error>;
 
     /// Check if an application exists.
-    async fn application_exists(&self, application_id: Uuid) -> Result<bool, Error>;
+    async fn application_exists(&self, application_id: &Uuid) -> Result<bool, Error>;
 
     /// Archive an application.
-    async fn archive_application(&self, application_id: Uuid) -> Result<(), Error>;
+    async fn archive_application(&self, application_id: &Uuid) -> Result<(), Error>;
 
     /// Create a new application.
     async fn create_application(
         &self,
-        options: CreateApplicationOptions,
+        options: &CreateApplicationOptions,
     ) -> Result<Application, Error>;
 
     /// Get an application by its ID.
-    async fn get_application(&self, application_id: Uuid) -> Result<Option<Application>, Error>;
+    async fn get_application(&self, application_id: &Uuid) -> Result<Option<Application>, Error>;
 
     /// Link an HTTP domain to an application.
     async fn link_http_domain(
         &self,
-        application_id: Uuid,
-        http_domain: Domain,
+        application_id: &Uuid,
+        http_domain: &Domain,
     ) -> Result<(), Error>;
 
     /// List all applications.
     async fn list_all_applications(&self) -> Result<Vec<Application>, Error>;
 
     /// List all applications owned by a specific user.
-    async fn list_applications_by_owner(&self, owner_id: Uuid) -> Result<Vec<Application>, Error>;
+    async fn list_applications_by_owner(&self, owner_id: &Uuid) -> Result<Vec<Application>, Error>;
 
     /// Remove an allowed origin from an application.
     async fn remove_allowed_origin(
@@ -96,15 +96,15 @@ where
     /// Transfer ownership of an application.
     async fn transfer_ownership(
         &self,
-        application_id: Uuid,
-        new_owner_id: Uuid,
+        application_id: &Uuid,
+        new_owner_id: &Uuid,
     ) -> Result<(), Error>;
 
     /// Unlink an HTTP domain from an application.
     async fn unlink_http_domain(
         &self,
-        application_id: Uuid,
-        http_domain: Domain,
+        application_id: &Uuid,
+        http_domain: &Domain,
     ) -> Result<(), Error>;
 }
 
@@ -525,14 +525,16 @@ where
         }
     }
 
-    async fn application_exists(&self, application_id: Uuid) -> Result<bool, Error> {
+    async fn application_exists(&self, application_id: &Uuid) -> Result<bool, Error> {
         Ok(self.view.application_exists(application_id).await)
     }
 
-    async fn archive_application(&self, application_id: Uuid) -> Result<(), Error> {
+    async fn archive_application(&self, application_id: &Uuid) -> Result<(), Error> {
         let client = self.get_client().await?;
 
-        let command = Command::Archive { application_id };
+        let command = Command::Archive {
+            application_id: *application_id,
+        };
 
         match client
             .request(command)
@@ -549,7 +551,7 @@ where
 
     async fn create_application(
         &self,
-        options: CreateApplicationOptions,
+        options: &CreateApplicationOptions,
     ) -> Result<Application, Error> {
         let client = self.get_client().await?;
 
@@ -577,25 +579,25 @@ where
 
         Ok(self
             .view
-            .get_application(application_id)
+            .get_application(&application_id)
             .await
             .ok_or(Error::UnexpectedResponse)?)
     }
 
-    async fn get_application(&self, application_id: Uuid) -> Result<Option<Application>, Error> {
+    async fn get_application(&self, application_id: &Uuid) -> Result<Option<Application>, Error> {
         Ok(self.view.get_application(application_id).await)
     }
 
     async fn link_http_domain(
         &self,
-        application_id: Uuid,
-        http_domain: Domain,
+        application_id: &Uuid,
+        http_domain: &Domain,
     ) -> Result<(), Error> {
         let client = self.get_client().await?;
 
         let command = Command::LinkHttpDomain {
-            application_id,
-            http_domain,
+            application_id: *application_id,
+            http_domain: http_domain.clone(),
         };
 
         match client
@@ -615,7 +617,7 @@ where
         Ok(self.view.list_all_applications().await)
     }
 
-    async fn list_applications_by_owner(&self, owner_id: Uuid) -> Result<Vec<Application>, Error> {
+    async fn list_applications_by_owner(&self, owner_id: &Uuid) -> Result<Vec<Application>, Error> {
         Ok(self.view.list_applications_by_owner(owner_id).await)
     }
 
@@ -646,14 +648,14 @@ where
 
     async fn transfer_ownership(
         &self,
-        application_id: Uuid,
-        new_owner_id: Uuid,
+        application_id: &Uuid,
+        new_owner_id: &Uuid,
     ) -> Result<(), Error> {
         let client = self.get_client().await?;
 
         let command = Command::TransferOwnership {
-            application_id,
-            new_owner_id,
+            application_id: *application_id,
+            new_owner_id: *new_owner_id,
         };
 
         match client
@@ -671,14 +673,14 @@ where
 
     async fn unlink_http_domain(
         &self,
-        application_id: Uuid,
-        http_domain: Domain,
+        application_id: &Uuid,
+        http_domain: &Domain,
     ) -> Result<(), Error> {
         let client = self.get_client().await?;
 
         let command = Command::UnlinkHttpDomain {
-            application_id,
-            http_domain,
+            application_id: *application_id,
+            http_domain: http_domain.clone(),
         };
 
         match client
@@ -739,7 +741,7 @@ mod tests {
         let owner_id = Uuid::new_v4();
 
         let result = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await;
@@ -756,7 +758,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -766,7 +768,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Get from view
-        let retrieved = manager.get_application(app.id).await.unwrap();
+        let retrieved = manager.get_application(&app.id).await.unwrap();
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().owner_id, owner_id);
     }
@@ -781,7 +783,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -792,11 +794,11 @@ mod tests {
 
         // Direct view access
         assert_eq!(manager.view().application_count().await, 1);
-        assert!(manager.view().application_exists(app.id).await);
+        assert!(manager.view().application_exists(&app.id).await);
         assert_eq!(
             manager
                 .view()
-                .list_applications_by_owner(owner_id)
+                .list_applications_by_owner(&owner_id)
                 .await
                 .len(),
             1
@@ -811,7 +813,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -821,14 +823,14 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Transfer ownership
-        let result = manager.transfer_ownership(app.id, new_owner_id).await;
+        let result = manager.transfer_ownership(&app.id, &new_owner_id).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify ownership changed in view
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.owner_id, new_owner_id);
     }
 
@@ -839,7 +841,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -849,17 +851,17 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify exists
-        assert!(manager.view().application_exists(app.id).await);
+        assert!(manager.view().application_exists(&app.id).await);
 
         // Archive application
-        let result = manager.archive_application(app.id).await;
+        let result = manager.archive_application(&app.id).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify no longer exists in view
-        assert!(!manager.view().application_exists(app.id).await);
+        assert!(!manager.view().application_exists(&app.id).await);
     }
 
     #[tokio::test]
@@ -873,7 +875,7 @@ mod tests {
             let manager_clone = manager.clone();
             let handle = tokio::spawn(async move {
                 manager_clone
-                    .create_application(CreateApplicationOptions {
+                    .create_application(&CreateApplicationOptions {
                         owner_identity_id: owner_id,
                     })
                     .await
@@ -896,7 +898,7 @@ mod tests {
         assert_eq!(
             manager
                 .view()
-                .list_applications_by_owner(owner_id)
+                .list_applications_by_owner(&owner_id)
                 .await
                 .len(),
             5
@@ -913,7 +915,7 @@ mod tests {
 
         // Create application (publishes 1 event)
         let _app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -927,7 +929,7 @@ mod tests {
 
         // Create another application (publishes 1 more event)
         let app2 = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -940,7 +942,7 @@ mod tests {
         assert_eq!(manager.view().last_processed_seq(), 2);
 
         // Transfer ownership (publishes 1 more event)
-        let _result = manager.transfer_ownership(app2.id, Uuid::new_v4()).await;
+        let _result = manager.transfer_ownership(&app2.id, &Uuid::new_v4()).await;
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -956,7 +958,7 @@ mod tests {
 
         // Create application (does not require strong consistency)
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -968,21 +970,21 @@ mod tests {
         // Now test commands that require strong consistency
         // Transfer ownership (requires strong consistency)
         let new_owner_id = Uuid::new_v4();
-        let result = manager.transfer_ownership(app.id, new_owner_id).await;
+        let result = manager.transfer_ownership(&app.id, &new_owner_id).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Archive application (requires strong consistency)
-        let result = manager.archive_application(app.id).await;
+        let result = manager.archive_application(&app.id).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify application is gone
-        assert!(!manager.view().application_exists(app.id).await);
+        assert!(!manager.view().application_exists(&app.id).await);
     }
 
     #[tokio::test]
@@ -995,7 +997,7 @@ mod tests {
         // Trigger client creation which should attempt leadership acquisition
         let owner_id = Uuid::new_v4();
         let result = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await;
@@ -1048,7 +1050,7 @@ mod tests {
         // First manager creates an application (should become leader)
         let owner_id = Uuid::new_v4();
         let result1 = manager1
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await;
@@ -1059,7 +1061,7 @@ mod tests {
         // Second manager tries to create an application
         // This should work because NATS will route it to manager1's service
         let result2 = manager2
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await;
@@ -1087,7 +1089,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1097,7 +1099,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Link HTTP domain
-        let result = manager.link_http_domain(app.id, domain.clone()).await;
+        let result = manager.link_http_domain(&app.id, &domain).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
@@ -1114,7 +1116,7 @@ mod tests {
         );
 
         // Verify application has the domain in its linked domains
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.linked_http_domains, vec![domain]);
     }
 
@@ -1125,7 +1127,7 @@ mod tests {
         let domain = Domain::from_str("example.com").unwrap();
 
         // Try to link domain to non-existent application
-        let result = manager.link_http_domain(nonexistent_app_id, domain).await;
+        let result = manager.link_http_domain(&nonexistent_app_id, &domain).await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -1142,7 +1144,7 @@ mod tests {
 
         // Create first application
         let app1 = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1150,7 +1152,7 @@ mod tests {
 
         // Create second application
         let app2 = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1160,14 +1162,14 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Link domain to first application
-        let result = manager.link_http_domain(app1.id, domain.clone()).await;
+        let result = manager.link_http_domain(&app1.id, &domain).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Try to link same domain to second application (should fail)
-        let result = manager.link_http_domain(app2.id, domain).await;
+        let result = manager.link_http_domain(&app2.id, &domain).await;
         assert!(result.is_err());
         match result.unwrap_err() {
             Error::Command(msg) => assert_eq!(msg, "HTTP domain already linked"),
@@ -1183,7 +1185,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1193,7 +1195,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Link HTTP domain
-        let result = manager.link_http_domain(app.id, domain.clone()).await;
+        let result = manager.link_http_domain(&app.id, &domain).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
@@ -1203,7 +1205,7 @@ mod tests {
         assert!(manager.view().http_domain_linked(&domain).await);
 
         // Unlink HTTP domain
-        let result = manager.unlink_http_domain(app.id, domain.clone()).await;
+        let result = manager.unlink_http_domain(&app.id, &domain).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
@@ -1220,7 +1222,7 @@ mod tests {
         );
 
         // Verify application no longer has the domain
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.linked_http_domains, Vec::<Domain>::new());
     }
 
@@ -1231,7 +1233,9 @@ mod tests {
         let domain = Domain::from_str("example.com").unwrap();
 
         // Try to unlink domain from non-existent application
-        let result = manager.unlink_http_domain(nonexistent_app_id, domain).await;
+        let result = manager
+            .unlink_http_domain(&nonexistent_app_id, &domain)
+            .await;
 
         assert!(result.is_err());
         match result.unwrap_err() {
@@ -1248,7 +1252,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1258,7 +1262,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Try to unlink domain that was never linked
-        let result = manager.unlink_http_domain(app.id, domain).await;
+        let result = manager.unlink_http_domain(&app.id, &domain).await;
         assert!(result.is_err());
         match result.unwrap_err() {
             Error::Command(msg) => assert_eq!(msg, "HTTP domain not linked to this application"),
@@ -1274,14 +1278,14 @@ mod tests {
 
         // Create two applications
         let app1 = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
             .unwrap();
 
         let app2 = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1291,14 +1295,14 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Link domain to first application
-        let result = manager.link_http_domain(app1.id, domain.clone()).await;
+        let result = manager.link_http_domain(&app1.id, &domain).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Try to unlink domain from second application (should fail)
-        let result = manager.unlink_http_domain(app2.id, domain).await;
+        let result = manager.unlink_http_domain(&app2.id, &domain).await;
         assert!(result.is_err());
         match result.unwrap_err() {
             Error::Command(msg) => assert_eq!(msg, "HTTP domain not linked to this application"),
@@ -1316,7 +1320,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1326,28 +1330,13 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Link multiple domains
-        assert!(
-            manager
-                .link_http_domain(app.id, domain1.clone())
-                .await
-                .is_ok()
-        );
+        assert!(manager.link_http_domain(&app.id, &domain1).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        assert!(
-            manager
-                .link_http_domain(app.id, domain2.clone())
-                .await
-                .is_ok()
-        );
+        assert!(manager.link_http_domain(&app.id, &domain2).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        assert!(
-            manager
-                .link_http_domain(app.id, domain3.clone())
-                .await
-                .is_ok()
-        );
+        assert!(manager.link_http_domain(&app.id, &domain3).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify all domains are linked
@@ -1379,19 +1368,14 @@ mod tests {
         );
 
         // Verify application has all domains
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.linked_http_domains.len(), 3);
         assert!(updated_app.linked_http_domains.contains(&domain1));
         assert!(updated_app.linked_http_domains.contains(&domain2));
         assert!(updated_app.linked_http_domains.contains(&domain3));
 
         // Unlink one domain
-        assert!(
-            manager
-                .unlink_http_domain(app.id, domain2.clone())
-                .await
-                .is_ok()
-        );
+        assert!(manager.unlink_http_domain(&app.id, &domain2).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify only domain2 is unlinked
@@ -1400,7 +1384,7 @@ mod tests {
         assert!(manager.view().http_domain_linked(&domain3).await);
 
         // Verify application only has remaining domains
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.linked_http_domains.len(), 2);
         assert!(updated_app.linked_http_domains.contains(&domain1));
         assert!(!updated_app.linked_http_domains.contains(&domain2));
@@ -1415,7 +1399,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1425,23 +1409,18 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Link domain to application
-        assert!(
-            manager
-                .link_http_domain(app.id, domain.clone())
-                .await
-                .is_ok()
-        );
+        assert!(manager.link_http_domain(&app.id, &domain).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify domain is linked
         assert!(manager.view().http_domain_linked(&domain).await);
 
         // Archive the application
-        assert!(manager.archive_application(app.id).await.is_ok());
+        assert!(manager.archive_application(&app.id).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify application is archived and domain is no longer linked
-        assert!(!manager.view().application_exists(app.id).await);
+        assert!(!manager.view().application_exists(&app.id).await);
         assert!(!manager.view().http_domain_linked(&domain).await);
         assert_eq!(
             manager
@@ -1459,7 +1438,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1473,10 +1452,12 @@ mod tests {
         let manager_clone = manager.clone();
         let domain_clone = domain.clone();
 
-        let handle1 = tokio::spawn(async move { manager.link_http_domain(app.id, domain).await });
+        let handle1 = tokio::spawn(async move { manager.link_http_domain(&app.id, &domain).await });
 
         let handle2 =
-            tokio::spawn(async move { manager_clone.link_http_domain(app.id, domain_clone).await });
+            tokio::spawn(
+                async move { manager_clone.link_http_domain(&app.id, &domain_clone).await },
+            );
 
         let results = futures::future::join_all([handle1, handle2]).await;
 
@@ -1503,7 +1484,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1522,7 +1503,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify origin was added
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.allowed_origins, vec![origin]);
     }
 
@@ -1544,7 +1525,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1571,7 +1552,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify origin appears only once
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.allowed_origins, vec![origin]);
     }
 
@@ -1582,7 +1563,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1608,7 +1589,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify origin was removed
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.allowed_origins, Vec::<Origin>::new());
     }
 
@@ -1632,7 +1613,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1656,7 +1637,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1680,7 +1661,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify all origins were added
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.allowed_origins.len(), 3);
         assert!(updated_app.allowed_origins.contains(&origin1));
         assert!(updated_app.allowed_origins.contains(&origin2));
@@ -1696,7 +1677,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify only the specified origin was removed
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.allowed_origins.len(), 2);
         assert!(updated_app.allowed_origins.contains(&origin1));
         assert!(!updated_app.allowed_origins.contains(&origin2));
@@ -1710,7 +1691,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await
@@ -1726,15 +1707,15 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify origin was added
-        let updated_app = manager.view().get_application(app.id).await.unwrap();
+        let updated_app = manager.view().get_application(&app.id).await.unwrap();
         assert_eq!(updated_app.allowed_origins, vec![origin.clone()]);
 
         // Archive application
-        assert!(manager.archive_application(app.id).await.is_ok());
+        assert!(manager.archive_application(&app.id).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify application is gone
-        assert!(manager.view().get_application(app.id).await.is_none());
+        assert!(manager.view().get_application(&app.id).await.is_none());
 
         // Try to add origin to archived application (should fail)
         let result = manager.add_allowed_origin(&app.id, &origin).await;
@@ -1749,7 +1730,7 @@ mod tests {
 
         // Create application
         let app = manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: owner_id,
             })
             .await

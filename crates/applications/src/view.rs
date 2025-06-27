@@ -42,13 +42,13 @@ impl ApplicationView {
     }
 
     /// Check if an application exists
-    pub async fn application_exists(&self, application_id: Uuid) -> bool {
-        self.applications.read().await.contains_key(&application_id)
+    pub async fn application_exists(&self, application_id: &Uuid) -> bool {
+        self.applications.read().await.contains_key(application_id)
     }
 
     /// Get a single application by ID
-    pub async fn get_application(&self, application_id: Uuid) -> Option<Application> {
-        self.applications.read().await.get(&application_id).cloned()
+    pub async fn get_application(&self, application_id: &Uuid) -> Option<Application> {
+        self.applications.read().await.get(application_id).cloned()
     }
 
     /// Get an application by HTTP domain
@@ -74,12 +74,12 @@ impl ApplicationView {
     }
 
     /// List all applications owned by a specific user
-    pub async fn list_applications_by_owner(&self, owner_id: Uuid) -> Vec<Application> {
+    pub async fn list_applications_by_owner(&self, owner_id: &Uuid) -> Vec<Application> {
         self.applications
             .read()
             .await
             .values()
-            .filter(|app| app.owner_id == owner_id)
+            .filter(|app| app.owner_id == *owner_id)
             .cloned()
             .collect()
     }

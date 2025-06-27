@@ -57,7 +57,7 @@ impl RpcCommand for ExecuteHashCommand {
                 handler_specifier,
             },
             Session::Identified { identity_id, .. } => {
-                match context.identity_manager.get_identity(identity_id).await {
+                match context.identity_manager.get_identity(&identity_id).await {
                     Ok(Some(identity)) => ExecutionRequest::RpcWithIdentity {
                         application_id: context.application_id,
                         args: self.args.clone(),

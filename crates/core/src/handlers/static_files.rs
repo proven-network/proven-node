@@ -36,7 +36,7 @@ macro_rules! iframe_handler {
             A: Attestor,
             G: Governance,
         {
-            let application = match application_manager.get_application(application_id).await {
+            let application = match application_manager.get_application(&application_id).await {
                 Ok(Some(application)) => application,
                 Ok(None) => return (StatusCode::NOT_FOUND, "Application not found").into_response(),
                 Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),

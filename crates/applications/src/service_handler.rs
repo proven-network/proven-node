@@ -81,14 +81,14 @@ where
                 origin,
             } => {
                 // Validate application exists
-                if !self.view.application_exists(application_id).await {
+                if !self.view.application_exists(&application_id).await {
                     return Ok(Response::Error {
                         message: "Application not found".to_string(),
                     });
                 }
 
                 // Check if origin is already in the allowed origins list
-                if let Some(app) = self.view.get_application(application_id).await {
+                if let Some(app) = self.view.get_application(&application_id).await {
                     if app.allowed_origins.contains(&origin) {
                         return Ok(Response::Error {
                             message: "Origin already in allowed origins".to_string(),
@@ -113,7 +113,7 @@ where
             }
 
             Command::Archive { application_id } => {
-                if !self.view.application_exists(application_id).await {
+                if !self.view.application_exists(&application_id).await {
                     return Ok(Response::Error {
                         message: "Application not found".to_string(),
                     });
@@ -159,7 +159,7 @@ where
                 http_domain,
             } => {
                 // Validate application exists
-                if !self.view.application_exists(application_id).await {
+                if !self.view.application_exists(&application_id).await {
                     return Ok(Response::Error {
                         message: "Application not found".to_string(),
                     });
@@ -193,14 +193,14 @@ where
                 origin,
             } => {
                 // Validate application exists
-                if !self.view.application_exists(application_id).await {
+                if !self.view.application_exists(&application_id).await {
                     return Ok(Response::Error {
                         message: "Application not found".to_string(),
                     });
                 }
 
                 // Check if origin is in the allowed origins list
-                if let Some(app) = self.view.get_application(application_id).await {
+                if let Some(app) = self.view.get_application(&application_id).await {
                     if !app.allowed_origins.contains(&origin) {
                         return Ok(Response::Error {
                             message: "Origin not in allowed origins".to_string(),
@@ -229,7 +229,7 @@ where
                 new_owner_id,
             } => {
                 // Validate application exists
-                if !self.view.application_exists(application_id).await {
+                if !self.view.application_exists(&application_id).await {
                     return Ok(Response::Error {
                         message: "Application not found".to_string(),
                     });
@@ -238,7 +238,7 @@ where
                 // Get current owner for event
                 let old_owner_id = self
                     .view
-                    .get_application(application_id)
+                    .get_application(&application_id)
                     .await
                     .map(|app| app.owner_id)
                     .ok_or(Error::ApplicationNotFound(application_id))?;
@@ -265,7 +265,7 @@ where
                 http_domain,
             } => {
                 // Validate application exists
-                if !self.view.application_exists(application_id).await {
+                if !self.view.application_exists(&application_id).await {
                     return Ok(Response::Error {
                         message: "Application not found".to_string(),
                     });

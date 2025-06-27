@@ -42,8 +42,8 @@ impl IdentityView {
     }
 
     /// Get a single identity by ID
-    pub async fn get_identity(&self, identity_id: Uuid) -> Option<Identity> {
-        self.identities.read().await.get(&identity_id).cloned()
+    pub async fn get_identity(&self, identity_id: &Uuid) -> Option<Identity> {
+        self.identities.read().await.get(identity_id).cloned()
     }
 
     /// Get an identity by PRF public key
@@ -62,8 +62,8 @@ impl IdentityView {
     }
 
     /// Check if an identity exists
-    pub async fn identity_exists(&self, identity_id: Uuid) -> bool {
-        self.identities.read().await.contains_key(&identity_id)
+    pub async fn identity_exists(&self, identity_id: &Uuid) -> bool {
+        self.identities.read().await.contains_key(identity_id)
     }
 
     /// Check if a PRF public key is linked to any identity

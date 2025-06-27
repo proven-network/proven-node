@@ -44,7 +44,7 @@ impl RpcCommand for CreateApplicationCommand {
 
         let application = match context
             .application_manager
-            .create_application(CreateApplicationOptions {
+            .create_application(&CreateApplicationOptions {
                 owner_identity_id: identity_id,
             })
             .await

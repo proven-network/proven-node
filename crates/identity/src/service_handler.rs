@@ -120,7 +120,7 @@ where
                 prf_public_key,
             } => {
                 // Validate identity exists
-                if !self.view.identity_exists(identity_id).await {
+                if !self.view.identity_exists(&identity_id).await {
                     return Ok(Response::Error {
                         message: "Identity not found".to_string(),
                     });

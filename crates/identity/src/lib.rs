@@ -49,7 +49,7 @@ where
     Self: Clone + Send + Sync + 'static,
 {
     /// Get an identity by its ID.
-    async fn get_identity(&self, identity_id: Uuid) -> Result<Option<Identity>, Error>;
+    async fn get_identity(&self, identity_id: &Uuid) -> Result<Option<Identity>, Error>;
 
     /// Get an existing identity by PRF public key, or create a new one if it doesn't exist.
     async fn get_or_create_identity_by_prf_public_key(
@@ -58,7 +58,7 @@ where
     ) -> Result<Identity, Error>;
 
     /// Check if an identity exists.
-    async fn identity_exists(&self, identity_id: Uuid) -> Result<bool, Error>;
+    async fn identity_exists(&self, identity_id: &Uuid) -> Result<bool, Error>;
 
     /// List all identities.
     async fn list_identities(&self) -> Result<Vec<Identity>, Error>;
@@ -450,7 +450,7 @@ where
     ES: Stream<Event, DeserializeError, SerializeError>,
     LM: LockManager + Clone,
 {
-    async fn get_identity(&self, identity_id: Uuid) -> Result<Option<Identity>, Error> {
+    async fn get_identity(&self, identity_id: &Uuid) -> Result<Option<Identity>, Error> {
         // Query the view directly for fast performance
         Ok(self.view.get_identity(identity_id).await)
     }
@@ -480,7 +480,7 @@ where
         }
     }
 
-    async fn identity_exists(&self, identity_id: Uuid) -> Result<bool, Error> {
+    async fn identity_exists(&self, identity_id: &Uuid) -> Result<bool, Error> {
         Ok(self.view.identity_exists(identity_id).await)
     }
 
@@ -562,7 +562,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Get from view
-        let retrieved_identity = manager.get_identity(created_identity.id).await.unwrap();
+        let retrieved_identity = manager.get_identity(&created_identity.id).await.unwrap();
         assert!(retrieved_identity.is_some());
         assert_eq!(retrieved_identity.unwrap().id, created_identity.id);
     }
@@ -594,8 +594,8 @@ mod tests {
         // Direct view access
         assert_eq!(manager.view().identity_count().await, 2);
         assert_eq!(manager.view().prf_public_key_count().await, 2);
-        assert!(manager.view().identity_exists(identity1.id).await);
-        assert!(manager.view().identity_exists(identity2.id).await);
+        assert!(manager.view().identity_exists(&identity1.id).await);
+        assert!(manager.view().identity_exists(&identity2.id).await);
         assert!(manager.view().prf_public_key_exists(&prf1).await);
         assert!(manager.view().prf_public_key_exists(&prf2).await);
 
@@ -705,7 +705,7 @@ mod tests {
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify identity was created and is in view
-        assert!(manager.view().identity_exists(identity1.id).await);
+        assert!(manager.view().identity_exists(&identity1.id).await);
         assert!(manager.view().prf_public_key_exists(&prf_key1).await);
 
         // Test that getting the same PRF key returns the same identity (no duplicate creation)

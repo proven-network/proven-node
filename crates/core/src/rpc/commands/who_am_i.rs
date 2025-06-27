@@ -66,7 +66,7 @@ impl RpcCommand for WhoAmICommand {
                 origin,
                 session_id,
                 ..
-            } => match context.identity_manager.get_identity(identity_id).await {
+            } => match context.identity_manager.get_identity(&identity_id).await {
                 Ok(Some(identity)) => WhoAmIResponse::Identified {
                     identity,
                     origin,
