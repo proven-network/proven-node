@@ -109,7 +109,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
     if peer_count > 0 {
         // TODO: Wait for at least one other node to be started so NATS can boot in cluster mode
         // Just sleep to simulate for now
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::time::sleep(Duration::from_secs(20)).await;
     }
 
     Ok(())
