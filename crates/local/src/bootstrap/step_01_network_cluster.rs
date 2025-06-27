@@ -8,7 +8,7 @@
 //! - Hostname resolution validation
 
 use super::Bootstrap;
-use crate::error::{Error, Result};
+use crate::error::Error;
 use crate::hosts::check_hostname_resolution;
 
 use std::net::{Ipv4Addr, SocketAddr};
@@ -28,9 +28,9 @@ use proven_network::{ProvenNetwork, ProvenNetworkOptions};
 use tower_http::cors::CorsLayer;
 use tracing::info;
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
+pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
     // Parse the private key and calculate public key
-    let private_key_bytes = hex::decode(bootstrap.args.node_key.trim())
+    let private_key_bytes = hex::decode(bootstrap.config.node_key.trim())
         .map_err(|e| Error::PrivateKey(format!("Failed to decode private key as hex: {e}")))?;
 
     // We need exactly 32 bytes for ed25519 private key
@@ -46,7 +46,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
         .map_err(|e| Error::Attestation(format!("failed to get PCRs: {e}")))?;
     let version = Version::from_pcrs(pcrs);
 
-    let governance = if let Some(ref network_config_path) = bootstrap.args.network_config_path {
+    let governance = if let Some(ref network_config_path) = bootstrap.config.network_config_path {
         info!(
             "using replication factor 3 with network config from file: {}",
             network_config_path.display()
@@ -57,7 +57,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
         info!("using replication factor 1 as no network config file provided");
         bootstrap.num_replicas = 1;
         MockGovernance::for_single_node(
-            format!("http://localhost:{}", bootstrap.args.port),
+            format!("http://localhost:{}", bootstrap.config.port),
             &private_key,
             version.clone(),
         )
@@ -78,7 +78,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
     let network = ProvenNetwork::new(ProvenNetworkOptions {
         governance: governance.clone(),
         attestor: bootstrap.attestor.clone(),
-        nats_cluster_port: bootstrap.args.nats_cluster_port,
+        nats_cluster_port: bootstrap.config.nats_cluster_port,
         private_key,
     })
     .await?;
@@ -88,7 +88,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
     // Check /etc/hosts to ensure the node's FQDN is properly configured
     check_hostname_resolution(network.fqdn().await?.as_str()).await?;
 
-    let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.args.port));
+    let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.port));
     let http_server = InsecureHttpServer::new(
         http_sock_addr,
         Router::new()

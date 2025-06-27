@@ -7,7 +7,7 @@
 //! - RPC endpoint configuration
 
 use super::Bootstrap;
-use crate::error::{Error, Result};
+use crate::error::Error;
 
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_bootable::Bootable;
@@ -22,7 +22,7 @@ use proven_messaging_nats::stream::{NatsStream, NatsStreamOptions};
 use tracing::info;
 use url::Url;
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
+pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
     let nats_client = bootstrap.nats_client.as_ref().unwrap_or_else(|| {
         panic!("nats client not fetched before bitcoin testnet node step");
     });
@@ -50,7 +50,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
         // Start Bitcoin testnet node
         let bitcoin_testnet_node = BitcoinNode::new(BitcoinNodeOptions {
             network: BitcoinNetwork::Testnet,
-            store_dir: bootstrap.args.bitcoin_testnet_store_dir.clone(),
+            store_dir: bootstrap.config.bitcoin_testnet_store_dir.clone(),
             rpc_port: None,
         });
 
@@ -89,7 +89,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
             client_options: NatsClientOptions {
                 client: nats_client.clone(),
             },
-            http_port: bootstrap.args.bitcoin_testnet_proxy_port,
+            http_port: bootstrap.config.bitcoin_testnet_proxy_port,
             stream: bitcoin_testnet_proxy_stream,
         });
 
@@ -100,7 +100,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
 
         bootstrap.bitcoin_testnet_node_rpc_endpoint = Url::parse(&format!(
             "http://127.0.0.1:{}",
-            bootstrap.args.bitcoin_testnet_proxy_port
+            bootstrap.config.bitcoin_testnet_proxy_port
         ))
         .unwrap();
 

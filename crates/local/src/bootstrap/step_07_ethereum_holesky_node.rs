@@ -7,7 +7,7 @@
 //! - JWT authentication setup between execution and consensus clients
 
 use super::Bootstrap;
-use crate::error::{Error, Result};
+use crate::error::Error;
 
 use proven_bootable::Bootable;
 use proven_ethereum_lighthouse::{
@@ -17,7 +17,7 @@ use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOpt
 use proven_governance::NodeSpecialization;
 use tracing::info;
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
+pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
     let network = bootstrap.network.as_ref().unwrap_or_else(|| {
         panic!("network not set before ethereum nodes step");
     });
@@ -29,12 +29,15 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
     {
         // Start Reth execution client
         let holesky_reth_node = RethNode::new(RethNodeOptions {
-            discovery_port: bootstrap.args.ethereum_holesky_execution_discovery_port,
-            http_port: bootstrap.args.ethereum_holesky_execution_http_port,
-            metrics_port: bootstrap.args.ethereum_holesky_execution_metrics_port,
+            discovery_port: bootstrap.config.ethereum_holesky_execution_discovery_port,
+            http_port: bootstrap.config.ethereum_holesky_execution_http_port,
+            metrics_port: bootstrap.config.ethereum_holesky_execution_metrics_port,
             network: RethNetwork::Holesky,
-            rpc_port: bootstrap.args.ethereum_holesky_execution_rpc_port,
-            store_dir: bootstrap.args.ethereum_holesky_execution_store_dir.clone(),
+            rpc_port: bootstrap.config.ethereum_holesky_execution_rpc_port,
+            store_dir: bootstrap
+                .config
+                .ethereum_holesky_execution_store_dir
+                .clone(),
         });
 
         holesky_reth_node.start().await.map_err(Error::Bootable)?;
@@ -49,11 +52,14 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
             execution_rpc_jwt_hex,
             execution_rpc_socket_addr,
             host_ip: bootstrap.external_ip.to_string(),
-            http_port: bootstrap.args.ethereum_holesky_consensus_http_port,
-            metrics_port: bootstrap.args.ethereum_holesky_consensus_metrics_port,
+            http_port: bootstrap.config.ethereum_holesky_consensus_http_port,
+            metrics_port: bootstrap.config.ethereum_holesky_consensus_metrics_port,
             network: LighthouseNetwork::Holesky,
-            p2p_port: bootstrap.args.ethereum_holesky_consensus_p2p_port,
-            store_dir: bootstrap.args.ethereum_holesky_consensus_store_dir.clone(),
+            p2p_port: bootstrap.config.ethereum_holesky_consensus_p2p_port,
+            store_dir: bootstrap
+                .config
+                .ethereum_holesky_consensus_store_dir
+                .clone(),
         });
 
         holesky_lighthouse_node

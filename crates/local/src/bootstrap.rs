@@ -15,8 +15,8 @@ pub mod step_09_radix_mainnet_node;
 pub mod step_10_radix_stokenet_node;
 pub mod step_11_core;
 
-use super::error::{Error, Result};
-use crate::Args;
+use super::error::Error;
+use crate::NodeConfig;
 
 use std::net::IpAddr;
 
@@ -32,8 +32,15 @@ use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 use url::Url;
 
+/// Bootstrap struct for local node initialization.
+///
+/// This struct contains the configuration for the node and the state of the node.
+/// It also contains the network, governance, and other services that are needed for the node.
+///
+/// The bootstrap struct is used to initialize the node and start the services.
+/// It is also used to shutdown the node and clean up the services.
 pub struct Bootstrap {
-    args: Args,
+    config: NodeConfig,
     attestor: MockAttestor,
     external_ip: IpAddr,
     num_replicas: usize,
@@ -98,11 +105,19 @@ impl Bootstrap {
         info!("Cleanup complete");
     }
 
-    pub async fn new(args: Args) -> Result<Self> {
+    /// Create a new bootstrap instance with the given configuration.
+    ///
+    /// This function fetches the external IP address and creates a new bootstrap instance.
+    /// It also initializes the network, governance, and other services that are needed for the node.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the external IP address cannot be fetched.
+    pub async fn new(config: NodeConfig) -> Result<Self, Error> {
         let external_ip = crate::net::fetch_external_ip().await?;
 
         Ok(Self {
-            args: args.clone(),
+            config: config.clone(),
             attestor: MockAttestor::new(),
             external_ip,
             num_replicas: 3,
@@ -113,13 +128,13 @@ impl Bootstrap {
             postgres_ip_address: None,
             postgres_port: None,
 
-            bitcoin_mainnet_node_rpc_endpoint: args.bitcoin_mainnet_fallback_rpc_endpoint,
-            bitcoin_testnet_node_rpc_endpoint: args.bitcoin_testnet_fallback_rpc_endpoint,
-            ethereum_mainnet_rpc_endpoint: args.ethereum_mainnet_fallback_rpc_endpoint,
-            ethereum_holesky_rpc_endpoint: args.ethereum_holesky_fallback_rpc_endpoint,
-            ethereum_sepolia_rpc_endpoint: args.ethereum_sepolia_fallback_rpc_endpoint,
-            radix_mainnet_rpc_endpoint: args.radix_mainnet_fallback_rpc_endpoint,
-            radix_stokenet_rpc_endpoint: args.radix_stokenet_fallback_rpc_endpoint,
+            bitcoin_mainnet_node_rpc_endpoint: config.bitcoin_mainnet_fallback_rpc_endpoint.clone(),
+            bitcoin_testnet_node_rpc_endpoint: config.bitcoin_testnet_fallback_rpc_endpoint.clone(),
+            ethereum_mainnet_rpc_endpoint: config.ethereum_mainnet_fallback_rpc_endpoint.clone(),
+            ethereum_holesky_rpc_endpoint: config.ethereum_holesky_fallback_rpc_endpoint.clone(),
+            ethereum_sepolia_rpc_endpoint: config.ethereum_sepolia_fallback_rpc_endpoint.clone(),
+            radix_mainnet_rpc_endpoint: config.radix_mainnet_fallback_rpc_endpoint.clone(),
+            radix_stokenet_rpc_endpoint: config.radix_stokenet_fallback_rpc_endpoint.clone(),
 
             light_core: None,
 
@@ -131,10 +146,18 @@ impl Bootstrap {
         })
     }
 
+    /// Initialize the node.
+    ///
+    /// This function executes all bootstrap steps in order.
+    /// It also sets up the service supervisor.
+    ///
+    /// # Errors
+    ///
+    /// This function returns an error if the node is already started or if a bootstrap step fails.
     pub async fn initialize(
         mut self,
         shutdown_token: CancellationToken,
-    ) -> Result<(Self, TaskTracker)> {
+    ) -> Result<(Self, TaskTracker), Error> {
         if self.started {
             return Err(Error::AlreadyStarted);
         }

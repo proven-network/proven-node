@@ -1,0 +1,17 @@
+[package]
+name = "proven-local-cli"
+version.workspace = true
+edition = "2024"
+
+[[bin]]
+name = "proven-local"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+proven-local.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true 

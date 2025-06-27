@@ -6,7 +6,7 @@
 //! - Support for both Radix mainnet and stokenet databases
 
 use super::Bootstrap;
-use crate::error::{Error, Result};
+use crate::error::Error;
 
 use proven_bootable::Bootable;
 use proven_governance::NodeSpecialization;
@@ -16,7 +16,7 @@ use tracing::info;
 static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
+pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
     let network = bootstrap.network.as_ref().unwrap_or_else(|| {
         panic!("network not set before postgres step");
     });
@@ -32,10 +32,10 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
     {
         let postgres = Postgres::new(PostgresOptions {
             password: POSTGRES_PASSWORD.to_string(),
-            port: bootstrap.args.postgres_port,
+            port: bootstrap.config.postgres_port,
             username: POSTGRES_USERNAME.to_string(),
-            skip_vacuum: bootstrap.args.skip_vacuum,
-            store_dir: bootstrap.args.postgres_store_dir.clone(),
+            skip_vacuum: bootstrap.config.skip_vacuum,
+            store_dir: bootstrap.config.postgres_store_dir.clone(),
         });
 
         postgres.start().await.map_err(Error::Bootable)?;

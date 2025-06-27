@@ -1,4 +1,4 @@
-//! Binary to bootstrap other components locally.
+//! CLI binary to bootstrap proven components locally.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -6,17 +6,10 @@
 #![allow(clippy::redundant_pub_crate)]
 #![allow(clippy::large_futures)] // TODO: Potential refactor
 
-mod bootstrap;
-mod error;
-mod hosts;
-mod net;
-
-use bootstrap::Bootstrap;
-use error::Result;
-
 use std::path::PathBuf;
 
 use clap::Parser;
+use proven_local::{NodeConfig, run_node};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 use url::Url;
@@ -204,7 +197,7 @@ struct Args {
     #[arg(
         long,
         default_value = "9418",
-        env = "PROVEN_ETHEREUM_MAINNET_EXE  CUTION_METRICS_PORT"
+        env = "PROVEN_ETHEREUM_MAINNET_EXECUTION_METRICS_PORT"
     )]
     ethereum_mainnet_execution_metrics_port: u16,
 
@@ -311,6 +304,7 @@ struct Args {
         env = "PROVEN_ETHEREUM_SEPOLIA_FALLBACK_RPC_ENDPOINT"
     )]
     ethereum_sepolia_fallback_rpc_endpoint: Url,
+
     /// Proven HTTP port
     #[arg(long, default_value_t = 3200, env = "PROVEN_PORT")]
     port: u16,
@@ -424,12 +418,80 @@ struct Args {
     testnet: bool,
 }
 
+impl From<Args> for NodeConfig {
+    fn from(args: Args) -> Self {
+        Self {
+            bitcoin_mainnet_fallback_rpc_endpoint: args.bitcoin_mainnet_fallback_rpc_endpoint,
+            bitcoin_mainnet_proxy_port: args.bitcoin_mainnet_proxy_port,
+            bitcoin_mainnet_store_dir: args.bitcoin_mainnet_store_dir,
+            bitcoin_testnet_fallback_rpc_endpoint: args.bitcoin_testnet_fallback_rpc_endpoint,
+            bitcoin_testnet_proxy_port: args.bitcoin_testnet_proxy_port,
+            bitcoin_testnet_store_dir: args.bitcoin_testnet_store_dir,
+            ethereum_holesky_consensus_http_port: args.ethereum_holesky_consensus_http_port,
+            ethereum_holesky_consensus_metrics_port: args.ethereum_holesky_consensus_metrics_port,
+            ethereum_holesky_consensus_p2p_port: args.ethereum_holesky_consensus_p2p_port,
+            ethereum_holesky_consensus_store_dir: args.ethereum_holesky_consensus_store_dir,
+            ethereum_holesky_execution_discovery_port: args
+                .ethereum_holesky_execution_discovery_port,
+            ethereum_holesky_execution_http_port: args.ethereum_holesky_execution_http_port,
+            ethereum_holesky_execution_metrics_port: args.ethereum_holesky_execution_metrics_port,
+            ethereum_holesky_execution_rpc_port: args.ethereum_holesky_execution_rpc_port,
+            ethereum_holesky_execution_store_dir: args.ethereum_holesky_execution_store_dir,
+            ethereum_holesky_fallback_rpc_endpoint: args.ethereum_holesky_fallback_rpc_endpoint,
+            ethereum_mainnet_consensus_http_port: args.ethereum_mainnet_consensus_http_port,
+            ethereum_mainnet_consensus_metrics_port: args.ethereum_mainnet_consensus_metrics_port,
+            ethereum_mainnet_consensus_p2p_port: args.ethereum_mainnet_consensus_p2p_port,
+            ethereum_mainnet_consensus_store_dir: args.ethereum_mainnet_consensus_store_dir,
+            ethereum_mainnet_execution_discovery_port: args
+                .ethereum_mainnet_execution_discovery_port,
+            ethereum_mainnet_execution_http_port: args.ethereum_mainnet_execution_http_port,
+            ethereum_mainnet_execution_metrics_port: args.ethereum_mainnet_execution_metrics_port,
+            ethereum_mainnet_execution_rpc_port: args.ethereum_mainnet_execution_rpc_port,
+            ethereum_mainnet_execution_store_dir: args.ethereum_mainnet_execution_store_dir,
+            ethereum_mainnet_fallback_rpc_endpoint: args.ethereum_mainnet_fallback_rpc_endpoint,
+            ethereum_sepolia_consensus_http_port: args.ethereum_sepolia_consensus_http_port,
+            ethereum_sepolia_consensus_metrics_port: args.ethereum_sepolia_consensus_metrics_port,
+            ethereum_sepolia_consensus_p2p_port: args.ethereum_sepolia_consensus_p2p_port,
+            ethereum_sepolia_consensus_store_dir: args.ethereum_sepolia_consensus_store_dir,
+            ethereum_sepolia_execution_discovery_port: args
+                .ethereum_sepolia_execution_discovery_port,
+            ethereum_sepolia_execution_http_port: args.ethereum_sepolia_execution_http_port,
+            ethereum_sepolia_execution_metrics_port: args.ethereum_sepolia_execution_metrics_port,
+            ethereum_sepolia_execution_rpc_port: args.ethereum_sepolia_execution_rpc_port,
+            ethereum_sepolia_execution_store_dir: args.ethereum_sepolia_execution_store_dir,
+            ethereum_sepolia_fallback_rpc_endpoint: args.ethereum_sepolia_fallback_rpc_endpoint,
+            port: args.port,
+            nats_bin_dir: args.nats_bin_dir,
+            nats_client_port: args.nats_client_port,
+            nats_cluster_port: args.nats_cluster_port,
+            nats_http_port: args.nats_http_port,
+            nats_store_dir: args.nats_store_dir,
+            network_config_path: args.network_config_path,
+            node_key: args.node_key,
+            postgres_bin_path: args.postgres_bin_path,
+            postgres_port: args.postgres_port,
+            postgres_store_dir: args.postgres_store_dir,
+            radix_mainnet_fallback_rpc_endpoint: args.radix_mainnet_fallback_rpc_endpoint,
+            radix_mainnet_http_port: args.radix_mainnet_http_port,
+            radix_mainnet_p2p_port: args.radix_mainnet_p2p_port,
+            radix_mainnet_store_dir: args.radix_mainnet_store_dir,
+            radix_stokenet_fallback_rpc_endpoint: args.radix_stokenet_fallback_rpc_endpoint,
+            radix_stokenet_http_port: args.radix_stokenet_http_port,
+            radix_stokenet_p2p_port: args.radix_stokenet_p2p_port,
+            radix_stokenet_store_dir: args.radix_stokenet_store_dir,
+            skip_vacuum: args.skip_vacuum,
+            testnet: args.testnet,
+        }
+    }
+}
+
 #[tokio::main(worker_threads = 8)]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), proven_local::Error> {
     // Initialize tracing for better logging
     tracing_subscriber::fmt::init();
 
     let args = Args::parse();
+    let config = NodeConfig::from(args);
 
     // Create shared shutdown token
     let shutdown_token = CancellationToken::new();
@@ -457,34 +519,6 @@ async fn main() -> Result<()> {
         signal_shutdown_token.cancel();
     });
 
-    // Start bootstrap with shared shutdown token
-    let bootstrap = Bootstrap::new(args).await?;
-    let initialization_result = tokio::select! {
-        result = bootstrap.initialize(shutdown_token.clone()) => {
-            result
-        }
-        () = shutdown_token.cancelled() => {
-            info!("Shutdown requested during initialization");
-            return Ok(());
-        }
-    };
-
-    match initialization_result {
-        Ok((_node, task_tracker)) => {
-            info!("Bootstrap completed successfully. Press Ctrl+C to shutdown...");
-
-            shutdown_token.cancelled().await;
-
-            task_tracker.wait().await;
-
-            info!("Shutdown complete");
-        }
-
-        Err(e) => {
-            info!("Bootstrap failed: {:?}", e);
-            return Err(e);
-        }
-    }
-
-    Ok(())
+    // Run the node
+    run_node(config, shutdown_token).await
 }

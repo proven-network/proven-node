@@ -1,4 +1,4 @@
-use crate::error::{Error, Result};
+use crate::error::Error;
 
 use std::fs::read_to_string;
 use std::path::Path;
@@ -9,7 +9,7 @@ use tracing::{error, info};
 
 /// Checks if a hostname can be resolved via DNS or hosts file.
 /// Exits the process if the hostname cannot be resolved.
-pub async fn check_hostname_resolution(hostname: &str) -> Result<()> {
+pub async fn check_hostname_resolution(hostname: &str) -> Result<(), Error> {
     // First try DNS resolution using Hickory resolver
     let resolver = match Resolver::tokio_from_system_conf() {
         Ok(resolver) => resolver,

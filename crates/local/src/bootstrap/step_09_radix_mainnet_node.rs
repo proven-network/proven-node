@@ -8,7 +8,7 @@
 //! - `PostgreSQL` integration for data persistence
 
 use super::Bootstrap;
-use crate::error::{Error, Result};
+use crate::error::Error;
 
 use std::path::PathBuf;
 
@@ -24,7 +24,7 @@ static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
 static POSTGRES_RADIX_MAINNET_DATABASE: &str = "radix-mainnet-db";
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
+pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
     let network = bootstrap.network.as_ref().unwrap_or_else(|| {
         panic!("network not set before radix mainnet node step");
     });
@@ -45,10 +45,10 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
         let radix_mainnet_node = RadixNode::new(RadixNodeOptions {
             config_dir: PathBuf::from("/tmp/radix-node-mainnet"),
             host_ip: bootstrap.external_ip.to_string(),
-            http_port: bootstrap.args.radix_mainnet_http_port,
+            http_port: bootstrap.config.radix_mainnet_http_port,
             network_definition: NetworkDefinition::mainnet(),
-            p2p_port: bootstrap.args.radix_mainnet_p2p_port,
-            store_dir: bootstrap.args.radix_mainnet_store_dir.clone(),
+            p2p_port: bootstrap.config.radix_mainnet_p2p_port,
+            store_dir: bootstrap.config.radix_mainnet_store_dir.clone(),
         });
 
         radix_mainnet_node.start().await.map_err(Error::Bootable)?;

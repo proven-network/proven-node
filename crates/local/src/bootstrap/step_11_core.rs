@@ -11,7 +11,7 @@
 //! - Full core startup and light core shutdown
 
 use super::Bootstrap;
-use crate::error::{Error, Result};
+use crate::error::Error;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::str::FromStr;
@@ -48,7 +48,7 @@ use uuid::Uuid;
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
 #[allow(clippy::too_many_lines)]
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
+pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
     let nats_client = bootstrap.nats_client.as_ref().unwrap_or_else(|| {
         panic!("nats client not fetched before core");
     });
@@ -129,7 +129,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
         }),
     });
 
-    let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.args.port));
+    let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.port));
     let http_server = InsecureHttpServer::new(
         http_sock_addr,
         Router::new()

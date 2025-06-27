@@ -1,7 +1,6 @@
 use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, Error>;
-
+/// Error type for local node initialization.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Already started

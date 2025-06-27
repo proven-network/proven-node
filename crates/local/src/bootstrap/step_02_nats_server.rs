@@ -6,7 +6,7 @@
 //! - Cluster synchronization for multi-node setups
 
 use super::Bootstrap;
-use crate::error::{Error, Result};
+use crate::error::Error;
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -17,7 +17,7 @@ use proven_governance_mock::MockGovernance;
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use tracing::info;
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
+pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
     let network = bootstrap.network.as_ref().unwrap_or_else(|| {
         panic!("network not set before nats server step");
     });
@@ -29,15 +29,15 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
         MockAttestor,
         proven_store_fs::FsStore<bytes::Bytes, std::convert::Infallible, std::convert::Infallible>,
     > = NatsServer::new(NatsServerOptions {
-        bin_dir: bootstrap.args.nats_bin_dir.clone(),
+        bin_dir: bootstrap.config.nats_bin_dir.clone(),
         cert_store: None,
-        client_port: bootstrap.args.nats_client_port,
+        client_port: bootstrap.config.nats_client_port,
         config_dir: PathBuf::from("/tmp/nats-config"),
-        debug: bootstrap.args.testnet,
-        http_port: bootstrap.args.nats_http_port,
+        debug: bootstrap.config.testnet,
+        http_port: bootstrap.config.nats_http_port,
         network: network.clone(),
         server_name: network.fqdn().await?,
-        store_dir: bootstrap.args.nats_store_dir.clone(),
+        store_dir: bootstrap.config.nats_store_dir.clone(),
     })?;
 
     nats_server.start().await.map_err(Error::Bootable)?;

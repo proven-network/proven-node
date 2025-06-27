@@ -1,9 +1,9 @@
-use crate::error::{Error, Result};
+use crate::error::Error;
 
 use tracing::info;
 
 /// Fetches the external IP address using myip.com API
-pub async fn fetch_external_ip() -> Result<std::net::IpAddr> {
+pub async fn fetch_external_ip() -> Result<std::net::IpAddr, Error> {
     let response = reqwest::get("https://api.myip.com")
         .await
         .map_err(|e| Error::Io(format!("Failed to fetch external IP: {e}")))?;
