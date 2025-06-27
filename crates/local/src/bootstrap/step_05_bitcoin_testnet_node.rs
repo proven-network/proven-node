@@ -89,7 +89,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
             client_options: NatsClientOptions {
                 client: nats_client.clone(),
             },
-            http_port: 11001,
+            http_port: bootstrap.args.bitcoin_testnet_proxy_port,
             stream: bitcoin_testnet_proxy_stream,
         });
 
@@ -98,7 +98,11 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
             .await
             .map_err(Error::Bootable)?;
 
-        bootstrap.bitcoin_testnet_node_rpc_endpoint = Url::parse("http://127.0.0.1:11001").unwrap();
+        bootstrap.bitcoin_testnet_node_rpc_endpoint = Url::parse(&format!(
+            "http://127.0.0.1:{}",
+            bootstrap.args.bitcoin_testnet_proxy_port
+        ))
+        .unwrap();
 
         // Add proxy client to bootables collection
         bootstrap.add_bootable(Box::new(bitcoin_testnet_proxy_client));

@@ -32,6 +32,14 @@ struct Args {
     )]
     bitcoin_mainnet_fallback_rpc_endpoint: Url,
 
+    /// Bitcoin mainnet proxy port
+    #[arg(
+        long,
+        default_value_t = 11000,
+        env = "PROVEN_BITCOIN_MAINNET_PROXY_PORT"
+    )]
+    bitcoin_mainnet_proxy_port: u16,
+
     /// Bitcoin mainnet store directory
     #[arg(
         long,
@@ -47,6 +55,14 @@ struct Args {
         env = "PROVEN_BITCOIN_TESTNET_FALLBACK_RPC_ENDPOINT"
     )]
     bitcoin_testnet_fallback_rpc_endpoint: Url,
+
+    /// Bitcoin testnet proxy port
+    #[arg(
+        long,
+        default_value_t = 11001,
+        env = "PROVEN_BITCOIN_TESTNET_PROXY_PORT"
+    )]
+    bitcoin_testnet_proxy_port: u16,
 
     /// Bitcoin testnet store directory
     #[arg(
