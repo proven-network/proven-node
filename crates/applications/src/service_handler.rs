@@ -73,7 +73,21 @@ where
     }
 
     /// Handle commands by generating and publishing events
-    async fn handle_command(&self, command: Command) -> Response {
+    pub async fn handle_command(&self, command: Command) -> Response {
+        // If this command requires strong consistency, ensure view is caught up
+        if Self::requires_strong_consistency(&command) {
+            match self.event_stream.last_seq().await {
+                Ok(current_seq) => {
+                    self.view.wait_for_seq(current_seq).await;
+                }
+                Err(e) => {
+                    return Response::InternalError {
+                        message: e.to_string(),
+                    };
+                }
+            }
+        }
+
         match command {
             Command::AddAllowedOrigin {
                 application_id,
@@ -348,17 +362,6 @@ where
                 Self::ResponseSerializationError,
             >,
     {
-        // If this command requires strong consistency, ensure view is caught up
-        if Self::requires_strong_consistency(&command) {
-            let current_seq = self
-                .event_stream
-                .last_seq()
-                .await
-                .map_err(|e| Error::Stream(e.to_string()))?;
-
-            self.view.wait_for_seq(current_seq).await;
-        }
-
         // Handle the command
         let response = self.handle_command(command).await;
 

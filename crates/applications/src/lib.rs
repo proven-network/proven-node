@@ -180,6 +180,9 @@ where
     /// Initialized event stream for publishing/consuming events
     event_stream: InitializedEventStream<ES>,
 
+    /// Direct reference to service handler for optimized leader execution
+    handler: Arc<OnceLock<ServiceHandler<ES>>>,
+
     /// Current leadership guard (Some if we're the leader)
     leadership_guard: Arc<Mutex<Option<LM::Guard>>>,
 
@@ -262,6 +265,7 @@ where
             command_stream,
             consumer,
             event_stream,
+            handler: Arc::new(OnceLock::new()),
             leadership_guard: Arc::new(Mutex::new(None)),
             leadership_monitor: Arc::new(Mutex::new(None)),
             lock_manager,
@@ -366,7 +370,11 @@ where
 
         let service = self
             .command_stream
-            .service("APPLICATION_SERVICE", self.service_options.clone(), handler)
+            .service(
+                "APPLICATION_SERVICE",
+                self.service_options.clone(),
+                handler.clone(),
+            )
             .await
             .map_err(|e| Error::Service(e.to_string()))?;
 
@@ -376,8 +384,9 @@ where
             .await
             .map_err(|e| Error::Service(e.to_string()))?;
 
-        // Store the service (ignore result if another thread set it first)
+        // Store both the service and handler for direct access
         let _ = self.service.set(service);
+        let _ = self.handler.set(handler);
 
         tracing::info!("Application service started as leader");
         Ok(())
@@ -450,6 +459,30 @@ where
         let guard = self.leadership_guard.lock().await;
         guard.is_some()
     }
+
+    /// Execute a command directly via the service handler if we're the leader,
+    /// otherwise fall back to the client path. This optimization bypasses the
+    /// command stream for better performance when we're the leader.
+    async fn execute_command(&self, command: Command) -> Result<Response, Error> {
+        // Check if we're the leader and have a cached handler
+        if self.is_leader().await {
+            if let Some(handler) = OnceLock::get(&self.handler) {
+                // Direct execution path - bypass command stream entirely
+                return Ok(handler.handle_command(command).await);
+            }
+        }
+
+        // Fallback to client path (non-leader or handler not available)
+        let client = self.get_client().await?;
+        match client
+            .request(command)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
+            ClientResponseType::Response(response) => Ok(response),
+            ClientResponseType::Stream(_) => Err(Error::UnexpectedResponse),
+        }
+    }
 }
 
 impl<CS, ES, LM> Clone for ApplicationManager<CS, ES, LM>
@@ -470,6 +503,7 @@ where
             command_stream: self.command_stream.clone(),
             consumer: self.consumer.clone(),
             event_stream: self.event_stream.clone(),
+            handler: Arc::clone(&self.handler),
             leadership_guard: Arc::clone(&self.leadership_guard),
             leadership_monitor: Arc::clone(&self.leadership_monitor),
             lock_manager: self.lock_manager.clone(),
@@ -492,20 +526,14 @@ where
         application_id: &Uuid,
         origin: &Origin,
     ) -> Result<(), Error> {
-        let client = self.get_client().await?;
-
         let command = Command::AddAllowedOrigin {
             application_id: *application_id,
             origin: origin.clone(),
         };
 
-        match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(Response::AllowedOriginAdded { .. }) => Ok(()),
-            ClientResponseType::Response(Response::Error { message }) => {
+        match self.execute_command(command).await? {
+            Response::AllowedOriginAdded { .. } => Ok(()),
+            Response::Error { message } | Response::InternalError { message } => {
                 Err(Error::Command(message))
             }
             _ => Err(Error::UnexpectedResponse),
@@ -517,19 +545,13 @@ where
     }
 
     async fn archive_application(&self, application_id: &Uuid) -> Result<(), Error> {
-        let client = self.get_client().await?;
-
         let command = Command::Archive {
             application_id: *application_id,
         };
 
-        match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(Response::Archived { .. }) => Ok(()),
-            ClientResponseType::Response(Response::Error { message }) => {
+        match self.execute_command(command).await? {
+            Response::Archived { .. } => Ok(()),
+            Response::Error { message } | Response::InternalError { message } => {
                 Err(Error::Command(message))
             }
             _ => Err(Error::UnexpectedResponse),
@@ -540,23 +562,17 @@ where
         &self,
         options: &CreateApplicationOptions,
     ) -> Result<Application, Error> {
-        let client = self.get_client().await?;
-
         let command = Command::Create {
             owner_identity_id: options.owner_identity_id,
         };
 
-        let (application_id, last_event_seq) = match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(Response::Created {
+        let (application_id, last_event_seq) = match self.execute_command(command).await? {
+            Response::Created {
                 application_id,
                 last_event_seq,
                 ..
-            }) => (application_id, last_event_seq),
-            ClientResponseType::Response(Response::Error { message }) => {
+            } => (application_id, last_event_seq),
+            Response::Error { message } | Response::InternalError { message } => {
                 return Err(Error::Command(message));
             }
             _ => return Err(Error::UnexpectedResponse),
@@ -580,20 +596,14 @@ where
         application_id: &Uuid,
         http_domain: &Domain,
     ) -> Result<(), Error> {
-        let client = self.get_client().await?;
-
         let command = Command::LinkHttpDomain {
             application_id: *application_id,
             http_domain: http_domain.clone(),
         };
 
-        match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(Response::HttpDomainLinked { .. }) => Ok(()),
-            ClientResponseType::Response(Response::Error { message }) => {
+        match self.execute_command(command).await? {
+            Response::HttpDomainLinked { .. } => Ok(()),
+            Response::Error { message } | Response::InternalError { message } => {
                 Err(Error::Command(message))
             }
             _ => Err(Error::UnexpectedResponse),
@@ -613,20 +623,14 @@ where
         application_id: &Uuid,
         origin: &Origin,
     ) -> Result<(), Error> {
-        let client = self.get_client().await?;
-
         let command = Command::RemoveAllowedOrigin {
             application_id: *application_id,
             origin: origin.clone(),
         };
 
-        match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(Response::AllowedOriginRemoved { .. }) => Ok(()),
-            ClientResponseType::Response(Response::Error { message }) => {
+        match self.execute_command(command).await? {
+            Response::AllowedOriginRemoved { .. } => Ok(()),
+            Response::Error { message } | Response::InternalError { message } => {
                 Err(Error::Command(message))
             }
             _ => Err(Error::UnexpectedResponse),
@@ -638,20 +642,14 @@ where
         application_id: &Uuid,
         new_owner_id: &Uuid,
     ) -> Result<(), Error> {
-        let client = self.get_client().await?;
-
         let command = Command::TransferOwnership {
             application_id: *application_id,
             new_owner_id: *new_owner_id,
         };
 
-        match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(Response::OwnershipTransferred { .. }) => Ok(()),
-            ClientResponseType::Response(Response::Error { message }) => {
+        match self.execute_command(command).await? {
+            Response::OwnershipTransferred { .. } => Ok(()),
+            Response::Error { message } | Response::InternalError { message } => {
                 Err(Error::Command(message))
             }
             _ => Err(Error::UnexpectedResponse),
@@ -663,20 +661,14 @@ where
         application_id: &Uuid,
         http_domain: &Domain,
     ) -> Result<(), Error> {
-        let client = self.get_client().await?;
-
         let command = Command::UnlinkHttpDomain {
             application_id: *application_id,
             http_domain: http_domain.clone(),
         };
 
-        match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(Response::HttpDomainUnlinked { .. }) => Ok(()),
-            ClientResponseType::Response(Response::Error { message }) => {
+        match self.execute_command(command).await? {
+            Response::HttpDomainUnlinked { .. } => Ok(()),
+            Response::Error { message } | Response::InternalError { message } => {
                 Err(Error::Command(message))
             }
             _ => Err(Error::UnexpectedResponse),

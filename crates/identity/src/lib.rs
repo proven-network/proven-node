@@ -136,6 +136,9 @@ where
     /// Initialized event stream for publishing/consuming events
     event_stream: InitializedEventStream<ES>,
 
+    /// Direct reference to service handler for optimized leader execution
+    handler: Arc<OnceLock<ServiceHandler<ES>>>,
+
     /// Leadership guard (Some when this node is the leader)
     leadership_guard: Arc<Mutex<Option<LM::Guard>>>,
 
@@ -218,6 +221,7 @@ where
             command_stream,
             consumer,
             event_stream,
+            handler: Arc::new(OnceLock::new()),
             leadership_guard: Arc::new(Mutex::new(None)),
             leadership_monitor: Arc::new(Mutex::new(None)),
             lock_manager,
@@ -319,7 +323,11 @@ where
 
         let service = self
             .command_stream
-            .service("IDENTITY_SERVICE", self.service_options.clone(), handler)
+            .service(
+                "IDENTITY_SERVICE",
+                self.service_options.clone(),
+                handler.clone(),
+            )
             .await
             .map_err(|e| Error::Service(e.to_string()))?;
 
@@ -329,8 +337,9 @@ where
             .await
             .map_err(|e| Error::Service(e.to_string()))?;
 
-        // Store the service (ignore result if another thread set it first)
+        // Store both the service and handler for direct access
         let _ = self.service.set(service);
+        let _ = self.handler.set(handler);
 
         tracing::info!("Identity service started as leader");
         Ok(())
@@ -400,6 +409,30 @@ where
         let guard = self.leadership_guard.lock().await;
         guard.is_some()
     }
+
+    /// Execute a command directly via the service handler if we're the leader,
+    /// otherwise fall back to the client path. This optimization bypasses the
+    /// command stream for better performance when we're the leader.
+    async fn execute_command(&self, command: Command) -> Result<Response, Error> {
+        // Check if we're the leader and have a cached handler
+        if self.is_leader().await {
+            if let Some(handler) = OnceLock::get(&self.handler) {
+                // Direct execution path - bypass command stream entirely
+                return Ok(handler.handle_command(command).await);
+            }
+        }
+
+        // Fallback to client path (non-leader or handler not available)
+        let client = self.get_client().await?;
+        match client
+            .request(command)
+            .await
+            .map_err(|e| Error::Client(e.to_string()))?
+        {
+            ClientResponseType::Response(response) => Ok(response),
+            ClientResponseType::Stream(_) => Err(Error::UnexpectedResponse),
+        }
+    }
 }
 
 impl<CS, ES, LM> Clone for IdentityManager<CS, ES, LM>
@@ -420,6 +453,7 @@ where
             command_stream: self.command_stream.clone(),
             consumer: self.consumer.clone(),
             event_stream: self.event_stream.clone(),
+            handler: Arc::clone(&self.handler),
             leadership_guard: Arc::clone(&self.leadership_guard),
             leadership_monitor: Arc::clone(&self.leadership_monitor),
             lock_manager: self.lock_manager.clone(),
@@ -446,24 +480,16 @@ where
         &self,
         prf_public_key: &Bytes,
     ) -> Result<Identity, Error> {
-        let client = self.get_client().await?;
-
         let command = Command::GetOrCreateIdentityByPrfPublicKey {
             prf_public_key: prf_public_key.clone(),
         };
 
-        match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(Response::IdentityRetrieved { identity, .. }) => {
-                Ok(identity)
-            }
-            ClientResponseType::Response(Response::Error { message }) => {
+        match self.execute_command(command).await? {
+            Response::IdentityRetrieved { identity, .. } => Ok(identity),
+            Response::Error { message } | Response::InternalError { message } => {
                 Err(Error::Command(message))
             }
-            _ => Err(Error::UnexpectedResponse),
+            Response::PrfPublicKeyLinked { .. } => Err(Error::UnexpectedResponse),
         }
     }
 
