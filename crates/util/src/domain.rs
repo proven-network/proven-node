@@ -249,6 +249,28 @@ impl std::hash::Hash for Domain {
     }
 }
 
+impl TryFrom<String> for Domain {
+    type Error = DomainError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::from_str(&value)
+    }
+}
+
+impl TryFrom<&str> for Domain {
+    type Error = DomainError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::from_str(value)
+    }
+}
+
+impl From<Domain> for String {
+    fn from(domain: Domain) -> Self {
+        domain.domain
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,5 +417,33 @@ mod tests {
         let domain2 = Domain::from_str("example.com").unwrap();
         assert_eq!(domain1, domain2);
         assert_eq!(domain1.to_string(), "example.com");
+    }
+
+    #[test]
+    fn test_domain_try_from_string() {
+        let domain_string = "example.com".to_string();
+        let domain: Domain = domain_string.try_into().unwrap();
+        assert_eq!(domain.domain(), "example.com");
+
+        let invalid_string = "192.168.1.1".to_string();
+        let result: Result<Domain, _> = invalid_string.try_into();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_domain_try_from_str() {
+        let domain: Domain = "www.example.com".try_into().unwrap();
+        assert_eq!(domain.domain(), "www.example.com");
+        assert_eq!(domain.subdomain(), Some("www"));
+
+        let result: Result<Domain, _> = "192.168.1.1".try_into();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_domain_into_string() {
+        let domain = Domain::from_str("example.com").unwrap();
+        let domain_string: String = domain.into();
+        assert_eq!(domain_string, "example.com");
     }
 }

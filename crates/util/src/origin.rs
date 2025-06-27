@@ -178,6 +178,28 @@ impl fmt::Display for Origin {
     }
 }
 
+impl TryFrom<String> for Origin {
+    type Error = OriginError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::from_str(&value)
+    }
+}
+
+impl TryFrom<&str> for Origin {
+    type Error = OriginError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::from_str(value)
+    }
+}
+
+impl From<Origin> for String {
+    fn from(origin: Origin) -> Self {
+        origin.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,5 +307,35 @@ mod tests {
         assert_eq!(origin1, origin2);
         assert_eq!(origin1, origin3);
         assert_eq!(origin1, origin4);
+    }
+
+    #[test]
+    fn test_origin_try_from_string() {
+        let origin_string = "https://example.com".to_string();
+        let origin: Origin = origin_string.try_into().unwrap();
+        assert_eq!(origin.scheme(), "https");
+        assert_eq!(origin.host(), "example.com");
+
+        let invalid_string = "ftp://example.com".to_string();
+        let result: Result<Origin, _> = invalid_string.try_into();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_origin_try_from_str() {
+        let origin: Origin = "http://localhost:3000".try_into().unwrap();
+        assert_eq!(origin.scheme(), "http");
+        assert_eq!(origin.host(), "localhost");
+        assert_eq!(origin.port(), Some(3000));
+
+        let result: Result<Origin, _> = "https://example.com/path".try_into();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_origin_into_string() {
+        let origin = Origin::from_str("https://example.com:8080").unwrap();
+        let origin_string: String = origin.into();
+        assert_eq!(origin_string, "https://example.com:8080");
     }
 }
