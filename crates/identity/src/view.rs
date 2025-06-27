@@ -117,19 +117,30 @@ impl IdentityView {
     async fn apply_event(&self, event: &Event) {
         match event {
             Event::Created { identity_id, .. } => {
-                let identity = Identity { id: *identity_id };
-                let mut identities = self.identities.write().await;
-                identities.insert(*identity_id, identity);
+                self.apply_created(*identity_id).await;
             }
             Event::PrfPublicKeyLinked {
                 identity_id,
                 prf_public_key,
                 ..
             } => {
-                let mut prf_map = self.prf_to_identity.write().await;
-                prf_map.insert(prf_public_key.clone(), *identity_id);
+                self.apply_prf_public_key_linked(*identity_id, prf_public_key)
+                    .await;
             }
         }
+    }
+
+    /// Apply `Created` event
+    async fn apply_created(&self, identity_id: Uuid) {
+        let identity = Identity { id: identity_id };
+        let mut identities = self.identities.write().await;
+        identities.insert(identity_id, identity);
+    }
+
+    /// Apply `PrfPublicKeyLinked` event
+    async fn apply_prf_public_key_linked(&self, identity_id: Uuid, prf_public_key: &Bytes) {
+        let mut prf_map = self.prf_to_identity.write().await;
+        prf_map.insert(prf_public_key.clone(), identity_id);
     }
 }
 

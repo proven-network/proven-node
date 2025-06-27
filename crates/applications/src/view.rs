@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use proven_messaging::consumer_handler::ConsumerHandler;
-use proven_util::Domain;
+use proven_util::{Domain, Origin};
 use tokio::sync::{Notify, RwLock};
 use uuid::Uuid;
 
@@ -120,36 +120,25 @@ impl ApplicationView {
     /// Apply an event to update the view state
     /// This is called by the consumer handler when processing events
     async fn apply_event(&self, event: &Event) {
-        let mut apps = self.applications.write().await;
-
         match event {
             Event::AllowedOriginAdded {
                 application_id,
                 origin,
                 ..
             } => {
-                if let Some(app) = apps.get_mut(application_id) {
-                    app.allowed_origins.push(origin.clone());
-                }
+                self.apply_allowed_origin_added(*application_id, origin)
+                    .await;
             }
             Event::AllowedOriginRemoved {
                 application_id,
                 origin,
                 ..
             } => {
-                if let Some(app) = apps.get_mut(application_id) {
-                    app.allowed_origins.retain(|o| o != origin);
-                }
+                self.apply_allowed_origin_removed(*application_id, origin)
+                    .await;
             }
             Event::Archived { application_id, .. } => {
-                // Clean up linked domains for this application
-                if let Some(app) = apps.get(application_id) {
-                    let mut domain_map = self.http_domain_to_application.write().await;
-                    for domain in &app.linked_http_domains {
-                        domain_map.remove(domain);
-                    }
-                }
-                apps.remove(application_id);
+                self.apply_archived(*application_id).await;
             }
             Event::Created {
                 application_id,
@@ -157,53 +146,128 @@ impl ApplicationView {
                 owner_identity_id,
                 ..
             } => {
-                let app = Application {
-                    created_at: *created_at,
-                    id: *application_id,
-                    linked_http_domains: vec![],
-                    allowed_origins: vec![],
-                    owner_id: *owner_identity_id,
-                };
-                apps.insert(*application_id, app);
+                self.apply_created(*application_id, *created_at, *owner_identity_id)
+                    .await;
             }
             Event::HttpDomainLinked {
                 application_id,
                 http_domain,
                 ..
             } => {
-                if let Some(app) = apps.get_mut(application_id) {
-                    app.linked_http_domains.push(http_domain.clone());
-                }
-
-                self.http_domain_to_application
-                    .write()
-                    .await
-                    .insert(http_domain.clone(), *application_id);
+                self.apply_http_domain_linked(*application_id, http_domain)
+                    .await;
             }
             Event::HttpDomainUnlinked {
                 application_id,
                 http_domain,
                 ..
             } => {
-                if let Some(app) = apps.get_mut(application_id) {
-                    app.linked_http_domains
-                        .retain(|domain| domain != http_domain);
-                }
-
-                self.http_domain_to_application
-                    .write()
-                    .await
-                    .remove(http_domain);
+                self.apply_http_domain_unlinked(*application_id, http_domain)
+                    .await;
             }
             Event::OwnershipTransferred {
                 application_id,
                 new_owner_id,
                 ..
             } => {
-                if let Some(app) = apps.get_mut(application_id) {
-                    app.owner_id = *new_owner_id;
-                }
+                self.apply_ownership_transferred(*application_id, *new_owner_id)
+                    .await;
             }
+        }
+    }
+
+    /// Apply `AllowedOriginAdded` event
+    async fn apply_allowed_origin_added(&self, application_id: Uuid, origin: &Origin) {
+        let mut apps = self.applications.write().await;
+
+        if let Some(app) = apps.get_mut(&application_id) {
+            app.allowed_origins.push(origin.clone());
+        }
+    }
+
+    /// Apply `AllowedOriginRemoved` event
+    async fn apply_allowed_origin_removed(&self, application_id: Uuid, origin: &Origin) {
+        let mut apps = self.applications.write().await;
+
+        if let Some(app) = apps.get_mut(&application_id) {
+            app.allowed_origins.retain(|o| o != origin);
+        }
+    }
+
+    /// Apply `Archived` event
+    async fn apply_archived(&self, application_id: Uuid) {
+        let mut apps = self.applications.write().await;
+
+        // Clean up linked domains for this application
+        if let Some(app) = apps.get(&application_id) {
+            let mut domain_map = self.http_domain_to_application.write().await;
+            for domain in &app.linked_http_domains {
+                domain_map.remove(domain);
+            }
+        }
+        apps.remove(&application_id);
+    }
+
+    /// Apply `Created` event
+    async fn apply_created(
+        &self,
+        application_id: Uuid,
+        created_at: chrono::DateTime<chrono::Utc>,
+        owner_identity_id: Uuid,
+    ) {
+        let mut apps = self.applications.write().await;
+
+        let app = Application {
+            created_at,
+            id: application_id,
+            linked_http_domains: vec![],
+            allowed_origins: vec![],
+            owner_id: owner_identity_id,
+        };
+        apps.insert(application_id, app);
+
+        drop(apps);
+    }
+
+    /// Apply `HttpDomainLinked` event
+    async fn apply_http_domain_linked(&self, application_id: Uuid, http_domain: &Domain) {
+        let mut apps = self.applications.write().await;
+
+        if let Some(app) = apps.get_mut(&application_id) {
+            app.linked_http_domains.push(http_domain.clone());
+        }
+
+        drop(apps);
+
+        self.http_domain_to_application
+            .write()
+            .await
+            .insert(http_domain.clone(), application_id);
+    }
+
+    /// Apply `HttpDomainUnlinked` event
+    async fn apply_http_domain_unlinked(&self, application_id: Uuid, http_domain: &Domain) {
+        let mut apps = self.applications.write().await;
+
+        if let Some(app) = apps.get_mut(&application_id) {
+            app.linked_http_domains
+                .retain(|domain| domain != http_domain);
+        }
+
+        drop(apps);
+
+        self.http_domain_to_application
+            .write()
+            .await
+            .remove(http_domain);
+    }
+
+    /// Apply `OwnershipTransferred` event
+    async fn apply_ownership_transferred(&self, application_id: Uuid, new_owner_id: Uuid) {
+        let mut apps = self.applications.write().await;
+
+        if let Some(app) = apps.get_mut(&application_id) {
+            app.owner_id = new_owner_id;
         }
     }
 }
