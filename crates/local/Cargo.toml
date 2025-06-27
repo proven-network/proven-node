@@ -46,6 +46,7 @@ proven-store.workspace = true
 proven-store-fs.workspace = true
 proven-store-memory.workspace = true
 proven-store-nats.workspace = true
+proven-util.workspace = true
 radix-common.workspace = true
 reqwest.workspace = true
 serde.workspace = true

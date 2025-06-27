@@ -14,6 +14,7 @@ use super::Bootstrap;
 use crate::error::{Error, Result};
 
 use std::net::{Ipv4Addr, SocketAddr};
+use std::str::FromStr;
 use std::time::Duration;
 
 use axum::Router;
@@ -39,6 +40,7 @@ use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
+use proven_util::Origin;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 use uuid::Uuid;
@@ -182,9 +184,16 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<()> {
             .create_application(CreateApplicationOptions {
                 owner_identity_id: Uuid::new_v4(),
             })
-            .await;
+            .await
+            .unwrap();
+
+        let allowed_origin = Origin::from_str("http://proven.local:6900").unwrap();
+        application_manager
+            .add_allowed_origin(&application.id, &allowed_origin)
+            .await?;
 
         info!("created test application: {application:?}");
+        info!("allowed origin: {}", allowed_origin);
     }
 
     let application_store = NatsStore2::new(NatsStoreOptions {

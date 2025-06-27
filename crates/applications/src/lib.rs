@@ -55,7 +55,8 @@ where
     Self: Clone + Send + Sync + 'static,
 {
     /// Add an allowed origin to an application.
-    async fn add_allowed_origin(&self, application_id: Uuid, origin: Origin) -> Result<(), Error>;
+    async fn add_allowed_origin(&self, application_id: &Uuid, origin: &Origin)
+    -> Result<(), Error>;
 
     /// Check if an application exists.
     async fn application_exists(&self, application_id: Uuid) -> Result<bool, Error>;
@@ -88,8 +89,8 @@ where
     /// Remove an allowed origin from an application.
     async fn remove_allowed_origin(
         &self,
-        application_id: Uuid,
-        origin: Origin,
+        application_id: &Uuid,
+        origin: &Origin,
     ) -> Result<(), Error>;
 
     /// Transfer ownership of an application.
@@ -499,12 +500,16 @@ where
     ES: Stream<Event, DeserializeError, SerializeError>,
     LM: LockManager + Clone,
 {
-    async fn add_allowed_origin(&self, application_id: Uuid, origin: Origin) -> Result<(), Error> {
+    async fn add_allowed_origin(
+        &self,
+        application_id: &Uuid,
+        origin: &Origin,
+    ) -> Result<(), Error> {
         let client = self.get_client().await?;
 
         let command = Command::AddAllowedOrigin {
-            application_id,
-            origin,
+            application_id: *application_id,
+            origin: origin.clone(),
         };
 
         match client
@@ -616,14 +621,14 @@ where
 
     async fn remove_allowed_origin(
         &self,
-        application_id: Uuid,
-        origin: Origin,
+        application_id: &Uuid,
+        origin: &Origin,
     ) -> Result<(), Error> {
         let client = self.get_client().await?;
 
         let command = Command::RemoveAllowedOrigin {
-            application_id,
-            origin,
+            application_id: *application_id,
+            origin: origin.clone(),
         };
 
         match client
@@ -1510,7 +1515,7 @@ mod tests {
         let origin = Origin::from_str("https://example.com").unwrap();
 
         // Add allowed origin
-        let result = manager.add_allowed_origin(app.id, origin.clone()).await;
+        let result = manager.add_allowed_origin(&app.id, &origin).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
@@ -1527,7 +1532,7 @@ mod tests {
         let nonexistent_id = Uuid::new_v4();
         let origin = Origin::from_str("https://example.com").unwrap();
 
-        let result = manager.add_allowed_origin(nonexistent_id, origin).await;
+        let result = manager.add_allowed_origin(&nonexistent_id, &origin).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::Command(_)));
     }
@@ -1551,14 +1556,14 @@ mod tests {
         let origin = Origin::from_str("https://example.com").unwrap();
 
         // Add allowed origin first time
-        let result = manager.add_allowed_origin(app.id, origin.clone()).await;
+        let result = manager.add_allowed_origin(&app.id, &origin).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Try to add the same origin again
-        let result = manager.add_allowed_origin(app.id, origin.clone()).await;
+        let result = manager.add_allowed_origin(&app.id, &origin).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::Command(_)));
 
@@ -1589,14 +1594,14 @@ mod tests {
         let origin = Origin::from_str("https://example.com").unwrap();
 
         // Add allowed origin
-        let result = manager.add_allowed_origin(app.id, origin.clone()).await;
+        let result = manager.add_allowed_origin(&app.id, &origin).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Remove allowed origin
-        let result = manager.remove_allowed_origin(app.id, origin.clone()).await;
+        let result = manager.remove_allowed_origin(&app.id, &origin).await;
         assert!(result.is_ok());
 
         // Give event processing time to complete
@@ -1613,7 +1618,9 @@ mod tests {
         let nonexistent_id = Uuid::new_v4();
         let origin = Origin::from_str("https://example.com").unwrap();
 
-        let result = manager.remove_allowed_origin(nonexistent_id, origin).await;
+        let result = manager
+            .remove_allowed_origin(&nonexistent_id, &origin)
+            .await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::Command(_)));
     }
@@ -1637,7 +1644,7 @@ mod tests {
         let origin = Origin::from_str("https://example.com").unwrap();
 
         // Try to remove origin that was never added
-        let result = manager.remove_allowed_origin(app.id, origin).await;
+        let result = manager.remove_allowed_origin(&app.id, &origin).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::Command(_)));
     }
@@ -1663,28 +1670,13 @@ mod tests {
         let origin3 = Origin::from_str("https://example3.com").unwrap();
 
         // Add multiple origins
-        assert!(
-            manager
-                .add_allowed_origin(app.id, origin1.clone())
-                .await
-                .is_ok()
-        );
+        assert!(manager.add_allowed_origin(&app.id, &origin1).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        assert!(
-            manager
-                .add_allowed_origin(app.id, origin2.clone())
-                .await
-                .is_ok()
-        );
+        assert!(manager.add_allowed_origin(&app.id, &origin2).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
-        assert!(
-            manager
-                .add_allowed_origin(app.id, origin3.clone())
-                .await
-                .is_ok()
-        );
+        assert!(manager.add_allowed_origin(&app.id, &origin3).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify all origins were added
@@ -1697,7 +1689,7 @@ mod tests {
         // Remove one origin
         assert!(
             manager
-                .remove_allowed_origin(app.id, origin2.clone())
+                .remove_allowed_origin(&app.id, &origin2)
                 .await
                 .is_ok()
         );
@@ -1730,12 +1722,7 @@ mod tests {
         let origin = Origin::from_str("https://example.com").unwrap();
 
         // Add allowed origin
-        assert!(
-            manager
-                .add_allowed_origin(app.id, origin.clone())
-                .await
-                .is_ok()
-        );
+        assert!(manager.add_allowed_origin(&app.id, &origin).await.is_ok());
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
         // Verify origin was added
@@ -1750,7 +1737,7 @@ mod tests {
         assert!(manager.view().get_application(app.id).await.is_none());
 
         // Try to add origin to archived application (should fail)
-        let result = manager.add_allowed_origin(app.id, origin).await;
+        let result = manager.add_allowed_origin(&app.id, &origin).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::Command(_)));
     }
@@ -1776,12 +1763,14 @@ mod tests {
         let manager_clone = manager.clone();
         let origin_clone = origin.clone();
 
-        let handle1 = tokio::spawn(async move { manager.add_allowed_origin(app.id, origin).await });
+        let handle1 =
+            tokio::spawn(async move { manager.add_allowed_origin(&app.id, &origin).await });
 
-        let handle2 =
-            tokio::spawn(
-                async move { manager_clone.add_allowed_origin(app.id, origin_clone).await },
-            );
+        let handle2 = tokio::spawn(async move {
+            manager_clone
+                .add_allowed_origin(&app.id, &origin_clone)
+                .await
+        });
 
         let results = futures::future::join_all([handle1, handle2]).await;
 

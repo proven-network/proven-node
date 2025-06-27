@@ -12,6 +12,7 @@ use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
+use proven_util::Origin;
 
 use axum::extract::Path;
 use uuid::Uuid;
@@ -35,25 +36,30 @@ macro_rules! iframe_handler {
             A: Attestor,
             G: Governance,
         {
-            match application_manager.application_exists(application_id).await {
-                Ok(true) => (),
-                Ok(false) => {
-                    return (StatusCode::NOT_FOUND, "Application not found").into_response()
-                }
+            let application = match application_manager.get_application(application_id).await {
+                Ok(Some(application)) => application,
+                Ok(None) => return (StatusCode::NOT_FOUND, "Application not found").into_response(),
                 Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-            }
+            };
 
-            let referer = referer_header.0.to_string();
+            let referer_origin: Origin = match referer_header.0.to_string().try_into() {
+                Ok(referer) => referer,
+                Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            };
+
+            if !application.allowed_origins.contains(&referer_origin) {
+                return (StatusCode::FORBIDDEN, "Referer not allowed").into_response();
+            }
 
             (
                 [
                     (
                         "Content-Security-Policy",
-                        format!("frame-ancestors {referer}"),
+                        format!("frame-ancestors {referer_origin}"),
                     ),
                     (
                         "X-Frame-Options",
-                        format!("ALLOW-FROM frame-ancestors {referer}"),
+                        format!("ALLOW-FROM frame-ancestors {referer_origin}"),
                     ),
                 ],
                 Html($html_const),
