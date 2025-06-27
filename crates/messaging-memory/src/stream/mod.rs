@@ -300,13 +300,7 @@ where
 
     /// The last sequence number in the stream.
     async fn last_seq(&self) -> Result<u64, Self::Error> {
-        let messages = self.messages.lock().await;
-        if messages.is_empty() {
-            Ok(0)
-        } else {
-            // Return the sequence number of the last message (0-indexed)
-            Ok((messages.len() - 1).try_into().unwrap())
-        }
+        Ok(self.messages.lock().await.len().try_into().unwrap())
     }
 
     /// The number of messages in the stream.
@@ -329,23 +323,23 @@ where
 
     /// Publishes a message directly to the stream.
     async fn publish(&self, message: T) -> Result<u64, Self::Error> {
-        let seq_usize = {
+        let seq: u64 = {
             let mut messages = self.messages.lock().await;
-            let seq = messages.len();
+            let seq_usize = messages.len();
             messages.push(Some(message.clone()));
-            seq
+
+            // Broadcast the message to all consumers while holding the lock
+            let mut channels = self.consumer_channels.lock().await;
+            channels.retain_mut(|sender| {
+                let message = message.clone();
+                sender.try_send(message).is_ok()
+            });
+            drop(channels);
+            drop(messages);
+
+            // TODO: Add error handling for sequence number conversion
+            seq_usize.try_into().unwrap()
         };
-
-        // Broadcast the message to all consumers
-        let mut channels = self.consumer_channels.lock().await;
-        channels.retain_mut(|sender| {
-            let message = message.clone();
-            sender.try_send(message).is_ok()
-        });
-        drop(channels);
-
-        // TODO: Add error handling for sequence number conversion
-        let seq: u64 = seq_usize.try_into().unwrap();
 
         Ok(seq)
     }
@@ -357,7 +351,7 @@ where
             return Err(Error::EmptyBatch);
         }
 
-        let last_seq = {
+        let last_seq: u64 = {
             let mut stream_messages = self.messages.lock().await;
 
             // Add all messages atomically
@@ -365,22 +359,22 @@ where
                 stream_messages.push(Some(message.clone()));
             }
 
-            // Return the sequence of the last message
-            stream_messages.len() - 1
+            let last_seq_usize = stream_messages.len();
+
+            // Broadcast all messages to consumers while holding the lock
+            let mut channels = self.consumer_channels.lock().await;
+            for message in &messages {
+                channels.retain_mut(|sender| {
+                    let message = message.clone();
+                    sender.try_send(message).is_ok()
+                });
+            }
+            drop(channels);
+            drop(stream_messages);
+
+            // TODO: Add error handling for sequence number conversion
+            last_seq_usize.try_into().unwrap()
         };
-
-        // Broadcast all messages to consumers
-        let mut channels = self.consumer_channels.lock().await;
-        for message in &messages {
-            channels.retain_mut(|sender| {
-                let message = message.clone();
-                sender.try_send(message).is_ok()
-            });
-        }
-        drop(channels);
-
-        // TODO: Add error handling for sequence number conversion
-        let last_seq: u64 = last_seq.try_into().unwrap();
 
         Ok(last_seq)
     }
@@ -1066,13 +1060,13 @@ mod tests {
 
         // Publish batch
         let last_seq = stream.publish_batch(all_messages).await.unwrap();
-        assert_eq!(last_seq, 2); // Last sequence should be 2 (0-indexed)
+        assert_eq!(last_seq, 3);
 
         // Verify all messages were stored
         assert_eq!(stream.get(0).await.unwrap(), Some(message1));
         assert_eq!(stream.get(1).await.unwrap(), Some(message2));
         assert_eq!(stream.get(2).await.unwrap(), Some(message3));
-        assert_eq!(stream.last_seq().await.unwrap(), 2);
+        assert_eq!(stream.last_seq().await.unwrap(), 3);
         assert_eq!(stream.messages().await.unwrap(), 3);
     }
 
