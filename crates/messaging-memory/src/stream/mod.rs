@@ -264,11 +264,12 @@ where
         let seq_usize: usize = seq.try_into().unwrap();
 
         let mut messages = self.messages.lock().await;
-        if seq_usize >= messages.len() {
+
+        if seq_usize > messages.len() {
             return Err(Error::InvalidSeq(seq_usize, messages.len()));
         }
 
-        messages[seq_usize] = None;
+        messages[seq_usize - 1] = None;
         drop(messages);
 
         Ok(())
@@ -280,11 +281,11 @@ where
         let seq_usize: usize = seq.try_into().unwrap();
 
         let messages = self.messages.lock().await;
-        if seq_usize >= messages.len() {
+        if seq_usize > messages.len() || seq_usize == 0 {
             return Err(Error::InvalidSeq(seq_usize, messages.len()));
         }
 
-        Ok(messages.get(seq_usize).and_then(Clone::clone))
+        Ok(messages.get(seq_usize - 1).and_then(Clone::clone))
     }
 
     /// The last message in the stream.
@@ -325,8 +326,9 @@ where
     async fn publish(&self, message: T) -> Result<u64, Self::Error> {
         let seq: u64 = {
             let mut messages = self.messages.lock().await;
-            let seq_usize = messages.len();
+
             messages.push(Some(message.clone()));
+            let seq_usize = messages.len();
 
             // Broadcast the message to all consumers while holding the lock
             let mut channels = self.consumer_channels.lock().await;
@@ -746,7 +748,7 @@ mod tests {
         // Wait for the message to be processed
         tokio::task::yield_now().await;
 
-        assert_eq!(stream.get(0).await.unwrap(), Some(message));
+        assert_eq!(stream.get(1).await.unwrap(), Some(message));
     }
 
     #[tokio::test]
@@ -834,10 +836,10 @@ mod tests {
         let seq1 = stream.publish(message1.clone()).await.unwrap();
         let seq2 = stream.publish(message2.clone()).await.unwrap();
 
-        assert_eq!(seq1, 0);
-        assert_eq!(seq2, 1);
-        assert_eq!(stream.get(0).await.unwrap(), Some(message1));
-        assert_eq!(stream.get(1).await.unwrap(), Some(message2));
+        assert_eq!(seq1, 1);
+        assert_eq!(seq2, 2);
+        assert_eq!(stream.get(1).await.unwrap(), Some(message1));
+        assert_eq!(stream.get(2).await.unwrap(), Some(message2));
     }
 
     #[tokio::test]
@@ -963,12 +965,12 @@ mod tests {
         stream.publish(message3.clone()).await.unwrap();
 
         // Delete middle message
-        stream.delete(1).await.unwrap();
+        stream.delete(2).await.unwrap();
 
         // First and last messages should still be accessible
-        assert_eq!(stream.get(0).await.unwrap(), Some(message1));
-        assert_eq!(stream.get(1).await.unwrap(), None);
-        assert_eq!(stream.get(2).await.unwrap(), Some(message3.clone()));
+        assert_eq!(stream.get(1).await.unwrap(), Some(message1));
+        assert_eq!(stream.get(2).await.unwrap(), None);
+        assert_eq!(stream.get(3).await.unwrap(), Some(message3.clone()));
 
         // Attempting to delete an invalid sequence should fail
         assert!(stream.delete(99).await.is_err());
@@ -1002,9 +1004,9 @@ mod tests {
         assert_eq!(seq, 2);
 
         // Verify that only message3 is present in the stream
-        assert_eq!(stream.get(0).await.unwrap(), None);
         assert_eq!(stream.get(1).await.unwrap(), None);
-        assert_eq!(stream.get(2).await.unwrap(), Some(message3.clone()));
+        assert_eq!(stream.get(2).await.unwrap(), None);
+        assert_eq!(stream.get(3).await.unwrap(), Some(message3.clone()));
 
         // Verify that the last message is message3
         assert_eq!(stream.last_message().await.unwrap(), Some(message3));
@@ -1063,9 +1065,9 @@ mod tests {
         assert_eq!(last_seq, 3);
 
         // Verify all messages were stored
-        assert_eq!(stream.get(0).await.unwrap(), Some(message1));
-        assert_eq!(stream.get(1).await.unwrap(), Some(message2));
-        assert_eq!(stream.get(2).await.unwrap(), Some(message3));
+        assert_eq!(stream.get(1).await.unwrap(), Some(message1));
+        assert_eq!(stream.get(2).await.unwrap(), Some(message2));
+        assert_eq!(stream.get(3).await.unwrap(), Some(message3));
         assert_eq!(stream.last_seq().await.unwrap(), 3);
         assert_eq!(stream.messages().await.unwrap(), 3);
     }
