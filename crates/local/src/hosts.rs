@@ -35,17 +35,10 @@ pub async fn check_hostname_resolution(hostname: &str) -> Result<()> {
                 lookup_result.iter().collect::<Vec<_>>()
             );
         }
-    } else {
-        error!(
-            "Could not resolve {} via DNS: {:?}",
-            hostname,
-            dns_lookup_result.err()
-        );
-        if !check_hosts_file(hostname) {
-            error!("{} is not configured in hosts file either", hostname);
-            show_hosts_file_instructions(hostname);
-            std::process::exit(1);
-        }
+    } else if !check_hosts_file(hostname) {
+        error!("{} is not valid DNS nor configured in hosts file", hostname);
+        show_hosts_file_instructions(hostname);
+        std::process::exit(1);
     }
 
     Ok(())
