@@ -13,13 +13,17 @@ pub enum Error {
     /// Error when loading or parsing the topology file.
     #[error("Topology file error: {0}")]
     TopologyFile(String),
+
+    /// Error when managing nodes in the topology.
+    #[error("Node management error: {0}")]
+    NodeManagement(String),
 }
 
 impl GovernanceError for Error {
     fn kind(&self) -> GovernanceErrorKind {
         match self {
             Self::NodeNotFound(_) => GovernanceErrorKind::NodeNotFound,
-            Self::TopologyFile(_) => GovernanceErrorKind::Other,
+            Self::TopologyFile(_) | Self::NodeManagement(_) => GovernanceErrorKind::Other,
         }
     }
 }

@@ -79,6 +79,12 @@ impl MockAttestor {
             pcrs,
         }
     }
+
+    /// Get PCRs synchronously (direct access to stored values)
+    #[must_use]
+    pub fn pcrs_sync(&self) -> Pcrs {
+        self.pcrs.clone()
+    }
 }
 
 impl Default for MockAttestor {

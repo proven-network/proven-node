@@ -14,6 +14,7 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::vec::Vec;
 
 use async_trait::async_trait;
@@ -26,14 +27,14 @@ use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
 pub struct MockGovernance {
     alternate_auth_gateways: Vec<String>,
     primary_auth_gateway: String,
-    nodes: Vec<TopologyNode>,
+    nodes: Arc<Mutex<Vec<TopologyNode>>>,
     versions: Vec<Version>,
 }
 
 impl MockGovernance {
     /// Create a new mock governance implementation with the given nodes and versions.
     #[must_use]
-    pub const fn new(
+    pub fn new(
         nodes: Vec<TopologyNode>,
         versions: Vec<Version>,
         primary_auth_gateway: String,
@@ -42,7 +43,7 @@ impl MockGovernance {
         Self {
             alternate_auth_gateways,
             primary_auth_gateway,
-            nodes,
+            nodes: Arc::new(Mutex::new(nodes)),
             versions,
         }
     }
@@ -138,9 +139,70 @@ impl MockGovernance {
         Ok(Self {
             alternate_auth_gateways: network_config.auth_gateways.alternates,
             primary_auth_gateway: network_config.auth_gateways.primary,
-            nodes,
+            nodes: Arc::new(Mutex::new(nodes)),
             versions,
         })
+    }
+
+    /// Add a node to the topology.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a node with the same public key already exists.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the nodes cannot be locked.
+    pub fn add_node(&self, node: TopologyNode) -> Result<(), Error> {
+        let mut nodes = self.nodes.lock().unwrap();
+
+        // Check if node already exists
+        if nodes.iter().any(|n| n.public_key == node.public_key) {
+            return Err(Error::NodeManagement(format!(
+                "Node with public key {} already exists",
+                node.public_key
+            )));
+        }
+
+        nodes.push(node);
+        drop(nodes);
+        Ok(())
+    }
+
+    /// Remove a node from the topology by public key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no node with the given public key is found.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the nodes cannot be locked.
+    pub fn remove_node(&self, public_key: &str) -> Result<(), Error> {
+        let mut nodes = self.nodes.lock().unwrap();
+
+        let original_len = nodes.len();
+        nodes.retain(|n| n.public_key != public_key);
+
+        if nodes.len() == original_len {
+            return Err(Error::NodeNotFound(format!(
+                "Node with public key {public_key} not found"
+            )));
+        }
+        drop(nodes);
+
+        Ok(())
+    }
+
+    /// Check if a node exists by public key.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the nodes cannot be locked.
+    #[must_use]
+    pub fn has_node(&self, public_key: &str) -> bool {
+        let nodes = self.nodes.lock().unwrap();
+        nodes.iter().any(|n| n.public_key == public_key)
     }
 }
 
@@ -161,7 +223,7 @@ impl Governance for MockGovernance {
     }
 
     async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error> {
-        Ok(self.nodes.clone())
+        Ok(self.nodes.lock().unwrap().clone())
     }
 }
 

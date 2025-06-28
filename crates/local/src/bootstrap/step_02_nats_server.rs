@@ -8,16 +8,15 @@
 use super::Bootstrap;
 use crate::error::Error;
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
-use proven_governance_mock::MockGovernance;
+use proven_governance::Governance;
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use tracing::info;
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
+pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let network = bootstrap.network.as_ref().unwrap_or_else(|| {
         panic!("network not set before nats server step");
     });
@@ -25,15 +24,15 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
     let peer_count = network.get_peers().await?.len();
 
     let nats_server: NatsServer<
-        MockGovernance,
+        G,
         MockAttestor,
         proven_store_fs::FsStore<bytes::Bytes, std::convert::Infallible, std::convert::Infallible>,
     > = NatsServer::new(NatsServerOptions {
         bin_dir: bootstrap.config.nats_bin_dir.clone(),
         cert_store: None,
         client_port: bootstrap.config.nats_client_port,
-        config_dir: PathBuf::from("/tmp/nats-config"),
-        debug: bootstrap.config.testnet,
+        config_dir: bootstrap.config.nats_config_dir.clone(),
+        debug: false,
         http_port: bootstrap.config.nats_http_port,
         network: network.clone(),
         server_name: network.fqdn().await?,

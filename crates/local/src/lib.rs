@@ -12,7 +12,9 @@ mod hosts;
 mod net;
 
 pub use bootstrap::Bootstrap;
+use ed25519_dalek::SigningKey;
 pub use error::Error;
+use proven_governance::Governance;
 
 use std::path::PathBuf;
 use tokio_util::sync::CancellationToken;
@@ -21,7 +23,7 @@ use url::Url;
 
 /// Configuration for a node instance
 #[derive(Clone, Debug)]
-pub struct NodeConfig {
+pub struct NodeConfig<G: Governance> {
     /// Bitcoin mainnet fallback RPC endpoint
     pub bitcoin_mainnet_fallback_rpc_endpoint: Url,
 
@@ -130,6 +132,9 @@ pub struct NodeConfig {
     /// Ethereum Sepolia fallback RPC endpoint
     pub ethereum_sepolia_fallback_rpc_endpoint: Url,
 
+    /// Proven governance
+    pub governance: G,
+
     /// Proven HTTP port
     pub port: u16,
 
@@ -142,6 +147,9 @@ pub struct NodeConfig {
     /// NATS cluster port
     pub nats_cluster_port: u16,
 
+    /// NATS config directory
+    pub nats_config_dir: PathBuf,
+
     /// NATS HTTP port
     pub nats_http_port: u16,
 
@@ -152,13 +160,16 @@ pub struct NodeConfig {
     pub network_config_path: Option<PathBuf>,
 
     /// Private key provided directly as an environment variable
-    pub node_key: String,
+    pub node_key: SigningKey,
 
     /// Postgres binary directory path
-    pub postgres_bin_path: String,
+    pub postgres_bin_path: PathBuf,
 
     /// Postgres port
     pub postgres_port: u16,
+
+    /// Skip vacuuming the database
+    pub postgres_skip_vacuum: bool,
 
     /// Postgres store directory
     pub postgres_store_dir: PathBuf,
@@ -186,12 +197,6 @@ pub struct NodeConfig {
 
     /// Radix Stokenet store directory
     pub radix_stokenet_store_dir: PathBuf,
-
-    /// Skip vacuuming the database
-    pub skip_vacuum: bool,
-
-    /// Use testnet
-    pub testnet: bool,
 }
 
 /// Run a node with the given configuration
@@ -202,7 +207,10 @@ pub struct NodeConfig {
 /// # Errors
 ///
 /// This function returns an error if the bootstrap process fails.
-pub async fn run_node(config: NodeConfig, shutdown_token: CancellationToken) -> Result<(), Error> {
+pub async fn run_node<G: Governance>(
+    config: NodeConfig<G>,
+    shutdown_token: CancellationToken,
+) -> Result<(), Error> {
     // Start bootstrap with shared shutdown token
     let bootstrap = Bootstrap::new(config).await?;
     let initialization_result = tokio::select! {

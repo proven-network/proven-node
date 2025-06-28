@@ -23,6 +23,7 @@ use http::StatusCode;
 use proven_applications::{ApplicationManagement, ApplicationManager, CreateApplicationOptions};
 use proven_bootable::Bootable;
 use proven_core::{Core, CoreOptions};
+use proven_governance::Governance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_identity::IdentityManager;
 use proven_locks_nats::{NatsLockManager, NatsLockManagerConfig};
@@ -48,7 +49,7 @@ use uuid::Uuid;
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
 #[allow(clippy::too_many_lines)]
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
+pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let nats_client = bootstrap.nats_client.as_ref().unwrap_or_else(|| {
         panic!("nats client not fetched before core");
     });

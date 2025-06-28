@@ -11,7 +11,7 @@ use crate::error::Error;
 
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_bootable::Bootable;
-use proven_governance::NodeSpecialization;
+use proven_governance::{Governance, NodeSpecialization};
 use proven_http_proxy::{
     HttpProxyClient, HttpProxyClientOptions, HttpProxyService, HttpProxyServiceOptions,
 };
@@ -22,7 +22,7 @@ use proven_messaging_nats::stream::{NatsStream, NatsStreamOptions};
 use tracing::info;
 use url::Url;
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
+pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let nats_client = bootstrap.nats_client.as_ref().unwrap_or_else(|| {
         panic!("nats client not fetched before bitcoin mainnet node step");
     });

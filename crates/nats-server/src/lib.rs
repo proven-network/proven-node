@@ -136,6 +136,11 @@ impl IsolatedApplication for NatsServerApp {
 
     #[allow(clippy::cognitive_complexity)]
     fn handle_stderr(&self, line: &str) {
+        // Ignore any lines contains "rid:" as it's a route message and are typically spammy
+        if line.contains("rid:") {
+            return;
+        }
+
         if let Some(caps) = LOG_REGEX.captures(line) {
             let label = caps.get(1).map_or("[UKW]", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());

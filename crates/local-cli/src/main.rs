@@ -9,10 +9,39 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use ed25519_dalek::SigningKey;
+use proven_attestation::Attestor;
+use proven_attestation_mock::MockAttestor;
+use proven_governance::Version;
+use proven_governance_mock::MockGovernance;
 use proven_local::{NodeConfig, run_node};
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 use url::Url;
+
+/// CLI-specific error type
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// Attestation error
+    #[error("attestation error: {0}")]
+    Attestation(String),
+
+    /// Governance mock error
+    #[error("governance error: {0}")]
+    Governance(#[from] proven_governance_mock::Error),
+
+    /// Local library error
+    #[error(transparent)]
+    Local(#[from] proven_local::Error),
+
+    /// Network configuration error
+    #[error("network config error: {0}")]
+    NetworkConfig(String),
+
+    /// Private key parsing error
+    #[error("private key error: {0}")]
+    PrivateKey(String),
+}
 
 #[derive(Clone, Debug, Parser)]
 #[command(version, about, long_about = None)]
@@ -321,6 +350,14 @@ struct Args {
     #[arg(long, default_value_t = 6222, env = "PROVEN_NATS_CLUSTER_PORT")]
     nats_cluster_port: u16,
 
+    /// NATS config directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/nats-config",
+        env = "PROVEN_NATS_CONFIG_DIR"
+    )]
+    nats_config_dir: PathBuf,
+
     /// NATS HTTP port
     #[arg(long, default_value_t = 8222, env = "PROVEN_NATS_HTTP_PORT")]
     nats_http_port: u16,
@@ -347,7 +384,7 @@ struct Args {
         default_value = "/usr/local/pgsql/bin",
         env = "POSTGRES_BIN_PATH"
     )]
-    postgres_bin_path: String,
+    postgres_bin_path: PathBuf,
 
     /// Postgres port
     #[arg(long, default_value_t = 5432, env = "PROVEN_POSTGRES_PORT")]
@@ -412,86 +449,111 @@ struct Args {
     /// Skip vacuuming the database
     #[arg(long, env = "PROVEN_SKIP_VACUUM")]
     skip_vacuum: bool,
-
-    /// Use testnet
-    #[arg(long, env = "PROVEN_TESTNET")]
-    testnet: bool,
 }
 
-impl From<Args> for NodeConfig {
-    fn from(args: Args) -> Self {
-        Self {
-            bitcoin_mainnet_fallback_rpc_endpoint: args.bitcoin_mainnet_fallback_rpc_endpoint,
-            bitcoin_mainnet_proxy_port: args.bitcoin_mainnet_proxy_port,
-            bitcoin_mainnet_store_dir: args.bitcoin_mainnet_store_dir,
-            bitcoin_testnet_fallback_rpc_endpoint: args.bitcoin_testnet_fallback_rpc_endpoint,
-            bitcoin_testnet_proxy_port: args.bitcoin_testnet_proxy_port,
-            bitcoin_testnet_store_dir: args.bitcoin_testnet_store_dir,
-            ethereum_holesky_consensus_http_port: args.ethereum_holesky_consensus_http_port,
-            ethereum_holesky_consensus_metrics_port: args.ethereum_holesky_consensus_metrics_port,
-            ethereum_holesky_consensus_p2p_port: args.ethereum_holesky_consensus_p2p_port,
-            ethereum_holesky_consensus_store_dir: args.ethereum_holesky_consensus_store_dir,
-            ethereum_holesky_execution_discovery_port: args
-                .ethereum_holesky_execution_discovery_port,
-            ethereum_holesky_execution_http_port: args.ethereum_holesky_execution_http_port,
-            ethereum_holesky_execution_metrics_port: args.ethereum_holesky_execution_metrics_port,
-            ethereum_holesky_execution_rpc_port: args.ethereum_holesky_execution_rpc_port,
-            ethereum_holesky_execution_store_dir: args.ethereum_holesky_execution_store_dir,
-            ethereum_holesky_fallback_rpc_endpoint: args.ethereum_holesky_fallback_rpc_endpoint,
-            ethereum_mainnet_consensus_http_port: args.ethereum_mainnet_consensus_http_port,
-            ethereum_mainnet_consensus_metrics_port: args.ethereum_mainnet_consensus_metrics_port,
-            ethereum_mainnet_consensus_p2p_port: args.ethereum_mainnet_consensus_p2p_port,
-            ethereum_mainnet_consensus_store_dir: args.ethereum_mainnet_consensus_store_dir,
-            ethereum_mainnet_execution_discovery_port: args
-                .ethereum_mainnet_execution_discovery_port,
-            ethereum_mainnet_execution_http_port: args.ethereum_mainnet_execution_http_port,
-            ethereum_mainnet_execution_metrics_port: args.ethereum_mainnet_execution_metrics_port,
-            ethereum_mainnet_execution_rpc_port: args.ethereum_mainnet_execution_rpc_port,
-            ethereum_mainnet_execution_store_dir: args.ethereum_mainnet_execution_store_dir,
-            ethereum_mainnet_fallback_rpc_endpoint: args.ethereum_mainnet_fallback_rpc_endpoint,
-            ethereum_sepolia_consensus_http_port: args.ethereum_sepolia_consensus_http_port,
-            ethereum_sepolia_consensus_metrics_port: args.ethereum_sepolia_consensus_metrics_port,
-            ethereum_sepolia_consensus_p2p_port: args.ethereum_sepolia_consensus_p2p_port,
-            ethereum_sepolia_consensus_store_dir: args.ethereum_sepolia_consensus_store_dir,
-            ethereum_sepolia_execution_discovery_port: args
-                .ethereum_sepolia_execution_discovery_port,
-            ethereum_sepolia_execution_http_port: args.ethereum_sepolia_execution_http_port,
-            ethereum_sepolia_execution_metrics_port: args.ethereum_sepolia_execution_metrics_port,
-            ethereum_sepolia_execution_rpc_port: args.ethereum_sepolia_execution_rpc_port,
-            ethereum_sepolia_execution_store_dir: args.ethereum_sepolia_execution_store_dir,
-            ethereum_sepolia_fallback_rpc_endpoint: args.ethereum_sepolia_fallback_rpc_endpoint,
-            port: args.port,
-            nats_bin_dir: args.nats_bin_dir,
-            nats_client_port: args.nats_client_port,
-            nats_cluster_port: args.nats_cluster_port,
-            nats_http_port: args.nats_http_port,
-            nats_store_dir: args.nats_store_dir,
-            network_config_path: args.network_config_path,
-            node_key: args.node_key,
-            postgres_bin_path: args.postgres_bin_path,
-            postgres_port: args.postgres_port,
-            postgres_store_dir: args.postgres_store_dir,
-            radix_mainnet_fallback_rpc_endpoint: args.radix_mainnet_fallback_rpc_endpoint,
-            radix_mainnet_http_port: args.radix_mainnet_http_port,
-            radix_mainnet_p2p_port: args.radix_mainnet_p2p_port,
-            radix_mainnet_store_dir: args.radix_mainnet_store_dir,
-            radix_stokenet_fallback_rpc_endpoint: args.radix_stokenet_fallback_rpc_endpoint,
-            radix_stokenet_http_port: args.radix_stokenet_http_port,
-            radix_stokenet_p2p_port: args.radix_stokenet_p2p_port,
-            radix_stokenet_store_dir: args.radix_stokenet_store_dir,
-            skip_vacuum: args.skip_vacuum,
-            testnet: args.testnet,
-        }
-    }
+/// Create a `NodeConfig` from Args, handling async operations
+async fn create_node_config(args: Args) -> Result<NodeConfig<MockGovernance>, Error> {
+    // Parse the private key and calculate public key
+    let private_key_bytes = hex::decode(args.node_key.trim())
+        .map_err(|e| Error::PrivateKey(format!("Failed to decode private key as hex: {e}")))?;
+
+    // We need exactly 32 bytes for ed25519 private key
+    let private_key = SigningKey::try_from(private_key_bytes.as_slice()).map_err(|_| {
+        Error::PrivateKey("Failed to create SigningKey: invalid key length".to_string())
+    })?;
+
+    // Create governance based on network config
+    let governance = if let Some(ref network_config_path) = args.network_config_path {
+        info!(
+            "using replication factor 3 with network config from file: {}",
+            network_config_path.display()
+        );
+        MockGovernance::from_network_config_file(network_config_path)
+            .map_err(|e| Error::NetworkConfig(format!("Failed to load network config: {e}")))?
+    } else {
+        info!("using replication factor 1 as no network config file provided");
+
+        let pcrs = MockAttestor::new()
+            .pcrs()
+            .await
+            .map_err(|e| Error::Attestation(format!("Failed to get PCRs: {e}")))?;
+        let version = Version::from_pcrs(pcrs);
+        MockGovernance::for_single_node(
+            format!("http://localhost:{}", args.port),
+            &private_key,
+            version,
+        )
+    };
+
+    Ok(NodeConfig {
+        bitcoin_mainnet_fallback_rpc_endpoint: args.bitcoin_mainnet_fallback_rpc_endpoint,
+        bitcoin_mainnet_proxy_port: args.bitcoin_mainnet_proxy_port,
+        bitcoin_mainnet_store_dir: args.bitcoin_mainnet_store_dir,
+        bitcoin_testnet_fallback_rpc_endpoint: args.bitcoin_testnet_fallback_rpc_endpoint,
+        bitcoin_testnet_proxy_port: args.bitcoin_testnet_proxy_port,
+        bitcoin_testnet_store_dir: args.bitcoin_testnet_store_dir,
+        ethereum_holesky_consensus_http_port: args.ethereum_holesky_consensus_http_port,
+        ethereum_holesky_consensus_metrics_port: args.ethereum_holesky_consensus_metrics_port,
+        ethereum_holesky_consensus_p2p_port: args.ethereum_holesky_consensus_p2p_port,
+        ethereum_holesky_consensus_store_dir: args.ethereum_holesky_consensus_store_dir,
+        ethereum_holesky_execution_discovery_port: args.ethereum_holesky_execution_discovery_port,
+        ethereum_holesky_execution_http_port: args.ethereum_holesky_execution_http_port,
+        ethereum_holesky_execution_metrics_port: args.ethereum_holesky_execution_metrics_port,
+        ethereum_holesky_execution_rpc_port: args.ethereum_holesky_execution_rpc_port,
+        ethereum_holesky_execution_store_dir: args.ethereum_holesky_execution_store_dir,
+        ethereum_holesky_fallback_rpc_endpoint: args.ethereum_holesky_fallback_rpc_endpoint,
+        ethereum_mainnet_consensus_http_port: args.ethereum_mainnet_consensus_http_port,
+        ethereum_mainnet_consensus_metrics_port: args.ethereum_mainnet_consensus_metrics_port,
+        ethereum_mainnet_consensus_p2p_port: args.ethereum_mainnet_consensus_p2p_port,
+        ethereum_mainnet_consensus_store_dir: args.ethereum_mainnet_consensus_store_dir,
+        ethereum_mainnet_execution_discovery_port: args.ethereum_mainnet_execution_discovery_port,
+        ethereum_mainnet_execution_http_port: args.ethereum_mainnet_execution_http_port,
+        ethereum_mainnet_execution_metrics_port: args.ethereum_mainnet_execution_metrics_port,
+        ethereum_mainnet_execution_rpc_port: args.ethereum_mainnet_execution_rpc_port,
+        ethereum_mainnet_execution_store_dir: args.ethereum_mainnet_execution_store_dir,
+        ethereum_mainnet_fallback_rpc_endpoint: args.ethereum_mainnet_fallback_rpc_endpoint,
+        ethereum_sepolia_consensus_http_port: args.ethereum_sepolia_consensus_http_port,
+        ethereum_sepolia_consensus_metrics_port: args.ethereum_sepolia_consensus_metrics_port,
+        ethereum_sepolia_consensus_p2p_port: args.ethereum_sepolia_consensus_p2p_port,
+        ethereum_sepolia_consensus_store_dir: args.ethereum_sepolia_consensus_store_dir,
+        ethereum_sepolia_execution_discovery_port: args.ethereum_sepolia_execution_discovery_port,
+        ethereum_sepolia_execution_http_port: args.ethereum_sepolia_execution_http_port,
+        ethereum_sepolia_execution_metrics_port: args.ethereum_sepolia_execution_metrics_port,
+        ethereum_sepolia_execution_rpc_port: args.ethereum_sepolia_execution_rpc_port,
+        ethereum_sepolia_execution_store_dir: args.ethereum_sepolia_execution_store_dir,
+        ethereum_sepolia_fallback_rpc_endpoint: args.ethereum_sepolia_fallback_rpc_endpoint,
+        governance,
+        port: args.port,
+        nats_bin_dir: args.nats_bin_dir,
+        nats_client_port: args.nats_client_port,
+        nats_cluster_port: args.nats_cluster_port,
+        nats_config_dir: args.nats_config_dir,
+        nats_http_port: args.nats_http_port,
+        nats_store_dir: args.nats_store_dir,
+        network_config_path: args.network_config_path,
+        node_key: private_key,
+        postgres_bin_path: args.postgres_bin_path,
+        postgres_port: args.postgres_port,
+        postgres_skip_vacuum: args.skip_vacuum,
+        postgres_store_dir: args.postgres_store_dir,
+        radix_mainnet_fallback_rpc_endpoint: args.radix_mainnet_fallback_rpc_endpoint,
+        radix_mainnet_http_port: args.radix_mainnet_http_port,
+        radix_mainnet_p2p_port: args.radix_mainnet_p2p_port,
+        radix_mainnet_store_dir: args.radix_mainnet_store_dir,
+        radix_stokenet_fallback_rpc_endpoint: args.radix_stokenet_fallback_rpc_endpoint,
+        radix_stokenet_http_port: args.radix_stokenet_http_port,
+        radix_stokenet_p2p_port: args.radix_stokenet_p2p_port,
+        radix_stokenet_store_dir: args.radix_stokenet_store_dir,
+    })
 }
 
 #[tokio::main(worker_threads = 8)]
-async fn main() -> Result<(), proven_local::Error> {
+async fn main() -> Result<(), Error> {
     // Initialize tracing for better logging
     tracing_subscriber::fmt::init();
 
     let args = Args::parse();
-    let config = NodeConfig::from(args);
+    let config = create_node_config(args).await?;
 
     // Create shared shutdown token
     let shutdown_token = CancellationToken::new();
@@ -520,5 +582,5 @@ async fn main() -> Result<(), proven_local::Error> {
     });
 
     // Run the node
-    run_node(config, shutdown_token).await
+    run_node(config, shutdown_token).await.map_err(Error::Local)
 }

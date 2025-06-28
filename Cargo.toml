@@ -40,6 +40,7 @@ members = [
     "crates/libsql",
     "crates/local",
     "crates/local-cli",
+    "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
     "crates/locks-nats",
@@ -108,6 +109,7 @@ default-members = [
     "crates/libsql",
     "crates/local",
     "crates/local-cli",
+    "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
     "crates/locks-nats",
@@ -435,6 +437,7 @@ proven-kms = { path = "crates/kms" }
 proven-libsql = { path = "crates/libsql" }
 proven-local = { path = "crates/local" }
 proven-local-cli = { path = "crates/local-cli" }
+proven-local-tui = { path = "crates/local-tui" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
 proven-locks-nats = { path = "crates/locks-nats" }

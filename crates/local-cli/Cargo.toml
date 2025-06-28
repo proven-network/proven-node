@@ -8,8 +8,16 @@ name = "proven-local"
 path = "src/main.rs"
 
 [dependencies]
+bytes.workspace = true
 clap.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+proven-attestation.workspace = true
+proven-attestation-mock.workspace = true
+proven-governance.workspace = true
+proven-governance-mock.workspace = true
 proven-local.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true

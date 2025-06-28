@@ -9,14 +9,14 @@ use super::Bootstrap;
 use crate::error::Error;
 
 use proven_bootable::Bootable;
-use proven_governance::NodeSpecialization;
+use proven_governance::{Governance, NodeSpecialization};
 use proven_postgres::{Postgres, PostgresOptions};
 use tracing::info;
 
 static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
+pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let network = bootstrap.network.as_ref().unwrap_or_else(|| {
         panic!("network not set before postgres step");
     });
@@ -34,7 +34,7 @@ pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
             password: POSTGRES_PASSWORD.to_string(),
             port: bootstrap.config.postgres_port,
             username: POSTGRES_USERNAME.to_string(),
-            skip_vacuum: bootstrap.config.skip_vacuum,
+            skip_vacuum: bootstrap.config.postgres_skip_vacuum,
             store_dir: bootstrap.config.postgres_store_dir.clone(),
         });
 

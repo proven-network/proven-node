@@ -24,7 +24,7 @@ use async_nats::Client as NatsClient;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
 use proven_core::LightCore;
-use proven_governance_mock::MockGovernance;
+use proven_governance::Governance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::ProvenNetwork;
 use tokio_util::sync::CancellationToken;
@@ -39,15 +39,14 @@ use url::Url;
 ///
 /// The bootstrap struct is used to initialize the node and start the services.
 /// It is also used to shutdown the node and clean up the services.
-pub struct Bootstrap {
-    config: NodeConfig,
+pub struct Bootstrap<G: Governance> {
+    config: NodeConfig<G>,
     attestor: MockAttestor,
     external_ip: IpAddr,
     num_replicas: usize,
 
     // Shared context fields that steps need access to
-    network: Option<ProvenNetwork<MockGovernance, MockAttestor>>,
-    governance: Option<MockGovernance>,
+    network: Option<ProvenNetwork<G, MockAttestor>>,
     nats_client: Option<NatsClient>,
     postgres_ip_address: Option<IpAddr>,
     postgres_port: Option<u16>,
@@ -62,7 +61,7 @@ pub struct Bootstrap {
     radix_stokenet_rpc_endpoint: Url,
 
     // Special case - gets shutdown before core starts
-    light_core: Option<LightCore<MockAttestor, MockGovernance, InsecureHttpServer>>,
+    light_core: Option<LightCore<MockAttestor, G, InsecureHttpServer>>,
 
     // Collection of all bootable services
     bootables: Vec<Box<dyn Bootable>>,
@@ -73,7 +72,7 @@ pub struct Bootstrap {
     task_tracker: TaskTracker,
 }
 
-impl Bootstrap {
+impl<G: Governance> Bootstrap<G> {
     /// Add a bootable service to the collection
     pub fn add_bootable(&mut self, bootable: Box<dyn Bootable>) {
         self.bootables.push(bootable);
@@ -113,17 +112,16 @@ impl Bootstrap {
     /// # Errors
     ///
     /// This function returns an error if the external IP address cannot be fetched.
-    pub async fn new(config: NodeConfig) -> Result<Self, Error> {
+    pub async fn new(config: NodeConfig<G>) -> Result<Self, Error> {
         let external_ip = crate::net::fetch_external_ip().await?;
 
         Ok(Self {
             config: config.clone(),
             attestor: MockAttestor::new(),
             external_ip,
-            num_replicas: 3,
+            num_replicas: 1, // TODO: make this configurable
 
             network: None,
-            governance: None,
             nats_client: None,
             postgres_ip_address: None,
             postgres_port: None,

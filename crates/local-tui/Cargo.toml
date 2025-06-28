@@ -1,0 +1,51 @@
+[package]
+name = "proven-local-tui"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+# Core TUI
+ratatui = "0.29.0"
+crossterm = "0.29.0"
+
+# Async and messaging
+proven-local.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+crossbeam-channel = "0.5"
+futures.workspace = true
+
+# Cryptography and attestation
+ed25519-dalek.workspace = true
+rand.workspace = true
+hex.workspace = true
+proven-attestation.workspace = true
+proven-attestation-mock.workspace = true
+proven-governance.workspace = true
+proven-governance-mock.workspace = true
+
+# Logging
+parking_lot.workspace = true
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+tracing-appender = "0.2"
+
+# Data handling
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+uuid.workspace = true
+
+# Error handling
+anyhow.workspace = true
+thiserror.workspace = true
+
+# System monitoring (for future use)
+sysinfo = "0.35.2"
+
+# Utilities
+clap.workspace = true
+url.workspace = true
+pokemon-rs = "1.6.6"
+signal-hook = "0.3"

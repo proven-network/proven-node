@@ -13,7 +13,7 @@ use crate::error::Error;
 use std::path::PathBuf;
 
 use proven_bootable::Bootable;
-use proven_governance::NodeSpecialization;
+use proven_governance::{Governance, NodeSpecialization};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
 use proven_radix_node::{RadixNode, RadixNodeOptions};
@@ -24,7 +24,7 @@ static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
 static POSTGRES_RADIX_MAINNET_DATABASE: &str = "radix-mainnet-db";
 
-pub async fn execute(bootstrap: &mut Bootstrap) -> Result<(), Error> {
+pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let network = bootstrap.network.as_ref().unwrap_or_else(|| {
         panic!("network not set before radix mainnet node step");
     });
