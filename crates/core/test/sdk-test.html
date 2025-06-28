@@ -280,7 +280,7 @@ export const test = run(() => {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
 
     <!-- Load the SDK -->
-    <script src="http://localhost:3201/sdk.js"></script>
+    <script src="http://localhost:3000/sdk.js"></script>
 
     <script>
       // Initialize the SDK
@@ -291,9 +291,8 @@ export const test = run(() => {
           warn: (...args) => console.warn("[SDK]", ...args),
           error: (...args) => console.error("[SDK]", ...args),
         },
-        authGatewayOrigin: "http://localhost:3201",
-        // applicationId: "7d874d22-227f-4871-bc84-12e4f371619c",
-        applicationId: "10ff395c-c846-4db6-ba77-d46f726e2158",
+        authGatewayOrigin: "http://localhost:3000",
+        applicationId: globalThis.location.hash.split("=")[1],
       });
 
       // Initialize the button iframe
