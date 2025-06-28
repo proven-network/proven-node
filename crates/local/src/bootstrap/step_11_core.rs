@@ -187,20 +187,25 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
 
     // Create a test application if there are no applications
     if applications.is_empty() {
-        let application = application_manager
+        match application_manager
             .create_application(&CreateApplicationOptions {
                 owner_identity_id: Uuid::new_v4(),
             })
             .await
-            .unwrap();
+        {
+            Ok(application) => {
+                let allowed_origin = Origin::from_str("http://proven.local:6900").unwrap();
+                application_manager
+                    .add_allowed_origin(&application.id, &allowed_origin)
+                    .await?;
 
-        let allowed_origin = Origin::from_str("http://proven.local:6900").unwrap();
-        application_manager
-            .add_allowed_origin(&application.id, &allowed_origin)
-            .await?;
-
-        info!("created test application: {application:?}");
-        info!("allowed origin: {}", allowed_origin);
+                info!("created test application: {application:?}");
+                info!("allowed origin: {}", allowed_origin);
+            }
+            Err(e) => {
+                info!("error creating test application: {e:?}");
+            }
+        }
     }
 
     let application_store = NatsStore2::new(NatsStoreOptions {

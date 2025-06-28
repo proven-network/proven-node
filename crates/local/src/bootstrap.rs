@@ -119,7 +119,7 @@ impl<G: Governance> Bootstrap<G> {
             config: config.clone(),
             attestor: MockAttestor::new(),
             external_ip,
-            num_replicas: 1, // TODO: make this configurable
+            num_replicas: 3, // TODO: make this configurable
 
             network: None,
             nats_client: None,
@@ -243,7 +243,7 @@ impl<G: Governance> Bootstrap<G> {
             // Create a future that waits for any service to exit unexpectedly
             let monitor_services = async {
                 let mut futures = Vec::new();
-                for bootable in bootables_for_supervisor.iter() {
+                for bootable in &bootables_for_supervisor {
                     let service_name = bootable.name().to_string();
                     let future = Box::pin(async move {
                         bootable.wait().await;
