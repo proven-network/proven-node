@@ -497,11 +497,7 @@ impl NodeManager {
         );
 
         // Note: Governance registration is handled in handle_start_node when the node actually starts
-
-        // Create the full node configuration
-        let config = Self::build_node_config(name, main_port, governance, private_key, run_id);
-
-        config
+        Self::build_node_config(name, main_port, governance, private_key, run_id)
     }
 
     /// Build the node configuration with all service ports and directories
@@ -514,6 +510,7 @@ impl NodeManager {
         run_id: &str,
     ) -> TuiNodeConfig {
         TuiNodeConfig {
+            allow_single_node: false,
             bitcoin_mainnet_fallback_rpc_endpoint: Url::parse("https://bitcoin-rpc.publicnode.com")
                 .unwrap(),
             bitcoin_mainnet_proxy_port: allocate_port().unwrap(),

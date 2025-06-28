@@ -463,21 +463,25 @@ async fn create_node_config(args: Args) -> Result<NodeConfig<MockGovernance>, Er
     })?;
 
     // Create governance based on network config
+    let mut allow_single_node = false;
     let governance = if let Some(ref network_config_path) = args.network_config_path {
         info!(
             "using replication factor 3 with network config from file: {}",
             network_config_path.display()
         );
+
         MockGovernance::from_network_config_file(network_config_path)
             .map_err(|e| Error::NetworkConfig(format!("Failed to load network config: {e}")))?
     } else {
         info!("using replication factor 1 as no network config file provided");
+        allow_single_node = true;
 
         let pcrs = MockAttestor::new()
             .pcrs()
             .await
             .map_err(|e| Error::Attestation(format!("Failed to get PCRs: {e}")))?;
         let version = Version::from_pcrs(pcrs);
+
         MockGovernance::for_single_node(
             format!("http://localhost:{}", args.port),
             &private_key,
@@ -486,6 +490,7 @@ async fn create_node_config(args: Args) -> Result<NodeConfig<MockGovernance>, Er
     };
 
     Ok(NodeConfig {
+        allow_single_node,
         bitcoin_mainnet_fallback_rpc_endpoint: args.bitcoin_mainnet_fallback_rpc_endpoint,
         bitcoin_mainnet_proxy_port: args.bitcoin_mainnet_proxy_port,
         bitcoin_mainnet_store_dir: args.bitcoin_mainnet_store_dir,

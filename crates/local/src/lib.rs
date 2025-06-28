@@ -24,6 +24,9 @@ use url::Url;
 /// Configuration for a node instance
 #[derive(Clone, Debug)]
 pub struct NodeConfig<G: Governance> {
+    /// Whether to allow a single node to be started
+    pub allow_single_node: bool,
+
     /// Bitcoin mainnet fallback RPC endpoint
     pub bitcoin_mainnet_fallback_rpc_endpoint: Url,
 

@@ -74,7 +74,7 @@ impl App {
         let (command_sender, command_receiver) = mpsc::channel();
 
         // Create shared governance synchronously
-        let governance = Arc::new(Self::create_shared_governance()?);
+        let governance = Arc::new(Self::create_shared_governance());
 
         // Create log collector (synchronous)
         let log_collector = LogCollector::new();
@@ -100,18 +100,18 @@ impl App {
     }
 
     /// Create a shared governance instance for the TUI
-    fn create_shared_governance() -> Result<MockGovernance> {
+    fn create_shared_governance() -> MockGovernance {
         // Create a version from mock attestation (synchronous)
         let pcrs = MockAttestor::new().pcrs_sync();
         let version = Version::from_pcrs(pcrs);
 
         // Create an empty governance instance that nodes can be added to
-        Ok(MockGovernance::new(
+        MockGovernance::new(
             Vec::new(),                          // No initial nodes
             vec![version],                       // Single version
             "http://localhost:3200".to_string(), // Default primary auth gateway
             Vec::new(),                          // No alternate auth gateways
-        ))
+        )
     }
 
     /// Get the log collector for the tracing layer
@@ -153,16 +153,13 @@ impl App {
         let result = self.run_loop(&mut terminal);
 
         // Cleanup terminal (synchronous)
-        self.cleanup_terminal(&mut terminal)?;
+        Self::cleanup_terminal(&mut terminal)?;
 
         result
     }
 
     /// Cleanup terminal state
-    fn cleanup_terminal<B: Backend + std::io::Write>(
-        &self,
-        terminal: &mut Terminal<B>,
-    ) -> Result<()> {
+    fn cleanup_terminal<B: Backend + std::io::Write>(terminal: &mut Terminal<B>) -> Result<()> {
         disable_raw_mode()?;
         execute!(
             terminal.backend_mut(),
@@ -174,6 +171,7 @@ impl App {
     }
 
     /// Main application loop with synchronous operations
+    #[allow(clippy::cognitive_complexity)]
     fn run_loop<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
         info!("Starting TUI application");
 

@@ -24,6 +24,7 @@ use proven_governance::{Governance, Version};
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::{ProvenNetwork, ProvenNetworkOptions};
 use tower_http::cors::CorsLayer;
+use tracing::info;
 
 pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     // Just use single version based on mock attestation pcrs (deterministic hashes on cargo version)
@@ -56,8 +57,6 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     })
     .await?;
 
-    let peer_count = network.get_peers().await?.len();
-
     // Check /etc/hosts to ensure the node's FQDN is properly configured
     check_hostname_resolution(network.fqdn().await?.as_str()).await?;
 
@@ -75,14 +74,32 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     });
     light_core.start().await.map_err(Error::Bootable)?;
 
+    if !bootstrap.config.allow_single_node {
+        // Get peers in a loop until we have at least two others with an Ok nats cluster endpoint
+        info!(
+            "waiting for at least two other nodes to be started so NATS can boot in cluster mode"
+        );
+        loop {
+            let peers = network.get_peers().await?;
+            let mut valid_peers = 0;
+
+            for peer in &peers {
+                if peer.nats_cluster_endpoint().await.is_ok() {
+                    valid_peers += 1;
+                }
+            }
+            if valid_peers >= 2 {
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        info!("Peer nodes are ready");
+    }
+
     bootstrap.network = Some(network);
     bootstrap.light_core = Some(light_core);
-
-    if peer_count > 0 {
-        // TODO: Wait for at least one other node to be started so NATS can boot in cluster mode
-        // Just sleep to simulate for now
-        tokio::time::sleep(Duration::from_secs(5)).await;
-    }
 
     Ok(())
 }

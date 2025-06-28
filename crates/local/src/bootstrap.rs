@@ -119,7 +119,7 @@ impl<G: Governance> Bootstrap<G> {
             config: config.clone(),
             attestor: MockAttestor::new(),
             external_ip,
-            num_replicas: 3, // TODO: make this configurable
+            num_replicas: if config.allow_single_node { 1 } else { 3 },
 
             network: None,
             nats_client: None,
