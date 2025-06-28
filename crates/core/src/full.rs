@@ -456,10 +456,10 @@ where
         let http_server = self.http_server.clone();
         let shutdown_token = self.shutdown_token.clone();
         self.task_tracker.spawn(async move {
-            http_server
-                .start()
-                .await
-                .map_err(|e| Error::HttpServer(e.to_string()))?;
+            if let Err(e) = http_server.start().await {
+                error!("http server failed to start: {e}");
+                return Err(Error::HttpServer(e.to_string()));
+            }
 
             tokio::select! {
                 () = shutdown_token.cancelled() => {

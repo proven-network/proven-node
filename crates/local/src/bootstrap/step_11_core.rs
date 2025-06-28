@@ -17,7 +17,6 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::time::Duration;
 
-use async_nats::jetstream::stream::No;
 use axum::Router;
 use axum::routing::any;
 use http::StatusCode;
@@ -48,6 +47,8 @@ use tracing::info;
 use uuid::Uuid;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
+const PORT_RELEASE_MAX_RETRIES: u32 = 20;
+const PORT_RELEASE_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 #[allow(clippy::too_many_lines)]
 pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
@@ -323,6 +324,26 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     // Shutdown the light core and free the port before starting the full core
     let _ = light_core.shutdown().await;
     bootstrap.light_core = None;
+
+    // Wait for the port to be fully released
+    let port = bootstrap.config.port;
+    let mut retry_count = 0;
+
+    loop {
+        // Test if we can bind to the port
+        if let Ok(listener) = tokio::net::TcpListener::bind(("0.0.0.0", port)).await {
+            // Port is available, close the test listener
+            drop(listener);
+            break;
+        }
+        retry_count += 1;
+        if retry_count >= PORT_RELEASE_MAX_RETRIES {
+            return Err(Error::Io(format!(
+                "Port {port} still in use after {PORT_RELEASE_MAX_RETRIES} attempts"
+            )));
+        }
+        tokio::time::sleep(PORT_RELEASE_RETRY_DELAY).await;
+    }
 
     core.start().await.map_err(Error::Bootable)?;
 
