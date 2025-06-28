@@ -199,7 +199,7 @@ impl<S> Bootable for LetsEncryptHttpServer<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "http (letsencrypt)"
     }
 

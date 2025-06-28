@@ -413,7 +413,7 @@ impl Postgres {
 
 #[async_trait]
 impl Bootable for Postgres {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "postgres"
     }
 

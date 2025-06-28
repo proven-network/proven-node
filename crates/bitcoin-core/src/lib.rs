@@ -303,7 +303,7 @@ impl BitcoinNode {
 
 #[async_trait]
 impl Bootable for BitcoinNode {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "bitcoin-core"
     }
 

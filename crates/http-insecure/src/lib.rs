@@ -50,7 +50,7 @@ impl InsecureHttpServer {
 
 #[async_trait]
 impl Bootable for InsecureHttpServer {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "http (insecure)"
     }
 

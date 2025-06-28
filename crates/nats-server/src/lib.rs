@@ -566,7 +566,7 @@ where
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "nats-server"
     }
 

@@ -232,7 +232,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "messaging-memory (service)"
     }
 

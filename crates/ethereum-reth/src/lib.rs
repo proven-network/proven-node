@@ -423,7 +423,7 @@ impl RethNode {
 
 #[async_trait]
 impl Bootable for RethNode {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "ethereum-reth"
     }
 

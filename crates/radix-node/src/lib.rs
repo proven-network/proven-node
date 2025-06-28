@@ -354,7 +354,7 @@ api.core.port={}",
 
 #[async_trait]
 impl Bootable for RadixNode {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "radix-node"
     }
 

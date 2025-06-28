@@ -244,7 +244,7 @@ impl<G: Governance> Bootstrap<G> {
             let monitor_services = async {
                 let mut futures = Vec::new();
                 for bootable in &bootables_for_supervisor {
-                    let service_name = bootable.name().to_string();
+                    let service_name = bootable.bootable_name().to_string();
                     let future = Box::pin(async move {
                         bootable.wait().await;
                         error!("Bootable service '{}' exited unexpectedly", service_name);

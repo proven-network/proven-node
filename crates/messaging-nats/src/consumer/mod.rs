@@ -251,8 +251,8 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    fn name(&self) -> &'static str {
         "messaging-nats (consumer)"
+    fn bootable_name(&self) -> &str {
     }
 
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

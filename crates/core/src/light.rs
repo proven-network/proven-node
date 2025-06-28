@@ -75,7 +75,7 @@ where
     G: Governance,
     HS: HttpServer,
 {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "core (light)"
     }
 

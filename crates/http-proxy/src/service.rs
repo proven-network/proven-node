@@ -83,7 +83,7 @@ impl<S> Bootable for HttpProxyService<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
-    fn name(&self) -> &'static str {
+    fn bootable_name(&self) -> &'static str {
         "http-proxy (service)"
     }
 
