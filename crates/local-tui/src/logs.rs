@@ -307,6 +307,7 @@ impl LogProcessor {
         }
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn run(mut self) {
         info!("Starting high-performance log processor");
 

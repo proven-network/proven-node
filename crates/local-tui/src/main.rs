@@ -51,7 +51,7 @@ fn main() -> Result<()> {
     setup_signal_handlers(shutdown_requested.clone())?;
 
     // Create the application synchronously
-    let mut app = App::new()?;
+    let mut app = App::new();
 
     // Set up logging with TUI integration
     setup_logging(&args, app.get_log_collector());

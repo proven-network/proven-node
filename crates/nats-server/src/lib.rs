@@ -42,6 +42,7 @@ static CLUSTER_NO_TLS_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster
 const PEER_DISCOVERY_INTERVAL: u64 = 300; // 5 minutes
 
 /// Regex pattern for matching NATS server log lines
+/// Example: "[51138] 2025/06/29 03:15:07.000309 [DBG] JETSTREAM - JetStream connection closed: Client Closed"
 static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\[\d+\] \d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6} (\[[A-Z]+\]) (.*)")
         .expect("Invalid regex pattern")
@@ -136,14 +137,20 @@ impl IsolatedApplication for NatsServerApp {
 
     #[allow(clippy::cognitive_complexity)]
     fn handle_stderr(&self, line: &str) {
-        // Ignore any lines which are typically spammy
-        if line.contains("rid:") || line.contains("Reloaded") || line.contains("Trapped") {
+        // Switch spammy messages to trace level
+        if line.contains("rid:")
+            || line.contains("Reloaded")
+            || line.contains("Trapped")
+            || line.contains("i / o timeout")
+            || line.contains("connection refused")
+        {
             return;
         }
 
         if let Some(caps) = LOG_REGEX.captures(line) {
             let label = caps.get(1).map_or("[UKW]", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
+
             match label {
                 "[INF]" => info!(target: "nats-server", "{}", message),
                 "[DBG]" => debug!(target: "nats-server", "{}", message),

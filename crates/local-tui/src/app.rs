@@ -5,7 +5,7 @@ use crate::{
     logs::LogCollector,
     messages::{NodeId, NodeStatus, TuiMessage},
     node_manager::NodeManager,
-    ui::{UiState, ViewMode, render_ui},
+    ui::{UiState, render_ui},
 };
 use anyhow::Result;
 use crossterm::{
@@ -68,7 +68,7 @@ impl App {
     ///
     /// Returns an error if the channels fail to initialize or if the shared
     /// governance cannot be created.
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Self {
         // Create message channels (sync)
         let (message_sender, message_receiver) = mpsc::channel();
         let (command_sender, command_receiver) = mpsc::channel();
@@ -86,7 +86,7 @@ impl App {
         let node_manager = NodeManager::new(message_sender.clone(), governance);
         node_manager.start_command_handler(command_receiver);
 
-        Ok(Self {
+        Self {
             should_quit: false,
             shutting_down: false,
             ui_state: UiState::new(),
@@ -96,7 +96,7 @@ impl App {
             message_receiver,
             message_sender,
             shutdown_flag: None,
-        })
+        }
     }
 
     /// Create a shared governance instance for the TUI
@@ -278,89 +278,126 @@ impl App {
 
         // Handle global keys that should work even during shutdown
         match key.code {
-            KeyCode::Tab => {
-                // Tab switching always works, even during shutdown
-                self.ui_state.selected_tab = (self.ui_state.selected_tab + 1) % 3;
-                self.ui_state.view_mode = match self.ui_state.selected_tab {
-                    1 => ViewMode::Logs,
-                    2 => ViewMode::Help,
-                    _ => ViewMode::Overview,
-                };
-                return Ok(());
-            }
             KeyCode::Char('?') => {
                 // Help toggle always works, even during shutdown
                 self.ui_state.show_help = !self.ui_state.show_help;
                 return Ok(());
             }
+            KeyCode::Esc => {
+                // Close help if open, otherwise initiate graceful shutdown
+                if self.ui_state.show_help {
+                    self.ui_state.show_help = false;
+                } else if !self.shutting_down {
+                    info!("Initiating graceful shutdown of all nodes...");
+                    self.shutting_down = true;
+                    // Let the event handler trigger shutdown
+                    self.event_handler.trigger_shutdown();
+                }
+                return Ok(());
+            }
             _ => {}
         }
 
-        // If not shutting down, handle other view-specific keys
-        if !self.shutting_down {
-            match &self.ui_state.view_mode {
-                ViewMode::Overview => self.handle_overview_keys(key),
-                ViewMode::NodeDetail(node_id) => self.handle_node_detail_keys(key, *node_id),
-                ViewMode::Logs => self.handle_logs_keys(key),
-                ViewMode::Help => self.handle_help_keys(key),
-            }
+        // Handle logs keys (even during shutdown for navigation)
+        if self.shutting_down {
+            // During shutdown, still allow some log navigation
+            self.handle_logs_keys_during_shutdown(key);
         } else {
-            // During shutdown, still allow some view-specific navigation
-            match &self.ui_state.view_mode {
-                ViewMode::Logs => self.handle_logs_keys_during_shutdown(key),
-                ViewMode::NodeDetail(_) => {
-                    // Allow escaping back to overview during shutdown
-                    if key.code == KeyCode::Esc {
-                        self.ui_state.view_mode = ViewMode::Overview;
-                        self.ui_state.selected_tab = 0;
-                    }
-                }
-                _ => {}
-            }
+            self.handle_logs_keys(key);
         }
 
         Ok(())
     }
 
-    /// Handle keys in overview mode
-    const fn handle_overview_keys(&mut self, _key: KeyEvent) {
-        // Tab and help (?) are now handled globally
-        // No overview-specific keys currently
-    }
-
-    /// Handle keys in node detail mode
-    const fn handle_node_detail_keys(&mut self, key: KeyEvent, _node_id: NodeId) {
-        #[allow(clippy::match_same_arms)]
-        match key.code {
-            KeyCode::Esc => {
-                self.ui_state.view_mode = ViewMode::Overview;
-                self.ui_state.selected_tab = 0;
-            }
-
-            KeyCode::Char('r') | KeyCode::Delete => {
-                // TODO: Restart node or stop node - this would be handled by the event handler
-                // which sends a command to the node manager
-            }
-
-            _ => {
-                // Do nothing
-            }
-        }
-    }
-
     /// Handle keys in logs mode
     fn handle_logs_keys(&mut self, key: KeyEvent) {
         match key.code {
-            // Terminal-like scrolling
-            KeyCode::Up => {
+            // Backtick "`" for "All" selection
+            KeyCode::Char('`') => {
+                self.ui_state.logs_sidebar_selected = 0;
+                self.ui_state.logs_sidebar_debug_selected = false;
+            }
+
+            // Number keys 1-9 for quick node selection
+            KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
+                let num = c.to_digit(10).unwrap() as usize;
+                if num <= self.ui_state.logs_sidebar_nodes.len() {
+                    // "1-9" selects corresponding node
+                    self.ui_state.logs_sidebar_selected = num;
+                    self.ui_state.logs_sidebar_debug_selected = false;
+                }
+            }
+
+            // "d" key for debug selection
+            KeyCode::Char('d') => {
+                self.ui_state.logs_sidebar_debug_selected = true;
+                self.ui_state.logs_sidebar_selected = 0; // Reset regular selection
+            }
+
+            // Alt+Up/Down for log scrolling (line by line) - put specific pattern first
+            KeyCode::Up if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) => {
                 self.ui_state.scroll_up(1);
             }
 
-            KeyCode::Down => {
+            KeyCode::Down if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) => {
                 self.ui_state.scroll_down(1);
             }
 
-            // Page Up/Down for faster scrolling
+            // Home/End for sidebar navigation
+            KeyCode::Home => {
+                self.ui_state.logs_sidebar_selected = 0; // "All"
+                self.ui_state.logs_sidebar_debug_selected = false;
+            }
+
+            KeyCode::End => {
+                // End goes to debug if available, otherwise last node
+                if self
+                    .log_collector
+                    .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
+                    .contains(&crate::messages::MAIN_THREAD_NODE_ID)
+                {
+                    self.ui_state.logs_sidebar_debug_selected = true;
+                    self.ui_state.logs_sidebar_selected = 0;
+                } else {
+                    let max_index = self.ui_state.logs_sidebar_nodes.len();
+                    self.ui_state.logs_sidebar_selected = max_index;
+                    self.ui_state.logs_sidebar_debug_selected = false;
+                }
+            }
+
+            // Up/Down arrow keys for sidebar navigation
+            KeyCode::Up => {
+                if self.ui_state.logs_sidebar_debug_selected {
+                    // Move from debug to last regular node or "All"
+                    if self.ui_state.logs_sidebar_nodes.is_empty() {
+                        self.ui_state.logs_sidebar_selected = 0; // "All"
+                    } else {
+                        self.ui_state.logs_sidebar_selected =
+                            self.ui_state.logs_sidebar_nodes.len();
+                    }
+                    self.ui_state.logs_sidebar_debug_selected = false;
+                } else if self.ui_state.logs_sidebar_selected > 0 {
+                    self.ui_state.logs_sidebar_selected -= 1;
+                }
+            }
+
+            KeyCode::Down => {
+                let max_index = self.ui_state.logs_sidebar_nodes.len();
+                if self.ui_state.logs_sidebar_selected < max_index {
+                    self.ui_state.logs_sidebar_selected += 1;
+                } else if !self.ui_state.logs_sidebar_debug_selected
+                    && self
+                        .log_collector
+                        .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
+                        .contains(&crate::messages::MAIN_THREAD_NODE_ID)
+                {
+                    // Move to debug if at the end of regular nodes
+                    self.ui_state.logs_sidebar_debug_selected = true;
+                    self.ui_state.logs_sidebar_selected = 0;
+                }
+            }
+
+            // Page Up/Down for log scrolling (page by page)
             KeyCode::PageUp => {
                 let page_size = self.ui_state.log_viewport_height.max(1);
                 self.ui_state.scroll_up(page_size);
@@ -371,28 +408,19 @@ impl App {
                 self.ui_state.scroll_down(page_size);
             }
 
-            // Home/End for jumping to top/bottom
-            KeyCode::Home => {
-                self.ui_state.scroll_to_top();
-            }
-
-            KeyCode::End => {
-                self.ui_state.scroll_to_bottom();
-            }
-
             // Toggle auto-scroll
             KeyCode::Char('a') => {
+                self.ui_state.auto_scroll = !self.ui_state.auto_scroll;
                 if self.ui_state.auto_scroll {
-                    self.ui_state.auto_scroll = false;
-                } else {
-                    self.ui_state.scroll_to_bottom(); // This also enables auto-scroll
+                    self.ui_state.scroll_to_bottom();
                 }
             }
 
+            // Clear logs
             KeyCode::Char('c') => {
                 self.log_collector.clear();
-                // Reset scroll position after clearing
-                self.ui_state.scroll_to_bottom();
+                self.ui_state.cached_logs.clear();
+                self.ui_state.log_scroll = 0;
             }
 
             _ => {}
@@ -402,16 +430,92 @@ impl App {
     /// Handle keys in logs mode during shutdown (limited functionality)
     fn handle_logs_keys_during_shutdown(&mut self, key: KeyEvent) {
         match key.code {
-            // Terminal-like scrolling still works during shutdown
-            KeyCode::Up => {
+            // Backtick "`" for "All" selection
+            KeyCode::Char('`') => {
+                self.ui_state.logs_sidebar_selected = 0;
+                self.ui_state.logs_sidebar_debug_selected = false;
+            }
+
+            // Number keys 1-9 for quick node selection still work during shutdown
+            KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => {
+                let num = c.to_digit(10).unwrap() as usize;
+                if num <= self.ui_state.logs_sidebar_nodes.len() {
+                    // "1-9" selects corresponding node
+                    self.ui_state.logs_sidebar_selected = num;
+                    self.ui_state.logs_sidebar_debug_selected = false;
+                }
+            }
+
+            // "d" key for debug selection still works during shutdown
+            KeyCode::Char('d') => {
+                self.ui_state.logs_sidebar_debug_selected = true;
+                self.ui_state.logs_sidebar_selected = 0; // Reset regular selection
+            }
+
+            // Alt+Up/Down for log scrolling still works during shutdown - put specific pattern first
+            KeyCode::Up if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) => {
                 self.ui_state.scroll_up(1);
             }
 
-            KeyCode::Down => {
+            KeyCode::Down if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) => {
                 self.ui_state.scroll_down(1);
             }
 
-            // Page Up/Down for faster scrolling
+            // Home/End for sidebar navigation still work during shutdown
+            KeyCode::Home => {
+                self.ui_state.logs_sidebar_selected = 0; // "All"
+                self.ui_state.logs_sidebar_debug_selected = false;
+            }
+
+            KeyCode::End => {
+                // End goes to debug if available, otherwise last node
+                if self
+                    .log_collector
+                    .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
+                    .contains(&crate::messages::MAIN_THREAD_NODE_ID)
+                {
+                    self.ui_state.logs_sidebar_debug_selected = true;
+                    self.ui_state.logs_sidebar_selected = 0;
+                } else {
+                    let max_index = self.ui_state.logs_sidebar_nodes.len();
+                    self.ui_state.logs_sidebar_selected = max_index;
+                    self.ui_state.logs_sidebar_debug_selected = false;
+                }
+            }
+
+            // Up/Down arrow keys for sidebar navigation still work during shutdown
+            KeyCode::Up => {
+                if self.ui_state.logs_sidebar_debug_selected {
+                    // Move from debug to last regular node or "All"
+                    if self.ui_state.logs_sidebar_nodes.is_empty() {
+                        self.ui_state.logs_sidebar_selected = 0; // "All"
+                    } else {
+                        self.ui_state.logs_sidebar_selected =
+                            self.ui_state.logs_sidebar_nodes.len();
+                    }
+                    self.ui_state.logs_sidebar_debug_selected = false;
+                } else if self.ui_state.logs_sidebar_selected > 0 {
+                    self.ui_state.logs_sidebar_selected -= 1;
+                }
+            }
+
+            KeyCode::Down => {
+                let max_index = self.ui_state.logs_sidebar_nodes.len();
+                if self.ui_state.logs_sidebar_selected < max_index {
+                    self.ui_state.logs_sidebar_selected += 1;
+                } else if !self.ui_state.logs_sidebar_debug_selected
+                    && self
+                        .log_collector
+                        .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
+                        .contains(&crate::messages::MAIN_THREAD_NODE_ID)
+                {
+                    // Move to debug if at the end of regular nodes
+                    self.ui_state.logs_sidebar_debug_selected = true;
+                    self.ui_state.logs_sidebar_selected = 0;
+                }
+            }
+
+            // Page Up/Down for log scrolling still works during shutdown
             KeyCode::PageUp => {
                 let page_size = self.ui_state.log_viewport_height.max(1);
                 self.ui_state.scroll_up(page_size);
@@ -422,32 +526,16 @@ impl App {
                 self.ui_state.scroll_down(page_size);
             }
 
-            // Home/End for jumping to top/bottom
-            KeyCode::Home => {
-                self.ui_state.scroll_to_top();
-            }
-
-            KeyCode::End => {
-                self.ui_state.scroll_to_bottom();
-            }
-
             // Toggle auto-scroll
             KeyCode::Char('a') => {
+                self.ui_state.auto_scroll = !self.ui_state.auto_scroll;
                 if self.ui_state.auto_scroll {
-                    self.ui_state.auto_scroll = false;
-                } else {
-                    self.ui_state.scroll_to_bottom(); // This also enables auto-scroll
+                    self.ui_state.scroll_to_bottom();
                 }
             }
 
             _ => {}
         }
-    }
-
-    /// Handle keys in help mode
-    const fn handle_help_keys(&mut self, _key: KeyEvent) {
-        // Tab and help (?) are now handled globally
-        // No help-specific keys currently
     }
 
     /// Handle messages from async tasks
@@ -490,15 +578,22 @@ impl App {
 
     /// Handle node started message
     fn handle_node_started(&mut self, id: NodeId, name: String) {
-        info!("Node {name} ({id}) started");
-        self.nodes.insert(id, (name, NodeStatus::Running));
+        info!("Node {name} ({id}) start method completed");
+        // Update the name but preserve the current status (should be Starting)
+        if let Some((_, current_status)) = self.nodes.get(&id) {
+            let status = current_status.clone();
+            self.nodes.insert(id, (name, status));
+        } else {
+            // Node doesn't exist yet, assume it's starting
+            self.nodes.insert(id, (name, NodeStatus::Starting));
+        }
     }
 
     /// Handle node stopped message
     fn handle_node_stopped(&mut self, id: NodeId) {
-        if let Some((name, _)) = self.nodes.get_mut(&id) {
+        if let Some((name, status)) = self.nodes.get_mut(&id) {
             info!("Node {name} ({id}) stopped");
-            self.nodes.remove(&id);
+            *status = NodeStatus::Stopped;
         }
     }
 
@@ -514,6 +609,9 @@ impl App {
     fn handle_node_status_update(&mut self, id: NodeId, status: NodeStatus) {
         if let Some((_, current_status)) = self.nodes.get_mut(&id) {
             *current_status = status;
+        } else {
+            // Node doesn't exist yet, create it with a placeholder name
+            self.nodes.insert(id, (id.pokemon_name(), status));
         }
     }
 }

@@ -99,7 +99,7 @@ impl EventHandler {
     }
 
     /// Receive the next event with a timeout (blocking)
-    pub fn next_blocking(&mut self, timeout: Duration) -> Option<Event> {
+    pub fn next_blocking(&self, timeout: Duration) -> Option<Event> {
         self.receiver.recv_timeout(timeout).ok()
     }
 

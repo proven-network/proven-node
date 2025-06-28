@@ -27,7 +27,7 @@ pub struct NodeId {
 }
 
 impl NodeId {
-    /// Create a new NodeId with incremental execution order and random pokemon
+    /// Create a new `NodeId` with incremental execution order and random pokemon
     pub fn new() -> Self {
         let mut used_pokemon_ids = USED_POKEMON_IDS.lock().unwrap();
         let mut next_order = NEXT_EXECUTION_ORDER.lock().unwrap();
@@ -47,6 +47,8 @@ impl NodeId {
             }
         };
 
+        drop(used_pokemon_ids);
+
         let execution_order = *next_order;
 
         // Increment execution order, wrapping at 255 to avoid overflow
@@ -55,13 +57,15 @@ impl NodeId {
             *next_order = 1; // Skip 0 as it's reserved for main thread
         }
 
+        drop(next_order);
+
         Self {
             execution_order,
             pokemon_id,
         }
     }
 
-    /// Create a NodeId with specific values (useful for testing)
+    /// Create a `NodeId` with specific values (useful for testing)
     pub const fn with_values(execution_order: u8, pokemon_id: u8) -> Self {
         Self {
             execution_order,
@@ -69,29 +73,34 @@ impl NodeId {
         }
     }
 
-    /// Check if this is the first node created (execution_order == 1)
-    pub const fn is_first_node(&self) -> bool {
+    /// Check if this is the first node created (`execution_order` == 1)
+    pub const fn is_first_node(self) -> bool {
         self.execution_order == 1
     }
 
+    /// Get the full pokemon name for this node
+    pub fn full_pokemon_name(self) -> String {
+        full_pokemon_name_from_id(self.pokemon_id)
+    }
+
     /// Get the pokemon name for this node
-    pub fn pokemon_name(&self) -> String {
+    pub fn pokemon_name(self) -> String {
         pokemon_name_from_id(self.pokemon_id)
     }
 
     /// Get the execution order for naming and coloring
-    pub const fn execution_order(&self) -> u8 {
+    pub const fn execution_order(self) -> u8 {
         self.execution_order
     }
 
     /// Get the pokemon ID
-    pub const fn pokemon_id(&self) -> u8 {
+    pub const fn pokemon_id(self) -> u8 {
         self.pokemon_id
     }
 
     /// Get a display name in the format "node-X" where X is the execution order
-    pub fn display_name(&self) -> String {
-        if *self == MAIN_THREAD_NODE_ID {
+    pub fn display_name(self) -> String {
+        if self == MAIN_THREAD_NODE_ID {
             "main".to_string()
         } else {
             format!("node-{}", self.execution_order)
@@ -104,6 +113,7 @@ impl NodeId {
         let mut used_pokemon_ids = USED_POKEMON_IDS.lock().unwrap();
         let mut next_order = NEXT_EXECUTION_ORDER.lock().unwrap();
         used_pokemon_ids.clear();
+        drop(used_pokemon_ids);
         *next_order = 1;
     }
 }
@@ -125,7 +135,7 @@ impl fmt::Display for NodeId {
 }
 
 /// Get Pokemon name from pokemon ID
-pub fn pokemon_name_from_id(pokemon_id: u8) -> String {
+pub fn full_pokemon_name_from_id(pokemon_id: u8) -> String {
     // Special case for main/TUI thread
     if pokemon_id == 255 {
         return "main".to_string();
@@ -133,10 +143,15 @@ pub fn pokemon_name_from_id(pokemon_id: u8) -> String {
 
     let kanto_pokemon = pokemon_rs::get_generation("Kanto", Some("en"));
     let index = (pokemon_id as usize) % kanto_pokemon.len();
-    let raw_name = kanto_pokemon[index].to_lowercase();
 
+    kanto_pokemon[index].to_string()
+}
+
+/// Get Pokemon name from pokemon ID
+pub fn pokemon_name_from_id(pokemon_id: u8) -> String {
     // Clean up the name: replace spaces with dashes, keep only letters and dashes
-    raw_name
+    full_pokemon_name_from_id(pokemon_id)
+        .to_lowercase()
         .replace(' ', "-")
         .chars()
         .filter(|c| c.is_ascii_alphabetic() || *c == '-')
@@ -269,13 +284,13 @@ mod tests {
         let node = NodeId::with_values(5, 10);
 
         // Debug should show the struct fields
-        let debug_str = format!("{:?}", node);
+        let debug_str = format!("{node:?}");
         assert!(debug_str.contains("execution_order"));
         assert!(debug_str.contains("pokemon_id"));
 
         // Display should show execution order and pokemon name
-        let display_str = format!("{}", node);
-        assert!(display_str.contains("5"));
+        let display_str = format!("{node}");
+        assert!(display_str.contains('5'));
         assert!(!display_str.is_empty());
     }
 }

@@ -11,33 +11,14 @@ use ratatui::{
     text::{Line, Span},
     widgets::{
         Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Tabs,
+        ScrollbarState,
     },
 };
 use std::collections::HashMap;
 
-/// Current view mode
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ViewMode {
-    /// Overview of all nodes
-    Overview,
-    /// Detailed view of a specific node
-    NodeDetail(NodeId),
-    /// Logs view
-    Logs,
-    /// Help screen
-    Help,
-}
-
 /// UI state management
 #[derive(Debug)]
 pub struct UiState {
-    /// Current view mode
-    pub view_mode: ViewMode,
-    /// Selected tab index
-    pub selected_tab: usize,
-    /// Whether to show help
-    pub show_help: bool,
     /// Scroll position for logs (0 = bottom/newest, higher = scrolled up towards older logs)
     pub log_scroll: usize,
     /// Cached logs for display (updated periodically, not on every render)
@@ -50,6 +31,14 @@ pub struct UiState {
     pub log_viewport_height: usize,
     /// Scrollbar state for logs
     pub log_scrollbar_state: ScrollbarState,
+    /// Logs sidebar selected index (0 = "All", 1+ = node indices)
+    pub logs_sidebar_selected: usize,
+    /// Whether debug is selected in the sidebar
+    pub logs_sidebar_debug_selected: bool,
+    /// List of nodes that have logs
+    pub logs_sidebar_nodes: Vec<NodeId>,
+    /// Whether to show help overlay
+    pub show_help: bool,
 }
 
 impl UiState {
@@ -57,15 +46,16 @@ impl UiState {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            view_mode: ViewMode::Overview,
-            selected_tab: 0,
-            show_help: false,
             log_scroll: 0,
             cached_logs: Vec::new(),
             last_log_refresh: std::time::Instant::now(),
             auto_scroll: true,
             log_viewport_height: 0,
             log_scrollbar_state: ScrollbarState::default(),
+            logs_sidebar_selected: 0,
+            logs_sidebar_debug_selected: false,
+            logs_sidebar_nodes: Vec::new(),
+            show_help: false,
         }
     }
 
@@ -173,6 +163,17 @@ impl Default for UiState {
     }
 }
 
+/// Get status icon for a node
+const fn get_status_icon(status: &NodeStatus) -> &'static str {
+    match status {
+        NodeStatus::NotStarted => "○", // Empty circle for not started
+        NodeStatus::Running => "●",    // Filled circle for running
+        NodeStatus::Starting => "◐",   // Half-filled circle for starting
+        NodeStatus::Stopped | NodeStatus::Stopping => "◯", // Empty circle for stopping/stopped
+        NodeStatus::Failed(_) => "✗",  // X for failed
+    }
+}
+
 /// Get the color for a node based on its execution order
 fn get_node_color(node_id: NodeId) -> Color {
     if node_id == crate::node_id::MAIN_THREAD_NODE_ID {
@@ -197,7 +198,7 @@ fn get_node_color(node_id: NodeId) -> Color {
 }
 
 /// Create colored spans for a log entry with proper alignment
-fn create_colored_log_line(entry: &crate::messages::LogEntry) -> Line {
+fn create_colored_log_line(entry: &crate::messages::LogEntry, show_node_name: bool) -> Line {
     let timestamp = format!("{}", entry.timestamp.format("%H:%M:%S%.3f"));
     let node_name = entry.node_id.pokemon_name();
 
@@ -223,428 +224,495 @@ fn create_colored_log_line(entry: &crate::messages::LogEntry) -> Line {
     };
 
     if let Some(target) = &entry.target {
-        Line::from(vec![
-            Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
-            Span::raw(" "),
-            Span::styled(
-                "[",
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                level_str,
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                "]",
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled("[", Style::default().fg(node_color)),
-            Span::styled(node_name, Style::default().fg(node_color)),
-            Span::styled("]", Style::default().fg(node_color)),
-            Span::raw(" "),
-            Span::styled(target, Style::default().fg(Color::DarkGray)),
-            Span::raw(": "),
-            Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
-        ])
+        if show_node_name {
+            Line::from(vec![
+                Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
+                Span::raw(" "),
+                Span::styled(
+                    "[",
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    level_str,
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "]",
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled("[", Style::default().fg(node_color)),
+                Span::styled(node_name, Style::default().fg(node_color)),
+                Span::styled("]", Style::default().fg(node_color)),
+                Span::raw(" "),
+                Span::styled(target, Style::default().fg(Color::DarkGray)),
+                Span::raw(": "),
+                Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
+                Span::raw(" "),
+                Span::styled(
+                    "[",
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    level_str,
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "]",
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled(target, Style::default().fg(Color::DarkGray)),
+                Span::raw(": "),
+                Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
+            ])
+        }
     } else {
-        Line::from(vec![
-            Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
-            Span::raw(" "),
-            Span::styled(
-                "[",
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                level_str,
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                "]",
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled("[", Style::default().fg(node_color)),
-            Span::styled(node_name, Style::default().fg(node_color)),
-            Span::styled("]", Style::default().fg(node_color)),
-            Span::raw(": "),
-            Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
-        ])
+        if show_node_name {
+            Line::from(vec![
+                Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
+                Span::raw(" "),
+                Span::styled(
+                    "[",
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    level_str,
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "]",
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled("[", Style::default().fg(node_color)),
+                Span::styled(node_name, Style::default().fg(node_color)),
+                Span::styled("]", Style::default().fg(node_color)),
+                Span::raw(": "),
+                Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
+                Span::raw(" "),
+                Span::styled(
+                    "[",
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    level_str,
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    "]",
+                    Style::default()
+                        .fg(level_color)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(": "),
+                Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
+            ])
+        }
     }
 }
 
-/// Render the main UI
-pub fn render_ui<S: ::std::hash::BuildHasher>(
+/// Main UI rendering function
+pub fn render_ui<S: std::hash::BuildHasher>(
     frame: &mut Frame,
     ui_state: &mut UiState,
     nodes: &HashMap<NodeId, (String, NodeStatus), S>,
     log_collector: &LogCollector,
     shutting_down: bool,
 ) {
-    let size = frame.area();
-
-    // Create main layout
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Header/tabs
-            Constraint::Min(0),    // Main content
-            Constraint::Length(3), // Footer/help
+            Constraint::Length(1), // Header
+            Constraint::Min(0),    // Main content (logs)
+            Constraint::Length(1), // Footer
         ])
-        .split(size);
+        .split(frame.area());
 
-    // Render header with tabs
-    render_header(frame, chunks[0], ui_state);
+    // Render header at the top
+    render_header(frame, chunks[0]);
 
-    // Render main content based on view mode
-    match ui_state.view_mode.clone() {
-        ViewMode::Overview => render_overview(frame, chunks[1], nodes, shutting_down),
-        ViewMode::NodeDetail(node_id) => render_node_detail(frame, chunks[1], node_id, nodes),
-        ViewMode::Logs => {
-            // Extract cached_logs to avoid borrowing conflicts
-            let cached_logs = ui_state.cached_logs.clone();
-            render_logs(frame, chunks[1], &cached_logs, log_collector, ui_state);
-        }
-        ViewMode::Help => render_help(frame, chunks[1]),
-    }
+    // Extract cached logs to avoid borrowing issues
+    let cached_logs = ui_state.cached_logs.clone();
 
-    // Render footer
+    // Render logs in the main area
+    render_logs(
+        frame,
+        chunks[1],
+        &cached_logs,
+        log_collector,
+        ui_state,
+        nodes,
+    );
+
+    // Render footer at the bottom
     render_footer(frame, chunks[2], shutting_down);
 
-    // Render help overlay if needed
+    // Render help overlay if requested
     if ui_state.show_help {
-        render_help_overlay(frame, size);
+        render_help_overlay(frame, frame.area());
     }
 }
 
-/// Render the header with tabs
-fn render_header(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
-    let tab_titles = vec!["Overview", "Logs", "Help"];
-    let tabs = Tabs::new(tab_titles)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Proven Node TUI"),
-        )
+/// Render the header with title
+fn render_header(frame: &mut Frame, area: ratatui::layout::Rect) {
+    let header_text = Line::from(vec![Span::styled(
+        "Proven Network TUI",
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )]);
+
+    let paragraph = Paragraph::new(header_text)
         .style(Style::default().fg(Color::White))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
-        .select(ui_state.selected_tab);
-
-    frame.render_widget(tabs, area);
-}
-
-/// Render the node overview
-fn render_overview<S: ::std::hash::BuildHasher>(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    nodes: &HashMap<NodeId, (String, NodeStatus), S>,
-    shutting_down: bool,
-) {
-    if nodes.is_empty() {
-        let help_text = Paragraph::new(vec![
-            Line::from("No nodes running"),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("Press ", Style::default()),
-                Span::styled(
-                    "'s'",
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(" to start a new node", Style::default()),
-            ]),
-            Line::from(vec![
-                Span::styled("Press ", Style::default()),
-                Span::styled(
-                    "'q'",
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(" to quit", Style::default()),
-            ]),
-        ])
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Node Overview"),
-        )
-        .style(Style::default().fg(Color::White));
-
-        frame.render_widget(help_text, area);
-        return;
-    }
-
-    let mut items = Vec::new();
-
-    // Collect nodes into a vector and sort by execution order
-    let mut sorted_nodes: Vec<_> = nodes.iter().collect();
-    sorted_nodes.sort_by_key(|(node_id, _)| node_id.execution_order());
-
-    for (node_id, (name, status)) in sorted_nodes {
-        let (display_status, status_color) = match status {
-            NodeStatus::Starting | NodeStatus::Stopping => (status.to_string(), Color::LightYellow),
-            NodeStatus::Running => {
-                if shutting_down {
-                    ("Shutting down...".to_string(), Color::Gray)
-                } else {
-                    (status.to_string(), Color::LightGreen)
-                }
-            }
-            NodeStatus::Stopped => (status.to_string(), Color::Gray),
-            NodeStatus::Failed(_) => (status.to_string(), Color::LightRed),
-        };
-
-        let line = Line::from(vec![
-            Span::styled(
-                node_id.pokemon_name(),
-                Style::default()
-                    .fg(get_node_color(*node_id))
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" | ", Style::default()),
-            Span::styled(name, Style::default().fg(Color::White)),
-            Span::styled(" | ", Style::default()),
-            Span::styled(
-                display_status,
-                Style::default()
-                    .fg(status_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]);
-
-        items.push(ListItem::new(line));
-    }
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Running Nodes"),
-        )
-        .style(Style::default().fg(Color::White));
-
-    frame.render_widget(list, area);
-}
-
-/// Render node detail view
-fn render_node_detail<S: ::std::hash::BuildHasher>(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    node_id: NodeId,
-    nodes: &HashMap<NodeId, (String, NodeStatus), S>,
-) {
-    let content = if let Some((name, status)) = nodes.get(&node_id) {
-        vec![
-            Line::from(vec![
-                Span::styled("Node ID: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    node_id.pokemon_name(),
-                    Style::default().fg(get_node_color(node_id)),
-                ),
-            ]),
-            Line::from(vec![
-                Span::styled("Name: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(name, Style::default().fg(Color::White)),
-            ]),
-            Line::from(vec![
-                Span::styled("Status: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    format!("{status}"),
-                    Style::default().fg(match status {
-                        NodeStatus::Running => Color::LightGreen,
-                        NodeStatus::Failed(_) => Color::LightRed,
-                        _ => Color::LightYellow,
-                    }),
-                ),
-            ]),
-            Line::from(""),
-            Line::from("Available actions:"),
-            Line::from("  [r] Restart node"),
-            Line::from("  [Delete] Stop node"),
-            Line::from("  [Esc] Back to overview"),
-        ]
-    } else {
-        vec![
-            Line::from("Node not found"),
-            Line::from(""),
-            Line::from("Press [Esc] to go back"),
-        ]
-    };
-
-    let paragraph = Paragraph::new(content)
-        .block(Block::default().borders(Borders::ALL).title("Node Details"))
-        .style(Style::default().fg(Color::White));
+        .alignment(ratatui::layout::Alignment::Center);
 
     frame.render_widget(paragraph, area);
 }
 
 /// Render logs view
-fn render_logs(
+fn render_logs<S: std::hash::BuildHasher>(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
     cached_logs: &[crate::messages::LogEntry],
     log_collector: &LogCollector,
     ui_state: &mut UiState,
+    nodes: &HashMap<NodeId, (String, NodeStatus), S>,
 ) {
-    let logs = cached_logs;
+    // Update nodes with logs for sidebar
+    let mut nodes_with_logs: Vec<NodeId> = log_collector
+        .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
+        .into_iter()
+        .filter(|&node_id| node_id != crate::messages::MAIN_THREAD_NODE_ID)
+        .collect();
 
-    if logs.is_empty() {
-        let paragraph = Paragraph::new("No logs available")
-            .block(Block::default().borders(Borders::ALL).title("Logs"))
-            .style(Style::default().fg(Color::Gray));
+    // Sort by execution order to match overview screen
+    nodes_with_logs.sort_by_key(|node_id| node_id.execution_order());
+    ui_state.logs_sidebar_nodes = nodes_with_logs;
 
-        frame.render_widget(paragraph, area);
-        return;
-    }
+    // Check if debug logs are available
+    let has_debug = log_collector
+        .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
+        .contains(&crate::messages::MAIN_THREAD_NODE_ID);
 
-    // Create layout for logs and scrollbar
-    let chunks = Layout::default()
+    // Use fixed sidebar width
+    let sidebar_width = 25;
+
+    // Split layout horizontally: sidebar | logs
+    let horizontal_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Min(0),    // Logs area
-            Constraint::Length(1), // Scrollbar
+            Constraint::Length(sidebar_width), // Sidebar
+            Constraint::Min(0),                // Logs
         ])
         .split(area);
 
-    let logs_area = chunks[0];
-    let scrollbar_area = chunks[1];
+    // Render sidebar
+    render_logs_sidebar(
+        frame,
+        horizontal_chunks[0],
+        ui_state,
+        log_collector,
+        has_debug,
+        nodes,
+    );
 
-    // Calculate viewport height (subtract borders)
-    let viewport_height = logs_area.height.saturating_sub(2) as usize;
-    ui_state.log_viewport_height = viewport_height;
+    // Render logs in the remaining space
+    let logs_area = horizontal_chunks[1];
 
-    // Update scrollbar state
+    // Determine which logs to show based on sidebar selection
+    let filtered_logs: Vec<_> = if ui_state.logs_sidebar_debug_selected {
+        // Show only debug (main thread) logs
+        cached_logs
+            .iter()
+            .filter(|entry| entry.node_id == crate::messages::MAIN_THREAD_NODE_ID)
+            .collect()
+    } else if ui_state.logs_sidebar_selected == 0 {
+        // Show all logs
+        cached_logs.iter().collect()
+    } else if let Some(&selected_node_id) = ui_state
+        .logs_sidebar_nodes
+        .get(ui_state.logs_sidebar_selected - 1)
+    {
+        // Show logs from specific node
+        cached_logs
+            .iter()
+            .filter(|entry| entry.node_id == selected_node_id)
+            .collect()
+    } else {
+        // Invalid selection, show all logs
+        cached_logs.iter().collect()
+    };
+
+    // Determine whether to show node names in logs
+    let show_node_names =
+        ui_state.logs_sidebar_selected == 0 && !ui_state.logs_sidebar_debug_selected;
+
+    // Convert LogEntry references to Lines for display
+    let log_lines: Vec<Line> = filtered_logs
+        .iter()
+        .map(|entry| create_colored_log_line(entry, show_node_names))
+        .collect();
+
+    // Update viewport height for scrolling calculations
+    let content_height = logs_area.height.saturating_sub(2); // Account for borders
+    ui_state.log_viewport_height = content_height as usize;
+
+    // Calculate which lines to display based on scroll position
+    // Note: logs come in with newest first (index 0 = newest)
+    // But we want to display with newest at bottom (terminal-like behavior)
+    let total_lines = log_lines.len();
+    let viewport_height = ui_state.log_viewport_height;
+
+    let display_lines = if total_lines <= viewport_height {
+        // All lines fit in viewport - reverse so newest appears at bottom
+        let mut lines = log_lines;
+        lines.reverse();
+        lines
+    } else {
+        // Need to scroll - log_scroll of 0 means show newest (bottom)
+        // log_scroll of max means show oldest (top)
+        let start_index = ui_state.log_scroll;
+        let end_index = (ui_state.log_scroll + viewport_height).min(total_lines);
+
+        // Take slice and reverse it so newest appears at bottom
+        let mut lines = log_lines[start_index..end_index].to_vec();
+        lines.reverse();
+        lines
+    };
+
+    // Update scrollbar state based on current scroll position
     ui_state.update_scrollbar_state();
 
-    // Terminal-like behavior: newest logs at bottom
-    // Note: logs array comes from LogCollector with newest first (index 0 = newest)
-    let total_logs = logs.len();
-
-    // Calculate which logs to show based on scroll position
-    let (start_idx, end_idx) = if total_logs <= viewport_height {
-        // All logs fit in viewport - show all in correct order
-        (0, total_logs)
-    } else {
-        // Need to scroll - calculate visible range
-        // log_scroll = 0 means show newest (bottom), which are at the start of the array
-        // log_scroll > 0 means scrolled up towards older logs
-        let actual_scroll = ui_state.log_scroll.min(total_logs - viewport_height);
+    // Create dynamic title based on selection
+    let (title_text, title_style) = if ui_state.logs_sidebar_debug_selected {
         (
-            actual_scroll,
-            (actual_scroll + viewport_height).min(total_logs),
+            " Logs - Debug ".to_string(),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else if ui_state.logs_sidebar_selected == 0 {
+        (
+            " Logs - All ".to_string(),
+            Style::default().add_modifier(Modifier::BOLD),
+        )
+    } else if let Some(&selected_node_id) = ui_state
+        .logs_sidebar_nodes
+        .get(ui_state.logs_sidebar_selected - 1)
+    {
+        let pokemon_name = selected_node_id.full_pokemon_name();
+        let node_color = get_node_color(selected_node_id);
+        (
+            format!(" Logs - {} ", pokemon_name),
+            Style::default().fg(node_color).add_modifier(Modifier::BOLD),
+        )
+    } else {
+        (
+            " Logs".to_string(),
+            Style::default().add_modifier(Modifier::BOLD),
         )
     };
 
-    // Since logs array has newest first but we want newest at bottom of display,
-    // we need to reverse the slice before displaying
-    let items: Vec<ListItem> = logs[start_idx..end_idx]
-        .iter()
-        .rev() // Reverse so newest appears at bottom
-        .map(|entry| {
-            let formatted = create_colored_log_line(entry);
-            ListItem::new(formatted)
-        })
-        .collect();
+    // Create the logs widget
+    let logs_paragraph = Paragraph::new(display_lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title_text)
+                .title_style(title_style),
+        )
+        .wrap(ratatui::widgets::Wrap { trim: false });
 
-    let current_filter = log_collector.get_level_filter();
-    let node_filter = log_collector.get_node_filter();
+    frame.render_widget(logs_paragraph, logs_area);
 
-    let title = node_filter.map_or_else(
-        || {
-            let scroll_indicator = if ui_state.auto_scroll {
-                " [Auto-scroll: ON]"
-            } else {
-                " [Auto-scroll: OFF]"
-            };
-            format!("Logs (Level: {current_filter}){scroll_indicator}")
-        },
-        |node_id| {
-            let scroll_indicator = if ui_state.auto_scroll {
-                " [Auto-scroll: ON]"
-            } else {
-                " [Auto-scroll: OFF]"
-            };
-            format!(
-                "Logs (Level: {current_filter}, Node: {}){scroll_indicator}",
-                node_id.pokemon_name()
-            )
-        },
-    );
+    // Render scrollbar if needed
+    if total_lines > viewport_height {
+        let scrollbar_area = ratatui::layout::Rect {
+            x: logs_area.x + logs_area.width.saturating_sub(1),
+            y: logs_area.y + 1,
+            width: 1,
+            height: logs_area.height.saturating_sub(2),
+        };
 
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title))
-        .style(Style::default().fg(Color::White));
-
-    frame.render_widget(list, logs_area);
-
-    // Render scrollbar if there are more logs than can fit
-    if total_logs > viewport_height {
-        let scrollbar = Scrollbar::default()
-            .orientation(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"));
-
-        frame.render_stateful_widget(scrollbar, scrollbar_area, &mut ui_state.log_scrollbar_state);
+        frame.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight),
+            scrollbar_area,
+            &mut ui_state.log_scrollbar_state,
+        );
     }
 }
 
-/// Render help screen
-fn render_help(frame: &mut Frame, area: ratatui::layout::Rect) {
-    let help_text = vec![
-        Line::from(Span::styled(
-            "Proven Node TUI - Help",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from("Global Keys:"),
-        Line::from("  q, Esc          - Graceful quit (stops all nodes)"),
-        Line::from("  Ctrl+C          - Force quit (immediate exit)"),
-        Line::from("  Tab             - Switch between tabs"),
-        Line::from("  ?               - Toggle help"),
-        Line::from(""),
-        Line::from("Node Management:"),
-        Line::from("  s               - Start new node"),
-        Line::from("  r               - Refresh status"),
-        Line::from("  Enter           - View node details"),
-        Line::from(""),
-        Line::from("Logs:"),
-        Line::from("  Up/Down         - Scroll logs (line by line)"),
-        Line::from("  PageUp/PageDown - Scroll logs (page by page)"),
-        Line::from("  Home/End        - Jump to top/bottom"),
-        Line::from("  a               - Toggle auto-scroll"),
-        Line::from("  f               - Filter by log level"),
-        Line::from("  n               - Filter by node"),
-        Line::from("  c               - Clear logs"),
-        Line::from(""),
-        Line::from("Node Details:"),
-        Line::from("  r               - Restart node"),
-        Line::from("  Delete          - Stop node"),
-        Line::from("  Esc             - Back to overview"),
+/// Render logs sidebar with node selection
+#[allow(clippy::too_many_lines)]
+fn render_logs_sidebar<S: std::hash::BuildHasher>(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    ui_state: &UiState,
+    _log_collector: &LogCollector,
+    has_debug: bool,
+    nodes: &HashMap<NodeId, (String, NodeStatus), S>,
+) {
+    // Render the border
+    let border_block = Block::default()
+        .borders(Borders::ALL)
+        .title(format!(" Nodes ({})", ui_state.logs_sidebar_nodes.len()));
+    frame.render_widget(border_block, area);
+
+    // Apply internal margins to the sidebar area
+    let inner_area = area.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+
+    // Split the inner area to put debug at the bottom if present
+    let (main_area, debug_area) = if has_debug {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),    // Main list area
+                Constraint::Length(1), // Debug area (1 line)
+            ])
+            .split(inner_area);
+        (chunks[0], Some(chunks[1]))
+    } else {
+        (inner_area, None)
+    };
+
+    // Create main sidebar items (All + nodes)
+    let mut items = vec![
+        // Empty line above "All"
+        ListItem::new(Line::from("")),
+        // "All" item with [`] shortcut
+        ListItem::new(Line::from(vec![if ui_state.logs_sidebar_selected == 0
+            && !ui_state.logs_sidebar_debug_selected
+        {
+            Span::styled(
+                format!(" [`] All{}", " ".repeat(23 - 8)), // Pad to full width (23 - 8 chars)
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(" [`] All", Style::default().fg(Color::White))
+        }])),
+        // Empty line below "All"
+        ListItem::new(Line::from("")),
     ];
 
-    let paragraph = Paragraph::new(help_text)
-        .block(Block::default().borders(Borders::ALL).title("Help"))
-        .style(Style::default().fg(Color::White));
+    // Add node items
+    for (index, &node_id) in ui_state.logs_sidebar_nodes.iter().enumerate() {
+        let list_index = index + 1; // +1 because "All" is at index 0
+        let is_selected =
+            ui_state.logs_sidebar_selected == list_index && !ui_state.logs_sidebar_debug_selected;
+        let node_color = get_node_color(node_id);
 
-    frame.render_widget(paragraph, area);
+        // Get node status and status icon
+        let (status_icon, status_color) = if let Some((_, status)) = nodes.get(&node_id) {
+            let icon = get_status_icon(status);
+            let color = match status {
+                NodeStatus::NotStarted | NodeStatus::Stopped => Color::Gray,
+                NodeStatus::Starting | NodeStatus::Stopping => Color::Yellow,
+                NodeStatus::Running => Color::Green,
+                NodeStatus::Failed(_) => Color::Red,
+            };
+            (icon, color)
+        } else {
+            ("?", Color::Gray) // Unknown status
+        };
+
+        // Show number shortcut for first 9 nodes
+        let prefix = if index < 9 {
+            format!("[{}] ", index + 1)
+        } else {
+            "    ".to_string()
+        };
+
+        let styled_text = if is_selected {
+            // Calculate content length and pad to full width
+            let content = format!(" {}{} {}", prefix, status_icon, node_id.pokemon_name());
+            let padding_needed = if content.len() < 25 {
+                25 - content.len()
+            } else {
+                0
+            };
+            let padded_content = format!("{}{}", content, " ".repeat(padding_needed));
+
+            vec![Span::styled(
+                padded_content,
+                Style::default()
+                    .fg(Color::White)
+                    .bg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            )]
+        } else {
+            vec![
+                Span::styled(" ", Style::default()),
+                Span::styled(prefix, Style::default().fg(Color::White)),
+                Span::styled(status_icon, Style::default().fg(status_color)),
+                Span::styled(" ", Style::default()),
+                Span::styled(node_id.pokemon_name(), Style::default().fg(node_color)),
+            ]
+        };
+
+        items.push(ListItem::new(Line::from(styled_text)));
+    }
+
+    // Render the main list (All + nodes)
+    let list = List::new(items).style(Style::default().fg(Color::White));
+    frame.render_widget(list, main_area);
+
+    // Render debug item at the bottom if present
+    if let Some(debug_area) = debug_area {
+        let debug_text = if ui_state.logs_sidebar_debug_selected {
+            Line::from(vec![Span::styled(
+                format!(" [d] debug{}", " ".repeat(23 - 10)), // Pad to full width (23 - 10 chars)
+                Style::default()
+                    .bg(Color::White)
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::BOLD),
+            )])
+        } else {
+            Line::from(vec![Span::styled(
+                " [d] debug",
+                Style::default().fg(Color::Yellow),
+            )])
+        };
+
+        let debug_paragraph = Paragraph::new(debug_text).style(Style::default().fg(Color::White));
+        frame.render_widget(debug_paragraph, debug_area);
+    }
 }
 
 /// Render footer with key hints
@@ -652,10 +720,10 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, shutting_down: 
     let footer_text = if shutting_down {
         Line::from(vec![
             Span::styled(
-                "⏳ SHUTTING DOWN NODES... ",
+                "Shutting down... ",
                 Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD | Modifier::SLOW_BLINK),
+                    .fg(Color::LightYellow)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled("Press ", Style::default()),
             Span::styled(
@@ -667,53 +735,86 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, shutting_down: 
     } else {
         Line::from(vec![
             Span::styled(
-                "[q]",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" Quit ", Style::default()),
-            Span::styled(
-                "[s]",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" Start Node ", Style::default()),
-            Span::styled(
-                "[↑↓]",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" Scroll ", Style::default()),
-            Span::styled(
-                "[a]",
-                Style::default()
-                    .fg(Color::Magenta)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" Auto-scroll ", Style::default()),
-            Span::styled(
-                "[?]",
+                "Keys: ",
                 Style::default()
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(" Help", Style::default()),
+            Span::styled("q", Style::default().fg(Color::Red)),
+            Span::styled(":quit ", Style::default()),
+            Span::styled("s", Style::default().fg(Color::Green)),
+            Span::styled(":start ", Style::default()),
+            Span::styled("r", Style::default().fg(Color::Blue)),
+            Span::styled(":refresh ", Style::default()),
+            Span::styled("`", Style::default().fg(Color::Yellow)),
+            Span::styled(":all ", Style::default()),
+            Span::styled("1-9", Style::default().fg(Color::Yellow)),
+            Span::styled(":select ", Style::default()),
+            Span::styled("d", Style::default().fg(Color::Magenta)),
+            Span::styled(":debug ", Style::default()),
+            Span::styled("a", Style::default().fg(Color::Cyan)),
+            Span::styled(":auto-scroll ", Style::default()),
+            Span::styled("?", Style::default().fg(Color::White)),
+            Span::styled(":help", Style::default()),
         ])
     };
 
     let paragraph = Paragraph::new(footer_text)
-        .block(Block::default().borders(Borders::ALL))
-        .style(Style::default().fg(Color::White));
+        .style(Style::default().fg(Color::White))
+        .alignment(ratatui::layout::Alignment::Center);
 
     frame.render_widget(paragraph, area);
 }
 
 /// Render help overlay
 fn render_help_overlay(frame: &mut Frame, area: ratatui::layout::Rect) {
-    let popup_area = centered_rect(80, 60, area);
+    let help_text = vec![
+        Line::from(Span::styled(
+            "Proven Node TUI - Help",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from("Global Keys:"),
+        Line::from("  q, Esc          - Graceful quit (stops all nodes)"),
+        Line::from("  Ctrl+C          - Force quit (immediate exit)"),
+        Line::from("  ?               - Toggle help"),
+        Line::from(""),
+        Line::from("Node Management:"),
+        Line::from("  s               - Start new node"),
+        Line::from("  r               - Refresh status"),
+        Line::from(""),
+        Line::from("Logs Navigation:"),
+        Line::from("  `               - Select All (in sidebar)"),
+        Line::from("  1-9             - Select node in sidebar (quick access)"),
+        Line::from("  d               - Select debug logs (in sidebar)"),
+        Line::from("  Up/Down         - Navigate sidebar (select node)"),
+        Line::from("  Home/End        - Select All / Debug (in sidebar)"),
+        Line::from(""),
+        Line::from("Log Viewing:"),
+        Line::from("  Alt+Up/Down     - Scroll logs (line by line)"),
+        Line::from("  PageUp/PageDown - Scroll logs (page by page)"),
+        Line::from("  a               - Toggle auto-scroll"),
+        Line::from("  c               - Clear logs"),
+        Line::from(""),
+        Line::from("Press ? or Esc to close this help"),
+    ];
+
+    let popup_area = centered_rect(60, 70, area);
+
     frame.render_widget(Clear, popup_area);
-    render_help(frame, popup_area);
+
+    let paragraph = Paragraph::new(help_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Help")
+                .title_style(Style::default().add_modifier(Modifier::BOLD)),
+        )
+        .style(Style::default().fg(Color::White));
+
+    frame.render_widget(paragraph, popup_area);
 }
 
 /// Helper function to create a centered rectangle

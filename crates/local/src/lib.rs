@@ -17,9 +17,41 @@ pub use error::Error;
 use proven_governance::Governance;
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 use url::Url;
+
+/// Status of a node
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NodeStatus {
+    /// Node is not started yet
+    NotStarted,
+    /// Node is in the process of starting
+    Starting,
+    /// Node is running normally  
+    Running,
+    /// Node is in the process of stopping
+    Stopping,
+    /// Node has stopped cleanly
+    Stopped,
+    /// Node failed during startup or runtime
+    Failed(String),
+}
+
+impl std::fmt::Display for NodeStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotStarted => write!(f, "Not Started"),
+            Self::Starting => write!(f, "Starting"),
+            Self::Running => write!(f, "Running"),
+            Self::Stopping => write!(f, "Stopping"),
+            Self::Stopped => write!(f, "Stopped"),
+            Self::Failed(err) => write!(f, "Failed: {err}"),
+        }
+    }
+}
 
 /// Configuration for a node instance
 #[derive(Clone, Debug)]
@@ -202,20 +234,153 @@ pub struct NodeConfig<G: Governance> {
     pub radix_stokenet_store_dir: PathBuf,
 }
 
-/// Run a node with the given configuration
-///
-/// This function starts the bootstrap process and waits for it to complete.
-/// It also sets up a shutdown token to allow the node to be shutdown.
-///
-/// # Errors
-///
-/// This function returns an error if the bootstrap process fails.
-pub async fn run_node<G: Governance>(
+/// A managed node instance that can be started, stopped, and queried
+pub struct Node<G: Governance> {
+    config: NodeConfig<G>,
+    status: Arc<RwLock<NodeStatus>>,
+    shutdown_token: Option<CancellationToken>,
+    task_handle: Option<tokio::task::JoinHandle<Result<(), Error>>>,
+}
+
+impl<G: Governance> Node<G> {
+    /// Create a new node with the given configuration
+    pub fn new(config: NodeConfig<G>) -> Self {
+        Self {
+            config,
+            status: Arc::new(RwLock::new(NodeStatus::NotStarted)),
+            shutdown_token: None,
+            task_handle: None,
+        }
+    }
+
+    /// Get the current status of the node
+    pub async fn status(&self) -> NodeStatus {
+        self.status.read().await.clone()
+    }
+
+    /// Check if the node is currently running
+    pub async fn is_running(&self) -> bool {
+        matches!(*self.status.read().await, NodeStatus::Running)
+    }
+
+    /// Start the node
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the node fails to start or is already started
+    pub async fn start(&mut self) -> Result<(), Error> {
+        let current_status = self.status.read().await.clone();
+
+        match current_status {
+            NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Failed(_) => {
+                // OK to start
+            }
+            _ => {
+                return Err(Error::Io(format!(
+                    "Cannot start node that is in state: {current_status}"
+                )));
+            }
+        }
+
+        // Set status to starting
+        *self.status.write().await = NodeStatus::Starting;
+
+        // Create shutdown token
+        let shutdown_token = CancellationToken::new();
+        self.shutdown_token = Some(shutdown_token.clone());
+
+        // Clone status handle for the task
+        let status = self.status.clone();
+        let config = self.config.clone();
+
+        // Start the node in a background task
+        let task_handle = tokio::spawn(async move {
+            let result = run_node_internal(config, shutdown_token, status.clone()).await;
+
+            // Update status based on result
+            match &result {
+                Ok(()) => {
+                    *status.write().await = NodeStatus::Stopped;
+                }
+                Err(e) => {
+                    *status.write().await = NodeStatus::Failed(e.to_string());
+                }
+            }
+
+            result
+        });
+
+        self.task_handle = Some(task_handle);
+
+        Ok(())
+    }
+
+    /// Stop the node
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the node fails to stop cleanly
+    pub async fn stop(&mut self) -> Result<(), Error> {
+        let current_status = self.status.read().await.clone();
+
+        match current_status {
+            NodeStatus::Running | NodeStatus::Starting => {
+                // OK to stop
+            }
+            _ => {
+                return Err(Error::Io(format!(
+                    "Cannot stop node that is in state: {current_status}"
+                )));
+            }
+        }
+
+        // Set status to stopping
+        *self.status.write().await = NodeStatus::Stopping;
+
+        // Cancel the shutdown token if it exists
+        if let Some(shutdown_token) = &self.shutdown_token {
+            shutdown_token.cancel();
+        }
+
+        // Wait for the task to complete
+        if let Some(task_handle) = self.task_handle.take() {
+            match task_handle.await {
+                Ok(Ok(())) => {
+                    info!("Node stopped successfully");
+                }
+                Ok(Err(e)) => {
+                    info!("Node stopped with error: {e}");
+                    *self.status.write().await = NodeStatus::Failed(e.to_string());
+                    return Err(e);
+                }
+                Err(join_error) => {
+                    let error_msg = format!("Node task panicked: {join_error}");
+                    info!("{error_msg}");
+                    *self.status.write().await = NodeStatus::Failed(error_msg.clone());
+                    return Err(Error::Io(error_msg));
+                }
+            }
+        }
+
+        self.shutdown_token = None;
+        Ok(())
+    }
+
+    /// Get the node's configuration
+    pub const fn config(&self) -> &NodeConfig<G> {
+        &self.config
+    }
+}
+
+/// Internal function to run a node
+async fn run_node_internal<G: Governance>(
     config: NodeConfig<G>,
     shutdown_token: CancellationToken,
+    status: Arc<RwLock<NodeStatus>>,
 ) -> Result<(), Error> {
     // Start bootstrap with shared shutdown token
     let bootstrap = Bootstrap::new(config).await?;
+
     let initialization_result = tokio::select! {
         result = bootstrap.initialize(shutdown_token.clone()) => {
             result
@@ -228,9 +393,16 @@ pub async fn run_node<G: Governance>(
 
     match initialization_result {
         Ok((_node, task_tracker)) => {
-            info!("Bootstrap completed successfully. Press Ctrl+C to shutdown...");
+            info!("Bootstrap completed successfully");
 
+            // Update status to running
+            *status.write().await = NodeStatus::Running;
+
+            // Wait for shutdown
             shutdown_token.cancelled().await;
+
+            // Update status to stopping
+            *status.write().await = NodeStatus::Stopping;
 
             task_tracker.wait().await;
 
@@ -244,4 +416,20 @@ pub async fn run_node<G: Governance>(
     }
 
     Ok(())
+}
+
+/// Run a node with the given configuration (legacy function, kept for backwards compatibility)
+///
+/// This function starts the bootstrap process and waits for it to complete.
+/// It also sets up a shutdown token to allow the node to be shutdown.
+///
+/// # Errors
+///
+/// This function returns an error if the bootstrap process fails.
+pub async fn run_node<G: Governance>(
+    config: NodeConfig<G>,
+    shutdown_token: CancellationToken,
+) -> Result<(), Error> {
+    let status = Arc::new(RwLock::new(NodeStatus::Starting));
+    run_node_internal(config, shutdown_token, status).await
 }

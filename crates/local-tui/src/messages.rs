@@ -12,32 +12,8 @@ pub type TuiNodeConfig = NodeConfig<MockGovernance>;
 // Re-export NodeId and related constants/functions from the node_id module
 pub use crate::node_id::{MAIN_THREAD_NODE_ID, NodeId};
 
-/// Status of a node
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum NodeStatus {
-    /// Node is starting up
-    Starting,
-    /// Node is running normally
-    Running,
-    /// Node is shutting down
-    Stopping,
-    /// Node has stopped
-    Stopped,
-    /// Node failed with an error
-    Failed(String),
-}
-
-impl fmt::Display for NodeStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Starting => write!(f, "Starting"),
-            Self::Running => write!(f, "Running"),
-            Self::Stopping => write!(f, "Stopping"),
-            Self::Stopped => write!(f, "Stopped"),
-            Self::Failed(err) => write!(f, "Failed: {err}"),
-        }
-    }
-}
+// Re-export NodeStatus from proven_local
+pub use proven_local::NodeStatus;
 
 /// Log level for filtering
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
