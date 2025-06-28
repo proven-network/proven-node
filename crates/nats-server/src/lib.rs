@@ -566,6 +566,10 @@ where
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
+    fn name(&self) -> &'static str {
+        "nats-server"
+    }
+
     /// Starts the NATS server in an isolated environment.
     ///
     /// # Errors

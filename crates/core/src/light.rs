@@ -75,6 +75,10 @@ where
     G: Governance,
     HS: HttpServer,
 {
+    fn name(&self) -> &'static str {
+        "core (light)"
+    }
+
     /// Start the core.
     ///
     /// # Errors

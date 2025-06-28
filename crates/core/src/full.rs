@@ -246,6 +246,10 @@ where
     G: Governance,
     HS: HttpServer,
 {
+    fn name(&self) -> &'static str {
+        "core (full)"
+    }
+
     /// Start the core.
     ///
     /// # Errors

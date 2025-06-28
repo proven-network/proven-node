@@ -12,6 +12,9 @@ pub trait Bootable
 where
     Self: Send + Sync + 'static,
 {
+    /// Get the name of the bootable service.
+    fn name(&self) -> &str;
+
     /// Start the bootable service.
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 

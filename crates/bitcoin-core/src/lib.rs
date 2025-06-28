@@ -303,6 +303,10 @@ impl BitcoinNode {
 
 #[async_trait]
 impl Bootable for BitcoinNode {
+    fn name(&self) -> &'static str {
+        "bitcoin-core"
+    }
+
     /// Starts the Bitcoin Core node in an isolated environment.
     ///
     /// # Errors

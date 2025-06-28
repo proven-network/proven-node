@@ -413,6 +413,10 @@ impl Postgres {
 
 #[async_trait]
 impl Bootable for Postgres {
+    fn name(&self) -> &'static str {
+        "postgres"
+    }
+
     /// Starts the Postgres server.
     ///
     /// # Errors

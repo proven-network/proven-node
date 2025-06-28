@@ -243,10 +243,11 @@ impl<G: Governance> Bootstrap<G> {
             // Create a future that waits for any service to exit unexpectedly
             let monitor_services = async {
                 let mut futures = Vec::new();
-                for (index, bootable) in bootables_for_supervisor.iter().enumerate() {
+                for bootable in bootables_for_supervisor.iter() {
+                    let service_name = bootable.name().to_string();
                     let future = Box::pin(async move {
                         bootable.wait().await;
-                        error!("Bootable service {} exited unexpectedly", index);
+                        error!("Bootable service '{}' exited unexpectedly", service_name);
                     });
                     futures.push(future);
                 }

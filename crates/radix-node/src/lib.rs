@@ -354,6 +354,10 @@ api.core.port={}",
 
 #[async_trait]
 impl Bootable for RadixNode {
+    fn name(&self) -> &'static str {
+        "radix-node"
+    }
+
     /// Starts the Radix Babylon Node.
     ///
     /// # Errors

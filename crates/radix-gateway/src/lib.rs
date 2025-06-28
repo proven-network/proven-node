@@ -250,6 +250,10 @@ impl RadixGateway {
 
 #[async_trait]
 impl Bootable for RadixGateway {
+    fn name(&self) -> &'static str {
+        "radix-gateway"
+    }
+
     /// Starts the Radix Gateway server.
     ///
     /// # Errors

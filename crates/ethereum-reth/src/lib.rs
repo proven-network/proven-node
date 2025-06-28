@@ -423,6 +423,10 @@ impl RethNode {
 
 #[async_trait]
 impl Bootable for RethNode {
+    fn name(&self) -> &'static str {
+        "ethereum-reth"
+    }
+
     /// Start the Reth node.
     ///
     /// Returns a handle to the task that is running the node.

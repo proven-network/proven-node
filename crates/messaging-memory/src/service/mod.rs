@@ -232,6 +232,10 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    fn name(&self) -> &'static str {
+        "messaging-memory (service)"
+    }
+
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.task_tracker.is_closed() {
             return Err(Box::new(Error::AlreadyRunning));

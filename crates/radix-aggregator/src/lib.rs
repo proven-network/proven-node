@@ -331,6 +331,10 @@ impl RadixAggregator {
 
 #[async_trait]
 impl Bootable for RadixAggregator {
+    fn name(&self) -> &'static str {
+        "radix-aggregator"
+    }
+
     /// Starts the Radix Aggregator.
     ///
     /// # Errors

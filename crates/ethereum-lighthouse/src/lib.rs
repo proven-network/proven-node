@@ -368,6 +368,10 @@ impl LighthouseNode {
 
 #[async_trait]
 impl Bootable for LighthouseNode {
+    fn name(&self) -> &'static str {
+        "ethereum-lighthouse"
+    }
+
     /// Starts the Lighthouse consensus client.
     ///
     /// # Errors

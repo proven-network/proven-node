@@ -199,6 +199,10 @@ impl<S> Bootable for LetsEncryptHttpServer<S>
 where
     S: Store<Bytes, Infallible, Infallible>,
 {
+    fn name(&self) -> &'static str {
+        "http (letsencrypt)"
+    }
+
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let acceptor = self.acceptor.clone();
         let listen_addr = self.listen_addr;

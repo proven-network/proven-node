@@ -50,6 +50,10 @@ impl InsecureHttpServer {
 
 #[async_trait]
 impl Bootable for InsecureHttpServer {
+    fn name(&self) -> &'static str {
+        "http (insecure)"
+    }
+
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.task_tracker.is_closed() {
             return Err(Box::new(Error::AlreadyStarted));

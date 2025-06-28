@@ -83,6 +83,10 @@ impl<S> Bootable for HttpProxyService<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
+    fn name(&self) -> &'static str {
+        "http-proxy (service)"
+    }
+
     /// Start the HTTP proxy.
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("http proxy service starting...");

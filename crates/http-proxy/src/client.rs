@@ -97,6 +97,10 @@ impl<S> Bootable for HttpProxyClient<S>
 where
     S: InitializedStream<Request, DeserializeError, SerializeError>,
 {
+    fn name(&self) -> &'static str {
+        "http-proxy (client)"
+    }
+
     /// Start the HTTP proxy client's listener.
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if self.task_tracker.is_closed() {
