@@ -17,6 +17,7 @@ use std::time::Duration;
 use deno_core::ModuleSpecifier;
 use rustyscript::{ExtensionOptions, WebOptions};
 use tokio::sync::oneshot;
+use tracing::error;
 
 pub struct OptionsParser;
 
@@ -118,12 +119,12 @@ impl OptionsParser {
         thread::spawn(move || {
             let result = Self::parse(&module_loader, &module_specifier);
             if sender.send(result).is_err() {
-                eprintln!("Failed to send parse result through channel");
+                error!("Failed to send parse result through channel");
             }
         });
 
         receiver.await.unwrap_or_else(|_| {
-            eprintln!("Failed to receive parse result from channel");
+            error!("Failed to receive parse result from channel");
             Err(Error::ChannelCommunicationError)
         })
     }

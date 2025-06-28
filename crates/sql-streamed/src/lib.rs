@@ -164,7 +164,7 @@ where
                 std::collections::hash_map::Entry::Occupied(entry) => {
                     // Another connection is already starting this service, wait for it
                     startup_notify = Some(entry.get().clone());
-                    println!(
+                    debug!(
                         "Another connection is starting SQL service for stream '{stream_name}', waiting..."
                     );
                 }
@@ -276,9 +276,9 @@ where
 
         // If we have a startup notify, wait for the primary connection to finish
         if let Some(notify) = startup_notify {
-            println!("Waiting for primary connection to finish startup for stream '{stream_name}'");
+            debug!("Waiting for primary connection to finish startup for stream '{stream_name}'");
             notify.notified().await; // Wait for startup completion signal
-            println!("Primary connection finished startup for stream '{stream_name}'");
+            debug!("Primary connection finished startup for stream '{stream_name}'");
         }
 
         Ok(Connection::new(client))

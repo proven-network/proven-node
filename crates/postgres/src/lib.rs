@@ -331,8 +331,6 @@ impl Postgres {
 
         let exit_status = process.wait().await;
 
-        println!("exit status: {exit_status:?}");
-
         if exit_status.success() {
             info!("database initialization completed");
 

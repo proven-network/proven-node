@@ -19,6 +19,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
+use tracing::{error, info};
 use url::Url;
 use uuid::Uuid;
 use webauthn_rs::prelude::*;
@@ -159,7 +160,7 @@ where
         });
 
     if !resident_key_set {
-        eprintln!("Failed to set resident key requirement");
+        error!("Failed to set resident key requirement");
         return Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
             .body("Failed to configure credential requirements".to_string())
@@ -196,7 +197,7 @@ where
         });
 
     if !prf_inserted {
-        eprintln!("Failed to insert PRF extension into publicKey.extensions");
+        error!("Failed to insert PRF extension into publicKey.extensions");
         return Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
             .body("Failed to structure registration options".to_string())
@@ -296,14 +297,14 @@ where
                 .await
             {
                 Ok(()) => {
-                    println!("Stored passkey for user {user_uuid}");
+                    info!("Stored passkey for user {user_uuid}");
                     Response::builder()
                         .status(StatusCode::OK)
                         .body("Registration successful".to_string())
                         .unwrap()
                 }
                 Err(e) => {
-                    eprintln!("Failed to store passkey: {e}");
+                    error!("Failed to store passkey: {e}");
                     Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .body("Failed to store passkey".to_string())
@@ -375,7 +376,7 @@ where
     let (rcr, state) = match webauthn.start_discoverable_authentication() {
         Ok((rcr, state)) => (rcr, state),
         Err(e) => {
-            eprintln!("Failed to start discoverable authentication: {e}");
+            error!("Failed to start discoverable authentication: {e}");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to start authentication".to_string())
@@ -393,7 +394,7 @@ where
     let mut rcr_val = match serde_json::to_value(&rcr) {
         Ok(val) => val,
         Err(e) => {
-            eprintln!("Failed to serialize RCR to JSON value: {e}");
+            error!("Failed to serialize RCR to JSON value: {e}");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to prepare authentication options".to_string())
@@ -431,7 +432,7 @@ where
         });
 
     if !prf_inserted {
-        eprintln!("Failed to insert PRF extension into publicKey.extensions");
+        error!("Failed to insert PRF extension into publicKey.extensions");
         return Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
             .body("Failed to structure authentication options".to_string())
@@ -453,7 +454,7 @@ where
         });
 
     if !hints_set {
-        eprintln!("Failed to insert userVerification");
+        error!("Failed to insert userVerification");
     }
 
     // Remove mediation field (webauthn_rs forces it when activating discoverable)
@@ -466,7 +467,7 @@ where
     let final_response_json = match serde_json::to_string(&rcr_val) {
         Ok(json_str) => json_str,
         Err(e) => {
-            eprintln!("Failed to serialize modified RCR: {e}");
+            error!("Failed to serialize modified RCR: {e}");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to serialize authentication options".to_string())
@@ -550,7 +551,7 @@ where
         match webauthn.identify_discoverable_authentication(&auth_public_key_credential) {
             Ok(user_data) => user_data,
             Err(e) => {
-                eprintln!("Failed to identify user from discoverable authentication: {e}");
+                error!("Failed to identify user from discoverable authentication: {e}");
                 return Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .body(format!("Failed to identify user: {e}"))
@@ -562,14 +563,14 @@ where
     let identity_passkey = match passkey_manager.get_passkey(&user_unique_id).await {
         Ok(Some(passkey)) => passkey,
         Ok(None) => {
-            eprintln!("No stored passkey found for user {user_unique_id}");
+            error!("No stored passkey found for user {user_unique_id}");
             return Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(format!("No stored passkey found for user {user_unique_id}"))
                 .unwrap();
         }
         Err(e) => {
-            eprintln!("Failed to load passkey: {e}");
+            error!("Failed to load passkey: {e}");
             return Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Failed to load stored passkey".to_string())

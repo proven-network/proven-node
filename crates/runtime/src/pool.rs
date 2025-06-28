@@ -13,6 +13,7 @@ use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::{Duration, Instant, sleep};
+use tracing::error;
 
 type WorkerMap<AS, PS, NS, ASS, PSS, NSS, FSS, RNV> =
     HashMap<String, Vec<Worker<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>>>;
@@ -675,7 +676,7 @@ where
                 }
             }
             Err(e) => {
-                eprintln!("Failed to reserve slot in queue: {e:?}");
+                error!("Failed to reserve slot in queue: {e:?}");
                 // Ensure we send an error back if queueing fails
                 let _ = tx.send(Err(Error::ChannelCommunicationError));
             }

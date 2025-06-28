@@ -9,6 +9,7 @@ use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tracing::error;
 
 /// A worker that handles execution requests using a runtime. Can be run async in tokio.
 ///
@@ -156,13 +157,13 @@ where
         let worker_request = (request, sender);
 
         if (self.sender.send(worker_request).await).is_err() {
-            eprintln!("Failed to send request to worker");
+            error!("Failed to send request to worker");
         }
 
         let response = reciever.await;
 
         if response.is_err() {
-            eprintln!("Failed to receive response from worker");
+            error!("Failed to receive response from worker");
         }
 
         response.unwrap()

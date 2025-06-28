@@ -42,7 +42,6 @@ static CLUSTER_NO_TLS_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster
 const PEER_DISCOVERY_INTERVAL: u64 = 300; // 5 minutes
 
 /// Regex pattern for matching NATS server log lines
-/// Example: "[51138] 2025/06/29 03:15:07.000309 [DBG] JETSTREAM - JetStream connection closed: Client Closed"
 static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\[\d+\] \d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}\.\d{6} (\[[A-Z]+\]) (.*)")
         .expect("Invalid regex pattern")
