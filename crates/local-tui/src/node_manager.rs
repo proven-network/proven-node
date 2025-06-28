@@ -9,14 +9,44 @@ use parking_lot::RwLock;
 use proven_governance::TopologyNode;
 use proven_governance_mock::MockGovernance;
 use std::collections::{HashMap, HashSet};
+use std::net::{SocketAddr, TcpListener};
 use std::path::PathBuf;
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, LazyLock, Mutex, mpsc};
 use std::thread;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use url::Url;
 use uuid::Uuid;
+
+/// Global port allocator starting from 3000
+static NEXT_PORT: LazyLock<Mutex<u16>> = LazyLock::new(|| Mutex::new(3000));
+
+/// Allocate the next available port, starting from 3000
+fn allocate_port() -> Result<u16> {
+    let mut port_guard = NEXT_PORT.lock().unwrap();
+
+    // Try up to 10000 ports from the current position
+    for _ in 0..10000 {
+        let port = *port_guard;
+        *port_guard += 1;
+
+        // Check if port is actually available on the system
+        if is_port_available(port) {
+            return Ok(port);
+        }
+    }
+
+    anyhow::bail!(
+        "No available ports found after trying 10000 ports from {}",
+        *port_guard - 10000
+    )
+}
+
+/// Check if a port is available by attempting to bind to it
+fn is_port_available(port: u16) -> bool {
+    TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).is_ok()
+}
 
 /// Handle to a running node
 #[derive(Debug)]
@@ -83,7 +113,7 @@ impl NodeHandle {
                         Ok(join_result) => match join_result {
                             Ok(node_result) => match node_result {
                                 Ok(()) => {
-                                    info!("Node {} ({}) shut down gracefully", self.name, self.id)
+                                    info!("Node {} ({}) shut down gracefully", self.name, self.id);
                                 }
                                 Err(e) => info!(
                                     "Node {} ({}) completed with error during shutdown: {}",
@@ -178,12 +208,7 @@ impl NodeManager {
                     }
 
                     NodeCommand::StopNode { id } => {
-                        Self::handle_stop_node(
-                            nodes.clone(),
-                            message_sender.clone(),
-                            &governance,
-                            id,
-                        );
+                        Self::handle_stop_node(&nodes, message_sender.clone(), &governance, id);
                     }
 
                     NodeCommand::RestartNode { id } => {
@@ -201,7 +226,7 @@ impl NodeManager {
                     }
 
                     NodeCommand::Shutdown => {
-                        Self::handle_shutdown(nodes.clone(), message_sender.clone());
+                        Self::handle_shutdown(nodes.clone(), message_sender);
                         break;
                     }
                 }
@@ -221,20 +246,10 @@ impl NodeManager {
         info!("Starting node {name} ({id})");
 
         // Create or use provided configuration
-        let node_config = match config {
-            Some(config) => *config,
-            None => match Self::create_node_config(id, &name, governance, run_id) {
-                Ok(config) => config,
-                Err(e) => {
-                    error!("Failed to create node config for {name} ({id}): {e}");
-                    let _ = message_sender.send(TuiMessage::NodeFailed {
-                        id,
-                        error: format!("Failed to create config: {e}"),
-                    });
-                    return;
-                }
-            },
-        };
+        let node_config = config.map_or_else(
+            || Self::create_node_config(id, &name, governance, run_id),
+            |config| *config,
+        );
 
         // Create the node handle
         let mut node_handle = NodeHandle::new(id, name.clone(), node_config.clone());
@@ -273,12 +288,13 @@ impl NodeManager {
         let public_key = node_config.node_key.verifying_key();
 
         // Determine the proper origin endpoint based on whether this is the first node
-        let base_port = id.execution_order() as u16 * 1000;
+        // Use the actual allocated port from the node configuration
+        let actual_port = node_config.port;
         let origin = if id.is_first_node() {
-            format!("http://localhost:{base_port}")
+            format!("http://localhost:{actual_port}")
         } else {
             let pokemon_name = id.pokemon_name();
-            format!("http://{pokemon_name}.local:{base_port}")
+            format!("http://{pokemon_name}.local:{actual_port}")
         };
 
         let topology_node = TopologyNode {
@@ -343,7 +359,7 @@ impl NodeManager {
     }
 
     fn handle_stop_node(
-        nodes: Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
+        nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
         message_sender: mpsc::Sender<TuiMessage>,
         governance: &Arc<MockGovernance>,
         id: NodeId,
@@ -389,7 +405,7 @@ impl NodeManager {
         id: NodeId,
     ) {
         // First stop the node
-        Self::handle_stop_node(nodes.clone(), message_sender.clone(), governance, id);
+        Self::handle_stop_node(&nodes, message_sender.clone(), governance, id);
 
         // Wait a moment for the stop to complete
         thread::sleep(Duration::from_millis(500));
@@ -466,26 +482,33 @@ impl NodeManager {
         name: &str,
         governance: &Arc<MockGovernance>,
         run_id: &str,
-    ) -> Result<TuiNodeConfig> {
+    ) -> proven_local::NodeConfig<proven_governance_mock::MockGovernance> {
         // Generate a random private key for this node
         let private_key = SigningKey::generate(&mut rand::thread_rng());
 
-        // Create a base port for this node
-        let base_port = id.execution_order() as u16 * 1000;
+        // Get the main port (first port allocated will be 3000 for the first node)
+        let main_port = allocate_port().unwrap_or_else(|e| {
+            panic!("Failed to allocate main port for node {}: {}", id, e);
+        });
+
+        info!(
+            "Allocated main port for node {} ({}): {}",
+            name, id, main_port
+        );
 
         // Note: Governance registration is handled in handle_start_node when the node actually starts
 
         // Create the full node configuration
-        let config = Self::build_node_config(name, base_port, governance, private_key, run_id);
+        let config = Self::build_node_config(name, main_port, governance, private_key, run_id);
 
-        Ok(config)
+        config
     }
 
     /// Build the node configuration with all service ports and directories
     #[allow(clippy::too_many_lines)]
     pub fn build_node_config(
         name: &str,
-        base_port: u16,
+        main_port: u16,
         governance: &Arc<MockGovernance>,
         private_key: SigningKey,
         run_id: &str,
@@ -493,7 +516,7 @@ impl NodeManager {
         TuiNodeConfig {
             bitcoin_mainnet_fallback_rpc_endpoint: Url::parse("https://bitcoin-rpc.publicnode.com")
                 .unwrap(),
-            bitcoin_mainnet_proxy_port: base_port + 100,
+            bitcoin_mainnet_proxy_port: allocate_port().unwrap(),
             bitcoin_mainnet_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/bitcoin-mainnet"
             )),
@@ -502,22 +525,22 @@ impl NodeManager {
                 "https://bitcoin-testnet-rpc.publicnode.com",
             )
             .unwrap(),
-            bitcoin_testnet_proxy_port: base_port + 101,
+            bitcoin_testnet_proxy_port: allocate_port().unwrap(),
             bitcoin_testnet_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/bitcoin-testnet"
             )),
 
-            ethereum_holesky_consensus_http_port: base_port + 200,
-            ethereum_holesky_consensus_metrics_port: base_port + 201,
-            ethereum_holesky_consensus_p2p_port: base_port + 202,
+            ethereum_holesky_consensus_http_port: allocate_port().unwrap(),
+            ethereum_holesky_consensus_metrics_port: allocate_port().unwrap(),
+            ethereum_holesky_consensus_p2p_port: allocate_port().unwrap(),
             ethereum_holesky_consensus_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/ethereum-holesky/lighthouse"
             )),
 
-            ethereum_holesky_execution_discovery_port: base_port + 210,
-            ethereum_holesky_execution_http_port: base_port + 211,
-            ethereum_holesky_execution_metrics_port: base_port + 212,
-            ethereum_holesky_execution_rpc_port: base_port + 213,
+            ethereum_holesky_execution_discovery_port: allocate_port().unwrap(),
+            ethereum_holesky_execution_http_port: allocate_port().unwrap(),
+            ethereum_holesky_execution_metrics_port: allocate_port().unwrap(),
+            ethereum_holesky_execution_rpc_port: allocate_port().unwrap(),
             ethereum_holesky_execution_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/ethereum-holesky/reth"
             )),
@@ -526,17 +549,17 @@ impl NodeManager {
             )
             .unwrap(),
 
-            ethereum_mainnet_consensus_http_port: base_port + 220,
-            ethereum_mainnet_consensus_metrics_port: base_port + 221,
-            ethereum_mainnet_consensus_p2p_port: base_port + 222,
+            ethereum_mainnet_consensus_http_port: allocate_port().unwrap(),
+            ethereum_mainnet_consensus_metrics_port: allocate_port().unwrap(),
+            ethereum_mainnet_consensus_p2p_port: allocate_port().unwrap(),
             ethereum_mainnet_consensus_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/ethereum-mainnet/lighthouse"
             )),
 
-            ethereum_mainnet_execution_discovery_port: base_port + 230,
-            ethereum_mainnet_execution_http_port: base_port + 231,
-            ethereum_mainnet_execution_metrics_port: base_port + 232,
-            ethereum_mainnet_execution_rpc_port: base_port + 233,
+            ethereum_mainnet_execution_discovery_port: allocate_port().unwrap(),
+            ethereum_mainnet_execution_http_port: allocate_port().unwrap(),
+            ethereum_mainnet_execution_metrics_port: allocate_port().unwrap(),
+            ethereum_mainnet_execution_rpc_port: allocate_port().unwrap(),
             ethereum_mainnet_execution_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/ethereum-mainnet/reth"
             )),
@@ -545,17 +568,17 @@ impl NodeManager {
             )
             .unwrap(),
 
-            ethereum_sepolia_consensus_http_port: base_port + 240,
-            ethereum_sepolia_consensus_metrics_port: base_port + 241,
-            ethereum_sepolia_consensus_p2p_port: base_port + 242,
+            ethereum_sepolia_consensus_http_port: allocate_port().unwrap(),
+            ethereum_sepolia_consensus_metrics_port: allocate_port().unwrap(),
+            ethereum_sepolia_consensus_p2p_port: allocate_port().unwrap(),
             ethereum_sepolia_consensus_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/ethereum-sepolia/lighthouse"
             )),
 
-            ethereum_sepolia_execution_discovery_port: base_port + 250,
-            ethereum_sepolia_execution_http_port: base_port + 251,
-            ethereum_sepolia_execution_metrics_port: base_port + 252,
-            ethereum_sepolia_execution_rpc_port: base_port + 253,
+            ethereum_sepolia_execution_discovery_port: allocate_port().unwrap(),
+            ethereum_sepolia_execution_http_port: allocate_port().unwrap(),
+            ethereum_sepolia_execution_metrics_port: allocate_port().unwrap(),
+            ethereum_sepolia_execution_rpc_port: allocate_port().unwrap(),
             ethereum_sepolia_execution_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/ethereum-sepolia/reth"
             )),
@@ -565,35 +588,35 @@ impl NodeManager {
             .unwrap(),
 
             governance: (**governance).clone(), // Use the shared governance instance
-            port: base_port,
+            port: main_port,
 
             nats_bin_dir: None,
-            nats_client_port: base_port + 300,
-            nats_cluster_port: base_port + 301,
+            nats_client_port: allocate_port().unwrap(),
+            nats_cluster_port: allocate_port().unwrap(),
             nats_config_dir: PathBuf::from(format!("/tmp/proven/{run_id}/{name}/nats-config")),
-            nats_http_port: base_port + 302,
+            nats_http_port: allocate_port().unwrap(),
             nats_store_dir: PathBuf::from(format!("/tmp/proven/{run_id}/{name}/nats")),
 
             network_config_path: None, // Using shared governance instead
             node_key: private_key,
 
             postgres_bin_path: PathBuf::from("/usr/local/pgsql/bin"),
-            postgres_port: base_port + 400,
+            postgres_port: allocate_port().unwrap(),
             postgres_skip_vacuum: false,
             postgres_store_dir: PathBuf::from(format!("/tmp/proven/{run_id}/{name}/postgres")),
 
             radix_mainnet_fallback_rpc_endpoint: Url::parse("https://mainnet.radixdlt.com")
                 .unwrap(),
-            radix_mainnet_http_port: base_port + 500,
-            radix_mainnet_p2p_port: base_port + 501,
+            radix_mainnet_http_port: allocate_port().unwrap(),
+            radix_mainnet_p2p_port: allocate_port().unwrap(),
             radix_mainnet_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/radix-node-mainnet"
             )),
 
             radix_stokenet_fallback_rpc_endpoint: Url::parse("https://stokenet.radixdlt.com")
                 .unwrap(),
-            radix_stokenet_http_port: base_port + 510,
-            radix_stokenet_p2p_port: base_port + 511,
+            radix_stokenet_http_port: allocate_port().unwrap(),
+            radix_stokenet_p2p_port: allocate_port().unwrap(),
             radix_stokenet_store_dir: PathBuf::from(format!(
                 "/tmp/proven/{run_id}/{name}/radix-node-stokenet"
             )),
