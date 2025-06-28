@@ -324,40 +324,87 @@ where
             }
         }
 
-        // Try to acquire leadership
-        match self
-            .lock_manager
-            .try_lock(APPLICATION_SERVICE_LEADER_LOCK.to_string())
-            .await
-        {
-            Ok(Some(guard)) => {
-                tracing::info!("Acquired application service leadership");
+        // Try to acquire leadership with retry logic for robustness against transient failures
+        self.try_acquire_leadership_with_retry().await
+    }
 
-                // Store the leadership guard
-                {
-                    let mut leadership_guard = self.leadership_guard.lock().await;
-                    *leadership_guard = Some(guard);
+    /// Try to acquire leadership with exponential backoff retry for transient failures.
+    async fn try_acquire_leadership_with_retry(&self) -> Result<(), Error> {
+        let max_attempts = 3;
+        let mut attempt = 0;
+        let base_delay = Duration::from_millis(100);
+        let max_delay = Duration::from_secs(2);
+
+        while attempt < max_attempts {
+            attempt += 1;
+
+            match self
+                .lock_manager
+                .try_lock(APPLICATION_SERVICE_LEADER_LOCK.to_string())
+                .await
+            {
+                Ok(Some(guard)) => {
+                    tracing::info!(
+                        "Acquired application service leadership on attempt {}",
+                        attempt
+                    );
+
+                    // Store the leadership guard
+                    {
+                        let mut leadership_guard = self.leadership_guard.lock().await;
+                        *leadership_guard = Some(guard);
+                    }
+
+                    // Start the service
+                    self.start_service_as_leader().await?;
+
+                    // Start leadership monitoring
+                    self.start_leadership_monitor().await;
+
+                    return Ok(());
                 }
+                Ok(None) => {
+                    tracing::debug!("Another node holds application service leadership");
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt < max_attempts {
+                        // Calculate delay with exponential backoff and jitter
+                        let delay = std::cmp::min(base_delay * 2_u32.pow(attempt - 1), max_delay);
 
-                // Start the service
-                self.start_service_as_leader().await?;
+                        // Add jitter to prevent thundering herd
+                        #[allow(clippy::cast_possible_truncation)]
+                        #[allow(clippy::cast_sign_loss)]
+                        #[allow(clippy::cast_precision_loss)]
+                        let jitter = Duration::from_millis(
+                            (delay.as_millis() as f64 * fastrand::f64() * 0.1) as u64,
+                        );
+                        let total_delay = delay + jitter;
 
-                // Start leadership monitoring
-                self.start_leadership_monitor().await;
+                        tracing::warn!(
+                            "Failed to acquire application service leadership on attempt {} ({}), retrying in {:?}: {:?}",
+                            attempt,
+                            max_attempts,
+                            total_delay,
+                            e
+                        );
 
-                Ok(())
-            }
-            Ok(None) => {
-                tracing::debug!("Another node holds application service leadership");
-                Ok(())
-            }
-            Err(e) => {
-                tracing::error!("Failed to acquire application service leadership: {:?}", e);
-                Err(Error::Service(format!(
-                    "Leadership acquisition failed: {e}"
-                )))
+                        tokio::time::sleep(total_delay).await;
+                    } else {
+                        tracing::error!(
+                            "Failed to acquire application service leadership after {} attempts: {:?}",
+                            max_attempts,
+                            e
+                        );
+                        return Err(Error::Service(format!(
+                            "Leadership acquisition failed after {max_attempts} attempts: {e}"
+                        )));
+                    }
+                }
             }
         }
+
+        unreachable!()
     }
 
     /// Start the service as the leader.

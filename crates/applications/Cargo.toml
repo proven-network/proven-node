@@ -8,6 +8,7 @@ async-trait.workspace = true
 bytes.workspace = true
 chrono.workspace = true
 ciborium.workspace = true
+fastrand.workspace = true
 futures.workspace = true
 proven-bootable.workspace = true
 proven-locks.workspace = true
