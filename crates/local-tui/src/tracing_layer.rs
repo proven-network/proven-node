@@ -90,6 +90,11 @@ where
         // Extract target
         let target = Some(event.metadata().target().to_string());
 
+        // Ignore targets containing "async_nats"
+        if target.as_deref().unwrap_or_default().contains("async_nats") {
+            return;
+        }
+
         // Extract message using visitor pattern
         let mut visitor = MessageVisitor {
             message: String::new(),

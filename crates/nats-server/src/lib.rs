@@ -136,8 +136,8 @@ impl IsolatedApplication for NatsServerApp {
 
     #[allow(clippy::cognitive_complexity)]
     fn handle_stderr(&self, line: &str) {
-        // Ignore any lines contains "rid:" as it's a route message and are typically spammy
-        if line.contains("rid:") {
+        // Ignore any lines which are typically spammy
+        if line.contains("rid:") || line.contains("Reloaded") || line.contains("Trapped") {
             return;
         }
 
