@@ -404,7 +404,7 @@ where
                 ..Default::default()
             })
             .await
-            .unwrap();
+            .map_err(|e| Error::CreateStream(e.kind()))?;
 
         let reply_stream_consumer = reply_stream
             .create_consumer(NatsConsumerConfig {
@@ -414,7 +414,7 @@ where
                 ..Default::default()
             })
             .await
-            .unwrap();
+            .map_err(|e| Error::CreateConsumer(e.kind()))?;
 
         let stream_map = Arc::new(TokioMutex::new(HashMap::new()));
 
