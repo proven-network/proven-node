@@ -458,8 +458,8 @@ where
     }
 
     /// Execute a command directly via the service handler if we're the leader,
-    /// otherwise fall back to the client path. This optimization bypasses the
-    /// command stream for better performance when we're the leader.
+    /// otherwise fall back to the client path with retry logic. This optimization
+    /// bypasses the command stream for better performance when we're the leader.
     async fn execute_command(&self, command: Command) -> Result<Response, Error> {
         // Check if we're the leader and have a cached handler
         if self.is_leader().await {
@@ -469,16 +469,90 @@ where
             }
         }
 
-        // Fallback to client path (non-leader or handler not available)
-        let client = self.get_client().await?;
-        match client
-            .request(command)
-            .await
-            .map_err(|e| Error::Client(e.to_string()))?
-        {
-            ClientResponseType::Response(response) => Ok(response),
-            ClientResponseType::Stream(_) => Err(Error::UnexpectedResponse),
+        // Fallback to client path with retry logic (non-leader or handler not available)
+        self.execute_command_via_client_with_retry(command).await
+    }
+
+    /// Execute a command via the client path with retry logic for transient failures.
+    async fn execute_command_via_client_with_retry(
+        &self,
+        command: Command,
+    ) -> Result<Response, Error> {
+        let max_attempts = 3;
+        let mut attempt = 0;
+        let base_delay = Duration::from_millis(100);
+        let max_delay = Duration::from_secs(2);
+
+        while attempt < max_attempts {
+            attempt += 1;
+
+            let client = self.get_client().await?;
+
+            match client.request(command.clone()).await {
+                Ok(ClientResponseType::Response(response)) => {
+                    if attempt > 1 {
+                        tracing::info!(
+                            "Command executed successfully via client on attempt {}",
+                            attempt
+                        );
+                    }
+                    return Ok(response);
+                }
+                Ok(ClientResponseType::Stream(_)) => {
+                    return Err(Error::UnexpectedResponse);
+                }
+                Err(e) => {
+                    if attempt < max_attempts && Self::is_retriable_client_error(&e) {
+                        // Calculate delay with exponential backoff and jitter
+                        let delay = std::cmp::min(base_delay * 2_u32.pow(attempt - 1), max_delay);
+
+                        // Add jitter to prevent thundering herd
+                        #[allow(clippy::cast_possible_truncation)]
+                        #[allow(clippy::cast_sign_loss)]
+                        #[allow(clippy::cast_precision_loss)]
+                        let jitter = Duration::from_millis(
+                            (delay.as_millis() as f64 * fastrand::f64() * 0.1) as u64,
+                        );
+                        let total_delay = delay + jitter;
+
+                        tracing::warn!(
+                            "Command execution failed via client on attempt {} ({}), retrying in {:?}: {:?}",
+                            attempt,
+                            max_attempts,
+                            total_delay,
+                            e
+                        );
+
+                        tokio::time::sleep(total_delay).await;
+                    } else {
+                        tracing::error!(
+                            "Command execution failed via client after {} attempts: {:?}",
+                            max_attempts,
+                            e
+                        );
+                        return Err(Error::Client(e.to_string()));
+                    }
+                }
+            }
         }
+
+        unreachable!()
+    }
+
+    /// Check if a client error is retriable (transient network/timeout issues).
+    fn is_retriable_client_error(error: &dyn std::error::Error) -> bool {
+        let error_string = error.to_string().to_lowercase();
+
+        // Check for common transient error patterns
+        error_string.contains("timeout")
+            || error_string.contains("connection")
+            || error_string.contains("network")
+            || error_string.contains("temporarily unavailable")
+            || error_string.contains("service unavailable")
+            || error_string.contains("try again")
+            || error_string.contains("jetstream request timed out")
+            || error_string.contains("no responders")
+            || error_string.contains("request timeout")
     }
 }
 
