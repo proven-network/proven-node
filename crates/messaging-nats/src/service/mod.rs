@@ -18,6 +18,7 @@ use proven_bootable::Bootable;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
+use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::debug;
@@ -53,8 +54,9 @@ where
 {
     handler: X,
     nats_client: NatsClient,
-    nats_consumer: NatsConsumerType<NatsConsumerConfig>,
+    nats_consumer: OnceCell<NatsConsumerType<NatsConsumerConfig>>,
     nats_jetstream_context: Context,
+    durable_name: Option<String>,
     shutdown_token: CancellationToken,
     stream: <Self as Service<X, T, D, S>>::StreamType,
     task_tracker: TaskTracker,
@@ -77,8 +79,9 @@ where
         Self {
             handler: self.handler.clone(),
             nats_client: self.nats_client.clone(),
-            nats_consumer: self.nats_consumer.clone(),
+            nats_consumer: OnceCell::new(),
             nats_jetstream_context: self.nats_jetstream_context.clone(),
+            durable_name: self.durable_name.clone(),
             shutdown_token: self.shutdown_token.clone(),
             stream: self.stream.clone(),
             task_tracker: self.task_tracker.clone(),
@@ -99,6 +102,27 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    async fn ensure_consumer_initialized(
+        &self,
+    ) -> Result<&NatsConsumerType<NatsConsumerConfig>, Error> {
+        self.nats_consumer
+            .get_or_try_init(|| async {
+                self.nats_jetstream_context
+                    .create_consumer_on_stream(
+                        NatsConsumerConfig {
+                            name: None, // Setting to none as it interferes with deliver_policy. TODO: Investigate more later.
+                            deliver_policy: DeliverPolicy::All,
+                            durable_name: self.durable_name.clone(),
+                            ..Default::default()
+                        },
+                        self.stream.name().as_str(),
+                    )
+                    .await
+                    .map_err(|e| Error::Create(e.kind()))
+            })
+            .await
+    }
+
     /// Process requests.
     async fn process_requests(
         nats_client: NatsClient,
@@ -227,25 +251,12 @@ where
         options: NatsServiceOptions,
         handler: X,
     ) -> Result<Self, Error> {
-        let nats_consumer = options
-            .jetstream_context
-            .create_consumer_on_stream(
-                NatsConsumerConfig {
-                    name: None, // Setting to none as it interferes with deliver_policy. TODO: Investigate more later.
-                    deliver_policy: DeliverPolicy::All,
-                    durable_name: options.durable_name,
-                    ..Default::default()
-                },
-                stream.name().as_str(),
-            )
-            .await
-            .map_err(|e| Error::Create(e.kind()))?;
-
         Ok(Self {
             handler,
             nats_client: options.client,
-            nats_consumer,
+            nats_consumer: OnceCell::new(),
             nats_jetstream_context: options.jetstream_context,
+            durable_name: options.durable_name,
             shutdown_token: CancellationToken::new(),
             stream,
             task_tracker: TaskTracker::new(),
@@ -253,8 +264,8 @@ where
     }
 
     async fn last_seq(&self) -> Result<u64, Error> {
-        let seq = self
-            .nats_consumer
+        let consumer = self.ensure_consumer_initialized().await?;
+        let seq = consumer
             .clone()
             .info()
             .await
@@ -293,10 +304,13 @@ where
             return Err(Box::new(Error::AlreadyRunning));
         }
 
+        // Ensure consumer is initialized before starting
+        let consumer = self.ensure_consumer_initialized().await?;
+
         self.task_tracker.spawn(Self::process_requests(
             self.nats_client.clone(),
             self.handler.clone(),
-            self.nats_consumer.clone(),
+            consumer.clone(),
             self.stream.clone(),
             self.shutdown_token.clone(),
         ));

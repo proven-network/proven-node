@@ -21,7 +21,7 @@ use bytes::Bytes;
 use proven_messaging::client::{Client, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
-use tokio::sync::{Mutex as TokioMutex, mpsc, oneshot};
+use tokio::sync::{Mutex as TokioMutex, OnceCell, mpsc, oneshot};
 use tokio::time::{Duration, sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::warn;
@@ -75,6 +75,8 @@ where
     response_map: Arc<TokioMutex<ResponseMap<X::ResponseType>>>,
     stream_map: Arc<TokioMutex<StreamMap<X::ResponseType>>>,
     stream_name: String,
+    lazy_init: Arc<OnceCell<()>>,
+    service_name: String,
 }
 
 impl<X, T, D, S> Clone for NatsClient<X, T, D, S>
@@ -91,8 +93,8 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     fn clone(&self) -> Self {
-        // Increment reference count for this reply stream
-        {
+        // Increment reference count for this reply stream only if lazy initialization has happened
+        if self.lazy_init.get().is_some() {
             let refs = REPLY_STREAM_REFS.lock().unwrap();
             if let Some(counter) = refs.get(&self.reply_stream_name) {
                 counter.fetch_add(1, Ordering::SeqCst);
@@ -107,6 +109,8 @@ where
             response_map: self.response_map.clone(),
             stream_map: self.stream_map.clone(),
             stream_name: self.stream_name.clone(),
+            lazy_init: self.lazy_init.clone(),
+            service_name: self.service_name.clone(),
         }
     }
 }
@@ -125,6 +129,11 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     fn drop(&mut self) {
+        // Only cleanup if lazy initialization happened (i.e., we actually created the stream)
+        if self.lazy_init.get().is_none() {
+            return;
+        }
+
         let should_cleanup = {
             let mut refs = REPLY_STREAM_REFS.lock().unwrap();
             if let Some(counter) = refs.get(&self.reply_stream_name) {
@@ -164,6 +173,54 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    async fn ensure_initialized(&self) -> Result<(), Error> {
+        self.lazy_init
+            .get_or_try_init(|| async {
+                // Create reply stream
+                let reply_stream = self
+                    .jetstream_context
+                    .get_or_create_stream(NatsStreamConfig {
+                        name: self.reply_stream_name.clone(),
+                        no_ack: true,
+                        storage: async_nats::jetstream::stream::StorageType::Memory,
+                        ..Default::default()
+                    })
+                    .await
+                    .map_err(|e| Error::CreateStream(e.kind()))?;
+
+                // Create consumer
+                let reply_stream_consumer = reply_stream
+                    .create_consumer(NatsConsumerConfig {
+                        name: Some(format!("{}_CONSUMER", self.reply_stream_name)),
+                        durable_name: None,
+                        ack_policy: async_nats::jetstream::consumer::AckPolicy::None,
+                        ..Default::default()
+                    })
+                    .await
+                    .map_err(|e| Error::CreateConsumer(e.kind()))?;
+
+                // Increment reference count for this reply stream
+                {
+                    let mut refs = REPLY_STREAM_REFS.lock().unwrap();
+                    refs.entry(self.reply_stream_name.clone())
+                        .or_insert_with(|| AtomicUsize::new(0))
+                        .fetch_add(1, Ordering::SeqCst);
+                }
+
+                // Spawn response handler
+                Self::spawn_response_handler(
+                    reply_stream_consumer,
+                    self.response_map.clone(),
+                    self.stream_map.clone(),
+                    self.service_name.clone(),
+                );
+
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
+
     fn deserialize_batch(payload: &Bytes) -> Result<Vec<X::ResponseType>, Error> {
         let mut responses = Vec::new();
         let mut offset = 0;
@@ -225,12 +282,13 @@ where
         consumer: NatsConsumerType<NatsConsumerConfig>,
         response_map: Arc<TokioMutex<ResponseMap<X::ResponseType>>>,
         stream_map: Arc<TokioMutex<StreamMap<X::ResponseType>>>,
+        stream_name: String,
     ) {
         tokio::spawn(async move {
             let mut messages = consumer.messages().await.unwrap();
             while let Some(msg) = messages.next().await {
                 if let Err(e) = msg {
-                    warn!("error receiving message in client: {:?}", e);
+                    warn!("error receiving message in {} client: {:?}", stream_name, e);
                     continue;
                 }
 
@@ -392,46 +450,10 @@ where
     ) -> Result<Self, Self::Error> {
         let client_id = Uuid::new_v4().to_string();
         let response_map = Arc::new(TokioMutex::new(HashMap::new()));
-
-        let jetstream_context = async_nats::jetstream::new(options.client.clone());
-        let reply_stream_name = format!("{name}_CLIENT_{client_id}");
-
-        let reply_stream = jetstream_context
-            .get_or_create_stream(NatsStreamConfig {
-                name: reply_stream_name.clone(),
-                no_ack: true,
-                storage: async_nats::jetstream::stream::StorageType::Memory,
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| Error::CreateStream(e.kind()))?;
-
-        let reply_stream_consumer = reply_stream
-            .create_consumer(NatsConsumerConfig {
-                name: Some(format!("{reply_stream_name}_CONSUMER")),
-                durable_name: None,
-                ack_policy: async_nats::jetstream::consumer::AckPolicy::None,
-                ..Default::default()
-            })
-            .await
-            .map_err(|e| Error::CreateConsumer(e.kind()))?;
-
         let stream_map = Arc::new(TokioMutex::new(HashMap::new()));
 
-        // Increment reference count for this reply stream
-        {
-            let mut refs = REPLY_STREAM_REFS.lock().unwrap();
-            refs.entry(reply_stream_name.clone())
-                .or_insert_with(|| AtomicUsize::new(0))
-                .fetch_add(1, Ordering::SeqCst);
-        }
-
-        // Spawn response handler
-        Self::spawn_response_handler(
-            reply_stream_consumer,
-            response_map.clone(),
-            stream_map.clone(),
-        );
+        let jetstream_context = async_nats::jetstream::new(options.client);
+        let reply_stream_name = format!("{name}_CLIENT_{client_id}");
 
         Ok(Self {
             client_id,
@@ -441,6 +463,8 @@ where
             response_map,
             stream_map,
             stream_name: stream.name(),
+            lazy_init: Arc::new(OnceCell::new()),
+            service_name: name,
         })
     }
 
@@ -448,6 +472,9 @@ where
         &self,
         request: T,
     ) -> Result<ClientResponseType<X::ResponseType>, Self::Error> {
+        // Ensure lazy initialization has happened
+        self.ensure_initialized().await?;
+
         let request_id = self.request_id_counter.fetch_add(1, Ordering::SeqCst);
         let (sender, receiver) = oneshot::channel();
 
