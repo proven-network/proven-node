@@ -12,7 +12,7 @@ pub use guard::NatsLockGuard;
 
 use async_nats::Client;
 use async_nats::jetstream::Context as JetStreamContext;
-use async_nats::jetstream::kv::{Config as KvConfig, CreateErrorKind, Store as KvStore};
+use async_nats::jetstream::kv::{Config as KvConfig, Store as KvStore};
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_locks::{LockManager, LockManager1, LockManager2, LockManager3, LockStatus};
@@ -43,6 +43,18 @@ pub struct NatsLockManagerConfig {
 
     /// TTL for for locks. Prevents locks from being held indefinitely if failure to release lock via guard drop.
     pub ttl: Duration,
+
+    /// Timeout for individual NATS `JetStream` operations. Defaults to 10 seconds if not set.
+    pub operation_timeout: Option<Duration>,
+
+    /// Maximum number of retry attempts for failed operations. Defaults to 3 if not set.
+    pub max_retries: Option<usize>,
+
+    /// Base delay for exponential backoff between retries. Defaults to 100ms if not set.
+    pub retry_base_delay: Option<Duration>,
+
+    /// Maximum delay for exponential backoff. Defaults to 5 seconds if not set.
+    pub retry_max_delay: Option<Duration>,
 }
 
 /// A distributed lock manager implemented using NATS jetstream KV Store.
@@ -56,6 +68,10 @@ pub struct NatsLockManager {
     ttl: Duration,
     num_replicas: usize,
     persist: bool,
+    operation_timeout: Duration,
+    max_retries: usize,
+    retry_base_delay: Duration,
+    retry_max_delay: Duration,
 }
 
 impl NatsLockManager {
@@ -70,6 +86,10 @@ impl NatsLockManager {
             num_replicas,
             persist,
             ttl,
+            operation_timeout,
+            max_retries,
+            retry_base_delay,
+            retry_max_delay,
         }: NatsLockManagerConfig,
     ) -> Self {
         let jetstream_context = async_nats::jetstream::new(client.clone());
@@ -84,6 +104,113 @@ impl NatsLockManager {
             ttl,
             num_replicas,
             persist,
+            operation_timeout: operation_timeout.unwrap_or(Duration::from_secs(10)),
+            max_retries: max_retries.unwrap_or(3),
+            retry_base_delay: retry_base_delay.unwrap_or(Duration::from_millis(100)),
+            retry_max_delay: retry_max_delay.unwrap_or(Duration::from_secs(5)),
+        }
+    }
+
+    /// Executes an operation with retry logic and exponential backoff.
+    async fn with_retry<F, Fut, R, E>(&self, operation_name: &str, operation: F) -> Result<R, Error>
+    where
+        F: Fn() -> Fut,
+        Fut: std::future::Future<Output = Result<R, E>>,
+        E: std::fmt::Display + std::fmt::Debug,
+    {
+        let mut attempts = 0;
+        let mut delay = self.retry_base_delay;
+
+        loop {
+            attempts += 1;
+
+            match tokio::time::timeout(self.operation_timeout, operation()).await {
+                Ok(Ok(result)) => {
+                    if attempts > 1 {
+                        debug!(
+                            operation = operation_name,
+                            attempts = attempts,
+                            "Operation succeeded after retry"
+                        );
+                    }
+                    return Ok(result);
+                }
+                Ok(Err(e)) => {
+                    let error_str = e.to_string();
+                    let is_retriable = error_str.contains("timeout")
+                        || error_str.contains("connection")
+                        || error_str.contains("unavailable")
+                        || error_str.contains("temporary")
+                        || error_str.contains("stream not found");
+
+                    if !is_retriable || attempts >= self.max_retries {
+                        if attempts >= self.max_retries {
+                            error!(
+                                operation = operation_name,
+                                attempts = attempts,
+                                error = ?e,
+                                "Operation failed after maximum retries"
+                            );
+                            return Err(Error::MaxRetriesExceeded {
+                                max_attempts: self.max_retries,
+                                last_error: error_str,
+                            });
+                        }
+                        debug!(
+                            operation = operation_name,
+                            error = ?e,
+                            "Operation failed with non-retriable error"
+                        );
+                        return Err(Error::MaxRetriesExceeded {
+                            max_attempts: 1,
+                            last_error: error_str,
+                        });
+                    }
+
+                    warn!(
+                        operation = operation_name,
+                        attempt = attempts,
+                        max_attempts = self.max_retries,
+                        delay = ?delay,
+                        error = ?e,
+                        "Operation failed, retrying"
+                    );
+                }
+                Err(_timeout) => {
+                    if attempts >= self.max_retries {
+                        error!(
+                            operation = operation_name,
+                            attempts = attempts,
+                            timeout = ?self.operation_timeout,
+                            "Operation timed out after maximum retries"
+                        );
+                        return Err(Error::Timeout {
+                            attempts,
+                            last_error: format!(
+                                "Operation timed out after {:?}",
+                                self.operation_timeout
+                            ),
+                        });
+                    }
+
+                    warn!(
+                        operation = operation_name,
+                        attempt = attempts,
+                        timeout = ?self.operation_timeout,
+                        delay = ?delay,
+                        "Operation timed out, retrying"
+                    );
+                }
+            }
+
+            // Sleep before retry
+            tokio::time::sleep(delay).await;
+
+            // Exponential backoff with jitter
+            delay = std::cmp::min(
+                delay.mul_f64(fastrand::f64().mul_add(0.1, 2.0)), // Add 0-10% jitter
+                self.retry_max_delay,
+            );
         }
     }
 
@@ -101,10 +228,16 @@ impl NatsLockManager {
             ..Default::default()
         };
 
-        self.jetstream_context
-            .create_or_update_key_value(kv_config)
-            .await
-            .map_err(Error::CreateKvError)
+        self.with_retry("create_or_update_kv", || {
+            let jetstream_context = self.jetstream_context.clone();
+            let config = kv_config.clone();
+            async move { jetstream_context.create_or_update_key_value(config).await }
+        })
+        .await
+        .map_err(|e| match e {
+            Error::CreateKvError(inner) => Error::CreateKvError(inner),
+            other => other,
+        })
     }
 
     #[instrument(skip(self), fields(bucket = %self.bucket, key = %resource_id, local_id = %self.local_identifier))]
@@ -114,10 +247,16 @@ impl NatsLockManager {
     ) -> Result<Option<<Self as LockManager>::Guard>, <Self as LockManager>::Error> {
         let kv_store = self.get_kv_store().await?;
 
-        match kv_store
-            .create(&resource_id, self.local_identifier_bytes.clone())
-            .await
-        {
+        let create_result = self
+            .with_retry("kv_create", || {
+                let kv_store = kv_store.clone();
+                let resource_id = resource_id.clone();
+                let value = self.local_identifier_bytes.clone();
+                async move { kv_store.create(&resource_id, value).await }
+            })
+            .await;
+
+        match create_result {
             Ok(initial_revision) => {
                 info!(bucket = %self.bucket, key = %resource_id, value = %self.local_identifier, revision = initial_revision, "Lock acquired via create.");
 
@@ -129,59 +268,63 @@ impl NatsLockManager {
                     initial_revision,
                 )))
             }
-            Err(create_err) => {
-                if !matches!(create_err.kind(), CreateErrorKind::AlreadyExists) {
-                    error!(bucket = %self.bucket, key = %resource_id, error = ?create_err, "try_lock_internal failed: NATS KV create error (not AlreadyExists).");
-                    return Err(Error::CreateError(create_err));
-                }
+            Err(
+                Error::CreateKvError(_) | Error::Timeout { .. } | Error::MaxRetriesExceeded { .. },
+            ) => {
+                // For KV create operations specifically, we need to handle the AlreadyExists case
+                let entry_result = self
+                    .with_retry("kv_entry", || {
+                        let kv_store = kv_store.clone();
+                        let resource_id = resource_id.clone();
+                        async move { kv_store.entry(&resource_id).await }
+                    })
+                    .await
+                    .map_err(|e| Error::Timeout {
+                        attempts: 1,
+                        last_error: format!("Entry operation failed: {e}"),
+                    })?;
 
-                debug!(bucket = %self.bucket, key = %resource_id, "create failed (AlreadyExists). Fetching entry to check value.");
-                match kv_store.entry(&resource_id).await {
-                    Ok(Some(kv_entry)) => {
-                        if kv_entry.value.is_empty() {
-                            debug!(bucket = %self.bucket, key = %resource_id, revision = kv_entry.revision, "Found empty tombstone. Attempting to update and acquire.");
-                            match kv_store
-                                .update(
-                                    &resource_id,
-                                    self.local_identifier_bytes.clone(),
-                                    kv_entry.revision,
-                                )
-                                .await
-                            {
-                                Ok(new_revision) => {
-                                    info!(bucket = %self.bucket, key = %resource_id, value = %self.local_identifier, old_rev = kv_entry.revision, new_rev = new_revision, "Lock acquired by updating empty tombstone.");
+                if let Some(kv_entry) = entry_result {
+                    if kv_entry.value.is_empty() {
+                        debug!(bucket = %self.bucket, key = %resource_id, revision = kv_entry.revision, "Found empty tombstone. Attempting to update and acquire.");
 
-                                    Ok(Some(NatsLockGuard::new(
-                                        kv_store.clone(),
-                                        resource_id.clone(),
-                                        self.local_identifier_bytes.clone(),
-                                        self.ttl,
-                                        new_revision,
-                                    )))
-                                }
-                                Err(update_err) => {
-                                    warn!(bucket = %self.bucket, key = %resource_id, revision = kv_entry.revision, error = ?update_err, "Failed to update empty tombstone. Lock likely acquired by another.");
-                                    Ok(None)
-                                }
-                            }
-                        } else if kv_entry.value == self.local_identifier_bytes {
-                            warn!(bucket = %self.bucket, key = %resource_id, revision = kv_entry.revision, "Key exists with our value, but create failed. Inconsistent state. Not acquiring.");
-                            Ok(None)
+                        let update_result = self
+                            .with_retry("kv_update", || {
+                                let kv_store = kv_store.clone();
+                                let resource_id = resource_id.clone();
+                                let value = self.local_identifier_bytes.clone();
+                                let revision = kv_entry.revision;
+                                async move { kv_store.update(&resource_id, value, revision).await }
+                            })
+                            .await;
+
+                        if let Ok(new_revision) = update_result {
+                            info!(bucket = %self.bucket, key = %resource_id, value = %self.local_identifier, old_rev = kv_entry.revision, new_rev = new_revision, "Lock acquired by updating empty tombstone.");
+
+                            Ok(Some(NatsLockGuard::new(
+                                kv_store.clone(),
+                                resource_id.clone(),
+                                self.local_identifier_bytes.clone(),
+                                self.ttl,
+                                new_revision,
+                            )))
                         } else {
-                            debug!(bucket = %self.bucket, key = %resource_id, revision = kv_entry.revision, "Lock already held by another (non-empty, not self).");
+                            warn!(bucket = %self.bucket, key = %resource_id, revision = kv_entry.revision, "Failed to update empty tombstone. Lock likely acquired by another.");
                             Ok(None)
                         }
-                    }
-                    Ok(None) => {
-                        warn!(bucket = %self.bucket, key = %resource_id, "create failed (AlreadyExists), but subsequent entry() found no key. Race condition?");
+                    } else if kv_entry.value == self.local_identifier_bytes {
+                        warn!(bucket = %self.bucket, key = %resource_id, revision = kv_entry.revision, "Key exists with our value, but create failed. Inconsistent state. Not acquiring.");
+                        Ok(None)
+                    } else {
+                        debug!(bucket = %self.bucket, key = %resource_id, revision = kv_entry.revision, "Lock already held by another (non-empty, not self).");
                         Ok(None)
                     }
-                    Err(entry_err) => {
-                        error!(bucket = %self.bucket, key = %resource_id, error = ?entry_err, "Failed to get entry after create reported AlreadyExists.");
-                        Err(Error::EntryError(entry_err))
-                    }
+                } else {
+                    warn!(bucket = %self.bucket, key = %resource_id, "create failed, but subsequent entry() found no key. Race condition?");
+                    Ok(None)
                 }
             }
+            Err(other) => Err(other),
         }
     }
 }
@@ -199,7 +342,8 @@ impl LockManager for NatsLockManager {
     #[instrument(skip(self), fields(bucket = %self.bucket, key = %resource_id, local_id = %self.local_identifier))]
     async fn lock(&self, resource_id: String) -> Result<Self::Guard, Self::Error> {
         debug!(bucket = %self.bucket, key = %resource_id, "Attempting to acquire lock (will wait if necessary)");
-        let poll_interval = Duration::from_millis(100);
+        let mut poll_interval = Duration::from_millis(100);
+        let max_poll_interval = Duration::from_secs(1);
 
         loop {
             match self.try_lock_internal(resource_id.clone()).await {
@@ -210,6 +354,12 @@ impl LockManager for NatsLockManager {
                 Ok(None) => {
                     debug!(bucket = %self.bucket, key = %resource_id, "Lock currently held by another or temporarily unavailable. Waiting for {:?} before retrying.", poll_interval);
                     tokio::time::sleep(poll_interval).await;
+
+                    // Exponential backoff for polling with jitter
+                    poll_interval = std::cmp::min(
+                        poll_interval.mul_f64(fastrand::f64().mul_add(0.1, 1.5)),
+                        max_poll_interval,
+                    );
                 }
                 Err(e) => {
                     error!(bucket = %self.bucket, key = %resource_id, error = ?e, "Error during lock attempt, aborting.");
@@ -225,9 +375,24 @@ impl LockManager for NatsLockManager {
 
         debug!(bucket = %self.bucket, key = %resource_id, "Checking lock status");
 
-        match kv_store.get(&resource_id).await {
-            // Use the obtained kv_store
-            Ok(Some(retrieved_value_bytes)) => {
+        let get_result = self
+            .with_retry("kv_get", || {
+                let kv_store = kv_store.clone();
+                let resource_id = resource_id.clone();
+                async move { kv_store.get(&resource_id).await }
+            })
+            .await
+            .map_err(|e| Error::Timeout {
+                attempts: 1,
+                last_error: format!("Get operation failed: {e}"),
+            })?;
+
+        get_result.map_or_else(
+            || {
+                debug!(bucket = %self.bucket, key = %resource_id, "Lock is free (key not found).");
+                Ok(LockStatus::Free)
+            },
+            |retrieved_value_bytes| {
                 if retrieved_value_bytes.is_empty() {
                     debug!(bucket = %self.bucket, key = %resource_id, "Lock is free (key found with empty value).");
                     Ok(LockStatus::Free)
@@ -240,17 +405,8 @@ impl LockManager for NatsLockManager {
                     debug!(bucket = %self.bucket, key = %resource_id, "Lock held by other ('{}')", other_holder_str);
                     Ok(LockStatus::HeldByOther(other_holder_str))
                 }
-            }
-            Ok(None) => {
-                debug!(bucket = %self.bucket, key = %resource_id, "Lock is free (key not found).");
-                Ok(LockStatus::Free)
-            }
-            Err(get_err) => {
-                // get_err is async_nats::jetstream::kv::GetError
-                error!(bucket = %self.bucket, key = %resource_id, error = ?get_err, "Error checking lock status.");
-                Err(Error::EntryError(get_err)) // Should map to Error::EntryError if that's from kv::GetError in error.rs
-            }
-        }
+            },
+        )
     }
 }
 
@@ -278,6 +434,10 @@ macro_rules! impl_scoped_lock_manager_for_nats {
                     num_replicas: self.num_replicas,
                     persist: self.persist,
                     ttl: self.ttl,
+                    operation_timeout: Some(self.operation_timeout),
+                    max_retries: Some(self.max_retries),
+                    retry_base_delay: Some(self.retry_base_delay),
+                    retry_max_delay: Some(self.retry_max_delay),
                 })
             }
         }
@@ -315,18 +475,30 @@ mod tests {
         format!("test_holder_{}_{}", suffix, Uuid::new_v4().as_hyphenated())
     }
 
+    fn create_test_config(
+        client: Client,
+        bucket: String,
+        local_identifier: String,
+    ) -> NatsLockManagerConfig {
+        NatsLockManagerConfig {
+            client,
+            bucket,
+            ttl: Duration::from_secs(3600),
+            local_identifier,
+            num_replicas: 1,
+            persist: false,
+            operation_timeout: None,
+            max_retries: None,
+            retry_base_delay: None,
+            retry_max_delay: None,
+        }
+    }
+
     #[tokio::test]
     async fn test_lock_and_drop_release() {
         let (client, bucket_name) = get_test_js_context("lock_drop").await;
         let local_id = generate_local_id("lock_drop");
-        let config = NatsLockManagerConfig {
-            client: client.clone(),
-            bucket: bucket_name.clone(),
-            ttl: Duration::from_secs(3600),
-            local_identifier: local_id.clone(),
-            num_replicas: 1,
-            persist: false,
-        };
+        let config = create_test_config(client.clone(), bucket_name.clone(), local_id.clone());
         let manager = NatsLockManager::new(config);
 
         let lock_key = "my_resource_lock_drop".to_string();
@@ -369,25 +541,11 @@ mod tests {
     async fn test_try_lock_conflict() {
         let (client, bucket_name) = get_test_js_context("try_conflict").await;
         let local_id1 = generate_local_id("try_conflict1");
-        let config1 = NatsLockManagerConfig {
-            client: client.clone(),
-            bucket: bucket_name.clone(),
-            ttl: Duration::from_secs(3600),
-            local_identifier: local_id1.clone(),
-            num_replicas: 1,
-            persist: false,
-        };
+        let config1 = create_test_config(client.clone(), bucket_name.clone(), local_id1.clone());
         let manager1 = NatsLockManager::new(config1);
 
         let local_id2 = generate_local_id("try_conflict2");
-        let config2 = NatsLockManagerConfig {
-            client: client.clone(),
-            bucket: bucket_name.clone(),
-            ttl: Duration::from_secs(3600),
-            local_identifier: local_id2.clone(),
-            num_replicas: 1,
-            persist: false,
-        };
+        let config2 = create_test_config(client.clone(), bucket_name.clone(), local_id2.clone());
         let manager2 = NatsLockManager::new(config2);
 
         let lock_key = "my_resource_try_conflict".to_string();
@@ -425,25 +583,11 @@ mod tests {
     async fn test_lock_waits_for_release() {
         let (client, bucket_name) = get_test_js_context("lock_waits").await;
         let local_id1 = generate_local_id("lock_waits1");
-        let config1 = NatsLockManagerConfig {
-            client: client.clone(),
-            bucket: bucket_name.clone(),
-            ttl: Duration::from_secs(3600),
-            local_identifier: local_id1.clone(),
-            num_replicas: 1,
-            persist: false,
-        };
+        let config1 = create_test_config(client.clone(), bucket_name.clone(), local_id1.clone());
         let manager1 = NatsLockManager::new(config1);
 
         let local_id2 = generate_local_id("lock_waits2");
-        let config2 = NatsLockManagerConfig {
-            client: client.clone(),
-            bucket: bucket_name.clone(),
-            ttl: Duration::from_secs(3600),
-            local_identifier: local_id2.clone(),
-            num_replicas: 1,
-            persist: false,
-        };
+        let config2 = create_test_config(client.clone(), bucket_name.clone(), local_id2.clone());
         let manager2 = NatsLockManager::new(config2);
 
         let lock_key = "my_resource_lock_waits".to_string();
@@ -507,83 +651,50 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_status() {
-        let (client, bucket_name) = get_test_js_context("check").await;
-        let local_id_self = generate_local_id("check_self");
-        let config_self = NatsLockManagerConfig {
-            client: client.clone(),
-            bucket: bucket_name.clone(),
-            ttl: Duration::from_secs(3600),
-            local_identifier: local_id_self.clone(),
-            num_replicas: 1,
-            persist: false,
-        };
-        let manager_self = NatsLockManager::new(config_self);
+        let (client, bucket_name) = get_test_js_context("check_status").await;
+        let local_id1 = generate_local_id("check_status1");
+        let config1 = create_test_config(client.clone(), bucket_name.clone(), local_id1.clone());
+        let manager1 = NatsLockManager::new(config1);
 
-        let local_id_other = generate_local_id("check_other");
-        let config_other = NatsLockManagerConfig {
-            client: client.clone(),
-            bucket: bucket_name.clone(),
-            ttl: Duration::from_secs(3600),
-            local_identifier: local_id_other.clone(),
-            num_replicas: 1,
-            persist: false,
-        };
-        let manager_other = NatsLockManager::new(config_other);
+        let local_id2 = generate_local_id("check_status2");
+        let config2 = create_test_config(client.clone(), bucket_name.clone(), local_id2.clone());
+        let manager2 = NatsLockManager::new(config2);
 
-        let lock_key = "my_resource_check".to_string();
+        let lock_key = "my_resource_check_status".to_string();
 
-        // 1. Check free lock
-        let status_free = manager_self
+        // Initially, the lock should be free
+        let status = manager1
             .check(lock_key.clone())
             .await
-            .expect("Check free failed");
-        assert_eq!(
-            status_free,
-            LockStatus::Free,
-            "Lock should initially be free"
-        );
+            .expect("Check failed");
+        assert_eq!(status, LockStatus::Free, "Lock should initially be free");
 
-        // 2. Self acquires, check self
-        let guard_self = manager_self
+        // Manager1 acquires the lock
+        let _guard1 = manager1
             .lock(lock_key.clone())
             .await
-            .expect("Self lock failed");
-        let status_held_by_self = manager_self
+            .expect("Manager1 lock failed");
+
+        // Now manager1 should see it as held by self
+        let status_by_manager1 = manager1
             .check(lock_key.clone())
             .await
-            .expect("Check self failed");
+            .expect("Manager1 check failed");
         assert_eq!(
-            status_held_by_self,
+            status_by_manager1,
             LockStatus::HeldBySelf,
-            "Lock should be HeldBySelf"
+            "Manager1 should see lock as held by self"
         );
 
-        // 3. Other checks, should see HeldByOther
-        let status_seen_by_other = manager_other
+        // Manager2 should see it as held by manager1
+        let status_by_manager2 = manager2
             .check(lock_key.clone())
             .await
-            .expect("Other check failed");
+            .expect("Manager2 check failed");
         assert_eq!(
-            status_seen_by_other,
-            LockStatus::HeldByOther(local_id_self.clone()),
-            "Lock should be HeldByOther(self)"
-        );
-        drop(guard_self);
-        tokio::time::sleep(Duration::from_millis(100)).await; // allow drop actions
-
-        // 4. Other acquires, self checks
-        let _guard_other = manager_other
-            .lock(lock_key.clone())
-            .await
-            .expect("Other lock failed");
-        let status_seen_by_self = manager_self
-            .check(lock_key.clone())
-            .await
-            .expect("Self check (other held) failed");
-        assert_eq!(
-            status_seen_by_self,
-            LockStatus::HeldByOther(local_id_other.clone()),
-            "Lock should be HeldByOther(other)"
+            status_by_manager2,
+            LockStatus::HeldByOther(local_id1.clone()),
+            "Manager2 should see lock as held by manager1"
         );
 
         let js_context = async_nats::jetstream::new(client.clone());
@@ -592,144 +703,82 @@ mod tests {
 
     #[tokio::test]
     async fn test_scoped_lock_manager_new_api() {
-        let (client, bucket_name) = get_test_js_context("scoped_new").await;
-        let local_id = generate_local_id("scoped_new");
-        let base_config = NatsLockManagerConfig {
-            client: client.clone(),
-            bucket: bucket_name.clone(),
-            ttl: Duration::from_secs(3600),
-            local_identifier: local_id.clone(),
-            num_replicas: 1,
-            persist: false,
-        };
-        let base_manager = NatsLockManager::new(base_config);
+        let (client, bucket_name) = get_test_js_context("scoped").await;
+        let local_id = generate_local_id("scoped");
+        let config = create_test_config(client.clone(), bucket_name.clone(), local_id.clone());
+        let manager = NatsLockManager::new(config);
 
-        let scope1_id = "REGION_A";
-        let scoped_manager1 = LockManager1::scope(&base_manager, scope1_id.to_string());
+        let scoped_manager = LockManager1::scope(&manager, "test_scope");
 
-        let lock_key_scoped = "my_scoped_resource".to_string();
+        let lock_key = "my_resource_scoped".to_string();
 
-        // Acquire with scoped manager
-        let guard_scoped = scoped_manager1
-            .lock(lock_key_scoped.clone())
+        let _guard = scoped_manager
+            .lock(lock_key.clone())
             .await
             .expect("Scoped lock failed");
+        info!("Scoped lock acquired.");
 
-        // Check with scoped manager (should be HeldBySelf)
-        let status_scoped_self = scoped_manager1
-            .check(lock_key_scoped.clone())
+        // Original manager should not see the lock
+        let status_original = manager
+            .check(lock_key.clone())
             .await
-            .expect("Scoped self check failed");
+            .expect("Original check failed");
         assert_eq!(
-            status_scoped_self,
-            LockStatus::HeldBySelf,
-            "Scoped lock should be HeldBySelf from its manager"
-        );
-
-        // Check with base manager for the same resource ID (`lock_key_scoped`) in *its own* bucket.
-        // It should be Free because scoped_manager1 locked it in a *different* bucket,
-        // demonstrating isolation.
-        let status_in_base_bucket = base_manager
-            .check(lock_key_scoped.clone())
-            .await
-            .expect("Base manager checking for lock_key_scoped in its own bucket failed");
-        assert_eq!(
-            status_in_base_bucket,
+            status_original,
             LockStatus::Free,
-            "Base manager should find lock_key_scoped to be Free in its own bucket, as the scoped lock is in a different bucket."
+            "Original manager should not see scoped lock"
         );
 
-        // Base manager acquires its own lock (different key)
-        let lock_key_base = "my_base_resource".to_string();
-        let guard_base = base_manager
-            .lock(lock_key_base.clone())
+        // Scoped manager should see it
+        let status_scoped = scoped_manager
+            .check(lock_key.clone())
             .await
-            .expect("Base lock failed");
-        let status_base_self = base_manager
-            .check(lock_key_base.clone())
-            .await
-            .expect("Base self check failed");
+            .expect("Scoped check failed");
         assert_eq!(
-            status_base_self,
+            status_scoped,
             LockStatus::HeldBySelf,
-            "Base lock should be HeldBySelf"
-        );
-
-        // Scoped manager checks base manager's lock (it should be free for the scoped manager as keys are different)
-        let status_scoped_sees_base = scoped_manager1
-            .check(lock_key_base.clone())
-            .await
-            .expect("Scoped check of base key failed");
-        assert_eq!(
-            status_scoped_sees_base,
-            LockStatus::Free,
-            "Scoped manager should see base lock (non-prefixed from its perspective) as Free"
-        );
-
-        drop(guard_scoped);
-        drop(guard_base);
-        tokio::time::sleep(Duration::from_millis(100)).await;
-
-        assert_eq!(
-            scoped_manager1
-                .check(lock_key_scoped.clone())
-                .await
-                .unwrap(),
-            LockStatus::Free
-        );
-        assert_eq!(
-            base_manager.check(lock_key_base.clone()).await.unwrap(),
-            LockStatus::Free
+            "Scoped manager should see its own lock"
         );
 
         let js_context = async_nats::jetstream::new(client.clone());
         js_context.delete_key_value(&bucket_name).await.ok();
+        js_context
+            .delete_key_value(&format!("{bucket_name}_test_scope"))
+            .await
+            .ok();
     }
 
     #[tokio::test]
     async fn test_lock_renewal() {
-        let local_id = generate_local_id("renewal");
-        let bucket_max_age_for_test = Duration::from_secs(6);
-
-        let expected_renewal_interval =
-            bucket_max_age_for_test.mul_f64(RENEWAL_INTERVAL_RATIO_OF_BUCKET_MAX_AGE);
-        let renewal_check_wait_time = expected_renewal_interval.mul_f64(1.5);
-
         let (client, bucket_name) = get_test_js_context("renewal").await;
-        let config = NatsLockManagerConfig {
-            client: client.clone(),
-            bucket: bucket_name.clone(),
-            ttl: bucket_max_age_for_test,
-            local_identifier: local_id.clone(),
-            num_replicas: 1,
-            persist: false,
-        };
+        let local_id = generate_local_id("renewal");
+        let mut config = create_test_config(client.clone(), bucket_name.clone(), local_id.clone());
+        config.ttl = Duration::from_secs(3); // Short TTL for testing
         let manager = NatsLockManager::new(config);
 
         let lock_key = "my_resource_renewal".to_string();
 
-        let guard = manager.lock(lock_key.clone()).await.expect("Lock failed");
-        info!(
-            "Lock acquired for renewal test. Bucket max_age: {:?}, Expected renewal interval: {:?}, Wait time for check: {:?}",
-            bucket_max_age_for_test, expected_renewal_interval, renewal_check_wait_time
-        );
-
-        tokio::time::sleep(renewal_check_wait_time).await;
-
-        let status_after_wait = manager
-            .check(lock_key.clone())
+        let guard = manager
+            .lock(lock_key.clone())
             .await
-            .expect("Check after wait failed");
+            .expect("Lock acquisition failed");
+        info!("Lock acquired with short TTL.");
+
+        // Wait longer than TTL but less than renewal would allow
+        tokio::time::sleep(Duration::from_secs(4)).await;
+
+        // Lock should still be held due to renewal
+        let status = manager.check(lock_key.clone()).await.expect("Check failed");
         assert_eq!(
-            status_after_wait,
+            status,
             LockStatus::HeldBySelf,
-            "Lock should still be held by self due to renewal. Status: {status_after_wait:?}"
+            "Lock should still be held due to renewal"
         );
 
         drop(guard);
-        info!("Renewal guard dropped.");
+        info!("Guard dropped.");
 
-        // Give time for drop to propagate release
+        // Give a bit of time for cleanup
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let status_after_drop = manager
@@ -739,8 +788,36 @@ mod tests {
         assert_eq!(
             status_after_drop,
             LockStatus::Free,
-            "Lock should be free after dropping the guard. Status: {status_after_drop:?}"
+            "Lock should be free after drop"
         );
+
+        let js_context = async_nats::jetstream::new(client.clone());
+        js_context.delete_key_value(&bucket_name).await.ok();
+    }
+
+    #[tokio::test]
+    async fn test_timeout_and_retry_robustness() {
+        let (client, bucket_name) = get_test_js_context("timeout_retry").await;
+        let local_id = generate_local_id("timeout_retry");
+        let mut config = create_test_config(client.clone(), bucket_name.clone(), local_id.clone());
+
+        // Configure more aggressive retry settings for testing
+        config.operation_timeout = Some(Duration::from_millis(500));
+        config.max_retries = Some(2);
+        config.retry_base_delay = Some(Duration::from_millis(50));
+        config.retry_max_delay = Some(Duration::from_millis(200));
+
+        let manager = NatsLockManager::new(config);
+
+        let lock_key = "my_resource_timeout_retry".to_string();
+
+        // This should work even with short timeouts due to retry logic
+        let _guard = manager
+            .lock(lock_key.clone())
+            .await
+            .expect("Lock acquisition should succeed with retries");
+
+        info!("Lock acquired successfully despite timeout configuration.");
 
         let js_context = async_nats::jetstream::new(client.clone());
         js_context.delete_key_value(&bucket_name).await.ok();

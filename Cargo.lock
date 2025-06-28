@@ -10530,6 +10530,7 @@ dependencies = [
  "async-nats",
  "async-trait",
  "bytes",
+ "fastrand",
  "proven-locks",
  "thiserror 2.0.12",
  "tokio",

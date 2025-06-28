@@ -17,6 +17,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::time::Duration;
 
+use async_nats::jetstream::stream::No;
 use axum::Router;
 use axum::routing::any;
 use http::StatusCode;
@@ -69,6 +70,10 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
         num_replicas: bootstrap.num_replicas,
         persist: true,
         ttl: Duration::from_secs(30),
+        operation_timeout: None,
+        max_retries: None,
+        retry_base_delay: None,
+        retry_max_delay: None,
     });
 
     let identity_manager = IdentityManager::new(

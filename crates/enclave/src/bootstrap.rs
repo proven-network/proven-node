@@ -864,6 +864,10 @@ impl Bootstrap {
             num_replicas: 1,
             persist: true,
             ttl: Duration::from_secs(30),
+            operation_timeout: None,
+            max_retries: None,
+            retry_base_delay: None,
+            retry_max_delay: None,
         });
 
         let identity_manager = IdentityManager::new(

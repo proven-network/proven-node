@@ -303,6 +303,7 @@ ethereum_ssz_derive = "0.9.0"
 eyre = "0.6.12"
 fast-socks5 = "0.10.0"
 faster-hex = "0.10.0"
+fastrand = "2.3.0"
 fastwebsockets = { version = "0.10.0", features = ["upgrade", "unstable-split"] }
 fdlimit = "0.3.0"
 filetime = "0.2.16"

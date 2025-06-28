@@ -7,6 +7,7 @@ edition = "2024"
 async-nats.workspace = true
 async-trait.workspace = true
 bytes.workspace = true
+fastrand.workspace = true
 proven-locks.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
