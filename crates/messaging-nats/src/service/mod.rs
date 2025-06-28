@@ -18,6 +18,7 @@ use proven_bootable::Bootable;
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
+use std::sync::Arc;
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -53,8 +54,9 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     handler: X,
+    name: String,
     nats_client: NatsClient,
-    nats_consumer: OnceCell<NatsConsumerType<NatsConsumerConfig>>,
+    nats_consumer: Arc<OnceCell<NatsConsumerType<NatsConsumerConfig>>>,
     nats_jetstream_context: Context,
     durable_name: Option<String>,
     shutdown_token: CancellationToken,
@@ -78,8 +80,9 @@ where
     fn clone(&self) -> Self {
         Self {
             handler: self.handler.clone(),
+            name: self.name.clone(),
             nats_client: self.nats_client.clone(),
-            nats_consumer: OnceCell::new(),
+            nats_consumer: self.nats_consumer.clone(),
             nats_jetstream_context: self.nats_jetstream_context.clone(),
             durable_name: self.durable_name.clone(),
             shutdown_token: self.shutdown_token.clone(),
@@ -246,15 +249,16 @@ where
     type UsedResponder = NatsUsedServiceResponder;
 
     async fn new(
-        _name: String,
+        name: String,
         stream: Self::StreamType,
         options: NatsServiceOptions,
         handler: X,
     ) -> Result<Self, Error> {
         Ok(Self {
             handler,
+            name,
             nats_client: options.client,
-            nats_consumer: OnceCell::new(),
+            nats_consumer: Arc::new(OnceCell::new()),
             nats_jetstream_context: options.jetstream_context,
             durable_name: options.durable_name,
             shutdown_token: CancellationToken::new(),
@@ -295,8 +299,8 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-        "messaging-nats (service)"
     fn bootable_name(&self) -> &str {
+        &self.name
     }
 
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
