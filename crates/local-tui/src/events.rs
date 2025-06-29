@@ -81,11 +81,6 @@ impl EventHandler {
         self.receiver.recv_timeout(timeout).ok()
     }
 
-    /// Trigger a shutdown (called by signal handler)
-    pub fn trigger_shutdown(&self) {
-        let _ = self.command_sender.send(NodeCommand::Shutdown);
-    }
-
     /// Handle keyboard input and return the result of the key processing
     ///
     /// # Errors

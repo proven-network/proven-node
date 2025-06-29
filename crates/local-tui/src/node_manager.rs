@@ -20,16 +20,12 @@ use url::Url;
 
 /// Handle to a running node with its metadata and command processing
 pub struct NodeHandle {
-    /// Node identifier
-    pub id: NodeId,
     /// Display name (publicly accessible for TUI display)
     pub name: String,
-    /// Dedicated runtime for this node
-    pub runtime: Option<tokio::runtime::Runtime>,
+
     /// Command sender for this specific node
     pub command_sender: mpsc::Sender<NodeOperation>,
-    /// Thread handle for this node's command processor
-    pub command_thread: Option<thread::JoinHandle<()>>,
+
     /// Status of the node - updated by command processor
     pub status: Arc<RwLock<NodeStatus>>,
 }
@@ -46,7 +42,7 @@ impl NodeHandle {
         let (command_sender, command_receiver) = mpsc::channel();
 
         // Create dedicated runtime for this node
-        let runtime = match tokio::runtime::Builder::new_multi_thread()
+        match tokio::runtime::Builder::new_multi_thread()
             .worker_threads(4)
             .thread_name(format!("node-{}-{}", id.execution_order(), id.pokemon_id()))
             .enable_all()
@@ -63,28 +59,22 @@ impl NodeHandle {
         let status = Arc::new(RwLock::new(NodeStatus::NotStarted));
 
         // Spawn dedicated command processing thread for this node
-        let command_thread = {
-            let name = name.clone();
-            let status_clone = status.clone();
-
-            thread::spawn(move || {
-                Self::command_processor(
-                    id,
-                    &name,
-                    &config,
-                    &command_receiver,
-                    &governance,
-                    &status_clone,
-                );
-            })
-        };
+        let name_clone = name.clone();
+        let status_clone = status.clone();
+        thread::spawn(move || {
+            Self::command_processor(
+                id,
+                &name_clone,
+                &config,
+                &command_receiver,
+                &governance,
+                &status_clone,
+            );
+        });
 
         Self {
-            id,
             name,
-            runtime,
             command_sender,
-            command_thread: Some(command_thread),
             status,
         }
     }
@@ -100,24 +90,6 @@ impl NodeHandle {
     /// Get the current status of the node (synchronous - no async/runtime needed)
     pub fn get_status(&self) -> NodeStatus {
         self.status.read().clone()
-    }
-
-    /// Shutdown this node's command processor and wait for it to complete
-    pub fn shutdown(&mut self) {
-        // Send shutdown command
-        let _ = self.command_sender.send(NodeOperation::Shutdown);
-
-        // Wait for command thread to complete
-        if let Some(handle) = self.command_thread.take() {
-            if let Err(e) = handle.join() {
-                error!("Failed to join node {} command thread: {:?}", self.id, e);
-            }
-        }
-
-        // Shutdown runtime
-        if let Some(runtime) = self.runtime.take() {
-            runtime.shutdown_timeout(Duration::from_secs(5));
-        }
     }
 
     /// Command processor that runs in a dedicated thread for each node
@@ -401,26 +373,44 @@ impl NodeManager {
     }
 
     /// Check if all nodes have been shut down (for shutdown coordination)
+    #[allow(clippy::cognitive_complexity)]
     pub fn is_shutdown_complete(&self) -> bool {
         let nodes = self.nodes.read();
 
         // If no nodes exist, shutdown is complete
         if nodes.is_empty() {
+            info!("Shutdown complete: no nodes tracked");
             return true;
         }
 
         // Check if all nodes are in Stopped or Failed state
-        for handle in nodes.values() {
+        let mut running_nodes = Vec::new();
+        for (id, handle) in nodes.iter() {
             let status = handle.get_status();
             match status {
-                NodeStatus::Stopped | NodeStatus::Failed(_) => {}
-                _ => return false, // Found a node that's not stopped
+                NodeStatus::Stopped | NodeStatus::Failed(_) => {
+                    info!("Node {} is shutdown: {}", id.full_pokemon_name(), status);
+                }
+                _ => {
+                    info!("Node {} still running: {}", id.full_pokemon_name(), status);
+                    running_nodes.push((*id, status));
+                }
             }
         }
 
+        let total_nodes = nodes.len();
         drop(nodes);
 
-        true
+        if running_nodes.is_empty() {
+            info!("Shutdown complete: all {} nodes are stopped", total_nodes);
+            true
+        } else {
+            info!(
+                "Shutdown incomplete: {} nodes still running",
+                running_nodes.len()
+            );
+            false
+        }
     }
 
     /// Start the command handler
@@ -449,7 +439,7 @@ impl NodeManager {
                         Self::handle_restart_node(&nodes.clone(), &governance, &session_id, id);
                     }
                     NodeCommand::Shutdown => {
-                        Self::handle_shutdown(&nodes, &governance);
+                        Self::handle_shutdown(&nodes);
                         break;
                     }
                 }
@@ -548,37 +538,25 @@ impl NodeManager {
     }
 
     #[allow(clippy::cognitive_complexity)]
-    fn handle_shutdown(
-        nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
-        _governance: &Arc<MockGovernance>,
-    ) {
+    fn handle_shutdown(nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>) {
         info!("Shutting down all nodes...");
 
         // Send shutdown commands to all nodes (non-blocking!)
+        // Leave nodes in HashMap so main loop can monitor their status
         {
             let nodes_guard = nodes.read();
             for (id, node_handle) in nodes_guard.iter() {
+                info!(
+                    "Sending shutdown command to node {}",
+                    id.full_pokemon_name()
+                );
                 if let Err(e) = node_handle.send_command(NodeOperation::Shutdown) {
                     error!("Failed to send shutdown command to node {}: {}", id, e);
                 }
             }
         }
 
-        // Wait for all nodes to shutdown gracefully
-        let mut node_handles = Vec::new();
-        {
-            let mut nodes_guard = nodes.write();
-            for (_, node_handle) in nodes_guard.drain() {
-                node_handles.push(node_handle);
-            }
-        }
-
-        // Wait for all command threads to complete
-        for mut node_handle in node_handles {
-            node_handle.shutdown();
-        }
-
-        info!("All nodes shut down successfully");
+        info!("Shutdown commands sent to all nodes - waiting for graceful shutdown");
     }
 
     fn create_node_config(

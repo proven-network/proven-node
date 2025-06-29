@@ -185,18 +185,30 @@ impl App {
             // Check for shutdown signal
             if let Some(shutdown_flag) = &self.shutdown_flag {
                 if shutdown_flag.load(Ordering::SeqCst) && !self.shutting_down {
-                    info!("Signal-triggered shutdown initiated");
+                    info!(
+                        "Signal-triggered shutdown initiated - sending shutdown command to all nodes"
+                    );
+                    let shutdown_command = crate::messages::NodeCommand::Shutdown;
+                    if let Err(e) = self.event_handler.send_command(shutdown_command) {
+                        error!("Failed to send shutdown command: {}", e);
+                    }
                     self.shutting_down = true;
-                    // Trigger shutdown through event handler
-                    self.event_handler.trigger_shutdown();
                 }
             }
 
             // Check if shutdown is complete by polling NodeManager
-            if self.shutting_down && self.node_manager.is_shutdown_complete() {
-                info!("All nodes shut down - exiting TUI");
-                self.should_quit = true;
-                break;
+            if self.shutting_down {
+                let nodes = self.node_manager.get_nodes_for_ui();
+                info!("Shutdown check: {} nodes tracked", nodes.len());
+                for (id, (name, status)) in &nodes {
+                    info!("  Node {}: {} ({})", id.full_pokemon_name(), name, status);
+                }
+
+                if self.node_manager.is_shutdown_complete() {
+                    info!("All nodes shut down - exiting TUI");
+                    self.should_quit = true;
+                    break;
+                }
             }
 
             // Log refresh is now handled by the background thread and UI rendering
@@ -261,8 +273,12 @@ impl App {
                 return Ok(());
             }
             KeyEventResult::GracefulShutdown => {
-                // Graceful shutdown initiated - set flag and wait for ShutdownComplete
-                info!("Graceful shutdown initiated - waiting for nodes to stop");
+                // Graceful shutdown initiated - send shutdown command and wait for completion
+                info!("Graceful shutdown initiated - sending shutdown command to all nodes");
+                let shutdown_command = crate::messages::NodeCommand::Shutdown;
+                if let Err(e) = self.event_handler.send_command(shutdown_command) {
+                    error!("Failed to send shutdown command: {}", e);
+                }
                 self.shutting_down = true;
                 return Ok(());
             }
