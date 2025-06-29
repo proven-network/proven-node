@@ -267,16 +267,6 @@ impl LogReader {
             }
         }
     }
-
-    /// Get the current session directory path
-    pub fn get_session_dir(&self) -> PathBuf {
-        self.session_dir.read().clone()
-    }
-
-    /// Update the session directory (when a new session is created)
-    pub fn update_session_dir(&self, new_session_dir: PathBuf) {
-        *self.session_dir.write() = new_session_dir;
-    }
 }
 
 impl Clone for LogReader {
@@ -297,7 +287,7 @@ mod tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let config = DiskLogConfig {
             base_dir: temp_dir.path().to_path_buf(),
-            max_file_size: 1024 * 1024, // 1MB for tests
+
             flush_interval_ms: 100,
         };
         (config, temp_dir)

@@ -377,7 +377,7 @@ pub fn render_ui<S: std::hash::BuildHasher>(
     render_logs(frame, chunks[1], &cached_logs, log_reader, ui_state, nodes);
 
     // Render footer at the bottom
-    render_footer(frame, chunks[2], shutting_down);
+    render_footer(frame, chunks[2], shutting_down, ui_state, nodes);
 
     // Render help overlay if requested
     if ui_state.show_help {
@@ -710,8 +710,14 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
     frame.render_widget(debug_paragraph, debug_area);
 }
 
-/// Render footer with key hints
-fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, shutting_down: bool) {
+/// Render footer with context-aware key hints
+fn render_footer<S: std::hash::BuildHasher>(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    shutting_down: bool,
+    ui_state: &UiState,
+    nodes: &HashMap<NodeId, (String, NodeStatus), S>,
+) {
     let footer_text = if shutting_down {
         Line::from(vec![
             Span::styled(
@@ -728,7 +734,32 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, shutting_down: 
             Span::styled(" to force quit", Style::default()),
         ])
     } else {
-        Line::from(vec![
+        // Determine the action text based on selected node
+        let (action_text, action_color) =
+            if ui_state.logs_sidebar_debug_selected || ui_state.logs_sidebar_selected == 0 {
+                // Debug or "All" selected - no specific node actions
+                ("", Color::Green)
+            } else if let Some(&selected_node_id) = ui_state
+                .logs_sidebar_nodes
+                .get(ui_state.logs_sidebar_selected - 1)
+            {
+                // Specific node selected - show context-aware action
+                if let Some((_, status)) = nodes.get(&selected_node_id) {
+                    match status {
+                        NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Failed(_) => {
+                            ("start", Color::Green)
+                        }
+                        NodeStatus::Running | NodeStatus::Starting => ("stop", Color::Red),
+                        NodeStatus::Stopping => ("stopping", Color::Yellow),
+                    }
+                } else {
+                    ("start", Color::Green)
+                }
+            } else {
+                ("", Color::Green)
+            };
+
+        let mut spans = vec![
             Span::styled(
                 "Keys: ",
                 Style::default()
@@ -737,23 +768,31 @@ fn render_footer(frame: &mut Frame, area: ratatui::layout::Rect, shutting_down: 
             ),
             Span::styled("q", Style::default().fg(Color::Red)),
             Span::styled(":quit ", Style::default()),
-            Span::styled("s", Style::default().fg(Color::Green)),
-            Span::styled(":start ", Style::default()),
-            Span::styled("r", Style::default().fg(Color::Blue)),
-            Span::styled(":refresh ", Style::default()),
-            Span::styled("`", Style::default().fg(Color::Yellow)),
-            Span::styled(":overview ", Style::default()),
-            Span::styled("1-9", Style::default().fg(Color::Yellow)),
-            Span::styled(":select ", Style::default()),
-            Span::styled("d", Style::default().fg(Color::Magenta)),
-            Span::styled(":debug ", Style::default()),
-            Span::styled("a", Style::default().fg(Color::Cyan)),
-            Span::styled(":auto-scroll ", Style::default()),
+            Span::styled("n", Style::default().fg(Color::Green)),
+            Span::styled(":new node ", Style::default()),
+        ];
+
+        // Add context-aware start/stop/restart keys only if a specific node is selected
+        if !action_text.is_empty()
+            && !ui_state.logs_sidebar_debug_selected
+            && ui_state.logs_sidebar_selected > 0
+        {
+            spans.extend(vec![
+                Span::styled("s", Style::default().fg(action_color)),
+                Span::styled(format!(":{action_text} "), Style::default()),
+                Span::styled("r", Style::default().fg(Color::Blue)),
+                Span::styled(":restart ", Style::default()),
+            ]);
+        }
+
+        spans.extend(vec![
             Span::styled("l", Style::default().fg(Color::LightCyan)),
             Span::styled(":log-level ", Style::default()),
             Span::styled("?", Style::default().fg(Color::White)),
             Span::styled(":help", Style::default()),
-        ])
+        ]);
+
+        Line::from(spans)
     };
 
     let paragraph = Paragraph::new(footer_text)
@@ -779,20 +818,20 @@ fn render_help_overlay(frame: &mut Frame, area: ratatui::layout::Rect) {
         Line::from("  ?               - Toggle help"),
         Line::from(""),
         Line::from("Node Management:"),
-        Line::from("  s               - Start new node"),
-        Line::from("  r               - Refresh status"),
+        Line::from("  n               - Start new node"),
+        Line::from("  s               - Start/stop selected node"),
+        Line::from("  r               - Restart selected node"),
         Line::from(""),
-        Line::from("Logs Navigation:"),
+        Line::from("Navigation:"),
+        Line::from("  Up/Down         - Navigate sidebar (select node)"),
         Line::from("  `               - Select Overview (in sidebar)"),
         Line::from("  1-9             - Select node in sidebar (quick access)"),
         Line::from("  d               - Select debug logs (in sidebar)"),
-        Line::from("  Up/Down         - Navigate sidebar (select node)"),
-        Line::from("  Home/End        - Scroll to top/bottom of logs"),
         Line::from(""),
         Line::from("Log Viewing:"),
         Line::from("  Alt+Up/Down     - Scroll logs (line by line)"),
         Line::from("  PageUp/PageDown - Scroll logs (page by page)"),
-        Line::from("  a               - Toggle auto-scroll"),
+        Line::from("  Home/End        - Scroll to top/bottom of logs"),
         Line::from("  l               - Select log level filter"),
         Line::from(""),
         Line::from("Press ? or Esc to close this help"),

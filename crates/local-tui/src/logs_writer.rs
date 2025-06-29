@@ -197,8 +197,7 @@ impl AsyncLogWriter {
 pub struct DiskLogConfig {
     /// Base directory for log files
     pub base_dir: PathBuf,
-    /// Maximum size per log file in bytes (default: 10MB)
-    pub max_file_size: u64,
+
     /// Flush interval in milliseconds (default: 1000ms)
     pub flush_interval_ms: u64,
 }
@@ -208,7 +207,7 @@ impl DiskLogConfig {
     pub fn new_with_session(session_id: &str) -> Self {
         Self {
             base_dir: PathBuf::from(format!("/tmp/proven/{session_id}")),
-            max_file_size: 10 * 1024 * 1024, // 10MB
+
             flush_interval_ms: 1000,
         }
     }
@@ -218,7 +217,6 @@ impl Default for DiskLogConfig {
     fn default() -> Self {
         Self {
             base_dir: PathBuf::from("logs"), // Fallback for tests
-            max_file_size: 10 * 1024 * 1024, // 10MB
             flush_interval_ms: 1000,
         }
     }
@@ -329,26 +327,6 @@ impl LogWriter {
         if let Err(e) = self.command_sender.send(LogWriterCommand::WriteLog(entry)) {
             error!("Failed to send log entry to async writer: {}", e);
         }
-    }
-
-    /// Set the current log level filter
-    pub fn set_level_filter(&self, level: LogLevel) {
-        *self.current_level_filter.write() = level;
-    }
-
-    /// Get the current log level filter
-    pub fn get_level_filter(&self) -> LogLevel {
-        *self.current_level_filter.read()
-    }
-
-    /// Set the current node filter
-    pub fn set_node_filter(&self, node_id: Option<NodeId>) {
-        *self.current_node_filter.write() = node_id;
-    }
-
-    /// Get the current node filter
-    pub fn get_node_filter(&self) -> Option<NodeId> {
-        *self.current_node_filter.read()
     }
 
     /// Get the current session directory path
@@ -463,7 +441,6 @@ mod tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let config = DiskLogConfig {
             base_dir: temp_dir.path().to_path_buf(),
-            max_file_size: 1024 * 1024, // 1MB for tests
             flush_interval_ms: 100,
         };
         (config, temp_dir)

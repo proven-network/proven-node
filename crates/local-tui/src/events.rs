@@ -131,17 +131,10 @@ impl EventHandler {
                 return Ok(KeyEventResult::ForceQuit);
             }
 
-            // Start a new node with 's' (only if not shutting down)
-            KeyCode::Char('s') => {
+            // Start a new node with 'n' (only if not shutting down)
+            KeyCode::Char('n') => {
                 if !shutting_down {
                     self.start_new_node()?;
-                }
-            }
-
-            // Refresh status with 'r' (only if not shutting down)
-            KeyCode::Char('r') => {
-                if !shutting_down {
-                    let _ = self.command_sender.send(NodeCommand::GetStatus);
                 }
             }
 
@@ -171,5 +164,10 @@ impl EventHandler {
             .map_err(|e| anyhow::anyhow!("Failed to send start command: {e}"))?;
 
         Ok(())
+    }
+
+    /// Send a command to the node manager
+    pub fn send_command(&self, command: NodeCommand) -> Result<(), mpsc::SendError<NodeCommand>> {
+        self.command_sender.send(command)
     }
 }

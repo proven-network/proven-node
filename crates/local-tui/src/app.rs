@@ -316,6 +316,7 @@ impl App {
     }
 
     /// Handle keys in logs mode
+    #[allow(clippy::too_many_lines)]
     fn handle_logs_keys(&mut self, key: KeyEvent) {
         // Handle modal-specific keys first
         if self.ui_state.show_log_level_modal {
@@ -402,14 +403,6 @@ impl App {
                 self.ui_state.scroll_down(page_size);
             }
 
-            // Toggle auto-scroll
-            KeyCode::Char('a') => {
-                self.ui_state.auto_scroll = !self.ui_state.auto_scroll;
-                if self.ui_state.auto_scroll {
-                    self.ui_state.scroll_to_bottom();
-                }
-            }
-
             // Open log level selection modal
             KeyCode::Char('l') => {
                 // Set initial selection to current log level
@@ -422,6 +415,36 @@ impl App {
                     crate::messages::LogLevel::Trace => 4,
                 };
                 self.ui_state.show_log_level_modal = true;
+            }
+
+            // Start/stop selected node with 's' (only for individual nodes, not "All" or "Debug")
+            KeyCode::Char('s') => {
+                if !self.ui_state.logs_sidebar_debug_selected
+                    && self.ui_state.logs_sidebar_selected > 0
+                {
+                    if let Some(&selected_node_id) = self
+                        .ui_state
+                        .logs_sidebar_nodes
+                        .get(self.ui_state.logs_sidebar_selected - 1)
+                    {
+                        self.handle_start_stop_node(selected_node_id);
+                    }
+                }
+            }
+
+            // Restart selected node with 'r' (only for individual nodes, not "All" or "Debug")
+            KeyCode::Char('r') => {
+                if !self.ui_state.logs_sidebar_debug_selected
+                    && self.ui_state.logs_sidebar_selected > 0
+                {
+                    if let Some(&selected_node_id) = self
+                        .ui_state
+                        .logs_sidebar_nodes
+                        .get(self.ui_state.logs_sidebar_selected - 1)
+                    {
+                        self.handle_restart_node(selected_node_id);
+                    }
+                }
             }
 
             _ => {}
@@ -556,14 +579,6 @@ impl App {
                 self.ui_state.scroll_down(page_size);
             }
 
-            // Toggle auto-scroll
-            KeyCode::Char('a') => {
-                self.ui_state.auto_scroll = !self.ui_state.auto_scroll;
-                if self.ui_state.auto_scroll {
-                    self.ui_state.scroll_to_bottom();
-                }
-            }
-
             _ => {}
         }
     }
@@ -631,6 +646,53 @@ impl App {
             // Node doesn't exist yet, create it with a placeholder name
             self.nodes.insert(id, (id.pokemon_name(), status));
         }
+    }
+
+    /// Handle start/stop for a selected node based on its current status
+    #[allow(clippy::cognitive_complexity)]
+    fn handle_start_stop_node(&self, node_id: NodeId) {
+        if let Some((_, status)) = self.nodes.get(&node_id) {
+            match status {
+                NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Failed(_) => {
+                    // Node is not running, so start it
+                    let name = node_id.display_name();
+                    let command = crate::messages::NodeCommand::StartNode {
+                        id: node_id,
+                        name,
+                        config: None, // Let NodeManager create the config
+                    };
+                    let _ = self.event_handler.send_command(command);
+                    info!("Starting node: {}", node_id.full_pokemon_name());
+                }
+                NodeStatus::Running | NodeStatus::Starting => {
+                    // Node is running or starting, so stop it
+                    let command = crate::messages::NodeCommand::StopNode { id: node_id };
+                    let _ = self.event_handler.send_command(command);
+                    info!("Stopping node: {}", node_id.full_pokemon_name());
+                }
+                NodeStatus::Stopping => {
+                    // Node is already stopping, do nothing
+                    info!("Node {} is already stopping", node_id.full_pokemon_name());
+                }
+            }
+        } else {
+            // Node not found in our list, assume it's not started and try to start it
+            let name = node_id.display_name();
+            let command = crate::messages::NodeCommand::StartNode {
+                id: node_id,
+                name,
+                config: None, // Let NodeManager create the config
+            };
+            let _ = self.event_handler.send_command(command);
+            info!("Starting new node: {}", node_id.full_pokemon_name());
+        }
+    }
+
+    /// Handle restart for a selected node
+    fn handle_restart_node(&self, node_id: NodeId) {
+        let command = crate::messages::NodeCommand::RestartNode { id: node_id };
+        let _ = self.event_handler.send_command(command);
+        info!("Restarting node: {}", node_id.full_pokemon_name());
     }
 }
 
