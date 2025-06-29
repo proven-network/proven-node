@@ -20,14 +20,12 @@ use std::collections::HashMap;
 #[derive(Debug)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct UiState {
-    /// Scroll position for logs (0 = bottom/newest, higher = scrolled up towards older logs)
+    /// Current scroll position (maintained by background thread, used for scrollbar display only)
     pub log_scroll: usize,
-    /// Cached logs for display (updated periodically, not on every render)
-    pub cached_logs: Vec<crate::messages::LogEntry>,
-    /// Last time logs were refreshed
-    pub last_log_refresh: std::time::Instant,
-    /// Whether auto-scroll is enabled (follows new logs)
-    pub auto_scroll: bool,
+    /// Current viewport logs for display
+    pub viewport_logs: Vec<crate::messages::LogEntry>,
+    /// Total number of lines in the current log file
+    pub total_log_lines: usize,
     /// Viewport height for logs (set during render)
     pub log_viewport_height: usize,
     /// Scrollbar state for logs
@@ -44,6 +42,8 @@ pub struct UiState {
     pub show_log_level_modal: bool,
     /// Selected index in log level modal (0-4 for Error, Warn, Info, Debug, Trace)
     pub log_level_modal_selected: usize,
+    /// Last applied node filter to prevent redundant calls
+    last_applied_node_filter: Option<NodeId>,
 }
 
 impl UiState {
@@ -52,9 +52,8 @@ impl UiState {
     pub fn new() -> Self {
         Self {
             log_scroll: 0,
-            cached_logs: Vec::new(),
-            last_log_refresh: std::time::Instant::now(),
-            auto_scroll: true,
+            viewport_logs: Vec::new(),
+            total_log_lines: 0,
             log_viewport_height: 0,
             log_scrollbar_state: ScrollbarState::default(),
             logs_sidebar_selected: 0,
@@ -63,59 +62,33 @@ impl UiState {
             show_help: false,
             show_log_level_modal: false,
             log_level_modal_selected: 2, // Default to Info (index 2)
+            last_applied_node_filter: None,
         }
     }
 
-    /// Get the maximum scroll position based on log count and viewport height
-    pub const fn max_scroll_position(&self) -> usize {
-        if self.cached_logs.len() <= self.log_viewport_height {
-            0
-        } else {
-            self.cached_logs.len() - self.log_viewport_height
-        }
+    /// Scroll to bottom (newest logs) - send command to background thread
+    pub fn scroll_to_bottom(&self, log_reader: &LogReader) {
+        log_reader.scroll_to_bottom();
     }
 
-    /// Check if currently at the bottom (newest logs)
-    pub const fn is_at_bottom(&self) -> bool {
-        self.log_scroll == 0
+    /// Scroll to top (oldest logs) - send command to background thread
+    pub fn scroll_to_top(&self, log_reader: &LogReader) {
+        log_reader.scroll_to_top();
     }
 
-    /// Scroll to bottom (newest logs)
-    pub const fn scroll_to_bottom(&mut self) {
-        self.log_scroll = 0;
-        self.auto_scroll = true;
+    /// Scroll up (towards older logs) - send command to background thread
+    pub fn scroll_up(&self, amount: usize, log_reader: &LogReader) {
+        log_reader.scroll_up(amount);
     }
 
-    /// Scroll to top (oldest logs)
-    pub const fn scroll_to_top(&mut self) {
-        self.log_scroll = self.max_scroll_position();
-        self.auto_scroll = false;
+    /// Scroll down (towards newer logs) - send command to background thread
+    pub fn scroll_down(&self, amount: usize, log_reader: &LogReader) {
+        log_reader.scroll_down(amount);
     }
 
-    /// Scroll up (towards older logs)
-    pub fn scroll_up(&mut self, amount: usize) {
-        let max_scroll = self.max_scroll_position();
-        self.log_scroll = (self.log_scroll + amount).min(max_scroll);
-        self.auto_scroll = false;
-    }
-
-    /// Scroll down (towards newer logs)
-    pub const fn scroll_down(&mut self, amount: usize) {
-        if self.log_scroll >= amount {
-            self.log_scroll -= amount;
-        } else {
-            self.log_scroll = 0;
-        }
-
-        // Re-enable auto-scroll if we've scrolled back to the bottom
-        if self.log_scroll == 0 {
-            self.auto_scroll = true;
-        }
-    }
-
-    /// Update scrollbar state
+    /// Update scrollbar state based on current scroll position from background thread
     pub const fn update_scrollbar_state(&mut self) {
-        let total_logs = self.cached_logs.len();
+        let total_logs = self.total_log_lines;
         let viewport_height = self.log_viewport_height;
 
         if total_logs <= viewport_height {
@@ -143,26 +116,31 @@ impl UiState {
         }
     }
 
-    /// Check if logs need refreshing (limit to 20 times per second)
-    pub fn should_refresh_logs(&self) -> bool {
-        self.last_log_refresh.elapsed().as_millis() > 50
+    /// Update viewport logs and scroll state from background thread response
+    pub fn update_viewport_logs(
+        &mut self,
+        logs: Vec<crate::messages::LogEntry>,
+        total_lines: usize,
+        scroll_position: usize,
+    ) {
+        self.viewport_logs = logs;
+        self.total_log_lines = total_lines;
+        self.log_scroll = scroll_position;
+
+        // Update scrollbar state based on new scroll position
+        self.update_scrollbar_state();
     }
 
-    /// Update cached logs and refresh timestamp
-    pub fn update_cached_logs(&mut self, logs: Vec<crate::messages::LogEntry>) {
-        let old_count = self.cached_logs.len();
-        let was_at_bottom = self.is_at_bottom();
-
-        self.cached_logs = logs;
-        self.last_log_refresh = std::time::Instant::now();
-
-        // Only auto-scroll if user was already at the bottom and new logs were added
-        if self.auto_scroll && was_at_bottom && self.cached_logs.len() > old_count {
-            self.log_scroll = 0;
+    /// Update node filter only if it has changed (prevents redundant calls that cause auto-scroll jumping)
+    pub fn update_node_filter_if_changed(
+        &mut self,
+        new_filter: Option<NodeId>,
+        log_reader: &LogReader,
+    ) {
+        if self.last_applied_node_filter != new_filter {
+            self.last_applied_node_filter = new_filter;
+            log_reader.set_node_filter(new_filter);
         }
-
-        // Update scrollbar state
-        self.update_scrollbar_state();
     }
 }
 
@@ -370,11 +348,8 @@ pub fn render_ui<S: std::hash::BuildHasher>(
     // Render header at the top
     render_header(frame, chunks[0]);
 
-    // Extract cached logs to avoid borrowing issues
-    let cached_logs = ui_state.cached_logs.clone();
-
     // Render logs in the main area
-    render_logs(frame, chunks[1], &cached_logs, log_reader, ui_state, nodes);
+    render_logs(frame, chunks[1], log_reader, ui_state, nodes);
 
     // Render footer at the bottom
     render_footer(frame, chunks[2], shutting_down, ui_state, nodes);
@@ -411,7 +386,6 @@ fn render_header(frame: &mut Frame, area: ratatui::layout::Rect) {
 fn render_logs<S: std::hash::BuildHasher>(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
-    _cached_logs: &[crate::messages::LogEntry],
     log_reader: &LogReader,
     ui_state: &mut UiState,
     nodes: &HashMap<NodeId, (String, NodeStatus), S>,
@@ -445,66 +419,78 @@ fn render_logs<S: std::hash::BuildHasher>(
     // Render logs in the remaining space
     let logs_area = horizontal_chunks[1];
 
-    // Set the node filter on the log reader and get fresh logs
-    if ui_state.logs_sidebar_debug_selected {
+    // Determine what the node filter should be based on current UI state
+    let desired_node_filter = if ui_state.logs_sidebar_debug_selected {
         // Show only debug (main thread) logs
-        log_reader.set_node_filter(Some(crate::messages::MAIN_THREAD_NODE_ID));
+        Some(crate::messages::MAIN_THREAD_NODE_ID)
     } else if ui_state.logs_sidebar_selected == 0 {
         // Show all logs
-        log_reader.set_node_filter(None);
+        None
     } else if let Some(&selected_node_id) = ui_state
         .logs_sidebar_nodes
         .get(ui_state.logs_sidebar_selected - 1)
     {
         // Show logs from specific node
-        log_reader.set_node_filter(Some(selected_node_id));
+        Some(selected_node_id)
     } else {
         // Invalid selection, show all logs
-        log_reader.set_node_filter(None);
+        None
+    };
+
+    // Update node filter only if it has changed (prevents redundant calls that cause jumping)
+    ui_state.update_node_filter_if_changed(desired_node_filter, log_reader);
+
+    // Process any responses from the background thread
+    while let Some(response) = log_reader.try_get_response() {
+        use crate::logs_viewer::LogResponse;
+        match response {
+            LogResponse::ViewportUpdate {
+                logs,
+                total_filtered_lines,
+                scroll_position,
+                viewport_size: _,
+            } => {
+                // Update logs and scroll position from background thread (single source of truth)
+                ui_state.update_viewport_logs(logs, total_filtered_lines, scroll_position);
+            }
+            LogResponse::NewLogsDetected => {
+                // Background thread will handle auto-scroll logic, no action needed
+            }
+            LogResponse::Error { message } => {
+                // Log error but continue rendering
+                tracing::debug!("Log reader error: {}", message);
+            }
+        }
     }
 
-    let filtered_logs = log_reader
-        .get_filtered_logs_blocking(std::time::Duration::from_millis(100))
-        .into_iter()
-        .collect::<Vec<_>>();
+    // Update viewport height for scrolling calculations
+    let content_height = logs_area.height.saturating_sub(2); // Account for borders
+    let new_viewport_height = content_height as usize;
+
+    // If viewport size changed, update the background thread
+    if ui_state.log_viewport_height != new_viewport_height {
+        ui_state.log_viewport_height = new_viewport_height;
+        log_reader.update_viewport_size(ui_state.log_viewport_height);
+    }
+
+    // If we don't have any logs yet, request initial data
+    if ui_state.viewport_logs.is_empty() && ui_state.total_log_lines == 0 {
+        log_reader.request_initial_data();
+    }
 
     // Determine whether to show node names in logs
     let show_node_names =
         ui_state.logs_sidebar_selected == 0 && !ui_state.logs_sidebar_debug_selected;
 
-    // Convert LogEntry references to Lines for display
-    let log_lines: Vec<Line> = filtered_logs
+    // Update scrollbar state based on current scroll position
+    ui_state.update_scrollbar_state();
+
+    // Convert viewport logs to Lines for display
+    let display_lines: Vec<Line> = ui_state
+        .viewport_logs
         .iter()
         .map(|entry| create_colored_log_line(entry, show_node_names))
         .collect();
-
-    // Update viewport height for scrolling calculations
-    let content_height = logs_area.height.saturating_sub(2); // Account for borders
-    ui_state.log_viewport_height = content_height as usize;
-
-    // Calculate which lines to display based on scroll position
-    // Note: logs come in chronological order (index 0 = oldest, last index = newest)
-    // We want to display with newest at bottom (terminal-like behavior)
-    let total_lines = log_lines.len();
-    let viewport_height = ui_state.log_viewport_height;
-
-    let display_lines = if total_lines <= viewport_height {
-        // All lines fit in viewport - show in chronological order (newest at bottom)
-        log_lines
-    } else {
-        // Need to scroll - log_scroll of 0 means show newest (bottom)
-        // log_scroll of max means show oldest (top)
-        // Since we want newest at bottom, we need to calculate from the end
-        let start_from_end = ui_state.log_scroll;
-        let end_index = total_lines.saturating_sub(start_from_end);
-        let start_index = end_index.saturating_sub(viewport_height);
-
-        // Take slice in chronological order (newest will be at bottom of viewport)
-        log_lines[start_index..end_index].to_vec()
-    };
-
-    // Update scrollbar state based on current scroll position
-    ui_state.update_scrollbar_state();
 
     // Get current log level for title
     let current_level = log_reader.get_level_filter();
@@ -559,7 +545,7 @@ fn render_logs<S: std::hash::BuildHasher>(
     frame.render_widget(logs_paragraph, logs_area);
 
     // Render scrollbar if needed
-    if total_lines > viewport_height {
+    if ui_state.total_log_lines > ui_state.log_viewport_height {
         let scrollbar_area = ratatui::layout::Rect {
             x: logs_area.x + logs_area.width.saturating_sub(1),
             y: logs_area.y + 1,

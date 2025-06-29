@@ -188,11 +188,8 @@ impl App {
     fn run_loop<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
         info!("Starting TUI application");
 
-        // Initialize cached logs (synchronous operation)
-        let initial_logs = self
-            .log_reader
-            .get_filtered_logs_blocking(std::time::Duration::from_millis(100));
-        self.ui_state.update_cached_logs(initial_logs);
+        // Request initial logs from background thread
+        self.log_reader.request_initial_data();
 
         while !self.should_quit {
             // Check for shutdown signal
@@ -205,13 +202,7 @@ impl App {
                 }
             }
 
-            // Refresh logs periodically (synchronous operation)
-            if self.ui_state.should_refresh_logs() {
-                let fresh_logs = self
-                    .log_reader
-                    .get_filtered_logs_blocking(std::time::Duration::from_millis(50));
-                self.ui_state.update_cached_logs(fresh_logs);
-            }
+            // Log refresh is now handled by the background thread and UI rendering
 
             // Draw the UI (synchronous operation)
             terminal.draw(|frame| {
@@ -349,20 +340,20 @@ impl App {
 
             // Alt+Up/Down for log scrolling (line by line) - put specific pattern first
             KeyCode::Up if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) => {
-                self.ui_state.scroll_up(1);
+                self.ui_state.scroll_up(1, &self.log_reader);
             }
 
             KeyCode::Down if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) => {
-                self.ui_state.scroll_down(1);
+                self.ui_state.scroll_down(1, &self.log_reader);
             }
 
             // Home/End for log scrolling
             KeyCode::Home => {
-                self.ui_state.scroll_to_top();
+                self.ui_state.scroll_to_top(&self.log_reader);
             }
 
             KeyCode::End => {
-                self.ui_state.scroll_to_bottom();
+                self.ui_state.scroll_to_bottom(&self.log_reader);
             }
 
             // Up/Down arrow keys for sidebar navigation
@@ -395,12 +386,12 @@ impl App {
             // Page Up/Down for log scrolling (page by page)
             KeyCode::PageUp => {
                 let page_size = self.ui_state.log_viewport_height.max(1);
-                self.ui_state.scroll_up(page_size);
+                self.ui_state.scroll_up(page_size, &self.log_reader);
             }
 
             KeyCode::PageDown => {
                 let page_size = self.ui_state.log_viewport_height.max(1);
-                self.ui_state.scroll_down(page_size);
+                self.ui_state.scroll_down(page_size, &self.log_reader);
             }
 
             // Open log level selection modal
@@ -482,11 +473,7 @@ impl App {
                 self.log_reader.set_level_filter(selected_level);
                 self.ui_state.show_log_level_modal = false;
 
-                // Immediately refresh logs to show the new filter
-                let fresh_logs = self
-                    .log_reader
-                    .get_filtered_logs_blocking(std::time::Duration::from_millis(50));
-                self.ui_state.update_cached_logs(fresh_logs);
+                // Filter change will trigger background thread to send updated data automatically
             }
 
             // Close modal without selection
@@ -525,20 +512,20 @@ impl App {
 
             // Alt+Up/Down for log scrolling still works during shutdown - put specific pattern first
             KeyCode::Up if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) => {
-                self.ui_state.scroll_up(1);
+                self.ui_state.scroll_up(1, &self.log_reader);
             }
 
             KeyCode::Down if key.modifiers.contains(crossterm::event::KeyModifiers::ALT) => {
-                self.ui_state.scroll_down(1);
+                self.ui_state.scroll_down(1, &self.log_reader);
             }
 
             // Home/End for log scrolling still work during shutdown
             KeyCode::Home => {
-                self.ui_state.scroll_to_top();
+                self.ui_state.scroll_to_top(&self.log_reader);
             }
 
             KeyCode::End => {
-                self.ui_state.scroll_to_bottom();
+                self.ui_state.scroll_to_bottom(&self.log_reader);
             }
 
             // Up/Down arrow keys for sidebar navigation still work during shutdown
@@ -571,12 +558,12 @@ impl App {
             // Page Up/Down for log scrolling still works during shutdown
             KeyCode::PageUp => {
                 let page_size = self.ui_state.log_viewport_height.max(1);
-                self.ui_state.scroll_up(page_size);
+                self.ui_state.scroll_up(page_size, &self.log_reader);
             }
 
             KeyCode::PageDown => {
                 let page_size = self.ui_state.log_viewport_height.max(1);
-                self.ui_state.scroll_down(page_size);
+                self.ui_state.scroll_down(page_size, &self.log_reader);
             }
 
             _ => {}
