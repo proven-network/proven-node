@@ -4,7 +4,7 @@ use crate::{
     events::{Event, EventHandler, KeyEventResult},
     logs_viewer::LogReader,
     logs_writer::LogWriter,
-    messages::{NodeId, NodeStatus, TuiMessage},
+    messages::NodeId,
     node_manager::NodeManager,
     ui::{UiState, render_ui},
 };
@@ -18,12 +18,12 @@ use crossterm::{
 use proven_attestation_mock::MockAttestor;
 use proven_governance::Version;
 use proven_governance_mock::MockGovernance;
+use proven_local::NodeStatus;
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
 };
 use std::{
-    collections::HashMap,
     io,
     path::PathBuf,
     sync::{
@@ -45,8 +45,8 @@ pub struct App {
     /// UI state
     ui_state: UiState,
 
-    /// Node statuses
-    nodes: HashMap<NodeId, (String, NodeStatus)>,
+    /// Node manager - single source of truth for node state
+    node_manager: Arc<NodeManager>,
 
     /// Log writer for disk-based logging
     log_writer: LogWriter,
@@ -56,9 +56,6 @@ pub struct App {
 
     /// Event handler
     event_handler: EventHandler,
-
-    /// Message receiver for node operations
-    message_receiver: mpsc::Receiver<TuiMessage>,
 
     /// Shutdown flag set by signal handler
     shutdown_flag: Option<Arc<AtomicBool>>,
@@ -72,8 +69,7 @@ impl App {
     /// Returns an error if the channels fail to initialize or if the shared
     /// governance cannot be created.
     pub fn new() -> Self {
-        // Create message channels (sync)
-        let (message_sender, message_receiver) = mpsc::channel();
+        // Create command channel (sync)
         let (command_sender, command_receiver) = mpsc::channel();
 
         // Create shared governance synchronously
@@ -94,19 +90,21 @@ impl App {
         // Create event handler (synchronous setup)
         let event_handler = EventHandler::new(command_sender);
 
-        // Create and start node manager (sync operations)
-        let node_manager = NodeManager::new(message_sender, governance, session_id);
-        node_manager.start_command_handler(command_receiver);
+        // Create and start node manager (sync operations) - no message channel needed
+        let node_manager = Arc::new(NodeManager::new(governance, session_id));
+
+        // Start command handler in background thread with a clone of the node manager
+        let node_manager_clone = node_manager.clone();
+        node_manager_clone.start_command_handler(command_receiver);
 
         Self {
             should_quit: false,
             shutting_down: false,
             ui_state: UiState::new(),
-            nodes: HashMap::new(),
+            node_manager,
             log_writer,
             log_reader,
             event_handler,
-            message_receiver,
             shutdown_flag: None,
         }
     }
@@ -154,13 +152,6 @@ impl App {
         // Start event listeners
         self.event_handler.listen_for_terminal_events();
 
-        // Move the message receiver to the event handler
-        let message_receiver = std::mem::replace(&mut self.message_receiver, {
-            let (_, rx) = mpsc::channel();
-            rx
-        });
-        self.event_handler.listen_for_messages(message_receiver);
-
         // Main loop (synchronous)
         let result = self.run_loop(&mut terminal);
 
@@ -201,14 +192,23 @@ impl App {
                 }
             }
 
+            // Check if shutdown is complete by polling NodeManager
+            if self.shutting_down && self.node_manager.is_shutdown_complete() {
+                info!("All nodes shut down - exiting TUI");
+                self.should_quit = true;
+                break;
+            }
+
             // Log refresh is now handled by the background thread and UI rendering
 
             // Draw the UI (synchronous operation)
             terminal.draw(|frame| {
+                // Get current node information from NodeManager
+                let nodes = self.node_manager.get_nodes_for_ui();
                 render_ui(
                     frame,
                     &mut self.ui_state,
-                    &self.nodes,
+                    &nodes,
                     &self.log_reader,
                     self.shutting_down,
                 );
@@ -237,10 +237,6 @@ impl App {
                 if let crossterm::event::Event::Key(key) = crossterm_event {
                     self.handle_key_event(key)?;
                 }
-            }
-
-            Event::Message(message) => {
-                self.handle_message(*message);
             }
 
             Event::Tick => {
@@ -567,75 +563,13 @@ impl App {
         }
     }
 
-    /// Handle messages from async tasks
-    fn handle_message(&mut self, message: TuiMessage) {
-        match message {
-            TuiMessage::NodeStarted { id, name } => {
-                self.handle_node_started(id, name);
-            }
-
-            TuiMessage::NodeStopped { id } => {
-                self.handle_node_stopped(id);
-            }
-
-            TuiMessage::NodeFailed { id, error } => {
-                self.handle_node_failed(id, error);
-            }
-
-            TuiMessage::NodeStatusUpdate { id, status } => {
-                self.handle_node_status_update(id, status);
-            }
-
-            TuiMessage::ShutdownComplete => {
-                info!("Received shutdown complete signal, exiting TUI");
-                self.should_quit = true;
-            }
-        }
-    }
-
-    /// Handle node started message
-    fn handle_node_started(&mut self, id: NodeId, name: String) {
-        info!("Node {name} ({id}) start method completed");
-        // Update the name but preserve the current status (should be Starting)
-        if let Some((_, current_status)) = self.nodes.get(&id) {
-            let status = current_status.clone();
-            self.nodes.insert(id, (name, status));
-        } else {
-            // Node doesn't exist yet, assume it's starting
-            self.nodes.insert(id, (name, NodeStatus::Starting));
-        }
-    }
-
-    /// Handle node stopped message
-    fn handle_node_stopped(&mut self, id: NodeId) {
-        if let Some((name, status)) = self.nodes.get_mut(&id) {
-            info!("Node {name} ({id}) stopped");
-            *status = NodeStatus::Stopped;
-        }
-    }
-
-    /// Handle node failed message
-    fn handle_node_failed(&mut self, id: NodeId, error: String) {
-        if let Some((name, status)) = self.nodes.get_mut(&id) {
-            error!("Node {name} ({id}) failed: {error}");
-            *status = NodeStatus::Failed(error);
-        }
-    }
-
-    /// Handle node status update message
-    fn handle_node_status_update(&mut self, id: NodeId, status: NodeStatus) {
-        if let Some((_, current_status)) = self.nodes.get_mut(&id) {
-            *current_status = status;
-        } else {
-            // Node doesn't exist yet, create it with a placeholder name
-            self.nodes.insert(id, (id.pokemon_name(), status));
-        }
-    }
-
     /// Handle start/stop for a selected node based on its current status
     #[allow(clippy::cognitive_complexity)]
     fn handle_start_stop_node(&self, node_id: NodeId) {
-        if let Some((_, status)) = self.nodes.get(&node_id) {
+        // Get current node status from NodeManager
+        let nodes = self.node_manager.get_nodes_for_ui();
+
+        if let Some((_, status)) = nodes.get(&node_id) {
             match status {
                 NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Failed(_) => {
                     // Node is not running, so start it

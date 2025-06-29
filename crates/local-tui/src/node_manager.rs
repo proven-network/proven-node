@@ -1,6 +1,7 @@
 //! Node lifecycle management
 
-use crate::messages::{NodeCommand, NodeStatus, TuiMessage, TuiNodeConfig};
+use crate::ip_allocator::allocate_port;
+use crate::messages::{NodeCommand, NodeOperation, TuiNodeConfig};
 use crate::node_id::NodeId;
 
 use anyhow::Result;
@@ -8,78 +9,354 @@ use ed25519_dalek::SigningKey;
 use parking_lot::RwLock;
 use proven_governance::TopologyNode;
 use proven_governance_mock::MockGovernance;
-use proven_local::Node;
+use proven_local::{Node, NodeStatus};
 use std::collections::{HashMap, HashSet};
-use std::net::{SocketAddr, TcpListener};
 use std::path::PathBuf;
-use std::sync::{Arc, LazyLock, Mutex, mpsc};
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
 use tracing::{error, info, warn};
 use url::Url;
 
-/// Global port allocator starting from 3000
-static NEXT_PORT: LazyLock<Mutex<u16>> = LazyLock::new(|| Mutex::new(3000));
-
-/// Allocate the next available port, starting from 3000
-fn allocate_port() -> Result<u16> {
-    let mut port_guard = NEXT_PORT.lock().unwrap();
-
-    // Try up to 10000 ports from the current position
-    for _ in 0..10000 {
-        let port = *port_guard;
-        *port_guard += 1;
-
-        // Check if port is actually available on the system
-        if is_port_available(port) {
-            return Ok(port);
-        }
-    }
-
-    anyhow::bail!(
-        "No available ports found after trying 10000 ports from {}",
-        *port_guard - 10000
-    )
-}
-
-/// Check if a port is available by attempting to bind to it
-fn is_port_available(port: u16) -> bool {
-    TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).is_ok()
-}
-
-/// Handle to a running node with its metadata
+/// Handle to a running node with its metadata and command processing
 pub struct NodeHandle {
     /// Node identifier
     pub id: NodeId,
-    /// Display name
+    /// Display name (publicly accessible for TUI display)
     pub name: String,
-    /// The actual node instance
-    pub node: Node<MockGovernance>,
     /// Dedicated runtime for this node
     pub runtime: Option<tokio::runtime::Runtime>,
+    /// Command sender for this specific node
+    pub command_sender: mpsc::Sender<NodeOperation>,
+    /// Thread handle for this node's command processor
+    pub command_thread: Option<thread::JoinHandle<()>>,
+    /// Status of the node - updated by command processor
+    pub status: Arc<RwLock<NodeStatus>>,
 }
 
 impl NodeHandle {
-    /// Create a new node handle
+    /// Create a new node handle with dedicated command processing
     #[must_use]
-    pub fn new(id: NodeId, name: String, config: proven_local::NodeConfig<MockGovernance>) -> Self {
-        let node = Node::new(config);
+    pub fn new(
+        id: NodeId,
+        name: String,
+        config: TuiNodeConfig,
+        governance: Arc<MockGovernance>,
+    ) -> Self {
+        let (command_sender, command_receiver) = mpsc::channel();
+
+        // Create dedicated runtime for this node
+        let runtime = match tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .thread_name(format!("node-{}-{}", id.execution_order(), id.pokemon_id()))
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => Some(runtime),
+            Err(e) => {
+                error!("Failed to create runtime for node {}: {}", name, e);
+                None
+            }
+        };
+
+        // Shared status that will be updated by the command processor
+        let status = Arc::new(RwLock::new(NodeStatus::NotStarted));
+
+        // Spawn dedicated command processing thread for this node
+        let command_thread = {
+            let name = name.clone();
+            let status_clone = status.clone();
+
+            thread::spawn(move || {
+                Self::command_processor(
+                    id,
+                    &name,
+                    &config,
+                    &command_receiver,
+                    &governance,
+                    &status_clone,
+                );
+            })
+        };
+
         Self {
             id,
             name,
-            node,
-            runtime: None,
+            runtime,
+            command_sender,
+            command_thread: Some(command_thread),
+            status,
         }
     }
 
-    /// Start the node
-    pub async fn start(&mut self) -> Result<()> {
-        info!("Starting node {} ({})", self.name, self.id);
+    /// Send a command to this node's command processor
+    pub fn send_command(
+        &self,
+        operation: NodeOperation,
+    ) -> Result<(), mpsc::SendError<NodeOperation>> {
+        self.command_sender.send(operation)
+    }
 
-        self.node
-            .start()
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to start node: {}", e))
+    /// Get the current status of the node (synchronous - no async/runtime needed)
+    pub fn get_status(&self) -> NodeStatus {
+        self.status.read().clone()
+    }
+
+    /// Shutdown this node's command processor and wait for it to complete
+    pub fn shutdown(&mut self) {
+        // Send shutdown command
+        let _ = self.command_sender.send(NodeOperation::Shutdown);
+
+        // Wait for command thread to complete
+        if let Some(handle) = self.command_thread.take() {
+            if let Err(e) = handle.join() {
+                error!("Failed to join node {} command thread: {:?}", self.id, e);
+            }
+        }
+
+        // Shutdown runtime
+        if let Some(runtime) = self.runtime.take() {
+            runtime.shutdown_timeout(Duration::from_secs(5));
+        }
+    }
+
+    /// Command processor that runs in a dedicated thread for each node
+    #[allow(clippy::cognitive_complexity)]
+    fn command_processor(
+        id: NodeId,
+        name: &str,
+        config: &TuiNodeConfig,
+        command_receiver: &mpsc::Receiver<NodeOperation>,
+        governance: &Arc<MockGovernance>,
+        status: &Arc<RwLock<NodeStatus>>,
+    ) {
+        // Create runtime for this command processor
+        let runtime = match tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name(format!("node-{}-{}", id.execution_order(), id.pokemon_id()))
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(e) => {
+                error!("Failed to create command runtime for node {}: {}", name, e);
+                return;
+            }
+        };
+
+        // Create node instance using the Node's built-in state management
+        let mut node = Node::new(config.clone());
+
+        info!("Started command processor for node {} ({})", name, id);
+
+        // Use recv_timeout to periodically sync status
+        loop {
+            // Try to receive a command with timeout
+            let operation = match command_receiver.recv_timeout(Duration::from_millis(250)) {
+                Ok(op) => Some(op),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    // Timeout - sync status and continue
+                    Self::sync_node_status(&runtime, &node, status);
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    // Channel disconnected - exit
+                    break;
+                }
+            };
+
+            let Some(operation) = operation else {
+                break;
+            };
+            match operation {
+                NodeOperation::Start { config: new_config } => {
+                    if let Some(new_config) = new_config {
+                        node = Node::new(*new_config);
+                    }
+
+                    Self::handle_start_operation(&runtime, &mut node, id, name, governance, status);
+                }
+                NodeOperation::Stop => {
+                    Self::handle_stop_operation(&runtime, &mut node, id, name, governance, status);
+                }
+                NodeOperation::Restart => {
+                    Self::handle_stop_operation(&runtime, &mut node, id, name, governance, status);
+                    // Wait a moment for stop to complete
+                    thread::sleep(Duration::from_millis(500));
+                    Self::handle_start_operation(&runtime, &mut node, id, name, governance, status);
+                }
+                NodeOperation::Shutdown => {
+                    Self::handle_stop_operation(&runtime, &mut node, id, name, governance, status);
+                    break;
+                }
+            }
+        }
+
+        info!("Command processor for node {} ({}) shutting down", name, id);
+        runtime.shutdown_timeout(Duration::from_secs(5));
+    }
+
+    /// Sync `NodeHandle` status with Node status
+    fn sync_node_status(
+        runtime: &tokio::runtime::Runtime,
+        node: &Node<MockGovernance>,
+        status: &Arc<RwLock<NodeStatus>>,
+    ) {
+        let current_node_status = runtime.block_on(async { node.status().await });
+
+        // Update NodeHandle status to match Node status
+        {
+            let mut status_guard = status.write();
+            if *status_guard != current_node_status {
+                *status_guard = current_node_status;
+            }
+        }
+    }
+
+    /// Handle start operation using the Node's built-in start method
+    #[allow(clippy::cognitive_complexity)]
+    fn handle_start_operation(
+        runtime: &tokio::runtime::Runtime,
+        node: &mut Node<MockGovernance>,
+        id: NodeId,
+        name: &str,
+        governance: &Arc<MockGovernance>,
+        status: &Arc<RwLock<NodeStatus>>,
+    ) {
+        // Update status to Starting immediately
+        {
+            let mut status_guard = status.write();
+            *status_guard = NodeStatus::Starting;
+        }
+
+        // Check current node status first
+        let current_status = runtime.block_on(node.status());
+        match current_status {
+            NodeStatus::Starting | NodeStatus::Running => {
+                info!(
+                    "Node {} ({}) is already starting/running, ignoring start command",
+                    name, id
+                );
+                // Update our status to match the node's actual status
+                {
+                    let mut status_guard = status.write();
+                    *status_guard = current_status;
+                }
+                return;
+            }
+            _ => {}
+        }
+
+        // Add to governance before starting
+        let public_key = node.config().node_key.verifying_key();
+        let actual_port = node.config().port;
+
+        let origin = if id.is_first_node() {
+            format!("http://localhost:{actual_port}")
+        } else {
+            let pokemon_name = id.pokemon_name();
+            format!("http://{pokemon_name}.local:{actual_port}")
+        };
+
+        let topology_node = TopologyNode {
+            availability_zone: "local".to_string(),
+            origin,
+            public_key: hex::encode(public_key.to_bytes()),
+            region: "local".to_string(),
+            specializations: HashSet::new(),
+        };
+
+        // Add to governance
+        if let Err(e) = governance.add_node(topology_node) {
+            error!("Failed to add node to governance: {}", e);
+            // Update status to failed
+            {
+                let mut status_guard = status.write();
+                *status_guard = NodeStatus::Failed(format!("Failed to add to governance: {e}"));
+            }
+            return;
+        }
+
+        // Start the node using its built-in start method
+        let start_result = runtime.block_on(async { node.start().await });
+
+        if let Err(e) = start_result {
+            error!("Failed to start node {} ({}): {}", name, id, e);
+            {
+                let mut status_guard = status.write();
+                *status_guard = NodeStatus::Failed(format!("Start failed: {e}"));
+            }
+            return;
+        }
+
+        info!("Node {} ({}) start command completed", name, id);
+    }
+
+    /// Handle stop operation using the Node's built-in stop method
+    fn handle_stop_operation(
+        runtime: &tokio::runtime::Runtime,
+        node: &mut Node<MockGovernance>,
+        id: NodeId,
+        name: &str,
+        governance: &Arc<MockGovernance>,
+        status: &Arc<RwLock<NodeStatus>>,
+    ) {
+        // Update status to Stopping immediately
+        {
+            let mut status_guard = status.write();
+            *status_guard = NodeStatus::Stopping;
+        }
+
+        let result = runtime.block_on(async {
+            // Check current status using Node's built-in status method
+            let current_status = node.status().await;
+            match current_status {
+                NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Stopping => {
+                    info!(
+                        "Node {} ({}) is not running, ignoring stop command",
+                        name, id
+                    );
+                    return Ok(current_status);
+                }
+                _ => {}
+            }
+
+            // Remove from governance before stopping
+            let public_key = hex::encode(node.config().node_key.verifying_key().to_bytes());
+            if let Err(e) = governance.remove_node(&public_key) {
+                warn!("Failed to remove node {} from governance: {}", id, e);
+            }
+
+            // Stop the node using its built-in stop method
+            let stop_result = node.stop().await;
+
+            if let Err(e) = stop_result {
+                error!("Failed to stop node {} ({}): {}", name, id, e);
+                return Err(e);
+            }
+
+            // Check the actual status after stopping
+            let final_status = node.status().await;
+            Ok(final_status)
+        });
+
+        // Update status based on result
+        match result {
+            Ok(final_status) => {
+                info!("Node {} ({}) stop completed successfully", name, id);
+                {
+                    let mut status_guard = status.write();
+                    *status_guard = final_status;
+                }
+            }
+            Err(e) => {
+                error!("Failed to stop node {} ({}): {}", name, id, e);
+                {
+                    let mut status_guard = status.write();
+                    *status_guard = NodeStatus::Failed(format!("Stop failed: {e}"));
+                }
+            }
+        }
     }
 }
 
@@ -87,7 +364,6 @@ impl NodeHandle {
 #[derive(Clone)]
 pub struct NodeManager {
     nodes: Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
-    message_sender: mpsc::Sender<TuiMessage>,
     governance: Arc<MockGovernance>,
     session_id: String,
 }
@@ -95,25 +371,61 @@ pub struct NodeManager {
 impl NodeManager {
     /// Create a new node manager
     #[must_use]
-    pub fn new(
-        message_sender: mpsc::Sender<TuiMessage>,
-        governance: Arc<MockGovernance>,
-        session_id: String,
-    ) -> Self {
+    pub fn new(governance: Arc<MockGovernance>, session_id: String) -> Self {
         info!("Created new NodeManager with session_id: {}", session_id);
 
         Self {
             nodes: Arc::new(RwLock::new(HashMap::new())),
-            message_sender,
             governance,
             session_id,
         }
     }
 
+    /// Get current node information for UI display
+    ///
+    /// This method reads the status directly from each `NodeHandle` synchronously.
+    pub fn get_nodes_for_ui(&self) -> HashMap<NodeId, (String, NodeStatus)> {
+        let nodes = self.nodes.read();
+        let mut result = HashMap::new();
+
+        for (id, handle) in nodes.iter() {
+            let name = handle.name.clone();
+            // Get the status directly from the `NodeHandle` (synchronous)
+            let status = handle.get_status();
+            result.insert(*id, (name, status));
+        }
+
+        drop(nodes);
+
+        result
+    }
+
+    /// Check if all nodes have been shut down (for shutdown coordination)
+    pub fn is_shutdown_complete(&self) -> bool {
+        let nodes = self.nodes.read();
+
+        // If no nodes exist, shutdown is complete
+        if nodes.is_empty() {
+            return true;
+        }
+
+        // Check if all nodes are in Stopped or Failed state
+        for handle in nodes.values() {
+            let status = handle.get_status();
+            match status {
+                NodeStatus::Stopped | NodeStatus::Failed(_) => {}
+                _ => return false, // Found a node that's not stopped
+            }
+        }
+
+        drop(nodes);
+
+        true
+    }
+
     /// Start the command handler
     pub fn start_command_handler(&self, command_receiver: mpsc::Receiver<NodeCommand>) {
         let nodes = self.nodes.clone();
-        let message_sender = self.message_sender.clone();
         let governance = self.governance.clone();
         let session_id = self.session_id.clone();
 
@@ -123,28 +435,21 @@ impl NodeManager {
                     NodeCommand::StartNode { id, name, config } => {
                         Self::handle_start_node(
                             &nodes,
-                            &message_sender,
                             &governance,
                             &session_id,
                             id,
-                            name,
+                            &name,
                             config,
                         );
                     }
                     NodeCommand::StopNode { id } => {
-                        Self::handle_stop_node(&nodes, &message_sender, &governance, id);
+                        Self::handle_stop_node(&nodes, &governance, id);
                     }
                     NodeCommand::RestartNode { id } => {
-                        Self::handle_restart_node(
-                            &nodes.clone(),
-                            &message_sender.clone(),
-                            &governance,
-                            &session_id,
-                            id,
-                        );
+                        Self::handle_restart_node(&nodes.clone(), &governance, &session_id, id);
                     }
                     NodeCommand::Shutdown => {
-                        Self::handle_shutdown(&nodes, &message_sender, &governance);
+                        Self::handle_shutdown(&nodes, &governance);
                         break;
                     }
                 }
@@ -154,188 +459,71 @@ impl NodeManager {
 
     fn handle_start_node(
         nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
-        message_sender: &mpsc::Sender<TuiMessage>,
         governance: &Arc<MockGovernance>,
         session_id: &str,
         id: NodeId,
-        name: String,
+        name: &str,
         config: Option<Box<TuiNodeConfig>>,
     ) {
         let node_config = config.map_or_else(
-            || Self::create_node_config(id, &name, governance, session_id),
+            || Self::create_node_config(id, name, governance, session_id),
             |config| *config,
         );
 
-        // Notify that node is starting
-        let _ = message_sender.send(TuiMessage::NodeStatusUpdate {
-            id,
-            status: NodeStatus::Starting,
-        });
-
-        // Create the node handle
-        let mut node_handle = NodeHandle::new(id, name.clone(), node_config.clone());
-
-        // Create a dedicated runtime for this node
-        let runtime = match tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .thread_name(format!("node-{}-{}", id.execution_order(), id.pokemon_id()))
-            .enable_all()
-            .build()
+        // Check if node already exists
         {
-            Ok(runtime) => runtime,
-            Err(e) => {
-                error!("Failed to create runtime for node {}: {}", name, e);
-                let _ = message_sender.send(TuiMessage::NodeFailed {
-                    id,
-                    error: format!("Failed to create runtime: {e}"),
-                });
+            let nodes_guard = nodes.read();
+            if let Some(existing_node) = nodes_guard.get(&id) {
+                // Node exists, send start command to it (non-blocking!)
+                if let Err(e) = existing_node.send_command(NodeOperation::Start {
+                    config: Some(Box::new(node_config)),
+                }) {
+                    error!(
+                        "Failed to send start command to existing node {} ({}): {}",
+                        name, id, e
+                    );
+                }
                 return;
             }
-        };
+        }
 
-        // Start the node in its dedicated runtime
-        let start_result = runtime.block_on(async {
-            // Add the node to governance before starting
-            let public_key = node_config.node_key.verifying_key();
-            let actual_port = node_config.port;
+        // Create new node handle with command processing
+        let node_handle = NodeHandle::new(
+            id,
+            name.to_string(),
+            node_config.clone(),
+            governance.clone(),
+        );
 
-            // Determine the proper origin endpoint based on whether this is the first node
-            let origin = if id.is_first_node() {
-                format!("http://localhost:{actual_port}")
-            } else {
-                let pokemon_name = id.pokemon_name();
-                format!("http://{pokemon_name}.local:{actual_port}")
-            };
+        // Add to nodes map
+        nodes.write().insert(id, node_handle);
 
-            let topology_node = TopologyNode {
-                availability_zone: "local".to_string(),
-                origin,
-                public_key: hex::encode(public_key.to_bytes()),
-                region: "local".to_string(),
-                specializations: HashSet::new(),
-            };
-
-            // Add to governance
-            if let Err(e) = governance.add_node(topology_node) {
-                return Err(anyhow::anyhow!("Failed to add node to governance: {}", e));
-            }
-
-            // Now start the node
-            node_handle.start().await
-        });
-
-        match start_result {
-            Ok(()) => {
-                info!(
-                    "Node {} ({}) start method completed, waiting for bootstrap...",
-                    name, id
-                );
-
-                // Store the runtime in the node handle
-                node_handle.runtime = Some(runtime);
-
-                // Add to nodes map
-                nodes.write().insert(id, node_handle);
-
-                // Send NodeStarted message with the name, but keep status as Starting for now
-                let _ = message_sender.send(TuiMessage::NodeStarted { id, name });
-
-                // Start a background task to monitor when the node actually becomes running
-                let nodes_clone = nodes.clone();
-                let message_sender_clone = message_sender.clone();
-                thread::spawn(move || {
-                    Self::monitor_node_startup(&nodes_clone, &message_sender_clone, id);
-                });
-            }
-            Err(e) => {
-                error!("Failed to start node {} ({}): {}", name, id, e);
-                let _ = message_sender.send(TuiMessage::NodeFailed {
-                    id,
-                    error: e.to_string(),
-                });
+        // Send start command to the newly created node (non-blocking!)
+        {
+            let nodes_guard = nodes.read();
+            if let Some(node_handle) = nodes_guard.get(&id) {
+                if let Err(e) = node_handle.send_command(NodeOperation::Start {
+                    config: Some(Box::new(node_config)),
+                }) {
+                    error!(
+                        "Failed to send start command to node {} ({}): {}",
+                        name, id, e
+                    );
+                }
             }
         }
     }
 
-    #[allow(clippy::cognitive_complexity)]
     fn handle_stop_node(
         nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
-        message_sender: &mpsc::Sender<TuiMessage>,
-        governance: &Arc<MockGovernance>,
+        _governance: &Arc<MockGovernance>,
         id: NodeId,
     ) {
-        let mut nodes_guard = nodes.write();
-
-        if let Some(mut node_handle) = nodes_guard.remove(&id) {
-            info!("Stopping node {} ({})", node_handle.name, id);
-
-            // Remove from governance before stopping
-            let public_key = hex::encode(
-                node_handle
-                    .node
-                    .config()
-                    .node_key
-                    .verifying_key()
-                    .to_bytes(),
-            );
-            if let Err(e) = governance.remove_node(&public_key) {
-                warn!("Failed to remove node {} from governance: {}", id, e);
-            }
-
-            // Notify that the node is stopping
-            let _ = message_sender.send(TuiMessage::NodeStatusUpdate {
-                id,
-                status: NodeStatus::Stopping,
-            });
-
-            // Use the runtime to stop the node
-            let stop_result = if node_handle.runtime.is_some() {
-                // Create a temporary runtime reference to avoid borrow conflicts
-                let runtime = node_handle.runtime.take().unwrap();
-
-                // Stop the node's internal components
-                let stop_future = node_handle.node.stop();
-                let node_stop_result = runtime.block_on(async {
-                    tokio::time::timeout(Duration::from_secs(30), stop_future)
-                        .await
-                        .map_err(|_| anyhow::anyhow!("Node stop timed out"))
-                        .and_then(|result| {
-                            result.map_err(|e| anyhow::anyhow!("Node stop failed: {}", e))
-                        })
-                });
-
-                // Shutdown the runtime
-                info!(
-                    "Shutting down runtime for node {} ({})",
-                    node_handle.name, id
-                );
-                runtime.shutdown_timeout(Duration::from_secs(10));
-                info!(
-                    "Runtime shutdown complete for node {} ({})",
-                    node_handle.name, id
-                );
-
-                node_stop_result
-            } else {
-                warn!(
-                    "Node {} ({}) has no runtime, marking as stopped",
-                    node_handle.name, id
-                );
-                Ok(())
-            };
-
-            match stop_result {
-                Ok(()) => {
-                    info!("Node {} ({}) stopped successfully", node_handle.name, id);
-                    let _ = message_sender.send(TuiMessage::NodeStopped { id });
-                }
-                Err(e) => {
-                    error!("Failed to stop node {} ({}): {}", node_handle.name, id, e);
-                    let _ = message_sender.send(TuiMessage::NodeFailed {
-                        id,
-                        error: format!("Failed to stop: {e}"),
-                    });
-                }
+        let nodes_guard = nodes.read();
+        if let Some(node_handle) = nodes_guard.get(&id) {
+            // Send stop command to the node (non-blocking!)
+            if let Err(e) = node_handle.send_command(NodeOperation::Stop) {
+                error!("Failed to send stop command to node {}: {}", id, e);
             }
         } else {
             warn!("Attempted to stop non-existent node: {}", id);
@@ -344,57 +532,52 @@ impl NodeManager {
 
     fn handle_restart_node(
         nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
-        message_sender: &mpsc::Sender<TuiMessage>,
-        governance: &Arc<MockGovernance>,
-        session_id: &str,
+        _governance: &Arc<MockGovernance>,
+        _session_id: &str,
         id: NodeId,
     ) {
-        // First stop the node
-        Self::handle_stop_node(nodes, message_sender, governance, id);
-
-        // Get the node configuration to restart with
-        let (name, config) = {
-            let nodes_guard = nodes.read();
-            if let Some(node_handle) = nodes_guard.get(&id) {
-                (node_handle.name.clone(), node_handle.node.config().clone())
-            } else {
-                error!("Cannot restart non-existent node: {}", id);
-                return;
+        let nodes_guard = nodes.read();
+        if let Some(node_handle) = nodes_guard.get(&id) {
+            // Send restart command to the node (non-blocking!)
+            if let Err(e) = node_handle.send_command(NodeOperation::Restart) {
+                error!("Failed to send restart command to node {}: {}", id, e);
             }
-        };
-
-        // Then start it again
-        Self::handle_start_node(
-            nodes,
-            message_sender,
-            governance,
-            session_id,
-            id,
-            name,
-            Some(Box::new(config)),
-        );
+        } else {
+            warn!("Attempted to restart non-existent node: {}", id);
+        }
     }
 
+    #[allow(clippy::cognitive_complexity)]
     fn handle_shutdown(
         nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
-        message_sender: &mpsc::Sender<TuiMessage>,
-        governance: &Arc<MockGovernance>,
+        _governance: &Arc<MockGovernance>,
     ) {
         info!("Shutting down all nodes...");
 
-        let node_ids: Vec<NodeId> = {
+        // Send shutdown commands to all nodes (non-blocking!)
+        {
             let nodes_guard = nodes.read();
-            nodes_guard.keys().copied().collect()
-        };
-
-        for id in node_ids {
-            Self::handle_stop_node(nodes, message_sender, governance, id);
+            for (id, node_handle) in nodes_guard.iter() {
+                if let Err(e) = node_handle.send_command(NodeOperation::Shutdown) {
+                    error!("Failed to send shutdown command to node {}: {}", id, e);
+                }
+            }
         }
 
-        // Clear the nodes map
-        nodes.write().clear();
+        // Wait for all nodes to shutdown gracefully
+        let mut node_handles = Vec::new();
+        {
+            let mut nodes_guard = nodes.write();
+            for (_, node_handle) in nodes_guard.drain() {
+                node_handles.push(node_handle);
+            }
+        }
 
-        let _ = message_sender.send(TuiMessage::ShutdownComplete);
+        // Wait for all command threads to complete
+        for mut node_handle in node_handles {
+            node_handle.shutdown();
+        }
+
         info!("All nodes shut down successfully");
     }
 
@@ -412,70 +595,6 @@ impl NodeManager {
         let private_key = SigningKey::generate(&mut rand::thread_rng());
 
         Self::build_node_config(name, main_port, governance, private_key, session_id)
-    }
-
-    /// Monitor a node's startup process and send status updates
-    #[allow(clippy::cognitive_complexity)]
-    fn monitor_node_startup(
-        nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
-        message_sender: &mpsc::Sender<TuiMessage>,
-        id: NodeId,
-    ) {
-        loop {
-            thread::sleep(Duration::from_millis(100));
-
-            let current_status = {
-                let nodes_guard = nodes.read();
-                if let Some(node_handle) = nodes_guard.get(&id) {
-                    node_handle.runtime.as_ref().map_or_else(
-                        || NodeStatus::Failed("No runtime".to_string()),
-                        |runtime| runtime.block_on(async { node_handle.node.status().await }),
-                    )
-                } else {
-                    // Node was removed, stop monitoring
-                    return;
-                }
-            };
-
-            match current_status {
-                NodeStatus::Running => {
-                    info!("Node {} is now running", id.pokemon_name());
-                    let _ = message_sender.send(TuiMessage::NodeStatusUpdate {
-                        id,
-                        status: NodeStatus::Running,
-                    });
-                    return; // Stop monitoring
-                }
-                NodeStatus::Failed(ref error) => {
-                    error!(
-                        "Node {} failed during startup: {}",
-                        id.pokemon_name(),
-                        error
-                    );
-                    let _ = message_sender.send(TuiMessage::NodeFailed {
-                        id,
-                        error: error.clone(),
-                    });
-                    return; // Stop monitoring
-                }
-                NodeStatus::Stopped => {
-                    warn!("Node {} stopped during startup", id.pokemon_name());
-                    let _ = message_sender.send(TuiMessage::NodeStopped { id });
-                    return; // Stop monitoring
-                }
-                NodeStatus::Starting | NodeStatus::NotStarted => {
-                    // Continue monitoring
-                }
-                NodeStatus::Stopping => {
-                    warn!("Node {} is stopping during startup", id.pokemon_name());
-                    let _ = message_sender.send(TuiMessage::NodeStatusUpdate {
-                        id,
-                        status: NodeStatus::Stopping,
-                    });
-                    // Continue monitoring to see final state
-                }
-            }
-        }
     }
 
     pub fn build_node_config(

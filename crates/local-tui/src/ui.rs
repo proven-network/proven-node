@@ -1,9 +1,10 @@
 //! TUI interface components
 
-use crate::{
-    logs_viewer::LogReader,
-    messages::{NodeId, NodeStatus},
-};
+use crate::{logs_viewer::LogReader, messages::NodeId};
+
+use std::collections::HashMap;
+
+use proven_local::NodeStatus;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -14,7 +15,6 @@ use ratatui::{
         ScrollbarState,
     },
 };
-use std::collections::HashMap;
 
 /// UI state management
 #[derive(Debug)]

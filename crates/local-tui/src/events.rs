@@ -1,6 +1,6 @@
 //! Event handling for the TUI
 
-use crate::messages::{NodeCommand, TuiMessage};
+use crate::messages::NodeCommand;
 use crossterm::event::{self, KeyCode, KeyEvent, KeyModifiers};
 use std::{sync::mpsc, thread, time::Duration};
 use tracing::info;
@@ -10,9 +10,6 @@ use tracing::info;
 pub enum Event {
     /// Terminal input event (keyboard, mouse, etc.)
     Input(crossterm::event::Event),
-
-    /// Message from async tasks
-    Message(Box<TuiMessage>),
 
     /// Timer tick for regular updates
     Tick,
@@ -75,19 +72,6 @@ impl EventHandler {
                 }
 
                 std::thread::sleep(Duration::from_millis(100));
-            }
-        });
-    }
-
-    /// Start listening for messages from node operations
-    pub fn listen_for_messages(&self, message_receiver: mpsc::Receiver<TuiMessage>) {
-        let sender = self.sender.clone();
-
-        thread::spawn(move || {
-            while let Ok(message) = message_receiver.recv() {
-                if sender.send(Event::Message(Box::new(message))).is_err() {
-                    break;
-                }
             }
         });
     }

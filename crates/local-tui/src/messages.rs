@@ -12,8 +12,21 @@ pub type TuiNodeConfig = NodeConfig<MockGovernance>;
 // Re-export NodeId and related constants/functions from the node_id module
 pub use crate::node_id::{MAIN_THREAD_NODE_ID, NodeId};
 
-// Re-export NodeStatus from proven_local
-pub use proven_local::NodeStatus;
+/// Per-node operations processed by individual node threads
+#[derive(Debug, Clone)]
+pub enum NodeOperation {
+    /// Start the node
+    Start {
+        /// Node configuration (optional - will use existing config if None)
+        config: Option<Box<TuiNodeConfig>>,
+    },
+    /// Stop the node
+    Stop,
+    /// Restart the node (stop then start)
+    Restart,
+    /// Shutdown the node permanently
+    Shutdown,
+}
 
 /// Log level for filtering
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,45 +74,7 @@ pub struct LogEntry {
     pub target: Option<String>,
 }
 
-/// Messages sent from async tasks to the TUI
-#[derive(Debug, Clone)]
-pub enum TuiMessage {
-    /// A node has started
-    NodeStarted {
-        /// Node identifier
-        id: NodeId,
-
-        /// Node name for display
-        name: String,
-    },
-
-    /// A node has stopped
-    NodeStopped {
-        /// Node identifier
-        id: NodeId,
-    },
-
-    /// A node failed to start or crashed
-    NodeFailed {
-        /// Node identifier
-        id: NodeId,
-
-        /// Error message
-        error: String,
-    },
-
-    /// Node status update
-    NodeStatusUpdate {
-        /// Node identifier
-        id: NodeId,
-
-        /// New status
-        status: NodeStatus,
-    },
-
-    /// All nodes have been shut down successfully
-    ShutdownComplete,
-}
+// TuiMessage removed - NodeManager is now polled directly for state instead of using messages
 
 /// Commands sent from the TUI to async tasks
 #[derive(Debug, Clone)]
