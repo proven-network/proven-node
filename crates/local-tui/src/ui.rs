@@ -66,26 +66,6 @@ impl UiState {
         }
     }
 
-    /// Scroll to bottom (newest logs) - send command to background thread
-    pub fn scroll_to_bottom(&self, log_reader: &LogReader) {
-        log_reader.scroll_to_bottom();
-    }
-
-    /// Scroll to top (oldest logs) - send command to background thread
-    pub fn scroll_to_top(&self, log_reader: &LogReader) {
-        log_reader.scroll_to_top();
-    }
-
-    /// Scroll up (towards older logs) - send command to background thread
-    pub fn scroll_up(&self, amount: usize, log_reader: &LogReader) {
-        log_reader.scroll_up(amount);
-    }
-
-    /// Scroll down (towards newer logs) - send command to background thread
-    pub fn scroll_down(&self, amount: usize, log_reader: &LogReader) {
-        log_reader.scroll_down(amount);
-    }
-
     /// Update scrollbar state based on current scroll position from background thread
     pub const fn update_scrollbar_state(&mut self) {
         let total_logs = self.total_log_lines;
@@ -448,13 +428,9 @@ fn render_logs<S: std::hash::BuildHasher>(
                 logs,
                 total_filtered_lines,
                 scroll_position,
-                viewport_size: _,
             } => {
                 // Update logs and scroll position from background thread (single source of truth)
                 ui_state.update_viewport_logs(logs, total_filtered_lines, scroll_position);
-            }
-            LogResponse::NewLogsDetected => {
-                // Background thread will handle auto-scroll logic, no action needed
             }
             LogResponse::Error { message } => {
                 // Log error but continue rendering

@@ -126,9 +126,6 @@ pub enum NodeCommand {
         id: NodeId,
     },
 
-    /// Get status of all nodes
-    GetStatus,
-
     /// Shutdown the entire TUI
     Shutdown,
 }

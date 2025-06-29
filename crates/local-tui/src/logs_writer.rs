@@ -25,46 +25,34 @@ use tracing_subscriber::layer::Context as LayerContext;
 /// Commands for the async log writer
 #[derive(Debug)]
 enum LogWriterCommand {
-    WriteLog(LogEntry),
-    Flush,
     Shutdown,
+    WriteLog(LogEntry),
 }
 
 /// Async log writer that runs in background thread
 struct AsyncLogWriter {
     command_receiver: mpsc::Receiver<LogWriterCommand>,
     session_dir: PathBuf,
-    config: DiskLogConfig,
     writers: HashMap<LogCategory, BufWriter<File>>,
-    last_flush: std::time::Instant,
 }
 
 impl AsyncLogWriter {
-    fn new(
-        command_receiver: mpsc::Receiver<LogWriterCommand>,
-        config: DiskLogConfig,
-    ) -> Result<Self> {
-        let session_dir = config.base_dir.clone();
-        fs::create_dir_all(&session_dir).with_context(|| {
-            format!(
-                "Failed to create session directory: {}",
-                session_dir.display()
-            )
+    fn new(command_receiver: mpsc::Receiver<LogWriterCommand>, base_dir: &PathBuf) -> Result<Self> {
+        fs::create_dir_all(base_dir).with_context(|| {
+            format!("Failed to create session directory: {}", base_dir.display())
         })?;
 
         let mut writer = Self {
             command_receiver,
-            session_dir: session_dir.clone(),
-            config,
+            session_dir: base_dir.clone(),
             writers: HashMap::new(),
-            last_flush: std::time::Instant::now(),
         };
 
         // Create initial log files
         writer.ensure_writer(&LogCategory::All)?;
         writer.ensure_writer(&LogCategory::Debug)?;
 
-        info!("Created async log writer in: {}", session_dir.display());
+        info!("Created async log writer in: {}", base_dir.display());
         Ok(writer)
     }
 
@@ -79,11 +67,7 @@ impl AsyncLogWriter {
                         error!("Failed to write log entry: {}", e);
                     }
                 }
-                LogWriterCommand::Flush => {
-                    if let Err(e) = self.flush_all() {
-                        error!("Failed to flush logs: {}", e);
-                    }
-                }
+
                 LogWriterCommand::Shutdown => {
                     info!("Shutting down async log writer");
                     if let Err(e) = self.close() {
@@ -97,11 +81,11 @@ impl AsyncLogWriter {
 
     /// Ensure a writer exists for the given log category
     fn ensure_writer(&mut self, category: &LogCategory) -> Result<()> {
-        if self.writers.contains_key(&category) {
+        if self.writers.contains_key(category) {
             return Ok(());
         }
 
-        let file_path = self.get_file_path(&category);
+        let file_path = self.get_file_path(category);
 
         // Create parent directory if needed
         if let Some(parent) = file_path.parent() {
@@ -135,18 +119,18 @@ impl AsyncLogWriter {
 
     /// Write a log entry to the appropriate files
     fn write_log_entry(&mut self, entry: &LogEntry) -> Result<()> {
-        let log_line = self.format_log_entry(entry)?;
+        let log_line = Self::format_log_entry(entry)?;
 
         // Write to "all" logs
-        self.write_to_category(LogCategory::All, &log_line)?;
+        self.write_to_category(&LogCategory::All, &log_line)?;
 
         // Write to debug logs if it's from main thread
         if entry.node_id == MAIN_THREAD_NODE_ID {
-            self.write_to_category(LogCategory::Debug, &log_line)?;
+            self.write_to_category(&LogCategory::Debug, &log_line)?;
         } else {
             // Write to node-specific log
             let node_category = LogCategory::Node(entry.node_id);
-            self.write_to_category(node_category, &log_line)?;
+            self.write_to_category(&node_category, &log_line)?;
         }
 
         // Force flush after every write for immediate visibility
@@ -156,11 +140,11 @@ impl AsyncLogWriter {
     }
 
     /// Write log line to a specific category
-    fn write_to_category(&mut self, category: LogCategory, log_line: &str) -> Result<()> {
+    fn write_to_category(&mut self, category: &LogCategory, log_line: &str) -> Result<()> {
         // Ensure writer exists
-        self.ensure_writer(&category)?;
+        self.ensure_writer(category)?;
 
-        if let Some(writer) = self.writers.get_mut(&category) {
+        if let Some(writer) = self.writers.get_mut(category) {
             writeln!(writer, "{log_line}")
                 .with_context(|| format!("Failed to write to log category: {category:?}"))?;
         }
@@ -169,7 +153,7 @@ impl AsyncLogWriter {
     }
 
     /// Format a log entry as JSON Lines format
-    fn format_log_entry(&self, entry: &LogEntry) -> Result<String> {
+    fn format_log_entry(entry: &LogEntry) -> Result<String> {
         serde_json::to_string(entry).with_context(|| "Failed to serialize log entry")
     }
 
@@ -178,7 +162,7 @@ impl AsyncLogWriter {
         for (category, writer) in &mut self.writers {
             writer
                 .flush()
-                .with_context(|| format!("Failed to flush writer for category: {:?}", category))?;
+                .with_context(|| format!("Failed to flush writer for category: {category:?}"))?;
         }
         Ok(())
     }
@@ -189,36 +173,6 @@ impl AsyncLogWriter {
         self.flush_all()?;
         self.writers.clear();
         Ok(())
-    }
-}
-
-/// Configuration for disk-based logging
-#[derive(Debug, Clone)]
-pub struct DiskLogConfig {
-    /// Base directory for log files
-    pub base_dir: PathBuf,
-
-    /// Flush interval in milliseconds (default: 1000ms)
-    pub flush_interval_ms: u64,
-}
-
-impl DiskLogConfig {
-    /// Create a new config with session-based tmp directory
-    pub fn new_with_session(session_id: &str) -> Self {
-        Self {
-            base_dir: PathBuf::from(format!("/tmp/proven/{session_id}")),
-
-            flush_interval_ms: 1000,
-        }
-    }
-}
-
-impl Default for DiskLogConfig {
-    fn default() -> Self {
-        Self {
-            base_dir: PathBuf::from("logs"), // Fallback for tests
-            flush_interval_ms: 1000,
-        }
     }
 }
 
@@ -296,17 +250,12 @@ pub struct LogWriter {
 
 impl LogWriter {
     /// Create a new disk log writer with default configuration
-    pub fn new() -> Result<Self> {
-        Self::with_config(DiskLogConfig::default())
-    }
-
-    /// Create a new disk log writer with custom configuration
-    pub fn with_config(config: DiskLogConfig) -> Result<Self> {
-        let session_dir = Arc::new(RwLock::new(config.base_dir.clone()));
+    pub fn new(base_dir: &PathBuf) -> Result<Self> {
+        let session_dir = Arc::new(RwLock::new(base_dir.clone()));
 
         // Create async log writer
         let (command_sender, command_receiver) = mpsc::channel();
-        let async_writer = AsyncLogWriter::new(command_receiver, config)?;
+        let async_writer = AsyncLogWriter::new(command_receiver, base_dir)?;
 
         // Start background thread
         let writer_thread = thread::spawn(move || {
@@ -330,18 +279,8 @@ impl LogWriter {
     }
 
     /// Get the current session directory path
-    pub fn get_session_dir(&self) -> Option<PathBuf> {
-        let session_dir = self.session_dir.read();
-        Some(session_dir.clone())
-    }
-
-    /// Flush all pending writes
-    pub fn flush(&self) -> Result<()> {
-        if let Err(e) = self.command_sender.send(LogWriterCommand::Flush) {
-            error!("Failed to send flush command to async writer: {}", e);
-            return Err(anyhow::anyhow!("Failed to send flush command: {}", e));
-        }
-        Ok(())
+    pub fn get_session_dir(&self) -> PathBuf {
+        self.session_dir.read().clone()
     }
 }
 
@@ -358,12 +297,6 @@ impl Drop for LogWriter {
                 error!("Failed to join async writer thread: {:?}", e);
             }
         }
-    }
-}
-
-impl Default for LogWriter {
-    fn default() -> Self {
-        Self::new().expect("Failed to create default LogWriter")
     }
 }
 
@@ -437,13 +370,9 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn create_test_config() -> (DiskLogConfig, TempDir) {
+    fn create_temp_dir() -> PathBuf {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let config = DiskLogConfig {
-            base_dir: temp_dir.path().to_path_buf(),
-            flush_interval_ms: 100,
-        };
-        (config, temp_dir)
+        temp_dir.path().to_path_buf()
     }
 
     fn create_test_log_entry() -> LogEntry {
@@ -463,10 +392,10 @@ mod tests {
 
     #[test]
     fn test_writer_creation() {
-        let (config, _temp_dir) = create_test_config();
-        let writer = LogWriter::with_config(config).expect("Failed to create writer");
+        let base_dir = create_temp_dir();
+        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
 
-        let session_dir = writer.get_session_dir().expect("Failed to get session dir");
+        let session_dir = writer.get_session_dir();
         assert!(session_dir.exists());
         assert!(session_dir.join("all.log").exists());
         assert!(session_dir.join("debug.log").exists());
@@ -475,8 +404,8 @@ mod tests {
     #[test]
     fn test_log_writer() {
         reset_node_id_state();
-        let (config, _temp_dir) = create_test_config();
-        let writer = LogWriter::with_config(config).expect("Failed to create writer");
+        let base_dir = create_temp_dir();
+        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
 
         let entry = create_test_log_entry();
         writer.add_log(entry);
@@ -485,7 +414,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(200));
 
         // Check that session directory exists
-        let session_dir = writer.get_session_dir().expect("Failed to get session dir");
+        let session_dir = writer.get_session_dir();
         assert!(session_dir.exists());
         assert!(session_dir.join("all.log").exists());
     }

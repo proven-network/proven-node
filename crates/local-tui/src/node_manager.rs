@@ -72,49 +72,14 @@ impl NodeHandle {
         }
     }
 
-    /// Get the current status of this node
-    pub async fn status(&self) -> NodeStatus {
-        self.node.status().await
-    }
-
     /// Start the node
     pub async fn start(&mut self) -> Result<()> {
+        info!("Starting node {} ({})", self.name, self.id);
+
         self.node
             .start()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to start node: {}", e))
-    }
-
-    /// Stop the node
-    pub async fn stop(&mut self) -> Result<()> {
-        // Set up a timeout for the stop operation
-        let stop_future = self.node.stop();
-
-        match tokio::time::timeout(Duration::from_secs(30), stop_future).await {
-            Ok(result) => {
-                result.map_err(|e| anyhow::anyhow!("Failed to stop node: {}", e))?;
-                info!("Node {} ({}) stopped successfully", self.name, self.id);
-            }
-            Err(_) => {
-                warn!(
-                    "Node {} ({}) stop timed out after 30 seconds",
-                    self.name, self.id
-                );
-                // The node might still be in a stopping state, but we'll continue
-            }
-        }
-
-        // Shutdown the dedicated runtime if it exists
-        if let Some(runtime) = self.runtime.take() {
-            info!("Shutting down runtime for node {} ({})", self.name, self.id);
-            runtime.shutdown_timeout(Duration::from_secs(10));
-            info!(
-                "Runtime shutdown complete for node {} ({})",
-                self.name, self.id
-            );
-        }
-
-        Ok(())
     }
 }
 
@@ -177,9 +142,6 @@ impl NodeManager {
                             &session_id,
                             id,
                         );
-                    }
-                    NodeCommand::GetStatus => {
-                        Self::handle_get_status(&nodes, &message_sender);
                     }
                     NodeCommand::Shutdown => {
                         Self::handle_shutdown(&nodes, &message_sender, &governance);
@@ -411,22 +373,6 @@ impl NodeManager {
             name,
             Some(Box::new(config)),
         );
-    }
-
-    fn handle_get_status(
-        nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
-        message_sender: &mpsc::Sender<TuiMessage>,
-    ) {
-        let nodes_guard = nodes.read();
-        for (id, _node_handle) in nodes_guard.iter() {
-            // We need to get the status from the node, but we can't await here
-            // For now, we'll assume the node is running if it exists
-            // TODO: This needs to be improved to get the actual status
-            let _ = message_sender.send(TuiMessage::NodeStatusUpdate {
-                id: *id,
-                status: NodeStatus::Running, // Placeholder
-            });
-        }
     }
 
     fn handle_shutdown(

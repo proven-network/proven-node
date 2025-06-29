@@ -4,7 +4,7 @@ use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, NodeId};
 
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek};
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -45,7 +45,7 @@ impl LogFileReader {
 
         if let Ok(metadata) = std::fs::metadata(&self.file_path) {
             if let Ok(modified) = metadata.modified() {
-                return self.last_modified.map_or(true, |last| modified > last);
+                return self.last_modified.is_none_or(|last| modified > last);
             }
         }
 
@@ -135,49 +135,8 @@ impl LogFileReader {
         Ok(entries)
     }
 
-    /// Read new entries since the last read (for incremental updates)
-    pub fn read_new_entries(&mut self, since_line: usize) -> Result<Vec<LogEntry>> {
-        self.ensure_indexed()?;
-        let total_lines = self.line_positions.len();
-
-        if since_line >= total_lines {
-            return Ok(Vec::new());
-        }
-
-        let mut entries = Vec::new();
-        let mut file = File::open(&self.file_path)?;
-        let start_pos = self.line_positions[since_line];
-        file.seek(std::io::SeekFrom::Start(start_pos))?;
-
-        let reader = BufReader::new(file);
-        let lines_to_read = total_lines - since_line;
-
-        for (i, line) in reader.lines().take(lines_to_read).enumerate() {
-            let line = line?;
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            match serde_json::from_str::<LogEntry>(&line) {
-                Ok(entry) => {
-                    entries.push(entry);
-                }
-                Err(e) => {
-                    debug!(
-                        "Failed to parse log line {}: {} - Error: {}",
-                        since_line + i,
-                        line,
-                        e
-                    );
-                }
-            }
-        }
-
-        Ok(entries)
-    }
-
     /// Check if file has been updated
-    pub fn has_updates(&mut self) -> bool {
+    pub fn has_updates(&self) -> bool {
         self.needs_reindex()
     }
 }
@@ -191,22 +150,19 @@ pub enum LogRequest {
         node_filter: Option<NodeId>,
     },
     /// Update viewport size when UI resizes
-    UpdateViewportSize {
-        viewport_size: usize,
-    },
+    UpdateViewportSize { viewport_size: usize },
     /// Scroll commands
-    ScrollUp {
-        amount: usize,
-    },
-    ScrollDown {
-        amount: usize,
-    },
+    ScrollUp { amount: usize },
+    /// Scroll up by viewport size
+    ScrollUpByViewportSize,
+    /// Scroll down by amount
+    ScrollDown { amount: usize },
+    /// Scroll down by viewport size
+    ScrollDownByViewportSize,
+    /// Scroll to top
     ScrollToTop,
+    /// Scroll to bottom
     ScrollToBottom,
-    /// Update session directory
-    UpdateSession {
-        session_dir: PathBuf,
-    },
     /// Request initial data load
     RequestInitialData,
     /// Shutdown the background thread
@@ -221,10 +177,7 @@ pub enum LogResponse {
         logs: Vec<LogEntry>,
         total_filtered_lines: usize,
         scroll_position: usize,
-        viewport_size: usize,
     },
-    /// New logs have been detected (triggers a refresh)
-    NewLogsDetected,
     /// Error occurred
     Error { message: String },
 }
@@ -244,7 +197,7 @@ struct FilteredLogState {
 }
 
 impl FilteredLogState {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             filtered_logs: Vec::new(),
             level_filter: LogLevel::Info,
@@ -337,27 +290,6 @@ impl FilteredLogState {
         }
     }
 
-    /// Add new log entries and apply filters
-    fn add_new_logs(&mut self, new_logs: &[LogEntry]) {
-        let new_filtered = self.apply_filters(new_logs);
-        let new_filtered_count = new_filtered.len();
-
-        self.filtered_logs.extend(new_filtered);
-
-        // If auto-scroll is disabled, adjust scroll position to maintain same visual content
-        if !self.auto_scroll_enabled && new_filtered_count > 0 {
-            // Increase scroll position by number of new filtered logs to keep same content visible
-            self.scroll_position += new_filtered_count;
-        }
-
-        // Validate scroll position in case extending logs changes max scroll
-        let max_scroll = self.max_scroll_position();
-        if self.scroll_position > max_scroll {
-            self.scroll_position = max_scroll;
-            // Don't change auto_scroll_enabled - preserve user's intent
-        }
-    }
-
     /// Update viewport size only (not scroll position)
     const fn update_viewport_size(&mut self, viewport_size: usize) {
         self.viewport_size = viewport_size;
@@ -387,8 +319,12 @@ impl FilteredLogState {
         }
     }
 
+    fn scroll_up_by_viewport_size(&mut self) {
+        self.scroll_up(self.viewport_size);
+    }
+
     /// Scroll down (towards newer logs) - re-enables auto-scroll if at bottom
-    fn scroll_down(&mut self, amount: usize) {
+    const fn scroll_down(&mut self, amount: usize) {
         if self.scroll_position >= amount {
             self.scroll_position -= amount;
         } else {
@@ -401,8 +337,12 @@ impl FilteredLogState {
         }
     }
 
+    const fn scroll_down_by_viewport_size(&mut self) {
+        self.scroll_down(self.viewport_size);
+    }
+
     /// Scroll to top (oldest logs) - disables auto-scroll
-    fn scroll_to_top(&mut self) {
+    const fn scroll_to_top(&mut self) {
         let max_scroll = self.max_scroll_position();
         if max_scroll > 0 {
             self.scroll_position = max_scroll;
@@ -412,7 +352,7 @@ impl FilteredLogState {
     }
 
     /// Scroll to bottom (newest logs) - enables auto-scroll
-    fn scroll_to_bottom(&mut self) {
+    const fn scroll_to_bottom(&mut self) {
         self.scroll_position = 0;
         // User explicitly went to bottom - enable auto-scroll
         self.auto_scroll_enabled = true;
@@ -438,7 +378,7 @@ impl FilteredLogState {
     }
 
     /// Get total number of filtered lines
-    fn total_filtered_lines(&self) -> usize {
+    const fn total_filtered_lines(&self) -> usize {
         self.filtered_logs.len()
     }
 }
@@ -495,9 +435,7 @@ impl LogWorker {
         };
 
         // For node-specific files, don't apply node filtering again
-        let should_apply_node_filter = file_path
-            .file_name()
-            .map_or(false, |name| name == "all.log");
+        let should_apply_node_filter = file_path.file_name().is_some_and(|name| name == "all.log");
 
         if should_apply_node_filter {
             self.state.rebuild_filtered_logs(&all_logs);
@@ -521,7 +459,7 @@ impl LogWorker {
         let file_path = self.get_log_file_path(self.state.node_filter);
 
         let has_updates = {
-            let reader = self.get_or_create_file_reader(file_path.clone());
+            let reader = self.get_or_create_file_reader(file_path);
             reader.has_updates()
         };
 
@@ -533,47 +471,61 @@ impl LogWorker {
         }
     }
 
-    fn handle_request(&mut self, request: LogRequest) -> Result<Option<LogResponse>> {
+    fn handle_request(&mut self, request: &LogRequest) -> Result<Option<LogResponse>> {
         match request {
             LogRequest::UpdateFilters { level, node_filter } => {
-                self.state.update_filters(&[], level, node_filter);
+                self.state.update_filters(&[], *level, *node_filter);
                 self.rebuild_complete_state()?;
 
                 Ok(Some(LogResponse::ViewportUpdate {
                     logs: self.state.get_viewport_logs(),
                     total_filtered_lines: self.state.total_filtered_lines(),
                     scroll_position: self.state.scroll_position,
-                    viewport_size: self.state.viewport_size,
                 }))
             }
             LogRequest::UpdateViewportSize { viewport_size } => {
-                self.state.update_viewport_size(viewport_size);
+                self.state.update_viewport_size(*viewport_size);
 
                 Ok(Some(LogResponse::ViewportUpdate {
                     logs: self.state.get_viewport_logs(),
                     total_filtered_lines: self.state.total_filtered_lines(),
                     scroll_position: self.state.scroll_position,
-                    viewport_size: self.state.viewport_size,
                 }))
             }
             LogRequest::ScrollUp { amount } => {
-                self.state.scroll_up(amount);
+                self.state.scroll_up(*amount);
 
                 Ok(Some(LogResponse::ViewportUpdate {
                     logs: self.state.get_viewport_logs(),
                     total_filtered_lines: self.state.total_filtered_lines(),
                     scroll_position: self.state.scroll_position,
-                    viewport_size: self.state.viewport_size,
+                }))
+            }
+            LogRequest::ScrollUpByViewportSize => {
+                self.state.scroll_up_by_viewport_size();
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.state.get_viewport_logs(),
+                    total_filtered_lines: self.state.total_filtered_lines(),
+                    scroll_position: self.state.scroll_position,
                 }))
             }
             LogRequest::ScrollDown { amount } => {
-                self.state.scroll_down(amount);
+                self.state.scroll_down(*amount);
 
                 Ok(Some(LogResponse::ViewportUpdate {
                     logs: self.state.get_viewport_logs(),
                     total_filtered_lines: self.state.total_filtered_lines(),
                     scroll_position: self.state.scroll_position,
-                    viewport_size: self.state.viewport_size,
+                }))
+            }
+            LogRequest::ScrollDownByViewportSize => {
+                self.state.scroll_down_by_viewport_size();
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.state.get_viewport_logs(),
+                    total_filtered_lines: self.state.total_filtered_lines(),
+                    scroll_position: self.state.scroll_position,
                 }))
             }
             LogRequest::ScrollToTop => {
@@ -583,7 +535,6 @@ impl LogWorker {
                     logs: self.state.get_viewport_logs(),
                     total_filtered_lines: self.state.total_filtered_lines(),
                     scroll_position: self.state.scroll_position,
-                    viewport_size: self.state.viewport_size,
                 }))
             }
             LogRequest::ScrollToBottom => {
@@ -593,15 +544,7 @@ impl LogWorker {
                     logs: self.state.get_viewport_logs(),
                     total_filtered_lines: self.state.total_filtered_lines(),
                     scroll_position: self.state.scroll_position,
-                    viewport_size: self.state.viewport_size,
                 }))
-            }
-            LogRequest::UpdateSession { session_dir } => {
-                self.session_dir = session_dir;
-                self.file_readers.clear();
-                self.last_line_counts.clear();
-                self.state = FilteredLogState::new();
-                Ok(None)
             }
             LogRequest::RequestInitialData => {
                 self.rebuild_complete_state()?;
@@ -610,20 +553,19 @@ impl LogWorker {
                     logs: self.state.get_viewport_logs(),
                     total_filtered_lines: self.state.total_filtered_lines(),
                     scroll_position: self.state.scroll_position,
-                    viewport_size: self.state.viewport_size,
                 }))
             }
             LogRequest::Shutdown => Ok(None), // Handled by main loop
         }
     }
 
-    fn run(mut self, receiver: mpsc::Receiver<LogRequest>, sender: mpsc::Sender<LogResponse>) {
+    fn run(mut self, receiver: &mpsc::Receiver<LogRequest>, sender: &mpsc::Sender<LogResponse>) {
         loop {
             // Handle requests with a short timeout
             match receiver.recv_timeout(Duration::from_millis(100)) {
-                Ok(LogRequest::Shutdown) => break,
+                Ok(LogRequest::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Ok(request) => {
-                    match self.handle_request(request) {
+                    match self.handle_request(&request) {
                         Ok(Some(response)) => {
                             if sender.send(response).is_err() {
                                 break; // UI thread disconnected
@@ -632,7 +574,7 @@ impl LogWorker {
                         Ok(None) => {} // No response needed
                         Err(e) => {
                             let error_response = LogResponse::Error {
-                                message: format!("Worker error: {}", e),
+                                message: format!("Worker error: {e}"),
                             };
                             if sender.send(error_response).is_err() {
                                 break;
@@ -659,7 +601,6 @@ impl LogWorker {
                                     logs: self.state.get_viewport_logs(),
                                     total_filtered_lines: self.state.total_filtered_lines(),
                                     scroll_position: self.state.scroll_position,
-                                    viewport_size: self.state.viewport_size,
                                 };
                                 if sender.send(update).is_err() {
                                     break;
@@ -668,7 +609,7 @@ impl LogWorker {
                             Ok(false) => {} // No updates
                             Err(e) => {
                                 let error_response = LogResponse::Error {
-                                    message: format!("Update check error: {}", e),
+                                    message: format!("Update check error: {e}"),
                                 };
                                 if sender.send(error_response).is_err() {
                                     break;
@@ -677,7 +618,6 @@ impl LogWorker {
                         }
                     }
                 }
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
             }
         }
     }
@@ -704,7 +644,7 @@ impl LogReader {
 
         let worker = LogWorker::new(session_dir);
         let worker_thread = thread::spawn(move || {
-            worker.run(request_receiver, response_sender);
+            worker.run(&request_receiver, &response_sender);
         });
 
         Self {
@@ -739,11 +679,6 @@ impl LogReader {
         });
     }
 
-    /// Get the current node filter
-    pub fn get_node_filter(&self) -> Option<NodeId> {
-        *self.current_node_filter.read()
-    }
-
     /// Update viewport size (when UI is resized)
     pub fn update_viewport_size(&self, viewport_size: usize) {
         let _ = self
@@ -756,9 +691,21 @@ impl LogReader {
         let _ = self.request_sender.send(LogRequest::ScrollUp { amount });
     }
 
+    /// Scroll up by viewport size
+    pub fn scroll_up_by_viewport_size(&self) {
+        let _ = self.request_sender.send(LogRequest::ScrollUpByViewportSize);
+    }
+
     /// Scroll down by amount
     pub fn scroll_down(&self, amount: usize) {
         let _ = self.request_sender.send(LogRequest::ScrollDown { amount });
+    }
+
+    /// Scroll down by viewport size
+    pub fn scroll_down_by_viewport_size(&self) {
+        let _ = self
+            .request_sender
+            .send(LogRequest::ScrollDownByViewportSize);
     }
 
     /// Scroll to top (oldest logs)
@@ -776,36 +723,9 @@ impl LogReader {
         let _ = self.request_sender.send(LogRequest::RequestInitialData);
     }
 
-    /// Update session directory
-    pub fn update_session(&self, session_dir: PathBuf) {
-        let _ = self
-            .request_sender
-            .send(LogRequest::UpdateSession { session_dir });
-    }
-
     /// Get any available responses (non-blocking)
     pub fn try_get_response(&self) -> Option<LogResponse> {
         self.response_receiver.try_recv().ok()
-    }
-
-    /// Get filtered logs from disk (blocking operation) - kept for backward compatibility
-    pub fn get_filtered_logs_blocking(&self, timeout: Duration) -> Vec<LogEntry> {
-        // Send request for initial data
-        let _ = self.request_sender.send(LogRequest::RequestInitialData);
-
-        // Wait for response
-        if let Ok(response) = self.response_receiver.recv_timeout(timeout) {
-            match response {
-                LogResponse::ViewportUpdate { logs, .. } => logs,
-                LogResponse::Error { message } => {
-                    debug!("Error getting logs: {}", message);
-                    Vec::new()
-                }
-                _ => Vec::new(),
-            }
-        } else {
-            Vec::new()
-        }
     }
 }
 
@@ -818,17 +738,13 @@ impl Drop for LogReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::logs_writer::{DiskLogConfig, LogWriter};
+    use crate::logs_writer::LogWriter;
     use chrono::Utc;
     use tempfile::TempDir;
 
-    fn create_test_config() -> (DiskLogConfig, TempDir) {
+    fn create_test_config() -> PathBuf {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let config = DiskLogConfig {
-            base_dir: temp_dir.path().to_path_buf(),
-            flush_interval_ms: 100,
-        };
-        (config, temp_dir)
+        temp_dir.path().to_path_buf()
     }
 
     fn create_test_log_entry() -> LogEntry {
@@ -849,8 +765,8 @@ mod tests {
     #[test]
     fn test_file_reader_basic() {
         reset_node_id_state();
-        let (config, _temp_dir) = create_test_config();
-        let writer = LogWriter::with_config(config).expect("Failed to create writer");
+        let base_dir = create_test_config();
+        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
 
         // Write some test entries
         let entry1 = create_test_log_entry();
@@ -865,7 +781,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(200));
 
         // Test reading with LogFileReader
-        let session_dir = writer.get_session_dir().expect("Failed to get session dir");
+        let session_dir = writer.get_session_dir();
         let all_log_path = session_dir.join("all.log");
         let mut reader = LogFileReader::new(all_log_path);
         let logs = reader.read_all_entries().expect("Failed to read logs");
@@ -881,8 +797,8 @@ mod tests {
     #[test]
     fn test_log_reader_push_system() {
         reset_node_id_state();
-        let (config, _temp_dir) = create_test_config();
-        let writer = LogWriter::with_config(config).expect("Failed to create writer");
+        let base_dir = create_test_config();
+        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
 
         // Write a test entry
         let entry = create_test_log_entry();
@@ -892,7 +808,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(200));
 
         // Test LogReader with push system
-        let session_dir = writer.get_session_dir().expect("Failed to get session dir");
+        let session_dir = writer.get_session_dir();
         let reader = LogReader::new(session_dir);
 
         // Request initial data
@@ -908,7 +824,9 @@ mod tests {
                     assert!(!logs.is_empty());
                     assert!(logs[0].message.contains("Test log message"));
                 }
-                _ => panic!("Expected ViewportUpdate response"),
+                LogResponse::Error { message } => {
+                    panic!("Expected ViewportUpdate response, got error: {message}");
+                }
             }
         } else {
             panic!("No response received from background thread");
@@ -918,8 +836,8 @@ mod tests {
     #[test]
     fn test_level_filtering_push() {
         reset_node_id_state();
-        let (config, _temp_dir) = create_test_config();
-        let writer = LogWriter::with_config(config).expect("Failed to create writer");
+        let base_dir = create_test_config();
+        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
 
         // Write entries with different levels
         let mut info_entry = create_test_log_entry();
@@ -937,7 +855,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(200));
 
         // Test filtering to only show errors
-        let session_dir = writer.get_session_dir().expect("Failed to get session dir");
+        let session_dir = writer.get_session_dir();
         let reader = LogReader::new(session_dir);
         reader.set_level_filter(LogLevel::Error);
 
@@ -952,132 +870,12 @@ mod tests {
                     assert!(logs.iter().all(|log| matches!(log.level, LogLevel::Error)));
                     assert!(logs.iter().any(|log| log.message.contains("Error message")));
                 }
-                _ => panic!("Expected ViewportUpdate response"),
+                LogResponse::Error { message } => {
+                    panic!("Expected ViewportUpdate response, got error: {message}");
+                }
             }
         } else {
             panic!("No response received from background thread");
         }
-    }
-
-    #[test]
-    fn test_auto_scroll_preservation_after_new_logs() {
-        reset_node_id_state();
-
-        // Create initial logs
-        let mut initial_logs = Vec::new();
-        for i in 0..20 {
-            let mut entry = create_test_log_entry();
-            entry.message = format!("Initial log {}", i);
-            initial_logs.push(entry);
-        }
-
-        // Create FilteredLogState and set viewport size
-        let mut state = FilteredLogState::new();
-        state.update_viewport_size(10); // Show 10 logs at a time
-
-        // Load initial logs - should start at bottom with auto-scroll enabled
-        state.rebuild_filtered_logs(&initial_logs);
-
-        println!("Initial state:");
-        println!("  scroll_position: {}", state.scroll_position);
-        println!("  auto_scroll_enabled: {}", state.auto_scroll_enabled);
-        println!("  total_filtered_lines: {}", state.total_filtered_lines());
-        println!("  max_scroll_position: {}", state.max_scroll_position());
-
-        // Verify we start at bottom with auto-scroll enabled
-        assert_eq!(state.scroll_position, 0, "Should start at bottom");
-        assert!(
-            state.auto_scroll_enabled,
-            "Auto-scroll should be enabled initially"
-        );
-
-        // User scrolls up 5 positions - this should disable auto-scroll
-        state.scroll_up(5);
-
-        println!("\nAfter user scrolls up 5:");
-        println!("  scroll_position: {}", state.scroll_position);
-        println!("  auto_scroll_enabled: {}", state.auto_scroll_enabled);
-
-        // Verify scroll position and auto-scroll disabled
-        assert_eq!(state.scroll_position, 5, "Should be scrolled up by 5");
-        assert!(
-            !state.auto_scroll_enabled,
-            "Auto-scroll should be disabled after user scrolls up"
-        );
-
-        // Create new logs (simulating file updates)
-        let mut new_logs = Vec::new();
-        for i in 20..25 {
-            let mut entry = create_test_log_entry();
-            entry.message = format!("New log {i}");
-            new_logs.push(entry);
-        }
-
-        // Add new logs - scroll position should be adjusted to maintain same visual content
-        state.add_new_logs(&new_logs);
-
-        println!("\nAfter new logs added:");
-        println!("  scroll_position: {}", state.scroll_position);
-        println!("  auto_scroll_enabled: {}", state.auto_scroll_enabled);
-        println!("  total_filtered_lines: {}", state.total_filtered_lines());
-        println!("  max_scroll_position: {}", state.max_scroll_position());
-
-        // CRITICAL TEST: Scroll position should be adjusted to maintain same visual content
-        // We had 5 new logs added, so scroll position should increase by 5 to show same content
-        assert_eq!(
-            state.scroll_position, 10,
-            "Scroll position should be adjusted by number of new logs to maintain same visual content"
-        );
-        assert!(
-            !state.auto_scroll_enabled,
-            "Auto-scroll should remain disabled after new logs"
-        );
-
-        // Also test rebuild_filtered_logs (which happens during file updates)
-        // This simulates adding 1 more log via rebuild rather than add_new_logs
-        let mut all_logs = initial_logs;
-        all_logs.extend(new_logs);
-        all_logs.extend(vec![{
-            let mut entry = create_test_log_entry();
-            entry.message = "Even newer log".to_string();
-            entry
-        }]);
-
-        // Simulate calling update_filters with same filters (no actual filter change)
-        let old_level = state.level_filter;
-        let old_node = state.node_filter;
-        state.update_filters(&all_logs, old_level, old_node);
-
-        println!("\nAfter update_filters with same filters:");
-        println!("  scroll_position: {}", state.scroll_position);
-        println!("  auto_scroll_enabled: {}", state.auto_scroll_enabled);
-
-        // CRITICAL TEST: When filters don't actually change, scroll position should be adjusted for new logs
-        // We added 1 more log ("Even newer log"), so scroll position should increase by 1 more
-        assert_eq!(
-            state.scroll_position, 11,
-            "Scroll position should be adjusted for additional new logs when filters don't change"
-        );
-        assert!(
-            !state.auto_scroll_enabled,
-            "Auto-scroll should remain disabled when filters don't change"
-        );
-
-        // But if filters DO change, it should reset to bottom
-        state.update_filters(&all_logs, LogLevel::Error, old_node);
-
-        println!("\nAfter update_filters with different level filter:");
-        println!("  scroll_position: {}", state.scroll_position);
-        println!("  auto_scroll_enabled: {}", state.auto_scroll_enabled);
-
-        // When filters actually change, should reset to bottom and enable auto-scroll
-        assert_eq!(
-            state.scroll_position, 0,
-            "Should reset to bottom when filters actually change"
-        );
-        assert!(
-            state.auto_scroll_enabled,
-            "Should re-enable auto-scroll when filters actually change"
-        );
     }
 }
