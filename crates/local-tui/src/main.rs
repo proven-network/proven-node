@@ -7,18 +7,16 @@
 
 mod app;
 mod events;
-mod logs;
+mod logs_viewer;
+mod logs_writer;
 mod messages;
 mod node_id;
 mod node_manager;
-mod tracing_layer;
 mod ui;
 
 use app::App;
-use tracing_layer::TuiTracingLayer;
 
 use anyhow::Result;
-use clap::Parser;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -26,24 +24,7 @@ use std::sync::{
 use tracing::{Level, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-/// Command line arguments
-#[derive(Parser, Debug)]
-#[command(name = "proven-local-tui")]
-#[command(about = "Terminal User Interface for managing multiple Proven nodes")]
-#[command(version)]
-struct Args {
-    /// Log level (trace, debug, info, warn, error)
-    #[arg(long, default_value = "info")]
-    log_level: String,
-
-    /// Log to file instead of stdout
-    #[arg(long)]
-    log_file: Option<String>,
-}
-
 fn main() -> Result<()> {
-    let args = Args::parse();
-
     info!("Starting Proven Node TUI");
 
     // Set up signal handling for graceful shutdown
@@ -53,8 +34,8 @@ fn main() -> Result<()> {
     // Create the application synchronously
     let mut app = App::new();
 
-    // Set up logging with TUI integration
-    setup_logging(&args, app.get_log_collector());
+    // Set up logging with integrated TUI log writer
+    setup_logging(app.get_log_writer());
 
     // Pass the shutdown flag to the app
     app.set_shutdown_flag(shutdown_requested);
@@ -91,42 +72,14 @@ fn setup_signal_handlers(shutdown_requested: Arc<AtomicBool>) -> Result<()> {
     Ok(())
 }
 
-/// Set up tracing/logging with high-performance log collector
-fn setup_logging(args: &Args, log_collector: logs::LogCollector) {
-    let log_level = match args.log_level.to_lowercase().as_str() {
-        "trace" => Level::TRACE,
-        "debug" => Level::DEBUG,
-        "warn" => Level::WARN,
-        "error" => Level::ERROR,
-        _ => Level::INFO,
-    };
-
-    // Create TUI layer for capturing logs and sending to high-performance collector
-    let tui_layer = TuiTracingLayer::new(Arc::new(log_collector));
-
-    // Set up the subscriber with just the TUI layer
-    let registry = tracing_subscriber::registry()
+/// Set up tracing/logging with integrated log writer
+fn setup_logging(log_writer: logs_writer::LogWriter) {
+    // Create integrated tracing layer (LogWriter implements Layer trait)
+    // Set up the subscriber to capture all log levels - filtering is done in the TUI
+    tracing_subscriber::registry()
         .with(tracing_subscriber::filter::LevelFilter::from_level(
-            log_level,
+            Level::TRACE, // Capture all levels, let TUI filter them
         ))
-        .with(tui_layer);
-
-    if let Some(log_file) = &args.log_file {
-        // If user specifically requests file logging, add a file layer
-        let format_layer = tracing_subscriber::fmt::layer()
-            .with_target(false)
-            .with_thread_ids(true)
-            .with_thread_names(true);
-
-        let file_appender = tracing_appender::rolling::daily("logs", log_file);
-        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-
-        registry.with(format_layer.with_writer(non_blocking)).init();
-
-        // Keep the guard alive for the duration of the program
-        std::mem::forget(guard);
-    } else {
-        // Just use TUI logging, no file output
-        registry.init();
-    }
+        .with(log_writer)
+        .init();
 }

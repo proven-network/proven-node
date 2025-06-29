@@ -17,7 +17,6 @@ use std::thread;
 use std::time::Duration;
 use tracing::{error, info, warn};
 use url::Url;
-use uuid::Uuid;
 
 /// Global port allocator starting from 3000
 static NEXT_PORT: LazyLock<Mutex<u16>> = LazyLock::new(|| Mutex::new(3000));
@@ -125,21 +124,24 @@ pub struct NodeManager {
     nodes: Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
     message_sender: mpsc::Sender<TuiMessage>,
     governance: Arc<MockGovernance>,
-    run_id: String,
+    session_id: String,
 }
 
 impl NodeManager {
     /// Create a new node manager
     #[must_use]
-    pub fn new(message_sender: mpsc::Sender<TuiMessage>, governance: Arc<MockGovernance>) -> Self {
-        let run_id = Uuid::new_v4().to_string();
-        info!("Created new NodeManager with run_id: {}", run_id);
+    pub fn new(
+        message_sender: mpsc::Sender<TuiMessage>,
+        governance: Arc<MockGovernance>,
+        session_id: String,
+    ) -> Self {
+        info!("Created new NodeManager with session_id: {}", session_id);
 
         Self {
             nodes: Arc::new(RwLock::new(HashMap::new())),
             message_sender,
             governance,
-            run_id,
+            session_id,
         }
     }
 
@@ -148,7 +150,7 @@ impl NodeManager {
         let nodes = self.nodes.clone();
         let message_sender = self.message_sender.clone();
         let governance = self.governance.clone();
-        let run_id = self.run_id.clone();
+        let session_id = self.session_id.clone();
 
         thread::spawn(move || {
             while let Ok(command) = command_receiver.recv() {
@@ -158,7 +160,7 @@ impl NodeManager {
                             &nodes,
                             &message_sender,
                             &governance,
-                            &run_id,
+                            &session_id,
                             id,
                             name,
                             config,
@@ -172,7 +174,7 @@ impl NodeManager {
                             &nodes.clone(),
                             &message_sender.clone(),
                             &governance,
-                            &run_id,
+                            &session_id,
                             id,
                         );
                     }
@@ -192,13 +194,13 @@ impl NodeManager {
         nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
         message_sender: &mpsc::Sender<TuiMessage>,
         governance: &Arc<MockGovernance>,
-        run_id: &str,
+        session_id: &str,
         id: NodeId,
         name: String,
         config: Option<Box<TuiNodeConfig>>,
     ) {
         let node_config = config.map_or_else(
-            || Self::create_node_config(id, &name, governance, run_id),
+            || Self::create_node_config(id, &name, governance, session_id),
             |config| *config,
         );
 
@@ -274,11 +276,7 @@ impl NodeManager {
                 nodes.write().insert(id, node_handle);
 
                 // Send NodeStarted message with the name, but keep status as Starting for now
-                let _ = message_sender.send(TuiMessage::NodeStarted {
-                    id,
-                    name,
-                    config: Box::new(node_config),
-                });
+                let _ = message_sender.send(TuiMessage::NodeStarted { id, name });
 
                 // Start a background task to monitor when the node actually becomes running
                 let nodes_clone = nodes.clone();
@@ -386,7 +384,7 @@ impl NodeManager {
         nodes: &Arc<RwLock<HashMap<NodeId, NodeHandle>>>,
         message_sender: &mpsc::Sender<TuiMessage>,
         governance: &Arc<MockGovernance>,
-        run_id: &str,
+        session_id: &str,
         id: NodeId,
     ) {
         // First stop the node
@@ -408,7 +406,7 @@ impl NodeManager {
             nodes,
             message_sender,
             governance,
-            run_id,
+            session_id,
             id,
             name,
             Some(Box::new(config)),
@@ -444,7 +442,7 @@ impl NodeManager {
         };
 
         for id in node_ids {
-            Self::handle_stop_node(&nodes, &message_sender, governance, id);
+            Self::handle_stop_node(nodes, message_sender, governance, id);
         }
 
         // Clear the nodes map
@@ -454,27 +452,11 @@ impl NodeManager {
         info!("All nodes shut down successfully");
     }
 
-    /// Get status of all nodes
-    pub fn get_all_nodes(&self) -> HashMap<NodeId, (String, NodeStatus)> {
-        let nodes_guard = self.nodes.read();
-        let mut result = HashMap::new();
-
-        for (id, node_handle) in nodes_guard.iter() {
-            // TODO: We need to get the actual status from the node
-            // For now, we'll assume running if it exists
-            result.insert(*id, (node_handle.name.clone(), NodeStatus::Running));
-        }
-
-        drop(nodes_guard);
-
-        result
-    }
-
     fn create_node_config(
         _id: NodeId,
         name: &str,
         governance: &Arc<MockGovernance>,
-        run_id: &str,
+        session_id: &str,
     ) -> proven_local::NodeConfig<proven_governance_mock::MockGovernance> {
         let main_port = allocate_port().unwrap_or_else(|e| {
             error!("Failed to allocate port for node {}: {}", name, e);
@@ -483,7 +465,7 @@ impl NodeManager {
 
         let private_key = SigningKey::generate(&mut rand::thread_rng());
 
-        Self::build_node_config(name, main_port, governance, private_key, run_id)
+        Self::build_node_config(name, main_port, governance, private_key, session_id)
     }
 
     /// Monitor a node's startup process and send status updates
@@ -535,11 +517,8 @@ impl NodeManager {
                     let _ = message_sender.send(TuiMessage::NodeStopped { id });
                     return; // Stop monitoring
                 }
-                NodeStatus::Starting => {
-                    // Still starting, continue monitoring indefinitely
-                }
-                NodeStatus::NotStarted => {
-                    // Continue monitoring - node might transition to starting
+                NodeStatus::Starting | NodeStatus::NotStarted => {
+                    // Continue monitoring
                 }
                 NodeStatus::Stopping => {
                     warn!("Node {} is stopping during startup", id.pokemon_name());
@@ -558,7 +537,7 @@ impl NodeManager {
         main_port: u16,
         governance: &Arc<MockGovernance>,
         private_key: SigningKey,
-        run_id: &str,
+        session_id: &str,
     ) -> proven_local::NodeConfig<proven_governance_mock::MockGovernance> {
         TuiNodeConfig {
             allow_single_node: false,
@@ -566,7 +545,7 @@ impl NodeManager {
                 .unwrap(),
             bitcoin_mainnet_proxy_port: allocate_port().unwrap(),
             bitcoin_mainnet_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/bitcoin-mainnet"
+                "/tmp/proven/{session_id}/data/{name}/bitcoin-mainnet"
             )),
 
             bitcoin_testnet_fallback_rpc_endpoint: Url::parse(
@@ -575,14 +554,14 @@ impl NodeManager {
             .unwrap(),
             bitcoin_testnet_proxy_port: allocate_port().unwrap(),
             bitcoin_testnet_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/bitcoin-testnet"
+                "/tmp/proven/{session_id}/data/{name}/bitcoin-testnet"
             )),
 
             ethereum_holesky_consensus_http_port: allocate_port().unwrap(),
             ethereum_holesky_consensus_metrics_port: allocate_port().unwrap(),
             ethereum_holesky_consensus_p2p_port: allocate_port().unwrap(),
             ethereum_holesky_consensus_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/ethereum-holesky/lighthouse"
+                "/tmp/proven/{session_id}/data/{name}/ethereum-holesky/lighthouse"
             )),
 
             ethereum_holesky_execution_discovery_port: allocate_port().unwrap(),
@@ -590,7 +569,7 @@ impl NodeManager {
             ethereum_holesky_execution_metrics_port: allocate_port().unwrap(),
             ethereum_holesky_execution_rpc_port: allocate_port().unwrap(),
             ethereum_holesky_execution_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/ethereum-holesky/reth"
+                "/tmp/proven/{session_id}/data/{name}/ethereum-holesky/reth"
             )),
             ethereum_holesky_fallback_rpc_endpoint: Url::parse(
                 "https://ethereum-holesky-rpc.publicnode.com",
@@ -601,7 +580,7 @@ impl NodeManager {
             ethereum_mainnet_consensus_metrics_port: allocate_port().unwrap(),
             ethereum_mainnet_consensus_p2p_port: allocate_port().unwrap(),
             ethereum_mainnet_consensus_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/ethereum-mainnet/lighthouse"
+                "/tmp/proven/{session_id}/data/{name}/ethereum-mainnet/lighthouse"
             )),
 
             ethereum_mainnet_execution_discovery_port: allocate_port().unwrap(),
@@ -609,7 +588,7 @@ impl NodeManager {
             ethereum_mainnet_execution_metrics_port: allocate_port().unwrap(),
             ethereum_mainnet_execution_rpc_port: allocate_port().unwrap(),
             ethereum_mainnet_execution_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/ethereum-mainnet/reth"
+                "/tmp/proven/{session_id}/data/{name}/ethereum-mainnet/reth"
             )),
             ethereum_mainnet_fallback_rpc_endpoint: Url::parse(
                 "https://ethereum-rpc.publicnode.com",
@@ -620,7 +599,7 @@ impl NodeManager {
             ethereum_sepolia_consensus_metrics_port: allocate_port().unwrap(),
             ethereum_sepolia_consensus_p2p_port: allocate_port().unwrap(),
             ethereum_sepolia_consensus_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/ethereum-sepolia/lighthouse"
+                "/tmp/proven/{session_id}/data/{name}/ethereum-sepolia/lighthouse"
             )),
 
             ethereum_sepolia_execution_discovery_port: allocate_port().unwrap(),
@@ -628,7 +607,7 @@ impl NodeManager {
             ethereum_sepolia_execution_metrics_port: allocate_port().unwrap(),
             ethereum_sepolia_execution_rpc_port: allocate_port().unwrap(),
             ethereum_sepolia_execution_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/ethereum-sepolia/reth"
+                "/tmp/proven/{session_id}/data/{name}/ethereum-sepolia/reth"
             )),
             ethereum_sepolia_fallback_rpc_endpoint: Url::parse(
                 "https://ethereum-sepolia-rpc.publicnode.com",
@@ -641,9 +620,11 @@ impl NodeManager {
             nats_bin_dir: None,
             nats_client_port: allocate_port().unwrap(),
             nats_cluster_port: allocate_port().unwrap(),
-            nats_config_dir: PathBuf::from(format!("/tmp/proven/{run_id}/{name}/nats-config")),
+            nats_config_dir: PathBuf::from(format!(
+                "/tmp/proven/{session_id}/data/{name}/nats-config"
+            )),
             nats_http_port: allocate_port().unwrap(),
-            nats_store_dir: PathBuf::from(format!("/tmp/proven/{run_id}/{name}/nats")),
+            nats_store_dir: PathBuf::from(format!("/tmp/proven/{session_id}/data/{name}/nats")),
 
             network_config_path: None, // Using shared governance instead
             node_key: private_key,
@@ -651,14 +632,16 @@ impl NodeManager {
             postgres_bin_path: PathBuf::from("/usr/local/pgsql/bin"),
             postgres_port: allocate_port().unwrap(),
             postgres_skip_vacuum: false,
-            postgres_store_dir: PathBuf::from(format!("/tmp/proven/{run_id}/{name}/postgres")),
+            postgres_store_dir: PathBuf::from(format!(
+                "/tmp/proven/{session_id}/data/{name}/postgres"
+            )),
 
             radix_mainnet_fallback_rpc_endpoint: Url::parse("https://mainnet.radixdlt.com")
                 .unwrap(),
             radix_mainnet_http_port: allocate_port().unwrap(),
             radix_mainnet_p2p_port: allocate_port().unwrap(),
             radix_mainnet_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/radix-node-mainnet"
+                "/tmp/proven/{session_id}/data/{name}/radix-node-mainnet"
             )),
 
             radix_stokenet_fallback_rpc_endpoint: Url::parse("https://stokenet.radixdlt.com")
@@ -666,7 +649,7 @@ impl NodeManager {
             radix_stokenet_http_port: allocate_port().unwrap(),
             radix_stokenet_p2p_port: allocate_port().unwrap(),
             radix_stokenet_store_dir: PathBuf::from(format!(
-                "/tmp/proven/{run_id}/{name}/radix-node-stokenet"
+                "/tmp/proven/{session_id}/data/{name}/radix-node-stokenet"
             )),
         }
     }

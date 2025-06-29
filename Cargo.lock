@@ -10493,6 +10493,7 @@ dependencies = [
  "serde_json",
  "signal-hook",
  "sysinfo",
+ "tempfile",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",

@@ -18,16 +18,20 @@ pub use proven_local::NodeStatus;
 /// Log level for filtering
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LogLevel {
-    /// Error level
-    Error,
-    /// Warning level
-    Warn,
-    /// Info level
-    Info,
     /// Debug level
     Debug,
+
+    /// Error level
+    Error,
+
+    /// Info level
+    Info,
+
     /// Trace level
     Trace,
+
+    /// Warning level
+    Warn,
 }
 
 impl fmt::Display for LogLevel {
@@ -64,10 +68,9 @@ pub enum TuiMessage {
     NodeStarted {
         /// Node identifier
         id: NodeId,
+
         /// Node name for display
         name: String,
-        /// Node configuration
-        config: Box<TuiNodeConfig>,
     },
 
     /// A node has stopped
@@ -80,6 +83,7 @@ pub enum TuiMessage {
     NodeFailed {
         /// Node identifier
         id: NodeId,
+
         /// Error message
         error: String,
     },
@@ -88,21 +92,9 @@ pub enum TuiMessage {
     NodeStatusUpdate {
         /// Node identifier
         id: NodeId,
+
         /// New status
         status: NodeStatus,
-    },
-
-    /// A log entry from a node
-    LogEntry(LogEntry),
-
-    /// System metrics update (for future use)
-    SystemMetrics {
-        /// CPU usage percentage
-        cpu_usage: f32,
-        /// Memory usage in bytes
-        memory_usage: u64,
-        /// Available memory in bytes
-        memory_total: u64,
     },
 
     /// All nodes have been shut down successfully

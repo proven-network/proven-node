@@ -2,12 +2,14 @@
 
 use crate::{
     events::{Event, EventHandler, KeyEventResult},
-    logs::LogCollector,
+    logs_viewer::LogReader,
+    logs_writer::{DiskLogConfig, LogWriter},
     messages::{NodeId, NodeStatus, TuiMessage},
     node_manager::NodeManager,
     ui::{UiState, render_ui},
 };
 use anyhow::Result;
+use chrono::Utc;
 use crossterm::{
     event::{DisableMouseCapture, KeyCode, KeyEvent},
     execute,
@@ -31,7 +33,7 @@ use std::{
 };
 use tracing::{error, info};
 
-/// The main TUI application
+/// Main application state
 pub struct App {
     /// Whether the app should quit
     should_quit: bool,
@@ -45,17 +47,17 @@ pub struct App {
     /// Node statuses
     nodes: HashMap<NodeId, (String, NodeStatus)>,
 
-    /// Log collector
-    log_collector: LogCollector,
+    /// Log writer for disk-based logging
+    log_writer: LogWriter,
+
+    /// Log reader for reading logs from disk
+    log_reader: LogReader,
 
     /// Event handler
     event_handler: EventHandler,
 
     /// Message receiver for node operations
     message_receiver: mpsc::Receiver<TuiMessage>,
-
-    /// Message sender (for tracing layer)
-    message_sender: mpsc::Sender<TuiMessage>,
 
     /// Shutdown flag set by signal handler
     shutdown_flag: Option<Arc<AtomicBool>>,
@@ -76,14 +78,25 @@ impl App {
         // Create shared governance synchronously
         let governance = Arc::new(Self::create_shared_governance());
 
-        // Create log collector (synchronous)
-        let log_collector = LogCollector::new();
+        // Generate session ID
+        let session_id = Utc::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+        info!("Starting TUI application with session_id: {}", session_id);
+
+        // Create log writer with session_id-based config in /tmp (synchronous)
+        let log_config = DiskLogConfig::new_with_session(&session_id);
+        let log_writer = LogWriter::with_config(log_config).expect("Failed to create log writer");
+
+        // Create log reader for the same session
+        let session_dir = log_writer
+            .get_session_dir()
+            .expect("Failed to get session directory from log writer");
+        let log_reader = LogReader::new(session_dir);
 
         // Create event handler (synchronous setup)
-        let event_handler = EventHandler::new(command_sender, governance.clone());
+        let event_handler = EventHandler::new(command_sender);
 
         // Create and start node manager (sync operations)
-        let node_manager = NodeManager::new(message_sender.clone(), governance);
+        let node_manager = NodeManager::new(message_sender, governance, session_id);
         node_manager.start_command_handler(command_receiver);
 
         Self {
@@ -91,10 +104,10 @@ impl App {
             shutting_down: false,
             ui_state: UiState::new(),
             nodes: HashMap::new(),
-            log_collector,
+            log_writer,
+            log_reader,
             event_handler,
             message_receiver,
-            message_sender,
             shutdown_flag: None,
         }
     }
@@ -114,10 +127,10 @@ impl App {
         )
     }
 
-    /// Get the log collector for the tracing layer
+    /// Get the log writer for the tracing layer
     #[must_use]
-    pub fn get_log_collector(&self) -> LogCollector {
-        self.log_collector.clone()
+    pub fn get_log_writer(&self) -> LogWriter {
+        self.log_writer.clone()
     }
 
     /// Set the shutdown flag for signal handling
@@ -177,7 +190,7 @@ impl App {
 
         // Initialize cached logs (synchronous operation)
         let initial_logs = self
-            .log_collector
+            .log_reader
             .get_filtered_logs_blocking(std::time::Duration::from_millis(100));
         self.ui_state.update_cached_logs(initial_logs);
 
@@ -195,7 +208,7 @@ impl App {
             // Refresh logs periodically (synchronous operation)
             if self.ui_state.should_refresh_logs() {
                 let fresh_logs = self
-                    .log_collector
+                    .log_reader
                     .get_filtered_logs_blocking(std::time::Duration::from_millis(50));
                 self.ui_state.update_cached_logs(fresh_logs);
             }
@@ -206,7 +219,7 @@ impl App {
                     frame,
                     &mut self.ui_state,
                     &self.nodes,
-                    &self.log_collector,
+                    &self.log_reader,
                     self.shutting_down,
                 );
             })?;
@@ -242,10 +255,6 @@ impl App {
 
             Event::Tick => {
                 // Regular update tick - could be used for animations or periodic updates
-            }
-
-            Event::Resize(_width, _height) => {
-                // Terminal was resized - ratatui handles this automatically
             }
         }
 
@@ -284,14 +293,11 @@ impl App {
                 return Ok(());
             }
             KeyCode::Esc => {
-                // Close help if open, otherwise initiate graceful shutdown
+                // Close help or log level modal if open
                 if self.ui_state.show_help {
                     self.ui_state.show_help = false;
-                } else if !self.shutting_down {
-                    info!("Initiating graceful shutdown of all nodes...");
-                    self.shutting_down = true;
-                    // Let the event handler trigger shutdown
-                    self.event_handler.trigger_shutdown();
+                } else if self.ui_state.show_log_level_modal {
+                    self.ui_state.show_log_level_modal = false;
                 }
                 return Ok(());
             }
@@ -311,6 +317,12 @@ impl App {
 
     /// Handle keys in logs mode
     fn handle_logs_keys(&mut self, key: KeyEvent) {
+        // Handle modal-specific keys first
+        if self.ui_state.show_log_level_modal {
+            self.handle_log_level_modal_keys(key);
+            return;
+        }
+
         match key.code {
             // Backtick "`" for "All" selection
             KeyCode::Char('`') => {
@@ -343,26 +355,13 @@ impl App {
                 self.ui_state.scroll_down(1);
             }
 
-            // Home/End for sidebar navigation
+            // Home/End for log scrolling
             KeyCode::Home => {
-                self.ui_state.logs_sidebar_selected = 0; // "All"
-                self.ui_state.logs_sidebar_debug_selected = false;
+                self.ui_state.scroll_to_top();
             }
 
             KeyCode::End => {
-                // End goes to debug if available, otherwise last node
-                if self
-                    .log_collector
-                    .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
-                    .contains(&crate::messages::MAIN_THREAD_NODE_ID)
-                {
-                    self.ui_state.logs_sidebar_debug_selected = true;
-                    self.ui_state.logs_sidebar_selected = 0;
-                } else {
-                    let max_index = self.ui_state.logs_sidebar_nodes.len();
-                    self.ui_state.logs_sidebar_selected = max_index;
-                    self.ui_state.logs_sidebar_debug_selected = false;
-                }
+                self.ui_state.scroll_to_bottom();
             }
 
             // Up/Down arrow keys for sidebar navigation
@@ -385,13 +384,8 @@ impl App {
                 let max_index = self.ui_state.logs_sidebar_nodes.len();
                 if self.ui_state.logs_sidebar_selected < max_index {
                     self.ui_state.logs_sidebar_selected += 1;
-                } else if !self.ui_state.logs_sidebar_debug_selected
-                    && self
-                        .log_collector
-                        .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
-                        .contains(&crate::messages::MAIN_THREAD_NODE_ID)
-                {
-                    // Move to debug if at the end of regular nodes
+                } else if !self.ui_state.logs_sidebar_debug_selected {
+                    // Move to debug if at the end of regular nodes (always available)
                     self.ui_state.logs_sidebar_debug_selected = true;
                     self.ui_state.logs_sidebar_selected = 0;
                 }
@@ -416,11 +410,65 @@ impl App {
                 }
             }
 
-            // Clear logs
-            KeyCode::Char('c') => {
-                self.log_collector.clear();
-                self.ui_state.cached_logs.clear();
-                self.ui_state.log_scroll = 0;
+            // Open log level selection modal
+            KeyCode::Char('l') => {
+                // Set initial selection to current log level
+                let current_level = self.log_reader.get_level_filter();
+                self.ui_state.log_level_modal_selected = match current_level {
+                    crate::messages::LogLevel::Error => 0,
+                    crate::messages::LogLevel::Warn => 1,
+                    crate::messages::LogLevel::Info => 2,
+                    crate::messages::LogLevel::Debug => 3,
+                    crate::messages::LogLevel::Trace => 4,
+                };
+                self.ui_state.show_log_level_modal = true;
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Handle keys when log level modal is open
+    fn handle_log_level_modal_keys(&mut self, key: KeyEvent) {
+        match key.code {
+            // Navigate up in modal
+            KeyCode::Up => {
+                if self.ui_state.log_level_modal_selected > 0 {
+                    self.ui_state.log_level_modal_selected -= 1;
+                }
+            }
+
+            // Navigate down in modal
+            KeyCode::Down => {
+                if self.ui_state.log_level_modal_selected < 4 {
+                    self.ui_state.log_level_modal_selected += 1;
+                }
+            }
+
+            // Select log level and close modal
+            KeyCode::Enter => {
+                let selected_level = match self.ui_state.log_level_modal_selected {
+                    0 => crate::messages::LogLevel::Error,
+                    1 => crate::messages::LogLevel::Warn,
+                    2 => crate::messages::LogLevel::Info,
+                    3 => crate::messages::LogLevel::Debug,
+                    4 => crate::messages::LogLevel::Trace,
+                    _ => unreachable!(),
+                };
+
+                self.log_reader.set_level_filter(selected_level);
+                self.ui_state.show_log_level_modal = false;
+
+                // Immediately refresh logs to show the new filter
+                let fresh_logs = self
+                    .log_reader
+                    .get_filtered_logs_blocking(std::time::Duration::from_millis(50));
+                self.ui_state.update_cached_logs(fresh_logs);
+            }
+
+            // Close modal without selection
+            KeyCode::Esc => {
+                self.ui_state.show_log_level_modal = false;
             }
 
             _ => {}
@@ -461,26 +509,13 @@ impl App {
                 self.ui_state.scroll_down(1);
             }
 
-            // Home/End for sidebar navigation still work during shutdown
+            // Home/End for log scrolling still work during shutdown
             KeyCode::Home => {
-                self.ui_state.logs_sidebar_selected = 0; // "All"
-                self.ui_state.logs_sidebar_debug_selected = false;
+                self.ui_state.scroll_to_top();
             }
 
             KeyCode::End => {
-                // End goes to debug if available, otherwise last node
-                if self
-                    .log_collector
-                    .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
-                    .contains(&crate::messages::MAIN_THREAD_NODE_ID)
-                {
-                    self.ui_state.logs_sidebar_debug_selected = true;
-                    self.ui_state.logs_sidebar_selected = 0;
-                } else {
-                    let max_index = self.ui_state.logs_sidebar_nodes.len();
-                    self.ui_state.logs_sidebar_selected = max_index;
-                    self.ui_state.logs_sidebar_debug_selected = false;
-                }
+                self.ui_state.scroll_to_bottom();
             }
 
             // Up/Down arrow keys for sidebar navigation still work during shutdown
@@ -503,13 +538,8 @@ impl App {
                 let max_index = self.ui_state.logs_sidebar_nodes.len();
                 if self.ui_state.logs_sidebar_selected < max_index {
                     self.ui_state.logs_sidebar_selected += 1;
-                } else if !self.ui_state.logs_sidebar_debug_selected
-                    && self
-                        .log_collector
-                        .get_nodes_with_logs_blocking(std::time::Duration::from_millis(50))
-                        .contains(&crate::messages::MAIN_THREAD_NODE_ID)
-                {
-                    // Move to debug if at the end of regular nodes
+                } else if !self.ui_state.logs_sidebar_debug_selected {
+                    // Move to debug if at the end of regular nodes (always available)
                     self.ui_state.logs_sidebar_debug_selected = true;
                     self.ui_state.logs_sidebar_selected = 0;
                 }
@@ -541,11 +571,7 @@ impl App {
     /// Handle messages from async tasks
     fn handle_message(&mut self, message: TuiMessage) {
         match message {
-            TuiMessage::NodeStarted {
-                id,
-                name,
-                config: _,
-            } => {
+            TuiMessage::NodeStarted { id, name } => {
                 self.handle_node_started(id, name);
             }
 
@@ -559,14 +585,6 @@ impl App {
 
             TuiMessage::NodeStatusUpdate { id, status } => {
                 self.handle_node_status_update(id, status);
-            }
-
-            TuiMessage::LogEntry(entry) => {
-                self.log_collector.add_log(entry);
-            }
-
-            TuiMessage::SystemMetrics { .. } => {
-                // TODO: Handle system metrics
             }
 
             TuiMessage::ShutdownComplete => {

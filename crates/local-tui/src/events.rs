@@ -2,8 +2,7 @@
 
 use crate::messages::{NodeCommand, TuiMessage};
 use crossterm::event::{self, KeyCode, KeyEvent, KeyModifiers};
-use proven_governance_mock::MockGovernance;
-use std::{sync::Arc, sync::mpsc, thread, time::Duration};
+use std::{sync::mpsc, thread, time::Duration};
 use tracing::info;
 
 /// Events that can occur in the TUI
@@ -11,12 +10,12 @@ use tracing::info;
 pub enum Event {
     /// Terminal input event (keyboard, mouse, etc.)
     Input(crossterm::event::Event),
-    /// Timer tick for regular updates
-    Tick,
+
     /// Message from async tasks
     Message(Box<TuiMessage>),
-    /// Resize the terminal
-    Resize(u16, u16),
+
+    /// Timer tick for regular updates
+    Tick,
 }
 
 /// Result of handling a key event
@@ -24,38 +23,33 @@ pub enum Event {
 pub enum KeyEventResult {
     /// Continue normal operation
     Continue,
-    /// Graceful shutdown initiated
-    GracefulShutdown,
+
     /// Force quit requested (immediate exit)
     ForceQuit,
+
+    /// Graceful shutdown initiated
+    GracefulShutdown,
 }
 
 /// Handles events and manages the event loop
+#[derive(Debug)]
 pub struct EventHandler {
-    sender: mpsc::Sender<Event>,
-    receiver: mpsc::Receiver<Event>,
     command_sender: mpsc::Sender<NodeCommand>,
-    governance: Arc<MockGovernance>,
+    receiver: mpsc::Receiver<Event>,
+    sender: mpsc::Sender<Event>,
 }
 
 impl EventHandler {
     /// Create a new event handler
     #[must_use]
-    pub fn new(command_sender: mpsc::Sender<NodeCommand>, governance: Arc<MockGovernance>) -> Self {
+    pub fn new(command_sender: mpsc::Sender<NodeCommand>) -> Self {
         let (sender, receiver) = mpsc::channel();
 
         Self {
-            sender,
-            receiver,
             command_sender,
-            governance,
+            receiver,
+            sender,
         }
-    }
-
-    /// Get a sender for external tasks to send messages
-    #[must_use]
-    pub fn get_sender(&self) -> mpsc::Sender<Event> {
-        self.sender.clone()
     }
 
     /// Start listening for terminal events
@@ -120,7 +114,7 @@ impl EventHandler {
     ) -> anyhow::Result<KeyEventResult> {
         match key.code {
             // Graceful quit the application
-            KeyCode::Char('q') | KeyCode::Esc => {
+            KeyCode::Char('q') => {
                 if !shutting_down {
                     info!("Initiating graceful shutdown of all nodes...");
                     let _ = self.command_sender.send(NodeCommand::Shutdown);
