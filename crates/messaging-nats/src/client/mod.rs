@@ -7,7 +7,7 @@ use futures::StreamExt;
 use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt::Debug;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use async_nats::Client as AsyncNatsClient;
@@ -21,7 +21,7 @@ use bytes::Bytes;
 use proven_messaging::client::{Client, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
-use tokio::sync::{Mutex as TokioMutex, OnceCell, mpsc, oneshot};
+use tokio::sync::{Mutex as TokioMutex, mpsc, oneshot};
 use tokio::time::{Duration, sleep, timeout};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::warn;
@@ -70,14 +70,15 @@ where
 {
     client_id: String,
     jetstream_context: Context,
-    reply_stream: Arc<OnceCell<NatsStream>>,
-    reply_stream_consumer: Arc<OnceCell<NatsConsumerType<NatsConsumerConfig>>>,
+    reply_stream: Arc<TokioMutex<Option<NatsStream>>>,
+    reply_stream_consumer: Arc<TokioMutex<Option<NatsConsumerType<NatsConsumerConfig>>>>,
     reply_stream_name: String,
     request_id_counter: Arc<AtomicUsize>,
     response_map: Arc<TokioMutex<ResponseMap<X::ResponseType>>>,
     stream_map: Arc<TokioMutex<StreamMap<X::ResponseType>>>,
     stream_name: String,
     service_name: String,
+    needs_reinitialization: Arc<AtomicBool>,
 }
 
 impl<X, T, D, S> Clone for NatsClient<X, T, D, S>
@@ -113,6 +114,7 @@ where
             stream_map: self.stream_map.clone(),
             stream_name: self.stream_name.clone(),
             service_name: self.service_name.clone(),
+            needs_reinitialization: self.needs_reinitialization.clone(),
         }
     }
 }
@@ -173,10 +175,25 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     async fn ensure_initialized(&self) -> Result<(), Error> {
-        // Initialize reply stream
-        self.reply_stream
-            .get_or_try_init(|| async {
-                self.jetstream_context
+        // Check if reinitialization is needed and clear existing resources
+        if self.needs_reinitialization.load(Ordering::SeqCst) {
+            {
+                let mut reply_stream = self.reply_stream.lock().await;
+                *reply_stream = None;
+            }
+            {
+                let mut reply_stream_consumer = self.reply_stream_consumer.lock().await;
+                *reply_stream_consumer = None;
+            }
+            self.needs_reinitialization.store(false, Ordering::SeqCst);
+        }
+
+        // Initialize reply stream if not already initialized
+        {
+            let mut reply_stream = self.reply_stream.lock().await;
+            if reply_stream.is_none() {
+                let stream = self
+                    .jetstream_context
                     .get_or_create_stream(NatsStreamConfig {
                         name: self.reply_stream_name.clone(),
                         no_ack: true,
@@ -184,14 +201,20 @@ where
                         ..Default::default()
                     })
                     .await
-                    .map_err(|e| Error::CreateStream(e.kind()))
-            })
-            .await?;
+                    .map_err(|e| Error::CreateStream(e.kind()))?;
+                *reply_stream = Some(stream);
+            }
+        }
 
-        // Initialize consumer and spawn handler only once
-        self.reply_stream_consumer
-            .get_or_try_init(|| async {
-                let reply_stream = self.reply_stream.get().unwrap();
+        // Initialize consumer and spawn handler if not already initialized
+        {
+            let mut reply_stream_consumer = self.reply_stream_consumer.lock().await;
+            if reply_stream_consumer.is_none() {
+                let reply_stream = {
+                    let reply_stream_lock = self.reply_stream.lock().await;
+                    reply_stream_lock.as_ref().unwrap().clone()
+                };
+
                 let consumer = reply_stream
                     .create_consumer(NatsConsumerConfig {
                         name: Some(format!("{}_CONSUMER", self.reply_stream_name)),
@@ -208,11 +231,12 @@ where
                     self.response_map.clone(),
                     self.stream_map.clone(),
                     self.service_name.clone(),
+                    self.needs_reinitialization.clone(),
                 );
 
-                Ok(consumer)
-            })
-            .await?;
+                *reply_stream_consumer = Some(consumer);
+            }
+        }
 
         Ok(())
     }
@@ -279,13 +303,25 @@ where
         response_map: Arc<TokioMutex<ResponseMap<X::ResponseType>>>,
         stream_map: Arc<TokioMutex<StreamMap<X::ResponseType>>>,
         stream_name: String,
+        needs_reinitialization: Arc<AtomicBool>,
     ) {
         tokio::spawn(async move {
             let mut messages = consumer.messages().await.unwrap();
             while let Some(msg) = messages.next().await {
                 if let Err(e) = msg {
-                    warn!("error receiving message in {} client: {:?}", stream_name, e);
-                    continue;
+                    // Check for specific error types that require reinitialization
+                    match e.kind() {
+                        async_nats::jetstream::consumer::pull::MessagesErrorKind::MissingHeartbeat |
+                        async_nats::jetstream::consumer::pull::MessagesErrorKind::ConsumerDeleted => {
+                            warn!("received {} error in {} client, triggering reinitialization", e.kind(), stream_name);
+                            needs_reinitialization.store(true, Ordering::SeqCst);
+                            return; // Break out of the response handler loop
+                        }
+                        _ => {
+                            warn!("error receiving message in {} client: {:?}", stream_name, e);
+                            continue;
+                        }
+                    }
                 }
 
                 let msg = msg.unwrap();
@@ -467,9 +503,10 @@ where
             response_map,
             stream_map,
             stream_name: stream.name(),
-            reply_stream: Arc::new(OnceCell::new()),
-            reply_stream_consumer: Arc::new(OnceCell::new()),
+            reply_stream: Arc::new(TokioMutex::new(None)),
+            reply_stream_consumer: Arc::new(TokioMutex::new(None)),
             service_name: name,
+            needs_reinitialization: Arc::new(AtomicBool::new(true)),
         })
     }
 
