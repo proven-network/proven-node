@@ -43,8 +43,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     .await
     .expect("Failed to create network");
 
+    // Get the path to the NATS CLI binary
+    let cli_bin_dir = match which::which("nats") {
+        Ok(path) => path.parent().unwrap().to_path_buf(),
+        Err(_) => PathBuf::from("/apps/nats/v2.11.4"),
+    };
+
     // Get the path to the NATS server binary
-    let bin_dir = match which::which("nats-server") {
+    let server_bin_dir = match which::which("nats-server") {
         Ok(path) => path.parent().unwrap().to_path_buf(),
         Err(_) => PathBuf::from("/apps/nats/v2.11.4"),
     };
@@ -55,13 +61,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         MockAttestor,
         MemoryStore<Bytes, Infallible, Infallible>,
     > = NatsServerOptions {
-        bin_dir: Some(bin_dir),
+        cli_bin_dir: Some(cli_bin_dir),
         cert_store: None,
         client_port: 4222,
         config_dir,
         debug: true,
         http_port: 8222,
         network,
+        server_bin_dir: Some(server_bin_dir),
         server_name: "nats-example".to_string(),
         store_dir,
     };

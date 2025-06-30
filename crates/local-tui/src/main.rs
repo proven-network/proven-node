@@ -6,7 +6,6 @@
 #![allow(clippy::redundant_pub_crate)]
 
 mod app;
-mod events;
 mod ip_allocator;
 mod logs_viewer;
 mod logs_writer;

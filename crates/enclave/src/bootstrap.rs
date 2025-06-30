@@ -816,13 +816,14 @@ impl Bootstrap {
         });
 
         let nats_server = NatsServer::new(NatsServerOptions {
-            bin_dir: Some(PathBuf::from("/apps/nats/v2.11.4")),
             cert_store: None,
+            cli_bin_dir: Some(PathBuf::from("/apps/nats/v2.11.4")), // TODO: update to actual nats dir
             client_port: 4222,
             config_dir: PathBuf::from("/tmp/nats-config"),
             debug: self.args.testnet,
             http_port: 8222,
             network: network.clone(),
+            server_bin_dir: Some(PathBuf::from("/apps/nats/v2.11.4")),
             server_name: instance_details.instance_id.clone(),
             store_dir: PathBuf::from("/var/lib/nats/nats"),
         })?;

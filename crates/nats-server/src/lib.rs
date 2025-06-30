@@ -26,6 +26,11 @@ use pem::{Pem, encode};
 use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
+use proven_messaging::subject::{PublishableSubject, Subject};
+use proven_messaging::subscription_handler::SubscriptionHandler;
+use proven_messaging::subscription_responder::SubscriptionResponder;
+use proven_messaging_nats::subject::{NatsSubject, NatsSubjectOptions};
+use proven_messaging_nats::subscription::NatsSubscription;
 use proven_network::{Peer, ProvenNetwork};
 use regex::Regex;
 use tokio::sync::Mutex;
@@ -35,11 +40,47 @@ use tokio_rustls_acme::acme::LETS_ENCRYPT_PRODUCTION_DIRECTORY;
 use tokio_rustls_acme::{AccountCache, CertCache};
 use tracing::{debug, error, info, trace, warn};
 
+const PEER_REMOVAL_SUBJECT: &str = "NATS_SERVER_PEER_REMOVAL";
+
+/// Message sent to notify other NATS servers to remove this server as a peer
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PeerRemovalNotification {
+    /// The server name to remove from the cluster
+    pub server_name: String,
+    /// Timestamp when the notification was sent
+    pub timestamp: u64,
+}
+
+impl TryFrom<Bytes> for PeerRemovalNotification {
+    type Error = serde_json::Error;
+
+    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
+        serde_json::from_slice(&bytes)
+    }
+}
+
+impl TryInto<Bytes> for PeerRemovalNotification {
+    type Error = serde_json::Error;
+
+    fn try_into(self) -> Result<Bytes, Self::Error> {
+        let json = serde_json::to_vec(&self)?;
+        Ok(Bytes::from(json))
+    }
+}
+
 static CONFIG_TEMPLATE: &str = include_str!("../templates/nats-server.conf");
 static CLUSTER_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster.conf");
 static CLUSTER_NO_TLS_CONFIG_TEMPLATE: &str = include_str!("../templates/cluster-no-tls.conf");
 
 const PEER_DISCOVERY_INTERVAL: u64 = 300; // 5 minutes
+
+/// Type alias for peer removal subscription
+type PeerRemovalSubscription<G, A, S> = NatsSubscription<
+    PeerRemovalHandler<G, A, S>,
+    PeerRemovalNotification,
+    serde_json::Error,
+    serde_json::Error,
+>;
 
 /// Regex pattern for matching NATS server log lines
 static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -54,11 +95,11 @@ where
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
-    /// Optional path to the NATS server binary if it is not in the PATH.
-    pub bin_dir: Option<PathBuf>,
-
     /// The store for certificates. Set to `None` if the server is not using TLS.
     pub cert_store: Option<CertStore<S>>,
+
+    /// Optional path to the NATS CLI binary if it is not in the PATH.
+    pub cli_bin_dir: Option<PathBuf>,
 
     /// The port to listen for client connections on.
     pub client_port: u16,
@@ -75,11 +116,72 @@ where
     /// Network for peer discovery.
     pub network: ProvenNetwork<G, A>,
 
+    /// Optional path to the NATS server binary if it is not in the PATH.
+    pub server_bin_dir: Option<PathBuf>,
+
     /// The name of the server.
     pub server_name: String,
 
     /// The directory to store data in.
     pub store_dir: PathBuf,
+}
+
+/// NATS CLI application implementing the `IsolatedApplication` trait
+struct NatsPeerRemoveApp {
+    /// The path to the nats-server executable
+    bin_dir: PathBuf,
+
+    /// The client URL
+    client_url: String,
+
+    /// The path to the nats-server executable
+    executable_path: String,
+
+    /// The replica name to remove from the cluster
+    replica_name: String,
+
+    /// The system password
+    system_password: String,
+
+    /// The system username
+    system_username: String,
+}
+
+#[async_trait]
+impl IsolatedApplication for NatsPeerRemoveApp {
+    fn args(&self) -> Vec<String> {
+        vec![
+            "-s".to_string(),
+            self.client_url.to_string(),
+            format!("--user={}", self.system_username),
+            format!("--password={}", self.system_password),
+            "server".to_string(),
+            "raft".to_string(),
+            "peer-remove".to_string(),
+            "--force".to_string(),
+            self.replica_name.to_string(),
+        ]
+    }
+
+    fn executable(&self) -> &str {
+        &self.executable_path
+    }
+
+    fn handle_stdout(&self, line: &str) {
+        info!(target: "nats-peer-remove", "{}", line);
+    }
+
+    fn handle_stderr(&self, line: &str) {
+        error!(target: "nats-peer-remove", "{}", line);
+    }
+
+    fn name(&self) -> &'static str {
+        "nats-peer-remove"
+    }
+
+    fn volume_mounts(&self) -> Vec<VolumeMount> {
+        vec![VolumeMount::new(self.bin_dir.clone(), self.bin_dir.clone())]
+    }
 }
 
 /// NATS server application implementing the `IsolatedApplication` trait
@@ -140,7 +242,7 @@ impl IsolatedApplication for NatsServerApp {
         if line.contains("rid:")
             || line.contains("Reloaded")
             || line.contains("Trapped")
-            || line.contains("i / o timeout")
+            || line.contains("i/o timeout")
             || line.contains("connection refused")
         {
             return;
@@ -240,7 +342,142 @@ impl IsolatedApplication for NatsServerApp {
     }
 }
 
+/// Empty response for peer removal notifications
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PeerRemovalResponse;
+
+impl TryFrom<Bytes> for PeerRemovalResponse {
+    type Error = serde_json::Error;
+
+    fn try_from(_bytes: Bytes) -> Result<Self, Self::Error> {
+        Ok(Self)
+    }
+}
+
+impl TryInto<Bytes> for PeerRemovalResponse {
+    type Error = serde_json::Error;
+
+    fn try_into(self) -> Result<Bytes, Self::Error> {
+        Ok(Bytes::from("{}"))
+    }
+}
+
+/// Subscription handler for peer removal notifications
+#[derive(Clone)]
+struct PeerRemovalHandler<G, A, S>
+where
+    G: Governance,
+    A: Attestor,
+    S: Store<Bytes, Infallible, Infallible>,
+{
+    server: NatsServer<G, A, S>,
+    /// Cached client URL to avoid mutex contention
+    client_url: String,
+}
+
+impl<G, A, S> std::fmt::Debug for PeerRemovalHandler<G, A, S>
+where
+    G: Governance,
+    A: Attestor,
+    S: Store<Bytes, Infallible, Infallible>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PeerRemovalHandler")
+            .field("server_name", &self.server.server_name)
+            .field("client_url", &self.client_url)
+            .finish()
+    }
+}
+
+#[async_trait]
+impl<G, A, S> SubscriptionHandler<PeerRemovalNotification, serde_json::Error, serde_json::Error>
+    for PeerRemovalHandler<G, A, S>
+where
+    G: Governance,
+    A: Attestor,
+    S: Store<Bytes, Infallible, Infallible>,
+{
+    type Error = Error;
+    type ResponseType = PeerRemovalResponse;
+    type ResponseDeserializationError = serde_json::Error;
+    type ResponseSerializationError = serde_json::Error;
+
+    async fn handle<R>(
+        &self,
+        message: PeerRemovalNotification,
+        responder: R,
+    ) -> Result<R::UsedResponder, Self::Error>
+    where
+        R: SubscriptionResponder<
+                Self::ResponseType,
+                Self::ResponseDeserializationError,
+                Self::ResponseSerializationError,
+            >,
+    {
+        info!(
+            "Received peer removal notification for server: {}",
+            message.server_name
+        );
+
+        // Don't remove ourselves from the cluster
+        if message.server_name == self.server.server_name {
+            debug!("Ignoring peer removal notification for ourselves");
+            return Ok(responder.no_reply().await);
+        }
+
+        // Give a moment for replica to enter lame duck mode
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+
+        // Create the peer removal application
+        let remove_peer_app = NatsPeerRemoveApp {
+            bin_dir: self.server.cli_bin_dir.clone(),
+            client_url: self.client_url.clone(),
+            executable_path: self
+                .server
+                .cli_bin_dir
+                .join("nats")
+                .to_string_lossy()
+                .to_string(),
+            replica_name: message.server_name.clone(),
+            system_password: self.server.system_password.clone(),
+            system_username: self.server.system_username.clone(),
+        };
+
+        // Attempt to remove the peer from the cluster
+        match proven_isolation::spawn(remove_peer_app).await {
+            Ok(process) => {
+                let exit_status = process.wait().await;
+
+                if exit_status.success() {
+                    info!(
+                        "successfully removed peer {} from cluster",
+                        message.server_name
+                    );
+                } else {
+                    info!(
+                        "failed to remove peer {} - likely another node has already removed it",
+                        message.server_name
+                    );
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Failed to spawn peer removal process for {}: {}",
+                    message.server_name, e
+                );
+            }
+        }
+
+        Ok(responder.no_reply().await)
+    }
+}
+
 /// Represents an isolated NATS server with network discovery.
+///
+/// This server automatically listens for peer removal notifications on the
+/// "nats.cluster.peer-removal" subject and removes peers from the cluster when
+/// they announce their shutdown. It also sends its own removal notification
+/// before shutting down.
 #[derive(Clone)]
 pub struct NatsServer<G, A, S>
 where
@@ -248,11 +485,11 @@ where
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
-    /// Path to the directory containing the NATS server binary
-    bin_dir: PathBuf,
-
     /// The store for certificates. Set to `None` if the server is not using TLS.
     cert_store: Option<CertStore<S>>,
+
+    /// Path to the directory containing the NATS CLI binary
+    cli_bin_dir: PathBuf,
 
     /// The client listen port
     client_port: u16,
@@ -269,14 +506,26 @@ where
     /// Network for peer discovery
     network: ProvenNetwork<G, A>,
 
+    /// The peer removal subscription
+    peer_removal_subscription: Arc<Mutex<Option<PeerRemovalSubscription<G, A, S>>>>,
+
     /// The isolated process running NATS server
     process: Arc<Mutex<Option<IsolatedProcess>>>,
+
+    /// Path to the directory containing the NATS server binary
+    server_bin_dir: PathBuf,
 
     /// The server name
     server_name: String,
 
     /// The store directory
     store_dir: PathBuf,
+
+    /// The system password
+    system_password: String,
+
+    /// The system username
+    system_username: String,
 
     /// The topology update task
     topology_update_task: Arc<Mutex<Option<JoinHandle<()>>>>,
@@ -299,18 +548,27 @@ where
     /// Panics if the NATS server binary is not found and `bin_dir` is `None`.
     pub fn new(
         NatsServerOptions {
-            bin_dir,
+            cli_bin_dir,
             cert_store,
             client_port,
             config_dir,
             debug,
             http_port,
             network,
+            server_bin_dir,
             server_name,
             store_dir,
         }: NatsServerOptions<G, A, S>,
     ) -> Result<Self, Error> {
-        let bin_dir = match bin_dir {
+        let cli_bin_dir = match cli_bin_dir {
+            Some(dir) => dir,
+            None => match which::which("nats") {
+                Ok(path) => path.parent().unwrap().to_path_buf(),
+                Err(_) => return Err(Error::BinaryNotFound),
+            },
+        };
+
+        let server_bin_dir = match server_bin_dir {
             Some(dir) => dir,
             None => match which::which("nats-server") {
                 Ok(path) => path.parent().unwrap().to_path_buf(),
@@ -318,17 +576,25 @@ where
             },
         };
 
+        // Generate random system username and password for this run
+        let system_username = format!("sys-{}", uuid::Uuid::new_v4());
+        let system_password = format!("pwd-{}", uuid::Uuid::new_v4());
+
         Ok(Self {
-            bin_dir,
             cert_store,
+            cli_bin_dir,
             client_port,
             config_dir,
             debug,
             http_port,
             network,
+            peer_removal_subscription: Arc::new(Mutex::new(None)),
             process: Arc::new(Mutex::new(None)),
+            server_bin_dir,
             server_name,
             store_dir,
+            system_password,
+            system_username,
             topology_update_task: Arc::new(Mutex::new(None)),
         })
     }
@@ -442,6 +708,8 @@ where
         // Start with the basic configuration
         let mut config = CONFIG_TEMPLATE
             .replace("{server_name}", &self.server_name)
+            .replace("{system_username}", &self.system_username)
+            .replace("{system_password}", &self.system_password)
             .replace("{client_addr}", &format!("0.0.0.0:{}", self.client_port))
             .replace("{http_addr}", &format!("0.0.0.0:{}", self.http_port))
             .replace("{store_dir}", &self.store_dir.to_string_lossy());
@@ -563,6 +831,117 @@ where
 
         Ok(client)
     }
+
+    /// Sends a peer removal notification to other NATS servers before shutdown.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the notification fails to send, but errors are logged and not propagated
+    /// to avoid failing the shutdown process.
+    async fn send_peer_removal_notification(&self) -> Result<(), Error> {
+        info!("Sending peer removal notification to other NATS servers...");
+
+        // Create a client to send the notification
+        let client = match self.build_client().await {
+            Ok(client) => client,
+            Err(e) => {
+                error!(
+                    "Failed to create NATS client for peer removal notification: {}",
+                    e
+                );
+                return Err(e);
+            }
+        };
+
+        // Create the notification message
+        let notification = PeerRemovalNotification {
+            server_name: self.server_name.clone(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        };
+
+        // Create the subject for peer removal notifications
+        let subject_options = NatsSubjectOptions {
+            client: client.clone(),
+        };
+
+        let subject = match NatsSubject::<
+            PeerRemovalNotification,
+            serde_json::Error,
+            serde_json::Error,
+        >::new(PEER_REMOVAL_SUBJECT, subject_options)
+        {
+            Ok(subject) => subject,
+            Err(e) => {
+                error!("Failed to create peer removal notification subject: {}", e);
+                return Ok(()); // Don't fail shutdown on subject creation error
+            }
+        };
+
+        // Send the notification
+        match subject.publish(notification).await {
+            Ok(()) => {
+                info!("Peer removal notification sent successfully");
+                // Give a moment for the message to be processed
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to send peer removal notification: {}", e);
+                Ok(()) // Don't fail shutdown on message send error
+            }
+        }
+    }
+
+    /// Starts listening for peer removal notifications
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the subscription fails to start.
+    async fn start_peer_removal_listener(&self) -> Result<(), Error> {
+        info!("Starting peer removal notification listener...");
+
+        // Create a client for the subscription
+        let client = self.build_client().await?;
+
+        // Create the subject for peer removal notifications
+        let subject_options = NatsSubjectOptions {
+            client: client.clone(),
+        };
+
+        let subject =
+            NatsSubject::<PeerRemovalNotification, serde_json::Error, serde_json::Error>::new(
+                PEER_REMOVAL_SUBJECT,
+                subject_options,
+            )
+            .map_err(|e| {
+                error!("Failed to create peer removal subscription subject: {}", e);
+                Error::RemovePeer
+            })?;
+
+        // Create the handler
+        let handler = PeerRemovalHandler {
+            server: self.clone(),
+            client_url: self.get_client_url().await,
+        };
+
+        // Subscribe to the subject
+        let subscription = subject.subscribe(handler).await.map_err(|e| {
+            error!("Failed to subscribe to peer removal notifications: {}", e);
+            Error::RemovePeer
+        })?;
+
+        // Store the subscription
+        self.peer_removal_subscription
+            .lock()
+            .await
+            .replace(subscription);
+
+        info!("Peer removal notification listener started successfully");
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -601,13 +980,13 @@ where
 
         // Prepare the NATS server application
         let app = NatsServerApp {
-            bin_dir: self.bin_dir.clone(),
+            bin_dir: self.server_bin_dir.clone(),
             client_port: self.client_port,
             cluster_port,
             debug: self.debug,
             config_dir: self.config_dir.clone(),
             executable_path: self
-                .bin_dir
+                .server_bin_dir
                 .join("nats-server")
                 .to_string_lossy()
                 .to_string(),
@@ -631,6 +1010,11 @@ where
             .await
             .replace(topology_update_task);
 
+        // Start peer removal listener (allow it to fail without stopping server startup)
+        if let Err(e) = self.start_peer_removal_listener().await {
+            warn!("Failed to start peer removal listener: {}", e);
+        }
+
         info!("NATS server started");
 
         Ok(())
@@ -644,10 +1028,28 @@ where
     async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Shutting down isolated NATS server...");
 
+        // Send peer removal notification to other servers before going into lame duck mode
+        if let Err(e) = self.send_peer_removal_notification().await {
+            warn!(
+                "Failed to send peer removal notification during shutdown: {}",
+                e
+            );
+            // Continue with shutdown even if notification fails
+        }
+
+        // Give a moment for the notification to be processed
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
         // Stop the topology update task
         let taken_task = self.topology_update_task.lock().await.take();
         if let Some(task) = taken_task {
             task.abort();
+        }
+
+        // Stop the peer removal subscription
+        let taken_subscription = self.peer_removal_subscription.lock().await.take();
+        if taken_subscription.is_some() {
+            info!("Peer removal subscription stopped");
         }
 
         // Get the process and shut it down

@@ -55,4 +55,8 @@ pub enum Error {
     /// Regex error
     #[error("regex error: {0}")]
     Regex(#[from] regex::Error),
+
+    /// Failed to remove replica from NATS cluster.
+    #[error("failed to remove replica from NATS cluster")]
+    RemovePeer,
 }

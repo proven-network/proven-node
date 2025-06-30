@@ -14,14 +14,19 @@ proven-bootable.workspace = true
 proven-cert-store.workspace = true
 proven-governance.workspace = true
 proven-isolation.workspace = true
+proven-messaging.workspace = true
+proven-messaging-nats.workspace = true
 proven-nats-monitor.workspace = true
 proven-network.workspace = true
 proven-store.workspace = true
 regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-rustls-acme.workspace = true
 tracing.workspace = true
+uuid.workspace = true
 which.workspace = true
 
 [dev-dependencies]

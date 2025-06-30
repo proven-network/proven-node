@@ -73,34 +73,3 @@ pub struct LogEntry {
     /// Module/component that generated the log
     pub target: Option<String>,
 }
-
-// TuiMessage removed - NodeManager is now polled directly for state instead of using messages
-
-/// Commands sent from the TUI to async tasks
-#[derive(Debug, Clone)]
-pub enum NodeCommand {
-    /// Start a new node
-    StartNode {
-        /// Node identifier
-        id: NodeId,
-        /// Display name for the node
-        name: String,
-        /// Node configuration (optional - `NodeManager` will create if None)
-        config: Option<Box<TuiNodeConfig>>,
-    },
-
-    /// Stop a running node
-    StopNode {
-        /// Node identifier
-        id: NodeId,
-    },
-
-    /// Restart a node (stop then start)
-    RestartNode {
-        /// Node identifier
-        id: NodeId,
-    },
-
-    /// Shutdown the entire TUI
-    Shutdown,
-}

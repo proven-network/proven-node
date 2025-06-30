@@ -173,8 +173,8 @@ pub struct NodeConfig<G: Governance> {
     /// Proven HTTP port
     pub port: u16,
 
-    /// NATS store directory
-    pub nats_bin_dir: Option<PathBuf>,
+    /// NATS CLI binary directory path
+    pub nats_cli_bin_dir: Option<PathBuf>,
 
     /// NATS port
     pub nats_client_port: u16,
@@ -187,6 +187,9 @@ pub struct NodeConfig<G: Governance> {
 
     /// NATS HTTP port
     pub nats_http_port: u16,
+
+    /// NATS server binary directory path
+    pub nats_server_bin_dir: Option<PathBuf>,
 
     /// NATS store directory
     pub nats_store_dir: PathBuf,

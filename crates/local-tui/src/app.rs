@@ -1,17 +1,16 @@
 //! Main application structure
 
 use crate::{
-    events::{Event, EventHandler, KeyEventResult},
     logs_viewer::LogReader,
     logs_writer::LogWriter,
-    messages::NodeId,
+    node_id::NodeId,
     node_manager::NodeManager,
     ui::{UiState, render_ui},
 };
 use anyhow::Result;
 use chrono::Utc;
 use crossterm::{
-    event::{DisableMouseCapture, KeyCode, KeyEvent},
+    event::{self, DisableMouseCapture, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -29,10 +28,33 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc,
     },
+    time::Duration,
 };
-use tracing::{error, info};
+use tracing::info;
+
+/// Events that can occur in the TUI
+#[derive(Debug, Clone)]
+enum Event {
+    /// Terminal input event (keyboard, mouse, etc.)
+    Input(crossterm::event::Event),
+
+    /// Timer tick for regular updates
+    Tick,
+}
+
+/// Result of handling a key event
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyEventResult {
+    /// Continue normal operation
+    Continue,
+
+    /// Force quit requested (immediate exit)
+    ForceQuit,
+
+    /// Graceful shutdown initiated
+    GracefulShutdown,
+}
 
 /// Main application state
 pub struct App {
@@ -54,9 +76,6 @@ pub struct App {
     /// Log reader for reading logs from disk
     log_reader: LogReader,
 
-    /// Event handler
-    event_handler: EventHandler,
-
     /// Shutdown flag set by signal handler
     shutdown_flag: Option<Arc<AtomicBool>>,
 }
@@ -69,9 +88,6 @@ impl App {
     /// Returns an error if the channels fail to initialize or if the shared
     /// governance cannot be created.
     pub fn new() -> Self {
-        // Create command channel (sync)
-        let (command_sender, command_receiver) = mpsc::channel();
-
         // Create shared governance synchronously
         let governance = Arc::new(Self::create_shared_governance());
 
@@ -87,15 +103,8 @@ impl App {
         let session_dir = log_writer.get_session_dir();
         let log_reader = LogReader::new(session_dir);
 
-        // Create event handler (synchronous setup)
-        let event_handler = EventHandler::new(command_sender);
-
-        // Create and start node manager (sync operations) - no message channel needed
+        // Create node manager with clean interface
         let node_manager = Arc::new(NodeManager::new(governance, session_id));
-
-        // Start command handler in background thread with a clone of the node manager
-        let node_manager_clone = node_manager.clone();
-        node_manager_clone.start_command_handler(command_receiver);
 
         Self {
             should_quit: false,
@@ -104,7 +113,6 @@ impl App {
             node_manager,
             log_writer,
             log_reader,
-            event_handler,
             shutdown_flag: None,
         }
     }
@@ -149,9 +157,6 @@ impl App {
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
-        // Start event listeners
-        self.event_handler.listen_for_terminal_events();
-
         // Main loop (synchronous)
         let result = self.run_loop(&mut terminal);
 
@@ -188,10 +193,7 @@ impl App {
                     info!(
                         "Signal-triggered shutdown initiated - sending shutdown command to all nodes"
                     );
-                    let shutdown_command = crate::messages::NodeCommand::Shutdown;
-                    if let Err(e) = self.event_handler.send_command(shutdown_command) {
-                        error!("Failed to send shutdown command: {}", e);
-                    }
+                    self.node_manager.shutdown_all();
                     self.shutting_down = true;
                 }
             }
@@ -211,8 +213,6 @@ impl App {
                 }
             }
 
-            // Log refresh is now handled by the background thread and UI rendering
-
             // Draw the UI (synchronous operation)
             terminal.draw(|frame| {
                 // Get current node information from NodeManager
@@ -226,16 +226,19 @@ impl App {
                 );
             })?;
 
-            // Handle events (blocking operation with timeout)
-            if let Some(event) = self
-                .event_handler
-                .next_blocking(std::time::Duration::from_millis(100))
-            {
-                // Process event (synchronous)
-                if let Err(e) = self.handle_event(event) {
-                    error!("Error handling event: {e}");
+            // Poll for events directly
+            if let Ok(available) = event::poll(Duration::from_millis(100)) {
+                if available {
+                    if let Ok(crossterm_event) = event::read() {
+                        let event = Event::Input(crossterm_event);
+                        // Process event (synchronous)
+                        self.handle_event(event);
+                    }
                 }
             }
+
+            // Send periodic tick event
+            self.handle_event(Event::Tick);
         }
 
         info!("TUI application shutting down");
@@ -243,11 +246,11 @@ impl App {
     }
 
     /// Handle an event
-    fn handle_event(&mut self, event: Event) -> Result<()> {
+    fn handle_event(&mut self, event: Event) {
         match event {
             Event::Input(crossterm_event) => {
                 if let crossterm::event::Event::Key(key) = crossterm_event {
-                    self.handle_key_event(key)?;
+                    self.handle_key_event(key);
                 }
             }
 
@@ -255,44 +258,35 @@ impl App {
                 // Regular update tick - could be used for animations or periodic updates
             }
         }
-
-        Ok(())
     }
 
     /// Handle keyboard input
-    fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
-        // Let the event handler process global keys first
-        let key_result = self
-            .event_handler
-            .handle_key_event(key, self.shutting_down)?;
+    fn handle_key_event(&mut self, key: KeyEvent) {
+        // Process global keys first
+        let key_result = self.handle_global_key_event(key);
 
         match key_result {
             KeyEventResult::ForceQuit => {
                 // Force quit requested - exit immediately
                 self.should_quit = true;
-                return Ok(());
+                return;
             }
             KeyEventResult::GracefulShutdown => {
-                // Graceful shutdown initiated - send shutdown command and wait for completion
-                info!("Graceful shutdown initiated - sending shutdown command to all nodes");
-                let shutdown_command = crate::messages::NodeCommand::Shutdown;
-                if let Err(e) = self.event_handler.send_command(shutdown_command) {
-                    error!("Failed to send shutdown command: {}", e);
-                }
+                // Graceful shutdown initiated - wait for completion
                 self.shutting_down = true;
-                return Ok(());
+                return;
             }
             KeyEventResult::Continue => {
                 // Continue with normal processing
             }
         }
 
-        // Handle global keys that should work even during shutdown
+        // Handle other global keys that should work even during shutdown
         match key.code {
             KeyCode::Char('?') => {
                 // Help toggle always works, even during shutdown
                 self.ui_state.show_help = !self.ui_state.show_help;
-                return Ok(());
+                return;
             }
             KeyCode::Esc => {
                 // Close help or log level modal if open
@@ -301,7 +295,7 @@ impl App {
                 } else if self.ui_state.show_log_level_modal {
                     self.ui_state.show_log_level_modal = false;
                 }
-                return Ok(());
+                return;
             }
             _ => {}
         }
@@ -313,8 +307,87 @@ impl App {
         } else {
             self.handle_logs_keys(key);
         }
+    }
 
-        Ok(())
+    /// Handle global key events
+    fn handle_global_key_event(&self, key: KeyEvent) -> KeyEventResult {
+        match key.code {
+            // Graceful quit the application
+            KeyCode::Char('q') => {
+                if !self.shutting_down {
+                    info!("Initiating graceful shutdown of all nodes...");
+                    self.node_manager.shutdown_all();
+                    return KeyEventResult::GracefulShutdown;
+                }
+                // If already shutting down, do nothing
+                return KeyEventResult::Continue;
+            }
+
+            // Force quit with Ctrl+C (immediate exit)
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                info!("Force quit requested - shutting down immediately");
+                self.node_manager.shutdown_all();
+                return KeyEventResult::ForceQuit;
+            }
+
+            // Start a new node with 'n' (only if not shutting down)
+            KeyCode::Char('n') => {
+                if !self.shutting_down {
+                    self.start_new_node();
+                }
+            }
+
+            _ => {}
+        }
+
+        KeyEventResult::Continue
+    }
+
+    /// Start a new node with default configuration
+    fn start_new_node(&self) {
+        let id = NodeId::new();
+        let name = id.display_name();
+
+        // Use NodeManager's clean interface for starting nodes
+        self.node_manager.start_node(id, &name, None);
+    }
+
+    /// Start/stop a node based on its current status
+    #[allow(clippy::cognitive_complexity)]
+    fn toggle_node(&self, node_id: NodeId) {
+        // Get current node status from NodeManager
+        let nodes = self.node_manager.get_nodes_for_ui();
+
+        if let Some((_, status)) = nodes.get(&node_id) {
+            match status {
+                NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Failed(_) => {
+                    // Node is not running, so start it
+                    let name = node_id.display_name();
+                    self.node_manager.start_node(node_id, &name, None);
+                    info!("Starting node: {}", node_id.full_pokemon_name());
+                }
+                NodeStatus::Running | NodeStatus::Starting => {
+                    // Node is running or starting, so stop it
+                    self.node_manager.stop_node(node_id);
+                    info!("Stopping node: {}", node_id.full_pokemon_name());
+                }
+                NodeStatus::Stopping => {
+                    // Node is already stopping, do nothing
+                    info!("Node {} is already stopping", node_id.full_pokemon_name());
+                }
+            }
+        } else {
+            // Node not found in our list, assume it's not started and try to start it
+            let name = node_id.display_name();
+            self.node_manager.start_node(node_id, &name, None);
+            info!("Starting new node: {}", node_id.full_pokemon_name());
+        }
+    }
+
+    /// Restart a node
+    fn restart_node(&self, node_id: NodeId) {
+        self.node_manager.restart_node(node_id);
+        info!("Restarting node: {}", node_id.full_pokemon_name());
     }
 
     /// Handle keys in logs mode
@@ -427,7 +500,7 @@ impl App {
                         .logs_sidebar_nodes
                         .get(self.ui_state.logs_sidebar_selected - 1)
                     {
-                        self.handle_start_stop_node(selected_node_id);
+                        self.toggle_node(selected_node_id);
                     }
                 }
             }
@@ -442,7 +515,7 @@ impl App {
                         .logs_sidebar_nodes
                         .get(self.ui_state.logs_sidebar_selected - 1)
                     {
-                        self.handle_restart_node(selected_node_id);
+                        self.restart_node(selected_node_id);
                     }
                 }
             }
@@ -577,56 +650,6 @@ impl App {
 
             _ => {}
         }
-    }
-
-    /// Handle start/stop for a selected node based on its current status
-    #[allow(clippy::cognitive_complexity)]
-    fn handle_start_stop_node(&self, node_id: NodeId) {
-        // Get current node status from NodeManager
-        let nodes = self.node_manager.get_nodes_for_ui();
-
-        if let Some((_, status)) = nodes.get(&node_id) {
-            match status {
-                NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Failed(_) => {
-                    // Node is not running, so start it
-                    let name = node_id.display_name();
-                    let command = crate::messages::NodeCommand::StartNode {
-                        id: node_id,
-                        name,
-                        config: None, // Let NodeManager create the config
-                    };
-                    let _ = self.event_handler.send_command(command);
-                    info!("Starting node: {}", node_id.full_pokemon_name());
-                }
-                NodeStatus::Running | NodeStatus::Starting => {
-                    // Node is running or starting, so stop it
-                    let command = crate::messages::NodeCommand::StopNode { id: node_id };
-                    let _ = self.event_handler.send_command(command);
-                    info!("Stopping node: {}", node_id.full_pokemon_name());
-                }
-                NodeStatus::Stopping => {
-                    // Node is already stopping, do nothing
-                    info!("Node {} is already stopping", node_id.full_pokemon_name());
-                }
-            }
-        } else {
-            // Node not found in our list, assume it's not started and try to start it
-            let name = node_id.display_name();
-            let command = crate::messages::NodeCommand::StartNode {
-                id: node_id,
-                name,
-                config: None, // Let NodeManager create the config
-            };
-            let _ = self.event_handler.send_command(command);
-            info!("Starting new node: {}", node_id.full_pokemon_name());
-        }
-    }
-
-    /// Handle restart for a selected node
-    fn handle_restart_node(&self, node_id: NodeId) {
-        let command = crate::messages::NodeCommand::RestartNode { id: node_id };
-        let _ = self.event_handler.send_command(command);
-        info!("Restarting node: {}", node_id.full_pokemon_name());
     }
 }
 
