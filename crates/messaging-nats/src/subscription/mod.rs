@@ -3,7 +3,7 @@
 mod error;
 
 use crate::subject::NatsUnpublishableSubject;
-use crate::subscription_responder::{NatsSubscriptionResponder, NatsUsedSubscriptionResponder};
+use crate::subscription_responder::NatsSubscriptionResponder;
 pub use error::Error;
 
 use std::error::Error as StdError;
@@ -17,6 +17,7 @@ use futures::StreamExt;
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
 use proven_messaging::subscription_handler::SubscriptionHandler;
 use tokio::sync::watch;
+use tracing::{error, info};
 
 /// Options for new NATS subscribers.
 #[derive(Clone, Debug)]
@@ -109,18 +110,27 @@ where
             loop {
                 tokio::select! {
                     _ = stop_receiver.changed() => {
+                        info!("Stopping NATS subscription");
                         break;
                     }
                     message = subscriber.next() => {
                         if let Some(msg) = message {
+                            let client = options.client.clone();
+                            let handler = handler.clone();
+
+                            // Spawn a new task to handle the message
+                            tokio::spawn(async move {
                             let data: T = msg.payload
                                 .try_into()
                                 .map_err(|e: D| Error::Deserialize(e.to_string()))
                                 .unwrap();
 
-                                let responder = NatsSubscriptionResponder::new(options.client.clone(), "TODO".to_string(), "TODO".to_string());
+                                let responder = NatsSubscriptionResponder::new(client, "TODO".to_string(), "TODO".to_string());
 
-                                let _: NatsUsedSubscriptionResponder = handler.handle(data.clone(), responder).await.unwrap();
+                                if let Err(e) = handler.handle(data.clone(), responder).await {
+                                    error!("Error handling message: {}", e);
+                                }
+                            });
                         }
                     }
                 }
