@@ -17,7 +17,7 @@ pub struct ExecuteHashCommand {
     pub module_hash: ModuleHash,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "result", content = "data")]
 #[allow(clippy::large_enum_variant)]
 pub enum ExecuteHashResponse {
@@ -50,35 +50,29 @@ impl RpcCommand for ExecuteHashCommand {
         };
 
         let execution_request = match &context.session {
-            Session::Application(app_session) => {
-                let Some(application_id) = context.application_id() else {
-                    return ExecuteHashResponse::Failure("No application ID available".to_string());
-                };
-
-                match app_session {
-                    ApplicationSession::Anonymous { .. } => ExecutionRequest::Rpc {
-                        application_id,
+            Session::Application(app_session) => match app_session {
+                ApplicationSession::Anonymous { application_id, .. } => ExecutionRequest::Rpc {
+                    application_id: *application_id,
+                    args: self.args.clone(),
+                    handler_specifier,
+                },
+                ApplicationSession::Identified {
+                    application_id,
+                    identity_id,
+                    ..
+                } => match context.identity_manager.get_identity(identity_id).await {
+                    Ok(Some(identity)) => ExecutionRequest::RpcWithIdentity {
+                        application_id: *application_id,
                         args: self.args.clone(),
                         handler_specifier,
+                        identity,
                     },
-                    ApplicationSession::Identified { identity_id, .. } => {
-                        match context.identity_manager.get_identity(identity_id).await {
-                            Ok(Some(identity)) => ExecutionRequest::RpcWithIdentity {
-                                application_id,
-                                args: self.args.clone(),
-                                handler_specifier,
-                                identity,
-                            },
-                            Ok(None) => {
-                                return ExecuteHashResponse::Failure(
-                                    "Identity not found".to_string(),
-                                );
-                            }
-                            Err(e) => return ExecuteHashResponse::Failure(format!("{e:?}")),
-                        }
+                    Ok(None) => {
+                        return ExecuteHashResponse::Failure("Identity not found".to_string());
                     }
-                }
-            }
+                    Err(e) => return ExecuteHashResponse::Failure(format!("{e:?}")),
+                },
+            },
             Session::Management(_) => {
                 return ExecuteHashResponse::Failure(
                     "Execute hash command not available in management context".to_string(),

@@ -42,6 +42,14 @@ pub struct UiState {
     pub show_log_level_modal: bool,
     /// Selected index in log level modal (0-4 for Error, Warn, Info, Debug, Trace)
     pub log_level_modal_selected: usize,
+    /// Whether to show RPC modal
+    pub show_rpc_modal: bool,
+    /// Selected tab in RPC modal (0 = Management, 1 = Application)
+    pub rpc_modal_tab_selected: usize,
+    /// Selected command in RPC modal
+    pub rpc_modal_command_selected: usize,
+    /// Result of last RPC command execution
+    pub rpc_modal_result: Option<String>,
     /// Last applied node filter to prevent redundant calls
     last_applied_node_filter: Option<NodeId>,
 }
@@ -62,6 +70,10 @@ impl UiState {
             show_help: false,
             show_log_level_modal: false,
             log_level_modal_selected: 2, // Default to Info (index 2)
+            show_rpc_modal: false,
+            rpc_modal_tab_selected: 0,
+            rpc_modal_command_selected: 0,
+            rpc_modal_result: None,
             last_applied_node_filter: None,
         }
     }
@@ -342,6 +354,11 @@ pub fn render_ui<S: std::hash::BuildHasher>(
     // Render log level modal if requested
     if ui_state.show_log_level_modal {
         render_log_level_modal(frame, frame.area(), ui_state, log_reader);
+    }
+
+    // Render RPC modal if requested
+    if ui_state.show_rpc_modal {
+        render_rpc_modal(frame, frame.area(), ui_state);
     }
 }
 
@@ -748,6 +765,8 @@ fn render_footer<S: std::hash::BuildHasher>(
         }
 
         spans.extend(vec![
+            Span::styled("c", Style::default().fg(Color::LightMagenta)),
+            Span::styled(":rpc ", Style::default()),
             Span::styled("l", Style::default().fg(Color::LightCyan)),
             Span::styled(":log-level ", Style::default()),
             Span::styled("?", Style::default().fg(Color::White)),
@@ -783,6 +802,9 @@ fn render_help_overlay(frame: &mut Frame, area: ratatui::layout::Rect) {
         Line::from("  n               - Start new node"),
         Line::from("  s               - Start/stop selected node"),
         Line::from("  r               - Restart selected node"),
+        Line::from(""),
+        Line::from("RPC Operations:"),
+        Line::from("  c               - Open RPC modal (Management/Application commands)"),
         Line::from(""),
         Line::from("Navigation:"),
         Line::from("  Up/Down         - Navigate sidebar (select node)"),
@@ -890,6 +912,199 @@ fn render_log_level_modal(
         .alignment(ratatui::layout::Alignment::Center);
 
     frame.render_widget(paragraph, popup_area);
+}
+
+/// Render RPC modal
+#[allow(clippy::too_many_lines)]
+fn render_rpc_modal(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
+    let popup_area = centered_rect(70, 60, area);
+
+    frame.render_widget(Clear, popup_area);
+
+    // Create the main modal block
+    let modal_block = Block::default()
+        .borders(Borders::ALL)
+        .title(" RPC Operations ")
+        .title_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    frame.render_widget(modal_block, popup_area);
+
+    // Split the modal into sections
+    let inner_area = popup_area.inner(ratatui::layout::Margin {
+        vertical: 1,
+        horizontal: 2,
+    });
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Tab selection
+            Constraint::Min(5),    // Commands
+            Constraint::Length(3), // Result area (if there's a result)
+            Constraint::Length(2), // Help text
+        ])
+        .split(inner_area);
+
+    // Render tabs
+    let tab_area = chunks[0];
+    let tabs = vec![
+        if ui_state.rpc_modal_tab_selected == 0 {
+            Span::styled(
+                " Management ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(" Management ", Style::default().fg(Color::White))
+        },
+        Span::raw(" "),
+        if ui_state.rpc_modal_tab_selected == 1 {
+            Span::styled(
+                " Application ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::styled(" Application ", Style::default().fg(Color::White))
+        },
+    ];
+
+    let tabs_paragraph = Paragraph::new(Line::from(tabs))
+        .style(Style::default().fg(Color::White))
+        .alignment(ratatui::layout::Alignment::Center);
+
+    frame.render_widget(tabs_paragraph, tab_area);
+
+    // Render commands based on selected tab
+    let commands_area = chunks[1];
+
+    if ui_state.rpc_modal_tab_selected == 0 {
+        // Management commands
+        let management_commands = ["WhoAmI", "CreateApplication", "Identify", "Anonymize"];
+
+        let mut command_items = Vec::new();
+
+        for (i, command) in management_commands.iter().enumerate() {
+            let is_selected = i == ui_state.rpc_modal_command_selected;
+
+            let styled_text = if is_selected {
+                vec![Span::styled(
+                    format!("  > {command}  "),
+                    Style::default()
+                        .fg(Color::Black)
+                        .bg(Color::White)
+                        .add_modifier(Modifier::BOLD),
+                )]
+            } else {
+                vec![Span::styled(
+                    format!("    {command}  "),
+                    Style::default().fg(Color::White),
+                )]
+            };
+
+            command_items.push(ListItem::new(Line::from(styled_text)));
+        }
+
+        let commands_list = List::new(command_items)
+            .block(
+                Block::default()
+                    .borders(Borders::TOP)
+                    .title(" Commands ")
+                    .title_style(Style::default().fg(Color::Yellow)),
+            )
+            .style(Style::default().fg(Color::White));
+
+        frame.render_widget(commands_list, commands_area);
+    } else {
+        // Application commands - under construction
+        let under_construction = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "Application RPC is under construction",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::ITALIC),
+            )),
+            Line::from(""),
+            Line::from("Coming soon: Execute code, list applications, etc."),
+        ])
+        .block(
+            Block::default()
+                .borders(Borders::TOP)
+                .title(" Commands ")
+                .title_style(Style::default().fg(Color::Yellow)),
+        )
+        .style(Style::default().fg(Color::White))
+        .alignment(ratatui::layout::Alignment::Center);
+
+        frame.render_widget(under_construction, commands_area);
+    }
+
+    // Render result area if there's a result
+    if let Some(result) = &ui_state.rpc_modal_result {
+        let result_area = chunks[2];
+
+        let result_paragraph = Paragraph::new(Line::from(vec![
+            Span::styled("Result: ", Style::default().fg(Color::Gray)),
+            Span::styled(result.clone(), Style::default().fg(Color::White)),
+        ]))
+        .block(
+            Block::default()
+                .borders(Borders::TOP)
+                .title(" Result ")
+                .title_style(Style::default().fg(Color::Green)),
+        )
+        .wrap(ratatui::widgets::Wrap { trim: true });
+
+        frame.render_widget(result_paragraph, result_area);
+    }
+
+    // Render help text
+    let help_area = chunks[3];
+    let help_text = Line::from(vec![
+        Span::styled(
+            "Tab",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(":switch  "),
+        Span::styled(
+            "↑↓",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(":navigate  "),
+        Span::styled(
+            "Enter",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(":execute  "),
+        Span::styled(
+            "Esc",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(":close"),
+    ]);
+
+    let help_paragraph = Paragraph::new(help_text)
+        .style(Style::default().fg(Color::White))
+        .alignment(ratatui::layout::Alignment::Center);
+
+    frame.render_widget(help_paragraph, help_area);
 }
 
 /// Helper function to create a centered rectangle

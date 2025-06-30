@@ -5,6 +5,7 @@ use crate::{
     logs_writer::LogWriter,
     node_id::NodeId,
     node_manager::NodeManager,
+    rpc_client::RpcClient,
     ui::{UiState, render_ui},
 };
 use anyhow::Result;
@@ -70,6 +71,9 @@ pub struct App {
     /// Node manager - single source of truth for node state
     node_manager: Arc<NodeManager>,
 
+    /// RPC client for communicating with nodes
+    rpc_client: RpcClient,
+
     /// Log writer for disk-based logging
     log_writer: LogWriter,
 
@@ -106,11 +110,15 @@ impl App {
         // Create node manager with clean interface
         let node_manager = Arc::new(NodeManager::new(governance, session_id));
 
+        // Create RPC client for management operations
+        let rpc_client = RpcClient::new();
+
         Self {
             should_quit: false,
             shutting_down: false,
             ui_state: UiState::new(),
             node_manager,
+            rpc_client,
             log_writer,
             log_reader,
             shutdown_flag: None,
@@ -281,11 +289,25 @@ impl App {
             }
         }
 
+        // Handle modal-specific keys first (these take priority)
+        if self.ui_state.show_rpc_modal {
+            self.handle_rpc_modal_keys(key);
+            return;
+        }
+
         // Handle other global keys that should work even during shutdown
         match key.code {
             KeyCode::Char('?') => {
                 // Help toggle always works, even during shutdown
                 self.ui_state.show_help = !self.ui_state.show_help;
+                return;
+            }
+            KeyCode::Char('c') => {
+                // Open RPC modal (only if not shutting down)
+                if !self.shutting_down {
+                    self.ui_state.show_rpc_modal = true;
+                    self.ui_state.rpc_modal_result = None; // Clear previous result
+                }
                 return;
             }
             KeyCode::Esc => {
@@ -649,6 +671,151 @@ impl App {
             }
 
             _ => {}
+        }
+    }
+
+    /// Handle keys when RPC modal is open
+    fn handle_rpc_modal_keys(&mut self, key: KeyEvent) {
+        match key.code {
+            // Close modal
+            KeyCode::Esc => {
+                self.ui_state.show_rpc_modal = false;
+                self.ui_state.rpc_modal_result = None;
+            }
+
+            // Switch tabs
+            KeyCode::Tab => {
+                self.ui_state.rpc_modal_tab_selected =
+                    (self.ui_state.rpc_modal_tab_selected + 1) % 2;
+                self.ui_state.rpc_modal_command_selected = 0; // Reset command selection when switching tabs
+            }
+
+            // Navigate commands
+            KeyCode::Up => {
+                if self.ui_state.rpc_modal_command_selected > 0 {
+                    self.ui_state.rpc_modal_command_selected -= 1;
+                }
+            }
+
+            KeyCode::Down => {
+                let max_commands: usize = if self.ui_state.rpc_modal_tab_selected == 0 {
+                    4 // Management commands: WhoAmI, CreateApplication, Identify, Anonymize
+                } else {
+                    0 // Application commands: under construction
+                };
+
+                if self.ui_state.rpc_modal_command_selected < max_commands.saturating_sub(1) {
+                    self.ui_state.rpc_modal_command_selected += 1;
+                }
+            }
+
+            // Execute command
+            KeyCode::Enter => {
+                if self.ui_state.rpc_modal_tab_selected == 0 {
+                    // Management RPC
+                    self.execute_management_rpc_command();
+                } else {
+                    // Application RPC - under construction
+                    self.ui_state.rpc_modal_result =
+                        Some("Application RPC is under construction".to_string());
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Execute the selected management RPC command
+    fn execute_management_rpc_command(&mut self) {
+        // Find a running node
+        let nodes = self.node_manager.get_nodes_for_ui();
+        let running_node = nodes
+            .iter()
+            .find(|(_, (_, status))| matches!(status, NodeStatus::Running));
+
+        if let Some((node_id, (name, _))) = running_node {
+            let node_url = self.node_manager.get_node_url(*node_id);
+
+            if let Some(url) = node_url {
+                let command_name = match self.ui_state.rpc_modal_command_selected {
+                    0 => "WhoAmI",
+                    1 => "CreateApplication",
+                    2 => "Identify",
+                    3 => "Anonymize",
+                    _ => "Unknown",
+                };
+
+                info!(
+                    "Executing {} command via RPC with node: {} ({}) at {}",
+                    command_name,
+                    name,
+                    node_id.full_pokemon_name(),
+                    url
+                );
+
+                // Execute the command and store result
+                let result = match self.ui_state.rpc_modal_command_selected {
+                    0 => {
+                        // WhoAmI
+                        match self.rpc_client.who_am_i(&url) {
+                            Ok(response) => match response {
+                                proven_core::WhoAmIResponse::Anonymous { origin, session_id } => {
+                                    format!(
+                                        "✅ WhoAmI: Anonymous session {session_id} from {origin}"
+                                    )
+                                }
+                                proven_core::WhoAmIResponse::Identified {
+                                    identity: _,
+                                    origin,
+                                    session_id,
+                                } => {
+                                    format!(
+                                        "✅ WhoAmI: Identified session {session_id} from {origin}"
+                                    )
+                                }
+                                proven_core::WhoAmIResponse::Failure(error) => {
+                                    format!("⚠️ WhoAmI failed: {error}")
+                                }
+                            },
+                            Err(e) => format!("❌ Failed to execute WhoAmI: {e}"),
+                        }
+                    }
+                    1 => {
+                        // CreateApplication
+                        match self.rpc_client.create_application(&url, "test-app") {
+                            Ok(app_id) => {
+                                format!("✅ Application created successfully: {app_id}")
+                            }
+                            Err(e) => format!("❌ Failed to create application: {e}"),
+                        }
+                    }
+                    2 => {
+                        // Identify
+                        match self.rpc_client.identify(&url) {
+                            Ok(()) => "✅ Management session identified successfully".to_string(),
+                            Err(e) => format!("❌ Failed to identify: {e}"),
+                        }
+                    }
+                    3 => {
+                        // Anonymize
+                        match self.rpc_client.anonymize(&url) {
+                            Ok(()) => "✅ Management session anonymized successfully".to_string(),
+                            Err(e) => format!("❌ Failed to anonymize: {e}"),
+                        }
+                    }
+                    _ => "❌ Unknown command".to_string(),
+                };
+
+                self.ui_state.rpc_modal_result = Some(result);
+            } else {
+                self.ui_state.rpc_modal_result = Some(format!(
+                    "❌ Could not determine URL for node {}",
+                    node_id.full_pokemon_name()
+                ));
+            }
+        } else {
+            self.ui_state.rpc_modal_result =
+                Some("❌ No running nodes available for RPC operations".to_string());
         }
     }
 }

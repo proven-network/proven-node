@@ -2,17 +2,22 @@ use crate::rpc::commands::RpcCommand;
 use crate::rpc::context::RpcContext;
 
 use async_trait::async_trait;
+use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
 
+/// Command to anonymize a session.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AnonymizeCommand;
 
-#[derive(Debug, Serialize)]
+/// Response to an anonymize command.
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "result", content = "data")]
 pub enum AnonymizeResponse {
+    /// A failure to anonymize the session.
     #[serde(rename = "failure")]
     AnonymizeFailure(String),
 
+    /// A success to anonymize the session.
     #[serde(rename = "success")]
     AnonymizeSuccess,
 }
@@ -31,16 +36,27 @@ impl RpcCommand for AnonymizeCommand {
         SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
-        let session = match context
-            .sessions_manager
-            .anonymize_session(
-                &context.application_id().unwrap(),
-                context.session.session_id(),
-            )
-            .await
-        {
-            Ok(session) => session,
-            Err(e) => return AnonymizeResponse::AnonymizeFailure(e.to_string()),
+        let session = match &context.session {
+            Session::Application(app_session) => {
+                match context
+                    .sessions_manager
+                    .anonymize_session(app_session.application_id(), context.session.session_id())
+                    .await
+                {
+                    Ok(session) => session,
+                    Err(e) => return AnonymizeResponse::AnonymizeFailure(e.to_string()),
+                }
+            }
+            Session::Management(_) => {
+                match context
+                    .sessions_manager
+                    .anonymize_management_session(context.session.session_id())
+                    .await
+                {
+                    Ok(session) => session,
+                    Err(e) => return AnonymizeResponse::AnonymizeFailure(e.to_string()),
+                }
+            }
         };
 
         // Update context with new session

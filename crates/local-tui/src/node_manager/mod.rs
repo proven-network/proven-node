@@ -181,6 +181,28 @@ impl NodeManager {
         info!("Shutdown commands sent to all running nodes - waiting for graceful shutdown");
     }
 
+    /// Get the URL for a specific running node (matching governance origin exactly)
+    pub fn get_node_url(&self, node_id: NodeId) -> Option<String> {
+        let nodes = self.nodes.read();
+
+        if let Some(NodeRecord::Running(handle)) = nodes.get(&node_id) {
+            // Extract the actual port from the node configuration
+            let port = handle.config.port;
+
+            // Use the same origin format as registered in governance
+            let origin = if node_id.is_first_node() {
+                format!("http://localhost:{port}")
+            } else {
+                let pokemon_name = node_id.pokemon_name();
+                format!("http://{pokemon_name}.local:{port}")
+            };
+
+            Some(origin)
+        } else {
+            None
+        }
+    }
+
     /// Get current node information for UI display
     ///
     /// This method reads the status from either running or stopped nodes.

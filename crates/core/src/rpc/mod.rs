@@ -7,7 +7,7 @@ pub use auth::RpcAuth;
 pub use context::RpcContext;
 pub use error::Error;
 
-use crate::rpc::commands::{
+pub use crate::rpc::commands::{
     AnonymizeCommand, AnonymizeResponse, CreateApplicationCommand, CreateApplicationResponse,
     ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse, ExecuteResponse, IdentifyCommand,
     IdentifyResponse, WhoAmICommand, WhoAmIResponse,
@@ -22,25 +22,49 @@ use proven_runtime::RuntimePoolManagement;
 use proven_sessions::{Session, SessionManagement};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+/// A command to be sent to the RPC server.
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Command {
+    /// Anonymize the session.
     Anonymize(AnonymizeCommand),
+
+    /// Create an application.
     CreateApplication(CreateApplicationCommand),
-    Execute(ExecuteCommand),
+
+    /// Execute a code hash.
     ExecuteHash(ExecuteHashCommand),
+
+    /// Execute a code.
+    Execute(ExecuteCommand),
+
+    /// Identify the session.
     Identify(IdentifyCommand),
+
+    /// Get the identity of the current session.
     WhoAmI(WhoAmICommand),
 }
 
-#[derive(Debug, Serialize)]
+/// A response to a command sent to the RPC server.
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Response {
+    /// A response to the anonymize command.
     Anonymize(AnonymizeResponse),
+
+    /// A response to the create application command.
     CreateApplication(CreateApplicationResponse),
+
+    /// A response to the execute command.
     Execute(ExecuteResponse),
+
+    /// A response to the execute hash command.
     ExecuteHash(ExecuteHashResponse),
+
+    /// A response to the identify command.
     Identify(IdentifyResponse),
+
+    /// A response to the who am i command.
     WhoAmI(WhoAmIResponse),
 }
 

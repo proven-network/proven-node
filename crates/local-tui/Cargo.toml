@@ -10,6 +10,7 @@ crossterm = "0.29.0"
 
 # Async and messaging
 proven-local.workspace = true
+proven-core.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 crossbeam-channel = "0.5"
@@ -49,6 +50,14 @@ clap.workspace = true
 url.workspace = true
 pokemon-rs = "1.6.6"
 signal-hook = "0.3"
+
+# HTTP client for RPC communication
+reqwest.workspace = true
+
+# CBOR and COSE for attestation document parsing
+ciborium.workspace = true
+coset.workspace = true
+bytes.workspace = true
 
 [dev-dependencies]
 tempfile = "3.8"

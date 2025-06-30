@@ -12,6 +12,7 @@ mod logs_writer;
 mod messages;
 mod node_id;
 mod node_manager;
+mod rpc_client;
 mod ui;
 
 use app::App;

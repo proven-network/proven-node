@@ -13,6 +13,8 @@ mod rpc;
 pub use error::Error;
 pub use full::{Core, CoreOptions};
 pub use light::{LightCore, LightCoreOptions};
+
+// Export RPC command and response types for client use
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
@@ -21,6 +23,11 @@ use proven_network::ProvenNetwork;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
+pub use rpc::{
+    AnonymizeCommand, AnonymizeResponse, Command, CreateApplicationCommand,
+    CreateApplicationResponse, IdentifyCommand, IdentifyResponse, Response, WhoAmICommand,
+    WhoAmIResponse,
+};
 
 #[derive(Clone)]
 pub(crate) struct FullContext<AM, RM, IM, PM, SM, A, G>

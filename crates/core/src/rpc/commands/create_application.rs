@@ -6,15 +6,19 @@ use proven_applications::{Application, CreateApplicationOptions};
 use proven_sessions::Session;
 use serde::{Deserialize, Serialize};
 
+/// Command to create an application.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CreateApplicationCommand;
 
-#[derive(Debug, Serialize)]
+/// Response to a create application command.
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "result", content = "data")]
 pub enum CreateApplicationResponse {
+    /// A failure to create an application.
     #[serde(rename = "failure")]
     CreateApplicationFailure(String),
 
+    /// A success to create an application.
     #[serde(rename = "success")]
     CreateApplicationSuccess(Application),
 }

@@ -485,10 +485,12 @@ raw-window-handle = "0.6.0"
 rayon = "1.8.0"
 regex = "1.10.6"
 reqwest = { version = "0.12.20", default-features = false, features = [
+    "blocking",
     "brotli",
     "gzip",
     "hickory-dns",
     "http2",
+    "multipart",
     "json",
     "rustls-tls",
     "stream",

@@ -7,7 +7,7 @@ use proven_sessions::{ApplicationSession, ManagementSession, Session};
 use serde::{Deserialize, Serialize};
 
 /// Type returned to the client to identify the session which strips sensitive data (e.g. signing keys).
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "result", content = "data")]
 pub enum WhoAmIResponse {
     /// An anonymous session - yet to be identified via a ledger ID handshake.
@@ -20,6 +20,7 @@ pub enum WhoAmIResponse {
         session_id: String,
     },
 
+    /// A failure to get the identity of the current session.
     #[serde(rename = "failure")]
     Failure(String),
 
@@ -37,6 +38,7 @@ pub enum WhoAmIResponse {
     },
 }
 
+/// Command to get the identity of the current session.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WhoAmICommand;
 

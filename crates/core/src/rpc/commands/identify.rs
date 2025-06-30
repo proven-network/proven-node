@@ -5,20 +5,28 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use proven_identity::Identity;
+use proven_sessions::{ApplicationSession, ManagementSession, Session};
 use serde::{Deserialize, Serialize};
 
+/// Command to identify a session.
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct IdentifyCommand {
+    /// The public key of the passkey PRF used to identify the session.
     pub passkey_prf_public_key_bytes: Bytes,
+
+    /// The signature of the session ID signed by the passkey PRF.
     pub session_id_signature_bytes: Bytes,
 }
 
-#[derive(Debug, Serialize)]
+/// Response to an identify command.
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "result", content = "data")]
 pub enum IdentifyResponse {
+    /// A failure to identify the session.
     #[serde(rename = "failure")]
     IdentifyFailure(String),
 
+    /// A success to identify the session.
     #[serde(rename = "success")]
     // TODO: strip this down to something client-safe
     IdentifySuccess(Identity),
@@ -80,13 +88,37 @@ impl RpcCommand for IdentifyCommand {
             Err(e) => return IdentifyResponse::IdentifyFailure(e.to_string()),
         };
 
-        let session = match context
-            .sessions_manager
-            .identify_session(&context.application_id().unwrap(), session_id, &identity.id)
-            .await
-        {
-            Ok(session) => session,
-            Err(e) => return IdentifyResponse::IdentifyFailure(e.to_string()),
+        let session = match &context.session {
+            Session::Application(app_session) => match app_session {
+                ApplicationSession::Anonymous { application_id, .. } => match context
+                    .sessions_manager
+                    .identify_session(application_id, session_id, &identity.id)
+                    .await
+                {
+                    Ok(session) => session,
+                    Err(e) => return IdentifyResponse::IdentifyFailure(e.to_string()),
+                },
+                ApplicationSession::Identified { .. } => {
+                    return IdentifyResponse::IdentifyFailure(
+                        "Session already identified".to_string(),
+                    );
+                }
+            },
+            Session::Management(management_session) => match management_session {
+                ManagementSession::Anonymous { .. } => match context
+                    .sessions_manager
+                    .identify_management_session(session_id, &identity.id)
+                    .await
+                {
+                    Ok(session) => session,
+                    Err(e) => return IdentifyResponse::IdentifyFailure(e.to_string()),
+                },
+                ManagementSession::Identified { .. } => {
+                    return IdentifyResponse::IdentifyFailure(
+                        "Session already identified".to_string(),
+                    );
+                }
+            },
         };
 
         // Update context with new session

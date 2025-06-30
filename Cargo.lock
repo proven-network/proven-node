@@ -8192,6 +8192,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
+name = "mime_guess"
+version = "2.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
+dependencies = [
+ "mime",
+ "unicase",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10473,8 +10483,11 @@ name = "proven-local-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "chrono",
+ "ciborium",
  "clap",
+ "coset",
  "crossbeam-channel",
  "crossterm 0.29.0",
  "ed25519-dalek",
@@ -10484,11 +10497,13 @@ dependencies = [
  "pokemon-rs",
  "proven-attestation",
  "proven-attestation-mock",
+ "proven-core",
  "proven-governance",
  "proven-governance-mock",
  "proven-local",
  "rand 0.8.5",
  "ratatui",
+ "reqwest",
  "serde",
  "serde_json",
  "signal-hook",
@@ -11699,6 +11714,7 @@ dependencies = [
  "hyper-util",
  "js-sys",
  "log",
+ "mime_guess",
  "native-tls",
  "once_cell",
  "percent-encoding",

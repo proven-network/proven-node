@@ -30,6 +30,7 @@ pub enum NodeManagerMessage {
 
 /// Record of a node in the manager - either currently running or stopped
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // TODO: Box NodeHandle
 pub enum NodeRecord {
     Running(NodeHandle),
     Stopped {
@@ -48,6 +49,9 @@ pub struct NodeHandle {
 
     /// Display name (publicly accessible for TUI display)
     pub name: String,
+
+    /// Node configuration (stored for URL extraction)
+    pub config: TuiNodeConfig,
 
     /// Command sender for this specific node
     pub command_sender: mpsc::Sender<NodeOperation>,
@@ -88,11 +92,12 @@ impl NodeHandle {
         // Spawn dedicated command processing thread for this node
         let name_clone = name.clone();
         let status_clone = status.clone();
+        let config_clone = config.clone();
         thread::spawn(move || {
             Self::command_processor(
                 id,
                 &name_clone,
-                &config,
+                &config_clone,
                 &command_receiver,
                 &governance,
                 &status_clone,
@@ -103,6 +108,7 @@ impl NodeHandle {
         Self {
             _id: id,
             name,
+            config,
             command_sender,
             status,
         }
