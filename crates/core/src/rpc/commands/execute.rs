@@ -1,12 +1,11 @@
-use async_trait::async_trait;
-use proven_sessions::Session;
-use serde::{Deserialize, Serialize};
-
-use proven_code_package::CodePackage;
-use proven_runtime::{ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader};
-
 use crate::rpc::commands::RpcCommand;
 use crate::rpc::context::RpcContext;
+
+use async_trait::async_trait;
+use proven_code_package::CodePackage;
+use proven_runtime::{ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader};
+use proven_sessions::{ApplicationSession, Session};
+use serde::{Deserialize, Serialize};
 
 type Args = Vec<serde_json::Value>;
 type Module = String;
@@ -48,23 +47,38 @@ impl RpcCommand for ExecuteCommand {
             return ExecuteResponse::Failure("Invalid handler specifier".to_string());
         };
 
-        let execution_request = match context.session {
-            Session::Anonymous { .. } => ExecutionRequest::Rpc {
-                application_id: context.application_id,
-                args: self.args.clone(),
-                handler_specifier,
-            },
-            Session::Identified { identity_id, .. } => {
-                match context.identity_manager.get_identity(&identity_id).await {
-                    Ok(Some(identity)) => ExecutionRequest::RpcWithIdentity {
-                        application_id: context.application_id,
+        let execution_request = match &context.session {
+            Session::Application(app_session) => {
+                let Some(application_id) = context.application_id() else {
+                    return ExecuteResponse::Failure("No application ID available".to_string());
+                };
+
+                match app_session {
+                    ApplicationSession::Anonymous { .. } => ExecutionRequest::Rpc {
+                        application_id,
                         args: self.args.clone(),
                         handler_specifier,
-                        identity,
                     },
-                    Ok(None) => return ExecuteResponse::Failure("Identity not found".to_string()),
-                    Err(e) => return ExecuteResponse::Failure(format!("{e:?}")),
+                    ApplicationSession::Identified { identity_id, .. } => {
+                        match context.identity_manager.get_identity(identity_id).await {
+                            Ok(Some(identity)) => ExecutionRequest::RpcWithIdentity {
+                                application_id,
+                                args: self.args.clone(),
+                                handler_specifier,
+                                identity,
+                            },
+                            Ok(None) => {
+                                return ExecuteResponse::Failure("Identity not found".to_string());
+                            }
+                            Err(e) => return ExecuteResponse::Failure(format!("{e:?}")),
+                        }
+                    }
                 }
+            }
+            Session::Management(_) => {
+                return ExecuteResponse::Failure(
+                    "Execute command not available in management context".to_string(),
+                );
             }
         };
 

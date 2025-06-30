@@ -3,24 +3,24 @@ mod commands;
 mod context;
 mod error;
 
-use bytes::Bytes;
-use proven_applications::ApplicationManagement;
-use proven_identity::IdentityManagement;
-use proven_runtime::RuntimePoolManagement;
-use proven_sessions::{Session, SessionManagement};
-use serde::{Deserialize, Serialize};
-
 pub use auth::RpcAuth;
-pub use commands::RpcCommand;
 pub use context::RpcContext;
 pub use error::Error;
-use uuid::Uuid;
 
 use crate::rpc::commands::{
     AnonymizeCommand, AnonymizeResponse, CreateApplicationCommand, CreateApplicationResponse,
     ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse, ExecuteResponse, IdentifyCommand,
     IdentifyResponse, WhoAmICommand, WhoAmIResponse,
 };
+
+use async_trait::async_trait;
+use bytes::Bytes;
+use commands::RpcCommand;
+use proven_applications::ApplicationManagement;
+use proven_identity::IdentityManagement;
+use proven_runtime::RuntimePoolManagement;
+use proven_sessions::{Session, SessionManagement};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", content = "data")]
@@ -44,7 +44,7 @@ pub enum Response {
     WhoAmI(WhoAmIResponse),
 }
 
-#[async_trait::async_trait]
+#[async_trait]
 impl RpcCommand for Command {
     type Response = Response;
 
@@ -88,16 +88,14 @@ where
     RM: RuntimePoolManagement,
 {
     pub fn new(
-        application_id: Uuid,
         application_manager: AM,
-        runtime_pool_manager: RM,
         identity_manager: IM,
         sessions_manager: SM,
+        runtime_pool_manager: RM,
         session: Session,
     ) -> Self {
         let auth = RpcAuth::new(session.clone());
         let context = RpcContext::new(
-            application_id,
             application_manager,
             identity_manager,
             sessions_manager,

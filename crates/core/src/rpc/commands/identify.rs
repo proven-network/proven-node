@@ -1,11 +1,11 @@
+use crate::rpc::commands::RpcCommand;
+use crate::rpc::context::RpcContext;
+
 use async_trait::async_trait;
 use bytes::Bytes;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use proven_identity::Identity;
 use serde::{Deserialize, Serialize};
-
-use crate::rpc::commands::RpcCommand;
-use crate::rpc::context::RpcContext;
 
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct IdentifyCommand {
@@ -82,7 +82,7 @@ impl RpcCommand for IdentifyCommand {
 
         let session = match context
             .sessions_manager
-            .identify_session(&context.application_id, session_id, &identity.id)
+            .identify_session(&context.application_id().unwrap(), session_id, &identity.id)
             .await
         {
             Ok(session) => session,

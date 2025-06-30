@@ -2,7 +2,8 @@ use crate::error::Error;
 use crate::handlers::{
     ApplicationHttpContext, application_http_handler, bridge_iframe_html_handler,
     bridge_iframe_js_handler, broker_worker_js_handler, connect_iframe_html_handler,
-    connect_iframe_js_handler, create_session_handler, http_rpc_handler,
+    connect_iframe_js_handler, create_management_session_handler, create_session_handler,
+    http_rpc_handler, management_http_rpc_handler, management_ws_rpc_handler,
     nats_cluster_endpoint_handler, register_iframe_html_handler, register_iframe_js_handler,
     rpc_iframe_html_handler, rpc_iframe_js_handler, rpc_worker_js_handler, sdk_js_handler,
     webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
@@ -288,6 +289,10 @@ where
                 "/app/{application_id}/auth/create_session",
                 post(create_session_handler).with_state(full_ctx.clone()),
             )
+            .route(
+                "/auth/create_management_session",
+                post(create_management_session_handler).with_state(full_ctx.clone()),
+            )
             // ** RPC **
             .route(
                 "/app/{application_id}/rpc/http",
@@ -296,6 +301,14 @@ where
             .route(
                 "/app/{application_id}/rpc/ws",
                 get(ws_rpc_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/management/rpc/http",
+                post(management_http_rpc_handler).with_state(full_ctx.clone()),
+            )
+            .route(
+                "/management/rpc/ws",
+                get(management_ws_rpc_handler).with_state(full_ctx.clone()),
             )
             // ** WebAuthn **
             .route(

@@ -3,7 +3,7 @@ use crate::rpc::context::RpcContext;
 
 use async_trait::async_trait;
 use proven_identity::Identity;
-use proven_sessions::Session;
+use proven_sessions::{ApplicationSession, ManagementSession, Session};
 use serde::{Deserialize, Serialize};
 
 /// Type returned to the client to identify the session which strips sensitive data (e.g. signing keys).
@@ -54,26 +54,50 @@ impl RpcCommand for WhoAmICommand {
         SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
-        match context.session.clone() {
-            Session::Anonymous {
-                origin, session_id, ..
-            } => WhoAmIResponse::Anonymous {
-                origin,
-                session_id: session_id.to_string(),
-            },
-            Session::Identified {
-                identity_id,
-                origin,
-                session_id,
-                ..
-            } => match context.identity_manager.get_identity(&identity_id).await {
-                Ok(Some(identity)) => WhoAmIResponse::Identified {
-                    identity,
-                    origin,
+        match &context.session {
+            Session::Application(app_session) => match app_session {
+                ApplicationSession::Anonymous {
+                    origin, session_id, ..
+                } => WhoAmIResponse::Anonymous {
+                    origin: origin.clone(),
                     session_id: session_id.to_string(),
                 },
-                Ok(None) => WhoAmIResponse::Failure("Identity not found".to_string()),
-                Err(e) => WhoAmIResponse::Failure(e.to_string()),
+                ApplicationSession::Identified {
+                    identity_id,
+                    origin,
+                    session_id,
+                    ..
+                } => match context.identity_manager.get_identity(identity_id).await {
+                    Ok(Some(identity)) => WhoAmIResponse::Identified {
+                        identity,
+                        origin: origin.clone(),
+                        session_id: session_id.to_string(),
+                    },
+                    Ok(None) => WhoAmIResponse::Failure("Identity not found".to_string()),
+                    Err(e) => WhoAmIResponse::Failure(e.to_string()),
+                },
+            },
+            Session::Management(mgmt_session) => match mgmt_session {
+                ManagementSession::Anonymous {
+                    origin, session_id, ..
+                } => WhoAmIResponse::Anonymous {
+                    origin: origin.clone(),
+                    session_id: session_id.to_string(),
+                },
+                ManagementSession::Identified {
+                    identity_id,
+                    origin,
+                    session_id,
+                    ..
+                } => match context.identity_manager.get_identity(identity_id).await {
+                    Ok(Some(identity)) => WhoAmIResponse::Identified {
+                        identity,
+                        origin: origin.clone(),
+                        session_id: session_id.to_string(),
+                    },
+                    Ok(None) => WhoAmIResponse::Failure("Identity not found".to_string()),
+                    Err(e) => WhoAmIResponse::Failure(e.to_string()),
+                },
             },
         }
     }

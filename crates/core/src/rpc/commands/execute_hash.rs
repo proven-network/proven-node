@@ -1,11 +1,10 @@
-use async_trait::async_trait;
-use proven_sessions::Session;
-use serde::{Deserialize, Serialize};
-
-use proven_runtime::{ExecutionRequest, ExecutionResult, HandlerSpecifier};
-
 use crate::rpc::commands::RpcCommand;
 use crate::rpc::context::RpcContext;
+
+use async_trait::async_trait;
+use proven_runtime::{ExecutionRequest, ExecutionResult, HandlerSpecifier};
+use proven_sessions::{ApplicationSession, Session};
+use serde::{Deserialize, Serialize};
 
 type Args = Vec<serde_json::Value>;
 type ModuleHash = String;
@@ -50,25 +49,40 @@ impl RpcCommand for ExecuteHashCommand {
             return ExecuteHashResponse::Failure("Invalid handler specifier".to_string());
         };
 
-        let execution_request = match context.session {
-            Session::Anonymous { .. } => ExecutionRequest::Rpc {
-                application_id: context.application_id,
-                args: self.args.clone(),
-                handler_specifier,
-            },
-            Session::Identified { identity_id, .. } => {
-                match context.identity_manager.get_identity(&identity_id).await {
-                    Ok(Some(identity)) => ExecutionRequest::RpcWithIdentity {
-                        application_id: context.application_id,
+        let execution_request = match &context.session {
+            Session::Application(app_session) => {
+                let Some(application_id) = context.application_id() else {
+                    return ExecuteHashResponse::Failure("No application ID available".to_string());
+                };
+
+                match app_session {
+                    ApplicationSession::Anonymous { .. } => ExecutionRequest::Rpc {
+                        application_id,
                         args: self.args.clone(),
                         handler_specifier,
-                        identity,
                     },
-                    Ok(None) => {
-                        return ExecuteHashResponse::Failure("Identity not found".to_string());
+                    ApplicationSession::Identified { identity_id, .. } => {
+                        match context.identity_manager.get_identity(identity_id).await {
+                            Ok(Some(identity)) => ExecutionRequest::RpcWithIdentity {
+                                application_id,
+                                args: self.args.clone(),
+                                handler_specifier,
+                                identity,
+                            },
+                            Ok(None) => {
+                                return ExecuteHashResponse::Failure(
+                                    "Identity not found".to_string(),
+                                );
+                            }
+                            Err(e) => return ExecuteHashResponse::Failure(format!("{e:?}")),
+                        }
                     }
-                    Err(e) => return ExecuteHashResponse::Failure(format!("{e:?}")),
                 }
+            }
+            Session::Management(_) => {
+                return ExecuteHashResponse::Failure(
+                    "Execute hash command not available in management context".to_string(),
+                );
             }
         };
 

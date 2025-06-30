@@ -14,12 +14,20 @@ use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
-use proven_sessions::{CreateAnonymousSessionOptions, SessionManagement};
+use proven_sessions::{
+    CreateAnonymousSessionOptions, CreateManagementSessionOptions, SessionManagement,
+};
 use tracing::info;
 
 #[derive(TryFromMultipart)]
 pub struct CreateSessionRequest {
     application_id: String,
+    nonce: Bytes,
+    public_key: Bytes,
+}
+
+#[derive(TryFromMultipart)]
+pub struct CreateManagementSessionRequest {
     nonce: Bytes,
     public_key: Bytes,
 }
@@ -84,6 +92,70 @@ where
             Response::builder()
                 .status(400)
                 .body("Error creating session".into())
+                .unwrap()
+        }
+    }
+}
+
+pub(crate) async fn create_management_session_handler<AM, RM, IM, PM, SM, A, G>(
+    State(FullContext {
+        sessions_manager, ..
+    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+    origin_header: Option<TypedHeader<Origin>>,
+    data: TypedMultipart<CreateManagementSessionRequest>,
+) -> impl IntoResponse
+where
+    AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
+    IM: IdentityManagement,
+    PM: PasskeyManagement,
+    SM: SessionManagement,
+    A: Attestor,
+    G: Governance,
+{
+    let origin = match origin_header {
+        Some(value) => value.to_string(),
+        None => {
+            return Response::builder()
+                .status(400)
+                .body("Origin header not found".into())
+                .unwrap();
+        }
+    };
+
+    let verifying_key_bytes: [u8; 32] = match data.public_key.to_vec().try_into() {
+        Ok(vkb) => vkb,
+        Err(_) => {
+            return Response::builder()
+                .status(400)
+                .body("Public key incorrect length".into())
+                .unwrap();
+        }
+    };
+
+    let Ok(verifying_key) = VerifyingKey::from_bytes(&verifying_key_bytes) else {
+        return Response::builder()
+            .status(400)
+            .body("Failed to parse public key".into())
+            .unwrap();
+    };
+
+    match sessions_manager
+        .create_management_session(CreateManagementSessionOptions {
+            nonce: &data.nonce,
+            origin: &origin,
+            verifying_key: &verifying_key,
+        })
+        .await
+    {
+        Ok(attestation_document) => Response::builder()
+            .body(Body::from(attestation_document))
+            .unwrap(),
+        Err(e) => {
+            info!("Error creating management session: {:?}", e);
+            Response::builder()
+                .status(400)
+                .body("Error creating management session".into())
                 .unwrap()
         }
     }

@@ -33,13 +33,23 @@ impl RpcCommand for CreateApplicationCommand {
         SM: proven_sessions::SessionManagement,
         RM: proven_runtime::RuntimePoolManagement,
     {
-        let identity_id = match context.session {
-            Session::Anonymous { .. } => {
-                return CreateApplicationResponse::CreateApplicationFailure(
-                    "must be signed in to create an application".to_string(),
-                );
-            }
-            Session::Identified { identity_id, .. } => identity_id,
+        let identity_id = match &context.session {
+            Session::Application(app_session) => match app_session.identity_id() {
+                Some(id) => *id,
+                None => {
+                    return CreateApplicationResponse::CreateApplicationFailure(
+                        "must be signed in to create an application".to_string(),
+                    );
+                }
+            },
+            Session::Management(mgmt_session) => match mgmt_session.identity_id() {
+                Some(id) => *id,
+                None => {
+                    return CreateApplicationResponse::CreateApplicationFailure(
+                        "must be signed in to create an application".to_string(),
+                    );
+                }
+            },
         };
 
         let application = match context

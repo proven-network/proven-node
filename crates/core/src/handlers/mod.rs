@@ -11,7 +11,7 @@ pub(crate) use application_http::{ApplicationHttpContext, application_http_handl
 pub(crate) use node::nats_cluster_endpoint_handler;
 pub(crate) use rpc_http::http_rpc_handler;
 pub(crate) use rpc_ws::ws_rpc_handler;
-pub(crate) use sessions::create_session_handler;
+pub(crate) use sessions::{create_management_session_handler, create_session_handler};
 pub(crate) use static_files::{
     bridge_iframe_html_handler, bridge_iframe_js_handler, broker_worker_js_handler,
     connect_iframe_html_handler, connect_iframe_js_handler, register_iframe_html_handler,
@@ -23,6 +23,9 @@ pub(crate) use webauthn::{
     webauthn_registration_finish_handler, webauthn_registration_start_handler,
 };
 pub(crate) use whoami::whoami_handler;
+
+pub(crate) use rpc_http::management_http_rpc_handler;
+pub(crate) use rpc_ws::management_ws_rpc_handler;
 
 fn parse_bearer_token(auth_header: &str) -> Result<String, &'static str> {
     if let Some(token) = auth_header.strip_prefix("Bearer ") {

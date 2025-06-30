@@ -1,8 +1,8 @@
-use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-
 use crate::rpc::commands::RpcCommand;
 use crate::rpc::context::RpcContext;
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AnonymizeCommand;
@@ -33,7 +33,10 @@ impl RpcCommand for AnonymizeCommand {
     {
         let session = match context
             .sessions_manager
-            .anonymize_session(&context.application_id, context.session.session_id())
+            .anonymize_session(
+                &context.application_id().unwrap(),
+                context.session.session_id(),
+            )
             .await
         {
             Ok(session) => session,

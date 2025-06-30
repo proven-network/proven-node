@@ -4,7 +4,8 @@ use proven_runtime::RuntimePoolManagement;
 use proven_sessions::{Session, SessionManagement};
 use uuid::Uuid;
 
-/// Context object that holds all shared state and dependencies for RPC commands
+/// Context for RPC commands - works with any session type
+#[derive(Clone)]
 pub struct RpcContext<AM, IM, SM, RM>
 where
     AM: ApplicationManagement,
@@ -12,7 +13,6 @@ where
     SM: SessionManagement,
     RM: RuntimePoolManagement,
 {
-    pub application_id: Uuid,
     pub application_manager: AM,
     pub identity_manager: IM,
     pub sessions_manager: SM,
@@ -28,7 +28,6 @@ where
     RM: RuntimePoolManagement,
 {
     pub fn new(
-        application_id: Uuid,
         application_manager: AM,
         identity_manager: IM,
         sessions_manager: SM,
@@ -36,12 +35,19 @@ where
         session: Session,
     ) -> Self {
         Self {
-            application_id,
             application_manager,
             identity_manager,
             sessions_manager,
             runtime_pool_manager,
             session,
+        }
+    }
+
+    /// Get the `application_id` if this is an application session
+    pub fn application_id(&self) -> Option<Uuid> {
+        match &self.session {
+            Session::Application(app_session) => Some(*app_session.application_id()),
+            Session::Management(_) => None,
         }
     }
 }
