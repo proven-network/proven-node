@@ -112,6 +112,9 @@ pub struct IsolatedProcess {
     /// Process ID
     pid: u32,
 
+    /// Readiness status of the process (None = pending, Some(true) = ready, Some(false) = failed)
+    readiness_status: Arc<Mutex<Option<bool>>>,
+
     /// Shutdown token to request termination
     shutdown_token: CancellationToken,
 
@@ -157,6 +160,22 @@ impl IsolatedProcess {
             }
 
             // Process still exists, wait a bit and try again
+            tokio::time::sleep(check_interval).await;
+        }
+    }
+
+    /// Waits for the readiness checks to complete and returns whether they were successful
+    /// Returns true if readiness checks were successful, false if they failed
+    pub async fn wait_until_ready(&self) -> bool {
+        let check_interval = Duration::from_millis(100);
+
+        // Loop until there's a readiness status
+        loop {
+            if let Some(readiness_status) = self.readiness_status.lock().await.as_ref() {
+                return *readiness_status;
+            }
+
+            // Readiness checks still pending, wait a bit and try again
             tokio::time::sleep(check_interval).await;
         }
     }
@@ -958,11 +977,15 @@ impl IsolatedProcessSpawner {
             },
         );
 
+        // Create readiness status tracker
+        let readiness_status = Arc::new(Mutex::new(None));
+
         // Create the IsolatedProcess instance
         let process = IsolatedProcess {
             cgroups_controller,
             exit_status,
             pid,
+            readiness_status: readiness_status.clone(),
             shutdown_token,
             task_tracker,
             veth_pair: self.veth_pair.clone(),
@@ -996,6 +1019,7 @@ impl IsolatedProcessSpawner {
             // Check if process has exited while we were waiting
             #[allow(clippy::cast_possible_wrap)]
             if unsafe { libc::kill(pid as i32, 0) } != 0 {
+                *readiness_status.lock().await = Some(false);
                 return Err(Error::ReadinessCheck(
                     "Process exited during readiness checks".to_string(),
                 ));
@@ -1013,6 +1037,7 @@ impl IsolatedProcessSpawner {
                         attempts += 1;
                         if let Some(max) = max_attempts {
                             if attempts >= max {
+                                *readiness_status.lock().await = Some(false);
                                 return Err(Error::ReadinessCheck(
                                     "Container IP not available after max attempts".to_string(),
                                 ));
@@ -1042,6 +1067,7 @@ impl IsolatedProcessSpawner {
 
             if (self.is_ready_check)(ready_check_info).await {
                 debug!("Application reported ready after {} attempts", attempts + 1);
+                *readiness_status.lock().await = Some(true);
                 break;
             }
 
@@ -1049,6 +1075,7 @@ impl IsolatedProcessSpawner {
 
             if let Some(max) = max_attempts {
                 if attempts >= max {
+                    *readiness_status.lock().await = Some(false);
                     return Err(Error::ReadinessCheck(format!(
                         "Application not ready after {attempts} attempts"
                     )));
