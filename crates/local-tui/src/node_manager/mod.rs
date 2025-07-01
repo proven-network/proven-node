@@ -6,11 +6,12 @@ use crate::messages::{NodeOperation, TuiNodeConfig};
 use crate::node_id::NodeId;
 use records::{NodeHandle, NodeManagerMessage, NodeRecord, create_node_config};
 
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, mpsc};
+
 use parking_lot::RwLock;
 use proven_governance_mock::MockGovernance;
 use proven_local::NodeStatus;
-use std::collections::HashMap;
-use std::sync::{Arc, mpsc};
 use tracing::{error, info, warn};
 
 /// Manages multiple node instances with a clean interface
@@ -48,6 +49,85 @@ impl NodeManager {
         let node_config = config.map_or_else(
             || create_node_config(id, name, &self.governance, &self.session_id),
             |config| *config,
+        );
+
+        // Check if node already exists and handle accordingly
+        {
+            let nodes_guard = self.nodes.read();
+            if let Some(existing_record) = nodes_guard.get(&id) {
+                match existing_record {
+                    NodeRecord::Running(handle) => {
+                        // Node is running, send start command to it
+                        if let Err(e) = handle.send_command(NodeOperation::Start {
+                            config: Some(Box::new(node_config)),
+                        }) {
+                            error!(
+                                "Failed to send start command to running node {} ({}): {}",
+                                name, id, e
+                            );
+                        }
+                        return;
+                    }
+                    NodeRecord::Stopped { .. } => {
+                        // Node was stopped, we'll replace it with a new running instance
+                        info!("Restarting previously stopped node {}", name);
+                    }
+                }
+            }
+        }
+
+        // Create new node handle with command processing
+        let node_handle = NodeHandle::new(
+            id,
+            name.to_string(),
+            node_config.clone(),
+            self.governance.clone(),
+            self.completion_sender.clone(),
+        );
+
+        // Add to nodes map as Running
+        {
+            let mut nodes_guard = self.nodes.write();
+            nodes_guard.insert(id, NodeRecord::Running(node_handle));
+        }
+
+        // Send start command to the newly created node
+        {
+            let nodes_guard = self.nodes.read();
+            if let Some(NodeRecord::Running(node_handle)) = nodes_guard.get(&id) {
+                if let Err(e) = node_handle.send_command(NodeOperation::Start {
+                    config: Some(Box::new(node_config)),
+                }) {
+                    error!(
+                        "Failed to send start command to node {} ({}): {}",
+                        name, id, e
+                    );
+                }
+            }
+        }
+    }
+
+    /// Start a new node with specific specializations
+    #[allow(clippy::cognitive_complexity)]
+    pub fn start_node_with_specializations(
+        &self,
+        id: NodeId,
+        name: &str,
+        specializations: HashSet<proven_governance::NodeSpecialization>,
+    ) {
+        info!(
+            "Starting node {} ({}) with specializations: {:?}",
+            name,
+            id.full_pokemon_name(),
+            specializations
+        );
+
+        let node_config = records::create_node_config_with_specializations(
+            id,
+            name,
+            &self.governance,
+            &self.session_id,
+            specializations,
         );
 
         // Check if node already exists and handle accordingly

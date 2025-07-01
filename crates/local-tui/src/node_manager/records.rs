@@ -423,6 +423,46 @@ pub fn create_node_config(
     build_node_config(name, main_port, governance, private_key, session_id)
 }
 
+/// Create a node configuration with specific specializations
+pub fn create_node_config_with_specializations(
+    _id: NodeId,
+    name: &str,
+    governance: &Arc<MockGovernance>,
+    session_id: &str,
+    specializations: HashSet<proven_governance::NodeSpecialization>,
+) -> proven_local::NodeConfig<proven_governance_mock::MockGovernance> {
+    let main_port = allocate_port().unwrap_or_else(|e| {
+        error!("Failed to allocate port for node {}: {}", name, e);
+        3000 // Fallback port
+    });
+
+    let private_key = SigningKey::generate(&mut rand::thread_rng());
+
+    let node_config = build_node_config(name, main_port, governance, private_key, session_id);
+
+    // Add this node to the governance with specializations when configuration is created
+    let public_key = hex::encode(node_config.node_key.verifying_key().to_bytes());
+
+    // Get the origin that will be used in start_operation
+    let origin = format!("http://localhost:{main_port}");
+
+    let topology_node = TopologyNode {
+        availability_zone: "local".to_string(),
+        origin,
+        public_key,
+        region: "local".to_string(),
+        specializations,
+    };
+
+    if let Err(e) = governance.add_node(topology_node) {
+        error!("Failed to add node {} to governance: {}", name, e);
+    } else {
+        info!("Added node {} to governance with specializations", name);
+    }
+
+    node_config
+}
+
 /// Build a complete node configuration
 #[allow(clippy::too_many_lines)]
 pub fn build_node_config(

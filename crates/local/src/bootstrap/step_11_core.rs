@@ -14,13 +14,12 @@ use super::Bootstrap;
 use crate::error::Error;
 
 use std::net::{Ipv4Addr, SocketAddr};
-use std::str::FromStr;
 use std::time::Duration;
 
 use axum::Router;
 use axum::routing::any;
 use http::StatusCode;
-use proven_applications::{ApplicationManagement, ApplicationManager, CreateApplicationOptions};
+use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_bootable::Bootable;
 use proven_core::{Core, CoreOptions};
 use proven_governance::Governance;
@@ -41,7 +40,6 @@ use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
-use proven_util::Origin;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 use uuid::Uuid;
@@ -184,29 +182,6 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
 
     let applications = application_manager.list_all_applications().await.unwrap();
     info!("current application count: {}", applications.len());
-
-    // Create a test application if there are no applications
-    if applications.is_empty() {
-        match application_manager
-            .create_application(&CreateApplicationOptions {
-                owner_identity_id: Uuid::new_v4(),
-            })
-            .await
-        {
-            Ok(application) => {
-                let allowed_origin = Origin::from_str("http://proven.local:6900").unwrap();
-                application_manager
-                    .add_allowed_origin(&application.id, &allowed_origin)
-                    .await?;
-
-                info!("created test application: {application:?}");
-                info!("allowed origin: {}", allowed_origin);
-            }
-            Err(e) => {
-                info!("error creating test application: {e:?}");
-            }
-        }
-    }
 
     let application_store = NatsStore2::new(NatsStoreOptions {
         bucket: "APPLICATION_KV".to_string(),

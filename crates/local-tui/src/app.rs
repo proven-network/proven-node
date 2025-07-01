@@ -24,6 +24,7 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
 };
 use std::{
+    collections::HashSet,
     io,
     path::PathBuf,
     sync::{
@@ -290,6 +291,11 @@ impl App {
         }
 
         // Handle modal-specific keys first (these take priority)
+        if self.ui_state.show_node_type_modal {
+            self.handle_node_type_modal_keys(key);
+            return;
+        }
+
         if self.ui_state.show_rpc_modal {
             self.handle_rpc_modal_keys(key);
             return;
@@ -311,9 +317,11 @@ impl App {
                 return;
             }
             KeyCode::Esc => {
-                // Close help or log level modal if open
+                // Close help or any open modal
                 if self.ui_state.show_help {
                     self.ui_state.show_help = false;
+                } else if self.ui_state.show_node_type_modal {
+                    self.ui_state.show_node_type_modal = false;
                 } else if self.ui_state.show_log_level_modal {
                     self.ui_state.show_log_level_modal = false;
                 }
@@ -332,7 +340,7 @@ impl App {
     }
 
     /// Handle global key events
-    fn handle_global_key_event(&self, key: KeyEvent) -> KeyEventResult {
+    fn handle_global_key_event(&mut self, key: KeyEvent) -> KeyEventResult {
         match key.code {
             // Graceful quit the application
             KeyCode::Char('q') => {
@@ -355,7 +363,9 @@ impl App {
             // Start a new node with 'n' (only if not shutting down)
             KeyCode::Char('n') => {
                 if !self.shutting_down {
-                    self.start_new_node();
+                    self.ui_state.show_node_type_modal = true;
+                    self.ui_state.node_modal_selected_index = 0; // Reset to first option
+                    self.ui_state.node_specializations_selected = vec![false; 7]; // Reset all selections
                 }
             }
 
@@ -365,13 +375,51 @@ impl App {
         KeyEventResult::Continue
     }
 
-    /// Start a new node with default configuration
-    fn start_new_node(&self) {
+    /// Launch a new node with selected specializations from the modal
+    fn launch_node_with_specializations(&self) {
         let id = NodeId::new();
         let name = id.display_name();
 
-        // Use NodeManager's clean interface for starting nodes
-        self.node_manager.start_node(id, &name, None);
+        // Map UI selections to governance specializations
+        let spec_types = [
+            proven_governance::NodeSpecialization::BitcoinMainnet,
+            proven_governance::NodeSpecialization::BitcoinTestnet,
+            proven_governance::NodeSpecialization::EthereumMainnet,
+            proven_governance::NodeSpecialization::EthereumHolesky,
+            proven_governance::NodeSpecialization::EthereumSepolia,
+            proven_governance::NodeSpecialization::RadixMainnet,
+            proven_governance::NodeSpecialization::RadixStokenet,
+        ];
+
+        let mut specializations = HashSet::new();
+
+        for (i, &is_selected) in self
+            .ui_state
+            .node_specializations_selected
+            .iter()
+            .enumerate()
+        {
+            if is_selected {
+                if let Some(spec_type) = spec_types.get(i) {
+                    specializations.insert(spec_type.clone());
+                }
+            }
+        }
+
+        // Log the node creation with its specializations
+        if specializations.is_empty() {
+            info!("Creating basic node: {}", name);
+            self.node_manager.start_node(id, &name, None);
+        } else {
+            let spec_names: Vec<String> =
+                specializations.iter().map(|s| format!("{s:?}")).collect();
+            info!(
+                "Creating specialized node: {} with specializations: {:?}",
+                name, spec_names
+            );
+            self.node_manager
+                .start_node_with_specializations(id, &name, specializations);
+        }
     }
 
     /// Start/stop a node based on its current status
@@ -583,6 +631,52 @@ impl App {
             // Close modal without selection
             KeyCode::Esc => {
                 self.ui_state.show_log_level_modal = false;
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Handle keys when node type modal is open
+    fn handle_node_type_modal_keys(&mut self, key: KeyEvent) {
+        let num_specializations = 7;
+        let max_index = num_specializations; // 0-6 for specializations, 7 for launch button
+
+        match key.code {
+            // Navigate up in modal
+            KeyCode::Up => {
+                if self.ui_state.node_modal_selected_index > 0 {
+                    self.ui_state.node_modal_selected_index -= 1;
+                }
+            }
+
+            // Navigate down in modal
+            KeyCode::Down => {
+                if self.ui_state.node_modal_selected_index < max_index {
+                    self.ui_state.node_modal_selected_index += 1;
+                }
+            }
+
+            // Toggle specialization or launch node
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                if self.ui_state.node_modal_selected_index < num_specializations {
+                    // Toggle specialization
+                    let index = self.ui_state.node_modal_selected_index;
+                    if let Some(selected) =
+                        self.ui_state.node_specializations_selected.get_mut(index)
+                    {
+                        *selected = !*selected;
+                    }
+                } else {
+                    // Launch button pressed
+                    self.ui_state.show_node_type_modal = false;
+                    self.launch_node_with_specializations();
+                }
+            }
+
+            // Close modal without selection
+            KeyCode::Esc => {
+                self.ui_state.show_node_type_modal = false;
             }
 
             _ => {}

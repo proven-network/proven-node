@@ -52,6 +52,12 @@ pub struct UiState {
     pub rpc_modal_result: Option<String>,
     /// Last applied node filter to prevent redundant calls
     last_applied_node_filter: Option<NodeId>,
+    /// Whether to show node type selection modal
+    pub show_node_type_modal: bool,
+    /// Selected specializations for new node,
+    pub node_specializations_selected: Vec<bool>,
+    /// Currently highlighted index in the specializations modal
+    pub node_modal_selected_index: usize,
 }
 
 impl UiState {
@@ -75,6 +81,9 @@ impl UiState {
             rpc_modal_command_selected: 0,
             rpc_modal_result: None,
             last_applied_node_filter: None,
+            show_node_type_modal: false,
+            node_specializations_selected: vec![false; 7],
+            node_modal_selected_index: 0,
         }
     }
 
@@ -359,6 +368,11 @@ pub fn render_ui<S: std::hash::BuildHasher>(
     // Render RPC modal if requested
     if ui_state.show_rpc_modal {
         render_rpc_modal(frame, frame.area(), ui_state);
+    }
+
+    // Render node type selection modal if requested
+    if ui_state.show_node_type_modal {
+        render_node_type_modal(frame, frame.area(), ui_state);
     }
 }
 
@@ -1105,6 +1119,91 @@ fn render_rpc_modal(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &U
         .alignment(ratatui::layout::Alignment::Center);
 
     frame.render_widget(help_paragraph, help_area);
+}
+
+/// Render node type selection modal
+fn render_node_type_modal(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
+    let specializations = [
+        ("Bitcoin Mainnet", Color::Yellow),
+        ("Bitcoin Testnet", Color::Yellow),
+        ("Ethereum Mainnet", Color::Blue),
+        ("Ethereum Holesky", Color::Blue),
+        ("Ethereum Sepolia", Color::Blue),
+        ("Radix Mainnet", Color::Green),
+        ("Radix Stokenet", Color::Green),
+    ];
+
+    let mut modal_text = vec![
+        Line::from("Select blockchain specializations for the new node:"),
+        Line::from(""),
+    ];
+
+    // Add specialization options
+    for (i, (spec_name, spec_color)) in specializations.iter().enumerate() {
+        let is_highlighted = i == ui_state.node_modal_selected_index;
+        let is_selected = ui_state
+            .node_specializations_selected
+            .get(i)
+            .unwrap_or(&false);
+
+        let checkbox = if *is_selected { "[✓]" } else { "[ ]" };
+        let highlight_prefix = if is_highlighted { "> " } else { "  " };
+        let highlight_suffix = if is_highlighted { " <" } else { "  " };
+
+        let line = Line::from(vec![
+            Span::styled(highlight_prefix, Style::default()),
+            Span::styled(checkbox, Style::default().fg(Color::Cyan)),
+            Span::styled(" ", Style::default()),
+            Span::styled(*spec_name, Style::default().fg(*spec_color)),
+            Span::styled(highlight_suffix, Style::default()),
+        ]);
+
+        modal_text.push(line);
+    }
+
+    // Add launch button
+    modal_text.push(Line::from(""));
+    let launch_highlighted = ui_state.node_modal_selected_index == specializations.len();
+    let launch_prefix = if launch_highlighted { "> " } else { "  " };
+    let launch_suffix = if launch_highlighted { " <" } else { "  " };
+
+    let launch_line = Line::from(vec![
+        Span::styled(launch_prefix, Style::default()),
+        Span::styled(
+            "Launch Node",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(launch_suffix, Style::default()),
+    ]);
+    modal_text.push(launch_line);
+
+    modal_text.extend(vec![
+        Line::from(""),
+        Line::from("Up/Down: navigate, Space: toggle, Enter: launch/toggle, Esc: cancel"),
+    ]);
+
+    let popup_area = centered_rect(70, 70, area);
+
+    frame.render_widget(Clear, popup_area);
+
+    let paragraph = Paragraph::new(modal_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Create New Node ")
+                .title_style(
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .padding(ratatui::widgets::Padding::uniform(1)),
+        )
+        .style(Style::default().fg(Color::White))
+        .alignment(ratatui::layout::Alignment::Left);
+
+    frame.render_widget(paragraph, popup_area);
 }
 
 /// Helper function to create a centered rectangle
