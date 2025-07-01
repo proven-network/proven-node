@@ -9941,6 +9941,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber 0.3.19",
  "url",
+ "which 6.0.3",
 ]
 
 [[package]]

@@ -671,6 +671,7 @@ pub fn build_node_config(
         bitcoin_mainnet_store_dir: PathBuf::from(format!(
             "/tmp/proven/{session_id}/data/{name}/bitcoin-mainnet"
         )),
+        bitcoin_mainnet_rpc_port: allocate_port().unwrap(),
 
         bitcoin_testnet_fallback_rpc_endpoint: Url::parse(
             "https://bitcoin-testnet-rpc.publicnode.com",
@@ -680,6 +681,7 @@ pub fn build_node_config(
         bitcoin_testnet_store_dir: PathBuf::from(format!(
             "/tmp/proven/{session_id}/data/{name}/bitcoin-testnet"
         )),
+        bitcoin_testnet_rpc_port: allocate_port().unwrap(),
 
         ethereum_holesky_consensus_http_port: allocate_port().unwrap(),
         ethereum_holesky_consensus_metrics_port: allocate_port().unwrap(),

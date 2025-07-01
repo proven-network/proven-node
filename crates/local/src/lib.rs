@@ -65,6 +65,9 @@ pub struct NodeConfig<G: Governance> {
     /// Bitcoin mainnet proxy port
     pub bitcoin_mainnet_proxy_port: u16,
 
+    /// Bitcoin mainnet RPC port
+    pub bitcoin_mainnet_rpc_port: u16,
+
     /// Bitcoin mainnet store directory
     pub bitcoin_mainnet_store_dir: PathBuf,
 
@@ -73,6 +76,9 @@ pub struct NodeConfig<G: Governance> {
 
     /// Bitcoin testnet proxy port
     pub bitcoin_testnet_proxy_port: u16,
+
+    /// Bitcoin testnet RPC port
+    pub bitcoin_testnet_rpc_port: u16,
 
     /// Bitcoin testnet store directory
     pub bitcoin_testnet_store_dir: PathBuf,

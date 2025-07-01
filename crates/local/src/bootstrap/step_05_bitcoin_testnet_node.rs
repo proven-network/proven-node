@@ -49,10 +49,11 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     {
         // Start Bitcoin testnet node
         let bitcoin_testnet_node = BitcoinNode::new(BitcoinNodeOptions {
+            bin_dir: None,
             network: BitcoinNetwork::Testnet,
             store_dir: bootstrap.config.bitcoin_testnet_store_dir.clone(),
-            rpc_port: None,
-        });
+            rpc_port: bootstrap.config.bitcoin_testnet_rpc_port,
+        })?;
 
         bitcoin_testnet_node
             .start()

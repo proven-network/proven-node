@@ -14,6 +14,10 @@ where
     #[error("already started")]
     AlreadyStarted,
 
+    /// Binary not found.
+    #[error("bitcoind binary not found")]
+    BinaryNotFound,
+
     /// IO error.
     #[error("io error ({0}): {1}")]
     Io(&'static str, #[source] io::Error),

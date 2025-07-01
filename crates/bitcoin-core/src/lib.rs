@@ -61,19 +61,25 @@ impl BitcoinNetwork {
 
 /// Options for configuring an `BitcoinNode`.
 pub struct BitcoinNodeOptions {
+    /// Optional path to the directory containing the bitcoind binary. If None, will use `which` to find it.
+    pub bin_dir: Option<PathBuf>,
+
     /// The Bitcoin network to connect to.
     pub network: BitcoinNetwork,
 
     /// The directory to store data in.
     pub store_dir: PathBuf,
 
-    /// Optional RPC port (defaults to 8332)
-    pub rpc_port: Option<u16>,
+    /// RPC port
+    pub rpc_port: u16,
 }
 
 /// Bitcoin Core application implementing the `IsolatedApplication` trait
 struct BitcoinCoreApp {
-    /// The path to the bitcoind executable
+    /// The directory containing the bitcoind executable
+    bin_dir: PathBuf,
+
+    /// The full path to the bitcoind executable
     executable_path: String,
 
     /// The Bitcoin network type
@@ -90,9 +96,10 @@ struct BitcoinCoreApp {
 impl IsolatedApplication for BitcoinCoreApp {
     fn args(&self) -> Vec<String> {
         let mut args = vec![
-            "--datadir=/data".to_string(),
+            format!("--datadir={}", self.store_dir.display()),
             "--server=1".to_string(),
             "--txindex=1".to_string(),
+            "--listenonion=0".to_string(),
             "--rpcallowip=0.0.0.0/0".to_string(),
             "--rpcbind=0.0.0.0".to_string(),
             format!("--port={}", P2P_PORT),
@@ -172,8 +179,8 @@ impl IsolatedApplication for BitcoinCoreApp {
 
     fn volume_mounts(&self) -> Vec<VolumeMount> {
         vec![
-            VolumeMount::new(&self.store_dir, &PathBuf::from("/data")),
-            VolumeMount::new("/apps/bitcoin/v28.1", "/apps/bitcoin/v28.1"),
+            VolumeMount::new(&self.store_dir, &self.store_dir),
+            VolumeMount::new(&self.bin_dir, &self.bin_dir),
         ]
     }
 }
@@ -192,18 +199,40 @@ pub struct BitcoinNode {
 
     /// The RPC port
     rpc_port: u16,
+
+    /// The directory containing the bitcoind binary
+    bin_dir: PathBuf,
 }
 
 impl BitcoinNode {
     /// Creates a new `BitcoinNode` with the specified options.
-    #[must_use]
-    pub fn new(options: BitcoinNodeOptions) -> Self {
-        Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the bitcoind binary is not found.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the bitcoind binary is not found and `bin_dir` is not provided.
+    pub fn new(options: BitcoinNodeOptions) -> Result<Self, Error> {
+        let bin_dir = match options.bin_dir {
+            Some(dir) => dir,
+            None => match which::which("bitcoind") {
+                Ok(path) => path
+                    .parent()
+                    .expect("which should have returned a path with a parent directory")
+                    .to_path_buf(),
+                Err(_) => return Err(Error::BinaryNotFound),
+            },
+        };
+
+        Ok(Self {
             process: Arc::new(Mutex::new(None)),
             network: options.network,
             store_dir: options.store_dir,
-            rpc_port: options.rpc_port.unwrap_or(8332),
-        }
+            rpc_port: options.rpc_port,
+            bin_dir,
+        })
     }
 
     fn prepare_config(&self) -> Result<(), Error> {
@@ -290,14 +319,16 @@ impl BitcoinNode {
     ///
     /// Returns an error if the node is not started.
     pub async fn rpc_socket_addr(&self) -> Result<SocketAddr, Error> {
-        self.process
-            .lock()
-            .await
-            .as_ref()
-            .ok_or(Error::NotStarted)?
+        let process_guard = self.process.lock().await;
+        let process = process_guard.as_ref().ok_or(Error::NotStarted)?;
+
+        let ip = process
             .container_ip()
-            .map(|ip| SocketAddr::new(ip, self.rpc_port))
-            .ok_or(Error::NotStarted)
+            .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+
+        drop(process_guard);
+
+        Ok(SocketAddr::new(ip, self.rpc_port))
     }
 }
 
@@ -322,7 +353,8 @@ impl Bootable for BitcoinNode {
         self.prepare_config()?;
 
         let app = BitcoinCoreApp {
-            executable_path: "/apps/bitcoin/v28.1/bitcoind".to_string(),
+            bin_dir: self.bin_dir.clone(),
+            executable_path: self.bin_dir.join("bitcoind").to_string_lossy().into_owned(),
             network: self.network,
             store_dir: self.store_dir.clone(),
             rpc_port: self.rpc_port,
@@ -331,6 +363,8 @@ impl Bootable for BitcoinNode {
         let process = proven_isolation::spawn(app)
             .await
             .map_err(Error::Isolation)?;
+
+        process.wait_until_ready().await;
 
         // Store the process for later shutdown
         self.process.lock().await.replace(process);

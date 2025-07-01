@@ -62,6 +62,10 @@ struct Args {
     )]
     bitcoin_mainnet_proxy_port: u16,
 
+    /// Bitcoin mainnet RPC port
+    #[arg(long, default_value_t = 8332, env = "PROVEN_BITCOIN_MAINNET_RPC_PORT")]
+    bitcoin_mainnet_rpc_port: u16,
+
     /// Bitcoin mainnet store directory
     #[arg(
         long,
@@ -85,6 +89,10 @@ struct Args {
         env = "PROVEN_BITCOIN_TESTNET_PROXY_PORT"
     )]
     bitcoin_testnet_proxy_port: u16,
+
+    /// Bitcoin testnet RPC port
+    #[arg(long, default_value_t = 18332, env = "PROVEN_BITCOIN_TESTNET_RPC_PORT")]
+    bitcoin_testnet_rpc_port: u16,
 
     /// Bitcoin testnet store directory
     #[arg(
@@ -497,9 +505,11 @@ async fn create_node_config(args: Args) -> Result<NodeConfig<MockGovernance>, Er
         allow_single_node,
         bitcoin_mainnet_fallback_rpc_endpoint: args.bitcoin_mainnet_fallback_rpc_endpoint,
         bitcoin_mainnet_proxy_port: args.bitcoin_mainnet_proxy_port,
+        bitcoin_mainnet_rpc_port: args.bitcoin_mainnet_rpc_port,
         bitcoin_mainnet_store_dir: args.bitcoin_mainnet_store_dir,
         bitcoin_testnet_fallback_rpc_endpoint: args.bitcoin_testnet_fallback_rpc_endpoint,
         bitcoin_testnet_proxy_port: args.bitcoin_testnet_proxy_port,
+        bitcoin_testnet_rpc_port: args.bitcoin_testnet_rpc_port,
         bitcoin_testnet_store_dir: args.bitcoin_testnet_store_dir,
         ethereum_holesky_consensus_http_port: args.ethereum_holesky_consensus_http_port,
         ethereum_holesky_consensus_metrics_port: args.ethereum_holesky_consensus_metrics_port,

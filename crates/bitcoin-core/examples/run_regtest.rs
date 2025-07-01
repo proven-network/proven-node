@@ -20,11 +20,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let options = BitcoinNodeOptions {
         network: BitcoinNetwork::Regtest, // Use regtest for quick startup
         store_dir,
-        rpc_port: None, // Use default (8332)
+        rpc_port: 8332,
+        bin_dir: None, // Use default location found by `which`
     };
 
     // Create and start the node
-    let node = BitcoinNode::new(options);
+    let node = BitcoinNode::new(options)?;
     node.start().await?;
 
     println!("Bitcoin Core node is ready!");

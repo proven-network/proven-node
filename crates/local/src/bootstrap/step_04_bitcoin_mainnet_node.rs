@@ -49,10 +49,11 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     {
         // Start Bitcoin mainnet node
         let bitcoin_mainnet_node = BitcoinNode::new(BitcoinNodeOptions {
+            bin_dir: None,
             network: BitcoinNetwork::Mainnet,
             store_dir: bootstrap.config.bitcoin_mainnet_store_dir.clone(),
-            rpc_port: None,
-        });
+            rpc_port: bootstrap.config.bitcoin_mainnet_rpc_port,
+        })?;
 
         bitcoin_mainnet_node
             .start()
