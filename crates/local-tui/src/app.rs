@@ -211,7 +211,7 @@ impl App {
             if self.shutting_down {
                 let nodes = self.node_manager.get_nodes_for_ui();
                 info!("Shutdown check: {} nodes tracked", nodes.len());
-                for (id, (name, status)) in &nodes {
+                for (id, (name, status, _specializations)) in &nodes {
                     info!("  Node {}: {} ({})", id.full_pokemon_name(), name, status);
                 }
 
@@ -409,7 +409,6 @@ impl App {
         // Log the node creation with its specializations
         if specializations.is_empty() {
             info!("Creating basic node: {}", name);
-            self.node_manager.start_node(id, &name, None);
         } else {
             let spec_names: Vec<String> =
                 specializations.iter().map(|s| format!("{s:?}")).collect();
@@ -417,9 +416,9 @@ impl App {
                 "Creating specialized node: {} with specializations: {:?}",
                 name, spec_names
             );
-            self.node_manager
-                .start_node_with_specializations(id, &name, specializations);
         }
+
+        self.node_manager.start_node(id, &name, specializations);
     }
 
     /// Start/stop a node based on its current status
@@ -428,12 +427,13 @@ impl App {
         // Get current node status from NodeManager
         let nodes = self.node_manager.get_nodes_for_ui();
 
-        if let Some((_, status)) = nodes.get(&node_id) {
+        if let Some((_, status, specializations)) = nodes.get(&node_id) {
             match status {
                 NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Failed(_) => {
                     // Node is not running, so start it
                     let name = node_id.display_name();
-                    self.node_manager.start_node(node_id, &name, None);
+                    self.node_manager
+                        .start_node(node_id, &name, specializations.clone());
                     info!("Starting node: {}", node_id.full_pokemon_name());
                 }
                 NodeStatus::Running | NodeStatus::Starting => {
@@ -449,7 +449,7 @@ impl App {
         } else {
             // Node not found in our list, assume it's not started and try to start it
             let name = node_id.display_name();
-            self.node_manager.start_node(node_id, &name, None);
+            self.node_manager.start_node(node_id, &name, HashSet::new());
             info!("Starting new node: {}", node_id.full_pokemon_name());
         }
     }
@@ -825,9 +825,9 @@ impl App {
         let nodes = self.node_manager.get_nodes_for_ui();
         let running_node = nodes
             .iter()
-            .find(|(_, (_, status))| matches!(status, NodeStatus::Running));
+            .find(|(_, (_, status, _specializations))| matches!(status, NodeStatus::Running));
 
-        if let Some((node_id, (name, _))) = running_node {
+        if let Some((node_id, (name, _, _specializations))) = running_node {
             let node_url = self.node_manager.get_node_url(*node_id);
 
             if let Some(url) = node_url {

@@ -2,7 +2,7 @@
 
 use crate::{logs_viewer::LogReader, messages::NodeId};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use proven_local::NodeStatus;
 use ratatui::{
@@ -333,7 +333,15 @@ fn create_colored_log_line(entry: &crate::messages::LogEntry, show_node_name: bo
 pub fn render_ui<S: std::hash::BuildHasher>(
     frame: &mut Frame,
     ui_state: &mut UiState,
-    nodes: &HashMap<NodeId, (String, NodeStatus), S>,
+    nodes: &HashMap<
+        NodeId,
+        (
+            String,
+            NodeStatus,
+            HashSet<proven_governance::NodeSpecialization>,
+        ),
+        S,
+    >,
     log_reader: &LogReader,
     shutting_down: bool,
 ) {
@@ -399,7 +407,15 @@ fn render_logs<S: std::hash::BuildHasher>(
     area: ratatui::layout::Rect,
     log_reader: &LogReader,
     ui_state: &mut UiState,
-    nodes: &HashMap<NodeId, (String, NodeStatus), S>,
+    nodes: &HashMap<
+        NodeId,
+        (
+            String,
+            NodeStatus,
+            HashSet<proven_governance::NodeSpecialization>,
+        ),
+        S,
+    >,
 ) {
     // Update nodes with logs for sidebar - use NodeManager data instead of scanning log files
     let mut nodes_with_logs: Vec<NodeId> = nodes
@@ -575,7 +591,15 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
     area: ratatui::layout::Rect,
     ui_state: &UiState,
     _log_reader: &LogReader,
-    nodes: &HashMap<NodeId, (String, NodeStatus), S>,
+    nodes: &HashMap<
+        NodeId,
+        (
+            String,
+            NodeStatus,
+            HashSet<proven_governance::NodeSpecialization>,
+        ),
+        S,
+    >,
 ) {
     // Render the border
     let border_block = Block::default()
@@ -629,18 +653,19 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
         let node_color = get_node_color(node_id);
 
         // Get node status and status icon
-        let (status_icon, status_color) = if let Some((_, status)) = nodes.get(&node_id) {
-            let icon = get_status_icon(status);
-            let color = match status {
-                NodeStatus::NotStarted | NodeStatus::Stopped => Color::Gray,
-                NodeStatus::Starting | NodeStatus::Stopping => Color::Yellow,
-                NodeStatus::Running => Color::Green,
-                NodeStatus::Failed(_) => Color::Red,
+        let (status_icon, status_color) =
+            if let Some((_, status, _specializations)) = nodes.get(&node_id) {
+                let icon = get_status_icon(status);
+                let color = match status {
+                    NodeStatus::NotStarted | NodeStatus::Stopped => Color::Gray,
+                    NodeStatus::Starting | NodeStatus::Stopping => Color::Yellow,
+                    NodeStatus::Running => Color::Green,
+                    NodeStatus::Failed(_) => Color::Red,
+                };
+                (icon, color)
+            } else {
+                ("?", Color::Gray) // Unknown status
             };
-            (icon, color)
-        } else {
-            ("?", Color::Gray) // Unknown status
-        };
 
         // Show number shortcut for first 9 nodes
         let prefix = if index < 9 {
@@ -709,7 +734,15 @@ fn render_footer<S: std::hash::BuildHasher>(
     area: ratatui::layout::Rect,
     shutting_down: bool,
     ui_state: &UiState,
-    nodes: &HashMap<NodeId, (String, NodeStatus), S>,
+    nodes: &HashMap<
+        NodeId,
+        (
+            String,
+            NodeStatus,
+            HashSet<proven_governance::NodeSpecialization>,
+        ),
+        S,
+    >,
 ) {
     let footer_text = if shutting_down {
         Line::from(vec![
@@ -737,7 +770,7 @@ fn render_footer<S: std::hash::BuildHasher>(
                 .get(ui_state.logs_sidebar_selected - 1)
             {
                 // Specific node selected - show context-aware action
-                if let Some((_, status)) = nodes.get(&selected_node_id) {
+                if let Some((_, status, _specializations)) = nodes.get(&selected_node_id) {
                     match status {
                         NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Failed(_) => {
                             ("start", Color::Green)

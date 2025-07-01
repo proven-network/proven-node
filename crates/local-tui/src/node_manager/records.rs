@@ -11,10 +11,11 @@ use proven_governance::TopologyNode;
 use proven_governance_mock::MockGovernance;
 use proven_local::{Node, NodeStatus};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
+use std::{fs, os::unix::fs::symlink};
 use tracing::{error, info, warn};
 use url::Url;
 
@@ -25,6 +26,7 @@ pub enum NodeManagerMessage {
         id: NodeId,
         name: String,
         final_status: NodeStatus,
+        specializations: HashSet<proven_governance::NodeSpecialization>,
     },
 }
 
@@ -37,6 +39,7 @@ pub enum NodeRecord {
         _id: NodeId,
         name: String,
         final_status: NodeStatus,
+        specializations: HashSet<proven_governance::NodeSpecialization>,
         _stopped_at: std::time::Instant,
     },
 }
@@ -53,6 +56,9 @@ pub struct NodeHandle {
     /// Node configuration (stored for URL extraction)
     pub config: TuiNodeConfig,
 
+    /// Specializations for this node
+    pub specializations: HashSet<proven_governance::NodeSpecialization>,
+
     /// Command sender for this specific node
     pub command_sender: mpsc::Sender<NodeOperation>,
 
@@ -67,6 +73,7 @@ impl NodeHandle {
         id: NodeId,
         name: String,
         config: TuiNodeConfig,
+        specializations: HashSet<proven_governance::NodeSpecialization>,
         governance: Arc<MockGovernance>,
         completion_sender: mpsc::Sender<NodeManagerMessage>,
     ) -> Self {
@@ -93,6 +100,7 @@ impl NodeHandle {
         let name_clone = name.clone();
         let status_clone = status.clone();
         let config_clone = config.clone();
+        let specializations_clone = specializations.clone();
         thread::spawn(move || {
             Self::command_processor(
                 id,
@@ -102,6 +110,7 @@ impl NodeHandle {
                 &governance,
                 &status_clone,
                 &completion_sender,
+                specializations_clone,
             );
         });
 
@@ -109,6 +118,7 @@ impl NodeHandle {
             _id: id,
             name,
             config,
+            specializations,
             command_sender,
             status,
         }
@@ -128,6 +138,8 @@ impl NodeHandle {
     }
 
     /// Command processor that runs in a dedicated thread for each node
+    #[allow(clippy::too_many_lines)]
+    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::cognitive_complexity)]
     fn command_processor(
         id: NodeId,
@@ -137,6 +149,7 @@ impl NodeHandle {
         governance: &Arc<MockGovernance>,
         status: &Arc<RwLock<NodeStatus>>,
         completion_sender: &mpsc::Sender<NodeManagerMessage>,
+        specializations: HashSet<proven_governance::NodeSpecialization>,
     ) {
         // Create runtime for this command processor
         let runtime = match tokio::runtime::Builder::new_multi_thread()
@@ -187,12 +200,38 @@ impl NodeHandle {
                 break;
             };
             match operation {
-                NodeOperation::Start { config: new_config } => {
-                    if let Some(new_config) = new_config {
+                NodeOperation::Start {
+                    config: new_config,
+                    specializations,
+                } => {
+                    if let Some(mut new_config) = new_config {
+                        // Create persistent symlinks and update config if we have specializations
+                        if let Some(ref node_specializations) = specializations {
+                            if !node_specializations.is_empty() {
+                                if let Err(e) = create_persistent_symlinks(
+                                    node_specializations,
+                                    &mut new_config,
+                                ) {
+                                    error!(
+                                        "Failed to create persistent symlinks for node {} ({}): {}",
+                                        name, id, e
+                                    );
+                                    // Continue without persistent storage if symlinks fail
+                                }
+                            }
+                        }
                         node = Node::new(*new_config);
                     }
 
-                    Self::handle_start_operation(&runtime, &mut node, id, name, governance, status);
+                    Self::handle_start_operation(
+                        &runtime,
+                        &mut node,
+                        id,
+                        name,
+                        governance,
+                        status,
+                        specializations,
+                    );
                 }
                 NodeOperation::Stop => {
                     Self::handle_stop_operation(&runtime, &mut node, id, name, governance, status);
@@ -201,7 +240,9 @@ impl NodeHandle {
                     Self::handle_stop_operation(&runtime, &mut node, id, name, governance, status);
                     // Wait a moment for stop to complete
                     thread::sleep(Duration::from_millis(500));
-                    Self::handle_start_operation(&runtime, &mut node, id, name, governance, status);
+                    Self::handle_start_operation(
+                        &runtime, &mut node, id, name, governance, status, None,
+                    );
                 }
                 NodeOperation::Shutdown => {
                     Self::handle_stop_operation(&runtime, &mut node, id, name, governance, status);
@@ -230,6 +271,7 @@ impl NodeHandle {
             id,
             name: name.to_string(),
             final_status,
+            specializations,
         };
 
         if let Err(e) = completion_sender.send(completion_message) {
@@ -265,6 +307,7 @@ impl NodeHandle {
         name: &str,
         governance: &Arc<MockGovernance>,
         status: &Arc<RwLock<NodeStatus>>,
+        specializations: Option<HashSet<proven_governance::NodeSpecialization>>,
     ) {
         // Update status to Starting immediately
         {
@@ -301,12 +344,14 @@ impl NodeHandle {
             format!("http://{pokemon_name}.local:{actual_port}")
         };
 
+        let node_specializations = specializations.unwrap_or_default();
+
         let topology_node = TopologyNode {
             availability_zone: "local".to_string(),
             origin,
             public_key: hex::encode(public_key.to_bytes()),
             region: "local".to_string(),
-            specializations: HashSet::new(),
+            specializations: node_specializations,
         };
 
         // Add to governance
@@ -423,44 +468,190 @@ pub fn create_node_config(
     build_node_config(name, main_port, governance, private_key, session_id)
 }
 
-/// Create a node configuration with specific specializations
-pub fn create_node_config_with_specializations(
-    _id: NodeId,
-    name: &str,
-    governance: &Arc<MockGovernance>,
-    session_id: &str,
-    specializations: HashSet<proven_governance::NodeSpecialization>,
-) -> proven_local::NodeConfig<proven_governance_mock::MockGovernance> {
-    let main_port = allocate_port().unwrap_or_else(|e| {
-        error!("Failed to allocate port for node {}: {}", name, e);
-        3000 // Fallback port
-    });
-
-    let private_key = SigningKey::generate(&mut rand::thread_rng());
-
-    let node_config = build_node_config(name, main_port, governance, private_key, session_id);
-
-    // Add this node to the governance with specializations when configuration is created
-    let public_key = hex::encode(node_config.node_key.verifying_key().to_bytes());
-
-    // Get the origin that will be used in start_operation
-    let origin = format!("http://localhost:{main_port}");
-
-    let topology_node = TopologyNode {
-        availability_zone: "local".to_string(),
-        origin,
-        public_key,
-        region: "local".to_string(),
-        specializations,
-    };
-
-    if let Err(e) = governance.add_node(topology_node) {
-        error!("Failed to add node {} to governance: {}", name, e);
-    } else {
-        info!("Added node {} to governance with specializations", name);
+/// Create persistent symlinks for specialized nodes
+#[allow(clippy::cognitive_complexity)]
+#[allow(clippy::too_many_lines)]
+fn create_persistent_symlinks(
+    specializations: &HashSet<proven_governance::NodeSpecialization>,
+    node_config: &mut TuiNodeConfig,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if specializations.is_empty() {
+        return Ok(());
     }
 
-    node_config
+    // Get home directory and create ~/.proven if it doesn't exist
+    let home_dir = dirs::home_dir().ok_or("Could not determine home directory")?;
+    let proven_dir = home_dir.join(".proven");
+    fs::create_dir_all(&proven_dir)?;
+
+    info!(
+        "Creating persistent symlinks in {:?} for specializations: {:?}",
+        proven_dir, specializations
+    );
+
+    for specialization in specializations {
+        match specialization {
+            proven_governance::NodeSpecialization::BitcoinMainnet => {
+                let persistent_dir = find_next_available_dir(&proven_dir, "bitcoin-mainnet")?;
+                create_symlink_and_update_config(
+                    &persistent_dir,
+                    &node_config.bitcoin_mainnet_store_dir,
+                )?;
+                node_config.bitcoin_mainnet_store_dir = persistent_dir;
+                info!(
+                    "Bitcoin Mainnet data will persist at: {:?}",
+                    node_config.bitcoin_mainnet_store_dir
+                );
+            }
+            proven_governance::NodeSpecialization::BitcoinTestnet => {
+                let persistent_dir = find_next_available_dir(&proven_dir, "bitcoin-testnet")?;
+                create_symlink_and_update_config(
+                    &persistent_dir,
+                    &node_config.bitcoin_testnet_store_dir,
+                )?;
+                node_config.bitcoin_testnet_store_dir = persistent_dir;
+                info!(
+                    "Bitcoin Testnet data will persist at: {:?}",
+                    node_config.bitcoin_testnet_store_dir
+                );
+            }
+            proven_governance::NodeSpecialization::EthereumMainnet => {
+                // Handle both consensus and execution
+                let consensus_dir =
+                    find_next_available_dir(&proven_dir, "ethereum-mainnet-consensus")?;
+                let execution_dir =
+                    find_next_available_dir(&proven_dir, "ethereum-mainnet-execution")?;
+
+                create_symlink_and_update_config(
+                    &consensus_dir,
+                    &node_config.ethereum_mainnet_consensus_store_dir,
+                )?;
+                create_symlink_and_update_config(
+                    &execution_dir,
+                    &node_config.ethereum_mainnet_execution_store_dir,
+                )?;
+
+                node_config.ethereum_mainnet_consensus_store_dir = consensus_dir;
+                node_config.ethereum_mainnet_execution_store_dir = execution_dir;
+                info!(
+                    "Ethereum Mainnet data will persist at: {:?} (consensus), {:?} (execution)",
+                    node_config.ethereum_mainnet_consensus_store_dir,
+                    node_config.ethereum_mainnet_execution_store_dir
+                );
+            }
+            proven_governance::NodeSpecialization::EthereumHolesky => {
+                // Handle both consensus and execution
+                let consensus_dir =
+                    find_next_available_dir(&proven_dir, "ethereum-holesky-consensus")?;
+                let execution_dir =
+                    find_next_available_dir(&proven_dir, "ethereum-holesky-execution")?;
+
+                create_symlink_and_update_config(
+                    &consensus_dir,
+                    &node_config.ethereum_holesky_consensus_store_dir,
+                )?;
+                create_symlink_and_update_config(
+                    &execution_dir,
+                    &node_config.ethereum_holesky_execution_store_dir,
+                )?;
+
+                node_config.ethereum_holesky_consensus_store_dir = consensus_dir;
+                node_config.ethereum_holesky_execution_store_dir = execution_dir;
+                info!(
+                    "Ethereum Holesky data will persist at: {:?} (consensus), {:?} (execution)",
+                    node_config.ethereum_holesky_consensus_store_dir,
+                    node_config.ethereum_holesky_execution_store_dir
+                );
+            }
+            proven_governance::NodeSpecialization::EthereumSepolia => {
+                // Handle both consensus and execution
+                let consensus_dir =
+                    find_next_available_dir(&proven_dir, "ethereum-sepolia-consensus")?;
+                let execution_dir =
+                    find_next_available_dir(&proven_dir, "ethereum-sepolia-execution")?;
+
+                create_symlink_and_update_config(
+                    &consensus_dir,
+                    &node_config.ethereum_sepolia_consensus_store_dir,
+                )?;
+                create_symlink_and_update_config(
+                    &execution_dir,
+                    &node_config.ethereum_sepolia_execution_store_dir,
+                )?;
+
+                node_config.ethereum_sepolia_consensus_store_dir = consensus_dir;
+                node_config.ethereum_sepolia_execution_store_dir = execution_dir;
+                info!(
+                    "Ethereum Sepolia data will persist at: {:?} (consensus), {:?} (execution)",
+                    node_config.ethereum_sepolia_consensus_store_dir,
+                    node_config.ethereum_sepolia_execution_store_dir
+                );
+            }
+            proven_governance::NodeSpecialization::RadixMainnet => {
+                let persistent_dir = find_next_available_dir(&proven_dir, "radix-mainnet")?;
+                create_symlink_and_update_config(
+                    &persistent_dir,
+                    &node_config.radix_mainnet_store_dir,
+                )?;
+                node_config.radix_mainnet_store_dir = persistent_dir;
+                info!(
+                    "Radix Mainnet data will persist at: {:?}",
+                    node_config.radix_mainnet_store_dir
+                );
+            }
+            proven_governance::NodeSpecialization::RadixStokenet => {
+                let persistent_dir = find_next_available_dir(&proven_dir, "radix-stokenet")?;
+                create_symlink_and_update_config(
+                    &persistent_dir,
+                    &node_config.radix_stokenet_store_dir,
+                )?;
+                node_config.radix_stokenet_store_dir = persistent_dir;
+                info!(
+                    "Radix Stokenet data will persist at: {:?}",
+                    node_config.radix_stokenet_store_dir
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Find the next available directory name with counter (e.g., bitcoin-mainnet-1, bitcoin-mainnet-2, etc.)
+fn find_next_available_dir(
+    base_dir: &Path,
+    prefix: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    for i in 1..=999 {
+        let dir_name = format!("{prefix}-{i}");
+        let dir_path = base_dir.join(&dir_name);
+        if !dir_path.exists() {
+            return Ok(dir_path);
+        }
+    }
+    Err(format!("Could not find available directory name for prefix: {prefix}").into())
+}
+
+/// Create a symlink from persistent directory to session directory
+fn create_symlink_and_update_config(
+    persistent_dir: &PathBuf,
+    session_dir: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Create the session directory first
+    fs::create_dir_all(session_dir)?;
+
+    // Create the symlink from persistent location to session location
+    if let Err(e) = symlink(session_dir, persistent_dir) {
+        warn!(
+            "Failed to create symlink from {:?} to {:?}: {}",
+            persistent_dir, session_dir, e
+        );
+        // If symlink fails, we can still continue - just won't have persistence
+    } else {
+        info!("Created symlink: {:?} -> {:?}", persistent_dir, session_dir);
+    }
+
+    Ok(())
 }
 
 /// Build a complete node configuration

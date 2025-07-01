@@ -2,7 +2,7 @@
 
 pub mod records;
 
-use crate::messages::{NodeOperation, TuiNodeConfig};
+use crate::messages::NodeOperation;
 use crate::node_id::NodeId;
 use records::{NodeHandle, NodeManagerMessage, NodeRecord, create_node_config};
 
@@ -43,73 +43,9 @@ impl NodeManager {
 
     /// Start a new node with optional configuration
     #[allow(clippy::cognitive_complexity)]
-    pub fn start_node(&self, id: NodeId, name: &str, config: Option<Box<TuiNodeConfig>>) {
-        info!("Starting node {} ({})", name, id.full_pokemon_name());
-
-        let node_config = config.map_or_else(
-            || create_node_config(id, name, &self.governance, &self.session_id),
-            |config| *config,
-        );
-
-        // Check if node already exists and handle accordingly
-        {
-            let nodes_guard = self.nodes.read();
-            if let Some(existing_record) = nodes_guard.get(&id) {
-                match existing_record {
-                    NodeRecord::Running(handle) => {
-                        // Node is running, send start command to it
-                        if let Err(e) = handle.send_command(NodeOperation::Start {
-                            config: Some(Box::new(node_config)),
-                        }) {
-                            error!(
-                                "Failed to send start command to running node {} ({}): {}",
-                                name, id, e
-                            );
-                        }
-                        return;
-                    }
-                    NodeRecord::Stopped { .. } => {
-                        // Node was stopped, we'll replace it with a new running instance
-                        info!("Restarting previously stopped node {}", name);
-                    }
-                }
-            }
-        }
-
-        // Create new node handle with command processing
-        let node_handle = NodeHandle::new(
-            id,
-            name.to_string(),
-            node_config.clone(),
-            self.governance.clone(),
-            self.completion_sender.clone(),
-        );
-
-        // Add to nodes map as Running
-        {
-            let mut nodes_guard = self.nodes.write();
-            nodes_guard.insert(id, NodeRecord::Running(node_handle));
-        }
-
-        // Send start command to the newly created node
-        {
-            let nodes_guard = self.nodes.read();
-            if let Some(NodeRecord::Running(node_handle)) = nodes_guard.get(&id) {
-                if let Err(e) = node_handle.send_command(NodeOperation::Start {
-                    config: Some(Box::new(node_config)),
-                }) {
-                    error!(
-                        "Failed to send start command to node {} ({}): {}",
-                        name, id, e
-                    );
-                }
-            }
-        }
-    }
-
     /// Start a new node with specific specializations
     #[allow(clippy::cognitive_complexity)]
-    pub fn start_node_with_specializations(
+    pub fn start_node(
         &self,
         id: NodeId,
         name: &str,
@@ -122,13 +58,7 @@ impl NodeManager {
             specializations
         );
 
-        let node_config = records::create_node_config_with_specializations(
-            id,
-            name,
-            &self.governance,
-            &self.session_id,
-            specializations,
-        );
+        let node_config = create_node_config(id, name, &self.governance, &self.session_id);
 
         // Check if node already exists and handle accordingly
         {
@@ -139,6 +69,7 @@ impl NodeManager {
                         // Node is running, send start command to it
                         if let Err(e) = handle.send_command(NodeOperation::Start {
                             config: Some(Box::new(node_config)),
+                            specializations: Some(specializations),
                         }) {
                             error!(
                                 "Failed to send start command to running node {} ({}): {}",
@@ -160,6 +91,7 @@ impl NodeManager {
             id,
             name.to_string(),
             node_config.clone(),
+            specializations.clone(),
             self.governance.clone(),
             self.completion_sender.clone(),
         );
@@ -176,6 +108,7 @@ impl NodeManager {
             if let Some(NodeRecord::Running(node_handle)) = nodes_guard.get(&id) {
                 if let Err(e) = node_handle.send_command(NodeOperation::Start {
                     config: Some(Box::new(node_config)),
+                    specializations: Some(specializations),
                 }) {
                     error!(
                         "Failed to send start command to node {} ({}): {}",
@@ -286,7 +219,16 @@ impl NodeManager {
     /// Get current node information for UI display
     ///
     /// This method reads the status from either running or stopped nodes.
-    pub fn get_nodes_for_ui(&self) -> HashMap<NodeId, (String, NodeStatus)> {
+    pub fn get_nodes_for_ui(
+        &self,
+    ) -> HashMap<
+        NodeId,
+        (
+            String,
+            NodeStatus,
+            HashSet<proven_governance::NodeSpecialization>,
+        ),
+    > {
         // First, process any completion messages
         self.process_completion_messages();
 
@@ -294,13 +236,21 @@ impl NodeManager {
         let mut result = HashMap::new();
 
         for (id, record) in nodes.iter() {
-            let (name, status) = match record {
-                NodeRecord::Running(handle) => (handle.name.clone(), handle.get_status()),
+            let (name, status, specializations) = match record {
+                NodeRecord::Running(handle) => (
+                    handle.name.clone(),
+                    handle.get_status(),
+                    handle.specializations.clone(),
+                ),
                 NodeRecord::Stopped {
-                    name, final_status, ..
-                } => (name.clone(), final_status.clone()),
+                    name,
+                    final_status,
+                    specializations,
+                    ..
+                } => (name.clone(), final_status.clone(), specializations.clone()),
             };
-            result.insert(*id, (name, status));
+
+            result.insert(*id, (name, status, specializations));
         }
 
         drop(nodes);
@@ -372,6 +322,7 @@ impl NodeManager {
                         id,
                         name,
                         final_status,
+                        specializations,
                     } => {
                         info!("Node {} finished with status: {}", name, final_status);
 
@@ -382,6 +333,7 @@ impl NodeManager {
                                     _id: id,
                                     name,
                                     final_status,
+                                    specializations,
                                     _stopped_at: std::time::Instant::now(),
                                 };
                                 info!(

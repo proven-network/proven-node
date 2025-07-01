@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use proven_governance_mock::MockGovernance;
 use proven_local::NodeConfig;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fmt;
 
 /// Type alias for the `NodeConfig` we use in the TUI
@@ -19,6 +20,8 @@ pub enum NodeOperation {
     Start {
         /// Node configuration (optional - will use existing config if None)
         config: Option<Box<TuiNodeConfig>>,
+        /// Specializations for this node (used for governance registration and symlinks)
+        specializations: Option<HashSet<proven_governance::NodeSpecialization>>,
     },
     /// Stop the node
     Stop,
