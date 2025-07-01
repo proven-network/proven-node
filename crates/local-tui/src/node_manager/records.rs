@@ -11,11 +11,11 @@ use proven_governance::TopologyNode;
 use proven_governance_mock::MockGovernance;
 use proven_local::{Node, NodeStatus};
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
-use std::{fs, os::unix::fs::symlink};
+
 use tracing::{error, info, warn};
 use url::Url;
 
@@ -205,20 +205,6 @@ impl NodeHandle {
                     specializations,
                 } => {
                     if let Some(new_config) = new_config {
-                        // Create persistent symlinks and update config if we have specializations
-                        if let Some(ref node_specializations) = specializations {
-                            if !node_specializations.is_empty() {
-                                if let Err(e) =
-                                    create_persistent_symlinks(node_specializations, &new_config)
-                                {
-                                    error!(
-                                        "Failed to create persistent symlinks for node {} ({}): {}",
-                                        name, id, e
-                                    );
-                                    // Continue without persistent storage if symlinks fail
-                                }
-                            }
-                        }
                         node = Node::new(*new_config);
                     }
 
@@ -465,194 +451,6 @@ pub fn create_node_config(
     let private_key = SigningKey::generate(&mut rand::thread_rng());
 
     build_node_config(name, main_port, governance, private_key, session_id)
-}
-
-/// Create persistent symlinks for specialized nodes
-#[allow(clippy::cognitive_complexity)]
-#[allow(clippy::too_many_lines)]
-fn create_persistent_symlinks(
-    specializations: &HashSet<proven_governance::NodeSpecialization>,
-    node_config: &TuiNodeConfig,
-) -> Result<(), Box<dyn std::error::Error>> {
-    if specializations.is_empty() {
-        return Ok(());
-    }
-
-    // Get home directory and create ~/.proven if it doesn't exist
-    let home_dir = dirs::home_dir().ok_or("Could not determine home directory")?;
-    let proven_dir = home_dir.join(".proven");
-    fs::create_dir_all(&proven_dir)?;
-
-    info!(
-        "Creating persistent symlinks in {:?} for specializations: {:?}",
-        proven_dir, specializations
-    );
-
-    for specialization in specializations {
-        match specialization {
-            proven_governance::NodeSpecialization::BitcoinMainnet => {
-                let persistent_dir = find_next_available_dir(&proven_dir, "bitcoin-mainnet")?;
-                create_symlink_and_update_config(
-                    &persistent_dir,
-                    &node_config.bitcoin_mainnet_store_dir,
-                )?;
-                info!(
-                    "Bitcoin Mainnet data will persist at: {:?} (via symlink from {:?})",
-                    persistent_dir, node_config.bitcoin_mainnet_store_dir
-                );
-            }
-            proven_governance::NodeSpecialization::BitcoinTestnet => {
-                let persistent_dir = find_next_available_dir(&proven_dir, "bitcoin-testnet")?;
-                create_symlink_and_update_config(
-                    &persistent_dir,
-                    &node_config.bitcoin_testnet_store_dir,
-                )?;
-                info!(
-                    "Bitcoin Testnet data will persist at: {:?} (via symlink from {:?})",
-                    persistent_dir, node_config.bitcoin_testnet_store_dir
-                );
-            }
-            proven_governance::NodeSpecialization::EthereumMainnet => {
-                // Handle both consensus and execution
-                let consensus_dir =
-                    find_next_available_dir(&proven_dir, "ethereum-mainnet-consensus")?;
-                let execution_dir =
-                    find_next_available_dir(&proven_dir, "ethereum-mainnet-execution")?;
-
-                create_symlink_and_update_config(
-                    &consensus_dir,
-                    &node_config.ethereum_mainnet_consensus_store_dir,
-                )?;
-                create_symlink_and_update_config(
-                    &execution_dir,
-                    &node_config.ethereum_mainnet_execution_store_dir,
-                )?;
-
-                info!(
-                    "Ethereum Mainnet data will persist at: {:?} (consensus), {:?} (execution)",
-                    consensus_dir, execution_dir
-                );
-            }
-            proven_governance::NodeSpecialization::EthereumHolesky => {
-                // Handle both consensus and execution
-                let consensus_dir =
-                    find_next_available_dir(&proven_dir, "ethereum-holesky-consensus")?;
-                let execution_dir =
-                    find_next_available_dir(&proven_dir, "ethereum-holesky-execution")?;
-
-                create_symlink_and_update_config(
-                    &consensus_dir,
-                    &node_config.ethereum_holesky_consensus_store_dir,
-                )?;
-                create_symlink_and_update_config(
-                    &execution_dir,
-                    &node_config.ethereum_holesky_execution_store_dir,
-                )?;
-
-                info!(
-                    "Ethereum Holesky data will persist at: {:?} (consensus), {:?} (execution)",
-                    consensus_dir, execution_dir
-                );
-            }
-            proven_governance::NodeSpecialization::EthereumSepolia => {
-                // Handle both consensus and execution
-                let consensus_dir =
-                    find_next_available_dir(&proven_dir, "ethereum-sepolia-consensus")?;
-                let execution_dir =
-                    find_next_available_dir(&proven_dir, "ethereum-sepolia-execution")?;
-
-                create_symlink_and_update_config(
-                    &consensus_dir,
-                    &node_config.ethereum_sepolia_consensus_store_dir,
-                )?;
-                create_symlink_and_update_config(
-                    &execution_dir,
-                    &node_config.ethereum_sepolia_execution_store_dir,
-                )?;
-
-                info!(
-                    "Ethereum Sepolia data will persist at: {:?} (consensus), {:?} (execution)",
-                    consensus_dir, execution_dir
-                );
-            }
-            proven_governance::NodeSpecialization::RadixMainnet => {
-                let persistent_dir = find_next_available_dir(&proven_dir, "radix-mainnet")?;
-                create_symlink_and_update_config(
-                    &persistent_dir,
-                    &node_config.radix_mainnet_store_dir,
-                )?;
-                info!(
-                    "Radix Mainnet data will persist at: {:?} (via symlink from {:?})",
-                    persistent_dir, node_config.radix_mainnet_store_dir
-                );
-            }
-            proven_governance::NodeSpecialization::RadixStokenet => {
-                let persistent_dir = find_next_available_dir(&proven_dir, "radix-stokenet")?;
-                create_symlink_and_update_config(
-                    &persistent_dir,
-                    &node_config.radix_stokenet_store_dir,
-                )?;
-                info!(
-                    "Radix Stokenet data will persist at: {:?} (via symlink from {:?})",
-                    persistent_dir, node_config.radix_stokenet_store_dir
-                );
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Find the next available directory name with counter (e.g., bitcoin-mainnet-1, bitcoin-mainnet-2, etc.)
-fn find_next_available_dir(
-    base_dir: &Path,
-    prefix: &str,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    for i in 1..=999 {
-        let dir_name = format!("{prefix}-{i}");
-        let dir_path = base_dir.join(&dir_name);
-        if !dir_path.exists() {
-            return Ok(dir_path);
-        }
-    }
-    Err(format!("Could not find available directory name for prefix: {prefix}").into())
-}
-
-/// Create a symlink from session directory to persistent directory
-fn create_symlink_and_update_config(
-    persistent_dir: &PathBuf,
-    session_dir: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Create the persistent directory first (this is where real data will live)
-    fs::create_dir_all(persistent_dir)?;
-
-    // Create parent directory for session path if it doesn't exist
-    if let Some(parent) = session_dir.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    // Remove session directory if it exists (so we can create symlink)
-    if session_dir.exists() {
-        if session_dir.is_dir() && !session_dir.is_symlink() {
-            fs::remove_dir_all(session_dir)?;
-        } else {
-            fs::remove_file(session_dir)?;
-        }
-    }
-
-    // Create the symlink from session location to persistent location
-    if let Err(e) = symlink(persistent_dir, session_dir) {
-        warn!(
-            "Failed to create symlink from {:?} to {:?}: {}",
-            session_dir, persistent_dir, e
-        );
-        // If symlink fails, create the session directory normally
-        fs::create_dir_all(session_dir)?;
-    } else {
-        info!("Created symlink: {:?} -> {:?}", session_dir, persistent_dir);
-    }
-
-    Ok(())
 }
 
 /// Build a complete node configuration

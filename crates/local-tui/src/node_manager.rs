@@ -4,24 +4,44 @@ pub mod records;
 
 use crate::messages::NodeOperation;
 use crate::node_id::NodeId;
-use records::{NodeHandle, NodeManagerMessage, NodeRecord, create_node_config};
+use records::{NodeHandle, NodeManagerMessage, NodeRecord};
 
 use std::collections::{HashMap, HashSet};
+use std::os::unix::fs::symlink;
 use std::sync::{Arc, mpsc};
 
 use parking_lot::RwLock;
 use proven_governance_mock::MockGovernance;
-use proven_local::NodeStatus;
+use proven_local::{NodeConfig, NodeStatus};
 use tracing::{error, info, warn};
+
+// Type aliases to reduce complexity
+type NodeMap = Arc<RwLock<HashMap<NodeId, NodeRecord>>>;
+type CompletionReceiver = Arc<std::sync::Mutex<mpsc::Receiver<NodeManagerMessage>>>;
+type PersistentDirMap = Arc<RwLock<HashMap<String, HashSet<u32>>>>;
+type NodeDirAssignments = Arc<RwLock<HashMap<NodeId, Vec<(String, u32)>>>>;
+type NodeUiInfo = HashMap<
+    NodeId,
+    (
+        String,
+        NodeStatus,
+        HashSet<proven_governance::NodeSpecialization>,
+    ),
+>;
 
 /// Manages multiple node instances with a clean interface
 #[derive(Clone, Debug)]
 pub struct NodeManager {
-    nodes: Arc<RwLock<HashMap<NodeId, NodeRecord>>>,
+    nodes: NodeMap,
     governance: Arc<MockGovernance>,
     session_id: String,
     completion_sender: mpsc::Sender<NodeManagerMessage>,
-    completion_receiver: Arc<std::sync::Mutex<mpsc::Receiver<NodeManagerMessage>>>,
+    completion_receiver: CompletionReceiver,
+    /// Track which persistent directories are currently in use by this TUI session
+    /// Maps specialization name (like "bitcoin-testnet") to set of directory numbers in use
+    used_persistent_dirs: PersistentDirMap,
+    /// Track which directories each node is using for cleanup purposes
+    node_dir_assignments: NodeDirAssignments,
 }
 
 impl NodeManager {
@@ -38,6 +58,8 @@ impl NodeManager {
             session_id,
             completion_sender,
             completion_receiver: Arc::new(std::sync::Mutex::new(completion_receiver)),
+            used_persistent_dirs: Arc::new(RwLock::new(HashMap::new())),
+            node_dir_assignments: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -58,7 +80,7 @@ impl NodeManager {
             specializations
         );
 
-        let node_config = create_node_config(id, name, &self.governance, &self.session_id);
+        let node_config = self.create_node_config_with_tracking(id, name, &specializations);
 
         // Check if node already exists and handle accordingly
         {
@@ -194,6 +216,298 @@ impl NodeManager {
         info!("Shutdown commands sent to all running nodes - waiting for graceful shutdown");
     }
 
+    /// Get or allocate a persistent directory for a specialization
+    /// This reuses existing directories that aren't currently in use by this session
+    pub fn get_persistent_directory(&self, specialization_prefix: &str) -> Option<u32> {
+        let mut used_dirs = self.used_persistent_dirs.write();
+
+        // Get the set of currently used directory numbers for this specialization
+        let used_set = used_dirs
+            .entry(specialization_prefix.to_string())
+            .or_default();
+
+        // Find existing directories on disk
+        let home_dir = dirs::home_dir()?;
+        let proven_dir = home_dir.join(".proven");
+
+        if !proven_dir.exists() {
+            // If .proven doesn't exist, start with directory 1
+            used_set.insert(1);
+            return Some(1);
+        }
+
+        // Find all existing directories with this prefix
+        let mut existing_dirs = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&proven_dir) {
+            for entry in entries.flatten() {
+                if let Some(dir_name) = entry.file_name().to_str() {
+                    if dir_name.starts_with(&format!("{specialization_prefix}-")) {
+                        if let Some(number_part) =
+                            dir_name.strip_prefix(&format!("{specialization_prefix}-"))
+                        {
+                            if let Ok(num) = number_part.parse::<u32>() {
+                                existing_dirs.push(num);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        existing_dirs.sort_unstable();
+
+        // Try to reuse an existing directory that's not currently in use
+        for &dir_num in &existing_dirs {
+            if used_set.insert(dir_num) {
+                return Some(dir_num);
+            }
+        }
+
+        // All existing directories are in use, find the next available number
+        let next_num = if existing_dirs.is_empty() {
+            1
+        } else {
+            existing_dirs.iter().max().unwrap() + 1
+        };
+
+        used_set.insert(next_num);
+        drop(used_dirs);
+
+        Some(next_num)
+    }
+
+    /// Release a persistent directory when a node is stopped
+    pub fn release_persistent_directory(&self, specialization_prefix: &str, dir_num: u32) {
+        let mut used_dirs = self.used_persistent_dirs.write();
+        if let Some(used_set) = used_dirs.get_mut(specialization_prefix) {
+            used_set.remove(&dir_num);
+        }
+    }
+
+    /// Create node config with persistent directory tracking
+    fn create_node_config_with_tracking(
+        &self,
+        id: NodeId,
+        name: &str,
+        specializations: &HashSet<proven_governance::NodeSpecialization>,
+    ) -> NodeConfig<MockGovernance> {
+        // Create base config
+        let node_config = records::create_node_config(id, name, &self.governance, &self.session_id);
+
+        // Handle persistent directories for specializations
+        if !specializations.is_empty() {
+            if let Err(e) =
+                self.create_persistent_symlinks_with_tracking(id, specializations, &node_config)
+            {
+                error!(
+                    "Failed to create persistent symlinks for node {} ({}): {}. Continuing with temporary storage.",
+                    name, id, e
+                );
+            }
+        }
+
+        node_config
+    }
+
+    /// Create persistent symlinks with session tracking
+    #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
+    fn create_persistent_symlinks_with_tracking(
+        &self,
+        node_id: NodeId,
+        specializations: &HashSet<proven_governance::NodeSpecialization>,
+        node_config: &NodeConfig<MockGovernance>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use std::fs;
+
+        // Get home directory and create ~/.proven if it doesn't exist
+        let home_dir = dirs::home_dir().ok_or("Could not determine home directory")?;
+        let proven_dir = home_dir.join(".proven");
+        fs::create_dir_all(&proven_dir)?;
+
+        info!(
+            "Creating persistent symlinks in {:?} for specializations: {:?}",
+            proven_dir, specializations
+        );
+
+        // Track directory assignments for this node
+        let mut assignments = Vec::new();
+
+        for specialization in specializations {
+            match specialization {
+                proven_governance::NodeSpecialization::BitcoinMainnet => {
+                    if let Some(dir_num) = self.get_persistent_directory("bitcoin-mainnet") {
+                        let persistent_dir = proven_dir.join(format!("bitcoin-mainnet-{dir_num}"));
+                        Self::create_symlink_and_update_config(
+                            &persistent_dir,
+                            &node_config.bitcoin_mainnet_store_dir,
+                        )?;
+                        assignments.push(("bitcoin-mainnet".to_string(), dir_num));
+                        info!(
+                            "Bitcoin Mainnet data will persist at: {:?} (via symlink from {:?})",
+                            persistent_dir, node_config.bitcoin_mainnet_store_dir
+                        );
+                    }
+                }
+                proven_governance::NodeSpecialization::BitcoinTestnet => {
+                    if let Some(dir_num) = self.get_persistent_directory("bitcoin-testnet") {
+                        let persistent_dir = proven_dir.join(format!("bitcoin-testnet-{dir_num}"));
+                        Self::create_symlink_and_update_config(
+                            &persistent_dir,
+                            &node_config.bitcoin_testnet_store_dir,
+                        )?;
+                        assignments.push(("bitcoin-testnet".to_string(), dir_num));
+                        info!(
+                            "Bitcoin Testnet data will persist at: {:?} (via symlink from {:?})",
+                            persistent_dir, node_config.bitcoin_testnet_store_dir
+                        );
+                    }
+                }
+                proven_governance::NodeSpecialization::EthereumMainnet => {
+                    if let Some(dir_num) = self.get_persistent_directory("ethereum-mainnet") {
+                        let base_persistent_dir =
+                            proven_dir.join(format!("ethereum-mainnet-{dir_num}"));
+                        let consensus_persistent_dir = base_persistent_dir.join("lighthouse");
+                        let execution_persistent_dir = base_persistent_dir.join("reth");
+
+                        Self::create_symlink_and_update_config(
+                            &consensus_persistent_dir,
+                            &node_config.ethereum_mainnet_consensus_store_dir,
+                        )?;
+                        Self::create_symlink_and_update_config(
+                            &execution_persistent_dir,
+                            &node_config.ethereum_mainnet_execution_store_dir,
+                        )?;
+                        assignments.push(("ethereum-mainnet".to_string(), dir_num));
+                        info!(
+                            "Ethereum Mainnet data will persist at: {:?} (consensus: {:?}, execution: {:?})",
+                            base_persistent_dir, consensus_persistent_dir, execution_persistent_dir
+                        );
+                    }
+                }
+                proven_governance::NodeSpecialization::EthereumHolesky => {
+                    if let Some(dir_num) = self.get_persistent_directory("ethereum-holesky") {
+                        let base_persistent_dir =
+                            proven_dir.join(format!("ethereum-holesky-{dir_num}"));
+                        let consensus_persistent_dir = base_persistent_dir.join("lighthouse");
+                        let execution_persistent_dir = base_persistent_dir.join("reth");
+
+                        Self::create_symlink_and_update_config(
+                            &consensus_persistent_dir,
+                            &node_config.ethereum_holesky_consensus_store_dir,
+                        )?;
+                        Self::create_symlink_and_update_config(
+                            &execution_persistent_dir,
+                            &node_config.ethereum_holesky_execution_store_dir,
+                        )?;
+                        assignments.push(("ethereum-holesky".to_string(), dir_num));
+                        info!(
+                            "Ethereum Holesky data will persist at: {:?} (consensus: {:?}, execution: {:?})",
+                            base_persistent_dir, consensus_persistent_dir, execution_persistent_dir
+                        );
+                    }
+                }
+                proven_governance::NodeSpecialization::EthereumSepolia => {
+                    if let Some(dir_num) = self.get_persistent_directory("ethereum-sepolia") {
+                        let base_persistent_dir =
+                            proven_dir.join(format!("ethereum-sepolia-{dir_num}"));
+                        let consensus_persistent_dir = base_persistent_dir.join("lighthouse");
+                        let execution_persistent_dir = base_persistent_dir.join("reth");
+
+                        Self::create_symlink_and_update_config(
+                            &consensus_persistent_dir,
+                            &node_config.ethereum_sepolia_consensus_store_dir,
+                        )?;
+                        Self::create_symlink_and_update_config(
+                            &execution_persistent_dir,
+                            &node_config.ethereum_sepolia_execution_store_dir,
+                        )?;
+                        assignments.push(("ethereum-sepolia".to_string(), dir_num));
+                        info!(
+                            "Ethereum Sepolia data will persist at: {:?} (consensus: {:?}, execution: {:?})",
+                            base_persistent_dir, consensus_persistent_dir, execution_persistent_dir
+                        );
+                    }
+                }
+                proven_governance::NodeSpecialization::RadixMainnet => {
+                    if let Some(dir_num) = self.get_persistent_directory("radix-mainnet") {
+                        let persistent_dir = proven_dir.join(format!("radix-mainnet-{dir_num}"));
+                        Self::create_symlink_and_update_config(
+                            &persistent_dir,
+                            &node_config.radix_mainnet_store_dir,
+                        )?;
+                        assignments.push(("radix-mainnet".to_string(), dir_num));
+                        info!(
+                            "Radix Mainnet data will persist at: {:?} (via symlink from {:?})",
+                            persistent_dir, node_config.radix_mainnet_store_dir
+                        );
+                    }
+                }
+                proven_governance::NodeSpecialization::RadixStokenet => {
+                    if let Some(dir_num) = self.get_persistent_directory("radix-stokenet") {
+                        let persistent_dir = proven_dir.join(format!("radix-stokenet-{dir_num}"));
+                        Self::create_symlink_and_update_config(
+                            &persistent_dir,
+                            &node_config.radix_stokenet_store_dir,
+                        )?;
+                        assignments.push(("radix-stokenet".to_string(), dir_num));
+                        info!(
+                            "Radix Stokenet data will persist at: {:?} (via symlink from {:?})",
+                            persistent_dir, node_config.radix_stokenet_store_dir
+                        );
+                    }
+                }
+            }
+        }
+
+        // Store directory assignments for this node
+        if !assignments.is_empty() {
+            let mut node_assignments = self.node_dir_assignments.write();
+            node_assignments.insert(node_id, assignments);
+        }
+
+        Ok(())
+    }
+
+    /// Create a symlink from session directory to persistent directory
+    fn create_symlink_and_update_config(
+        persistent_dir: &std::path::PathBuf,
+        session_dir: &std::path::PathBuf,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        use std::fs;
+
+        // Create the persistent directory first (this is where real data will live)
+        fs::create_dir_all(persistent_dir)?;
+
+        // Create parent directory for session path if it doesn't exist
+        if let Some(parent) = session_dir.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        // Remove session directory if it exists (so we can create symlink)
+        if session_dir.exists() {
+            if session_dir.is_dir() && !session_dir.is_symlink() {
+                fs::remove_dir_all(session_dir)?;
+            } else {
+                fs::remove_file(session_dir)?;
+            }
+        }
+
+        // Create the symlink from session location to persistent location
+        if let Err(e) = symlink(persistent_dir, session_dir) {
+            warn!(
+                "Failed to create symlink from {:?} to {:?}: {}",
+                session_dir, persistent_dir, e
+            );
+            // If symlink fails, create the session directory normally
+            fs::create_dir_all(session_dir)?;
+        } else {
+            info!("Created symlink: {:?} -> {:?}", session_dir, persistent_dir);
+        }
+
+        Ok(())
+    }
+
     /// Get the URL for a specific running node (matching governance origin exactly)
     pub fn get_node_url(&self, node_id: NodeId) -> Option<String> {
         let nodes = self.nodes.read();
@@ -219,16 +533,7 @@ impl NodeManager {
     /// Get current node information for UI display
     ///
     /// This method reads the status from either running or stopped nodes.
-    pub fn get_nodes_for_ui(
-        &self,
-    ) -> HashMap<
-        NodeId,
-        (
-            String,
-            NodeStatus,
-            HashSet<proven_governance::NodeSpecialization>,
-        ),
-    > {
+    pub fn get_nodes_for_ui(&self) -> NodeUiInfo {
         // First, process any completion messages
         self.process_completion_messages();
 
@@ -314,6 +619,7 @@ impl NodeManager {
     }
 
     /// Process completion messages and transition Running -> Stopped
+    #[allow(clippy::cognitive_complexity)]
     fn process_completion_messages(&self) {
         if let Ok(receiver) = self.completion_receiver.try_lock() {
             while let Ok(message) = receiver.try_recv() {
@@ -325,6 +631,23 @@ impl NodeManager {
                         specializations,
                     } => {
                         info!("Node {} finished with status: {}", name, final_status);
+
+                        // Release persistent directories used by this node
+                        {
+                            let mut node_assignments = self.node_dir_assignments.write();
+                            if let Some(assignments) = node_assignments.remove(&id) {
+                                for (specialization_prefix, dir_num) in assignments {
+                                    self.release_persistent_directory(
+                                        &specialization_prefix,
+                                        dir_num,
+                                    );
+                                    info!(
+                                        "Released persistent directory {}-{} for stopped node {}",
+                                        specialization_prefix, dir_num, name
+                                    );
+                                }
+                            }
+                        }
 
                         let mut nodes = self.nodes.write();
                         if let Some(record) = nodes.get_mut(&id) {
