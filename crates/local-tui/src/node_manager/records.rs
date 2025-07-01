@@ -204,14 +204,13 @@ impl NodeHandle {
                     config: new_config,
                     specializations,
                 } => {
-                    if let Some(mut new_config) = new_config {
+                    if let Some(new_config) = new_config {
                         // Create persistent symlinks and update config if we have specializations
                         if let Some(ref node_specializations) = specializations {
                             if !node_specializations.is_empty() {
-                                if let Err(e) = create_persistent_symlinks(
-                                    node_specializations,
-                                    &mut new_config,
-                                ) {
+                                if let Err(e) =
+                                    create_persistent_symlinks(node_specializations, &new_config)
+                                {
                                     error!(
                                         "Failed to create persistent symlinks for node {} ({}): {}",
                                         name, id, e
@@ -473,7 +472,7 @@ pub fn create_node_config(
 #[allow(clippy::too_many_lines)]
 fn create_persistent_symlinks(
     specializations: &HashSet<proven_governance::NodeSpecialization>,
-    node_config: &mut TuiNodeConfig,
+    node_config: &TuiNodeConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
     if specializations.is_empty() {
         return Ok(());
@@ -497,10 +496,9 @@ fn create_persistent_symlinks(
                     &persistent_dir,
                     &node_config.bitcoin_mainnet_store_dir,
                 )?;
-                node_config.bitcoin_mainnet_store_dir = persistent_dir;
                 info!(
-                    "Bitcoin Mainnet data will persist at: {:?}",
-                    node_config.bitcoin_mainnet_store_dir
+                    "Bitcoin Mainnet data will persist at: {:?} (via symlink from {:?})",
+                    persistent_dir, node_config.bitcoin_mainnet_store_dir
                 );
             }
             proven_governance::NodeSpecialization::BitcoinTestnet => {
@@ -509,10 +507,9 @@ fn create_persistent_symlinks(
                     &persistent_dir,
                     &node_config.bitcoin_testnet_store_dir,
                 )?;
-                node_config.bitcoin_testnet_store_dir = persistent_dir;
                 info!(
-                    "Bitcoin Testnet data will persist at: {:?}",
-                    node_config.bitcoin_testnet_store_dir
+                    "Bitcoin Testnet data will persist at: {:?} (via symlink from {:?})",
+                    persistent_dir, node_config.bitcoin_testnet_store_dir
                 );
             }
             proven_governance::NodeSpecialization::EthereumMainnet => {
@@ -531,12 +528,9 @@ fn create_persistent_symlinks(
                     &node_config.ethereum_mainnet_execution_store_dir,
                 )?;
 
-                node_config.ethereum_mainnet_consensus_store_dir = consensus_dir;
-                node_config.ethereum_mainnet_execution_store_dir = execution_dir;
                 info!(
                     "Ethereum Mainnet data will persist at: {:?} (consensus), {:?} (execution)",
-                    node_config.ethereum_mainnet_consensus_store_dir,
-                    node_config.ethereum_mainnet_execution_store_dir
+                    consensus_dir, execution_dir
                 );
             }
             proven_governance::NodeSpecialization::EthereumHolesky => {
@@ -555,12 +549,9 @@ fn create_persistent_symlinks(
                     &node_config.ethereum_holesky_execution_store_dir,
                 )?;
 
-                node_config.ethereum_holesky_consensus_store_dir = consensus_dir;
-                node_config.ethereum_holesky_execution_store_dir = execution_dir;
                 info!(
                     "Ethereum Holesky data will persist at: {:?} (consensus), {:?} (execution)",
-                    node_config.ethereum_holesky_consensus_store_dir,
-                    node_config.ethereum_holesky_execution_store_dir
+                    consensus_dir, execution_dir
                 );
             }
             proven_governance::NodeSpecialization::EthereumSepolia => {
@@ -579,12 +570,9 @@ fn create_persistent_symlinks(
                     &node_config.ethereum_sepolia_execution_store_dir,
                 )?;
 
-                node_config.ethereum_sepolia_consensus_store_dir = consensus_dir;
-                node_config.ethereum_sepolia_execution_store_dir = execution_dir;
                 info!(
                     "Ethereum Sepolia data will persist at: {:?} (consensus), {:?} (execution)",
-                    node_config.ethereum_sepolia_consensus_store_dir,
-                    node_config.ethereum_sepolia_execution_store_dir
+                    consensus_dir, execution_dir
                 );
             }
             proven_governance::NodeSpecialization::RadixMainnet => {
@@ -593,10 +581,9 @@ fn create_persistent_symlinks(
                     &persistent_dir,
                     &node_config.radix_mainnet_store_dir,
                 )?;
-                node_config.radix_mainnet_store_dir = persistent_dir;
                 info!(
-                    "Radix Mainnet data will persist at: {:?}",
-                    node_config.radix_mainnet_store_dir
+                    "Radix Mainnet data will persist at: {:?} (via symlink from {:?})",
+                    persistent_dir, node_config.radix_mainnet_store_dir
                 );
             }
             proven_governance::NodeSpecialization::RadixStokenet => {
@@ -605,10 +592,9 @@ fn create_persistent_symlinks(
                     &persistent_dir,
                     &node_config.radix_stokenet_store_dir,
                 )?;
-                node_config.radix_stokenet_store_dir = persistent_dir;
                 info!(
-                    "Radix Stokenet data will persist at: {:?}",
-                    node_config.radix_stokenet_store_dir
+                    "Radix Stokenet data will persist at: {:?} (via symlink from {:?})",
+                    persistent_dir, node_config.radix_stokenet_store_dir
                 );
             }
         }
@@ -632,23 +618,38 @@ fn find_next_available_dir(
     Err(format!("Could not find available directory name for prefix: {prefix}").into())
 }
 
-/// Create a symlink from persistent directory to session directory
+/// Create a symlink from session directory to persistent directory
 fn create_symlink_and_update_config(
     persistent_dir: &PathBuf,
     session_dir: &PathBuf,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Create the session directory first
-    fs::create_dir_all(session_dir)?;
+    // Create the persistent directory first (this is where real data will live)
+    fs::create_dir_all(persistent_dir)?;
 
-    // Create the symlink from persistent location to session location
-    if let Err(e) = symlink(session_dir, persistent_dir) {
+    // Create parent directory for session path if it doesn't exist
+    if let Some(parent) = session_dir.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Remove session directory if it exists (so we can create symlink)
+    if session_dir.exists() {
+        if session_dir.is_dir() && !session_dir.is_symlink() {
+            fs::remove_dir_all(session_dir)?;
+        } else {
+            fs::remove_file(session_dir)?;
+        }
+    }
+
+    // Create the symlink from session location to persistent location
+    if let Err(e) = symlink(persistent_dir, session_dir) {
         warn!(
             "Failed to create symlink from {:?} to {:?}: {}",
-            persistent_dir, session_dir, e
+            session_dir, persistent_dir, e
         );
-        // If symlink fails, we can still continue - just won't have persistence
+        // If symlink fails, create the session directory normally
+        fs::create_dir_all(session_dir)?;
     } else {
-        info!("Created symlink: {:?} -> {:?}", persistent_dir, session_dir);
+        info!("Created symlink: {:?} -> {:?}", session_dir, persistent_dir);
     }
 
     Ok(())
