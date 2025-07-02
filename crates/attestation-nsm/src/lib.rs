@@ -8,6 +8,7 @@ mod error;
 
 pub use error::{Error, Result};
 
+use std::fmt::Debug;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -145,5 +146,13 @@ impl Attestor for NsmAttestor {
             public_key: doc.public_key.map(ByteBuf::into_vec).map(Bytes::from),
             user_data: doc.user_data.map(ByteBuf::into_vec).map(Bytes::from),
         })
+    }
+}
+
+impl Debug for NsmAttestor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NsmAttestor")
+            .field("pcrs", &self.pcrs)
+            .finish_non_exhaustive()
     }
 }

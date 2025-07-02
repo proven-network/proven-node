@@ -45,6 +45,7 @@ members = [
     "crates/locks-memory",
     "crates/locks-nats",
     "crates/messaging",
+    "crates/messaging-consensus",
     "crates/messaging-memory",
     "crates/messaging-nats",
     "crates/nats-monitor",
@@ -114,6 +115,7 @@ default-members = [
     "crates/locks-memory",
     "crates/locks-nats",
     "crates/messaging",
+    "crates/messaging-consensus",
     "crates/messaging-memory",
     "crates/messaging-nats",
     "crates/nats-monitor",
@@ -443,6 +445,7 @@ proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
 proven-locks-nats = { path = "crates/locks-nats" }
 proven-messaging = { path = "crates/messaging" }
+proven-messaging-consensus = { path = "crates/messaging-consensus" }
 proven-messaging-memory = { path = "crates/messaging-memory" }
 proven-messaging-nats = { path = "crates/messaging-nats" }
 proven-nats-monitor = { path = "crates/nats-monitor" }
