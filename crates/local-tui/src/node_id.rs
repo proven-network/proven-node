@@ -162,7 +162,10 @@ pub fn pokemon_name_from_id(pokemon_id: u8) -> String {
 mod tests {
     use super::*;
 
+    use serial_test::serial;
+
     #[test]
+    #[serial]
     fn test_node_id_creation() {
         NodeId::reset_global_state();
 
@@ -182,6 +185,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_first_node_detection() {
         NodeId::reset_global_state();
 
@@ -193,6 +197,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_display_name() {
         NodeId::reset_global_state();
 
@@ -205,6 +210,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_pokemon_names() {
         let node = NodeId::with_values(1, 0);
         let name = node.pokemon_name();
@@ -215,6 +221,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_execution_order_wrapping() {
         NodeId::reset_global_state();
 
@@ -234,6 +241,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_pokemon_id_reuse() {
         NodeId::reset_global_state();
 
@@ -272,6 +280,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_with_values_constructor() {
         let node = NodeId::with_values(42, 25);
         assert_eq!(node.execution_order(), 42);
@@ -280,6 +289,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_debug_and_display() {
         let node = NodeId::with_values(5, 10);
 

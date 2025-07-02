@@ -10639,6 +10639,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "serial_test",
  "signal-hook",
  "sysinfo",
  "tempfile",
