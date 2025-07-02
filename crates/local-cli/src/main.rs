@@ -390,6 +390,10 @@ struct Args {
     #[arg(long, env = "PROVEN_NODE_KEY", required = true)]
     node_key: String,
 
+    /// P2P port
+    #[arg(long, default_value_t = 40000, env = "PROVEN_P2P_PORT")]
+    p2p_port: u16,
+
     /// Postgres binary directory path
     #[arg(
         long,
@@ -542,6 +546,7 @@ async fn create_node_config(args: Args) -> Result<NodeConfig<MockGovernance>, Er
         ethereum_sepolia_execution_store_dir: args.ethereum_sepolia_execution_store_dir,
         ethereum_sepolia_fallback_rpc_endpoint: args.ethereum_sepolia_fallback_rpc_endpoint,
         governance,
+        p2p_port: args.p2p_port,
         port: args.port,
         nats_cli_bin_dir: args.nats_cli_bin_dir,
         nats_client_port: args.nats_client_port,

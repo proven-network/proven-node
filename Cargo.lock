@@ -10095,6 +10095,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-consensus"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "byteorder",
+ "bytes",
+ "ciborium",
+ "coset",
+ "ed25519-dalek",
+ "futures",
+ "hex",
+ "openraft",
+ "parking_lot 0.12.4",
+ "proven-attestation",
+ "proven-attestation-mock",
+ "proven-bootable",
+ "proven-governance",
+ "proven-governance-mock",
+ "proven-util",
+ "rand 0.8.5",
+ "rocksdb",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber 0.3.19",
+ "tracing-test",
+ "uuid",
+]
+
+[[package]]
 name = "proven-core"
 version = "0.1.0"
 dependencies = [
@@ -10545,11 +10580,13 @@ dependencies = [
  "futures",
  "hickory-resolver 0.25.0-alpha.5",
  "http 1.3.1",
+ "openraft",
  "proven-applications",
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bitcoin-core",
  "proven-bootable",
+ "proven-consensus",
  "proven-core",
  "proven-ethereum-lighthouse",
  "proven-ethereum-reth",
@@ -10559,6 +10596,7 @@ dependencies = [
  "proven-identity",
  "proven-locks-nats",
  "proven-messaging",
+ "proven-messaging-consensus",
  "proven-messaging-nats",
  "proven-nats-server",
  "proven-network",
@@ -10706,23 +10744,20 @@ name = "proven-messaging-consensus"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "byteorder",
  "bytes",
- "ciborium",
- "coset",
  "ed25519-dalek",
  "futures",
  "hex",
- "openraft",
  "parking_lot 0.12.4",
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bootable",
+ "proven-consensus",
  "proven-governance",
  "proven-governance-mock",
  "proven-messaging",
+ "proven-util",
  "rand 0.8.5",
- "rocksdb",
  "serde",
  "serde_json",
  "serial_test",
@@ -10733,7 +10768,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber 0.3.19",
  "tracing-test",
- "uuid",
 ]
 
 [[package]]

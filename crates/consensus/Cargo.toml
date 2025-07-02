@@ -1,28 +1,34 @@
 [package]
-name = "proven-messaging-consensus"
+name = "proven-consensus"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 async-trait.workspace = true
-
 futures.workspace = true
 proven-attestation.workspace = true
 proven-attestation-mock.workspace = true
 proven-bootable.workspace = true
-proven-consensus.workspace = true
 proven-governance.workspace = true
 proven-governance-mock.workspace = true
-proven-messaging.workspace = true
 parking_lot.workspace = true
-
 tokio.workspace = true
+
+rocksdb = "0.23.0"
+byteorder = "1.5.0"
+openraft.workspace = true
 
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
 bytes.workspace = true
 hex.workspace = true
+
+# COSE (CBOR Object Signing and Encryption)
+ciborium.workspace = true
+coset.workspace = true
+ed25519-dalek.workspace = true
+rand.workspace = true
 
 # Logging
 tracing.workspace = true
@@ -33,10 +39,11 @@ thiserror.workspace = true
 # Collections and utilities
 tokio-util.workspace = true
 
+# For UUID generation
+uuid.workspace = true
+
 [dev-dependencies]
-ed25519-dalek.workspace = true
 proven-util.workspace = true
-rand.workspace = true
 serial_test.workspace = true
 tempfile.workspace = true
 tracing-test.workspace = true

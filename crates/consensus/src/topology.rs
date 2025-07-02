@@ -4,11 +4,14 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
+use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
+use proven_bootable::Bootable;
 use proven_governance::{Governance, TopologyNode};
 
 use crate::error::{ConsensusError, ConsensusResult};
@@ -49,8 +52,12 @@ pub struct PeerInfo {
 pub struct TopologyManager<G> {
     governance: Arc<G>,
     peers: Arc<RwLock<HashMap<String, PeerInfo>>>,
-    local_node_id: String,
+    local_public_key: String,
     refresh_interval: Duration,
+    /// Shutdown signal sender.
+    shutdown_tx: Arc<std::sync::Mutex<Option<mpsc::UnboundedSender<()>>>>,
+    /// Background task handle for lifecycle management.
+    task_handle: Arc<std::sync::Mutex<Option<JoinHandle<()>>>>,
 }
 
 impl<G> TopologyManager<G>
@@ -58,12 +65,14 @@ where
     G: Governance + Send + Sync + 'static,
 {
     /// Creates a new topology manager.
-    pub fn new(governance: Arc<G>, local_node_id: String) -> Self {
+    pub fn new(governance: Arc<G>, _local_node_id: String, local_public_key: String) -> Self {
         Self {
             governance,
             peers: Arc::new(RwLock::new(HashMap::new())),
-            local_node_id,
+            local_public_key,
             refresh_interval: Duration::from_secs(30),
+            shutdown_tx: Arc::new(std::sync::Mutex::new(None)),
+            task_handle: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -73,16 +82,35 @@ where
     /// # Errors
     ///
     /// Returns `ConsensusError` if topology initialization fails.
-    pub async fn start(&self) -> ConsensusResult<()> {
-        let mut interval = tokio::time::interval(self.refresh_interval);
+    ///
+    /// # Panics
+    ///
+    /// Panics if the shutdown mutex is poisoned.
+    pub fn start_internal(&self) -> ConsensusResult<()> {
+        let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
+        *self.shutdown_tx.lock().unwrap() = Some(shutdown_tx);
 
-        loop {
-            interval.tick().await;
+        let self_clone = self.clone();
+        let handle = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(self_clone.refresh_interval);
 
-            if let Err(e) = self.refresh_topology().await {
-                warn!("Failed to refresh topology: {}", e);
+            loop {
+                tokio::select! {
+                    _ = shutdown_rx.recv() => {
+                        info!("Topology manager shutting down");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        if let Err(e) = self_clone.refresh_topology().await {
+                            warn!("Failed to refresh topology: {}", e);
+                        }
+                    }
+                }
             }
-        }
+        });
+
+        *self.task_handle.lock().unwrap() = Some(handle);
+        Ok(())
     }
 
     /// Refreshes the topology from the governance system.
@@ -105,7 +133,7 @@ where
 
         for node in topology_nodes {
             // Skip our own node
-            if node.public_key == self.local_node_id {
+            if node.public_key == self.local_public_key {
                 continue;
             }
 
@@ -238,5 +266,50 @@ where
     pub async fn get_peer(&self, public_key: &str) -> Option<PeerInfo> {
         let peers = self.peers.read().await;
         peers.get(public_key).cloned()
+    }
+}
+
+#[async_trait]
+impl<G> Bootable for TopologyManager<G>
+where
+    G: Governance + Send + Sync + 'static,
+{
+    fn bootable_name(&self) -> &'static str {
+        "TopologyManager"
+    }
+
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        self.start_internal().map_err(std::convert::Into::into)
+    }
+
+    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Signal shutdown
+        let value = self.shutdown_tx.lock().unwrap().take();
+        if let Some(shutdown_tx) = value {
+            let _ = shutdown_tx.send(());
+        }
+
+        // Take the handle first to avoid holding mutex across await
+        let handle = self.task_handle.lock().unwrap().take();
+
+        // Wait for the background task to complete
+        if let Some(handle) = handle {
+            if let Err(e) = handle.await {
+                warn!("Error waiting for topology manager task: {}", e);
+            }
+        }
+
+        info!("Topology manager shutdown complete");
+        Ok(())
+    }
+
+    async fn wait(&self) {
+        // If there's a running task, wait for it
+        let handle = self.task_handle.lock().unwrap().take();
+        if let Some(handle) = handle {
+            if let Err(e) = handle.await {
+                warn!("Error waiting for topology manager task: {}", e);
+            }
+        }
     }
 }

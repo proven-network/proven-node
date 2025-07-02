@@ -206,6 +206,9 @@ pub struct NodeConfig<G: Governance> {
     /// Private key provided directly as an environment variable
     pub node_key: SigningKey,
 
+    /// P2P port
+    pub p2p_port: u16,
+
     /// Postgres binary directory path
     pub postgres_bin_path: PathBuf,
 

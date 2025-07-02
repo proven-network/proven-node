@@ -249,3 +249,20 @@ impl Governance for HeliosGovernance {
         Ok(nodes)
     }
 }
+
+impl std::fmt::Debug for HeliosGovernance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HeliosGovernance")?;
+        write!(
+            f,
+            "node_governance_address: {}",
+            self.node_governance_address
+        )?;
+        write!(
+            f,
+            "version_governance_address: {}",
+            self.version_governance_address
+        )?;
+        Ok(())
+    }
+}

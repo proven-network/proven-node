@@ -539,6 +539,7 @@ pub fn build_node_config(
 
         governance: (**governance).clone(), // Use the shared governance instance
         port: main_port,
+        p2p_port: allocate_port().unwrap(),
 
         nats_cli_bin_dir: None,
         nats_client_port: allocate_port().unwrap(),

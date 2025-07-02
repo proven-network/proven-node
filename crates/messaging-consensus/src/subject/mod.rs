@@ -6,14 +6,18 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use tracing::debug;
 
 use proven_attestation::Attestor;
+use proven_consensus::ConsensusManager;
 use proven_governance::Governance;
 use proven_messaging::subject::Subject;
 
+use crate::stream::InitializedConsensusStream;
+use crate::subscription::{ConsensusSubscription, ConsensusSubscriptionOptions};
+
 /// A consensus subject.
-#[derive(Clone, Debug)]
-#[allow(dead_code)]
+#[derive(Debug)]
 pub struct ConsensusSubject<G, A, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
@@ -25,13 +29,42 @@ where
         + TryFrom<Bytes, Error = D>
         + TryInto<Bytes, Error = S>
         + 'static,
-    D: Debug + Send + StdError + Sync + 'static + Clone,
-    S: Debug + Send + StdError + Sync + 'static + Clone,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
+    /// Governance system for consensus
     governance: G,
+    /// Attestor for verification
     attestor: A,
+    /// Consensus manager for actual messaging operations
+    consensus_manager: std::sync::Arc<ConsensusManager<G, A>>,
     _marker: PhantomData<(T, D, S)>,
+}
+
+impl<G, A, T, D, S> Clone for ConsensusSubject<G, A, T, D, S>
+where
+    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            governance: self.governance.clone(),
+            attestor: self.attestor.clone(),
+            consensus_manager: self.consensus_manager.clone(),
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<G, A, T, D, S> ConsensusSubject<G, A, T, D, S>
@@ -45,17 +78,30 @@ where
         + TryFrom<Bytes, Error = D>
         + TryInto<Bytes, Error = S>
         + 'static,
-    D: Debug + Send + StdError + Sync + 'static + Clone,
-    S: Debug + Send + StdError + Sync + 'static + Clone,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     /// Creates a new consensus subject.
-    pub const fn new(name: String, governance: G, attestor: A) -> Self {
+    #[must_use]
+    pub const fn new(
+        name: String,
+        governance: G,
+        attestor: A,
+        consensus_manager: std::sync::Arc<ConsensusManager<G, A>>,
+    ) -> Self {
         Self {
             name,
             governance,
             attestor,
+            consensus_manager,
             _marker: PhantomData,
         }
+    }
+
+    /// Get access to the consensus manager for this subject
+    #[must_use]
+    pub const fn consensus_manager(&self) -> &std::sync::Arc<ConsensusManager<G, A>> {
+        &self.consensus_manager
     }
 }
 
@@ -71,28 +117,37 @@ where
         + TryFrom<Bytes, Error = D>
         + TryInto<Bytes, Error = S>
         + 'static,
-    D: Debug + Send + StdError + Sync + 'static + Clone,
-    S: Debug + Send + StdError + Sync + 'static + Clone,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = crate::error::ConsensusError;
+    type Error = crate::error::MessagingConsensusError;
     type StreamType = crate::stream::InitializedConsensusStream<G, A, T, D, S>;
     type SubscriptionType<X>
         = crate::subscription::ConsensusSubscription<G, A, X, T, D, S>
     where
         X: proven_messaging::subscription_handler::SubscriptionHandler<T, D, S>;
 
-    async fn subscribe<X>(&self, _handler: X) -> Result<Self::SubscriptionType<X>, Self::Error>
+    async fn subscribe<X>(&self, handler: X) -> Result<Self::SubscriptionType<X>, Self::Error>
     where
         X: proven_messaging::subscription_handler::SubscriptionHandler<T, D, S>,
     {
-        // TODO: Implement subscription logic
-        todo!("Consensus subscriptions not yet implemented")
+        debug!("Creating subscription for subject '{}'", self.name);
+
+        let options = ConsensusSubscriptionOptions::default();
+
+        <ConsensusSubscription<G, A, X, T, D, S> as proven_messaging::subscription::Subscription<
+            X,
+            T,
+            D,
+            S,
+        >>::new(self.clone(), options, handler)
+        .await
     }
 
     async fn to_stream<K>(
         &self,
-        _stream_name: K,
-        _options: <<Self as Subject<T, D, S>>::StreamType as proven_messaging::stream::InitializedStream<T, D, S>>::Options,
+        stream_name: K,
+        options: <<Self as Subject<T, D, S>>::StreamType as proven_messaging::stream::InitializedStream<T, D, S>>::Options,
     ) -> Result<
         Self::StreamType,
         <<Self as Subject<T, D, S>>::StreamType as proven_messaging::stream::InitializedStream<
@@ -104,8 +159,18 @@ where
     where
         K: Into<String> + Send,
     {
-        // TODO: Implement stream creation from subject
-        todo!("Subject to stream conversion not yet implemented")
+        let stream_name = stream_name.into();
+        debug!(
+            "Creating stream '{}' from subject '{}'",
+            stream_name, self.name
+        );
+
+        <InitializedConsensusStream<G, A, T, D, S> as proven_messaging::stream::InitializedStream<
+            T,
+            D,
+            S,
+        >>::new(stream_name, options)
+        .await
     }
 }
 
@@ -122,8 +187,8 @@ where
         + TryFrom<Bytes, Error = D>
         + TryInto<Bytes, Error = S>
         + 'static,
-    D: Debug + Send + StdError + Sync + 'static + Clone,
-    S: Debug + Send + StdError + Sync + 'static + Clone,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     fn from(val: ConsensusSubject<G, A, T, D, S>) -> Self {
         val.name

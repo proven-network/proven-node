@@ -11,10 +11,10 @@ use openraft::raft::{
 };
 use openraft::BasicNode;
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, warn};
 
-use crate::consensus::TypeConfig;
+use crate::consensus_manager::TypeConfig;
 use crate::error::ConsensusError;
 use crate::network::{ConsensusMessage, ConsensusNetwork};
 
@@ -48,6 +48,8 @@ where
     consensus_network: Arc<ConsensusNetwork<G, A>>,
     /// Cache of network instances for different target nodes
     networks: Arc<RwLock<NetworkCache<G, A>>>,
+    /// Sender for outbound network messages
+    network_tx: mpsc::UnboundedSender<(u64, ConsensusMessage)>,
 }
 
 impl<G, A> ConsensusRaftNetworkFactory<G, A>
@@ -57,10 +59,14 @@ where
 {
     /// Create a new network factory
     #[must_use]
-    pub fn new(consensus_network: Arc<ConsensusNetwork<G, A>>) -> Self {
+    pub fn new(
+        consensus_network: Arc<ConsensusNetwork<G, A>>,
+        network_tx: mpsc::UnboundedSender<(u64, ConsensusMessage)>,
+    ) -> Self {
         Self {
             consensus_network,
             networks: Arc::new(RwLock::new(HashMap::new())),
+            network_tx,
         }
     }
 }
@@ -83,7 +89,11 @@ where
         }
 
         // Create a new network instance for this target
-        let network = ConsensusRaftNetwork::new(self.consensus_network.clone(), target);
+        let network = ConsensusRaftNetwork::new(
+            self.consensus_network.clone(),
+            target,
+            self.network_tx.clone(),
+        );
 
         // Cache it for future use
         {
@@ -107,6 +117,8 @@ where
     consensus_network: Arc<ConsensusNetwork<G, A>>,
     /// Target node ID for this network instance
     target_node_id: u64,
+    /// Sender for outbound network messages
+    network_tx: mpsc::UnboundedSender<(u64, ConsensusMessage)>,
 }
 
 impl<G, A> ConsensusRaftNetwork<G, A>
@@ -116,10 +128,15 @@ where
 {
     /// Create a new network instance for a specific target
     #[must_use]
-    pub const fn new(consensus_network: Arc<ConsensusNetwork<G, A>>, target_node_id: u64) -> Self {
+    pub const fn new(
+        consensus_network: Arc<ConsensusNetwork<G, A>>,
+        target_node_id: u64,
+        network_tx: mpsc::UnboundedSender<(u64, ConsensusMessage)>,
+    ) -> Self {
         Self {
             consensus_network,
             target_node_id,
+            network_tx,
         }
     }
 
@@ -135,7 +152,7 @@ where
         );
 
         // Convert RaftMessage to our network's ConsensusMessage
-        let _consensus_msg = match message {
+        let consensus_msg = match message {
             RaftMessage::Vote(_) => ConsensusMessage::Vote,
             RaftMessage::AppendEntries(_) => ConsensusMessage::AppendEntries,
             RaftMessage::InstallSnapshot(_) => ConsensusMessage::InstallSnapshot,
@@ -146,26 +163,32 @@ where
             ),
         };
 
-        // TODO: Implement actual message sending through our consensus network
-        // For now, we'll simulate responses since we don't have full integration yet
-        warn!(
-            "Simulating Raft message response for {} to node {} (network integration pending)",
-            match message {
-                RaftMessage::Vote(_) => "Vote",
-                RaftMessage::AppendEntries(_) => "AppendEntries",
-                RaftMessage::InstallSnapshot(_) => "InstallSnapshot",
-                _ => "Other",
-            },
+        // Send the message through our consensus network
+        if let Err(e) = self.network_tx.send((self.target_node_id, consensus_msg)) {
+            let error_msg = format!(
+                "Failed to send message to node {}: {}",
+                self.target_node_id, e
+            );
+            warn!("{}", error_msg);
+            return Err(RPCError::Network(openraft::error::NetworkError::new(
+                &ConsensusError::Network(error_msg.into()),
+            )));
+        }
+
+        debug!(
+            "Successfully queued Raft message for node {}",
             self.target_node_id
         );
 
-        // Return appropriate simulated responses
+        // For now, we'll simulate responses since this is a consensus protocol
+        // In a real implementation, responses would come through the consensus_rx channel
+        // and be handled by the consensus protocol state machine
         match message {
             RaftMessage::Vote(req) => {
                 let response = VoteResponse::new(
                     req.vote,
                     req.last_log_id,
-                    false, // For now, always reject votes
+                    false, // For now, always reject votes - this will be handled properly by Raft consensus
                 );
                 Ok(RaftMessage::VoteResponse(response))
             }

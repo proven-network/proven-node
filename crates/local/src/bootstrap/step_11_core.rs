@@ -14,19 +14,25 @@ use super::Bootstrap;
 use crate::error::Error;
 
 use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
 use axum::routing::any;
 use http::StatusCode;
+use openraft::Config as RaftConfig;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_bootable::Bootable;
+use proven_consensus::Consensus;
 use proven_core::{Core, CoreOptions};
 use proven_governance::Governance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_identity::IdentityManager;
 use proven_locks_nats::{NatsLockManager, NatsLockManagerConfig};
 use proven_messaging::stream::Stream;
+use proven_messaging_consensus::ConsensusConfig;
+use proven_messaging_consensus::consumer::ConsensusConsumerOptions;
+use proven_messaging_consensus::stream::{ConsensusStream, ConsensusStreamOptions};
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::consumer::NatsConsumerOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
@@ -75,6 +81,29 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
         retry_max_delay: None,
     });
 
+    let consensus = Consensus::new(
+        bootstrap.config.port.to_string(), // TODO: replace with a real id
+        SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.p2p_port)),
+        Arc::new(bootstrap.config.governance.clone()),
+        Arc::new(bootstrap.attestor.clone()),
+        bootstrap.config.node_key.clone(),
+        ConsensusConfig {
+            consensus_timeout: Duration::from_secs(30),
+            require_all_nodes: false,
+            raft_config: Arc::new(RaftConfig {
+                heartbeat_interval: 500,    // 500ms
+                election_timeout_min: 1500, // 1.5s
+                election_timeout_max: 3000, // 3s
+                ..RaftConfig::default()
+            }),
+            storage_dir: None, // Default to None, will use temporary directory
+        },
+    )
+    .await
+    .unwrap();
+
+    consensus.start().await.unwrap();
+
     let identity_manager = IdentityManager::new(
         // Command stream for processing identity commands
         NatsStream::new(
@@ -85,11 +114,11 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
             },
         ),
         // Event stream for publishing identity events
-        NatsStream::new(
+        ConsensusStream::new(
             "IDENTITY_EVENTS",
-            NatsStreamOptions {
-                client: nats_client.clone(),
-                num_replicas: bootstrap.num_replicas,
+            ConsensusStreamOptions {
+                consensus: Arc::new(consensus),
+                stream_config: None,
             },
         ),
         // Service options for the command processing service
@@ -103,10 +132,8 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
             client: nats_client.clone(),
         },
         // Consumer options for the event consumer
-        NatsConsumerOptions {
-            client: nats_client.clone(),
-            durable_name: None,
-            jetstream_context: async_nats::jetstream::new(nats_client.clone()),
+        ConsensusConsumerOptions {
+            start_sequence: None,
         },
         // Lock manager for distributed leadership
         lock_manager.clone(),

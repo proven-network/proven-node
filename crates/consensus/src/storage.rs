@@ -325,7 +325,7 @@ where
 }
 
 // Type alias for convenience with our consensus TypeConfig
-use crate::consensus::TypeConfig;
+use crate::consensus_manager::TypeConfig;
 
 /// Type alias for `RocksLogStore` configured with our consensus `TypeConfig`.
 ///

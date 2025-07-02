@@ -115,7 +115,7 @@ pub trait GovernanceError: Debug + Error + Send + Sync {
 #[async_trait]
 pub trait Governance
 where
-    Self: Send + Sync + Clone + 'static,
+    Self: Debug + Send + Sync + Clone + 'static,
 {
     /// The error type for this server.
     type Error: GovernanceError;

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use crate::consensus::{MessagingResponse, StreamStore, TypeConfig};
+use crate::consensus_manager::{MessagingResponse, StreamStore, TypeConfig};
 
 /// Snapshot data for the state machine
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,10 +96,7 @@ impl RaftStateMachine<TypeConfig> for ConsensusStateMachine {
                     // Apply the messaging request through our stream store
                     match self.store.apply_request(&request) {
                         Ok(response) => {
-                            info!(
-                                "Applied request to stream {}: sequence {}",
-                                request.stream, response.sequence
-                            );
+                            info!("Applied request: sequence {}", response.sequence);
                             responses.push(response);
                         }
                         Err(e) => {
