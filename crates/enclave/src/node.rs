@@ -4,31 +4,21 @@
 use std::convert::Infallible;
 
 use bytes::Bytes;
-use proven_applications::ApplicationManager;
 use proven_attestation_nsm::NsmAttestor;
+use proven_consensus::transport::websocket::WebSocketTransport;
 use proven_core::Core;
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
 use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
-use proven_identity::{Command, Event, IdentityManager};
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
-use proven_locks_nats::NatsLockManager;
-use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3};
 use proven_nats_server::NatsServer;
-use proven_passkeys::{Passkey, PasskeyManager};
-use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
-use proven_runtime::RuntimePoolManager;
-use proven_sessions::{Session, SessionManager};
-use proven_sql_streamed::{Request as SqlRequest, StreamedSqlStore2, StreamedSqlStore3};
-use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3};
-// use proven_nats_monitor::NatsMonitor;
 use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
 use proven_radix_gateway::RadixGateway;
 use proven_radix_node::RadixNode;
-use proven_store_s3::{S3Store, S3Store2, S3Store3};
+use proven_store_s3::S3Store;
 use proven_vsock_proxy::Proxy;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -37,85 +27,10 @@ use tokio_util::task::TaskTracker;
 use tracing::info;
 
 pub type EnclaveNodeCore = Core<
-    ApplicationManager<
-        NatsStream<
-            proven_applications::Command,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-        >,
-        NatsStream<
-            proven_applications::Event,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-        >,
-        NatsLockManager,
-    >,
-    RuntimePoolManager<
-        NatsStore2,
-        NatsStore3,
-        NatsStore3,
-        StreamedSqlStore2<
-            NatsStream2<
-                SqlRequest,
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >,
-            S3Store2<Bytes, Infallible, Infallible>,
-        >,
-        StreamedSqlStore3<
-            NatsStream3<
-                SqlRequest,
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >,
-            S3Store3<Bytes, Infallible, Infallible>,
-        >,
-        StreamedSqlStore3<
-            NatsStream3<
-                SqlRequest,
-                ciborium::de::Error<std::io::Error>,
-                ciborium::ser::Error<std::io::Error>,
-            >,
-            S3Store3<Bytes, Infallible, Infallible>,
-        >,
-        S3Store<
-            proven_runtime::StoredEntry,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-        >,
-        GatewayRadixNftVerifier,
-    >,
-    IdentityManager<
-        NatsStream<
-            Command,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-        >,
-        NatsStream<
-            Event,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-        >,
-        NatsLockManager,
-    >,
-    PasskeyManager<
-        NatsStore<
-            Passkey,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-        >,
-    >,
-    SessionManager<
-        NsmAttestor,
-        NatsStore1<
-            Session,
-            ciborium::de::Error<std::io::Error>,
-            ciborium::ser::Error<std::io::Error>,
-        >,
-    >,
     NsmAttestor,
     MockGovernance,
     LetsEncryptHttpServer<S3Store<Bytes, Infallible, Infallible>>,
+    WebSocketTransport<MockGovernance, NsmAttestor>,
 >;
 
 pub struct Services {

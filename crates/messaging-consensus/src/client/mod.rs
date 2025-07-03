@@ -14,6 +14,7 @@ use tokio::time::timeout;
 use tracing::{debug, warn};
 
 use proven_attestation::Attestor;
+use proven_consensus::transport::ConsensusTransport;
 use proven_governance::Governance;
 use proven_messaging::client::{Client, ClientError, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
@@ -51,10 +52,11 @@ impl ClientError for ConsensusClientError {}
 
 /// A consensus client.
 #[derive(Debug)]
-pub struct ConsensusClient<G, A, X, T, D, S>
+pub struct ConsensusClient<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -67,7 +69,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    stream: InitializedConsensusStream<G, A, T, D, S>,
+    stream: InitializedConsensusStream<G, A, C, T, D, S>,
     options: ConsensusClientOptions,
     /// Counter for generating unique request IDs
     request_id_counter: Arc<AtomicUsize>,
@@ -78,10 +80,11 @@ where
     _marker: PhantomData<X>,
 }
 
-impl<G, A, X, T, D, S> Clone for ConsensusClient<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> Clone for ConsensusClient<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -107,8 +110,11 @@ where
 }
 
 #[async_trait]
-impl<G, A, X, T, D, S> Client<X, T, D, S> for ConsensusClient<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> Client<X, T, D, S> for ConsensusClient<G, A, C, X, T, D, S>
 where
+    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    A: Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -119,13 +125,11 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static,
 {
     type Error = ConsensusClientError;
     type Options = ConsensusClientOptions;
     type ResponseType = X::ResponseType;
-    type StreamType = InitializedConsensusStream<G, A, T, D, S>;
+    type StreamType = InitializedConsensusStream<G, A, C, T, D, S>;
 
     async fn new(
         name: String,
@@ -179,6 +183,7 @@ where
         let sequence = self
             .stream
             .publish_with_metadata(request_bytes, consensus_metadata)
+            .await
             .map_err(ConsensusClientError::Consensus)?;
 
         debug!(
@@ -218,7 +223,6 @@ mod tests {
     use crate::stream::{ConsensusStream, ConsensusStreamOptions};
     use proven_consensus::{Consensus, ConsensusConfig};
 
-    use std::collections::HashSet;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -228,12 +232,13 @@ mod tests {
     use futures::StreamExt;
     use proven_attestation_mock::MockAttestor;
     use proven_bootable::Bootable;
-    use proven_governance::{TopologyNode, Version};
+    use proven_consensus::transport::tcp::TcpTransport;
     use proven_governance_mock::MockGovernance;
     use proven_messaging::client::Client;
     use proven_messaging::service_handler::ServiceHandler;
     use proven_messaging::service_responder::ServiceResponder;
     use proven_messaging::stream::{InitializedStream, Stream};
+    use rand::rngs::OsRng;
     use serde::{Deserialize, Serialize};
     use serial_test::serial;
     use tokio::sync::Mutex;
@@ -418,56 +423,39 @@ mod tests {
         }
     }
 
-    // Helper functions (adapted from service tests)
-    fn get_test_nodes_config() -> &'static Vec<(String, SigningKey)> {
-        use std::sync::OnceLock;
-        static TEST_NODES_CONFIG: OnceLock<Vec<(String, SigningKey)>> = OnceLock::new();
-
-        TEST_NODES_CONFIG.get_or_init(|| {
-            use rand::rngs::StdRng;
-            use rand::SeedableRng;
-
-            let mut rng = StdRng::seed_from_u64(12345);
-            let mut nodes = Vec::new();
-
-            for i in 1..=10 {
-                let signing_key = SigningKey::generate(&mut rng);
-                nodes.push((i.to_string(), signing_key));
-            }
-
-            nodes
-        })
-    }
-
+    // Helper to create a simple single-node governance for testing (like consensus_manager tests)
     async fn create_test_consensus(
-        node_id: &str,
         port: u16,
-    ) -> Arc<Consensus<MockGovernance, MockAttestor>> {
-        let config = get_test_nodes_config();
-        let (_, signing_key) = config
-            .iter()
-            .find(|(id, _)| id == node_id)
-            .unwrap_or(&config[0])
-            .clone();
+    ) -> Arc<Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>>
+    {
+        use proven_governance::{TopologyNode, Version};
+        use std::collections::HashSet;
 
-        // Create MockAttestor first to get the actual PCR values
+        // Generate a fresh signing key for each test
+        let signing_key = SigningKey::generate(&mut OsRng);
+
+        // Create MockAttestor
         let attestor = Arc::new(MockAttestor::new());
-        let actual_pcrs = attestor.pcrs_sync();
 
-        // Create a test version using the actual PCR values
+        // Create single-node governance (only knows about itself)
+        let public_key = hex::encode(signing_key.verifying_key().to_bytes());
+        let topology_node = TopologyNode {
+            availability_zone: "test-az".to_string(),
+            origin: format!("127.0.0.1:{port}"),
+            public_key,
+            region: "test-region".to_string(),
+            specializations: HashSet::new(),
+        };
+
+        // Create MockAttestor to get the actual PCR values
+        let attestor_for_version = MockAttestor::new();
+        let actual_pcrs = attestor_for_version.pcrs_sync();
+
+        // Create a test version using the actual PCR values from MockAttestor
         let test_version = Version {
             ne_pcr0: actual_pcrs.pcr0,
             ne_pcr1: actual_pcrs.pcr1,
             ne_pcr2: actual_pcrs.pcr2,
-        };
-
-        // Create topology node
-        let topology_node = TopologyNode {
-            availability_zone: "test-az".to_string(),
-            origin: format!("127.0.0.1:{port}"),
-            public_key: hex::encode(signing_key.verifying_key().to_bytes()),
-            region: "test-region".to_string(),
-            specializations: HashSet::new(),
         };
 
         let governance = Arc::new(MockGovernance::new(
@@ -477,26 +465,41 @@ mod tests {
             vec![],
         ));
 
-        let consensus_config = ConsensusConfig::default();
+        // Create consensus config with temporary directory for tests
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
+        let temp_path = temp_dir.path().to_string_lossy().to_string();
+        let config = ConsensusConfig {
+            storage_dir: Some(temp_path),
+            ..ConsensusConfig::default()
+        };
 
-        Consensus::new(
-            node_id.to_string(),
+        let consensus = Consensus::new_with_tcp(
             format!("127.0.0.1:{port}").parse().unwrap(),
             governance,
             attestor,
             signing_key,
-            consensus_config,
+            config,
         )
         .await
-        .unwrap()
-        .into()
+        .unwrap();
+
+        Arc::new(consensus)
     }
 
     async fn create_test_options(
-        node_id: &str,
         port: u16,
-    ) -> ConsensusStreamOptions<MockGovernance, MockAttestor> {
-        let consensus = create_test_consensus(node_id, port).await;
+    ) -> ConsensusStreamOptions<
+        MockGovernance,
+        MockAttestor,
+        TcpTransport<MockGovernance, MockAttestor>,
+    > {
+        let consensus = create_test_consensus(port).await;
+
+        // Start the consensus system (automatically initializes cluster)
+        consensus
+            .start()
+            .await
+            .expect("Failed to start consensus for test");
 
         ConsensusStreamOptions {
             consensus,
@@ -512,11 +515,12 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_client_creation() {
-        let options = create_test_options("1", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -550,11 +554,12 @@ mod tests {
         // Note: Since consensus client doesn't actually wait for responses yet
         // (the response correlation mechanism needs to be implemented),
         // this test will timeout as expected but for different reasons than NATS
-        let options = create_test_options("3", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -586,11 +591,12 @@ mod tests {
     #[serial]
     async fn test_client_request_metadata() {
         // Test that the client properly sets metadata when publishing requests
-        let options = create_test_options("4", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -631,11 +637,12 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_client_request_id_generation() {
-        let options = create_test_options("5", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -684,11 +691,12 @@ mod tests {
         // Note: This is harder to test with serde_json since it rarely fails for simple structs
         // but we can test the error path exists
 
-        let options = create_test_options("6", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -719,11 +727,12 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_client_multiple_concurrent_requests() {
-        let options = create_test_options("7", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -771,11 +780,12 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_client_options() {
-        let options = create_test_options("8", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -828,11 +838,12 @@ mod tests {
     #[serial]
     async fn test_client_with_actual_service_handler() {
         // Test client with a real responding service handler
-        let options = create_test_options("9", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -907,11 +918,12 @@ mod tests {
     #[serial]
     async fn test_client_with_streaming_handler() {
         // Test client with a streaming response handler
-        let options = create_test_options("10", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -983,11 +995,12 @@ mod tests {
     #[serial]
     async fn test_client_with_non_responsive_handler() {
         // Test client with a non-responsive handler for timeout testing
-        let options = create_test_options("11", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1051,11 +1064,12 @@ mod tests {
     #[serial]
     async fn test_handler_request_tracking() {
         // Test that handlers properly track processed requests
-        let options = create_test_options("12", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,

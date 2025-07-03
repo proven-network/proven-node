@@ -13,26 +13,15 @@
 use super::Bootstrap;
 use crate::error::Error;
 
-use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::Arc;
 use std::time::Duration;
 
-use axum::Router;
-use axum::routing::any;
-use http::StatusCode;
-use openraft::Config as RaftConfig;
 use proven_applications::{ApplicationManagement, ApplicationManager};
-use proven_bootable::Bootable;
-use proven_consensus::Consensus;
-use proven_core::{Core, CoreOptions};
+
+use proven_core::BootstrapUpgrade;
 use proven_governance::Governance;
-use proven_http_insecure::InsecureHttpServer;
 use proven_identity::IdentityManager;
 use proven_locks_nats::{NatsLockManager, NatsLockManagerConfig};
 use proven_messaging::stream::Stream;
-use proven_messaging_consensus::ConsensusConfig;
-use proven_messaging_consensus::consumer::ConsensusConsumerOptions;
-use proven_messaging_consensus::stream::{ConsensusStream, ConsensusStreamOptions};
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::consumer::NatsConsumerOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
@@ -46,26 +35,15 @@ use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
-use tower_http::cors::CorsLayer;
 use tracing::info;
 use uuid::Uuid;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
-const PORT_RELEASE_MAX_RETRIES: u32 = 20;
-const PORT_RELEASE_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 #[allow(clippy::too_many_lines)]
 pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let nats_client = bootstrap.nats_client.as_ref().unwrap_or_else(|| {
         panic!("nats client not fetched before core");
-    });
-
-    let network = bootstrap.network.as_ref().unwrap_or_else(|| {
-        panic!("network not set before core");
-    });
-
-    let light_core = bootstrap.light_core.as_ref().unwrap_or_else(|| {
-        panic!("light core not fetched before core");
     });
 
     let lock_manager = NatsLockManager::new(NatsLockManagerConfig {
@@ -81,29 +59,6 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
         retry_max_delay: None,
     });
 
-    let consensus = Consensus::new(
-        bootstrap.config.port.to_string(), // TODO: replace with a real id
-        SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.p2p_port)),
-        Arc::new(bootstrap.config.governance.clone()),
-        Arc::new(bootstrap.attestor.clone()),
-        bootstrap.config.node_key.clone(),
-        ConsensusConfig {
-            consensus_timeout: Duration::from_secs(30),
-            require_all_nodes: false,
-            raft_config: Arc::new(RaftConfig {
-                heartbeat_interval: 500,    // 500ms
-                election_timeout_min: 1500, // 1.5s
-                election_timeout_max: 3000, // 3s
-                ..RaftConfig::default()
-            }),
-            storage_dir: None, // Default to None, will use temporary directory
-        },
-    )
-    .await
-    .unwrap();
-
-    consensus.start().await.unwrap();
-
     let identity_manager = IdentityManager::new(
         // Command stream for processing identity commands
         NatsStream::new(
@@ -114,11 +69,11 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
             },
         ),
         // Event stream for publishing identity events
-        ConsensusStream::new(
+        NatsStream::new(
             "IDENTITY_EVENTS",
-            ConsensusStreamOptions {
-                consensus: Arc::new(consensus),
-                stream_config: None,
+            NatsStreamOptions {
+                client: nats_client.clone(),
+                num_replicas: bootstrap.num_replicas,
             },
         ),
         // Service options for the command processing service
@@ -132,8 +87,10 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
             client: nats_client.clone(),
         },
         // Consumer options for the event consumer
-        ConsensusConsumerOptions {
-            start_sequence: None,
+        NatsConsumerOptions {
+            client: nats_client.clone(),
+            durable_name: None,
+            jetstream_context: async_nats::jetstream::new(nats_client.clone()),
         },
         // Lock manager for distributed leadership
         lock_manager.clone(),
@@ -160,14 +117,6 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
             persist: true,
         }),
     });
-
-    let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.port));
-    let http_server = InsecureHttpServer::new(
-        http_sock_addr,
-        Router::new()
-            .fallback(any(|| async { (StatusCode::NOT_FOUND, "") }))
-            .layer(CorsLayer::very_permissive()),
-    );
 
     let application_manager = ApplicationManager::new(
         // Command stream for processing application commands
@@ -317,42 +266,18 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     })
     .await;
 
-    let core = Core::new(CoreOptions {
+    let core = bootstrap.bootstrapping_core.take().unwrap();
+
+    // Bootstrap the core (this modifies the core in-place)
+    core.bootstrap(BootstrapUpgrade {
         application_manager,
-        attestor: bootstrap.attestor.clone(),
-        http_server,
         identity_manager,
-        network: network.clone(),
         passkey_manager,
         runtime_pool_manager,
         sessions_manager,
-    });
-
-    // Shutdown the light core and free the port before starting the full core
-    let _ = light_core.shutdown().await;
-    bootstrap.light_core = None;
-
-    // Wait for the port to be fully released
-    let port = bootstrap.config.port;
-    let mut retry_count = 0;
-
-    loop {
-        // Test if we can bind to the port
-        if let Ok(listener) = tokio::net::TcpListener::bind(("0.0.0.0", port)).await {
-            // Port is available, close the test listener
-            drop(listener);
-            break;
-        }
-        retry_count += 1;
-        if retry_count >= PORT_RELEASE_MAX_RETRIES {
-            return Err(Error::Io(format!(
-                "Port {port} still in use after {PORT_RELEASE_MAX_RETRIES} attempts"
-            )));
-        }
-        tokio::time::sleep(PORT_RELEASE_RETRY_DELAY).await;
-    }
-
-    core.start().await.map_err(Error::Bootable)?;
+    })
+    .await
+    .unwrap();
 
     // Add core to bootables collection
     bootstrap.add_bootable(Box::new(core));

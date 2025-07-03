@@ -1,12 +1,14 @@
 //! Network topology management and peer discovery.
 
 use std::collections::{HashMap, HashSet};
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use hickory_resolver::Resolver;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use tokio::fs;
 use tokio::sync::{mpsc, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
@@ -163,27 +165,103 @@ where
     }
 
     /// Converts a topology node to peer info.
-    #[allow(clippy::unused_async)]
     async fn topology_node_to_peer_info(&self, node: TopologyNode) -> ConsensusResult<PeerInfo> {
-        // Parse the origin as a socket address
-        let address: SocketAddr = node
-            .origin
-            .parse()
-            .map_err(|e| ConsensusError::InvalidMessage(format!("Invalid peer address: {e}")))?;
+        // Try to parse the origin directly as a socket address first
+        if let Ok(address) = node.origin.parse::<SocketAddr>() {
+            return Ok(PeerInfo {
+                public_key: node.public_key,
+                address,
+                availability_zone: node.availability_zone,
+                region: node.region,
+                is_healthy: false, // Will be updated by health checks
+                last_seen: Instant::now(),
+                specializations: node
+                    .specializations
+                    .into_iter()
+                    .map(|s| format!("{s:?}"))
+                    .collect(),
+            });
+        }
 
-        Ok(PeerInfo {
-            public_key: node.public_key,
-            address,
-            availability_zone: node.availability_zone,
-            region: node.region,
-            is_healthy: false, // Will be updated by health checks
-            last_seen: Instant::now(),
-            specializations: node
-                .specializations
-                .into_iter()
-                .map(|s| format!("{s:?}"))
-                .collect(),
-        })
+        // Extract hostname and port from origin (handle HTTP prefixes)
+        let origin_without_protocol = node
+            .origin
+            .trim_start_matches("http://")
+            .trim_start_matches("https://");
+
+        let (hostname, port) = if let Some(colon_pos) = origin_without_protocol.rfind(':') {
+            let hostname = &origin_without_protocol[..colon_pos];
+            let port_str = &origin_without_protocol[colon_pos + 1..];
+            let port = port_str.parse::<u16>().map_err(|e| {
+                ConsensusError::InvalidMessage(format!(
+                    "Invalid port in origin '{}': {}",
+                    node.origin, e
+                ))
+            })?;
+            (hostname, port)
+        } else {
+            // No port specified, use default P2P port 1614
+            (origin_without_protocol, 1614)
+        };
+
+        // Try to parse hostname as IP address first
+        if let Ok(ip) = hostname.parse::<IpAddr>() {
+            let address = SocketAddr::new(ip, port);
+            return Ok(PeerInfo {
+                public_key: node.public_key,
+                address,
+                availability_zone: node.availability_zone,
+                region: node.region,
+                is_healthy: false,
+                last_seen: Instant::now(),
+                specializations: node
+                    .specializations
+                    .into_iter()
+                    .map(|s| format!("{s:?}"))
+                    .collect(),
+            });
+        }
+
+        // Try DNS resolution
+        if let Ok(ip) = resolve_dns(hostname).await {
+            let address = SocketAddr::new(ip, port);
+            return Ok(PeerInfo {
+                public_key: node.public_key,
+                address,
+                availability_zone: node.availability_zone,
+                region: node.region,
+                is_healthy: false,
+                last_seen: Instant::now(),
+                specializations: node
+                    .specializations
+                    .into_iter()
+                    .map(|s| format!("{s:?}"))
+                    .collect(),
+            });
+        }
+
+        // Fallback to /etc/hosts
+        if let Ok(ip) = resolve_hosts_file(hostname).await {
+            let address = SocketAddr::new(ip, port);
+            return Ok(PeerInfo {
+                public_key: node.public_key,
+                address,
+                availability_zone: node.availability_zone,
+                region: node.region,
+                is_healthy: false,
+                last_seen: Instant::now(),
+                specializations: node
+                    .specializations
+                    .into_iter()
+                    .map(|s| format!("{s:?}"))
+                    .collect(),
+            });
+        }
+
+        Err(ConsensusError::InvalidMessage(format!(
+            "Could not resolve hostname '{}' from origin '{}'",
+            hostname, node.origin
+        )))
     }
 
     /// Gets all healthy peers.
@@ -267,6 +345,64 @@ where
         let peers = self.peers.read().await;
         peers.get(public_key).cloned()
     }
+}
+
+/// Resolve hostname using DNS
+async fn resolve_dns(hostname: &str) -> Result<IpAddr, Box<dyn std::error::Error + Send + Sync>> {
+    let resolver = Resolver::tokio_from_system_conf()
+        .map_err(|e| format!("Failed to create DNS resolver: {e}"))?;
+
+    let lookup_result = resolver
+        .lookup_ip(hostname)
+        .await
+        .map_err(|e| format!("DNS lookup failed: {e}"))?;
+
+    // Return the first IP address found
+    lookup_result
+        .iter()
+        .next()
+        .ok_or_else(|| "No IP addresses found in DNS response".into())
+}
+
+/// Resolve hostname using hosts file (cross-platform)
+async fn resolve_hosts_file(
+    hostname: &str,
+) -> Result<IpAddr, Box<dyn std::error::Error + Send + Sync>> {
+    let hosts_path = if cfg!(target_family = "unix") {
+        "/etc/hosts"
+    } else if cfg!(target_family = "windows") {
+        r"C:\Windows\System32\drivers\etc\hosts"
+    } else {
+        return Err("Unsupported platform for hosts file resolution".into());
+    };
+
+    let hosts_content = fs::read_to_string(hosts_path)
+        .await
+        .map_err(|e| format!("Failed to read hosts file: {e}"))?;
+
+    for line in hosts_content.lines() {
+        let line = line.trim();
+
+        // Skip comments and empty lines
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() >= 2 {
+            let ip_str = parts[0];
+            let hosts = &parts[1..];
+
+            // Check if our hostname is in this line
+            if hosts.contains(&hostname) {
+                if let Ok(ip) = ip_str.parse::<IpAddr>() {
+                    return Ok(ip);
+                }
+            }
+        }
+    }
+
+    Err(format!("Hostname '{hostname}' not found in hosts file").into())
 }
 
 #[async_trait]

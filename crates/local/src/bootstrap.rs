@@ -13,17 +13,20 @@ pub mod step_07_ethereum_holesky_node;
 pub mod step_08_ethereum_sepolia_node;
 pub mod step_09_radix_mainnet_node;
 pub mod step_10_radix_stokenet_node;
-pub mod step_11_core;
+pub mod step_11_upgrade_core;
 
 use super::error::Error;
 use crate::NodeConfig;
 
 use std::net::IpAddr;
+use std::sync::Arc;
 
 use async_nats::Client as NatsClient;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
-use proven_core::LightCore;
+use proven_consensus::Consensus;
+use proven_consensus::transport::websocket::WebSocketTransport;
+use proven_core::Core;
 use proven_governance::Governance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::ProvenNetwork;
@@ -31,6 +34,9 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 use url::Url;
+
+// Type alias to simplify complex consensus type
+type LocalConsensus<G> = Consensus<G, MockAttestor, WebSocketTransport<G, MockAttestor>>;
 
 /// Bootstrap struct for local node initialization.
 ///
@@ -41,7 +47,9 @@ use url::Url;
 /// It is also used to shutdown the node and clean up the services.
 pub struct Bootstrap<G: Governance> {
     config: NodeConfig<G>,
+
     attestor: MockAttestor,
+    consensus: Option<Arc<LocalConsensus<G>>>,
     external_ip: IpAddr,
     num_replicas: usize,
 
@@ -60,8 +68,9 @@ pub struct Bootstrap<G: Governance> {
     radix_mainnet_rpc_endpoint: Url,
     radix_stokenet_rpc_endpoint: Url,
 
-    // Special case - gets shutdown before core starts
-    light_core: Option<LightCore<MockAttestor, G, InsecureHttpServer>>,
+    // Special case - gets upgraded at end of bootstrap
+    bootstrapping_core:
+        Option<Core<MockAttestor, G, InsecureHttpServer, WebSocketTransport<G, MockAttestor>>>,
 
     // Collection of all bootable services
     bootables: Vec<Box<dyn Bootable>>,
@@ -95,7 +104,7 @@ impl<G: Governance> Bootstrap<G> {
         }
 
         // Special case: shutdown light_core if it exists
-        if let Some(light_core) = self.light_core.take() {
+        if let Some(light_core) = self.bootstrapping_core.take() {
             if let Err(e) = light_core.shutdown().await {
                 error!("Error shutting down light_core during cleanup: {:?}", e);
             }
@@ -117,7 +126,9 @@ impl<G: Governance> Bootstrap<G> {
 
         Ok(Self {
             config: config.clone(),
+
             attestor: MockAttestor::new(),
+            consensus: None,
             external_ip,
             num_replicas: if config.allow_single_node { 1 } else { 3 },
 
@@ -134,7 +145,7 @@ impl<G: Governance> Bootstrap<G> {
             radix_mainnet_rpc_endpoint: config.radix_mainnet_fallback_rpc_endpoint.clone(),
             radix_stokenet_rpc_endpoint: config.radix_stokenet_fallback_rpc_endpoint.clone(),
 
-            light_core: None,
+            bootstrapping_core: None,
 
             bootables: Vec::new(),
 
@@ -212,7 +223,7 @@ impl<G: Governance> Bootstrap<G> {
         );
         execute_step!("radix mainnet node", step_09_radix_mainnet_node::execute);
         execute_step!("radix stokenet node", step_10_radix_stokenet_node::execute);
-        execute_step!("core", step_11_core::execute);
+        execute_step!("core", step_11_upgrade_core::execute);
 
         info!(
             "All bootstrap steps completed successfully. Started {} bootable services.",

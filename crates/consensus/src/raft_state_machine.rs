@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use crate::consensus_manager::{MessagingResponse, StreamStore, TypeConfig};
+use crate::{MessagingResponse, StreamStore, TypeConfig};
 
 /// Snapshot data for the state machine
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,8 +55,8 @@ impl RaftStateMachine<TypeConfig> for ConsensusStateMachine {
         &mut self,
     ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>>
     {
-        let last_applied = *self.last_applied.read().await;
-        let _last_snapshot = *self.last_snapshot.read().await;
+        let last_applied = self.last_applied.read().await.clone();
+        let _last_snapshot = self.last_snapshot.read().await.clone();
 
         debug!("State machine applied_state: applied={:?}", last_applied);
 
@@ -80,8 +80,9 @@ impl RaftStateMachine<TypeConfig> for ConsensusStateMachine {
             let log_id = entry.log_id();
             debug!("Applying log entry at index {}", log_id.index);
 
-            // Update last applied
-            *self.last_applied.write().await = Some(log_id);
+            // Update last applied (clone to allow reuse below)
+            let log_id_clone = log_id.clone();
+            *self.last_applied.write().await = Some(log_id_clone);
 
             match entry.payload {
                 openraft::EntryPayload::Blank => {
@@ -145,9 +146,10 @@ impl RaftStateMachine<TypeConfig> for ConsensusStateMachine {
         // and restore our state machine from it
         warn!("Snapshot installation not fully implemented - accepting snapshot metadata only");
 
-        // Update our last applied and snapshot tracking
-        *self.last_applied.write().await = meta.last_log_id;
-        *self.last_snapshot.write().await = meta.last_log_id;
+        // Update our last applied and snapshot tracking (clone to avoid move)
+        let log_id = meta.last_log_id.clone();
+        (*self.last_applied.write().await).clone_from(&log_id);
+        (*self.last_snapshot.write().await).clone_from(&log_id);
 
         Ok(())
     }
@@ -156,7 +158,7 @@ impl RaftStateMachine<TypeConfig> for ConsensusStateMachine {
     async fn get_current_snapshot(
         &mut self,
     ) -> Result<Option<openraft::Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
-        let last_applied = *self.last_applied.read().await;
+        let last_applied = self.last_applied.read().await.clone();
 
         if last_applied.is_none() {
             // No snapshot available yet
@@ -169,14 +171,14 @@ impl RaftStateMachine<TypeConfig> for ConsensusStateMachine {
         let snapshot_data = StateMachineSnapshot {
             streams: BTreeMap::new(), // Simplified - would contain actual stream data
             sequences: BTreeMap::new(),
-            last_applied,
+            last_applied: last_applied.clone(),
         };
 
         let snapshot_bytes =
             serde_json::to_vec(&snapshot_data).map_err(|e| StorageError::read_state_machine(&e))?;
 
         let meta = SnapshotMeta {
-            last_log_id: last_applied,
+            last_log_id: last_applied.clone(),
             last_membership: StoredMembership::default(),
             snapshot_id: format!("snapshot-{}", last_applied.map_or(0, |id| id.index)),
         };
@@ -192,7 +194,7 @@ impl RaftStateMachine<TypeConfig> for ConsensusStateMachine {
     /// Get a snapshot builder for creating snapshots
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
         info!("Getting snapshot builder");
-        ConsensusSnapshotBuilder::new(self.store.clone(), *self.last_applied.read().await)
+        ConsensusSnapshotBuilder::new(self.store.clone(), self.last_applied.read().await.clone())
     }
 }
 
@@ -220,7 +222,10 @@ impl RaftSnapshotBuilder<TypeConfig> for ConsensusSnapshotBuilder {
     async fn build_snapshot(
         &mut self,
     ) -> Result<openraft::Snapshot<TypeConfig>, StorageError<TypeConfig>> {
-        let snapshot_id = format!("snapshot-{}", self.last_applied.map_or(0, |id| id.index));
+        let snapshot_id = format!(
+            "snapshot-{}",
+            self.last_applied.as_ref().map_or(0, |id| id.index)
+        );
 
         info!("Building snapshot: {}", snapshot_id);
 
@@ -228,7 +233,7 @@ impl RaftSnapshotBuilder<TypeConfig> for ConsensusSnapshotBuilder {
         let snapshot_data = StateMachineSnapshot {
             streams: BTreeMap::new(), // Simplified - would export actual stream data
             sequences: BTreeMap::new(),
-            last_applied: self.last_applied,
+            last_applied: self.last_applied.clone(),
         };
 
         // Serialize the snapshot
@@ -237,7 +242,7 @@ impl RaftSnapshotBuilder<TypeConfig> for ConsensusSnapshotBuilder {
 
         // Create the snapshot metadata
         let meta = SnapshotMeta {
-            last_log_id: self.last_applied,
+            last_log_id: self.last_applied.clone(),
             last_membership: StoredMembership::default(),
             snapshot_id,
         };

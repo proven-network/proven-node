@@ -24,36 +24,53 @@ use crate::error::MessagingConsensusError;
 use crate::service::ConsensusService;
 use crate::subject::ConsensusSubject;
 use proven_consensus::{
-    Consensus, ConsensusManager, ConsensusNetwork, MessagingStorage, StreamConfig, TopologyManager,
+    Consensus, ConsensusTransport, MessagingStorage, StreamConfig, TopologyManager,
 };
 
 /// Options for the consensus stream.
-#[derive(Clone, Debug)]
-pub struct ConsensusStreamOptions<G, A>
+#[derive(Debug)]
+pub struct ConsensusStreamOptions<G, A, C>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
 {
     /// Shared consensus system.
-    pub consensus: Arc<Consensus<G, A>>,
+    pub consensus: Arc<Consensus<G, A, C>>,
 
     /// Optional stream-specific configuration.
     pub stream_config: Option<StreamConfig>,
 }
 
-impl<G, A> StreamOptions for ConsensusStreamOptions<G, A>
+impl<G, A, C> StreamOptions for ConsensusStreamOptions<G, A, C>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
 {
+}
+
+impl<G, A, C> Clone for ConsensusStreamOptions<G, A, C>
+where
+    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
+{
+    fn clone(&self) -> Self {
+        Self {
+            consensus: self.consensus.clone(),
+            stream_config: self.stream_config.clone(),
+        }
+    }
 }
 
 /// An initialized consensus stream with immediate consistency.
 #[derive(Debug)]
-pub struct InitializedConsensusStream<G, A, T, D, S>
+pub struct InitializedConsensusStream<G, A, C, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
         + Send
@@ -68,10 +85,7 @@ where
     name: String,
 
     /// Consensus protocol instance.
-    consensus: Arc<ConsensusManager<G, A>>,
-
-    /// Network layer for peer communication.
-    network: Arc<ConsensusNetwork<G, A>>,
+    consensus: Arc<Consensus<G, A, C>>,
 
     /// Storage layer for persistence.
     storage: Arc<MessagingStorage>,
@@ -80,7 +94,7 @@ where
     topology: Arc<TopologyManager<G>>,
 
     /// Stream options.
-    options: ConsensusStreamOptions<G, A>,
+    options: ConsensusStreamOptions<G, A, C>,
 
     /// Local cache of stream data.
     cache: Arc<RwLock<HashMap<u64, T>>>,
@@ -89,8 +103,11 @@ where
     _marker: PhantomData<(T, D, S)>,
 }
 
-impl<G, A, T, D, S> Clone for InitializedConsensusStream<G, A, T, D, S>
+impl<G, A, C, T, D, S> Clone for InitializedConsensusStream<G, A, C, T, D, S>
 where
+    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
         + Send
@@ -100,14 +117,11 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
             consensus: self.consensus.clone(),
-            network: self.network.clone(),
             storage: self.storage.clone(),
             topology: self.topology.clone(),
             options: self.options.clone(),
@@ -118,8 +132,11 @@ where
 }
 
 #[async_trait]
-impl<G, A, T, D, S> InitializedStream<T, D, S> for InitializedConsensusStream<G, A, T, D, S>
+impl<G, A, C, T, D, S> InitializedStream<T, D, S> for InitializedConsensusStream<G, A, C, T, D, S>
 where
+    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
         + Send
@@ -129,25 +146,23 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
     type Error = MessagingConsensusError;
-    type Options = ConsensusStreamOptions<G, A>;
-    type Subject = ConsensusSubject<G, A, T, D, S>;
+    type Options = ConsensusStreamOptions<G, A, C>;
+    type Subject = ConsensusSubject<G, A, C, T, D, S>;
 
     type Client<X>
-        = ConsensusClient<G, A, X, T, D, S>
+        = ConsensusClient<G, A, C, X, T, D, S>
     where
         X: proven_messaging::service_handler::ServiceHandler<T, D, S>;
 
     type Consumer<X>
-        = ConsensusConsumer<G, A, X, T, D, S>
+        = ConsensusConsumer<G, A, C, X, T, D, S>
     where
         X: proven_messaging::consumer_handler::ConsumerHandler<T, D, S>;
 
     type Service<X>
-        = ConsensusService<G, A, X, T, D, S>
+        = ConsensusService<G, A, C, X, T, D, S>
     where
         X: proven_messaging::service_handler::ServiceHandler<T, D, S>;
 
@@ -159,15 +174,15 @@ where
         let name = stream_name.into();
 
         // Use shared components from the consensus system - no initialization needed
-        let consensus = options.consensus.consensus_manager().clone();
-        let network = options.consensus.network().clone();
+        let consensus = options.consensus.clone();
+        let _network = options.consensus.transport().clone();
         let storage = options.consensus.storage().clone();
         let topology = options.consensus.topology().clone();
 
         // No background task spawning - already managed by the Consensus struct
 
         // Auto-subscribe stream to its own name as a subject (CONSENSUS-BASED)
-        match consensus.subscribe_stream_to_subject(&name, &name) {
+        match consensus.subscribe_stream_to_subject(&name, &name).await {
             Ok(_) => {
                 info!(
                     "Auto-subscribed stream '{}' to subject '{}' via consensus",
@@ -191,7 +206,6 @@ where
         Ok(Self {
             name,
             consensus,
-            network,
             storage,
             topology,
             options,
@@ -226,6 +240,7 @@ where
             match stream
                 .consensus
                 .bulk_subscribe_stream_to_subjects(&stream.name, subject_patterns.clone())
+                .await
             {
                 Ok(_) => {
                     info!(
@@ -299,14 +314,15 @@ where
 
     /// Deletes a message at the given sequence number.
     async fn delete(&self, seq: u64) -> Result<(), Self::Error> {
-        // In consensus systems, we typically don't delete individual messages
-        // Instead, we might use tombstone markers or compaction
-        // For now, we'll remove from local cache but the consensus log remains
-        self.cache.write().await.remove(&seq);
+        // Delete the message through consensus
+        let result_seq = self
+            .consensus
+            .delete_message(self.name.clone(), seq)
+            .await?;
 
         info!(
-            "Marked message {} for deletion in stream '{}'",
-            seq, self.name
+            "Deleted message {} from stream '{}' (result sequence: {})",
+            seq, self.name, result_seq
         );
         Ok(())
     }
@@ -374,7 +390,10 @@ where
         })?;
 
         // Publish through consensus protocol for immediate consistency
-        let seq = self.consensus.publish_message(self.name.clone(), bytes)?;
+        let seq = self
+            .consensus
+            .publish_message(self.name.clone(), bytes)
+            .await?;
 
         // Cache the message locally
         self.cache.write().await.insert(seq, message);
@@ -406,7 +425,8 @@ where
         // Publish batch through consensus protocol
         let last_seq = self
             .consensus
-            .publish_batch(self.name.clone(), bytes_messages)?;
+            .publish_batch(self.name.clone(), bytes_messages)
+            .await?;
 
         // Cache all messages locally
         let mut cache = self.cache.write().await;
@@ -436,7 +456,8 @@ where
         // Perform rollup through consensus protocol
         let seq = self
             .consensus
-            .rollup_message(self.name.clone(), bytes, expected_seq)?;
+            .rollup_message(self.name.clone(), bytes, expected_seq)
+            .await?;
 
         // Clear local cache and add the rollup message
         #[allow(clippy::significant_drop_tightening)]
@@ -454,8 +475,11 @@ where
     }
 }
 
-impl<G, A, T, D, S> InitializedConsensusStream<G, A, T, D, S>
+impl<G, A, C, T, D, S> InitializedConsensusStream<G, A, C, T, D, S>
 where
+    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -465,8 +489,6 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
     /// Publish a message with metadata directly through consensus.
     ///
@@ -476,15 +498,16 @@ where
     /// # Errors
     ///
     /// Returns an error if the consensus operation fails.
-    pub fn publish_with_metadata(
+    pub async fn publish_with_metadata(
         &self,
         message: Bytes,
         metadata: HashMap<String, String>,
     ) -> Result<u64, MessagingConsensusError> {
         // Publish through consensus with metadata
-        let seq =
-            self.consensus
-                .publish_message_with_metadata(self.name.clone(), message, metadata)?;
+        let seq = self
+            .consensus
+            .publish_message_with_metadata(self.name.clone(), message, metadata)
+            .await?;
 
         info!(
             "Published message with metadata to stream '{}' at sequence {}",
@@ -494,35 +517,20 @@ where
         Ok(seq)
     }
 
-    /// Delete a message from the stream through consensus.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the consensus operation fails.
-    pub fn delete_message(&self, sequence: u64) -> Result<(), MessagingConsensusError> {
-        // Delete the message through consensus
-        let result_seq = self.consensus.delete_message(self.name.clone(), sequence)?;
-
-        info!(
-            "Deleted message {} from stream '{}' (result sequence: {})",
-            sequence, self.name, result_seq
-        );
-        Ok(())
-    }
-
     /// Get access to the underlying consensus manager
     #[must_use]
-    pub const fn consensus(&self) -> &Arc<ConsensusManager<G, A>> {
+    pub const fn consensus(&self) -> &Arc<Consensus<G, A, C>> {
         &self.consensus
     }
 }
 
 /// A consensus stream that provides immediate consistency guarantees.
 #[derive(Debug)]
-pub struct ConsensusStream<G, A, T, D, S>
+pub struct ConsensusStream<G, A, C, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -534,14 +542,15 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    options: ConsensusStreamOptions<G, A>,
+    options: ConsensusStreamOptions<G, A, C>,
     _marker: PhantomData<(T, D, S)>,
 }
 
-impl<G, A, T, D, S> Clone for ConsensusStream<G, A, T, D, S>
+impl<G, A, C, T, D, S> Clone for ConsensusStream<G, A, C, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -561,10 +570,11 @@ where
     }
 }
 
-impl<G, A, T, D, S> ConsensusStream<G, A, T, D, S>
+impl<G, A, C, T, D, S> ConsensusStream<G, A, C, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -583,10 +593,11 @@ where
 }
 
 #[async_trait]
-impl<G, A, T, D, S> Stream<T, D, S> for ConsensusStream<G, A, T, D, S>
+impl<G, A, C, T, D, S> Stream<T, D, S> for ConsensusStream<G, A, C, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -597,9 +608,9 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Options = ConsensusStreamOptions<G, A>;
-    type Initialized = InitializedConsensusStream<G, A, T, D, S>;
-    type Subject = ConsensusSubject<G, A, T, D, S>;
+    type Options = ConsensusStreamOptions<G, A, C>;
+    type Initialized = InitializedConsensusStream<G, A, C, T, D, S>;
+    type Subject = ConsensusSubject<G, A, C, T, D, S>;
 
     fn new<K>(stream_name: K, options: Self::Options) -> Self
     where
@@ -648,6 +659,7 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
     use proven_bootable::Bootable;
+    use proven_consensus::transport::tcp::TcpTransport;
     use proven_consensus::ConsensusConfig;
     use proven_governance_mock::MockGovernance;
     use rand::rngs::OsRng;
@@ -658,46 +670,35 @@ mod tests {
     type TestMessage = Bytes;
     type TestError = Infallible;
 
-    // Global test configuration - predefined nodes and keys for deterministic testing
-    static TEST_NODES_CONFIG: std::sync::OnceLock<Vec<(String, SigningKey)>> =
-        std::sync::OnceLock::new();
+    // Type aliases to simplify complex test types
+    type TestConsensusStream = ConsensusStream<
+        MockGovernance,
+        MockAttestor,
+        TcpTransport<MockGovernance, MockAttestor>,
+        TestMessage,
+        TestError,
+        TestError,
+    >;
 
-    fn get_test_nodes_config() -> &'static Vec<(String, SigningKey)> {
-        TEST_NODES_CONFIG.get_or_init(|| {
-            use rand::rngs::StdRng;
-            use rand::SeedableRng;
-
-            // Use deterministic seed for reproducible test keys
-            let mut rng = StdRng::seed_from_u64(12345);
-            let mut nodes = Vec::new();
-
-            // Create 20 test nodes to cover all stream test scenarios (node IDs 1-14+)
-            for i in 1..=20 {
-                let signing_key = SigningKey::generate(&mut rng);
-                nodes.push((i.to_string(), signing_key));
-            }
-
-            nodes
-        })
-    }
+    type TestConsensusSubject = ConsensusSubject<
+        MockGovernance,
+        MockAttestor,
+        TcpTransport<MockGovernance, MockAttestor>,
+        TestMessage,
+        TestError,
+        TestError,
+    >;
 
     // Helper to create a simple single-node governance for testing (like consensus_manager tests)
     async fn create_test_consensus(
-        node_id: &str,
         port: u16,
-    ) -> Arc<Consensus<MockGovernance, MockAttestor>> {
+    ) -> Arc<Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>>
+    {
         use proven_governance::{TopologyNode, Version};
         use std::collections::HashSet;
 
-        // Find the signing key for this node ID
-        let test_nodes_config = get_test_nodes_config();
-        let signing_key = test_nodes_config
-            .iter()
-            .find(|(id, _)| id == node_id)
-            .map_or_else(
-                || panic!("Test node ID '{node_id}' not found in test configuration"),
-                |(_, key)| key.clone(),
-            );
+        // Generate a fresh signing key for each test
+        let signing_key = SigningKey::generate(&mut OsRng);
 
         // Create MockAttestor
         let attestor = Arc::new(MockAttestor::new());
@@ -738,8 +739,7 @@ mod tests {
             ..ConsensusConfig::default()
         };
 
-        let consensus = Consensus::new(
-            node_id.to_string(),
+        let consensus = Consensus::new_with_tcp(
             format!("127.0.0.1:{port}").parse().unwrap(),
             governance,
             attestor,
@@ -754,13 +754,23 @@ mod tests {
 
     // Helper to create test options with single-node governance for basic stream tests
     async fn create_test_options(
-        node_id: &str,
         port: u16,
     ) -> (
-        ConsensusStreamOptions<MockGovernance, MockAttestor>,
-        Arc<Consensus<MockGovernance, MockAttestor>>,
+        ConsensusStreamOptions<
+            MockGovernance,
+            MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
+        >,
+        Arc<Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>>,
     ) {
-        let consensus = create_test_consensus(node_id, port).await;
+        let consensus = create_test_consensus(port).await;
+
+        // Start the consensus system (automatically initializes cluster)
+        consensus
+            .start()
+            .await
+            .expect("Failed to start consensus for test");
+
         let options = ConsensusStreamOptions {
             consensus: consensus.clone(),
             stream_config: None,
@@ -769,7 +779,11 @@ mod tests {
     }
 
     // Helper to cleanup consensus system
-    async fn cleanup_consensus_system(consensus: &Arc<Consensus<MockGovernance, MockAttestor>>) {
+    async fn cleanup_consensus_system(
+        consensus: &Arc<
+            Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>,
+        >,
+    ) {
         // Give a bit of time for any ongoing operations to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
@@ -785,16 +799,10 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_consensus_stream_creation() {
-        let options = create_test_options("1", next_port()).await;
+        let options = create_test_options(next_port()).await;
         let consensus_ref = options.1.clone();
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_stream", options.0);
+        let stream = TestConsensusStream::new("test_stream", options.0);
 
         assert_eq!(stream.name(), "test_stream");
 
@@ -816,20 +824,12 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_consensus_stream_with_subjects() {
-        let options = create_test_options("2", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_stream_subjects", options.0);
+        let stream = TestConsensusStream::new("test_stream_subjects", options.0);
 
         // Test initialization with subjects (should work but subjects are not used)
-        let subjects: Vec<
-            ConsensusSubject<MockGovernance, MockAttestor, TestMessage, TestError, TestError>,
-        > = vec![];
+        let subjects: Vec<TestConsensusSubject> = vec![];
         let initialized_stream = stream.init_with_subjects(subjects).await;
         assert!(
             initialized_stream.is_ok(),
@@ -841,15 +841,9 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_publish_single_message() {
-        let options = create_test_options("3", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_publish", options.0);
+        let stream = TestConsensusStream::new("test_publish", options.0);
 
         let initialized_stream = stream.init().await.unwrap();
 
@@ -881,15 +875,9 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_publish_batch_messages() {
-        let options = create_test_options("4", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_batch", options.0);
+        let stream = TestConsensusStream::new("test_batch", options.0);
 
         let initialized_stream = stream.init().await.unwrap();
 
@@ -929,15 +917,9 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_publish_empty_batch() {
-        let options = create_test_options("5", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_empty_batch", options.0);
+        let stream = TestConsensusStream::new("test_empty_batch", options.0);
 
         let initialized_stream = stream.init().await.unwrap();
 
@@ -963,15 +945,9 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_rollup_operation() {
-        let options = create_test_options("6", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_rollup", options.0);
+        let stream = TestConsensusStream::new("test_rollup", options.0);
 
         let initialized_stream = stream.init().await.unwrap();
 
@@ -1018,15 +994,9 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_stream_metadata_operations() {
-        let options = create_test_options("7", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_metadata", options.0);
+        let stream = TestConsensusStream::new("test_metadata", options.0);
 
         let initialized_stream = stream.init().await.unwrap();
 
@@ -1056,15 +1026,9 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_message_deletion() {
-        let options = create_test_options("8", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_delete", options.0);
+        let stream = TestConsensusStream::new("test_delete", options.0);
 
         let initialized_stream = stream.init().await.unwrap();
 
@@ -1092,15 +1056,9 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_get_non_existent_message() {
-        let options = create_test_options("9", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_get_nonexistent", options.0);
+        let stream = TestConsensusStream::new("test_get_nonexistent", options.0);
 
         let initialized_stream = stream.init().await.unwrap();
 
@@ -1122,57 +1080,10 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     #[serial]
-    async fn test_invalid_node_id() {
-        // Create consensus system with invalid node ID directly
-        let signing_key = SigningKey::generate(&mut OsRng);
-        let governance = Arc::new(MockGovernance::new(
-            vec![],
-            vec![],
-            "http://localhost:3200".to_string(),
-            vec![],
-        ));
-        let attestor = Arc::new(MockAttestor::new());
-
-        let result = Consensus::new(
-            "not_a_number".to_string(), // Invalid node ID that can't be parsed as u64
-            format!("127.0.0.1:{}", next_port()).parse().unwrap(),
-            governance,
-            attestor,
-            signing_key,
-            ConsensusConfig::default(),
-        )
-        .await;
-
-        assert!(
-            result.is_err(),
-            "Consensus system creation should fail with invalid node ID"
-        );
-
-        if let Err(e) = result {
-            match e {
-                proven_consensus::ConsensusError::InvalidConfiguration(_) => {
-                    // Expected error type
-                }
-                _ => {
-                    panic!("Expected InvalidConfiguration error, got: {e}");
-                }
-            }
-        }
-    }
-
-    #[tokio::test]
-    #[traced_test]
-    #[serial]
     async fn test_consensus_stream_clone() {
-        let options = create_test_options("10", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_clone", options.0);
+        let stream = TestConsensusStream::new("test_clone", options.0);
 
         // Test that streams can be cloned
         let cloned_stream = stream.clone();
@@ -1189,24 +1100,12 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_multiple_streams_different_names() {
-        let options1 = create_test_options("11", next_port()).await;
-        let options2 = create_test_options("12", next_port()).await;
+        let options1 = create_test_options(next_port()).await;
+        let options2 = create_test_options(next_port()).await;
 
-        let stream1 = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("stream_one", options1.0);
+        let stream1 = TestConsensusStream::new("stream_one", options1.0);
 
-        let stream2 = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("stream_two", options2.0);
+        let stream2 = TestConsensusStream::new("stream_two", options2.0);
 
         assert_ne!(stream1.name(), stream2.name());
 
@@ -1237,7 +1136,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_stream_options_clone() {
-        let options = create_test_options("13", next_port()).await;
+        let options = create_test_options(next_port()).await;
         let cloned_options = &options.0;
 
         // Test that the consensus system references are the same
@@ -1250,23 +1149,27 @@ mod tests {
         );
 
         // Access the underlying consensus system properties
-        assert_eq!(options.1.node_id(), "13");
-        assert_eq!(cloned_options.consensus.node_id(), "13");
+        // Node ID is now a hex public key, not the original test string
+        let original_node_id = options.1.node_id();
+        let cloned_node_id = cloned_options.consensus.node_id();
+
+        assert_eq!(original_node_id, cloned_node_id);
+        assert!(
+            original_node_id.len() > 10,
+            "Node ID should be a hex public key"
+        );
+
+        // Cleanup
+        cleanup_consensus_system(&options.1).await;
     }
 
     #[tokio::test]
     #[traced_test]
     #[serial]
     async fn test_stream_debug_formatting() {
-        let options = create_test_options("14", next_port()).await;
+        let options = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<
-            MockGovernance,
-            MockAttestor,
-            TestMessage,
-            TestError,
-            TestError,
-        >::new("test_debug", options.0);
+        let stream = TestConsensusStream::new("test_debug", options.0);
 
         // Test that Debug formatting works
         let debug_str = format!("{stream:?}");
@@ -1280,7 +1183,13 @@ mod tests {
     async fn create_multi_node_options(
         node_count: usize,
         _base_port: u16,
-    ) -> Vec<ConsensusStreamOptions<MockGovernance, MockAttestor>> {
+    ) -> Vec<
+        ConsensusStreamOptions<
+            MockGovernance,
+            MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
+        >,
+    > {
         use proven_governance::{TopologyNode, Version};
         use std::collections::HashSet;
 
@@ -1339,8 +1248,7 @@ mod tests {
                 ..ConsensusConfig::default()
             };
 
-            let consensus = Consensus::new(
-                (i + 1).to_string(), // Node IDs 1, 2, 3, etc.
+            let consensus = Consensus::new_with_tcp(
                 format!("127.0.0.1:{}", node_ports[i]).parse().unwrap(),
                 shared_governance.clone(), // ← SHARED governance instance
                 attestor,
@@ -1371,13 +1279,7 @@ mod tests {
 
         // Create streams for all 3 nodes
         for (i, options) in multi_options.into_iter().enumerate() {
-            let stream = ConsensusStream::<
-                MockGovernance,
-                MockAttestor,
-                TestMessage,
-                TestError,
-                TestError,
-            >::new(format!("consensus_stream_{i}"), options);
+            let stream = TestConsensusStream::new(format!("consensus_stream_{i}"), options);
 
             streams.push(stream);
         }
@@ -1448,13 +1350,7 @@ mod tests {
 
         // Create different stream names for each node to test isolation
         for (i, options) in multi_options.into_iter().enumerate() {
-            let stream = ConsensusStream::<
-                MockGovernance,
-                MockAttestor,
-                TestMessage,
-                TestError,
-                TestError,
-            >::new(format!("isolated_stream_{i}"), options);
+            let stream = TestConsensusStream::new(format!("isolated_stream_{i}"), options);
 
             streams.push(stream);
         }
@@ -1481,13 +1377,7 @@ mod tests {
 
         // Try to initialize streams for all nodes
         for (i, options) in multi_options.into_iter().enumerate() {
-            let stream = ConsensusStream::<
-                MockGovernance,
-                MockAttestor,
-                TestMessage,
-                TestError,
-                TestError,
-            >::new("shared_consensus_stream", options);
+            let stream = TestConsensusStream::new("shared_consensus_stream", options);
 
             match stream.init().await {
                 Ok(initialized) => {
@@ -1543,68 +1433,6 @@ mod tests {
                 "No streams initialized successfully - this is expected in test environment"
             );
         }
-    }
-
-    #[tokio::test]
-    #[traced_test]
-    #[serial]
-    async fn test_multi_node_consensus_configuration() {
-        let base_port = next_port();
-        let multi_options = create_multi_node_options(4, base_port).await; // Test with 4 nodes
-
-        // Verify consensus configuration for each node
-        let mut used_ports = std::collections::HashSet::new();
-
-        for (i, options) in multi_options.iter().enumerate() {
-            // Check node ID is valid
-            let node_id_result = options.consensus.node_id().parse::<u64>();
-            assert!(
-                node_id_result.is_ok(),
-                "Node {} should have valid numeric ID",
-                i + 1
-            );
-
-            let node_id = node_id_result.unwrap();
-            assert_eq!(
-                node_id,
-                (i + 1) as u64,
-                "Node ID should match expected value"
-            );
-
-            // Check timeout configuration
-            assert!(
-                options.consensus.config().consensus_timeout >= Duration::from_secs(5),
-                "Consensus timeout should be at least 5 seconds for multi-node"
-            );
-
-            // Check network address is unique (ports are dynamically allocated)
-            let actual_port = options.consensus.network().local_address().port();
-
-            // Verify port is in valid range
-            assert!(
-                actual_port > 1024,
-                "Node {} should have port > 1024, got {}",
-                i + 1,
-                actual_port
-            );
-
-            // Verify port uniqueness
-            assert!(
-                !used_ports.contains(&actual_port),
-                "Node {} should have unique port {}, but it was already used",
-                i + 1,
-                actual_port
-            );
-            used_ports.insert(actual_port);
-        }
-
-        // Verify we have exactly 4 unique ports
-        assert_eq!(
-            used_ports.len(),
-            4,
-            "Should have exactly 4 unique ports, got {:?}",
-            used_ports
-        );
     }
 
     #[tokio::test]
@@ -1677,13 +1505,7 @@ mod tests {
         let mut error_count = 0;
 
         for (i, options) in multi_options.into_iter().enumerate() {
-            let stream = ConsensusStream::<
-                MockGovernance,
-                MockAttestor,
-                TestMessage,
-                TestError,
-                TestError,
-            >::new(format!("error_test_stream_{i}"), options);
+            let stream = TestConsensusStream::new(format!("error_test_stream_{i}"), options);
 
             match stream.init().await {
                 Ok(_) => {
@@ -1729,13 +1551,7 @@ mod tests {
 
         // Initialize streams for all 3 nodes
         for (i, options) in multi_options.into_iter().enumerate() {
-            let stream = ConsensusStream::<
-                MockGovernance,
-                MockAttestor,
-                TestMessage,
-                TestError,
-                TestError,
-            >::new(stream_name, options);
+            let stream = TestConsensusStream::new(stream_name, options);
 
             match stream.init().await {
                 Ok(initialized) => {
@@ -1836,13 +1652,7 @@ mod tests {
 
         // Initialize streams for all nodes
         for (i, options) in multi_options.into_iter().enumerate() {
-            let stream = ConsensusStream::<
-                MockGovernance,
-                MockAttestor,
-                TestMessage,
-                TestError,
-                TestError,
-            >::new(stream_name, options);
+            let stream = TestConsensusStream::new(stream_name, options);
 
             match stream.init().await {
                 Ok(initialized) => {
@@ -1911,13 +1721,7 @@ mod tests {
 
         // Initialize streams
         for (i, options) in multi_options.into_iter().enumerate() {
-            let stream = ConsensusStream::<
-                MockGovernance,
-                MockAttestor,
-                TestMessage,
-                TestError,
-                TestError,
-            >::new(stream_name, options);
+            let stream = TestConsensusStream::new(stream_name, options);
 
             match stream.init().await {
                 Ok(initialized) => {
@@ -2039,13 +1843,7 @@ mod tests {
 
         // Initialize streams
         for (i, options) in multi_options.into_iter().enumerate() {
-            let stream = ConsensusStream::<
-                MockGovernance,
-                MockAttestor,
-                TestMessage,
-                TestError,
-                TestError,
-            >::new(stream_name, options);
+            let stream = TestConsensusStream::new(stream_name, options);
 
             match stream.init().await {
                 Ok(initialized) => {
@@ -2187,21 +1985,15 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Create streams on different nodes with the same stream name
-        let stream1 = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "cross_node_stream",
-            multi_options[0].clone(),
-        )
-        .init()
-        .await
-        .unwrap();
+        let stream1 = TestConsensusStream::new("cross_node_stream", multi_options[0].clone())
+            .init()
+            .await
+            .unwrap();
 
-        let stream2 = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "cross_node_stream",
-            multi_options[1].clone(),
-        )
-        .init()
-        .await
-        .unwrap();
+        let stream2 = TestConsensusStream::new("cross_node_stream", multi_options[1].clone())
+            .init()
+            .await
+            .unwrap();
 
         // Publish on one node
         let test_message = Bytes::from("cross-node message");
@@ -2261,8 +2053,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_subject_stream_subscriptions() {
-        let (options, consensus) = create_test_options("1", next_port()).await;
-        consensus.start().await.unwrap();
+        let (options, consensus) = create_test_options(next_port()).await;
 
         // Create subjects - we need to create them manually since there's no From<String> for ConsensusSubject
         let governance =
@@ -2273,40 +2064,31 @@ mod tests {
             "orders.*".to_string(),
             governance.clone(),
             attestor.clone(),
-            consensus.consensus_manager().clone(),
+            consensus.clone(),
         );
 
         let users_subject = crate::subject::ConsensusSubject::new(
             "users.>".to_string(),
             governance.clone(),
             attestor.clone(),
-            consensus.consensus_manager().clone(),
+            consensus.clone(),
         );
 
         // Create streams with subject subscriptions
-        let orders_stream = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "orders_stream",
-            options.clone(),
-        )
-        .init_with_subjects(vec![orders_subject])
-        .await
-        .unwrap();
+        let orders_stream = TestConsensusStream::new("orders_stream", options.clone())
+            .init_with_subjects(vec![orders_subject])
+            .await
+            .unwrap();
 
-        let users_stream = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "users_stream",
-            options.clone(),
-        )
-        .init_with_subjects(vec![users_subject])
-        .await
-        .unwrap();
+        let users_stream = TestConsensusStream::new("users_stream", options.clone())
+            .init_with_subjects(vec![users_subject])
+            .await
+            .unwrap();
 
-        let all_stream = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "all_stream",
-            options.clone(),
-        )
-        .init()
-        .await
-        .unwrap();
+        let all_stream = TestConsensusStream::new("all_stream", options.clone())
+            .init()
+            .await
+            .unwrap();
 
         // Test publishing to different subjects directly through consensus
         let order_message = Bytes::from("new order");
@@ -2317,16 +2099,19 @@ mod tests {
         let _order_seq = orders_stream
             .consensus()
             .publish("orders.new".to_string(), order_message.clone())
+            .await
             .unwrap();
         let _user_seq = users_stream
             .consensus()
             .publish("users.profile.update".to_string(), user_message.clone())
+            .await
             .unwrap();
 
         // Test that publishing to unsubscribed subject succeeds (no streams get the message)
         let unmatched_result = all_stream
             .consensus()
-            .publish("products.new".to_string(), unmatched_message.clone());
+            .publish("products.new".to_string(), unmatched_message.clone())
+            .await;
         assert!(
             unmatched_result.is_ok(),
             "Publishing to unsubscribed subject should succeed (but no streams receive it)"
@@ -2376,8 +2161,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_subject_wildcard_patterns() {
-        let (options, consensus) = create_test_options("1", next_port()).await;
-        consensus.start().await.unwrap();
+        let (options, consensus) = create_test_options(next_port()).await;
 
         let governance =
             proven_governance_mock::MockGovernance::new(vec![], vec![], "1".to_string(), vec![]);
@@ -2388,46 +2172,37 @@ mod tests {
             "orders.*".to_string(),
             governance.clone(),
             attestor.clone(),
-            consensus.consensus_manager().clone(),
+            consensus.clone(),
         );
 
         let multi_wildcard_subject = crate::subject::ConsensusSubject::new(
             "orders.>".to_string(),
             governance.clone(),
             attestor.clone(),
-            consensus.consensus_manager().clone(),
+            consensus.clone(),
         );
 
         let exact_subject = crate::subject::ConsensusSubject::new(
             "orders.new".to_string(),
             governance.clone(),
             attestor.clone(),
-            consensus.consensus_manager().clone(),
+            consensus.clone(),
         );
 
-        let single_stream = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "single_wildcard_stream",
-            options.clone(),
-        )
-        .init_with_subjects(vec![single_wildcard_subject])
-        .await
-        .unwrap();
+        let single_stream = TestConsensusStream::new("single_wildcard_stream", options.clone())
+            .init_with_subjects(vec![single_wildcard_subject])
+            .await
+            .unwrap();
 
-        let multi_stream = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "multi_wildcard_stream",
-            options.clone(),
-        )
-        .init_with_subjects(vec![multi_wildcard_subject])
-        .await
-        .unwrap();
+        let multi_stream = TestConsensusStream::new("multi_wildcard_stream", options.clone())
+            .init_with_subjects(vec![multi_wildcard_subject])
+            .await
+            .unwrap();
 
-        let exact_stream = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "exact_stream",
-            options.clone(),
-        )
-        .init_with_subjects(vec![exact_subject])
-        .await
-        .unwrap();
+        let exact_stream = TestConsensusStream::new("exact_stream", options.clone())
+            .init_with_subjects(vec![exact_subject])
+            .await
+            .unwrap();
 
         // Test different subject patterns directly via consensus
         let msg1 = Bytes::from("message 1");
@@ -2438,14 +2213,17 @@ mod tests {
         single_stream
             .consensus()
             .publish("orders.new".to_string(), msg1.clone())
+            .await
             .unwrap();
         single_stream
             .consensus()
             .publish("orders.cancelled".to_string(), msg2.clone())
+            .await
             .unwrap();
         single_stream
             .consensus()
             .publish("orders.new.urgent".to_string(), msg3.clone())
+            .await
             .unwrap();
 
         // Allow time for consensus replication
@@ -2471,8 +2249,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_subject_routing_debug() {
-        let (options, consensus) = create_test_options("1", next_port()).await;
-        consensus.start().await.unwrap();
+        let (options, consensus) = create_test_options(next_port()).await;
 
         let governance =
             proven_governance_mock::MockGovernance::new(vec![], vec![], "1".to_string(), vec![]);
@@ -2483,17 +2260,14 @@ mod tests {
             "orders.*".to_string(),
             governance.clone(),
             attestor.clone(),
-            consensus.consensus_manager().clone(),
+            consensus.clone(),
         );
 
         // Create stream with subscription
-        let stream = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "test_stream",
-            options.clone(),
-        )
-        .init_with_subjects(vec![orders_subject])
-        .await
-        .unwrap();
+        let stream = TestConsensusStream::new("test_stream", options.clone())
+            .init_with_subjects(vec![orders_subject])
+            .await
+            .unwrap();
 
         // Test routing directly through consensus manager
         let routed_streams = stream.consensus().route_subject("orders.new");
@@ -2515,8 +2289,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_multiple_streams_same_subject() {
-        let (options, consensus) = create_test_options("1", next_port()).await;
-        consensus.start().await.unwrap();
+        let (options, consensus) = create_test_options(next_port()).await;
 
         let governance =
             proven_governance_mock::MockGovernance::new(vec![], vec![], "1".to_string(), vec![]);
@@ -2527,38 +2300,33 @@ mod tests {
             "notifications.*".to_string(),
             governance.clone(),
             attestor.clone(),
-            consensus.consensus_manager().clone(),
+            consensus.clone(),
         );
 
         let subject2 = crate::subject::ConsensusSubject::new(
             "notifications.*".to_string(),
             governance.clone(),
             attestor.clone(),
-            consensus.consensus_manager().clone(),
+            consensus.clone(),
         );
 
         // Create multiple streams with the same subject pattern
-        let stream1 = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "notification_stream_1",
-            options.clone(),
-        )
-        .init_with_subjects(vec![subject1])
-        .await
-        .unwrap();
+        let stream1 = TestConsensusStream::new("notification_stream_1", options.clone())
+            .init_with_subjects(vec![subject1])
+            .await
+            .unwrap();
 
-        let stream2 = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "notification_stream_2",
-            options.clone(),
-        )
-        .init_with_subjects(vec![subject2])
-        .await
-        .unwrap();
+        let stream2 = TestConsensusStream::new("notification_stream_2", options.clone())
+            .init_with_subjects(vec![subject2])
+            .await
+            .unwrap();
 
         // Publish a message directly via consensus
         let notification = Bytes::from("important notification");
         stream1
             .consensus()
             .publish("notifications.email".to_string(), notification.clone())
+            .await
             .unwrap();
 
         // Allow time for consensus replication
@@ -2585,17 +2353,13 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_stream_auto_subscription_to_name() {
-        let (options, consensus) = create_test_options("1", next_port()).await;
-        consensus.start().await.unwrap();
+        let (options, consensus) = create_test_options(next_port()).await;
 
         // Create stream with normal init (should auto-subscribe to its own name)
-        let stream = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "user_events",
-            options.clone(),
-        )
-        .init()
-        .await
-        .unwrap();
+        let stream = TestConsensusStream::new("user_events", options.clone())
+            .init()
+            .await
+            .unwrap();
 
         // Verify stream is subscribed to subject with its own name
         let routing = stream.consensus().route_subject("user_events");
@@ -2608,7 +2372,8 @@ mod tests {
         let message = Bytes::from("User registration event");
         let result = stream
             .consensus()
-            .publish("user_events".to_string(), message.clone());
+            .publish("user_events".to_string(), message.clone())
+            .await;
         assert!(
             result.is_ok(),
             "Should be able to publish to stream's name as subject"
@@ -2652,39 +2417,36 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_consensus_subject_query_methods() {
-        let (options, consensus) = create_test_options("1", next_port()).await;
-        consensus.start().await.unwrap();
+        let (options, consensus) = create_test_options(next_port()).await;
 
         // Create multiple streams with different subject subscriptions
-        let stream1 = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "orders_stream",
-            options.clone(),
-        )
-        .init()
-        .await
-        .unwrap();
+        let stream1 = TestConsensusStream::new("orders_stream", options.clone())
+            .init()
+            .await
+            .unwrap();
 
-        let stream2 = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "notifications_stream",
-            options.clone(),
-        )
-        .init()
-        .await
-        .unwrap();
+        let stream2 = TestConsensusStream::new("notifications_stream", options.clone())
+            .init()
+            .await
+            .unwrap();
 
         // Add manual subscriptions via consensus
         let _ = stream1
             .consensus()
-            .subscribe_stream_to_subject("orders_stream", "orders.*");
+            .subscribe_stream_to_subject("orders_stream", "orders.*")
+            .await;
         let _ = stream1
             .consensus()
-            .subscribe_stream_to_subject("orders_stream", "orders.urgent");
+            .subscribe_stream_to_subject("orders_stream", "orders.urgent")
+            .await;
         let _ = stream2
             .consensus()
-            .subscribe_stream_to_subject("notifications_stream", "orders.*");
+            .subscribe_stream_to_subject("notifications_stream", "orders.*")
+            .await;
         let _ = stream2
             .consensus()
-            .subscribe_stream_to_subject("notifications_stream", "notifications.>");
+            .subscribe_stream_to_subject("notifications_stream", "notifications.>")
+            .await;
 
         // Allow time for consensus operations
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -2743,16 +2505,12 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_consensus_subject_validation() {
-        let (options, consensus) = create_test_options("1", next_port()).await;
-        consensus.start().await.unwrap();
+        let (options, consensus) = create_test_options(next_port()).await;
 
-        let stream = ConsensusStream::<_, _, TestMessage, TestError, TestError>::new(
-            "test_stream",
-            options.clone(),
-        )
-        .init()
-        .await
-        .unwrap();
+        let stream = TestConsensusStream::new("test_stream", options.clone())
+            .init()
+            .await
+            .unwrap();
 
         // Test invalid subject patterns
         let invalid_patterns = vec![
@@ -2769,7 +2527,8 @@ mod tests {
         for pattern in invalid_patterns {
             let result = stream
                 .consensus()
-                .subscribe_stream_to_subject("test_stream", pattern);
+                .subscribe_stream_to_subject("test_stream", pattern)
+                .await;
             assert!(
                 result.is_err(),
                 "Pattern '{}' should be rejected but was accepted",
@@ -2788,7 +2547,8 @@ mod tests {
         // Test invalid stream names (system reserved)
         let result = stream
             .consensus()
-            .subscribe_stream_to_subject("_system_stream", "valid.pattern");
+            .subscribe_stream_to_subject("_system_stream", "valid.pattern")
+            .await;
         assert!(result.is_err(), "System stream names should be rejected");
         let error_msg = result.unwrap_err().to_string();
         assert!(
@@ -2814,7 +2574,8 @@ mod tests {
         for pattern in valid_patterns {
             let result = stream
                 .consensus()
-                .subscribe_stream_to_subject("test_stream", pattern);
+                .subscribe_stream_to_subject("test_stream", pattern)
+                .await;
             assert!(
                 result.is_ok(),
                 "Pattern '{}' should be accepted but was rejected: {:?}",

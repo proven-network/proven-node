@@ -13,6 +13,7 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, warn};
 
 use proven_attestation::Attestor;
+use proven_consensus::transport::ConsensusTransport;
 use proven_governance::Governance;
 use proven_messaging::consumer::{Consumer, ConsumerError, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
@@ -43,10 +44,11 @@ impl ConsumerError for ConsensusConsumerError {}
 /// A consensus consumer.
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct ConsensusConsumer<G, A, X, T, D, S>
+pub struct ConsensusConsumer<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -59,7 +61,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    stream: InitializedConsensusStream<G, A, T, D, S>,
+    stream: InitializedConsensusStream<G, A, C, T, D, S>,
     options: ConsensusConsumerOptions,
     handler: X,
     last_processed_seq: u64,
@@ -71,10 +73,11 @@ where
     task_tracker: TaskTracker,
 }
 
-impl<G, A, X, T, D, S> Clone for ConsensusConsumer<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> Clone for ConsensusConsumer<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone,
     T: Clone
         + Debug
@@ -101,10 +104,11 @@ where
 }
 
 #[async_trait]
-impl<G, A, X, T, D, S> Consumer<X, T, D, S> for ConsensusConsumer<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> Consumer<X, T, D, S> for ConsensusConsumer<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -118,7 +122,7 @@ where
 {
     type Error = ConsensusConsumerError;
     type Options = ConsensusConsumerOptions;
-    type StreamType = InitializedConsensusStream<G, A, T, D, S>;
+    type StreamType = InitializedConsensusStream<G, A, C, T, D, S>;
 
     async fn new(
         name: String,
@@ -143,10 +147,11 @@ where
     }
 }
 
-impl<G, A, X, T, D, S> ConsensusConsumer<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> ConsensusConsumer<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -161,7 +166,7 @@ where
     /// Process messages from the consensus stream.
     #[allow(clippy::too_many_lines)]
     async fn process_messages(
-        stream: InitializedConsensusStream<G, A, T, D, S>,
+        stream: InitializedConsensusStream<G, A, C, T, D, S>,
         handler: X,
         current_seq: Arc<Mutex<u64>>,
         start_sequence: u64,
@@ -276,8 +281,11 @@ where
 }
 
 #[async_trait]
-impl<G, A, X, T, D, S> Bootable for ConsensusConsumer<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> Bootable for ConsensusConsumer<G, A, C, X, T, D, S>
 where
+    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    A: Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -339,16 +347,16 @@ mod tests {
     use super::*;
     use crate::error::MessagingConsensusError;
     use crate::stream::{ConsensusStream, ConsensusStreamOptions};
-    use proven_consensus::{Consensus, ConsensusConfig};
 
     use std::collections::HashSet;
-
     use std::sync::Arc;
 
     use async_trait::async_trait;
     use bytes::Bytes;
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
+    use proven_consensus::transport::tcp::TcpTransport;
+    use proven_consensus::{Consensus, ConsensusConfig};
     use proven_governance::{TopologyNode, Version};
     use proven_governance_mock::MockGovernance;
     use proven_messaging::stream::Stream;
@@ -455,7 +463,8 @@ mod tests {
     async fn create_test_consensus(
         node_id: &str,
         port: u16,
-    ) -> Arc<Consensus<MockGovernance, MockAttestor>> {
+    ) -> Arc<Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>>
+    {
         // Find the signing key for this node ID
         let test_nodes_config = get_test_nodes_config();
         let signing_key = test_nodes_config
@@ -505,8 +514,7 @@ mod tests {
             ..ConsensusConfig::default()
         };
 
-        let consensus = Consensus::new(
-            node_id.to_string(),
+        let consensus = Consensus::new_with_tcp(
             format!("127.0.0.1:{port}").parse().unwrap(),
             governance,
             attestor,
@@ -523,7 +531,11 @@ mod tests {
     async fn create_test_options(
         node_id: &str,
         port: u16,
-    ) -> ConsensusStreamOptions<MockGovernance, MockAttestor> {
+    ) -> ConsensusStreamOptions<
+        MockGovernance,
+        MockAttestor,
+        TcpTransport<MockGovernance, MockAttestor>,
+    > {
         let consensus = create_test_consensus(node_id, port).await;
         ConsensusStreamOptions {
             consensus,
@@ -532,7 +544,11 @@ mod tests {
     }
 
     // Helper to cleanup consensus system following the pattern from consensus_manager tests
-    async fn cleanup_consensus_system(consensus: &Arc<Consensus<MockGovernance, MockAttestor>>) {
+    async fn cleanup_consensus_system(
+        consensus: &Arc<
+            Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>,
+        >,
+    ) {
         // Give a bit of time for any ongoing operations to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
@@ -554,6 +570,7 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -597,6 +614,7 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -647,6 +665,7 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -716,6 +735,7 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -757,6 +777,7 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -841,6 +862,7 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
+            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,

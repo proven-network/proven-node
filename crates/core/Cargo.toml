@@ -22,6 +22,7 @@ proven-applications.workspace = true
 proven-attestation.workspace = true
 proven-bootable.workspace = true
 proven-code-package.workspace = true
+proven-consensus.workspace = true
 proven-governance.workspace = true
 proven-headers.workspace = true
 proven-http.workspace = true

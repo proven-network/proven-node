@@ -36,11 +36,20 @@ tracing.workspace = true
 # Error handling
 thiserror.workspace = true
 
+# DNS resolution
+hickory-resolver.workspace = true
+
 # Collections and utilities
 tokio-util.workspace = true
 
 # For UUID generation
 uuid.workspace = true
+
+# WebSocket support
+axum.workspace = true
+
+# URL parsing
+url.workspace = true
 
 [dev-dependencies]
 proven-util.workspace = true

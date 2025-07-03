@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use openraft::error::{InstallSnapshotError, RPCError, RaftError};
 use openraft::network::{RPCOption, RaftNetwork, RaftNetworkFactory};
@@ -11,75 +12,85 @@ use openraft::raft::{
 };
 use openraft::BasicNode;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tracing::{debug, warn};
+use uuid::Uuid;
 
-use crate::consensus_manager::TypeConfig;
 use crate::error::ConsensusError;
-use crate::network::{ConsensusMessage, ConsensusNetwork};
+use crate::transport::{ConsensusMessage, ConsensusTransport};
+use crate::types::TypeConfig;
+
+/// Default timeout for RPC requests
+const RPC_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Request/response tracking for async RPC calls
+#[derive(Debug)]
+struct PendingRequest {
+    /// Response sender
+    response_tx: oneshot::Sender<ConsensusMessage>,
+    /// Request timestamp for timeout tracking
+    timestamp: std::time::Instant,
+}
+
+/// Global response router for handling incoming raft responses
+static RESPONSE_ROUTER: std::sync::LazyLock<Arc<RwLock<HashMap<Uuid, PendingRequest>>>> =
+    std::sync::LazyLock::new(|| Arc::new(RwLock::new(HashMap::new())));
 
 /// Type alias for the complex network cache type
-type NetworkCache<G, A> = HashMap<u64, Arc<ConsensusRaftNetwork<G, A>>>;
+type NetworkCache<T> = HashMap<String, Arc<ConsensusRaftNetwork<T>>>;
 
-/// OpenRaft-specific message types that map to our network layer
+/// OpenRaft-specific message wrapper with request tracking
 #[derive(Debug, Serialize, Deserialize)]
-pub enum RaftMessage {
-    /// Vote request from a candidate
-    Vote(VoteRequest<TypeConfig>),
-    /// Vote response to a candidate
-    VoteResponse(VoteResponse<TypeConfig>),
-    /// Append entries request from leader
-    AppendEntries(AppendEntriesRequest<TypeConfig>),
-    /// Append entries response to leader
-    AppendEntriesResponse(AppendEntriesResponse<TypeConfig>),
-    /// Install snapshot request from leader
-    InstallSnapshot(InstallSnapshotRequest<TypeConfig>),
-    /// Install snapshot response to leader
-    InstallSnapshotResponse(InstallSnapshotResponse<TypeConfig>),
+pub struct RaftMessageEnvelope {
+    /// Unique request ID for response correlation
+    pub request_id: Uuid,
+    /// Whether this is a response to a previous request
+    pub is_response: bool,
+    /// The actual raft message payload
+    pub payload: Vec<u8>,
+    /// Message type for routing
+    pub message_type: String,
 }
 
 /// Network factory for creating `OpenRaft` network instances
-pub struct ConsensusRaftNetworkFactory<G, A>
+pub struct ConsensusRaftNetworkFactory<T>
 where
-    G: proven_governance::Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug,
+    T: ConsensusTransport,
 {
-    /// Reference to our existing network infrastructure
-    consensus_network: Arc<ConsensusNetwork<G, A>>,
+    /// Reference to our existing transport infrastructure
+    consensus_transport: Arc<T>,
     /// Cache of network instances for different target nodes
-    networks: Arc<RwLock<NetworkCache<G, A>>>,
+    networks: Arc<RwLock<NetworkCache<T>>>,
     /// Sender for outbound network messages
-    network_tx: mpsc::UnboundedSender<(u64, ConsensusMessage)>,
+    network_tx: mpsc::UnboundedSender<(String, ConsensusMessage)>,
 }
 
-impl<G, A> ConsensusRaftNetworkFactory<G, A>
+impl<T> ConsensusRaftNetworkFactory<T>
 where
-    G: proven_governance::Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug,
+    T: ConsensusTransport,
 {
     /// Create a new network factory
     #[must_use]
     pub fn new(
-        consensus_network: Arc<ConsensusNetwork<G, A>>,
-        network_tx: mpsc::UnboundedSender<(u64, ConsensusMessage)>,
+        consensus_transport: Arc<T>,
+        network_tx: mpsc::UnboundedSender<(String, ConsensusMessage)>,
     ) -> Self {
         Self {
-            consensus_network,
+            consensus_transport,
             networks: Arc::new(RwLock::new(HashMap::new())),
             network_tx,
         }
     }
 }
 
-impl<G, A> RaftNetworkFactory<TypeConfig> for ConsensusRaftNetworkFactory<G, A>
+impl<T> RaftNetworkFactory<TypeConfig> for ConsensusRaftNetworkFactory<T>
 where
-    G: proven_governance::Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug,
+    T: ConsensusTransport,
 {
-    type Network = ConsensusRaftNetwork<G, A>;
+    type Network = ConsensusRaftNetwork<T>;
 
     /// Create or get a network instance for communicating with a specific target node
-    async fn new_client(&mut self, target: u64, _node: &BasicNode) -> Self::Network {
+    async fn new_client(&mut self, target: String, _node: &BasicNode) -> Self::Network {
         // Check if we already have a network instance for this target
         {
             let networks = self.networks.read().await;
@@ -90,8 +101,8 @@ where
 
         // Create a new network instance for this target
         let network = ConsensusRaftNetwork::new(
-            self.consensus_network.clone(),
-            target,
+            self.consensus_transport.clone(),
+            target.clone(),
             self.network_tx.clone(),
         );
 
@@ -106,112 +117,184 @@ where
 }
 
 /// `OpenRaft` network implementation for a specific target node
-#[derive(Clone)]
-pub struct ConsensusRaftNetwork<G, A>
+pub struct ConsensusRaftNetwork<T>
 where
-    G: proven_governance::Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug,
+    T: ConsensusTransport,
 {
-    /// Reference to our consensus network
-    #[allow(dead_code)]
-    consensus_network: Arc<ConsensusNetwork<G, A>>,
+    /// Reference to our consensus transport
+    consensus_transport: Arc<T>,
     /// Target node ID for this network instance
-    target_node_id: u64,
+    target_node_id: String,
     /// Sender for outbound network messages
-    network_tx: mpsc::UnboundedSender<(u64, ConsensusMessage)>,
+    network_tx: mpsc::UnboundedSender<(String, ConsensusMessage)>,
 }
 
-impl<G, A> ConsensusRaftNetwork<G, A>
+impl<T> ConsensusRaftNetwork<T>
 where
-    G: proven_governance::Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug,
+    T: ConsensusTransport,
 {
     /// Create a new network instance for a specific target
     #[must_use]
     pub const fn new(
-        consensus_network: Arc<ConsensusNetwork<G, A>>,
-        target_node_id: u64,
-        network_tx: mpsc::UnboundedSender<(u64, ConsensusMessage)>,
+        consensus_transport: Arc<T>,
+        target_node_id: String,
+        network_tx: mpsc::UnboundedSender<(String, ConsensusMessage)>,
     ) -> Self {
         Self {
-            consensus_network,
+            consensus_transport,
             target_node_id,
             network_tx,
         }
     }
 
-    /// Send a raft message to the target node
+    /// Send a request and wait for response with timeout
     #[allow(clippy::result_large_err)]
-    fn send_raft_message(
+    #[allow(clippy::too_many_lines)]
+    async fn send_request_with_response<Req, Resp>(
         &self,
-        message: RaftMessage,
-    ) -> Result<RaftMessage, RPCError<TypeConfig, RaftError<TypeConfig>>> {
-        debug!(
-            "Sending Raft message to node {}: {:?}",
-            self.target_node_id, message
-        );
+        request: &Req,
+        message_type: &str,
+        response_type: &str,
+    ) -> Result<Resp, RPCError<TypeConfig, RaftError<TypeConfig>>>
+    where
+        Req: Serialize + Send + Sync,
+        Resp: for<'de> Deserialize<'de> + Send + Sync,
+    {
+        let request_id = Uuid::new_v4();
 
-        // Convert RaftMessage to our network's ConsensusMessage
-        let consensus_msg = match message {
-            RaftMessage::Vote(_) => ConsensusMessage::Vote,
-            RaftMessage::AppendEntries(_) => ConsensusMessage::AppendEntries,
-            RaftMessage::InstallSnapshot(_) => ConsensusMessage::InstallSnapshot,
-            _ => ConsensusMessage::Data(
-                serde_json::to_vec(&message)
-                    .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?
-                    .into(),
-            ),
+        // Serialize the request
+        let payload = serde_json::to_vec(request).map_err(|e| {
+            RPCError::Network(openraft::error::NetworkError::new(
+                &ConsensusError::InvalidMessage(format!("Failed to serialize request: {e}")),
+            ))
+        })?;
+
+        // Create request envelope
+        let envelope = RaftMessageEnvelope {
+            request_id,
+            is_response: false,
+            payload,
+            message_type: message_type.to_string(),
         };
 
-        // Send the message through our consensus network
-        if let Err(e) = self.network_tx.send((self.target_node_id, consensus_msg)) {
-            let error_msg = format!(
-                "Failed to send message to node {}: {}",
-                self.target_node_id, e
+        // Serialize envelope
+        let envelope_data = serde_json::to_vec(&envelope).map_err(|e| {
+            RPCError::Network(openraft::error::NetworkError::new(
+                &ConsensusError::InvalidMessage(format!("Failed to serialize envelope: {e}")),
+            ))
+        })?;
+
+        // Create response channel
+        let (response_tx, response_rx) = oneshot::channel();
+
+        // Register pending request
+        {
+            let mut router = RESPONSE_ROUTER.write().await;
+            router.insert(
+                request_id,
+                PendingRequest {
+                    response_tx,
+                    timestamp: std::time::Instant::now(),
+                },
             );
-            warn!("{}", error_msg);
-            return Err(RPCError::Network(openraft::error::NetworkError::new(
-                &ConsensusError::Network(error_msg.into()),
-            )));
+        }
+
+        // Determine the correct ConsensusMessage type
+        let consensus_msg = match message_type {
+            "vote" => ConsensusMessage::RaftVote(envelope_data),
+            "append_entries" => ConsensusMessage::RaftAppendEntries(envelope_data),
+            "install_snapshot" => ConsensusMessage::RaftInstallSnapshot(envelope_data),
+            _ => ConsensusMessage::Data(envelope_data.into()),
+        };
+
+        // Send the message through transport
+        if let Err(e) = self
+            .consensus_transport
+            .send_message(&self.target_node_id, consensus_msg)
+            .await
+        {
+            // Cleanup pending request
+            RESPONSE_ROUTER.write().await.remove(&request_id);
+
+            return Err(RPCError::Network(openraft::error::NetworkError::new(&e)));
         }
 
         debug!(
-            "Successfully queued Raft message for node {}",
-            self.target_node_id
+            "Sent {} request to node {} with ID {}",
+            message_type, self.target_node_id, request_id
         );
 
-        // For now, we'll simulate responses since this is a consensus protocol
-        // In a real implementation, responses would come through the consensus_rx channel
-        // and be handled by the consensus protocol state machine
-        match message {
-            RaftMessage::Vote(req) => {
-                let response = VoteResponse::new(
-                    req.vote,
-                    req.last_log_id,
-                    false, // For now, always reject votes - this will be handled properly by Raft consensus
-                );
-                Ok(RaftMessage::VoteResponse(response))
+        // Wait for response with timeout
+        let response = match tokio::time::timeout(RPC_TIMEOUT, response_rx).await {
+            Ok(Ok(response_msg)) => response_msg,
+            Ok(Err(_)) => {
+                // Channel was closed
+                return Err(RPCError::Network(openraft::error::NetworkError::new(
+                    &ConsensusError::Network("Response channel closed".into()),
+                )));
             }
-            RaftMessage::AppendEntries(_req) => {
-                // Create a failure response for append entries
-                let response = AppendEntriesResponse::Conflict;
-                Ok(RaftMessage::AppendEntriesResponse(response))
+            Err(_) => {
+                // Timeout
+                RESPONSE_ROUTER.write().await.remove(&request_id);
+
+                return Err(RPCError::Network(openraft::error::NetworkError::new(
+                    &ConsensusError::Network(
+                        format!(
+                            "Request timeout after {:?} for {} to node {}",
+                            RPC_TIMEOUT, message_type, self.target_node_id
+                        )
+                        .into(),
+                    ),
+                )));
             }
-            RaftMessage::InstallSnapshot(req) => {
-                let response = InstallSnapshotResponse { vote: req.vote };
-                Ok(RaftMessage::InstallSnapshotResponse(response))
+        };
+
+        // Extract response data based on message type
+        let response_data = match (&response, response_type) {
+            (ConsensusMessage::RaftVoteResponse(data), "vote_response")
+            | (ConsensusMessage::RaftAppendEntriesResponse(data), "append_entries_response")
+            | (ConsensusMessage::RaftInstallSnapshotResponse(data), "install_snapshot_response") => {
+                data
             }
-            _ => Err(RPCError::Network(openraft::error::NetworkError::new(
-                &ConsensusError::InvalidMessage("Unexpected message type".to_string()),
-            ))),
-        }
+            (ConsensusMessage::Data(data), _) => data.as_ref(),
+            _ => {
+                return Err(RPCError::Network(openraft::error::NetworkError::new(
+                    &ConsensusError::InvalidMessage(format!(
+                        "Unexpected response type for {response_type}: {response:?}"
+                    )),
+                )));
+            }
+        };
+
+        // Deserialize envelope
+        let response_envelope: RaftMessageEnvelope = serde_json::from_slice(response_data)
+            .map_err(|e| {
+                RPCError::Network(openraft::error::NetworkError::new(
+                    &ConsensusError::InvalidMessage(format!(
+                        "Failed to deserialize response envelope: {e}"
+                    )),
+                ))
+            })?;
+
+        // Deserialize actual response
+        let response: Resp = serde_json::from_slice(&response_envelope.payload).map_err(|e| {
+            RPCError::Network(openraft::error::NetworkError::new(
+                &ConsensusError::InvalidMessage(format!("Failed to deserialize response: {e}")),
+            ))
+        })?;
+
+        debug!(
+            "Received {} response from node {} for request {}",
+            response_type, self.target_node_id, request_id
+        );
+
+        Ok(response)
     }
 }
 
-impl<G, A> RaftNetwork<TypeConfig> for ConsensusRaftNetwork<G, A>
+impl<T> RaftNetwork<TypeConfig> for ConsensusRaftNetwork<T>
 where
-    G: proven_governance::Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug,
+    T: ConsensusTransport,
 {
     /// Send a vote request to the target node
     async fn vote(
@@ -221,13 +304,8 @@ where
     ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig>>> {
         debug!("Sending vote request to node {}", self.target_node_id);
 
-        let message = RaftMessage::Vote(rpc);
-        match self.send_raft_message(message)? {
-            RaftMessage::VoteResponse(response) => Ok(response),
-            _ => Err(RPCError::Network(openraft::error::NetworkError::new(
-                &ConsensusError::InvalidMessage("Invalid vote response".to_string()),
-            ))),
-        }
+        self.send_request_with_response(&rpc, "vote", "vote_response")
+            .await
     }
 
     /// Send an append entries request to the target node
@@ -242,13 +320,8 @@ where
             self.target_node_id
         );
 
-        let message = RaftMessage::AppendEntries(rpc);
-        match self.send_raft_message(message)? {
-            RaftMessage::AppendEntriesResponse(response) => Ok(response),
-            _ => Err(RPCError::Network(openraft::error::NetworkError::new(
-                &ConsensusError::InvalidMessage("Invalid append entries response".to_string()),
-            ))),
-        }
+        self.send_request_with_response(&rpc, "append_entries", "append_entries_response")
+            .await
     }
 
     /// Send an install snapshot request to the target node
@@ -265,25 +338,110 @@ where
             self.target_node_id
         );
 
-        // Handle install snapshot directly to avoid error type conversion issues
-        warn!(
-            "Simulating install snapshot response for node {} (network integration pending)",
-            self.target_node_id
-        );
-
-        let response = InstallSnapshotResponse { vote: rpc.vote };
-        Ok(response)
+        match self
+            .send_request_with_response(&rpc, "install_snapshot", "install_snapshot_response")
+            .await
+        {
+            Ok(response) => Ok(response),
+            Err(err) => {
+                // Convert any error to a network error for install_snapshot
+                let network_error = match err {
+                    RPCError::Network(net_err) => net_err,
+                    _ => openraft::error::NetworkError::new(&ConsensusError::Network(
+                        format!("Install snapshot failed: {err:?}").into(),
+                    )),
+                };
+                Err(RPCError::Network(network_error))
+            }
+        }
     }
 }
 
-impl<G, A> std::fmt::Debug for ConsensusRaftNetwork<G, A>
+impl<T> Clone for ConsensusRaftNetwork<T>
 where
-    G: proven_governance::Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug,
+    T: ConsensusTransport,
+{
+    fn clone(&self) -> Self {
+        Self {
+            consensus_transport: self.consensus_transport.clone(),
+            target_node_id: self.target_node_id.clone(),
+            network_tx: self.network_tx.clone(),
+        }
+    }
+}
+
+impl<T> std::fmt::Debug for ConsensusRaftNetwork<T>
+where
+    T: ConsensusTransport,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConsensusRaftNetwork")
             .field("target_node_id", &self.target_node_id)
             .finish_non_exhaustive()
     }
+}
+
+/// Handle incoming raft response and route to appropriate pending request
+pub async fn handle_raft_response(response_message: ConsensusMessage) {
+    let response_data = match &response_message {
+        ConsensusMessage::RaftVoteResponse(data)
+        | ConsensusMessage::RaftAppendEntriesResponse(data)
+        | ConsensusMessage::RaftInstallSnapshotResponse(data) => data.as_ref(),
+        ConsensusMessage::Data(data) => data.as_ref(),
+        _ => {
+            warn!("Received non-response raft message: {:?}", response_message);
+            return;
+        }
+    };
+
+    // Try to deserialize envelope
+    let envelope: RaftMessageEnvelope = match serde_json::from_slice(response_data) {
+        Ok(env) => env,
+        Err(e) => {
+            warn!("Failed to deserialize raft response envelope: {}", e);
+            return;
+        }
+    };
+
+    if !envelope.is_response {
+        debug!("Received raft request (not response), ignoring in response handler");
+        return;
+    }
+
+    // Find and remove pending request
+    let pending_request = {
+        let mut router = RESPONSE_ROUTER.write().await;
+        router.remove(&envelope.request_id)
+    };
+
+    if let Some(pending) = pending_request {
+        debug!("Routing response for request ID: {}", envelope.request_id);
+
+        // Send response to waiting request
+        if pending.response_tx.send(response_message).is_err() {
+            warn!(
+                "Failed to send response - receiver was dropped for request ID: {}",
+                envelope.request_id
+            );
+        }
+    } else {
+        warn!(
+            "Received response for unknown request ID: {}",
+            envelope.request_id
+        );
+    }
+}
+
+/// Clean up expired pending requests
+pub async fn cleanup_expired_requests() {
+    let mut router = RESPONSE_ROUTER.write().await;
+    let now = std::time::Instant::now();
+
+    router.retain(|request_id, pending| {
+        let expired = now.duration_since(pending.timestamp) > RPC_TIMEOUT * 2;
+        if expired {
+            debug!("Cleaning up expired request: {}", request_id);
+        }
+        !expired
+    });
 }

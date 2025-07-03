@@ -12,14 +12,17 @@ use crate::error::Error;
 use crate::hosts::check_hostname_resolution;
 
 use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
 use axum::routing::any;
 use http::StatusCode;
+use openraft::Config as RaftConfig;
 use proven_attestation::Attestor;
 use proven_bootable::Bootable;
-use proven_core::{LightCore, LightCoreOptions};
+use proven_consensus::{Consensus, ConsensusConfig};
+use proven_core::{Core, CoreOptions};
 use proven_governance::{Governance, Version};
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::{ProvenNetwork, ProvenNetworkOptions};
@@ -49,6 +52,29 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
         )));
     }
 
+    let consensus = Arc::new(
+        Consensus::new_with_websocket(
+            Arc::new(bootstrap.config.governance.clone()),
+            Arc::new(bootstrap.attestor.clone()),
+            bootstrap.config.node_key.clone(),
+            ConsensusConfig {
+                cluster_discovery_timeout: Some(Duration::from_secs(30)),
+                consensus_timeout: Duration::from_secs(30),
+                require_all_nodes: false,
+                raft_config: Arc::new(RaftConfig {
+                    heartbeat_interval: 500,    // 500ms
+                    election_timeout_min: 1500, // 1.5s
+                    election_timeout_max: 3000, // 3s
+                    ..RaftConfig::default()
+                }),
+                storage_dir: None, // Default to None, will use temporary directory
+            },
+        )
+        .await
+        .unwrap(),
+    );
+
+    // TODO: possibly remove this at some point
     let network = ProvenNetwork::new(ProvenNetworkOptions {
         governance: bootstrap.config.governance.clone(),
         attestor: bootstrap.attestor.clone(),
@@ -68,11 +94,15 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
             .layer(CorsLayer::very_permissive()),
     );
 
-    let light_core = LightCore::new(LightCoreOptions {
+    let core = Core::new(CoreOptions {
+        consensus: consensus.clone(),
         http_server,
         network: network.clone(),
     });
-    light_core.start().await.map_err(Error::Bootable)?;
+    core.start().await.map_err(Error::Bootable)?;
+
+    consensus.start().await.unwrap();
+    bootstrap.consensus = Some(consensus);
 
     if !bootstrap.config.allow_single_node {
         // Get peers in a loop until we have at least two others with an Ok nats cluster endpoint
@@ -99,7 +129,7 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     }
 
     bootstrap.network = Some(network);
-    bootstrap.light_core = Some(light_core);
+    bootstrap.bootstrapping_core = Some(core);
 
     Ok(())
 }

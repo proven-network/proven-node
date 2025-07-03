@@ -13,17 +13,22 @@ use futures::stream::Stream;
 use futures::StreamExt;
 use tracing::{debug, warn};
 
+use proven_attestation::Attestor;
+use proven_consensus::transport::ConsensusTransport;
+use proven_governance::Governance;
 use proven_messaging::service_responder::{ServiceResponder, UsedServiceResponder};
+use proven_messaging::stream::InitializedStream;
 
 /// Maximum batch size for streaming responses.
 const MAX_BATCH_SIZE: usize = 1024 * 1024; // 1MB
 
 /// A consensus service responder.
 #[derive(Clone, Debug)]
-pub struct ConsensusServiceResponder<G, A, T, D, S, R, RD, RS>
+pub struct ConsensusServiceResponder<G, A, C, T, D, S, R, RD, RS>
 where
     G: proven_governance::Governance + Send + Sync + 'static,
     A: proven_attestation::Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -52,15 +57,16 @@ where
     /// Response stream name where responses should be sent
     response_stream_name: String,
     /// Request stream for deletion operations
-    request_stream: crate::stream::InitializedConsensusStream<G, A, T, D, S>,
+    request_stream: crate::stream::InitializedConsensusStream<G, A, C, T, D, S>,
     /// Type markers
     _marker: PhantomData<(T, D, S, R, RD, RS)>,
 }
 
-impl<G, A, T, D, S, R, RD, RS> ConsensusServiceResponder<G, A, T, D, S, R, RD, RS>
+impl<G, A, C, T, D, S, R, RD, RS> ConsensusServiceResponder<G, A, C, T, D, S, R, RD, RS>
 where
     G: proven_governance::Governance + Send + Sync + 'static,
     A: proven_attestation::Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -87,7 +93,7 @@ where
         request_sequence: u64,
         request_id: String,
         response_stream_name: String,
-        request_stream: crate::stream::InitializedConsensusStream<G, A, T, D, S>,
+        request_stream: crate::stream::InitializedConsensusStream<G, A, C, T, D, S>,
     ) -> Self {
         Self {
             caught_up,
@@ -189,11 +195,12 @@ where
 }
 
 #[async_trait]
-impl<G, A, T, D, S, R, RD, RS> ServiceResponder<T, D, S, R, RD, RS>
-    for ConsensusServiceResponder<G, A, T, D, S, R, RD, RS>
+impl<G, A, C, T, D, S, R, RD, RS> ServiceResponder<T, D, S, R, RD, RS>
+    for ConsensusServiceResponder<G, A, C, T, D, S, R, RD, RS>
 where
-    G: proven_governance::Governance + Send + Sync + 'static,
-    A: proven_attestation::Attestor + Send + Sync + 'static,
+    G: Governance + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -248,7 +255,7 @@ where
         let result = self.reply(response).await;
 
         // Delete the original request from the consensus stream
-        if let Err(e) = request_stream.delete_message(request_sequence) {
+        if let Err(e) = request_stream.delete(request_sequence).await {
             warn!(
                 "Failed to delete request {} at sequence {}: {:?}",
                 request_id, request_sequence, e
@@ -327,7 +334,7 @@ where
         let result = self.stream(response_stream).await;
 
         // Delete the original request from the consensus stream
-        if let Err(e) = request_stream.delete_message(request_sequence) {
+        if let Err(e) = request_stream.delete(request_sequence).await {
             warn!(
                 "Failed to delete request {} at sequence {}: {:?}",
                 request_id, request_sequence, e

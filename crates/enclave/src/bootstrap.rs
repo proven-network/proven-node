@@ -18,12 +18,14 @@ use axum::routing::any;
 use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use http::StatusCode;
+use openraft::Config as RaftConfig;
 use proven_applications::ApplicationManager;
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_bootable::Bootable;
 use proven_cert_store::CertStore;
-use proven_core::{Core, CoreOptions};
+use proven_consensus::{Consensus, ConsensusConfig};
+use proven_core::{BootstrapUpgrade, Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
 use proven_governance_mock::MockGovernance;
@@ -1141,16 +1143,53 @@ impl Bootstrap {
         })
         .await;
 
-        let core = Core::new(CoreOptions {
-            application_manager,
-            attestor: self.attestor.clone(),
-            http_server,
-            identity_manager,
-            network: network.clone(),
-            passkey_manager,
-            runtime_pool_manager,
-            sessions_manager,
+        let governance = self.governance.as_ref().unwrap_or_else(|| {
+            panic!("governance not set before core");
         });
+
+        let attestor = self.attestor.clone();
+
+        let node_key = hex::decode(self.args.node_key.clone()).unwrap();
+        let node_key: [u8; 32] = node_key.try_into().unwrap();
+        let node_key = SigningKey::from_bytes(&node_key);
+
+        let consensus = Arc::new(
+            Consensus::new_with_websocket(
+                Arc::new(governance.clone()),
+                Arc::new(attestor.clone()),
+                node_key,
+                ConsensusConfig {
+                    cluster_discovery_timeout: Some(Duration::from_secs(30)),
+                    consensus_timeout: Duration::from_secs(30),
+                    require_all_nodes: false,
+                    raft_config: Arc::new(RaftConfig {
+                        heartbeat_interval: 500,    // 500ms
+                        election_timeout_min: 1500, // 1.5s
+                        election_timeout_max: 3000, // 3s
+                        ..RaftConfig::default()
+                    }),
+                    storage_dir: None, // Default to None, will use temporary directory
+                },
+            )
+            .await
+            .unwrap(),
+        );
+
+        let core = Core::new(CoreOptions {
+            consensus,
+            http_server,
+            network: network.clone(),
+        });
+
+        core.bootstrap(BootstrapUpgrade {
+            application_manager,
+            runtime_pool_manager,
+            identity_manager,
+            passkey_manager,
+            sessions_manager,
+        })
+        .await?;
+
         core.start().await.map_err(Error::Bootable)?;
 
         self.core = Some(core);

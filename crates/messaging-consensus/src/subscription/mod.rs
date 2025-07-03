@@ -15,7 +15,7 @@ use tokio::time::Duration;
 use tracing::{debug, info, warn};
 
 use proven_attestation::Attestor;
-use proven_consensus::{consensus_manager::SubscriptionInvoker, ConsensusManager};
+use proven_consensus::{Consensus, ConsensusTransport, SubscriptionInvoker};
 use proven_governance::Governance;
 
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
@@ -25,10 +25,11 @@ use crate::subscription_responder::ConsensusSubscriptionResponder;
 
 /// A subscription invoker that bridges consensus messages to subscription handlers
 #[derive(Debug)]
-pub struct ConsensusSubscriptionInvoker<G, A, X, T, D, S>
+pub struct ConsensusSubscriptionInvoker<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -47,13 +48,14 @@ where
     /// The subscription handler to invoke
     handler: X,
     /// Type markers
-    _marker: std::marker::PhantomData<(G, A, T, D, S)>,
+    _marker: std::marker::PhantomData<(G, A, C, T, D, S)>,
 }
 
-impl<G, A, X, T, D, S> ConsensusSubscriptionInvoker<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> ConsensusSubscriptionInvoker<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -77,10 +79,11 @@ where
 }
 
 #[async_trait]
-impl<G, A, X, T, D, S> SubscriptionInvoker for ConsensusSubscriptionInvoker<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> SubscriptionInvoker for ConsensusSubscriptionInvoker<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -152,25 +155,27 @@ where
 
 /// Inner subscription data that handles cleanup only when the last reference is dropped
 #[derive(Debug)]
-struct ConsensusSubscriptionInner<G, A>
+struct ConsensusSubscriptionInner<G, A, C>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
 {
     /// Subject name being subscribed to
     subject_name: String,
     /// Unique subscription identifier for cleanup
     subscription_id: String,
     /// Reference to consensus manager for cleanup
-    consensus_manager: std::sync::Arc<ConsensusManager<G, A>>,
+    consensus_manager: std::sync::Arc<Consensus<G, A, C>>,
     /// Shutdown signal for the background task
     stop_sender: watch::Sender<()>,
 }
 
-impl<G, A> Drop for ConsensusSubscriptionInner<G, A>
+impl<G, A, C> Drop for ConsensusSubscriptionInner<G, A, C>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
 {
     fn drop(&mut self) {
         // Signal shutdown to any background tasks
@@ -190,10 +195,11 @@ where
 
 /// A consensus subscription that handles messages from a subject.
 #[derive(Debug)]
-pub struct ConsensusSubscription<G, A, X, T, D, S>
+pub struct ConsensusSubscription<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -206,15 +212,16 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     /// Shared subscription data with reference counting
-    inner: Arc<ConsensusSubscriptionInner<G, A>>,
+    inner: Arc<ConsensusSubscriptionInner<G, A, C>>,
     /// Type markers
-    _marker: PhantomData<(G, A, X, T, D, S)>,
+    _marker: PhantomData<(G, A, C, X, T, D, S)>,
 }
 
-impl<G, A, X, T, D, S> Clone for ConsensusSubscription<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> Clone for ConsensusSubscription<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -261,10 +268,11 @@ impl SubscriptionOptions for ConsensusSubscriptionOptions {}
 // When all clones are dropped, the inner Arc will call its Drop implementation
 
 #[async_trait]
-impl<G, A, X, T, D, S> Subscription<X, T, D, S> for ConsensusSubscription<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> Subscription<X, T, D, S> for ConsensusSubscription<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -278,7 +286,7 @@ where
 {
     type Error = crate::error::MessagingConsensusError;
     type Options = ConsensusSubscriptionOptions;
-    type Subject = crate::subject::ConsensusSubject<G, A, T, D, S>;
+    type Subject = crate::subject::ConsensusSubject<G, A, C, T, D, S>;
 
     async fn new(
         subject: Self::Subject,
@@ -304,7 +312,7 @@ where
         );
 
         // Create the subscription invoker that will handle incoming messages
-        let invoker = ConsensusSubscriptionInvoker::<G, A, X, T, D, S>::new(
+        let invoker = ConsensusSubscriptionInvoker::<G, A, C, X, T, D, S>::new(
             subscription_id.clone(),
             subject_name.clone(),
             handler,
@@ -312,8 +320,8 @@ where
 
         // Register the subscription invoker with the consensus system
         // This is ephemeral - just a callback registration, no persistent stream creation
-        let consensus_manager = subject.consensus_manager();
-        consensus_manager
+        subject
+            .consensus_manager()
             .store()
             .register_subscription_handler(std::sync::Arc::new(invoker));
 
@@ -338,10 +346,11 @@ where
     }
 }
 
-impl<G, A, X, T, D, S> ConsensusSubscription<G, A, X, T, D, S>
+impl<G, A, C, X, T, D, S> ConsensusSubscription<G, A, C, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -383,6 +392,7 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
     use proven_bootable::Bootable;
+    use proven_consensus::transport::tcp::TcpTransport;
     use proven_consensus::ConsensusConfig;
     use proven_governance_mock::MockGovernance;
     use rand::rngs::OsRng;
@@ -469,9 +479,9 @@ mod tests {
 
     // Helper to create a test consensus system
     async fn create_test_consensus(
-        node_id: &str,
         port: u16,
-    ) -> Arc<Consensus<MockGovernance, MockAttestor>> {
+    ) -> Arc<Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>>
+    {
         use proven_governance::{TopologyNode, Version};
         use std::collections::HashSet;
 
@@ -510,8 +520,7 @@ mod tests {
             ..ConsensusConfig::default()
         };
 
-        let consensus = Consensus::new(
-            node_id.to_string(),
+        let consensus = Consensus::new_with_tcp(
             format!("127.0.0.1:{port}").parse().unwrap(),
             governance,
             attestor,
@@ -521,7 +530,12 @@ mod tests {
         .await
         .unwrap();
 
-        Arc::new(consensus)
+        let consensus = Arc::new(consensus);
+
+        // Start the consensus system to initialize the Raft cluster
+        consensus.start().await.expect("Failed to start consensus");
+
+        consensus
     }
 
     fn next_port() -> u16 {
@@ -531,13 +545,22 @@ mod tests {
     // Helper to create a test subject
     fn create_test_subject(
         name: &str,
-        consensus: &Arc<Consensus<MockGovernance, MockAttestor>>,
-    ) -> ConsensusSubject<MockGovernance, MockAttestor, TestMessage, TestError, TestError> {
+        consensus: &Arc<
+            Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>,
+        >,
+    ) -> ConsensusSubject<
+        MockGovernance,
+        MockAttestor,
+        TcpTransport<MockGovernance, MockAttestor>,
+        TestMessage,
+        TestError,
+        TestError,
+    > {
         crate::subject::ConsensusSubject::new(
             name.to_string(),
             consensus.governance().as_ref().clone(),
             consensus.attestor().as_ref().clone(),
-            consensus.consensus_manager().clone(),
+            consensus.clone(),
         )
     }
 
@@ -545,7 +568,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_consensus_subject_creation() {
-        let consensus = create_test_consensus("1", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         let subject = create_test_subject("orders.new", &consensus);
 
@@ -561,7 +584,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_ephemeral_subscription_creation() {
-        let consensus = create_test_consensus("2", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         let subject = create_test_subject("orders.*", &consensus);
         let (handler, _receiver) = TestSubscriptionHandler::new("test_handler");
@@ -583,7 +606,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_subscription_receives_matching_messages() {
-        let consensus = create_test_consensus("3", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         let subject = create_test_subject("orders.*", &consensus);
         let (handler, mut receiver) = TestSubscriptionHandler::new("order_handler");
@@ -600,8 +623,8 @@ mod tests {
         // Publish message to matching subject
         let message_data = Bytes::from("test order message");
         let result = consensus
-            .consensus_manager()
-            .publish("orders.new".to_string(), message_data.clone());
+            .publish("orders.new".to_string(), message_data.clone())
+            .await;
         assert!(result.is_ok(), "Publishing should succeed");
 
         // Wait for message to be processed
@@ -621,7 +644,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_subscription_ignores_non_matching_messages() {
-        let consensus = create_test_consensus("4", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         let subject = create_test_subject("orders.*", &consensus);
         let (handler, mut receiver) = TestSubscriptionHandler::new("order_handler");
@@ -637,8 +660,8 @@ mod tests {
         // Publish to non-matching subject
         let message_data = Bytes::from("test user message");
         let result = consensus
-            .consensus_manager()
-            .publish("users.new".to_string(), message_data);
+            .publish("users.new".to_string(), message_data)
+            .await;
         assert!(result.is_ok(), "Publishing should succeed");
 
         // Should NOT receive the message
@@ -654,7 +677,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_multiple_subscriptions_same_subject() {
-        let consensus = create_test_consensus("5", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         // Create two subscriptions to the same subject pattern
         let subject1 = create_test_subject("orders.*", &consensus);
@@ -679,8 +702,8 @@ mod tests {
         // Publish one message
         let message_data = Bytes::from("broadcast message");
         let result = consensus
-            .consensus_manager()
-            .publish("orders.new".to_string(), message_data.clone());
+            .publish("orders.new".to_string(), message_data.clone())
+            .await;
         assert!(result.is_ok());
 
         // Both handlers should receive the message
@@ -701,7 +724,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_wildcard_pattern_matching() {
-        let consensus = create_test_consensus("6", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         // Test single wildcard pattern
         let subject = create_test_subject("orders.*", &consensus);
@@ -720,8 +743,8 @@ mod tests {
         for test_subject in test_subjects {
             let message_data = Bytes::from(format!("message for {test_subject}"));
             let result = consensus
-                .consensus_manager()
-                .publish(test_subject.to_string(), message_data.clone());
+                .publish(test_subject.to_string(), message_data.clone())
+                .await;
             assert!(result.is_ok());
 
             let received = timeout(Duration::from_secs(1), receiver.recv()).await;
@@ -734,10 +757,12 @@ mod tests {
         assert_eq!(handler.call_count(), 3);
 
         // Test non-matching subject (too many tokens)
-        let result = consensus.consensus_manager().publish(
-            "orders.new.urgent".to_string(),
-            Bytes::from("should not match"),
-        );
+        let result = consensus
+            .publish(
+                "orders.new.urgent".to_string(),
+                Bytes::from("should not match"),
+            )
+            .await;
         assert!(result.is_ok());
 
         // Should not receive this message
@@ -756,7 +781,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_multi_wildcard_pattern_matching() {
-        let consensus = create_test_consensus("7", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         // Test multi-wildcard pattern
         let subject = create_test_subject("orders.>", &consensus);
@@ -779,8 +804,8 @@ mod tests {
         for test_subject in test_subjects {
             let message_data = Bytes::from(format!("message for {test_subject}"));
             let result = consensus
-                .consensus_manager()
-                .publish(test_subject.to_string(), message_data);
+                .publish(test_subject.to_string(), message_data)
+                .await;
             assert!(result.is_ok());
 
             let received = timeout(Duration::from_secs(1), receiver.recv()).await;
@@ -800,7 +825,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_subscription_cleanup_on_drop() {
-        let consensus = create_test_consensus("8", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         let subject = create_test_subject("cleanup.test", &consensus);
         let (handler, mut receiver) = TestSubscriptionHandler::new("cleanup_handler");
@@ -816,8 +841,8 @@ mod tests {
 
             // Publish message - should be received
             let result = consensus
-                .consensus_manager()
-                .publish("cleanup.test".to_string(), Bytes::from("before drop"));
+                .publish("cleanup.test".to_string(), Bytes::from("before drop"))
+                .await;
             assert!(result.is_ok());
 
             let received = timeout(Duration::from_secs(1), receiver.recv()).await;
@@ -832,8 +857,8 @@ mod tests {
 
         // Publish another message - should NOT be received
         let result = consensus
-            .consensus_manager()
-            .publish("cleanup.test".to_string(), Bytes::from("after drop"));
+            .publish("cleanup.test".to_string(), Bytes::from("after drop"))
+            .await;
         assert!(result.is_ok());
 
         let received = timeout(Duration::from_millis(500), receiver.recv()).await;
@@ -855,12 +880,12 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_mixed_streams_and_subscriptions() {
-        let consensus = create_test_consensus("9", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         // Create a stream subscription
         let result = consensus
-            .consensus_manager()
-            .subscribe_stream_to_subject("test_stream", "mixed.test");
+            .subscribe_stream_to_subject("test_stream", "mixed.test")
+            .await;
         assert!(result.is_ok(), "Stream subscription should succeed");
 
         // Create an ephemeral subscription
@@ -877,8 +902,8 @@ mod tests {
         // Publish message
         let message_data = Bytes::from("mixed routing test");
         let result = consensus
-            .consensus_manager()
-            .publish("mixed.test".to_string(), message_data.clone());
+            .publish("mixed.test".to_string(), message_data.clone())
+            .await;
         assert!(result.is_ok());
 
         // Ephemeral subscription should receive it
@@ -890,10 +915,7 @@ mod tests {
         assert_eq!(handler.call_count(), 1);
 
         // Stream should also have the message (check via consensus manager)
-        let stream_messages = consensus
-            .consensus_manager()
-            .store()
-            .get_stream_messages("test_stream");
+        let stream_messages = consensus.store().get_stream_messages("test_stream");
         assert!(
             !stream_messages.is_empty(),
             "Stream should contain the message"
@@ -907,7 +929,7 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_subscription_clone_and_independence() {
-        let consensus = create_test_consensus("10", next_port()).await;
+        let consensus = create_test_consensus(next_port()).await;
 
         let subject = create_test_subject("clone.test", &consensus);
         let (handler, mut receiver) = TestSubscriptionHandler::new("clone_handler");
@@ -929,8 +951,8 @@ mod tests {
 
         // Publish message
         let result = consensus
-            .consensus_manager()
-            .publish("clone.test".to_string(), Bytes::from("clone test"));
+            .publish("clone.test".to_string(), Bytes::from("clone test"))
+            .await;
         assert!(result.is_ok());
 
         let received = timeout(Duration::from_secs(1), receiver.recv()).await;
@@ -941,8 +963,8 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         let result = consensus
-            .consensus_manager()
-            .publish("clone.test".to_string(), Bytes::from("after clone drop"));
+            .publish("clone.test".to_string(), Bytes::from("after clone drop"))
+            .await;
         assert!(result.is_ok());
 
         let received = timeout(Duration::from_secs(1), receiver.recv()).await;
@@ -956,8 +978,8 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let result = consensus
-            .consensus_manager()
-            .publish("clone.test".to_string(), Bytes::from("after all drops"));
+            .publish("clone.test".to_string(), Bytes::from("after all drops"))
+            .await;
         assert!(result.is_ok());
 
         let received = timeout(Duration::from_millis(500), receiver.recv()).await;

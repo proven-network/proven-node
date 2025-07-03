@@ -1,6 +1,6 @@
 //! OpenRaft-based consensus implementation for messaging
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
@@ -153,7 +153,7 @@ openraft::declare_raft_types!(
     pub TypeConfig:
         D = MessagingRequest,
         R = MessagingResponse,
-        NodeId = u64,
+        NodeId = String,
         Node = openraft::BasicNode,
         Entry = openraft::Entry<TypeConfig>,
         SnapshotData = Cursor<Vec<u8>>,
@@ -674,8 +674,8 @@ where
     G: proven_governance::Governance + Send + Sync + 'static + std::fmt::Debug,
     A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
-    /// Node identifier
-    node_id: u64,
+    /// Node identifier (public key)
+    node_id: String,
     /// Consensus configuration
     config: ConsensusConfig,
     /// `OpenRaft` instance
@@ -708,16 +708,10 @@ where
 {
     /// Create a new consensus manager
     pub fn new(node_id: &str, config: ConsensusConfig) -> Self {
-        // Parse node_id as u64 for OpenRaft
-        let node_id_u64 = node_id.parse::<u64>().unwrap_or(1);
-
-        info!(
-            "Creating OpenRaft consensus manager for node: {}",
-            node_id_u64
-        );
+        info!("Creating OpenRaft consensus manager for node: {}", node_id);
 
         Self {
-            node_id: node_id_u64,
+            node_id: node_id.to_string(),
             config,
             raft: Arc::new(RwLock::new(None)), // Will be initialized later with storage and network
             store: StreamStore::new(),
@@ -737,7 +731,7 @@ where
         network: impl openraft::RaftNetworkFactory<TypeConfig>,
     ) -> ConsensusResult<()> {
         let raft = openraft::Raft::new(
-            self.node_id,
+            self.node_id.clone(),
             self.config.raft_config.clone(),
             network,
             log_storage,
@@ -760,7 +754,7 @@ where
         &mut self,
         storage: crate::storage::MessagingStorage,
         network: Arc<crate::network::ConsensusNetwork<G, A>>,
-        network_tx: tokio::sync::mpsc::UnboundedSender<(u64, crate::network::ConsensusMessage)>,
+        network_tx: tokio::sync::mpsc::UnboundedSender<(String, crate::network::ConsensusMessage)>,
     ) -> ConsensusResult<()> {
         use crate::raft_network::ConsensusRaftNetworkFactory;
         use crate::raft_state_machine::ConsensusStateMachine;
@@ -990,14 +984,15 @@ where
 
     /// Get node ID
     #[must_use]
-    pub const fn node_id(&self) -> u64 {
-        self.node_id
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn node_id(&self) -> &str {
+        &self.node_id
     }
 
     /// Get node ID as string
     #[must_use]
     pub fn node_id_str(&self) -> String {
-        self.node_id.to_string()
+        self.node_id.clone()
     }
 
     /// Get the stream store
@@ -1006,39 +1001,240 @@ where
         &self.store
     }
 
-    /// Check if this node is the leader (currently always false - no Raft)
+    /// Check if this node is the leader
     #[must_use]
-    pub const fn is_leader(&self) -> bool {
-        // TODO: Implement with actual Raft
-        false
+    pub fn is_leader(&self) -> bool {
+        let raft = self.raft.read();
+        raft.as_ref().is_some_and(|raft| {
+            let metrics_guard = raft.metrics();
+            let metrics = metrics_guard.borrow();
+            matches!(metrics.current_leader, Some(ref leader_id) if leader_id == &self.node_id)
+        })
     }
 
-    /// Get current Raft metrics (currently returns None - no Raft)
+    /// Get current Raft metrics
     #[must_use]
-    pub const fn metrics(&self) -> Option<openraft::RaftMetrics<TypeConfig>> {
-        // TODO: Implement with actual Raft
-        None
+    pub fn metrics(&self) -> Option<openraft::RaftMetrics<TypeConfig>> {
+        let raft = self.raft.read();
+        raft.as_ref().map(|r| r.metrics().borrow().clone())
     }
 
     /// Propose a request through Raft consensus
     fn propose_request(&self, request: &MessagingRequest) -> ConsensusResult<u64> {
-        // For now, bypass Raft and apply directly to local store
-        // This is a temporary workaround until full Raft integration is implemented
-        debug!(
-            "Applying request directly to local store (Raft bypass): {:?}",
-            request
+        let raft = {
+            let raft_guard = self.raft.read();
+            raft_guard
+                .as_ref()
+                .ok_or_else(|| ConsensusError::InvalidMessage("Raft not initialized".to_string()))?
+                .clone()
+        };
+
+        debug!("Proposing request through Raft: {:?}", request);
+
+        // Use tokio::task::block_in_place to handle async in sync context
+        let response = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(async { raft.client_write(request.clone()).await })
+        });
+
+        match response {
+            Ok(client_write_response) => {
+                info!(
+                    "Request successfully committed: sequence {}",
+                    client_write_response.data.sequence
+                );
+                Ok(client_write_response.data.sequence)
+            }
+            Err(e) => {
+                warn!("Failed to commit request through Raft: {}", e);
+                Err(ConsensusError::InvalidMessage(format!(
+                    "Consensus failed: {e}"
+                )))
+            }
+        }
+    }
+
+    /// Initialize the cluster as a single-node cluster or join existing cluster
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if cluster initialization fails.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn initialize_cluster(&self) -> ConsensusResult<()> {
+        // Check if we're already in a cluster and get raft instance
+        let (is_already_in_cluster, raft_instance) = {
+            let raft_guard = self.raft.read();
+            let raft = raft_guard.as_ref().ok_or_else(|| {
+                ConsensusError::InvalidMessage("Raft not initialized".to_string())
+            })?;
+
+            let metrics = raft.metrics().borrow().clone();
+            let membership = metrics.membership_config.membership();
+            let already_in_cluster =
+                membership.voter_ids().count() > 0 || membership.learner_ids().count() > 0;
+
+            (already_in_cluster, raft.clone())
+        }; // Drop the RwLock guard here
+
+        if is_already_in_cluster {
+            info!("Node {} already in cluster", self.node_id);
+            return Ok(());
+        }
+
+        // Initialize as single-node cluster
+        info!("Initializing new cluster with node {}", self.node_id);
+        let mut nodes = BTreeMap::new();
+        nodes.insert(
+            self.node_id.clone(),
+            openraft::BasicNode {
+                addr: format!("node-{}", self.node_id),
+            },
         );
 
-        let response = self.store.apply_request(request)?;
-        if response.success {
-            Ok(response.sequence)
-        } else {
-            Err(ConsensusError::InvalidMessage(
-                response
-                    .error
-                    .unwrap_or_else(|| "Request failed".to_string()),
-            ))
-        }
+        raft_instance.initialize(nodes).await.map_err(|e| {
+            ConsensusError::InvalidMessage(format!("Failed to initialize cluster: {e}"))
+        })?;
+
+        info!("Cluster initialized successfully");
+        Ok(())
+    }
+
+    /// Add a peer to the cluster as a learner
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if adding the learner fails.
+    pub async fn add_learner(&self, peer_id: String, peer_addr: String) -> ConsensusResult<()> {
+        let raft_instance = {
+            let raft = self.raft.read();
+            raft.as_ref()
+                .ok_or_else(|| ConsensusError::InvalidMessage("Raft not initialized".to_string()))?
+                .clone()
+        };
+
+        info!("Adding peer {} as learner", peer_id);
+        let node = openraft::BasicNode { addr: peer_addr };
+
+        raft_instance
+            .add_learner(peer_id.clone(), node, true)
+            .await
+            .map_err(|e| ConsensusError::InvalidMessage(format!("Failed to add learner: {e}")))?;
+
+        info!("Peer {} added as learner", peer_id);
+        Ok(())
+    }
+
+    /// Promote learners to voters
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if membership change fails.
+    pub async fn change_membership(&self, voters: BTreeSet<String>) -> ConsensusResult<()> {
+        let raft_instance = {
+            let raft = self.raft.read();
+            raft.as_ref()
+                .ok_or_else(|| ConsensusError::InvalidMessage("Raft not initialized".to_string()))?
+                .clone()
+        };
+
+        info!("Changing membership to voters: {:?}", voters);
+
+        raft_instance
+            .change_membership(voters, false)
+            .await
+            .map_err(|e| {
+                ConsensusError::InvalidMessage(format!("Failed to change membership: {e}"))
+            })?;
+
+        info!("Membership changed successfully");
+        Ok(())
+    }
+
+    /// Remove a node from the cluster
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if node removal fails.
+    #[allow(clippy::significant_drop_tightening)]
+    pub async fn remove_node(&self, node_id: String) -> ConsensusResult<()> {
+        let (new_voters, raft_instance) = {
+            let raft_guard = self.raft.read();
+            let raft = raft_guard.as_ref().ok_or_else(|| {
+                ConsensusError::InvalidMessage("Raft not initialized".to_string())
+            })?;
+
+            // Get current membership and remove the node
+            let metrics = raft.metrics().borrow().clone();
+            let current_membership = metrics.membership_config.membership();
+
+            let mut new_voters: BTreeSet<String> = current_membership.voter_ids().collect();
+            new_voters.remove(&node_id);
+
+            if new_voters.is_empty() {
+                return Err(ConsensusError::InvalidMessage(
+                    "Cannot remove last voter from cluster".to_string(),
+                ));
+            }
+
+            (new_voters, raft.clone())
+        };
+
+        info!("Removing node {} from cluster", node_id);
+
+        raft_instance
+            .change_membership(new_voters, false)
+            .await
+            .map_err(|e| ConsensusError::InvalidMessage(format!("Failed to remove node: {e}")))?;
+
+        info!("Node {} removed from cluster", node_id);
+        Ok(())
+    }
+
+    /// Get current cluster membership information
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Raft is not initialized.
+    #[allow(clippy::significant_drop_tightening)]
+    pub fn get_cluster_membership(&self) -> ConsensusResult<(BTreeSet<String>, BTreeSet<String>)> {
+        let (voters, learners) = {
+            let raft_guard = self.raft.read();
+            let raft = raft_guard.as_ref().ok_or_else(|| {
+                ConsensusError::InvalidMessage("Raft not initialized".to_string())
+            })?;
+
+            let metrics = raft.metrics().borrow().clone();
+            let membership = metrics.membership_config.membership();
+
+            let voters: BTreeSet<String> = membership.voter_ids().collect();
+            let learners: BTreeSet<String> = membership.learner_ids().collect();
+
+            (voters, learners)
+        };
+
+        Ok((voters, learners))
+    }
+
+    /// Check if the cluster has a healthy quorum
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if Raft is not initialized.
+    #[allow(clippy::significant_drop_tightening)]
+    pub fn has_quorum(&self) -> ConsensusResult<bool> {
+        let has_leader = {
+            let raft_guard = self.raft.read();
+            let raft = raft_guard.as_ref().ok_or_else(|| {
+                ConsensusError::InvalidMessage("Raft not initialized".to_string())
+            })?;
+
+            let metrics = raft.metrics().borrow().clone();
+            metrics.current_leader.is_some()
+        };
+
+        // Check if we have a leader and if the cluster is functional
+        // A cluster has quorum if there's a current leader
+        Ok(has_leader)
     }
 
     /// Get all streams that should receive messages for a given subject

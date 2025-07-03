@@ -1,6 +1,7 @@
 //! COSE (CBOR Object Signing and Encryption) support for secure messaging
 
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 
 use bytes::Bytes;
 use coset::{
@@ -31,7 +32,7 @@ pub struct MessagePayload {
     /// The actual consensus message data
     pub data: Bytes,
     /// Sender's node ID
-    pub sender_id: u64,
+    pub sender_id: String,
     /// Timestamp (unix epoch millis)
     pub timestamp: u64,
     /// Message type identifier
@@ -46,7 +47,7 @@ where
     /// Node's signing key
     signing_key: SigningKey,
     /// Node ID
-    node_id: u64,
+    node_id: String,
     /// Governance system for key verification
     governance: G,
 }
@@ -56,7 +57,7 @@ where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
 {
     /// Create a new COSE handler
-    pub const fn new(signing_key: SigningKey, node_id: u64, governance: G) -> Self {
+    pub const fn new(signing_key: SigningKey, node_id: String, governance: G) -> Self {
         Self {
             signing_key,
             node_id,
@@ -83,7 +84,7 @@ where
         // Build protected headers
         let protected_header = HeaderBuilder::new()
             .algorithm(iana::Algorithm::EdDSA)
-            .key_id(self.node_id.to_be_bytes().to_vec())
+            .key_id(self.node_id.as_bytes().to_vec())
             .build();
 
         // Create COSE_Sign1 structure
@@ -132,7 +133,7 @@ where
         let sender_node_id = Self::extract_sender_id(sign1)?;
 
         // Get sender's public key from governance
-        let verifying_key = self.get_public_key_for_node(sender_node_id).await?;
+        let verifying_key = self.get_public_key_for_node(sender_node_id.clone()).await?;
 
         // Verify the signature
         let to_verify = sign1.tbs_data(b"");
@@ -213,7 +214,7 @@ where
     }
 
     /// Extract sender node ID from `COSE_Sign1` protected headers
-    fn extract_sender_id(sign1: &CoseSign1) -> ConsensusResult<u64> {
+    fn extract_sender_id(sign1: &CoseSign1) -> ConsensusResult<String> {
         let protected_header = &sign1.protected.header;
 
         let key_id = &protected_header.key_id;
@@ -223,22 +224,13 @@ where
             ));
         }
 
-        if key_id.len() != 8 {
-            return Err(ConsensusError::InvalidMessage(
-                "Invalid key_id length".to_string(),
-            ));
-        }
-
-        let node_id_bytes: [u8; 8] = key_id
-            .as_slice()
-            .try_into()
-            .map_err(|_| ConsensusError::InvalidMessage("Invalid key_id format".to_string()))?;
-
-        Ok(u64::from_be_bytes(node_id_bytes))
+        // The key_id contains the hex-encoded public key as UTF-8 bytes
+        String::from_utf8(key_id.clone())
+            .map_err(|e| ConsensusError::InvalidMessage(format!("Invalid key_id format: {e}")))
     }
 
     /// Get public key for a node from governance
-    async fn get_public_key_for_node(&self, node_id: u64) -> ConsensusResult<VerifyingKey> {
+    async fn get_public_key_for_node(&self, node_id: String) -> ConsensusResult<VerifyingKey> {
         // Get the current topology from governance
         let topology =
             self.governance.get_topology().await.map_err(|e| {
@@ -249,10 +241,10 @@ where
         // For this implementation, we'll use a simple mapping based on node ID
         // In practice, you'd have a proper node ID to public key mapping
 
-        for (index, node) in topology.iter().enumerate() {
-            // For now, we'll use the index as the node ID since we don't have a direct mapping
-            // This is a simplified approach for testing
-            if (index + 1) as u64 == node_id {
+        for node in &topology {
+            // Check if this node matches the requested node_id
+            // For now, using the public key as the node ID
+            if node.public_key == node_id {
                 // Parse the hex-encoded public key
                 let public_key_bytes = hex::decode(&node.public_key).map_err(|e| {
                     ConsensusError::InvalidMessage(format!("Invalid public key hex: {e}"))
@@ -290,7 +282,7 @@ impl MessagePayload {
     /// # Panics
     ///
     /// Panics if the system time is before the Unix epoch.
-    pub fn new(data: Bytes, sender_id: u64, message_type: impl Into<String>) -> Self {
+    pub fn new(data: Bytes, sender_id: String, message_type: impl Into<String>) -> Self {
         Self {
             data,
             sender_id,
@@ -304,13 +296,22 @@ impl MessagePayload {
     }
 
     /// Create payload for consensus messages
-    pub fn consensus_message(consensus_data: Bytes, sender_id: u64) -> Self {
+    pub fn consensus_message(consensus_data: Bytes, sender_id: String) -> Self {
         Self::new(consensus_data, sender_id, "consensus")
     }
 
     /// Create payload for handshake messages
-    pub fn handshake_message(handshake_data: Bytes, sender_id: u64) -> Self {
+    pub fn handshake_message(handshake_data: Bytes, sender_id: String) -> Self {
         Self::new(handshake_data, sender_id, "handshake")
+    }
+}
+
+impl<G> Debug for CoseHandler<G>
+where
+    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CoseHandler")
     }
 }
 
@@ -328,7 +329,8 @@ mod tests {
     async fn test_cose_message_creation_and_serialization() {
         let mut csprng = OsRng;
         let signing_key = SigningKey::generate(&mut csprng);
-        let node_id = 12345;
+        let public_key = signing_key.verifying_key().to_bytes();
+        let node_id = hex::encode(public_key);
 
         // Create a mock governance with test data
         let test_version = Version {
@@ -352,7 +354,7 @@ mod tests {
             vec!["http://alt1.example.com".to_string()],
         );
 
-        let handler = CoseHandler::new(signing_key, node_id, governance);
+        let handler = CoseHandler::new(signing_key, node_id.clone(), governance);
 
         let payload =
             MessagePayload::consensus_message(Bytes::from("test consensus data"), node_id);

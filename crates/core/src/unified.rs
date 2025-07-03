@@ -1,16 +1,5 @@
-//! Core logic for the Proven node and the entrypoint for all user
-//! interactions.
-#![warn(missing_docs)]
-#![warn(clippy::all)]
-#![warn(clippy::pedantic)]
-
-mod error;
-mod handlers;
-mod rpc;
-
-pub use error::Error;
-
-use handlers::{
+use crate::error::Error;
+use crate::handlers::{
     ApplicationHttpContext, application_http_handler, bridge_iframe_html_handler,
     bridge_iframe_js_handler, broker_worker_js_handler, connect_iframe_html_handler,
     connect_iframe_js_handler, create_management_session_handler, create_session_handler,
@@ -21,13 +10,14 @@ use handlers::{
     webauthn_registration_finish_handler, webauthn_registration_start_handler, whoami_handler,
     ws_rpc_handler,
 };
+use crate::{FullContext, LightContext};
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::http::StatusCode;
-use axum::response::Response as AxumResponse;
+use axum::response::Response;
 use axum::routing::{any, delete, get, patch, post, put};
 use axum::{Json, Router};
 use proven_applications::ApplicationManagement;
@@ -49,40 +39,6 @@ use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info, warn};
 use uuid::Uuid;
-
-pub use rpc::{
-    AnonymizeCommand, AnonymizeResponse, Command, CreateApplicationCommand,
-    CreateApplicationResponse, IdentifyCommand, IdentifyResponse, Response, WhoAmICommand,
-    WhoAmIResponse,
-};
-
-#[derive(Clone)]
-pub(crate) struct FullContext<AM, RM, IM, PM, SM, A, G>
-where
-    AM: ApplicationManagement,
-    RM: RuntimePoolManagement,
-    IM: IdentityManagement,
-    PM: PasskeyManagement,
-    SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
-{
-    pub application_manager: AM,
-    pub identity_manager: IM,
-    pub passkey_manager: PM,
-    pub sessions_manager: SM,
-    pub network: ProvenNetwork<G, A>,
-    pub runtime_pool_manager: RM,
-}
-
-#[derive(Clone)]
-pub(crate) struct LightContext<A, G>
-where
-    A: Attestor,
-    G: Governance,
-{
-    pub network: ProvenNetwork<G, A>,
-}
 
 /// Core mode state
 #[derive(Debug, Clone)]
@@ -108,28 +64,26 @@ where
     pub runtime_pool_manager: RM,
     /// Identity manager for user identity operations
     pub identity_manager: IM,
-    /// Passkey manager for `WebAuthn` operations
+    /// Passkey manager for WebAuthn operations
     pub passkey_manager: PM,
     /// Session manager for user session handling
     pub sessions_manager: SM,
 }
 
 /// Options for creating a new unified core (starts in Bootstrapping mode)
-pub struct CoreOptions<A, G, HS, T>
+pub struct UnifiedCoreOptions<A, G, HS, T>
 where
     A: Attestor,
     G: Governance,
     HS: HttpServer,
     T: ConsensusTransport,
 {
-    /// The consensus system
-    pub consensus: Arc<Consensus<G, A, T>>,
-
     /// The HTTP server
     pub http_server: HS,
-
     /// The network for peer discovery
     pub network: ProvenNetwork<G, A>,
+    /// The consensus system
+    pub consensus: Consensus<G, A, T>,
 }
 
 /// Internal state for the bootstrapped context managers
@@ -150,7 +104,7 @@ where
 }
 
 /// Unified core that can operate in Bootstrapping or Bootstrapped mode
-pub struct Core<A, G, HS, T>
+pub struct UnifiedCore<A, G, HS, T>
 where
     A: Attestor,
     G: Governance,
@@ -167,7 +121,7 @@ where
     router_installed: Arc<RwLock<bool>>,
 }
 
-impl<A, G, HS, T> Core<A, G, HS, T>
+impl<A, G, HS, T> UnifiedCore<A, G, HS, T>
 where
     A: Attestor + Clone + 'static,
     G: Governance + Clone + 'static,
@@ -176,16 +130,16 @@ where
 {
     /// Create new unified core in Bootstrapping mode
     pub fn new(
-        CoreOptions {
+        UnifiedCoreOptions {
             http_server,
             network,
             consensus,
-        }: CoreOptions<A, G, HS, T>,
+        }: UnifiedCoreOptions<A, G, HS, T>,
     ) -> Self {
         Self {
             http_server,
             network,
-            consensus,
+            consensus: Arc::new(consensus),
             mode: Arc::new(RwLock::new(CoreMode::Bootstrapping)),
             bootstrapped_state: Arc::new(RwLock::new(None)),
             shutdown_token: CancellationToken::new(),
@@ -232,25 +186,9 @@ where
 
     /// Bootstrap from Bootstrapping to Bootstrapped mode by adding the required managers.
     ///
-    /// This method can be called while the HTTP server is already running (after `start()` has been called).
-    /// It will dynamically add the bootstrapped routes (sessions, RPC, `WebAuthn`, etc.) to the running server
+    /// This method can be called while the HTTP server is already running (after start() has been called).
+    /// It will dynamically add the bootstrapped routes (sessions, RPC, WebAuthn, etc.) to the running server
     /// without requiring a restart. This allows seamless upgrades from basic to full functionality.
-    ///
-    /// # Arguments
-    ///
-    /// * `upgrade` - The bootstrap upgrade configuration containing the components to initialize
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(())` on successful bootstrap, or an error if any step fails.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// - Any of the bootstrap steps fail to complete
-    /// - Component initialization encounters issues
-    /// - System configuration is invalid
-    /// - Required dependencies are not available
     pub async fn bootstrap<AM, RM, IM, PM, SM>(
         &self,
         upgrade: BootstrapUpgrade<AM, RM, IM, PM, SM>,
@@ -290,14 +228,6 @@ where
     }
 
     /// Reset from Bootstrapped to Bootstrapping mode (removes bootstrapped functionality)
-    ///
-    /// This method removes all dynamic routes and components, returning the system
-    /// to its initial state where only basic routes are available. This is useful
-    /// for testing scenarios or when a clean restart is needed.
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if the system fails to reset properly.
     pub async fn reset_to_bootstrapping(&self) -> Result<(), Error> {
         let mut mode = self.mode.write().await;
         if matches!(*mode, CoreMode::Bootstrapping) {
@@ -319,7 +249,7 @@ where
 
     /// Install bootstrapping mode routes
     async fn install_bootstrapping_routes(&self) -> Result<(), Error> {
-        let redirect_response = AxumResponse::builder()
+        let redirect_response = Response::builder()
             .status(301)
             .header("Location", "https://proven.network")
             .body(String::new())
@@ -355,7 +285,6 @@ where
     }
 
     /// Install bootstrapped mode routes (includes bootstrapping routes plus bootstrapped-specific ones)
-    #[allow(clippy::too_many_lines)]
     async fn install_bootstrapped_routes<AM, RM, IM, PM, SM>(&self) -> Result<(), Error>
     where
         AM: ApplicationManagement + Clone + 'static,
@@ -372,7 +301,7 @@ where
             .downcast_ref::<BootstrappedState<AM, RM, IM, PM, SM>>()
             .ok_or_else(|| Error::HttpServer("Invalid bootstrapped state type".to_string()))?;
 
-        let redirect_response = AxumResponse::builder()
+        let redirect_response = Response::builder()
             .status(301)
             .header("Location", "https://proven.network")
             .body(String::new())
@@ -706,7 +635,7 @@ where
 }
 
 #[async_trait]
-impl<A, G, HS, T> Bootable for Core<A, G, HS, T>
+impl<A, G, HS, T> Bootable for UnifiedCore<A, G, HS, T>
 where
     A: Attestor + Clone + 'static,
     G: Governance + Clone + 'static,

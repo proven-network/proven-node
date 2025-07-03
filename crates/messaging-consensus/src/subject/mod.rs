@@ -9,7 +9,8 @@ use bytes::Bytes;
 use tracing::debug;
 
 use proven_attestation::Attestor;
-use proven_consensus::ConsensusManager;
+use proven_consensus::transport::ConsensusTransport;
+use proven_consensus::Consensus;
 use proven_governance::Governance;
 use proven_messaging::subject::Subject;
 
@@ -18,10 +19,11 @@ use crate::subscription::{ConsensusSubscription, ConsensusSubscriptionOptions};
 
 /// A consensus subject.
 #[derive(Debug)]
-pub struct ConsensusSubject<G, A, T, D, S>
+pub struct ConsensusSubject<G, A, C, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -38,14 +40,15 @@ where
     /// Attestor for verification
     attestor: A,
     /// Consensus manager for actual messaging operations
-    consensus_manager: std::sync::Arc<ConsensusManager<G, A>>,
+    consensus_manager: std::sync::Arc<Consensus<G, A, C>>,
     _marker: PhantomData<(T, D, S)>,
 }
 
-impl<G, A, T, D, S> Clone for ConsensusSubject<G, A, T, D, S>
+impl<G, A, C, T, D, S> Clone for ConsensusSubject<G, A, C, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -67,10 +70,11 @@ where
     }
 }
 
-impl<G, A, T, D, S> ConsensusSubject<G, A, T, D, S>
+impl<G, A, C, T, D, S> ConsensusSubject<G, A, C, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -87,7 +91,7 @@ where
         name: String,
         governance: G,
         attestor: A,
-        consensus_manager: std::sync::Arc<ConsensusManager<G, A>>,
+        consensus_manager: std::sync::Arc<Consensus<G, A, C>>,
     ) -> Self {
         Self {
             name,
@@ -100,16 +104,17 @@ where
 
     /// Get access to the consensus manager for this subject
     #[must_use]
-    pub const fn consensus_manager(&self) -> &std::sync::Arc<ConsensusManager<G, A>> {
+    pub const fn consensus_manager(&self) -> &std::sync::Arc<Consensus<G, A, C>> {
         &self.consensus_manager
     }
 }
 
 #[async_trait]
-impl<G, A, T, D, S> Subject<T, D, S> for ConsensusSubject<G, A, T, D, S>
+impl<G, A, C, T, D, S> Subject<T, D, S> for ConsensusSubject<G, A, C, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -121,9 +126,9 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = crate::error::MessagingConsensusError;
-    type StreamType = crate::stream::InitializedConsensusStream<G, A, T, D, S>;
+    type StreamType = crate::stream::InitializedConsensusStream<G, A, C, T, D, S>;
     type SubscriptionType<X>
-        = crate::subscription::ConsensusSubscription<G, A, X, T, D, S>
+        = crate::subscription::ConsensusSubscription<G, A, C, X, T, D, S>
     where
         X: proven_messaging::subscription_handler::SubscriptionHandler<T, D, S>;
 
@@ -135,7 +140,7 @@ where
 
         let options = ConsensusSubscriptionOptions::default();
 
-        <ConsensusSubscription<G, A, X, T, D, S> as proven_messaging::subscription::Subscription<
+        <ConsensusSubscription<G, A, C, X, T, D, S> as proven_messaging::subscription::Subscription<
             X,
             T,
             D,
@@ -165,7 +170,7 @@ where
             stream_name, self.name
         );
 
-        <InitializedConsensusStream<G, A, T, D, S> as proven_messaging::stream::InitializedStream<
+        <InitializedConsensusStream<G, A, C, T, D, S> as proven_messaging::stream::InitializedStream<
             T,
             D,
             S,
@@ -176,10 +181,11 @@ where
 
 // Note: From<String> trait removed since we now require governance and attestor parameters
 
-impl<G, A, T, D, S> From<ConsensusSubject<G, A, T, D, S>> for String
+impl<G, A, C, T, D, S> From<ConsensusSubject<G, A, C, T, D, S>> for String
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -190,7 +196,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    fn from(val: ConsensusSubject<G, A, T, D, S>) -> Self {
+    fn from(val: ConsensusSubject<G, A, C, T, D, S>) -> Self {
         val.name
     }
 }
