@@ -167,6 +167,17 @@ impl SubjectRouter {
     pub fn get_stream_subjects(&self, stream_name: &str) -> Option<&HashSet<String>> {
         self.stream_subscriptions.get(stream_name)
     }
+
+    /// Get all subscriptions (pattern to streams mapping)
+    pub fn get_subscriptions(&self) -> &HashMap<String, HashSet<String>> {
+        &self.pattern_to_streams
+    }
+
+    /// Clear all subscriptions
+    pub fn clear(&mut self) {
+        self.stream_subscriptions.clear();
+        self.pattern_to_streams.clear();
+    }
 }
 
 #[cfg(test)]

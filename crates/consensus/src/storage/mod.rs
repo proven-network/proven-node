@@ -69,7 +69,26 @@ pub fn create_memory_storage() -> ConsensusResult<MemoryConsensusStorage> {
     Ok(MemoryConsensusStorage::new())
 }
 
+/// Create a new memory storage instance with StreamStore
+pub fn create_memory_storage_with_stream_store(
+    stream_store: Arc<StreamStore>,
+) -> ConsensusResult<MemoryConsensusStorage> {
+    Ok(MemoryConsensusStorage::new_with_stream_store(stream_store))
+}
+
 /// Create a new RocksDB storage instance
 pub fn create_rocks_storage(db_path: &str) -> ConsensusResult<RocksConsensusStorage> {
     RocksConsensusStorage::new_with_path(db_path)
+}
+
+/// Create a new RocksDB storage instance with StreamStore
+pub fn create_rocks_storage_with_stream_store(
+    db_path: &str,
+    stream_store: Arc<StreamStore>,
+) -> ConsensusResult<RocksConsensusStorage> {
+    let storage = RocksConsensusStorage::new_with_path(db_path)?;
+    Ok(RocksConsensusStorage::new_with_stream_store(
+        storage.db.clone(),
+        stream_store,
+    ))
 }

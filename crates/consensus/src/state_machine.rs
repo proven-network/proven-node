@@ -14,35 +14,35 @@ use crate::types::{MessagingOperation, MessagingResponse};
 #[derive(Debug, Clone)]
 pub struct StreamStore {
     /// Stream data storage
-    streams: Arc<RwLock<HashMap<String, StreamData>>>,
+    pub(crate) streams: Arc<RwLock<HashMap<String, StreamData>>>,
     /// Subject router for advanced pattern matching
-    subject_router: Arc<RwLock<SubjectRouter>>,
+    pub(crate) subject_router: Arc<RwLock<SubjectRouter>>,
     /// Active subscription handlers organized by subject pattern
-    subscription_handlers: SubscriptionHandlerMap,
+    pub(crate) subscription_handlers: SubscriptionHandlerMap,
 }
 
 /// Data for a single stream
 #[derive(Debug, Clone)]
-struct StreamData {
+pub struct StreamData {
     /// Messages in the stream
-    messages: BTreeMap<u64, MessageData>,
+    pub messages: BTreeMap<u64, MessageData>,
     /// Next sequence number
-    next_sequence: u64,
+    pub next_sequence: u64,
     /// Subject subscriptions for this stream
-    subscriptions: HashSet<String>,
+    pub subscriptions: HashSet<String>,
 }
 
 /// Individual message data
 #[derive(Debug, Clone)]
-struct MessageData {
+pub struct MessageData {
     /// Message content
-    data: Bytes,
+    pub data: Bytes,
     /// Optional metadata
     #[allow(dead_code)]
-    metadata: Option<HashMap<String, String>>,
+    pub metadata: Option<HashMap<String, String>>,
     /// Timestamp
     #[allow(dead_code)]
-    timestamp: u64,
+    pub timestamp: u64,
 }
 
 impl Default for StreamStore {

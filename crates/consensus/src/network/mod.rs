@@ -4,15 +4,18 @@
 //! serialization/deserialization of Raft messages and providing access
 //! to real raft state for transports.
 
+pub mod adaptor;
+mod cluster_state;
+pub mod messages;
+
+pub use cluster_state::{ClusterState, InitiatorReason};
+
 use crate::attestation::AttestationVerifier;
 use crate::cose::CoseHandler;
 use crate::error::{ConsensusError, NetworkError};
 use crate::transport::{NetworkTransport, tcp::TcpTransport, websocket::WebSocketTransport};
 use crate::types::{NodeId, TypeConfig};
 use crate::verification::{ConnectionVerification, ConnectionVerifier};
-
-pub mod adaptor;
-pub mod messages;
 
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -123,7 +126,7 @@ where
     /// Discovery responses collection (still needed for discovery flow)
     discovery_responses: Arc<RwLock<HashMap<Uuid, ClusterDiscoveryResponse>>>,
     /// Current cluster state
-    cluster_state: Arc<RwLock<crate::consensus::ClusterState>>,
+    cluster_state: Arc<RwLock<crate::network::ClusterState>>,
 
     /// Phantom data to ensure that the attestor type is used
     _marker: PhantomData<A>,
@@ -211,7 +214,7 @@ where
         // Create shared state
         let pending_requests = Arc::new(RwLock::new(HashMap::new()));
         let discovery_responses = Arc::new(RwLock::new(HashMap::new()));
-        let cluster_state = Arc::new(RwLock::new(crate::consensus::ClusterState::TransportReady));
+        let cluster_state = Arc::new(RwLock::new(ClusterState::TransportReady));
 
         // Start background tasks
         let mut task_handles = Vec::new();
@@ -417,12 +420,12 @@ where
     pub async fn initialize_single_node_cluster(
         &self,
         node_id: NodeId,
-        reason: crate::consensus::InitiatorReason,
+        reason: InitiatorReason,
     ) -> Result<(), crate::error::ConsensusError> {
         info!("Initializing single-node cluster for node {}", node_id);
 
         // Set cluster state to initiator
-        self.set_cluster_state(crate::consensus::ClusterState::Initiator {
+        self.set_cluster_state(ClusterState::Initiator {
             initiated_at: std::time::Instant::now(),
             reason,
         })
@@ -459,9 +462,9 @@ where
         );
 
         // Set cluster state to initiator
-        self.set_cluster_state(crate::consensus::ClusterState::Initiator {
+        self.set_cluster_state(ClusterState::Initiator {
             initiated_at: std::time::Instant::now(),
-            reason: crate::consensus::InitiatorReason::DiscoveryTimeout,
+            reason: InitiatorReason::DiscoveryTimeout,
         })
         .await;
 
@@ -491,10 +494,11 @@ where
         existing_cluster: &crate::network::ClusterDiscoveryResponse,
     ) -> Result<(), crate::error::ConsensusError> {
         // Ensure we have a leader to send the join request to
-        let leader_id = existing_cluster.current_leader.as_ref()
-            .ok_or_else(|| crate::error::ConsensusError::InvalidMessage(
-                "Cannot join cluster: no leader reported in discovery response".to_string()
-            ))?;
+        let leader_id = existing_cluster.current_leader.as_ref().ok_or_else(|| {
+            crate::error::ConsensusError::InvalidMessage(
+                "Cannot join cluster: no leader reported in discovery response".to_string(),
+            )
+        })?;
 
         info!(
             "Joining existing cluster via Raft. Leader: {}, Term: {:?}",
@@ -502,7 +506,7 @@ where
         );
 
         // Set cluster state to waiting to join
-        self.set_cluster_state(crate::consensus::ClusterState::WaitingToJoin {
+        self.set_cluster_state(crate::network::ClusterState::WaitingToJoin {
             requested_at: std::time::Instant::now(),
             leader_id: leader_id.clone(),
         })
@@ -535,12 +539,8 @@ where
         ));
 
         // Send using channel-based system
-        self.send_message_with_correlation(
-            leader_id.clone(),
-            message,
-            correlation_id,
-        )
-        .await?;
+        self.send_message_with_correlation(leader_id.clone(), message, correlation_id)
+            .await?;
 
         info!(
             "Sent join request to {} with correlation ID {}",
@@ -552,7 +552,7 @@ where
         let join_response = match tokio::time::timeout(join_timeout, response_rx).await {
             Ok(Ok(response)) => response,
             Ok(Err(_)) => {
-                self.set_cluster_state(crate::consensus::ClusterState::Failed {
+                self.set_cluster_state(ClusterState::Failed {
                     failed_at: std::time::Instant::now(),
                     error: "Join request channel was cancelled".to_string(),
                 })
@@ -562,7 +562,7 @@ where
                 ));
             }
             Err(_) => {
-                self.set_cluster_state(crate::consensus::ClusterState::Failed {
+                self.set_cluster_state(ClusterState::Failed {
                     failed_at: std::time::Instant::now(),
                     error: "Join request timeout".to_string(),
                 })
@@ -579,7 +579,7 @@ where
                 join_response.responder_id, join_response.cluster_size, join_response.current_term
             );
 
-            self.set_cluster_state(crate::consensus::ClusterState::Joined {
+            self.set_cluster_state(ClusterState::Joined {
                 joined_at: std::time::Instant::now(),
                 cluster_size: join_response.cluster_size.unwrap_or(1),
             })
@@ -592,7 +592,7 @@ where
                 .unwrap_or_else(|| "Unknown join error".to_string());
             warn!("Failed to join cluster: {}", error_msg);
 
-            self.set_cluster_state(crate::consensus::ClusterState::Failed {
+            self.set_cluster_state(ClusterState::Failed {
                 failed_at: std::time::Instant::now(),
                 error: error_msg.clone(),
             })
@@ -606,12 +606,12 @@ where
     }
 
     /// Get the current cluster state
-    pub async fn cluster_state(&self) -> crate::consensus::ClusterState {
+    pub async fn cluster_state(&self) -> ClusterState {
         self.cluster_state.read().await.clone()
     }
 
     /// Set the cluster state
-    pub async fn set_cluster_state(&self, state: crate::consensus::ClusterState) {
+    pub async fn set_cluster_state(&self, state: ClusterState) {
         *self.cluster_state.write().await = state;
     }
 
@@ -900,7 +900,7 @@ where
         self.discovery_responses.write().await.clear();
 
         // 6. Set cluster state to indicate shutdown
-        self.set_cluster_state(crate::consensus::ClusterState::Failed {
+        self.set_cluster_state(ClusterState::Failed {
             failed_at: std::time::Instant::now(),
             error: "System shutdown".to_string(),
         })

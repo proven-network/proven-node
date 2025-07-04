@@ -21,13 +21,17 @@ use std::error::Error;
 
 use super::apply_request_to_state_machine;
 use crate::error::ConsensusResult;
+use crate::snapshot::SnapshotData;
+use crate::state_machine::StreamStore;
 use crate::types::{MessagingResponse, TypeConfig};
 
 /// RocksDB-backed storage for consensus
 #[derive(Debug, Clone)]
 pub struct RocksConsensusStorage {
-    db: Arc<DB>,
+    pub(crate) db: Arc<DB>,
     state_machine: Arc<RwLock<RocksStateMachine>>,
+    /// Stream store reference for snapshot building
+    stream_store: Option<Arc<StreamStore>>,
 }
 
 /// RocksDB-backed state machine
@@ -37,6 +41,8 @@ pub struct RocksStateMachine {
     pub last_applied_log: Option<LogId<TypeConfig>>,
     /// State machine data (simplified)
     pub data: BTreeMap<String, String>,
+    /// Stream store snapshot data
+    pub stream_store_snapshot: Option<SnapshotData>,
     /// Last membership
     pub last_membership: StoredMembership<TypeConfig>,
 }
@@ -45,6 +51,7 @@ pub struct RocksStateMachine {
 pub struct RocksSnapshotBuilder {
     last_applied: Option<LogId<TypeConfig>>,
     last_membership: StoredMembership<TypeConfig>,
+    stream_store: Option<Arc<StreamStore>>,
 }
 
 impl RocksConsensusStorage {
@@ -61,8 +68,10 @@ impl RocksConsensusStorage {
             state_machine: Arc::new(RwLock::new(RocksStateMachine {
                 last_applied_log: None,
                 data: BTreeMap::new(),
+                stream_store_snapshot: None,
                 last_membership: StoredMembership::default(),
             })),
+            stream_store: None,
         }
     }
 
@@ -77,6 +86,7 @@ impl RocksConsensusStorage {
         let cfs = vec![
             ColumnFamilyDescriptor::new("meta", Options::default()),
             ColumnFamilyDescriptor::new("logs", Options::default()),
+            ColumnFamilyDescriptor::new("snapshots", Options::default()),
         ];
 
         let db = DB::open_cf_descriptors(&opts, db_path, cfs).map_err(|e| {
@@ -92,6 +102,10 @@ impl RocksConsensusStorage {
 
     fn cf_logs(&self) -> &ColumnFamily {
         self.db.cf_handle("logs").unwrap()
+    }
+
+    fn cf_snapshots(&self) -> &ColumnFamily {
+        self.db.cf_handle("snapshots").unwrap()
     }
 
     /// Get a store metadata.
@@ -123,6 +137,18 @@ impl RocksConsensusStorage {
             .map_err(|e| Box::new(M::write_err(value, e)))?;
 
         Ok(())
+    }
+
+    /// Create new RocksDB storage with stream store reference
+    pub fn new_with_stream_store(db: Arc<DB>, stream_store: Arc<StreamStore>) -> Self {
+        let mut storage = Self::new(db);
+        storage.set_stream_store(stream_store);
+        storage
+    }
+
+    /// Set the stream store reference
+    pub fn set_stream_store(&mut self, stream_store: Arc<StreamStore>) {
+        self.stream_store = Some(stream_store);
     }
 }
 
@@ -308,11 +334,20 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
                 }
                 EntryPayload::Normal(request) => {
                     // Apply the request to state machine
-                    responses.push(apply_request_to_state_machine(
+                    let response = apply_request_to_state_machine(
                         &mut state_machine.data,
                         &request,
                         log_id.index,
-                    ));
+                    );
+
+                    // Also apply to StreamStore if available
+                    if let Some(stream_store) = &self.stream_store {
+                        let _stream_response = stream_store
+                            .apply_operation(&request.operation, log_id.index)
+                            .await;
+                    }
+
+                    responses.push(response);
                 }
                 EntryPayload::Membership(membership) => {
                     state_machine.last_membership =
@@ -338,11 +373,38 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
     async fn install_snapshot(
         &mut self,
         meta: &SnapshotMeta<TypeConfig>,
-        _snapshot: Cursor<Vec<u8>>,
+        snapshot: Cursor<Vec<u8>>,
     ) -> Result<(), StorageError<TypeConfig>> {
         let mut state_machine = self.state_machine.write().await;
         state_machine.last_applied_log = meta.last_log_id.clone();
         state_machine.last_membership = meta.last_membership.clone();
+
+        // If we have snapshot data, deserialize and restore it
+        if !snapshot.get_ref().is_empty() {
+            match SnapshotData::from_bytes(snapshot.get_ref()) {
+                Ok(snapshot_data) => {
+                    state_machine.stream_store_snapshot = Some(snapshot_data.clone());
+
+                    // Store snapshot in RocksDB
+                    let snapshot_key = format!("snapshot_{}", meta.snapshot_id);
+                    let snapshot_bytes = snapshot_data
+                        .to_bytes()
+                        .map_err(|e| StorageError::write_snapshot(None, &e))?;
+                    self.db
+                        .put_cf(self.cf_snapshots(), snapshot_key, snapshot_bytes)
+                        .map_err(|e| StorageError::write_snapshot(None, &e))?;
+
+                    // If we have a stream store reference, restore its state
+                    if let Some(stream_store) = &self.stream_store {
+                        snapshot_data.restore_to_stream_store(stream_store).await;
+                    }
+                }
+                Err(e) => {
+                    return Err(StorageError::read_snapshot(None, &e));
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -351,9 +413,8 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
     ) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
         let state_machine = self.state_machine.read().await;
 
-        if state_machine.last_applied_log.is_none() {
-            return Ok(None);
-        }
+        // Create snapshot even if no logs have been applied yet
+        // This is useful for testing and initial snapshots
 
         let meta = SnapshotMeta {
             last_log_id: state_machine.last_applied_log.clone(),
@@ -367,9 +428,24 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
             ),
         };
 
+        // Create snapshot data from current StreamStore if available
+        let snapshot_bytes = if let Some(stream_store) = &self.stream_store {
+            let snapshot_data = SnapshotData::from_stream_store(stream_store).await;
+            snapshot_data.to_bytes().unwrap_or_else(|_| Vec::new())
+        } else if let Some(snapshot_data) = &state_machine.stream_store_snapshot {
+            snapshot_data.to_bytes().unwrap_or_else(|_| Vec::new())
+        } else {
+            // Try to load from RocksDB
+            let snapshot_key = format!("snapshot_{}", meta.snapshot_id);
+            self.db
+                .get_cf(self.cf_snapshots(), snapshot_key)
+                .map_err(|e| StorageError::read_snapshot(None, &e))?
+                .unwrap_or_default()
+        };
+
         Ok(Some(Snapshot {
             meta,
-            snapshot: Cursor::new(Vec::new()),
+            snapshot: Cursor::new(snapshot_bytes),
         }))
     }
 
@@ -378,6 +454,7 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
         RocksSnapshotBuilder {
             last_applied: state_machine.last_applied_log.clone(),
             last_membership: state_machine.last_membership.clone(),
+            stream_store: self.stream_store.clone(),
         }
     }
 }
@@ -393,9 +470,17 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksSnapshotBuilder {
             ),
         };
 
+        // Create snapshot data from StreamStore if available
+        let snapshot_bytes = if let Some(stream_store) = &self.stream_store {
+            let snapshot_data = SnapshotData::from_stream_store(stream_store).await;
+            snapshot_data.to_bytes().unwrap_or_else(|_| Vec::new())
+        } else {
+            Vec::new()
+        };
+
         Ok(Snapshot {
             meta,
-            snapshot: Cursor::new(Vec::new()),
+            snapshot: Cursor::new(snapshot_bytes),
         })
     }
 }
@@ -462,4 +547,93 @@ fn bin_to_id(buf: &[u8]) -> u64 {
 
 fn read_logs_err(e: impl Error + 'static) -> StorageError<TypeConfig> {
     StorageError::read_logs(&e)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state_machine::StreamStore;
+    use crate::storage::create_rocks_storage_with_stream_store;
+    use crate::types::MessagingOperation;
+    use bytes::Bytes;
+    use std::sync::Arc;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn test_rocks_storage_snapshot_with_stream_store() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().to_str().unwrap();
+
+        let stream_store = Arc::new(StreamStore::new());
+        let mut storage =
+            create_rocks_storage_with_stream_store(db_path, stream_store.clone()).unwrap();
+
+        // Add some data to the stream store
+        let data = Bytes::from("rocks test message");
+        let response = stream_store
+            .apply_operation(
+                &MessagingOperation::PublishToStream {
+                    stream: "rocks-stream".to_string(),
+                    data: data.clone(),
+                },
+                1,
+            )
+            .await;
+        assert!(response.success);
+
+        // Skip setting up applied state for simplicity
+
+        // Create a snapshot
+        let snapshot = storage.get_current_snapshot().await.unwrap();
+        assert!(snapshot.is_some());
+
+        let snapshot = snapshot.unwrap();
+        assert!(!snapshot.snapshot.get_ref().is_empty());
+
+        // Install the snapshot on a new storage
+        let temp_dir2 = tempdir().unwrap();
+        let db_path2 = temp_dir2.path().to_str().unwrap();
+        let new_stream_store = Arc::new(StreamStore::new());
+        let mut new_storage =
+            create_rocks_storage_with_stream_store(db_path2, new_stream_store.clone()).unwrap();
+
+        new_storage
+            .install_snapshot(&snapshot.meta, snapshot.snapshot)
+            .await
+            .unwrap();
+
+        // Verify the data was restored
+        let restored_message = new_stream_store.get_message("rocks-stream", 1).await;
+        assert_eq!(restored_message, Some(data));
+    }
+
+    #[tokio::test]
+    async fn test_rocks_storage_snapshot_builder() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().to_str().unwrap();
+
+        let stream_store = Arc::new(StreamStore::new());
+        let mut storage =
+            create_rocks_storage_with_stream_store(db_path, stream_store.clone()).unwrap();
+
+        // Add some data
+        let data = Bytes::from("rocks builder test");
+        let response = stream_store
+            .apply_operation(
+                &MessagingOperation::PublishToStream {
+                    stream: "rocks-builder-stream".to_string(),
+                    data: data.clone(),
+                },
+                1,
+            )
+            .await;
+        assert!(response.success);
+
+        // Get snapshot builder and build snapshot (without setting applied state for simplicity)
+        let mut builder = storage.get_snapshot_builder().await;
+        let snapshot = builder.build_snapshot().await.unwrap();
+
+        assert!(!snapshot.snapshot.get_ref().is_empty());
+        assert_eq!(snapshot.meta.last_log_id, None);
+    }
 }

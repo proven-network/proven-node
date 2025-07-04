@@ -15,6 +15,7 @@ pub mod consensus;
 pub mod cose;
 pub mod error;
 pub mod network;
+pub mod snapshot;
 pub mod state_machine;
 pub mod storage;
 pub mod subject;
