@@ -43,13 +43,11 @@ impl LogFileReader {
             return true;
         }
 
-        if let Ok(metadata) = std::fs::metadata(&self.file_path) {
-            if let Ok(modified) = metadata.modified() {
-                return self.last_modified.is_none_or(|last| modified > last);
-            }
-        }
-
-        false
+        std::fs::metadata(&self.file_path).map_or(true, |metadata| {
+            metadata.modified().map_or(true, |modified| {
+                self.last_modified.is_none_or(|last| modified > last)
+            })
+        })
     }
 
     /// Index the file to build line position cache (for efficient seeking)
@@ -455,7 +453,7 @@ impl LogWorker {
         Ok(had_updates)
     }
 
-    fn check_for_updates(&mut self) -> Result<bool> {
+    fn check_for_updates(&mut self) -> bool {
         let file_path = self.get_log_file_path(self.state.node_filter);
 
         let has_updates = {
@@ -465,9 +463,16 @@ impl LogWorker {
 
         if has_updates {
             // File has been updated, rebuild complete state
-            self.rebuild_complete_state()
+            match self.rebuild_complete_state() {
+                Ok(updated) => updated,
+                Err(e) => {
+                    // Log the error but continue monitoring
+                    eprintln!("Failed to rebuild log state: {e}");
+                    false
+                }
+            }
         } else {
-            Ok(false)
+            false
         }
     }
 
@@ -587,33 +592,22 @@ impl LogWorker {
                     if self.last_check.elapsed() >= Duration::from_millis(100) {
                         self.last_check = Instant::now();
 
-                        match self.check_for_updates() {
-                            Ok(true) => {
-                                // File was updated, auto-scroll only if explicitly enabled
-                                if self.state.should_auto_scroll() {
-                                    // User wants to follow new logs - move to bottom WITHOUT changing auto-scroll state
-                                    self.state.scroll_position = 0; // Move to bottom but don't call scroll_to_bottom()
-                                }
-
-                                // Always send viewport update with current position (whether auto-scroll or not)
-                                // This ensures UI gets new logs but scroll position is preserved
-                                let update = LogResponse::ViewportUpdate {
-                                    logs: self.state.get_viewport_logs(),
-                                    total_filtered_lines: self.state.total_filtered_lines(),
-                                    scroll_position: self.state.scroll_position,
-                                };
-                                if sender.send(update).is_err() {
-                                    break;
-                                }
+                        if self.check_for_updates() {
+                            // File was updated, auto-scroll only if explicitly enabled
+                            if self.state.should_auto_scroll() {
+                                // User wants to follow new logs - move to bottom WITHOUT changing auto-scroll state
+                                self.state.scroll_position = 0; // Move to bottom but don't call scroll_to_bottom()
                             }
-                            Ok(false) => {} // No updates
-                            Err(e) => {
-                                let error_response = LogResponse::Error {
-                                    message: format!("Update check error: {e}"),
-                                };
-                                if sender.send(error_response).is_err() {
-                                    break;
-                                }
+
+                            // Always send viewport update with current position (whether auto-scroll or not)
+                            // This ensures UI gets new logs but scroll position is preserved
+                            let update = LogResponse::ViewportUpdate {
+                                logs: self.state.get_viewport_logs(),
+                                total_filtered_lines: self.state.total_filtered_lines(),
+                                scroll_position: self.state.scroll_position,
+                            };
+                            if sender.send(update).is_err() {
+                                break;
                             }
                         }
                     }
