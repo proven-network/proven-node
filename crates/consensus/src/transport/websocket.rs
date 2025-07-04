@@ -36,7 +36,16 @@ use tracing::{debug, info, warn};
 use url::Url;
 use uuid;
 
-const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Connection retry attempts (matching TCP transport)
+const CONNECTION_RETRY_ATTEMPTS: usize = 3;
+
+/// Delay between connection retry attempts (matching TCP transport)
+const CONNECTION_RETRY_DELAY: Duration = Duration::from_millis(500);
+
+/// Maximum message size (16MB) - matching TCP transport
+const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
 
 type WebSocketPeerConnection =
     PeerConnection<tokio::sync::mpsc::UnboundedSender<axum::extract::ws::Message>>;
@@ -149,6 +158,16 @@ where
         while let Some(msg) = receiver.next().await {
             match msg {
                 Ok(Message::Binary(data)) => {
+                    // Validate message size (matching TCP transport)
+                    if data.len() > MAX_MESSAGE_SIZE as usize {
+                        warn!(
+                            "Received message too large from {}: {} bytes",
+                            connection_id,
+                            data.len()
+                        );
+                        break;
+                    }
+
                     // Process verification message
                     match verifier
                         .process_verification_message(connection_id.clone(), data)
@@ -260,6 +279,16 @@ where
         while let Some(msg) = receiver.next().await {
             match msg {
                 Ok(Message::Binary(data)) => {
+                    // Validate message size (matching TCP transport)
+                    if data.len() > MAX_MESSAGE_SIZE as usize {
+                        warn!(
+                            "Received message too large from {}: {} bytes",
+                            node_id_clone,
+                            data.len()
+                        );
+                        break;
+                    }
+
                     // Update last activity
                     if let Some(peer) = peers_clone.write().get_mut(&node_id_clone) {
                         peer.last_activity = SystemTime::now();
@@ -550,6 +579,12 @@ where
                 incoming_msg = receiver.next().fuse() => {
                     match incoming_msg {
                         Some(Ok(TungsteniteMessage::Binary(data))) => {
+                            // Validate message size (matching TCP transport)
+                            if data.len() > MAX_MESSAGE_SIZE as usize {
+                                warn!("Received message too large from {}: {} bytes", verified_node_id, data.len());
+                                break;
+                            }
+
                             // Update last activity
                             if let Some(peer) = peers.write().get_mut(&verified_node_id) {
                                 peer.last_activity = SystemTime::now();
@@ -639,31 +674,60 @@ where
         let base_url = url.as_str().trim_end_matches('/');
         let ws_url = format!("{}/consensus/ws", base_url);
 
-        // Connect with timeout
-        let connect_result = tokio::time::timeout(CONNECTION_TIMEOUT, connect_async(&ws_url)).await;
+        // Connection with retry logic (matching TCP transport)
+        let mut last_error = None;
+        for attempt in 1..=CONNECTION_RETRY_ATTEMPTS {
+            let connect_result =
+                tokio::time::timeout(CONNECTION_TIMEOUT, connect_async(&ws_url)).await;
 
-        let (ws_stream, _response) = match connect_result {
-            Ok(Ok((stream, response))) => (stream, response),
-            Ok(Err(e)) => {
-                return Err(NetworkError::ConnectionFailed(format!(
-                    "WebSocket connection failed to {}: {}",
-                    ws_url, e
-                )));
+            match connect_result {
+                Ok(Ok((ws_stream, _response))) => {
+                    // Handle outgoing verification handshake
+                    let connection_id = format!("ws-outgoing-{}", node_id);
+                    match self
+                        .handle_outgoing_websocket_verification(
+                            ws_stream,
+                            connection_id,
+                            node_id.clone(),
+                        )
+                        .await
+                    {
+                        Ok(()) => {
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            last_error = Some(e);
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    last_error = Some(NetworkError::ConnectionFailed(format!(
+                        "WebSocket connection failed to {}: {}",
+                        ws_url, e
+                    )));
+                }
+                Err(_) => {
+                    last_error = Some(NetworkError::Timeout(format!(
+                        "WebSocket connection timeout to {}",
+                        ws_url
+                    )));
+                }
             }
-            Err(_) => {
-                return Err(NetworkError::Timeout(format!(
-                    "WebSocket connection timeout to {}",
-                    ws_url
-                )));
+
+            // Wait before retry (except on last attempt)
+            if attempt < CONNECTION_RETRY_ATTEMPTS {
+                tokio::time::sleep(CONNECTION_RETRY_DELAY).await;
             }
-        };
+        }
 
-        // Handle outgoing verification handshake
-        let connection_id = format!("ws-outgoing-{}", node_id);
-        self.handle_outgoing_websocket_verification(ws_stream, connection_id, node_id)
-            .await?;
-
-        Ok(())
+        // All attempts failed
+        let error = last_error
+            .unwrap_or_else(|| NetworkError::ConnectionFailed("Unknown error".to_string()));
+        warn!(
+            "Failed to establish WebSocket connection to {} after {} attempts: {}",
+            ws_url, CONNECTION_RETRY_ATTEMPTS, error
+        );
+        Err(error)
     }
 }
 
@@ -673,6 +737,11 @@ where
     G: proven_governance::Governance + Send + Sync + 'static,
 {
     async fn send_bytes(&self, target_node_id: &NodeId, data: Bytes) -> NetworkResult<()> {
+        // Validate message size (matching TCP transport)
+        if data.len() > MAX_MESSAGE_SIZE as usize {
+            return Err(NetworkError::SendFailed("Message too large".to_string()));
+        }
+
         // For unidirectional connections, we only send via outgoing connections
         // If no outgoing connection exists, establish one on-demand
 

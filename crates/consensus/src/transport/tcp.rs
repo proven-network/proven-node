@@ -32,7 +32,7 @@ use url::Url;
 const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
 
 /// Connection timeout
-const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Connection retry attempts
 const CONNECTION_RETRY_ATTEMPTS: usize = 3;
