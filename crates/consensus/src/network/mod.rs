@@ -490,15 +490,21 @@ where
         node_id: NodeId,
         existing_cluster: &crate::network::ClusterDiscoveryResponse,
     ) -> Result<(), crate::error::ConsensusError> {
+        // Ensure we have a leader to send the join request to
+        let leader_id = existing_cluster.current_leader.as_ref()
+            .ok_or_else(|| crate::error::ConsensusError::InvalidMessage(
+                "Cannot join cluster: no leader reported in discovery response".to_string()
+            ))?;
+
         info!(
             "Joining existing cluster via Raft. Leader: {}, Term: {:?}",
-            existing_cluster.responder_id, existing_cluster.current_term
+            leader_id, existing_cluster.current_term
         );
 
         // Set cluster state to waiting to join
         self.set_cluster_state(crate::consensus::ClusterState::WaitingToJoin {
             requested_at: std::time::Instant::now(),
-            leader_id: existing_cluster.responder_id.clone(),
+            leader_id: leader_id.clone(),
         })
         .await;
 
@@ -518,7 +524,7 @@ where
         let response_rx = self
             .add_pending_request::<ClusterJoinResponse>(
                 correlation_id,
-                existing_cluster.responder_id.clone(),
+                leader_id.clone(),
                 "cluster_join_request".to_string(),
             )
             .await;
@@ -530,7 +536,7 @@ where
 
         // Send using channel-based system
         self.send_message_with_correlation(
-            existing_cluster.responder_id.clone(),
+            leader_id.clone(),
             message,
             correlation_id,
         )
@@ -538,7 +544,7 @@ where
 
         info!(
             "Sent join request to {} with correlation ID {}",
-            existing_cluster.responder_id, correlation_id
+            leader_id, correlation_id
         );
 
         // Wait for join response with timeout
