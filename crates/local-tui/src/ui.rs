@@ -185,9 +185,100 @@ fn get_node_color(node_id: NodeId) -> Color {
     }
 }
 
-/// Create colored spans for a log entry with proper alignment
+/// Strip ANSI escape sequences from a string
+fn strip_ansi_sequences(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // Check if this is an ANSI escape sequence
+            if chars.peek() == Some(&'[') {
+                chars.next(); // consume '['
+
+                // Skip until we find the end of the sequence (a letter)
+                while let Some(next_ch) = chars.next() {
+                    if next_ch.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            } else {
+                // Not an ANSI sequence, keep the character
+                result.push(ch);
+            }
+        } else {
+            result.push(ch);
+        }
+    }
+
+    result
+}
+
+/// Wrap text to fit within a specified width, breaking at word boundaries when possible
+fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 {
+        return vec![text.to_string()];
+    }
+
+    let mut lines = Vec::new();
+    let mut current_line = String::new();
+
+    for word in text.split_whitespace() {
+        // If adding this word would exceed the width
+        if !current_line.is_empty() && current_line.len() + 1 + word.len() > max_width {
+            lines.push(current_line.clone());
+            current_line.clear();
+        }
+
+        // If the word itself is longer than max_width, we need to break it
+        if word.len() > max_width {
+            // If we have content in current_line, push it first
+            if !current_line.is_empty() {
+                lines.push(current_line.clone());
+                current_line.clear();
+            }
+
+            // Break the long word into chunks
+            let mut remaining_word = word;
+            while remaining_word.len() > max_width {
+                let (chunk, rest) = remaining_word.split_at(max_width);
+                lines.push(chunk.to_string());
+                remaining_word = rest;
+            }
+
+            // Add the remaining part of the word
+            if !remaining_word.is_empty() {
+                current_line = remaining_word.to_string();
+            }
+        } else {
+            // Add the word to current line
+            if !current_line.is_empty() {
+                current_line.push(' ');
+            }
+            current_line.push_str(word);
+        }
+    }
+
+    // Add the last line if it's not empty
+    if !current_line.is_empty() {
+        lines.push(current_line);
+    }
+
+    // If we have no lines, return the original text (edge case)
+    if lines.is_empty() {
+        lines.push(text.to_string());
+    }
+
+    lines
+}
+
+/// Create colored spans for a log entry with proper alignment and wrapping
 #[allow(clippy::too_many_lines)]
-fn create_colored_log_line(entry: &crate::messages::LogEntry, show_node_name: bool) -> Line {
+fn create_colored_log_lines(
+    entry: &crate::messages::LogEntry,
+    show_node_name: bool,
+    max_width: u16,
+) -> Vec<Line> {
     let timestamp = format!("{}", entry.timestamp.format("%H:%M:%S%.3f"));
     let node_name = entry.node_id.pokemon_name();
 
@@ -212,121 +303,176 @@ fn create_colored_log_line(entry: &crate::messages::LogEntry, show_node_name: bo
         crate::messages::LogLevel::Trace => "TRAC",
     };
 
-    if let Some(target) = &entry.target {
+    // Calculate the prefix length to determine how much space is left for the message
+    let prefix_length = if let Some(target) = &entry.target {
         if show_node_name {
-            Line::from(vec![
-                Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
-                Span::raw(" "),
-                Span::styled(
-                    "[",
-                    Style::default()
-                        .fg(level_color)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    level_str,
-                    Style::default()
-                        .fg(level_color)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    "]",
-                    Style::default()
-                        .fg(level_color)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" "),
-                Span::styled("[", Style::default().fg(node_color)),
-                Span::styled(node_name, Style::default().fg(node_color)),
-                Span::styled("]", Style::default().fg(node_color)),
-                Span::raw(" "),
-                Span::styled(target, Style::default().fg(Color::DarkGray)),
-                Span::raw(": "),
-                Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
-            ])
+            // "HH:MM:SS.mmm [ERRO] [node_name] target: "
+            timestamp.len()
+                + 1
+                + 1
+                + level_str.len()
+                + 1
+                + 1
+                + 1
+                + node_name.len()
+                + 1
+                + 1
+                + target.len()
+                + 2
         } else {
-            Line::from(vec![
-                Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
-                Span::raw(" "),
-                Span::styled(
-                    "[",
-                    Style::default()
-                        .fg(level_color)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    level_str,
-                    Style::default()
-                        .fg(level_color)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    "]",
-                    Style::default()
-                        .fg(level_color)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" "),
-                Span::styled(target, Style::default().fg(Color::DarkGray)),
-                Span::raw(": "),
-                Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
-            ])
+            // "HH:MM:SS.mmm [ERRO] target: "
+            timestamp.len() + 1 + 1 + level_str.len() + 1 + 1 + target.len() + 2
         }
     } else if show_node_name {
-        Line::from(vec![
-            Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
-            Span::raw(" "),
-            Span::styled(
-                "[",
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                level_str,
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                "]",
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled("[", Style::default().fg(node_color)),
-            Span::styled(node_name, Style::default().fg(node_color)),
-            Span::styled("]", Style::default().fg(node_color)),
-            Span::raw(": "),
-            Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
-        ])
+        // "HH:MM:SS.mmm [ERRO] [node_name]: "
+        timestamp.len() + 1 + 1 + level_str.len() + 1 + 1 + 1 + node_name.len() + 2
     } else {
-        Line::from(vec![
-            Span::styled(timestamp, Style::default().fg(Color::DarkGray)),
-            Span::raw(" "),
-            Span::styled(
-                "[",
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                level_str,
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                "]",
-                Style::default()
-                    .fg(level_color)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(": "),
-            Span::styled(entry.message.clone(), Style::default().fg(Color::White)),
-        ])
+        // "HH:MM:SS.mmm [ERRO]: "
+        timestamp.len() + 1 + 1 + level_str.len() + 2
+    };
+
+    // Clean the message
+    let clean_message = strip_ansi_sequences(&entry.message);
+
+    // Calculate available width for the message (accounting for borders and padding)
+    let available_width = max_width
+        .saturating_sub(prefix_length as u16)
+        .saturating_sub(4); // Extra margin for safety
+
+    // Split the message into lines that fit within the available width
+    let wrapped_lines = wrap_text(&clean_message, available_width as usize);
+
+    let mut result_lines = Vec::new();
+
+    for (line_idx, wrapped_line) in wrapped_lines.iter().enumerate() {
+        if line_idx == 0 {
+            // First line includes the full prefix
+            if let Some(target) = &entry.target {
+                if show_node_name {
+                    result_lines.push(Line::from(vec![
+                        Span::styled(timestamp.clone(), Style::default().fg(Color::DarkGray)),
+                        Span::raw(" "),
+                        Span::styled(
+                            "[",
+                            Style::default()
+                                .fg(level_color)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            level_str,
+                            Style::default()
+                                .fg(level_color)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            "]",
+                            Style::default()
+                                .fg(level_color)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::raw(" "),
+                        Span::styled("[", Style::default().fg(node_color)),
+                        Span::styled(node_name.clone(), Style::default().fg(node_color)),
+                        Span::styled("]", Style::default().fg(node_color)),
+                        Span::raw(" "),
+                        Span::styled(target.clone(), Style::default().fg(Color::DarkGray)),
+                        Span::raw(": "),
+                        Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
+                    ]));
+                } else {
+                    result_lines.push(Line::from(vec![
+                        Span::styled(timestamp.clone(), Style::default().fg(Color::DarkGray)),
+                        Span::raw(" "),
+                        Span::styled(
+                            "[",
+                            Style::default()
+                                .fg(level_color)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            level_str,
+                            Style::default()
+                                .fg(level_color)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(
+                            "]",
+                            Style::default()
+                                .fg(level_color)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::raw(" "),
+                        Span::styled(target.clone(), Style::default().fg(Color::DarkGray)),
+                        Span::raw(": "),
+                        Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
+                    ]));
+                }
+            } else if show_node_name {
+                result_lines.push(Line::from(vec![
+                    Span::styled(timestamp.clone(), Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled(
+                        "[",
+                        Style::default()
+                            .fg(level_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        level_str,
+                        Style::default()
+                            .fg(level_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        "]",
+                        Style::default()
+                            .fg(level_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" "),
+                    Span::styled("[", Style::default().fg(node_color)),
+                    Span::styled(node_name.clone(), Style::default().fg(node_color)),
+                    Span::styled("]", Style::default().fg(node_color)),
+                    Span::raw(": "),
+                    Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
+                ]));
+            } else {
+                result_lines.push(Line::from(vec![
+                    Span::styled(timestamp.clone(), Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled(
+                        "[",
+                        Style::default()
+                            .fg(level_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        level_str,
+                        Style::default()
+                            .fg(level_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        "]",
+                        Style::default()
+                            .fg(level_color)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(": "),
+                    Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
+                ]));
+            }
+        } else {
+            // Continuation lines are indented to align with the message
+            let indent = " ".repeat(prefix_length);
+            result_lines.push(Line::from(vec![
+                Span::styled(indent, Style::default().fg(Color::DarkGray)),
+                Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
+            ]));
+        }
     }
+
+    result_lines
 }
 
 /// Main UI rendering function
@@ -508,11 +654,11 @@ fn render_logs<S: std::hash::BuildHasher>(
     // Update scrollbar state based on current scroll position
     ui_state.update_scrollbar_state();
 
-    // Convert viewport logs to Lines for display
+    // Convert viewport logs to Lines for display with wrapping support
     let display_lines: Vec<Line> = ui_state
         .viewport_logs
         .iter()
-        .map(|entry| create_colored_log_line(entry, show_node_names))
+        .flat_map(|entry| create_colored_log_lines(entry, show_node_names, logs_area.width))
         .collect();
 
     // Get current log level for title
