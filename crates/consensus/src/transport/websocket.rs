@@ -17,8 +17,8 @@ use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use axum::Router;
+use axum::extract::WebSocketUpgrade;
 use axum::extract::ws::{Message, WebSocket};
-use axum::extract::{Path, WebSocketUpgrade};
 use axum::response::Response;
 use axum::routing::get;
 use bytes::Bytes;
@@ -34,6 +34,7 @@ use tokio_tungstenite::{
 };
 use tracing::{debug, info, warn};
 use url::Url;
+use uuid;
 
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -100,32 +101,25 @@ where
     /// Handle a WebSocket upgrade request
     async fn handle_websocket_upgrade(
         ws: WebSocketUpgrade,
-        Path(claimed_node_id): Path<String>,
         incoming_peers: Arc<RwLock<HashMap<NodeId, WebSocketPeerConnection>>>,
         verifier: Arc<dyn ConnectionVerification>,
         message_handler: MessageHandler,
     ) -> Response {
         ws.on_upgrade(move |socket| {
-            Self::handle_websocket_connection(
-                socket,
-                claimed_node_id,
-                incoming_peers,
-                verifier,
-                message_handler,
-            )
+            Self::handle_websocket_connection(socket, incoming_peers, verifier, message_handler)
         })
     }
 
     /// Handle a WebSocket connection
     async fn handle_websocket_connection(
         socket: WebSocket,
-        claimed_node_id: String,
         incoming_peers: Arc<RwLock<HashMap<NodeId, WebSocketPeerConnection>>>,
         verifier: Arc<dyn ConnectionVerification>,
         message_handler: MessageHandler,
     ) {
         // All connections must be verified
-        let connection_id = format!("ws-{}", claimed_node_id);
+        // Generate a unique connection ID for this WebSocket connection
+        let connection_id = format!("ws-{}", uuid::Uuid::new_v4());
 
         // Initialize the connection for verification
         verifier.initialize_connection(connection_id.clone()).await;
@@ -640,10 +634,10 @@ where
             ))
         })?;
 
-        // Add the WebSocket endpoint path with node ID
+        // Add the WebSocket endpoint path
         // Ensure no double slashes by trimming trailing slash from URL
         let base_url = url.as_str().trim_end_matches('/');
-        let ws_url = format!("{}/consensus/ws/{}", base_url, node_id.to_hex());
+        let ws_url = format!("{}/consensus/ws", base_url);
 
         // Connect with timeout
         let connect_result = tokio::time::timeout(CONNECTION_TIMEOUT, connect_async(&ws_url)).await;
@@ -793,7 +787,7 @@ where
     G: proven_governance::Governance + Send + Sync + 'static,
 {
     fn websocket_endpoint(&self) -> &'static str {
-        "/consensus/ws/{node_id}"
+        "/consensus/ws"
     }
 
     fn create_router_integration(&self) -> NetworkResult<Router> {
@@ -812,9 +806,9 @@ where
         let verifier = self.verifier.clone();
 
         let router = Router::new().route(
-            "/consensus/ws/{node_id}",
-            get(move |ws, path| {
-                Self::handle_websocket_upgrade(ws, path, incoming_peers, verifier, message_handler)
+            "/consensus/ws",
+            get(move |ws| {
+                Self::handle_websocket_upgrade(ws, incoming_peers, verifier, message_handler)
             }),
         );
 
