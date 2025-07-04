@@ -28,6 +28,7 @@ use proven_governance::GovernanceNode;
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
+use tokio_tungstenite::tungstenite::Utf8Bytes;
 use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream, connect_async,
     tungstenite::protocol::Message as TungsteniteMessage,
@@ -347,7 +348,7 @@ where
 
         // Send challenge as binary WebSocket message
         if let Err(e) = ws_sender
-            .send(TungsteniteMessage::Binary(challenge_request.to_vec()))
+            .send(TungsteniteMessage::Binary(challenge_request))
             .await
         {
             self.verifier.remove_connection(&connection_id).await;
@@ -363,7 +364,7 @@ where
 
             match message_result {
                 Some(Ok(TungsteniteMessage::Binary(data))) => {
-                    let bytes = Bytes::from(data);
+                    let bytes = data;
 
                     // Process verification message
                     match self
@@ -374,7 +375,7 @@ where
                         Ok(Some(response_data)) => {
                             // Send verification response
                             if let Err(e) = ws_sender
-                                .send(TungsteniteMessage::Binary(response_data.to_vec()))
+                                .send(TungsteniteMessage::Binary(response_data))
                                 .await
                             {
                                 warn!("Failed to send verification response: {}", e);
@@ -550,8 +551,8 @@ where
                         Some(msg) => {
                             // Convert axum Message to tungstenite Message
                             let tungstenite_msg = match msg {
-                                Message::Binary(data) => TungsteniteMessage::Binary(data.to_vec()),
-                                Message::Text(text) => TungsteniteMessage::Text(text.to_string()),
+                                Message::Binary(data) => TungsteniteMessage::Binary(data),
+                                Message::Text(text) => TungsteniteMessage::Text(Utf8Bytes::from(text.to_string())),
                                 Message::Close(frame) => {
                                     if let Some(frame) = frame {
                                         TungsteniteMessage::Close(Some(tokio_tungstenite::tungstenite::protocol::CloseFrame {
@@ -591,7 +592,7 @@ where
                             }
 
                             // Forward raw bytes to message handler
-                            message_handler(verified_node_id.clone(), Bytes::from(data));
+                            message_handler(verified_node_id.clone(), data);
                         }
                         Some(Ok(TungsteniteMessage::Close(_))) => {
                             break;
