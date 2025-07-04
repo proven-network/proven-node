@@ -605,7 +605,7 @@ macro_rules! impl_scoped_stream {
         paste::paste! {
             #[doc = $doc]
             #[derive(Debug)]
-            pub struct [< ScopedMemoryStream $index >]<T, D, S>
+            pub struct [< MemoryStream $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -622,7 +622,7 @@ macro_rules! impl_scoped_stream {
                 _marker: PhantomData<(T, D, S)>,
             }
 
-            impl<T, D, S> Clone for [< ScopedMemoryStream $index >]<T, D, S>
+            impl<T, D, S> Clone for [< MemoryStream $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -643,7 +643,7 @@ macro_rules! impl_scoped_stream {
                 }
             }
 
-            impl<T, D, S> [< ScopedMemoryStream $index >]<T, D, S>
+            impl<T, D, S> [< MemoryStream $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -669,7 +669,8 @@ macro_rules! impl_scoped_stream {
                 }
             }
 
-            impl<T, D, S> [< Stream $index >]<T, D, S> for [< ScopedMemoryStream $index >]<T, D, S>
+            #[async_trait]
+            impl<T, D, S> [< Stream $index >]<T, D, S> for [< MemoryStream $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -704,17 +705,17 @@ impl_scoped_stream!(
     1,
     MemoryStream,
     Stream1,
-    "A double-scoped in-memory stream."
+    "A single-scoped in-memory stream."
 );
 impl_scoped_stream!(
     2,
-    ScopedMemoryStream1,
+    MemoryStream1,
     Stream1,
     "A double-scoped in-memory stream."
 );
 impl_scoped_stream!(
     3,
-    ScopedMemoryStream2,
+    MemoryStream2,
     Stream2,
     "A triple-scoped in-memory stream."
 );
@@ -791,8 +792,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_scoped_stream() {
-        let stream1: ScopedMemoryStream1<Bytes, Infallible, Infallible> =
-            ScopedMemoryStream1::new("test_scoped_stream", MemoryStreamOptions);
+        let stream1: MemoryStream1<Bytes, Infallible, Infallible> =
+            MemoryStream1::new("test_scoped_stream", MemoryStreamOptions);
         let scoped_stream = stream1.scope("scope1");
 
         let subject = MemorySubject::new("test_scoped").unwrap();
@@ -806,8 +807,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_nested_scoped_stream() {
-        let stream2: ScopedMemoryStream2<Bytes, Infallible, Infallible> =
-            ScopedMemoryStream2::new("test_nested_scoped_stream", MemoryStreamOptions);
+        let stream2: MemoryStream2<Bytes, Infallible, Infallible> =
+            MemoryStream2::new("test_nested_scoped_stream", MemoryStreamOptions);
         let scoped_stream = stream2.scope("scope1").scope("scope2");
 
         let subject = MemorySubject::new("test_nested_scoped").unwrap();
