@@ -120,5 +120,8 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     bootstrap.network = Some(network);
     bootstrap.bootstrapping_core = Some(core);
 
+    // Sleep to allow NATS to boot in cluster mode
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
     Ok(())
 }

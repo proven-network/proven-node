@@ -4,16 +4,15 @@
 //! the initialization of all services in the proper order.
 
 pub mod step_01_network_cluster;
-pub mod step_02_nats_server;
-pub mod step_03_postgres;
-pub mod step_04_bitcoin_mainnet_node;
-pub mod step_05_bitcoin_testnet_node;
-pub mod step_06_ethereum_mainnet_node;
-pub mod step_07_ethereum_holesky_node;
-pub mod step_08_ethereum_sepolia_node;
-pub mod step_09_radix_mainnet_node;
-pub mod step_10_radix_stokenet_node;
-pub mod step_11_upgrade_core;
+pub mod step_02_postgres;
+pub mod step_03_bitcoin_mainnet_node;
+pub mod step_04_bitcoin_testnet_node;
+pub mod step_05_ethereum_mainnet_node;
+pub mod step_06_ethereum_holesky_node;
+pub mod step_07_ethereum_sepolia_node;
+pub mod step_08_radix_mainnet_node;
+pub mod step_09_radix_stokenet_node;
+pub mod step_10_upgrade_core;
 
 use super::error::Error;
 use crate::NodeConfig;
@@ -21,7 +20,6 @@ use crate::NodeConfig;
 use std::net::IpAddr;
 use std::sync::Arc;
 
-use async_nats::Client as NatsClient;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
 use proven_consensus::Consensus;
@@ -50,11 +48,9 @@ pub struct Bootstrap<G: Governance> {
     attestor: MockAttestor,
     consensus: Option<Arc<LocalConsensus<G>>>,
     external_ip: IpAddr,
-    num_replicas: usize,
 
     // Shared context fields that steps need access to
     network: Option<ProvenNetwork<G, MockAttestor>>,
-    nats_client: Option<NatsClient>,
     postgres_ip_address: Option<IpAddr>,
     postgres_port: Option<u16>,
 
@@ -128,10 +124,8 @@ impl<G: Governance> Bootstrap<G> {
             attestor: MockAttestor::new(),
             consensus: None,
             external_ip,
-            num_replicas: if config.allow_single_node { 1 } else { 3 },
 
             network: None,
-            nats_client: None,
             postgres_ip_address: None,
             postgres_port: None,
 
@@ -197,31 +191,30 @@ impl<G: Governance> Bootstrap<G> {
         }
 
         execute_step!("network topology", step_01_network_cluster::execute);
-        execute_step!("nats server", step_02_nats_server::execute);
-        execute_step!("postgres", step_03_postgres::execute);
+        execute_step!("postgres", step_02_postgres::execute);
         execute_step!(
             "bitcoin mainnet node",
-            step_04_bitcoin_mainnet_node::execute
+            step_03_bitcoin_mainnet_node::execute
         );
         execute_step!(
             "bitcoin testnet node",
-            step_05_bitcoin_testnet_node::execute
+            step_04_bitcoin_testnet_node::execute
         );
         execute_step!(
             "ethereum mainnet nodes",
-            step_06_ethereum_mainnet_node::execute
+            step_05_ethereum_mainnet_node::execute
         );
         execute_step!(
             "ethereum holesky nodes",
-            step_07_ethereum_holesky_node::execute
+            step_06_ethereum_holesky_node::execute
         );
         execute_step!(
             "ethereum sepolia nodes",
-            step_08_ethereum_sepolia_node::execute
+            step_07_ethereum_sepolia_node::execute
         );
-        execute_step!("radix mainnet node", step_09_radix_mainnet_node::execute);
-        execute_step!("radix stokenet node", step_10_radix_stokenet_node::execute);
-        execute_step!("core", step_11_upgrade_core::execute);
+        execute_step!("radix mainnet node", step_08_radix_mainnet_node::execute);
+        execute_step!("radix stokenet node", step_09_radix_stokenet_node::execute);
+        execute_step!("core", step_10_upgrade_core::execute);
 
         info!(
             "All bootstrap steps completed successfully. Started {} bootable services.",

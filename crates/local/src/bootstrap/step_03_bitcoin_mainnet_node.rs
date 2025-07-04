@@ -16,31 +16,22 @@ use proven_http_proxy::{
     HttpProxyClient, HttpProxyClientOptions, HttpProxyService, HttpProxyServiceOptions,
 };
 use proven_messaging::stream::Stream;
-use proven_messaging_nats::client::NatsClientOptions;
-use proven_messaging_nats::service::NatsServiceOptions;
-use proven_messaging_nats::stream::{NatsStream, NatsStreamOptions};
+use proven_messaging_memory::client::MemoryClientOptions;
+use proven_messaging_memory::service::MemoryServiceOptions;
+use proven_messaging_memory::stream::{MemoryStream, MemoryStreamOptions};
 use tracing::info;
 use url::Url;
 
 pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
-    let nats_client = bootstrap.nats_client.as_ref().unwrap_or_else(|| {
-        panic!("nats client not fetched before bitcoin mainnet node step");
-    });
-
     let network = bootstrap.network.as_ref().unwrap_or_else(|| {
         panic!("network not set before bitcoin mainnet node step");
     });
 
-    let bitcoin_mainnet_proxy_stream = NatsStream::new(
-        "BITCOIN_MAINNET_PROXY",
-        NatsStreamOptions {
-            client: nats_client.clone(),
-            num_replicas: bootstrap.num_replicas,
-        },
-    )
-    .init()
-    .await
-    .map_err(|e| Error::Stream(e.to_string()))?;
+    let bitcoin_mainnet_proxy_stream =
+        MemoryStream::new("BITCOIN_MAINNET_PROXY", MemoryStreamOptions)
+            .init()
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
 
     if network
         .specializations()
@@ -63,11 +54,7 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
         info!("bitcoin mainnet node started");
 
         let bitcoin_mainnet_proxy_service = HttpProxyService::new(HttpProxyServiceOptions {
-            service_options: NatsServiceOptions {
-                client: nats_client.clone(),
-                durable_name: None,
-                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-            },
+            service_options: MemoryServiceOptions,
             stream: bitcoin_mainnet_proxy_stream,
             target_addr: bitcoin_mainnet_node.rpc_socket_addr().await?,
         })
@@ -87,9 +74,7 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
         info!("bitcoin mainnet proxy service started");
     } else {
         let bitcoin_mainnet_proxy_client = HttpProxyClient::new(HttpProxyClientOptions {
-            client_options: NatsClientOptions {
-                client: nats_client.clone(),
-            },
+            client_options: MemoryClientOptions,
             http_port: bootstrap.config.bitcoin_mainnet_proxy_port,
             stream: bitcoin_mainnet_proxy_stream,
         });
