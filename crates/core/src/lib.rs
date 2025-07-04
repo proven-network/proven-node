@@ -504,6 +504,9 @@ where
         // Install WebAuthn routes
         self.install_webauthn_routes().await?;
 
+        // Install consensus routes
+        self.install_consensus_routes().await?;
+
         // Install application test router (only in bootstrapped mode)
         self.install_application_test_router(&full_ctx).await?;
 
