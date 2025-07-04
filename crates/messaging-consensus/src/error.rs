@@ -17,4 +17,5 @@ impl SubscriptionError for MessagingConsensusError {}
 impl SubscriptionResponderError for MessagingConsensusError {}
 
 // Re-export the underlying consensus error for convenience
-pub use proven_consensus::{ConsensusError, ConsensusResult};
+pub use proven_consensus::ConsensusError;
+pub use proven_consensus::error::ConsensusResult;

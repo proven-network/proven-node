@@ -23,6 +23,10 @@ pub enum Error {
     #[error(transparent)]
     CodePackage(#[from] proven_code_package::Error),
 
+    /// Consensus error.
+    #[error("consensus error: {0}")]
+    Consensus(String),
+
     /// Governance error.
     #[error("governance error: {0}")]
     Governance(String),

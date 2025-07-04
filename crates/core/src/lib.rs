@@ -34,7 +34,7 @@ use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_bootable::Bootable;
 use proven_code_package::{CodePackage, ModuleSpecifier};
-use proven_consensus::{Consensus, transport::ConsensusTransport};
+use proven_consensus::Consensus;
 use proven_governance::Governance;
 use proven_http::HttpServer;
 use proven_identity::IdentityManagement;
@@ -115,15 +115,14 @@ where
 }
 
 /// Options for creating a new unified core (starts in Bootstrapping mode)
-pub struct CoreOptions<A, G, HS, T>
+pub struct CoreOptions<A, G, HS>
 where
     A: Attestor,
     G: Governance,
     HS: HttpServer,
-    T: ConsensusTransport,
 {
     /// The consensus system
-    pub consensus: Arc<Consensus<G, A, T>>,
+    pub consensus: Arc<Consensus<G, A>>,
 
     /// The HTTP server
     pub http_server: HS,
@@ -150,16 +149,15 @@ where
 }
 
 /// Unified core that can operate in Bootstrapping or Bootstrapped mode
-pub struct Core<A, G, HS, T>
+pub struct Core<A, G, HS>
 where
     A: Attestor,
     G: Governance,
     HS: HttpServer,
-    T: ConsensusTransport,
 {
     http_server: HS,
     network: ProvenNetwork<G, A>,
-    consensus: Arc<Consensus<G, A, T>>,
+    consensus: Arc<Consensus<G, A>>,
     mode: Arc<RwLock<CoreMode>>,
     bootstrapped_state: Arc<RwLock<Option<Box<dyn std::any::Any + Send + Sync>>>>,
     shutdown_token: CancellationToken,
@@ -167,12 +165,11 @@ where
     router_installed: Arc<RwLock<bool>>,
 }
 
-impl<A, G, HS, T> Core<A, G, HS, T>
+impl<A, G, HS> Core<A, G, HS>
 where
     A: Attestor + Clone + 'static,
     G: Governance + Clone + 'static,
     HS: HttpServer,
-    T: ConsensusTransport,
 {
     /// Create new unified core in Bootstrapping mode
     pub fn new(
@@ -180,7 +177,7 @@ where
             http_server,
             network,
             consensus,
-        }: CoreOptions<A, G, HS, T>,
+        }: CoreOptions<A, G, HS>,
     ) -> Self {
         Self {
             http_server,
@@ -200,7 +197,7 @@ where
     }
 
     /// Get a reference to the consensus system
-    pub const fn consensus(&self) -> &Arc<Consensus<G, A, T>> {
+    pub const fn consensus(&self) -> &Arc<Consensus<G, A>> {
         &self.consensus
     }
 
@@ -209,7 +206,10 @@ where
         // Use the transport's create_router method
         // For TCP transport, this will panic which is expected behavior
         // For WebSocket transport, this will return the appropriate router
-        let consensus_router = self.consensus.transport().create_router();
+        let consensus_router = self
+            .consensus
+            .create_router()
+            .map_err(|e| Error::Consensus(e.to_string()))?;
 
         // Mount consensus routes under the main domain with a /ws prefix
         let fqdn = self
@@ -219,7 +219,7 @@ where
             .map_err(|e| Error::Network(e.to_string()))?;
 
         // Get the current router and merge consensus routes
-        let current_router = Router::new().nest("/ws", consensus_router);
+        let current_router = Router::new().merge(consensus_router);
 
         self.http_server
             .set_router_for_hostname(fqdn, current_router)
@@ -706,15 +706,14 @@ where
 }
 
 #[async_trait]
-impl<A, G, HS, T> Bootable for Core<A, G, HS, T>
+impl<A, G, HS> Bootable for Core<A, G, HS>
 where
     A: Attestor + Clone + 'static,
     G: Governance + Clone + 'static,
     HS: HttpServer,
-    T: ConsensusTransport,
 {
     fn bootable_name(&self) -> &'static str {
-        "core (unified)"
+        "core"
     }
 
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -745,7 +744,7 @@ where
         // Start consensus system
         if let Err(e) = self.consensus.start().await {
             error!("consensus system failed to start: {e}");
-            return Err(e);
+            return Err(Box::new(e));
         }
 
         let http_server = self.http_server.clone();

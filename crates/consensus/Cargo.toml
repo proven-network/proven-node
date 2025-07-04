@@ -1,59 +1,55 @@
 [package]
 name = "proven-consensus"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
+# Core async and concurrency
 async-trait.workspace = true
 futures.workspace = true
-proven-attestation.workspace = true
-proven-attestation-mock.workspace = true
-proven-bootable.workspace = true
-proven-governance.workspace = true
-proven-governance-mock.workspace = true
-parking_lot.workspace = true
 tokio.workspace = true
 
-rocksdb = "0.23.0"
-byteorder = "1.5.0"
-openraft.workspace = true
-
-# Serialization
+# Serialization and data handling
 serde.workspace = true
 serde_json.workspace = true
+ciborium.workspace = true
 bytes.workspace = true
+
+# Networking and HTTP
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+tokio-tungstenite = "0.23"
+
+# Cryptography and security
+ed25519-dalek.workspace = true
+coset.workspace = true
 hex.workspace = true
 
-# COSE (CBOR Object Signing and Encryption)
-ciborium.workspace = true
-coset.workspace = true
-ed25519-dalek.workspace = true
-rand.workspace = true
+# Consensus and Raft
+openraft.workspace = true
+rocksdb.workspace = true
+byteorder.workspace = true
+maplit.workspace = true
 
-# Logging
-tracing.workspace = true
-
-# Error handling
-thiserror.workspace = true
-
-# DNS resolution
-hickory-resolver.workspace = true
-
-# Collections and utilities
-tokio-util.workspace = true
-
-# For UUID generation
+# Utilities
 uuid.workspace = true
-
-# WebSocket support
-axum.workspace = true
-
-# URL parsing
 url.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+rand = "0.8"
+
+# Proven dependencies
+proven-attestation.workspace = true
+proven-bootable.workspace = true
+proven-governance.workspace = true
 
 [dev-dependencies]
+proven-attestation-mock.workspace = true
+proven-governance-mock.workspace = true
 proven-util.workspace = true
-serial_test.workspace = true
-tempfile.workspace = true
-tracing-test.workspace = true
-tracing-subscriber.workspace = true
+rand = "0.8" 
+serial_test = "3.0"
+tempfile = "3.0"
+tracing-test = "0.2"

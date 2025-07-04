@@ -19,15 +19,15 @@ use std::vec::Vec;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use ed25519_dalek::SigningKey;
-use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
+use ed25519_dalek::{SigningKey, VerifyingKey};
+use proven_governance::{Governance, GovernanceNode, NodeSpecialization, Version};
 
 /// Mock implementation of the governance interface.
 #[derive(Debug, Clone)]
 pub struct MockGovernance {
     alternate_auth_gateways: Vec<String>,
     primary_auth_gateway: String,
-    nodes: Arc<Mutex<Vec<TopologyNode>>>,
+    nodes: Arc<Mutex<Vec<GovernanceNode>>>,
     versions: Vec<Version>,
 }
 
@@ -35,7 +35,7 @@ impl MockGovernance {
     /// Create a new mock governance implementation with the given nodes and versions.
     #[must_use]
     pub fn new(
-        nodes: Vec<TopologyNode>,
+        nodes: Vec<GovernanceNode>,
         versions: Vec<Version>,
         primary_auth_gateway: String,
         alternate_auth_gateways: Vec<String>,
@@ -51,10 +51,10 @@ impl MockGovernance {
     /// Create a new mock governance implementation with a single node.
     #[must_use]
     pub fn for_single_node(origin: String, private_key: &SigningKey, version: Version) -> Self {
-        let node = TopologyNode {
+        let node = GovernanceNode {
             availability_zone: "local".to_string(),
             origin,
-            public_key: hex::encode(private_key.verifying_key().to_bytes()),
+            public_key: private_key.verifying_key(),
             region: "local".to_string(),
             specializations: HashSet::new(),
         };
@@ -116,10 +116,17 @@ impl MockGovernance {
                     }
                 }
 
-                TopologyNode {
+                // TODO: Don't panic
+                let public_key_bytes: [u8; 32] = hex::decode(n.public_key.clone())
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+                let public_key = VerifyingKey::from_bytes(&public_key_bytes).unwrap();
+
+                GovernanceNode {
                     availability_zone: "local".to_string(),
-                    origin: n.origin.clone(),
-                    public_key: n.public_key,
+                    origin: n.origin,
+                    public_key,
                     region: "local".to_string(),
                     specializations,
                 }
@@ -153,14 +160,14 @@ impl MockGovernance {
     /// # Panics
     ///
     /// Panics if the nodes cannot be locked.
-    pub fn add_node(&self, node: TopologyNode) -> Result<(), Error> {
+    pub fn add_node(&self, node: GovernanceNode) -> Result<(), Error> {
         let mut nodes = self.nodes.lock().unwrap();
 
         // Check if node already exists
         if nodes.iter().any(|n| n.public_key == node.public_key) {
             return Err(Error::NodeManagement(format!(
                 "Node with public key {} already exists",
-                node.public_key
+                hex::encode(node.public_key.to_bytes())
             )));
         }
 
@@ -178,7 +185,7 @@ impl MockGovernance {
     /// # Panics
     ///
     /// Panics if the nodes cannot be locked.
-    pub fn remove_node(&self, public_key: &str) -> Result<(), Error> {
+    pub fn remove_node(&self, public_key: VerifyingKey) -> Result<(), Error> {
         let mut nodes = self.nodes.lock().unwrap();
 
         let original_len = nodes.len();
@@ -186,7 +193,8 @@ impl MockGovernance {
 
         if nodes.len() == original_len {
             return Err(Error::NodeNotFound(format!(
-                "Node with public key {public_key} not found"
+                "Node with public key {} not found",
+                hex::encode(public_key.to_bytes())
             )));
         }
         drop(nodes);
@@ -200,7 +208,7 @@ impl MockGovernance {
     ///
     /// Panics if the nodes cannot be locked.
     #[must_use]
-    pub fn has_node(&self, public_key: &str) -> bool {
+    pub fn has_node(&self, public_key: VerifyingKey) -> bool {
         let nodes = self.nodes.lock().unwrap();
         nodes.iter().any(|n| n.public_key == public_key)
     }
@@ -222,7 +230,7 @@ impl Governance for MockGovernance {
         Ok(self.primary_auth_gateway.clone())
     }
 
-    async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error> {
+    async fn get_topology(&self) -> Result<Vec<GovernanceNode>, Self::Error> {
         Ok(self.nodes.lock().unwrap().clone())
     }
 }
@@ -232,25 +240,25 @@ mod tests {
     use std::collections::HashSet;
 
     use bytes::Bytes;
-    use proven_governance::{NodeSpecialization, TopologyNode, Version};
+    use proven_governance::{GovernanceNode, NodeSpecialization, Version};
 
     use super::*;
 
     #[tokio::test]
     async fn test_mock_governance() {
         // Create test nodes
-        let node_1 = TopologyNode {
+        let node_1 = GovernanceNode {
             availability_zone: "az1".to_string(),
             origin: "http://node1.example.com".to_string(),
-            public_key: "key1".to_string(),
+            public_key: VerifyingKey::from_bytes(&[0; 32]).unwrap(),
             region: "region1".to_string(),
             specializations: HashSet::new(),
         };
 
-        let node_2 = TopologyNode {
+        let node_2 = GovernanceNode {
             availability_zone: "az2".to_string(),
             origin: "http://node2.example.com".to_string(),
-            public_key: "key2".to_string(),
+            public_key: VerifyingKey::from_bytes(&[1; 32]).unwrap(),
             region: "region2".to_string(),
             specializations: {
                 let mut specs = HashSet::new();

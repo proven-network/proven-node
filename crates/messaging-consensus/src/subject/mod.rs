@@ -1,29 +1,26 @@
 //! Subjects in the consensus messaging system.
 
+use crate::stream::InitializedConsensusStream;
+use crate::subscription::{ConsensusSubscription, ConsensusSubscriptionOptions};
+
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use tracing::debug;
-
 use proven_attestation::Attestor;
-use proven_consensus::transport::ConsensusTransport;
 use proven_consensus::Consensus;
 use proven_governance::Governance;
 use proven_messaging::subject::Subject;
-
-use crate::stream::InitializedConsensusStream;
-use crate::subscription::{ConsensusSubscription, ConsensusSubscriptionOptions};
+use tracing::debug;
 
 /// A consensus subject.
 #[derive(Debug)]
-pub struct ConsensusSubject<G, A, C, T, D, S>
+pub struct ConsensusSubject<G, A, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
-    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -34,21 +31,19 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    /// Subject name
     name: String,
-    /// Governance system for consensus
-    governance: G,
-    /// Attestor for verification
-    attestor: A,
+
     /// Consensus manager for actual messaging operations
-    consensus_manager: std::sync::Arc<Consensus<G, A, C>>,
+    consensus: std::sync::Arc<Consensus<G, A>>,
+
     _marker: PhantomData<(T, D, S)>,
 }
 
-impl<G, A, C, T, D, S> Clone for ConsensusSubject<G, A, C, T, D, S>
+impl<G, A, T, D, S> Clone for ConsensusSubject<G, A, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
-    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -62,19 +57,16 @@ where
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
-            governance: self.governance.clone(),
-            attestor: self.attestor.clone(),
-            consensus_manager: self.consensus_manager.clone(),
+            consensus: self.consensus.clone(),
             _marker: PhantomData,
         }
     }
 }
 
-impl<G, A, C, T, D, S> ConsensusSubject<G, A, C, T, D, S>
+impl<G, A, T, D, S> ConsensusSubject<G, A, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
-    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -87,34 +79,33 @@ where
 {
     /// Creates a new consensus subject.
     #[must_use]
-    pub const fn new(
-        name: String,
-        governance: G,
-        attestor: A,
-        consensus_manager: std::sync::Arc<Consensus<G, A, C>>,
-    ) -> Self {
+    pub const fn new(name: String, consensus: std::sync::Arc<Consensus<G, A>>) -> Self {
         Self {
             name,
-            governance,
-            attestor,
-            consensus_manager,
+            consensus,
             _marker: PhantomData,
         }
     }
 
+    /// Get the subject name
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Get access to the consensus manager for this subject
     #[must_use]
-    pub const fn consensus_manager(&self) -> &std::sync::Arc<Consensus<G, A, C>> {
-        &self.consensus_manager
+    pub const fn consensus(&self) -> &std::sync::Arc<Consensus<G, A>> {
+        &self.consensus
     }
 }
 
 #[async_trait]
-impl<G, A, C, T, D, S> Subject<T, D, S> for ConsensusSubject<G, A, C, T, D, S>
+impl<G, A, T, D, S> Subject<T, D, S> for ConsensusSubject<G, A, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
-    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -126,9 +117,9 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = crate::error::MessagingConsensusError;
-    type StreamType = crate::stream::InitializedConsensusStream<G, A, C, T, D, S>;
+    type StreamType = crate::stream::InitializedConsensusStream<G, A, T, D, S>;
     type SubscriptionType<X>
-        = crate::subscription::ConsensusSubscription<G, A, C, X, T, D, S>
+        = crate::subscription::ConsensusSubscription<G, A, X, T, D, S>
     where
         X: proven_messaging::subscription_handler::SubscriptionHandler<T, D, S>;
 
@@ -140,7 +131,7 @@ where
 
         let options = ConsensusSubscriptionOptions::default();
 
-        <ConsensusSubscription<G, A, C, X, T, D, S> as proven_messaging::subscription::Subscription<
+        <ConsensusSubscription<G, A, X, T, D, S> as proven_messaging::subscription::Subscription<
             X,
             T,
             D,
@@ -170,7 +161,7 @@ where
             stream_name, self.name
         );
 
-        <InitializedConsensusStream<G, A, C, T, D, S> as proven_messaging::stream::InitializedStream<
+        <InitializedConsensusStream<G, A, T, D, S> as proven_messaging::stream::InitializedStream<
             T,
             D,
             S,
@@ -181,11 +172,10 @@ where
 
 // Note: From<String> trait removed since we now require governance and attestor parameters
 
-impl<G, A, C, T, D, S> From<ConsensusSubject<G, A, C, T, D, S>> for String
+impl<G, A, T, D, S> From<ConsensusSubject<G, A, T, D, S>> for String
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
-    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -196,7 +186,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    fn from(val: ConsensusSubject<G, A, C, T, D, S>) -> Self {
+    fn from(val: ConsensusSubject<G, A, T, D, S>) -> Self {
         val.name
     }
 }

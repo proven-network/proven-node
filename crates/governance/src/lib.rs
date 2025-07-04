@@ -10,12 +10,13 @@ use std::{collections::HashSet, fmt::Display};
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use ed25519_dalek::VerifyingKey;
 use proven_attestation::Pcrs;
 use serde::{Deserialize, Serialize};
 
 /// A node in the network topology.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct TopologyNode {
+pub struct GovernanceNode {
     /// The availability zone of the node.
     pub availability_zone: String,
 
@@ -23,7 +24,7 @@ pub struct TopologyNode {
     pub origin: String,
 
     /// The public key of the node.
-    pub public_key: String,
+    pub public_key: VerifyingKey,
 
     /// The region of the node.
     pub region: String,
@@ -130,5 +131,5 @@ where
     async fn get_primary_auth_gateway(&self) -> Result<String, Self::Error>;
 
     /// Get the network topology.
-    async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error>;
+    async fn get_topology(&self) -> Result<Vec<GovernanceNode>, Self::Error>;
 }

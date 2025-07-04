@@ -7,6 +7,7 @@ edition = "2024"
 alloy.workspace = true
 alloy-sol-types.workspace = true
 async-trait.workspace = true
+ed25519-dalek.workspace = true
 eyre.workspace = true
 helios-common.workspace = true
 helios-consensus-core.workspace = true

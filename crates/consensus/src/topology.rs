@@ -1,451 +1,150 @@
-//! Network topology management and peer discovery.
+//! Network topology management and peer discovery
 
-use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, SocketAddr};
+use ed25519_dalek::VerifyingKey;
+use proven_governance::{Governance, GovernanceNode};
+use std::fmt::Debug;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
+use tracing::{debug, info};
 
-use async_trait::async_trait;
-use hickory_resolver::Resolver;
-use serde::{Deserialize, Serialize};
-use tokio::fs;
-use tokio::sync::{mpsc, RwLock};
-use tokio::task::JoinHandle;
-use tracing::{debug, info, warn};
+use crate::{
+    error::{ConsensusError, ConsensusResult},
+    types::NodeId,
+};
 
-use proven_bootable::Bootable;
-use proven_governance::{Governance, TopologyNode};
-
-use crate::error::{ConsensusError, ConsensusResult};
-
-/// Default function for `last_seen` field.
-fn default_instant() -> Instant {
-    Instant::now()
-}
-
-/// Information about a peer node in the consensus network.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PeerInfo {
-    /// The node's public key.
-    pub public_key: String,
-
-    /// The node's network address.
-    pub address: SocketAddr,
-
-    /// The node's availability zone.
-    pub availability_zone: String,
-
-    /// The node's region.
-    pub region: String,
-
-    /// Whether the peer is currently reachable.
-    pub is_healthy: bool,
-
-    /// Last time we successfully communicated with this peer.
-    #[serde(skip_serializing, skip_deserializing, default = "default_instant")]
-    pub last_seen: Instant,
-
-    /// Specializations of this node.
-    pub specializations: HashSet<String>,
-}
-
-/// Manages the network topology and peer connectivity.
-#[derive(Clone, Debug)]
-pub struct TopologyManager<G> {
+/// Manages network topology and peer discovery
+pub struct TopologyManager<G>
+where
+    G: Governance + Send + Sync + 'static,
+{
+    cached_peers: Arc<RwLock<Vec<GovernanceNode>>>,
     governance: Arc<G>,
-    peers: Arc<RwLock<HashMap<String, PeerInfo>>>,
-    local_public_key: String,
-    refresh_interval: Duration,
-    /// Shutdown signal sender.
-    shutdown_tx: Arc<std::sync::Mutex<Option<mpsc::UnboundedSender<()>>>>,
-    /// Background task handle for lifecycle management.
-    task_handle: Arc<std::sync::Mutex<Option<JoinHandle<()>>>>,
+    node_id: NodeId,
 }
 
 impl<G> TopologyManager<G>
 where
-    G: Governance + Send + Sync + 'static,
+    G: Governance + Send + Sync + 'static + Debug,
 {
-    /// Creates a new topology manager.
-    pub fn new(governance: Arc<G>, _local_node_id: String, local_public_key: String) -> Self {
+    /// Create a new topology manager
+    pub fn new(governance: Arc<G>, node_id: NodeId) -> Self {
         Self {
             governance,
-            peers: Arc::new(RwLock::new(HashMap::new())),
-            local_public_key,
-            refresh_interval: Duration::from_secs(30),
-            shutdown_tx: Arc::new(std::sync::Mutex::new(None)),
-            task_handle: Arc::new(std::sync::Mutex::new(None)),
+            node_id,
+            cached_peers: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
-    /// Starts the topology refresh loop.
-    /// Starts the topology manager
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConsensusError` if topology initialization fails.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the shutdown mutex is poisoned.
-    pub fn start_internal(&self) -> ConsensusResult<()> {
-        let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded_channel();
-        *self.shutdown_tx.lock().unwrap() = Some(shutdown_tx);
-
-        let self_clone = self.clone();
-        let handle = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(self_clone.refresh_interval);
-
-            loop {
-                tokio::select! {
-                    _ = shutdown_rx.recv() => {
-                        info!("Topology manager shutting down");
-                        break;
-                    }
-                    _ = interval.tick() => {
-                        if let Err(e) = self_clone.refresh_topology().await {
-                            warn!("Failed to refresh topology: {}", e);
-                        }
-                    }
-                }
-            }
-        });
-
-        *self.task_handle.lock().unwrap() = Some(handle);
+    /// Start the topology manager (refresh topology)
+    pub async fn start(&self) -> ConsensusResult<()> {
+        info!("Starting topology manager for node {}", self.node_id);
+        self.refresh_topology().await?;
         Ok(())
     }
 
-    /// Refreshes the topology from the governance system.
-    /// Refreshes the topology by fetching latest peer information
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConsensusError` if topology refresh fails.
-    pub async fn refresh_topology(&self) -> ConsensusResult<()> {
-        debug!("Refreshing network topology from governance");
+    /// Shutdown the topology manager
+    pub async fn shutdown(&self) -> ConsensusResult<()> {
+        info!("Shutting down topology manager for node {}", self.node_id);
+        Ok(())
+    }
 
-        let topology_nodes = self
+    /// Refresh topology from governance
+    pub async fn refresh_topology(&self) -> ConsensusResult<()> {
+        debug!("Refreshing topology from governance");
+
+        let topology = self
             .governance
             .get_topology()
             .await
-            .map_err(|e| ConsensusError::Governance(e.to_string()))?;
+            .map_err(|e| ConsensusError::Governance(format!("Failed to get topology: {e}")))?;
 
-        let mut peers = self.peers.write().await;
-        let mut new_peers = HashMap::new();
+        let mut peers = Vec::new();
 
-        for node in topology_nodes {
-            // Skip our own node
-            if node.public_key == self.local_public_key {
+        for node in topology {
+            // Skip ourselves
+            if self.node_id == node.public_key {
                 continue;
             }
 
-            // Convert the topology node to peer info
-            match self.topology_node_to_peer_info(node).await {
-                Ok(peer_info) => {
-                    new_peers.insert(peer_info.public_key.clone(), peer_info);
-                }
-                Err(e) => {
-                    warn!("Failed to convert topology node to peer info: {}", e);
-                }
-            }
-        }
-
-        // Preserve health status and last_seen for existing peers
-        for (key, new_peer) in &mut new_peers {
-            if let Some(existing_peer) = peers.get(key) {
-                new_peer.is_healthy = existing_peer.is_healthy;
-                new_peer.last_seen = existing_peer.last_seen;
-            }
-        }
-
-        *peers = new_peers;
-        info!("Topology refreshed: {} peers", peers.len());
-
-        Ok(())
-    }
-
-    /// Converts a topology node to peer info.
-    async fn topology_node_to_peer_info(&self, node: TopologyNode) -> ConsensusResult<PeerInfo> {
-        // Try to parse the origin directly as a socket address first
-        if let Ok(address) = node.origin.parse::<SocketAddr>() {
-            return Ok(PeerInfo {
-                public_key: node.public_key,
-                address,
-                availability_zone: node.availability_zone,
-                region: node.region,
-                is_healthy: false, // Will be updated by health checks
-                last_seen: Instant::now(),
-                specializations: node
-                    .specializations
-                    .into_iter()
-                    .map(|s| format!("{s:?}"))
-                    .collect(),
-            });
-        }
-
-        // Extract hostname and port from origin (handle HTTP prefixes)
-        let origin_without_protocol = node
-            .origin
-            .trim_start_matches("http://")
-            .trim_start_matches("https://");
-
-        let (hostname, port) = if let Some(colon_pos) = origin_without_protocol.rfind(':') {
-            let hostname = &origin_without_protocol[..colon_pos];
-            let port_str = &origin_without_protocol[colon_pos + 1..];
-            let port = port_str.parse::<u16>().map_err(|e| {
-                ConsensusError::InvalidMessage(format!(
-                    "Invalid port in origin '{}': {}",
+            // Validate the origin URL
+            url::Url::parse(&node.origin).map_err(|e| {
+                ConsensusError::Configuration(format!(
+                    "Invalid origin URL '{}': {}",
                     node.origin, e
                 ))
             })?;
-            (hostname, port)
-        } else {
-            // No port specified, use default P2P port 1614
-            (origin_without_protocol, 1614)
-        };
 
-        // Try to parse hostname as IP address first
-        if let Ok(ip) = hostname.parse::<IpAddr>() {
-            let address = SocketAddr::new(ip, port);
-            return Ok(PeerInfo {
-                public_key: node.public_key,
-                address,
-                availability_zone: node.availability_zone,
-                region: node.region,
-                is_healthy: false,
-                last_seen: Instant::now(),
-                specializations: node
-                    .specializations
-                    .into_iter()
-                    .map(|s| format!("{s:?}"))
-                    .collect(),
-            });
+            peers.push(node);
         }
 
-        // Try DNS resolution
-        if let Ok(ip) = resolve_dns(hostname).await {
-            let address = SocketAddr::new(ip, port);
-            return Ok(PeerInfo {
-                public_key: node.public_key,
-                address,
-                availability_zone: node.availability_zone,
-                region: node.region,
-                is_healthy: false,
-                last_seen: Instant::now(),
-                specializations: node
-                    .specializations
-                    .into_iter()
-                    .map(|s| format!("{s:?}"))
-                    .collect(),
-            });
+        debug!("Found {} peers in topology", peers.len());
+
+        // Update cached peers
+        {
+            let mut cached_peers = self.cached_peers.write().await;
+            *cached_peers = peers;
         }
 
-        // Fallback to /etc/hosts
-        if let Ok(ip) = resolve_hosts_file(hostname).await {
-            let address = SocketAddr::new(ip, port);
-            return Ok(PeerInfo {
-                public_key: node.public_key,
-                address,
-                availability_zone: node.availability_zone,
-                region: node.region,
-                is_healthy: false,
-                last_seen: Instant::now(),
-                specializations: node
-                    .specializations
-                    .into_iter()
-                    .map(|s| format!("{s:?}"))
-                    .collect(),
-            });
+        Ok(())
+    }
+
+    /// Get all peers from cached topology
+    pub async fn get_all_peers(&self) -> Vec<GovernanceNode> {
+        let cached_peers = self.cached_peers.read().await;
+        cached_peers.clone()
+    }
+
+    /// Get a specific peer by public key
+    pub async fn get_peer(&self, public_key: VerifyingKey) -> Option<GovernanceNode> {
+        let cached_peers = self.cached_peers.read().await;
+        cached_peers
+            .iter()
+            .find(|peer| peer.public_key == public_key)
+            .cloned()
+    }
+
+    /// Get a specific peer by NodeId
+    pub async fn get_peer_by_node_id(&self, node_id: &NodeId) -> Option<GovernanceNode> {
+        let cached_peers = self.cached_peers.read().await;
+        cached_peers
+            .iter()
+            .find(|peer| NodeId::new(peer.public_key) == *node_id)
+            .cloned()
+    }
+
+    /// Get governance reference
+    pub fn governance(&self) -> &Arc<G> {
+        &self.governance
+    }
+
+    /// Get our own GovernanceNode from the topology
+    pub async fn get_own_node(&self) -> ConsensusResult<GovernanceNode> {
+        let topology = self
+            .governance
+            .get_topology()
+            .await
+            .map_err(|e| ConsensusError::Governance(format!("Failed to get topology: {e}")))?;
+
+        for node in topology {
+            if self.node_id == node.public_key {
+                return Ok(node);
+            }
         }
 
-        Err(ConsensusError::InvalidMessage(format!(
-            "Could not resolve hostname '{}' from origin '{}'",
-            hostname, node.origin
+        Err(ConsensusError::Configuration(format!(
+            "Own node with public key {} not found in topology",
+            hex::encode(self.node_id.to_bytes())
         )))
     }
-
-    /// Gets all healthy peers.
-    pub async fn get_healthy_peers(&self) -> Vec<PeerInfo> {
-        let peers = self.peers.read().await;
-        peers
-            .values()
-            .filter(|peer| peer.is_healthy)
-            .cloned()
-            .collect()
-    }
-
-    /// Gets all peers (including unhealthy ones).
-    pub async fn get_all_peers(&self) -> Vec<PeerInfo> {
-        let peers = self.peers.read().await;
-        peers.values().cloned().collect()
-    }
-
-    /// Marks a peer as healthy.
-    /// Marks a peer as healthy in the topology
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConsensusError` if the peer is not found or update fails.
-    pub async fn mark_peer_healthy(&self, public_key: &str) -> ConsensusResult<()> {
-        #[allow(clippy::significant_drop_tightening)]
-        {
-            let mut peers = self.peers.write().await;
-            if let Some(peer) = peers.get_mut(public_key) {
-                peer.is_healthy = true;
-                peer.last_seen = Instant::now();
-                debug!("Marked peer {} as healthy", public_key);
-            } else {
-                return Err(ConsensusError::NodeNotFound(public_key.to_string()));
-            }
-        }
-        Ok(())
-    }
-
-    /// Marks a peer as unhealthy.
-    /// Marks a peer as unhealthy in the topology
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConsensusError` if the peer is not found or update fails.
-    pub async fn mark_peer_unhealthy(&self, public_key: &str) -> ConsensusResult<()> {
-        #[allow(clippy::significant_drop_tightening)]
-        {
-            let mut peers = self.peers.write().await;
-            if let Some(peer) = peers.get_mut(public_key) {
-                peer.is_healthy = false;
-                warn!("Marked peer {} as unhealthy", public_key);
-            } else {
-                return Err(ConsensusError::NodeNotFound(public_key.to_string()));
-            }
-        }
-        Ok(())
-    }
-
-    /// Gets the number of healthy nodes.
-    pub async fn healthy_node_count(&self) -> usize {
-        let peers = self.peers.read().await;
-        peers.values().filter(|peer| peer.is_healthy).count() + 1 // +1 for self
-    }
-
-    /// Calculates the minimum number of nodes required for consensus (majority).
-    pub async fn consensus_threshold(&self) -> usize {
-        let total_nodes = self.peers.read().await.len() + 1; // +1 for self
-        (total_nodes / 2) + 1
-    }
-
-    /// Checks if we have enough healthy nodes for consensus.
-    pub async fn has_consensus_quorum(&self) -> bool {
-        let healthy_count = self.healthy_node_count().await;
-        let threshold = self.consensus_threshold().await;
-        healthy_count >= threshold
-    }
-
-    /// Gets a peer by public key.
-    pub async fn get_peer(&self, public_key: &str) -> Option<PeerInfo> {
-        let peers = self.peers.read().await;
-        peers.get(public_key).cloned()
-    }
 }
 
-/// Resolve hostname using DNS
-async fn resolve_dns(hostname: &str) -> Result<IpAddr, Box<dyn std::error::Error + Send + Sync>> {
-    let resolver = Resolver::tokio_from_system_conf()
-        .map_err(|e| format!("Failed to create DNS resolver: {e}"))?;
-
-    let lookup_result = resolver
-        .lookup_ip(hostname)
-        .await
-        .map_err(|e| format!("DNS lookup failed: {e}"))?;
-
-    // Return the first IP address found
-    lookup_result
-        .iter()
-        .next()
-        .ok_or_else(|| "No IP addresses found in DNS response".into())
-}
-
-/// Resolve hostname using hosts file (cross-platform)
-async fn resolve_hosts_file(
-    hostname: &str,
-) -> Result<IpAddr, Box<dyn std::error::Error + Send + Sync>> {
-    let hosts_path = if cfg!(target_family = "unix") {
-        "/etc/hosts"
-    } else if cfg!(target_family = "windows") {
-        r"C:\Windows\System32\drivers\etc\hosts"
-    } else {
-        return Err("Unsupported platform for hosts file resolution".into());
-    };
-
-    let hosts_content = fs::read_to_string(hosts_path)
-        .await
-        .map_err(|e| format!("Failed to read hosts file: {e}"))?;
-
-    for line in hosts_content.lines() {
-        let line = line.trim();
-
-        // Skip comments and empty lines
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 {
-            let ip_str = parts[0];
-            let hosts = &parts[1..];
-
-            // Check if our hostname is in this line
-            if hosts.contains(&hostname) {
-                if let Ok(ip) = ip_str.parse::<IpAddr>() {
-                    return Ok(ip);
-                }
-            }
-        }
-    }
-
-    Err(format!("Hostname '{hostname}' not found in hosts file").into())
-}
-
-#[async_trait]
-impl<G> Bootable for TopologyManager<G>
+impl<G> Debug for TopologyManager<G>
 where
-    G: Governance + Send + Sync + 'static,
+    G: Governance + Send + Sync + 'static + Debug,
 {
-    fn bootable_name(&self) -> &'static str {
-        "TopologyManager"
-    }
-
-    async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        self.start_internal().map_err(std::convert::Into::into)
-    }
-
-    async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Signal shutdown
-        let value = self.shutdown_tx.lock().unwrap().take();
-        if let Some(shutdown_tx) = value {
-            let _ = shutdown_tx.send(());
-        }
-
-        // Take the handle first to avoid holding mutex across await
-        let handle = self.task_handle.lock().unwrap().take();
-
-        // Wait for the background task to complete
-        if let Some(handle) = handle {
-            if let Err(e) = handle.await {
-                warn!("Error waiting for topology manager task: {}", e);
-            }
-        }
-
-        info!("Topology manager shutdown complete");
-        Ok(())
-    }
-
-    async fn wait(&self) {
-        // If there's a running task, wait for it
-        let handle = self.task_handle.lock().unwrap().take();
-        if let Some(handle) = handle {
-            if let Err(e) = handle.await {
-                warn!("Error waiting for topology manager task: {}", e);
-            }
-        }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TopologyManager")
+            .field("node_id", &self.node_id)
+            .finish_non_exhaustive()
     }
 }

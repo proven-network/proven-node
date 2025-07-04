@@ -9,8 +9,8 @@ use std::task::Poll;
 
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::stream::Stream;
 use futures::StreamExt;
+use futures::stream::Stream;
 use tracing::{debug, warn};
 
 use proven_messaging::subscription_responder::{SubscriptionResponder, UsedSubscriptionResponder};

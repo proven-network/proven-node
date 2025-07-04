@@ -4,9 +4,10 @@ use crate::error::{Error, Result};
 use std::collections::HashSet;
 
 use bytes::Bytes;
+use ed25519_dalek::VerifyingKey;
 use headers::Header;
 use proven_attestation::Attestor;
-use proven_governance::{NodeSpecialization, TopologyNode, Version};
+use proven_governance::{GovernanceNode, NodeSpecialization, Version};
 use proven_headers::{Attestation, Nonce};
 use rand::RngCore;
 use reqwest::header::{HeaderName as ReqwestHeaderName, HeaderValue as ReqwestHeaderValue};
@@ -20,7 +21,7 @@ where
     A: Attestor,
 {
     attestor: A,
-    node: TopologyNode,
+    node: GovernanceNode,
     versions: Vec<Version>,
 }
 
@@ -29,7 +30,7 @@ where
     A: Attestor,
 {
     /// Create a new Peer instance.
-    pub const fn new(node: TopologyNode, versions: Vec<Version>, attestor: A) -> Self {
+    pub const fn new(node: GovernanceNode, versions: Vec<Version>, attestor: A) -> Self {
         Self {
             attestor,
             node,
@@ -75,8 +76,7 @@ where
     }
 
     /// Get the public key of the node.
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn public_key(&self) -> &str {
+    pub const fn public_key(&self) -> &VerifyingKey {
         &self.node.public_key
     }
 

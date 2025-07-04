@@ -39,8 +39,7 @@ pub mod subscription_responder;
 
 // Re-export consensus types for convenience
 pub use proven_consensus::{
-    Consensus, ConsensusConfig, ConsensusTransport, MessagingStorage, PeerInfo, PersistenceMode,
-    StreamConfig, TopologyManager, TypeConfig,
+    Consensus, ConsensusConfig, NetworkTransport, TopologyManager, TypeConfig,
 };
 
 // Re-export messaging-specific error types

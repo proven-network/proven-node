@@ -5,7 +5,6 @@ use std::convert::Infallible;
 
 use bytes::Bytes;
 use proven_attestation_nsm::NsmAttestor;
-use proven_consensus::transport::websocket::WebSocketTransport;
 use proven_core::Core;
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
@@ -30,7 +29,6 @@ pub type EnclaveNodeCore = Core<
     NsmAttestor,
     MockGovernance,
     LetsEncryptHttpServer<S3Store<Bytes, Infallible, Infallible>>,
-    WebSocketTransport<MockGovernance, NsmAttestor>,
 >;
 
 pub struct Services {

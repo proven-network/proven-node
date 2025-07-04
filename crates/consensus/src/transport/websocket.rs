@@ -1,929 +1,823 @@
-//! WebSocket-based transport implementation for consensus networking.
+//! WebSocket transport implementation
+//!
+//! This transport handles WebSocket networking and provides HTTP integration
+//! capabilities. Like the TCP transport, it only handles raw networking -
+//! no business logic, COSE, or attestation verification.
 
+use crate::error::{NetworkError, NetworkResult};
+use crate::topology::TopologyManager;
+use crate::transport::{HttpIntegratedTransport, MessageHandler, NetworkTransport, PeerConnection};
+use crate::types::NodeId;
+use crate::verification::ConnectionVerification;
+
+use std::any::Any;
 use std::collections::HashMap;
-use std::fmt::Debug;
-use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{ConnectInfo, Path, State};
-use axum::response::IntoResponse;
-use axum::routing::get;
 use axum::Router;
+use axum::extract::ws::{Message, WebSocket};
+use axum::extract::{Path, WebSocketUpgrade};
+use axum::response::Response;
+use axum::routing::get;
 use bytes::Bytes;
-use ciborium;
-use futures::{sink::SinkExt, stream::StreamExt};
-use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
+use futures::{SinkExt, StreamExt};
+use parking_lot::RwLock;
+use proven_governance::GovernanceNode;
+use tokio::net::TcpStream;
+use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
-use uuid::Uuid;
-
-use ed25519_dalek::SigningKey;
-use proven_attestation::Attestor;
-use proven_governance::Governance;
-
-use super::{
-    ClusterDiscoveryRequest, ClusterDiscoveryResponse, ConsensusMessage, ConsensusTransport,
-    PeerConnection,
+use tokio_tungstenite::{
+    MaybeTlsStream, WebSocketStream, connect_async,
+    tungstenite::protocol::Message as TungsteniteMessage,
 };
-use crate::attestation::AttestationVerifier;
-use crate::cose::CoseHandler;
-use crate::error::ConsensusError;
-use crate::topology::TopologyManager;
+use tracing::{debug, info, warn};
+use url::Url;
 
-/// Maximum message size (1MB)
-const MAX_MESSAGE_SIZE: usize = 1024 * 1024;
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Handshake timeout for WebSocket connections
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+type WebSocketPeerConnection =
+    PeerConnection<tokio::sync::mpsc::UnboundedSender<axum::extract::ws::Message>>;
 
-/// WebSocket consensus message with COSE signing
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct WebSocketMessage {
-    /// Message ID for tracking responses
-    pub id: Uuid,
-    /// The actual consensus message
-    pub message: ConsensusMessage,
-    /// Message timestamp
-    pub timestamp: u64,
-    /// Sender's node ID
-    pub sender_id: String,
-}
-
-/// Handshake message for WebSocket connection establishment (matches TCP format)
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct WebSocketHandshakeMessage {
-    /// Node identifier
-    pub node_id: String,
-    /// Node's attestation document
-    pub attestation: Bytes,
-    /// Protocol version
-    pub protocol_version: u16,
-    /// Connection timestamp
-    pub timestamp: u64,
-}
-
-/// Handshake response for WebSocket connections (matches TCP format)
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct WebSocketHandshakeResponse {
-    /// Whether handshake was accepted
-    pub accepted: bool,
-    /// Error message if rejected
-    pub error: Option<String>,
-    /// Responder's attestation document
-    pub attestation: Option<Bytes>,
-}
-
-/// Represents an active WebSocket peer connection
-#[derive(Clone)]
-struct WebSocketPeer {
-    /// Node ID
-    node_id: String,
-    /// Remote address
-    address: SocketAddr,
-    /// Message sender to this peer
-    sender: mpsc::UnboundedSender<Bytes>,
-    /// Whether attestation is verified
-    attestation_verified: bool,
-    /// Last activity timestamp
-    last_activity: SystemTime,
-}
-
-/// WebSocket server state shared across connections
-#[derive(Clone)]
-pub struct WebSocketServerState<G, A>
+/// WebSocket transport for networking with HTTP integration
+/// Uses separate incoming and outgoing connections for each peer pair
+pub struct WebSocketTransport<G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    G: proven_governance::Governance + Send + Sync + 'static,
 {
-    /// Local node ID
-    node_id: String,
-    /// Attestation verifier
-    attestation_verifier: Arc<AttestationVerifier<G, A>>,
-    /// COSE handler for secure message signing/verification
-    cose_handler: Arc<CoseHandler<G>>,
-    /// Connected peers
-    peers: Arc<RwLock<HashMap<String, WebSocketPeer>>>,
-    /// Channel for sending messages to consensus protocol
-    consensus_tx: mpsc::UnboundedSender<(String, ConsensusMessage)>,
-    /// Temporary channel for collecting cluster discovery responses
-    discovery_response_tx:
-        Arc<std::sync::Mutex<Option<mpsc::UnboundedSender<ClusterDiscoveryResponse>>>>,
-}
-
-/// WebSocket-based transport for consensus networking
-pub struct WebSocketTransport<G, A>
-where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
-{
-    /// Local node ID
-    node_id: String,
-    /// Local listening address
-    listen_addr: SocketAddr,
-    /// Topology manager for peer discovery
-    #[allow(dead_code)]
-    topology: Arc<TopologyManager<G>>,
-    /// Shared server state
-    state: WebSocketServerState<G, A>,
-    /// Channel for receiving messages from consensus protocol
-    #[allow(dead_code)]
-    network_rx: Arc<Mutex<mpsc::UnboundedReceiver<(String, ConsensusMessage)>>>,
-    /// Shutdown signal sender
+    /// Outgoing connections - connections we initiated to other peers
+    outgoing_peers: Arc<RwLock<HashMap<NodeId, WebSocketPeerConnection>>>,
+    /// Incoming connections - connections other peers initiated to us
+    incoming_peers: Arc<RwLock<HashMap<NodeId, WebSocketPeerConnection>>>,
+    /// Connection verifier for secure handshakes
+    verifier: Arc<dyn ConnectionVerification>,
+    /// Topology manager for peer lookup
+    topology_manager: Arc<TopologyManager<G>>,
+    /// Shutdown signal
     shutdown_tx: Arc<std::sync::Mutex<Option<broadcast::Sender<()>>>>,
-    /// Background task handles for lifecycle management
+    /// Background task handles
     task_handles: Arc<std::sync::Mutex<Vec<JoinHandle<()>>>>,
+    /// Message handler for incoming messages
+    message_handler: Arc<std::sync::Mutex<Option<MessageHandler>>>,
 }
 
-impl<G, A> WebSocketTransport<G, A>
+impl<G> std::fmt::Debug for WebSocketTransport<G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    G: proven_governance::Governance + Send + Sync + 'static,
 {
-    /// Creates a new WebSocket-based consensus transport
-    #[allow(clippy::needless_pass_by_value)]
-    #[allow(clippy::too_many_arguments)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebSocketTransport")
+            .field("outgoing_peers", &self.outgoing_peers)
+            .field("incoming_peers", &self.incoming_peers)
+            .field("topology_manager", &"<TopologyManager>")
+            .field("message_handler", &"<MessageHandler>")
+            .finish()
+    }
+}
+
+impl<G> WebSocketTransport<G>
+where
+    G: proven_governance::Governance + Send + Sync + 'static,
+{
+    /// Create a new WebSocket transport
     pub fn new(
-        node_id: String,
-        listen_addr: SocketAddr,
-        topology: Arc<TopologyManager<G>>,
-        governance: Arc<G>,
-        attestor: Arc<A>,
-        signing_key: SigningKey,
-        consensus_tx: mpsc::UnboundedSender<(String, ConsensusMessage)>,
-        network_rx: mpsc::UnboundedReceiver<(String, ConsensusMessage)>,
+        verifier: Arc<dyn ConnectionVerification>,
+        topology_manager: Arc<TopologyManager<G>>,
     ) -> Self {
-        let attestation_verifier = Arc::new(AttestationVerifier::new(
-            (*governance).clone(),
-            (*attestor).clone(),
-        ));
-
-        let cose_handler = Arc::new(CoseHandler::new(
-            signing_key,
-            node_id.clone(),
-            (*governance).clone(),
-        ));
-
-        let state = WebSocketServerState {
-            node_id: node_id.clone(),
-            attestation_verifier,
-            cose_handler,
-            peers: Arc::new(RwLock::new(HashMap::new())),
-            consensus_tx,
-            discovery_response_tx: Arc::new(std::sync::Mutex::new(None)),
-        };
-
+        let (shutdown_tx, _) = broadcast::channel(1);
         Self {
-            node_id,
-            listen_addr,
-            topology,
-            state,
-            network_rx: Arc::new(Mutex::new(network_rx)),
-            shutdown_tx: Arc::new(std::sync::Mutex::new(None)),
+            outgoing_peers: Arc::new(RwLock::new(HashMap::new())),
+            incoming_peers: Arc::new(RwLock::new(HashMap::new())),
+            verifier,
+            topology_manager,
+            shutdown_tx: Arc::new(std::sync::Mutex::new(Some(shutdown_tx))),
             task_handles: Arc::new(std::sync::Mutex::new(Vec::new())),
+            message_handler: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
-    /// Create a WebSocket router that can be mounted into an existing axum application
-    pub fn create_router(&self) -> Router<WebSocketServerState<G, A>> {
-        Router::new()
-            .route("/consensus/:node_id", get(ws_consensus_handler))
-            .with_state(self.state.clone())
+    /// Handle a WebSocket upgrade request
+    async fn handle_websocket_upgrade(
+        ws: WebSocketUpgrade,
+        Path(claimed_node_id): Path<String>,
+        incoming_peers: Arc<RwLock<HashMap<NodeId, WebSocketPeerConnection>>>,
+        verifier: Arc<dyn ConnectionVerification>,
+        message_handler: MessageHandler,
+    ) -> Response {
+        ws.on_upgrade(move |socket| {
+            Self::handle_websocket_connection(
+                socket,
+                claimed_node_id,
+                incoming_peers,
+                verifier,
+                message_handler,
+            )
+        })
     }
 
-    /// Performs secure handshake with a connecting peer
-    #[allow(clippy::too_many_lines)]
-    async fn perform_handshake(
-        sender: &mut futures::stream::SplitSink<WebSocket, Message>,
-        receiver: &mut futures::stream::SplitStream<WebSocket>,
-        connecting_node_id: &str,
-        state: &WebSocketServerState<G, A>,
-    ) -> Result<String, ConsensusError> {
-        // Wait for handshake message from peer
-        let handshake_timeout = tokio::time::timeout(HANDSHAKE_TIMEOUT, receiver.next()).await;
+    /// Handle a WebSocket connection
+    async fn handle_websocket_connection(
+        socket: WebSocket,
+        claimed_node_id: String,
+        incoming_peers: Arc<RwLock<HashMap<NodeId, WebSocketPeerConnection>>>,
+        verifier: Arc<dyn ConnectionVerification>,
+        message_handler: MessageHandler,
+    ) {
+        // All connections must be verified
+        let connection_id = format!("ws-{}", claimed_node_id);
 
-        let handshake_data = match handshake_timeout {
-            Ok(Some(Ok(Message::Binary(data)))) => data,
-            Ok(Some(Ok(_))) => {
-                return Err(ConsensusError::AttestationFailure(
-                    "Expected binary handshake message".to_string(),
-                ));
-            }
-            Ok(Some(Err(e))) => {
-                return Err(ConsensusError::Network(
-                    format!("WebSocket error during handshake: {e}").into(),
-                ));
-            }
-            Ok(None) => {
-                return Err(ConsensusError::AttestationFailure(
-                    "Connection closed during handshake".to_string(),
-                ));
-            }
-            Err(_) => {
-                return Err(ConsensusError::AttestationFailure(
-                    "Handshake timeout".to_string(),
-                ));
-            }
-        };
+        // Initialize the connection for verification
+        verifier.initialize_connection(connection_id.clone()).await;
 
-        // Deserialize and verify COSE-signed handshake
-        let cose_message = state
-            .cose_handler
-            .deserialize_cose_message(&handshake_data)
-            .map_err(|e| ConsensusError::InvalidMessage(format!("COSE deserialize failed: {e}")))?;
+        // Handle verification handshake
+        Self::handle_verified_websocket_connection(
+            socket,
+            connection_id,
+            incoming_peers,
+            verifier,
+            message_handler,
+        )
+        .await;
+    }
 
-        let payload = state
-            .cose_handler
-            .verify_signed_message(&cose_message)
+    /// Handle a WebSocket connection with verification handshake
+    async fn handle_verified_websocket_connection(
+        socket: WebSocket,
+        connection_id: String,
+        incoming_peers: Arc<RwLock<HashMap<NodeId, WebSocketPeerConnection>>>,
+        verifier: Arc<dyn ConnectionVerification>,
+        message_handler: MessageHandler,
+    ) {
+        let (mut sender, mut receiver) = socket.split();
+
+        // Handle verification messages until verification completes
+        while let Some(msg) = receiver.next().await {
+            match msg {
+                Ok(Message::Binary(data)) => {
+                    // Process verification message
+                    match verifier
+                        .process_verification_message(connection_id.clone(), data)
+                        .await
+                    {
+                        Ok(Some(response_data)) => {
+                            // Send verification response
+                            if let Err(e) = sender.send(Message::Binary(response_data)).await {
+                                warn!("Failed to send verification response: {}", e);
+                                break;
+                            }
+                        }
+                        Ok(None) => {
+                            // No response needed, continue verification
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Verification failed for connection {}: {}",
+                                connection_id, e
+                            );
+                            verifier.remove_connection(&connection_id).await;
+                            return;
+                        }
+                    }
+
+                    // Check if verification is complete
+                    if verifier.is_connection_verified(&connection_id).await {
+                        if let Some(verified_public_key) =
+                            verifier.get_verified_public_key(&connection_id).await
+                        {
+                            info!(
+                                "WebSocket connection {} verified with public key {}",
+                                connection_id, &verified_public_key
+                            );
+
+                            // Create a channel for sending messages to this verified peer
+                            let (tx, rx) = mpsc::unbounded_channel();
+
+                            // Store the connection
+                            incoming_peers.write().insert(
+                                verified_public_key.clone(),
+                                WebSocketPeerConnection {
+                                    node_id: verified_public_key.clone(),
+                                    connected: true,
+                                    last_activity: SystemTime::now(),
+                                    connection: tx.clone(),
+                                },
+                            );
+
+                            // Switch to normal message handling with verified identity
+                            Self::handle_verified_websocket_messages(
+                                sender,
+                                receiver,
+                                verified_public_key,
+                                rx,
+                                incoming_peers,
+                                message_handler,
+                            )
+                            .await;
+                            return;
+                        }
+                    }
+                }
+                Ok(Message::Close(_)) => {
+                    debug!(
+                        "WebSocket connection closed during verification: {}",
+                        connection_id
+                    );
+                    verifier.remove_connection(&connection_id).await;
+                    break;
+                }
+                Ok(_) => {
+                    // Ignore other message types during verification
+                }
+                Err(e) => {
+                    warn!(
+                        "WebSocket error during verification for {}: {}",
+                        connection_id, e
+                    );
+                    verifier.remove_connection(&connection_id).await;
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Handle normal messages for a verified WebSocket connection
+    async fn handle_verified_websocket_messages(
+        mut sender: futures::stream::SplitSink<WebSocket, Message>,
+        mut receiver: futures::stream::SplitStream<WebSocket>,
+        verified_node_id: NodeId,
+        mut outgoing_rx: mpsc::UnboundedReceiver<Message>,
+        peers: Arc<RwLock<HashMap<NodeId, WebSocketPeerConnection>>>,
+        message_handler: MessageHandler,
+    ) {
+        // Spawn task to handle outgoing messages
+        let outgoing_task = tokio::spawn(async move {
+            while let Some(message) = outgoing_rx.recv().await {
+                if sender.send(message).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        // Handle incoming messages
+        let node_id_clone = verified_node_id.clone();
+        let peers_clone = peers.clone();
+
+        while let Some(msg) = receiver.next().await {
+            match msg {
+                Ok(Message::Binary(data)) => {
+                    // Update last activity
+                    if let Some(peer) = peers_clone.write().get_mut(&node_id_clone) {
+                        peer.last_activity = SystemTime::now();
+                    }
+
+                    // Forward raw bytes to message handler with verified node ID
+                    message_handler(node_id_clone.clone(), data);
+                }
+                Ok(Message::Close(_)) => {
+                    break;
+                }
+                Ok(_) => {
+                    // Ignore other message types (text, ping, pong)
+                }
+                Err(e) => {
+                    warn!("WebSocket error for verified node {}: {}", node_id_clone, e);
+                    break;
+                }
+            }
+        }
+
+        // Cleanup when connection closes
+        outgoing_task.abort();
+        peers.write().remove(&verified_node_id);
+        if let Some(peer) = peers.write().get_mut(&verified_node_id) {
+            peer.connected = false;
+        }
+    }
+
+    /// Handle outgoing WebSocket connection verification handshake
+    async fn handle_outgoing_websocket_verification(
+        &self,
+        ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+        connection_id: String,
+        expected_node_id: NodeId,
+    ) -> NetworkResult<()> {
+        use futures::SinkExt;
+        use futures::StreamExt;
+
+        // Initialize the connection for verification
+        self.verifier
+            .initialize_connection(connection_id.clone())
+            .await;
+
+        // Split the WebSocket stream
+        let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+
+        // Send initial verification challenge
+        let challenge_request = self
+            .verifier
+            .create_verification_request_for_connection(connection_id.clone())
             .await
-            .map_err(|e| ConsensusError::InvalidMessage(format!("COSE verify failed: {e}")))?;
-
-        // Extract handshake from payload
-        let handshake: WebSocketHandshakeMessage = ciborium::de::from_reader(payload.data.as_ref())
             .map_err(|e| {
-                ConsensusError::InvalidMessage(format!("Handshake deserialize failed: {e}"))
+                NetworkError::SendFailed(format!("Failed to create verification request: {}", e))
             })?;
 
-        // Verify node ID matches path parameter
-        if handshake.node_id != connecting_node_id {
-            return Err(ConsensusError::AttestationFailure(format!(
-                "Node ID mismatch: path={}, handshake={}",
-                connecting_node_id, handshake.node_id
+        // Send challenge as binary WebSocket message
+        if let Err(e) = ws_sender
+            .send(TungsteniteMessage::Binary(challenge_request.to_vec()))
+            .await
+        {
+            self.verifier.remove_connection(&connection_id).await;
+            return Err(NetworkError::SendFailed(format!(
+                "Failed to send verification challenge: {}",
+                e
             )));
         }
 
-        // Verify attestation
-        let authorized = state
-            .attestation_verifier
-            .authorize_peer(handshake.attestation.clone())
-            .await?;
+        // Handle verification messages until verification completes
+        loop {
+            let message_result = ws_receiver.next().await;
 
-        // Generate response
-        let response = if authorized {
-            // Generate our attestation for the response
-            let our_attestation = state
-                .attestation_verifier
-                .generate_peer_attestation(None)
-                .await
-                .ok(); // Optional - we might not have attestation ready
+            match message_result {
+                Some(Ok(TungsteniteMessage::Binary(data))) => {
+                    let bytes = Bytes::from(data);
 
-            WebSocketHandshakeResponse {
-                accepted: true,
-                error: None,
-                attestation: our_attestation,
+                    // Process verification message
+                    match self
+                        .verifier
+                        .process_verification_message(connection_id.clone(), bytes)
+                        .await
+                    {
+                        Ok(Some(response_data)) => {
+                            // Send verification response
+                            if let Err(e) = ws_sender
+                                .send(TungsteniteMessage::Binary(response_data.to_vec()))
+                                .await
+                            {
+                                warn!("Failed to send verification response: {}", e);
+                                self.verifier.remove_connection(&connection_id).await;
+                                return Err(NetworkError::SendFailed(format!(
+                                    "Failed to send verification response: {}",
+                                    e
+                                )));
+                            }
+                        }
+                        Ok(None) => {
+                            // No response needed, continue verification
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Verification failed for outgoing WebSocket connection {}: {}",
+                                connection_id, e
+                            );
+                            self.verifier.remove_connection(&connection_id).await;
+                            return Err(NetworkError::ConnectionFailed(format!(
+                                "Verification failed: {}",
+                                e
+                            )));
+                        }
+                    }
+
+                    // Check if verification is complete
+                    if self.verifier.is_connection_verified(&connection_id).await {
+                        if let Some(verified_public_key) =
+                            self.verifier.get_verified_public_key(&connection_id).await
+                        {
+                            // Verify the public key matches what we expected
+                            if verified_public_key != expected_node_id {
+                                warn!(
+                                    "Verified public key {} does not match expected {}",
+                                    &verified_public_key, &expected_node_id
+                                );
+                                self.verifier.remove_connection(&connection_id).await;
+                                return Err(NetworkError::ConnectionFailed(
+                                    "Public key mismatch during verification".to_string(),
+                                ));
+                            }
+
+                            info!(
+                                "Outgoing WebSocket connection {} verified with public key {}",
+                                connection_id, &verified_public_key
+                            );
+
+                            // Recreate the WebSocket stream from the split parts
+                            let ws_stream = ws_sender.reunite(ws_receiver).map_err(|e| {
+                                NetworkError::ConnectionFailed(format!(
+                                    "Failed to reunite WebSocket stream: {}",
+                                    e
+                                ))
+                            })?;
+
+                            // Store the connection with verified public key
+                            self.store_verified_websocket_connection(
+                                ws_stream,
+                                verified_public_key.clone(),
+                            )
+                            .await?;
+
+                            // Clean up verifier state
+                            self.verifier.remove_connection(&connection_id).await;
+
+                            return Ok(());
+                        }
+                    }
+                }
+                Some(Ok(TungsteniteMessage::Close(_))) => {
+                    self.verifier.remove_connection(&connection_id).await;
+                    return Err(NetworkError::ConnectionFailed(
+                        "Connection closed during verification".to_string(),
+                    ));
+                }
+                Some(Ok(_)) => {
+                    // Ignore other message types during verification
+                }
+                Some(Err(e)) => {
+                    warn!("WebSocket error during verification: {}", e);
+                    self.verifier.remove_connection(&connection_id).await;
+                    return Err(NetworkError::ConnectionFailed(format!(
+                        "WebSocket error during verification: {}",
+                        e
+                    )));
+                }
+                None => {
+                    self.verifier.remove_connection(&connection_id).await;
+                    return Err(NetworkError::ConnectionFailed(
+                        "Connection stream ended during verification".to_string(),
+                    ));
+                }
             }
+        }
+    }
+
+    /// Store a verified WebSocket connection and start message handling
+    async fn store_verified_websocket_connection(
+        &self,
+        ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+        verified_public_key: NodeId,
+    ) -> NetworkResult<()> {
+        // Split the WebSocket stream
+        let (ws_sender, ws_receiver) = ws_stream.split();
+
+        // Create channel for sending messages to this peer
+        let (tx, rx) = mpsc::unbounded_channel();
+
+        // Store the sender in connections
+        self.outgoing_peers.write().insert(
+            verified_public_key.clone(),
+            WebSocketPeerConnection {
+                node_id: verified_public_key.clone(),
+                connected: true,
+                last_activity: SystemTime::now(),
+                connection: tx.clone(),
+            },
+        );
+
+        // Get message handler and set up bidirectional message handling
+        let message_handler = self.message_handler.lock().unwrap().clone();
+
+        // If we have a message handler, start message handling
+        if let Some(message_handler) = message_handler {
+            // Start message handling tasks
+            let peers = self.outgoing_peers.clone();
+
+            let verified_public_key_clone = verified_public_key.clone();
+            let handle = tokio::spawn(async move {
+                Self::handle_outgoing_websocket_messages(
+                    ws_sender,
+                    ws_receiver,
+                    verified_public_key_clone,
+                    rx,
+                    peers,
+                    message_handler,
+                )
+                .await;
+            });
+
+            // Store task handle for cleanup
+            self.task_handles.lock().unwrap().push(handle);
         } else {
-            WebSocketHandshakeResponse {
-                accepted: false,
-                error: Some("Attestation verification failed".to_string()),
-                attestation: None,
-            }
-        };
+            warn!(
+                "No message handler available for outgoing WebSocket connection to {}. Messages can only be sent, not received.",
+                &verified_public_key
+            );
+        }
 
-        // Serialize and sign response
-        let mut response_data = Vec::new();
-        ciborium::ser::into_writer(&response, &mut response_data).map_err(|e| {
-            ConsensusError::InvalidMessage(format!("Response serialize failed: {e}"))
+        Ok(())
+    }
+
+    /// Handle messages for outgoing WebSocket connections (using tokio-tungstenite types)
+    async fn handle_outgoing_websocket_messages(
+        mut sender: futures::stream::SplitSink<
+            WebSocketStream<MaybeTlsStream<TcpStream>>,
+            TungsteniteMessage,
+        >,
+        mut receiver: futures::stream::SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+        verified_node_id: NodeId,
+        mut outgoing_rx: mpsc::UnboundedReceiver<Message>,
+        peers: Arc<RwLock<HashMap<NodeId, WebSocketPeerConnection>>>,
+        message_handler: MessageHandler,
+    ) {
+        use futures::FutureExt;
+
+        loop {
+            tokio::select! {
+                // Handle outgoing messages from our internal channel
+                outgoing_msg = outgoing_rx.recv() => {
+                    match outgoing_msg {
+                        Some(msg) => {
+                            // Convert axum Message to tungstenite Message
+                            let tungstenite_msg = match msg {
+                                Message::Binary(data) => TungsteniteMessage::Binary(data.to_vec()),
+                                Message::Text(text) => TungsteniteMessage::Text(text.to_string()),
+                                Message::Close(frame) => {
+                                    if let Some(frame) = frame {
+                                        TungsteniteMessage::Close(Some(tokio_tungstenite::tungstenite::protocol::CloseFrame {
+                                            code: tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode::from(frame.code),
+                                            reason: frame.reason.to_string().into(),
+                                        }))
+                                    } else {
+                                        TungsteniteMessage::Close(None)
+                                    }
+                                }
+                                _ => continue, // Skip other message types
+                            };
+
+                            if (sender.send(tungstenite_msg).await).is_err() {
+                                break;
+                            }
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                }
+
+                // Handle incoming messages from the WebSocket
+                incoming_msg = receiver.next().fuse() => {
+                    match incoming_msg {
+                        Some(Ok(TungsteniteMessage::Binary(data))) => {
+                            // Update last activity
+                            if let Some(peer) = peers.write().get_mut(&verified_node_id) {
+                                peer.last_activity = SystemTime::now();
+                            }
+
+                            // Forward raw bytes to message handler
+                            message_handler(verified_node_id.clone(), Bytes::from(data));
+                        }
+                        Some(Ok(TungsteniteMessage::Close(_))) => {
+                            break;
+                        }
+                        Some(Ok(_)) => {
+                            // Ignore other message types (text, ping, pong)
+                        }
+                        Some(Err(e)) => {
+                            warn!("WebSocket error from peer {}: {}", verified_node_id, e);
+                            break;
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Cleanup when connection ends
+        peers.write().remove(&verified_node_id);
+        if let Some(peer) = peers.write().get_mut(&verified_node_id) {
+            peer.connected = false;
+        }
+    }
+
+    async fn start_internal(&self, message_handler: MessageHandler) -> NetworkResult<()> {
+        info!("WebSocket transport ready for HTTP integration");
+
+        // Store the message handler
+        *self.message_handler.lock().unwrap() = Some(message_handler.clone());
+
+        let (shutdown_tx, _) = broadcast::channel(1);
+        *self.shutdown_tx.lock().unwrap() = Some(shutdown_tx);
+
+        Ok(())
+    }
+
+    /// Establish an on-demand WebSocket connection to a peer
+    /// This creates a WebSocket connection via HTTP upgrade to the peer's origin
+    pub async fn establish_connection_on_demand(&self, node: &GovernanceNode) -> NetworkResult<()> {
+        let node_id = NodeId::new(node.public_key);
+
+        // Check if connection already exists
+        {
+            let outgoing_peers = self.outgoing_peers.read();
+            if outgoing_peers.contains_key(&node_id) {
+                return Ok(());
+            }
+        }
+
+        // Parse the origin URL and convert http/https to ws/wss
+        let mut url = Url::parse(&node.origin).map_err(|e| {
+            NetworkError::ConnectionFailed(format!("Invalid origin URL '{}': {}", node.origin, e))
         })?;
 
-        let response_payload = crate::cose::MessagePayload::handshake_message(
-            Bytes::from(response_data),
-            state.node_id.clone(),
-        );
+        // Convert HTTP schemes to WebSocket schemes
+        let current_scheme = url.scheme().to_string();
+        let ws_scheme = match current_scheme.as_str() {
+            "http" => "ws",
+            "https" => "wss",
+            "ws" | "wss" => &current_scheme, // Already a WebSocket URL
+            scheme => {
+                return Err(NetworkError::ConnectionFailed(format!(
+                    "Unsupported scheme '{}' in origin '{}'. Expected http, https, ws, or wss",
+                    scheme, node.origin
+                )));
+            }
+        };
 
-        let cose_response = state
-            .cose_handler
-            .create_signed_message(&response_payload, None)
-            .map_err(|e| ConsensusError::InvalidMessage(format!("COSE signing failed: {e}")))?;
-
-        let cose_response_bytes = state
-            .cose_handler
-            .serialize_cose_message(&cose_response)
-            .map_err(|e| {
-                ConsensusError::InvalidMessage(format!("COSE serialization failed: {e}"))
-            })?;
-
-        // Send response
-        if let Err(e) = sender
-            .send(Message::Binary(Bytes::from(cose_response_bytes)))
-            .await
-        {
-            return Err(ConsensusError::Network(
-                format!("Failed to send handshake response: {e}").into(),
-            ));
-        }
-
-        if authorized {
-            debug!("Handshake successful with peer {}", handshake.node_id);
-            Ok(handshake.node_id)
-        } else {
-            Err(ConsensusError::AttestationFailure(
-                "Peer not authorized".to_string(),
+        url.set_scheme(ws_scheme).map_err(|_| {
+            NetworkError::ConnectionFailed(format!(
+                "Failed to set WebSocket scheme for origin '{}'",
+                node.origin
             ))
-        }
-    }
+        })?;
 
-    /// Process a COSE-signed message from a peer
-    async fn process_peer_message(
-        peer_node_id: &str,
-        data: Bytes,
-        state: &WebSocketServerState<G, A>,
-    ) -> Result<(), ConsensusError> {
-        if data.len() > MAX_MESSAGE_SIZE {
-            return Err(ConsensusError::InvalidMessage("Message too large".into()));
-        }
+        // Add the WebSocket endpoint path with node ID
+        // Ensure no double slashes by trimming trailing slash from URL
+        let base_url = url.as_str().trim_end_matches('/');
+        let ws_url = format!("{}/consensus/ws/{}", base_url, node_id.to_hex());
 
-        // First, try to parse as COSE-signed message (for cluster discovery)
-        if let Some(consensus_message) =
-            Self::try_parse_cose_message(&data, peer_node_id, state).await
-        {
-            // Handle cluster discovery messages specially
-            if let ConsensusMessage::ClusterDiscoveryResponse(response) = &consensus_message {
-                if let Ok(discovery_tx) = state.discovery_response_tx.lock() {
-                    if let Some(tx) = discovery_tx.as_ref() {
-                        let _ = tx.send(response.clone());
-                        return Ok(());
-                    }
-                }
+        // Connect with timeout
+        let connect_result = tokio::time::timeout(CONNECTION_TIMEOUT, connect_async(&ws_url)).await;
+
+        let (ws_stream, _response) = match connect_result {
+            Ok(Ok((stream, response))) => (stream, response),
+            Ok(Err(e)) => {
+                return Err(NetworkError::ConnectionFailed(format!(
+                    "WebSocket connection failed to {}: {}",
+                    ws_url, e
+                )));
             }
-
-            // Send to consensus protocol
-            if let Err(e) = state
-                .consensus_tx
-                .send((peer_node_id.to_string(), consensus_message))
-            {
-                error!("Failed to send message to consensus: {}", e);
-            }
-            return Ok(());
-        }
-
-        // If not COSE-signed, try to parse as regular WebSocket message
-        let ws_message: WebSocketMessage = ciborium::from_reader(&data[..])
-            .map_err(|e| ConsensusError::InvalidMessage(format!("CBOR deserialize: {e}")))?;
-
-        // Verify sender ID matches peer
-        if ws_message.sender_id != peer_node_id {
-            return Err(ConsensusError::InvalidMessage(format!(
-                "Sender ID mismatch: expected {}, got {}",
-                peer_node_id, ws_message.sender_id
-            )));
-        }
-
-        // Handle special messages
-        match &ws_message.message {
-            ConsensusMessage::ClusterDiscovery(request) => {
-                // Respond to cluster discovery request
-                Self::handle_cluster_discovery_request(peer_node_id, request, state).await;
-                Ok(())
-            }
-            ConsensusMessage::ClusterDiscoveryResponse(response) => {
-                // Forward to discovery response collector
-                if let Ok(discovery_tx) = state.discovery_response_tx.lock() {
-                    if let Some(tx) = discovery_tx.as_ref() {
-                        let _ = tx.send(response.clone());
-                    }
-                }
-                Ok(())
-            }
-            _ => {
-                // Send other messages to consensus protocol
-                if let Err(e) = state
-                    .consensus_tx
-                    .send((peer_node_id.to_string(), ws_message.message))
-                {
-                    error!("Failed to send message to consensus: {}", e);
-                }
-                Ok(())
-            }
-        }
-    }
-
-    /// Handle cluster discovery request by sending a COSE-signed response
-    async fn handle_cluster_discovery_request(
-        peer_node_id: &str,
-        _request: &ClusterDiscoveryRequest,
-        state: &WebSocketServerState<G, A>,
-    ) {
-        debug!(
-            "Received cluster discovery request from {}, sending response",
-            peer_node_id
-        );
-
-        // Create discovery response (similar to TCP implementation)
-        let discovery_response = ClusterDiscoveryResponse {
-            responder_id: state.node_id.clone(),
-            has_active_cluster: true, // Report active cluster when node is running
-            current_term: Some(1),    // Basic term for bootstrap
-            current_leader: Some(state.node_id.clone()), // This node claims to be leader
-            cluster_size: Some(1),    // Start with 1, will grow as nodes join
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        };
-
-        // Serialize response
-        let mut response_data = Vec::new();
-        if ciborium::ser::into_writer(&discovery_response, &mut response_data).is_err() {
-            warn!("Failed to serialize cluster discovery response");
-            return;
-        }
-
-        // Create COSE-signed message
-        let message_payload = crate::cose::MessagePayload::new(
-            Bytes::from(response_data),
-            state.node_id.clone(),
-            "cluster_discovery_response".to_string(),
-        );
-
-        let cose_message = match state
-            .cose_handler
-            .create_signed_message(&message_payload, None)
-        {
-            Ok(msg) => msg,
-            Err(e) => {
-                warn!("Failed to create COSE message: {}", e);
-                return;
+            Err(_) => {
+                return Err(NetworkError::Timeout(format!(
+                    "WebSocket connection timeout to {}",
+                    ws_url
+                )));
             }
         };
 
-        let cose_data = match state.cose_handler.serialize_cose_message(&cose_message) {
-            Ok(data) => data,
-            Err(e) => {
-                warn!("Failed to serialize COSE message: {}", e);
-                return;
-            }
-        };
+        // Handle outgoing verification handshake
+        let connection_id = format!("ws-outgoing-{}", node_id);
+        self.handle_outgoing_websocket_verification(ws_stream, connection_id, node_id)
+            .await?;
 
-        // Send response to peer
-        let peers_read = state.peers.read().await;
-        if let Some(peer) = peers_read.get(peer_node_id) {
-            if let Err(e) = peer.sender.send(cose_data.into()) {
-                warn!(
-                    "Failed to send discovery response to {}: {}",
-                    peer_node_id, e
-                );
-            } else {
-                debug!("Sent cluster discovery response to {}", peer_node_id);
-            }
-        }
+        Ok(())
     }
-
-    /// Try to parse a COSE-signed message (for cluster discovery)
-    async fn try_parse_cose_message(
-        data: &Bytes,
-        peer_node_id: &str,
-        state: &WebSocketServerState<G, A>,
-    ) -> Option<ConsensusMessage> {
-        // Try to deserialize as COSE message
-        let Ok(cose_message) = state.cose_handler.deserialize_cose_message(data) else {
-            return None; // Not a COSE message
-        };
-
-        // Verify the COSE signature
-        let payload = match state
-            .cose_handler
-            .verify_signed_message(&cose_message)
-            .await
-        {
-            Ok(payload) => payload,
-            Err(e) => {
-                warn!(
-                    "COSE verification failed for message from {}: {}",
-                    peer_node_id, e
-                );
-                return None;
-            }
-        };
-
-        // Parse based on message type
-        match payload.message_type.as_str() {
-            "cluster_discovery" => {
-                match ciborium::de::from_reader::<ClusterDiscoveryRequest, _>(payload.data.as_ref())
-                {
-                    Ok(discovery_request) => {
-                        debug!(
-                            "Received COSE-signed cluster discovery request from {}",
-                            peer_node_id
-                        );
-                        Some(ConsensusMessage::ClusterDiscovery(discovery_request))
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to deserialize cluster discovery request from {}: {}",
-                            peer_node_id, e
-                        );
-                        None
-                    }
-                }
-            }
-            "cluster_discovery_response" => {
-                match ciborium::de::from_reader::<ClusterDiscoveryResponse, _>(
-                    payload.data.as_ref(),
-                ) {
-                    Ok(discovery_response) => {
-                        debug!(
-                            "Received COSE-signed cluster discovery response from {}",
-                            peer_node_id
-                        );
-                        Some(ConsensusMessage::ClusterDiscoveryResponse(
-                            discovery_response,
-                        ))
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to deserialize cluster discovery response from {}: {}",
-                            peer_node_id, e
-                        );
-                        None
-                    }
-                }
-            }
-            "consensus_message" => {
-                match ciborium::de::from_reader::<ConsensusMessage, _>(payload.data.as_ref()) {
-                    Ok(consensus_message) => {
-                        debug!(
-                            "Received COSE-signed consensus message from {}",
-                            peer_node_id
-                        );
-                        Some(consensus_message)
-                    }
-                    Err(e) => {
-                        warn!(
-                            "Failed to deserialize consensus message from {}: {}",
-                            peer_node_id, e
-                        );
-                        None
-                    }
-                }
-            }
-            _ => {
-                debug!("Unknown COSE message type: {}", payload.message_type);
-                None
-            }
-        }
-    }
-}
-
-/// WebSocket handler for incoming consensus connections
-async fn ws_consensus_handler<G, A>(
-    Path(connecting_node_id): Path<String>,
-    State(state): State<WebSocketServerState<G, A>>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    ws: WebSocketUpgrade,
-) -> impl IntoResponse
-where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
-{
-    ws.on_upgrade(move |socket| handle_incoming_websocket(socket, connecting_node_id, addr, state))
-}
-
-/// Handle an incoming WebSocket connection with secure handshake
-async fn handle_incoming_websocket<G, A>(
-    socket: WebSocket,
-    connecting_node_id: String,
-    addr: SocketAddr,
-    state: WebSocketServerState<G, A>,
-) where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
-{
-    info!(
-        "Incoming WebSocket connection from {} at {}",
-        connecting_node_id, addr
-    );
-
-    let (mut sender, mut receiver) = socket.split();
-
-    // Perform secure handshake
-    let authenticated_node_id = match WebSocketTransport::<G, A>::perform_handshake(
-        &mut sender,
-        &mut receiver,
-        &connecting_node_id,
-        &state,
-    )
-    .await
-    {
-        Ok(node_id) => {
-            info!("Handshake successful with peer {} from {}", node_id, addr);
-            node_id
-        }
-        Err(e) => {
-            warn!(
-                "Handshake failed with {} from {}: {}",
-                connecting_node_id, addr, e
-            );
-            return;
-        }
-    };
-
-    let (tx, mut rx) = mpsc::unbounded_channel::<Bytes>();
-
-    // Create authenticated peer entry
-    let peer = WebSocketPeer {
-        node_id: authenticated_node_id.clone(),
-        address: addr,
-        sender: tx,
-        attestation_verified: true, // Verified during handshake
-        last_activity: SystemTime::now(),
-    };
-
-    // Add to peers map
-    state
-        .peers
-        .write()
-        .await
-        .insert(authenticated_node_id.clone(), peer);
-
-    // Spawn sender task
-    let peer_node_id_clone = authenticated_node_id.clone();
-    let mut send_task = tokio::spawn(async move {
-        while let Some(data) = rx.recv().await {
-            match sender.send(Message::Binary(data)).await {
-                Ok(()) => {}
-                Err(e) => {
-                    error!("Error sending to peer {}: {}", peer_node_id_clone, e);
-                    break;
-                }
-            }
-        }
-    });
-
-    // Spawn receiver task
-    let peer_node_id_clone = authenticated_node_id.clone();
-    let state_clone = state.clone();
-    let mut recv_task = tokio::spawn(async move {
-        while let Some(Ok(message)) = receiver.next().await {
-            match message {
-                Message::Binary(data) => {
-                    if let Err(e) = WebSocketTransport::<G, A>::process_peer_message(
-                        &peer_node_id_clone,
-                        data,
-                        &state_clone,
-                    )
-                    .await
-                    {
-                        error!(
-                            "Error processing message from {}: {}",
-                            peer_node_id_clone, e
-                        );
-                    }
-                }
-                Message::Close(_) => {
-                    info!("Peer {} closed connection", peer_node_id_clone);
-                    break;
-                }
-                _ => {} // Ignore other message types
-            }
-        }
-    });
-
-    // Wait for either task to complete
-    tokio::select! {
-        _ = (&mut send_task) => {
-            recv_task.abort();
-        },
-        _ = (&mut recv_task) => {
-            send_task.abort();
-        }
-    }
-
-    // Remove peer from map
-    state.peers.write().await.remove(&authenticated_node_id);
-    info!("Disconnected from peer {}", authenticated_node_id);
 }
 
 #[async_trait]
-impl<G, A> ConsensusTransport for WebSocketTransport<G, A>
+impl<G> NetworkTransport for WebSocketTransport<G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    G: proven_governance::Governance + Send + Sync + 'static,
 {
-    async fn send_message(
-        &self,
-        target_node_id: &str,
-        message: ConsensusMessage,
-    ) -> Result<(), ConsensusError> {
-        // Find the peer and send the message directly
-        let peers_read = self.state.peers.read().await;
-        if let Some(peer) = peers_read.get(target_node_id) {
-            // Use COSE signing for cluster discovery messages
-            let message_data = match &message {
-                ConsensusMessage::ClusterDiscovery(_)
-                | ConsensusMessage::ClusterDiscoveryResponse(_) => {
-                    // Serialize message for COSE signing
-                    let mut message_payload = Vec::new();
-                    ciborium::ser::into_writer(&message, &mut message_payload).map_err(|e| {
-                        ConsensusError::InvalidMessage(format!("Failed to serialize message: {e}"))
-                    })?;
+    async fn send_bytes(&self, target_node_id: &NodeId, data: Bytes) -> NetworkResult<()> {
+        // For unidirectional connections, we only send via outgoing connections
+        // If no outgoing connection exists, establish one on-demand
 
-                    // Create COSE message payload
-                    let payload = match &message {
-                        ConsensusMessage::ClusterDiscovery(_) => crate::cose::MessagePayload::new(
-                            Bytes::from(message_payload),
-                            self.node_id.clone(),
-                            "cluster_discovery".to_string(),
-                        ),
-                        ConsensusMessage::ClusterDiscoveryResponse(_) => {
-                            crate::cose::MessagePayload::new(
-                                Bytes::from(message_payload),
-                                self.node_id.clone(),
-                                "cluster_discovery_response".to_string(),
-                            )
-                        }
-                        _ => unreachable!(), // We already matched these above
-                    };
-
-                    // Sign with COSE
-                    let cose_message = self
-                        .state
-                        .cose_handler
-                        .create_signed_message(&payload, None)
-                        .map_err(|e| {
-                            ConsensusError::InvalidMessage(format!("COSE signing failed: {e}"))
-                        })?;
-
-                    // Serialize COSE message
-                    self.state
-                        .cose_handler
-                        .serialize_cose_message(&cose_message)
-                        .map_err(|e| {
-                            ConsensusError::InvalidMessage(format!(
-                                "COSE serialization failed: {e}"
-                            ))
-                        })?
-                }
-                _ => {
-                    // Use regular WebSocket message for other message types
-                    let ws_message = WebSocketMessage {
-                        id: Uuid::new_v4(),
-                        message,
-                        timestamp: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
-                        sender_id: self.node_id.clone(),
-                    };
-
-                    let mut serialized = Vec::new();
-                    ciborium::into_writer(&ws_message, &mut serialized).map_err(|e| {
-                        ConsensusError::InvalidMessage(format!("Failed to serialize message: {e}"))
-                    })?;
-                    serialized
-                }
-            };
-
-            peer.sender.send(Bytes::from(message_data)).map_err(|e| {
-                ConsensusError::Network(
-                    format!("Failed to send to peer {target_node_id}: {e}").into(),
-                )
-            })?;
-
-            Ok(())
-        } else {
-            Err(ConsensusError::Network(
-                format!("Peer {target_node_id} not connected").into(),
-            ))
+        // First try to find existing outgoing connection
+        {
+            let outgoing_peers = self.outgoing_peers.read();
+            if let Some(peer) = outgoing_peers.get(target_node_id) {
+                let message = Message::Binary(data);
+                return peer
+                    .connection
+                    .send(message)
+                    .map_err(|_| NetworkError::SendFailed("WebSocket send failed".to_string()));
+            }
         }
-    }
 
-    fn get_message_sender(&self) -> mpsc::UnboundedSender<(String, ConsensusMessage)> {
-        self.state.consensus_tx.clone()
-    }
-
-    async fn get_connected_peers(&self) -> Result<Vec<PeerConnection>, ConsensusError> {
-        let connected_peers = self
-            .state
-            .peers
-            .read()
+        // No existing connection - look up peer in topology and establish connection on-demand
+        if let Some(governance_node) = self
+            .topology_manager
+            .get_peer_by_node_id(target_node_id)
             .await
-            .values()
-            .map(|peer| PeerConnection {
-                address: peer.address,
-                attestation_verified: peer.attestation_verified,
-                connected: true,
-                last_activity: peer.last_activity,
-                node_id: peer.node_id.clone(),
-            })
-            .collect();
-        Ok(connected_peers)
+        {
+            // Try to establish connection
+            self.establish_connection_on_demand(&governance_node)
+                .await?;
+
+            // Now try to send again
+            let outgoing_peers = self.outgoing_peers.read();
+            if let Some(peer) = outgoing_peers.get(target_node_id) {
+                let message = Message::Binary(data);
+                return peer
+                    .connection
+                    .send(message)
+                    .map_err(|_| NetworkError::SendFailed("WebSocket send failed".to_string()));
+            }
+        }
+
+        // Still no connection available
+        Err(NetworkError::PeerNotConnected)
     }
 
-    async fn start(&self) -> Result<(), ConsensusError> {
-        info!(
-            "Starting WebSocket consensus transport on {}",
-            self.listen_addr
-        );
+    async fn start_listener(&self, message_handler: MessageHandler) -> NetworkResult<()> {
+        // Store the message handler for outgoing connections
+        *self.message_handler.lock().unwrap() = Some(message_handler.clone());
 
-        // This is a placeholder - in the actual implementation, this would be integrated
-        // into the core module's HTTP server rather than starting its own server
-        Ok(())
+        self.start_internal(message_handler).await
     }
 
-    async fn shutdown(&self) -> Result<(), ConsensusError> {
-        // Send shutdown signal
-        let value = self.shutdown_tx.lock().unwrap().take();
-        if let Some(shutdown_tx) = value {
+    async fn shutdown(&self) -> NetworkResult<()> {
+        info!("Shutting down WebSocket transport");
+
+        // Signal shutdown
+        let shutdown_tx = self.shutdown_tx.lock().unwrap().take();
+        if let Some(shutdown_tx) = shutdown_tx {
             let _ = shutdown_tx.send(());
         }
 
-        // Wait for all tasks to complete
+        // Wait for background tasks to complete
         let handles = {
-            let mut handles_lock = self.task_handles.lock().unwrap();
-            std::mem::take(&mut *handles_lock)
+            let mut task_handles = self.task_handles.lock().unwrap();
+            std::mem::take(&mut *task_handles)
         };
 
         for handle in handles {
-            handle.abort();
+            if !handle.is_finished() {
+                handle.abort();
+            }
         }
 
-        info!("WebSocket transport shutdown complete");
         Ok(())
     }
 
-    async fn discover_existing_clusters(
-        &self,
-    ) -> Result<Vec<ClusterDiscoveryResponse>, ConsensusError> {
-        let (tx, mut rx) = mpsc::unbounded_channel();
+    async fn get_connected_peers(&self) -> NetworkResult<Vec<(NodeId, bool, SystemTime)>> {
+        let mut connected_peers = Vec::new();
 
-        // Set the discovery response channel
-        {
-            let mut discovery_tx = self.state.discovery_response_tx.lock().unwrap();
-            *discovery_tx = Some(tx);
+        // Add outgoing connections
+        let outgoing_peers = self.outgoing_peers.read();
+        for peer in outgoing_peers.values() {
+            if peer.connected {
+                connected_peers.push((peer.node_id.clone(), peer.connected, peer.last_activity));
+            }
         }
+        drop(outgoing_peers);
 
-        let discovery_request = ClusterDiscoveryRequest {
-            requester_id: self.node_id.clone(),
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        };
-
-        // Send discovery requests to connected peers
-        let peers = self.state.peers.read().await;
-        for peer_id in peers.keys() {
-            if peer_id != &self.node_id {
-                if let Err(e) = self
-                    .send_message(
-                        peer_id,
-                        ConsensusMessage::ClusterDiscovery(discovery_request.clone()),
-                    )
-                    .await
+        // Add incoming connections (avoid duplicates)
+        let incoming_peers = self.incoming_peers.read();
+        for peer in incoming_peers.values() {
+            if peer.connected {
+                // Check if we already have this peer from outgoing connections
+                if !connected_peers
+                    .iter()
+                    .any(|(node_id, _, _)| node_id == &peer.node_id)
                 {
-                    warn!("Failed to send discovery request to {}: {}", peer_id, e);
+                    connected_peers.push((
+                        peer.node_id.clone(),
+                        peer.connected,
+                        peer.last_activity,
+                    ));
                 }
             }
         }
-        drop(peers);
 
-        // Collect responses with timeout
-        let mut responses = Vec::new();
-        let timeout_duration = Duration::from_secs(10);
-        let deadline = tokio::time::Instant::now() + timeout_duration;
-
-        while tokio::time::Instant::now() < deadline {
-            match tokio::time::timeout(Duration::from_millis(100), rx.recv()).await {
-                Ok(Some(response)) => responses.push(response),
-                Ok(None) => break,
-                Err(_) => {} // Timeout, continue collecting
-            }
-        }
-
-        // Clear the discovery response channel
-        {
-            let mut discovery_tx = self.state.discovery_response_tx.lock().unwrap();
-            *discovery_tx = None;
-        }
-
-        Ok(responses)
+        Ok(connected_peers)
     }
 
-    fn local_address(&self) -> Option<SocketAddr> {
-        Some(self.listen_addr)
-    }
-
-    fn create_router(&self) -> Router {
-        // Create a stateless router by using with_state() which consumes the state type
-        let stateful_router = Router::new()
-            .route("/consensus/:node_id", get(ws_consensus_handler))
-            .with_state(self.state.clone());
-
-        // Convert to stateless router
-        Router::new().nest("/", stateful_router)
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
-impl<G, A> Debug for WebSocketTransport<G, A>
+impl<G> HttpIntegratedTransport for WebSocketTransport<G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
+    G: proven_governance::Governance + Send + Sync + 'static,
 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "WebSocketTransport")
+    fn websocket_endpoint(&self) -> &'static str {
+        "/consensus/ws/{node_id}"
+    }
+
+    fn create_router_integration(&self) -> NetworkResult<Router> {
+        let message_handler = self
+            .message_handler
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| {
+                NetworkError::TransportNotSupported(
+                    "Message handler not set - call start_listener first".to_string(),
+                )
+            })?;
+
+        let incoming_peers = self.incoming_peers.clone();
+        let verifier = self.verifier.clone();
+
+        let router = Router::new().route(
+            "/consensus/ws/{node_id}",
+            get(move |ws, path| {
+                Self::handle_websocket_upgrade(ws, path, incoming_peers, verifier, message_handler)
+            }),
+        );
+
+        Ok(router)
     }
 }

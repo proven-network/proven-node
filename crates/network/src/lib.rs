@@ -200,7 +200,7 @@ where
         // Filter out self
         Ok(all_nodes
             .into_iter()
-            .filter(|node| node.public_key != hex::encode(self.public_key.as_bytes()))
+            .filter(|node| node.public_key != self.public_key)
             .map(|node| Peer::new(node, active_versions.clone(), self.attestor.clone()))
             .collect())
     }
@@ -313,7 +313,7 @@ where
 
         let node = topology
             .iter()
-            .find(|n| n.public_key == hex::encode(self.public_key.as_bytes()))
+            .find(|n| n.public_key == self.public_key)
             .ok_or_else(|| {
                 Error::NodeNotFound(format!(
                     "Node with public key {} not found in topology",
@@ -374,7 +374,7 @@ mod tests {
     use std::collections::HashSet;
 
     use proven_attestation_mock::MockAttestor;
-    use proven_governance::TopologyNode;
+    use proven_governance::GovernanceNode;
     use proven_governance_mock::MockGovernance;
 
     use super::*;
@@ -386,19 +386,26 @@ mod tests {
         // Public key is derived from private key (known derivation for the test key)
         let public_key_hex = "4cb5abf6ad79fbf5abbccafcc269d85cd2651ed4b885b5869f241aedf0a5ba29";
 
+        let public_key =
+            VerifyingKey::from_bytes(&hex::decode(public_key_hex).unwrap().try_into().unwrap())
+                .unwrap();
+
         // Create nodes
-        let node1 = TopologyNode {
+        let node1 = GovernanceNode {
             availability_zone: "az1".to_string(),
             origin: "http://node1.example.com".to_string(),
-            public_key: public_key_hex.to_string(),
+            public_key,
             region: "region1".to_string(),
             specializations: HashSet::new(),
         };
 
-        let node2 = TopologyNode {
+        let node2 = GovernanceNode {
             availability_zone: "az2".to_string(),
             origin: "http://node2.example.com".to_string(),
-            public_key: "other_key".to_string(),
+            public_key: VerifyingKey::from_bytes(
+                &hex::decode("other_key").unwrap().try_into().unwrap(),
+            )
+            .unwrap(),
             region: "region2".to_string(),
             specializations: HashSet::new(),
         };
@@ -428,14 +435,11 @@ mod tests {
 
         // Test get_self
         let self_node = network.get_self().await.unwrap();
-        assert_eq!(
-            self_node.public_key(),
-            hex::encode(network.public_key().as_bytes())
-        );
+        assert_eq!(self_node.public_key(), network.public_key());
 
         // Test get_peers
         let peers = network.get_peers().await.unwrap();
         assert_eq!(peers.len(), 1);
-        assert_eq!(peers[0].public_key(), "other_key");
+        assert_eq!(peers[0].public_key(), network.public_key());
     }
 }

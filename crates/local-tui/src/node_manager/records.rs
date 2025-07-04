@@ -7,7 +7,7 @@ use crate::node_id::NodeId;
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
 use parking_lot::RwLock;
-use proven_governance::TopologyNode;
+use proven_governance::GovernanceNode;
 use proven_governance_mock::MockGovernance;
 use proven_local::{Node, NodeStatus};
 use std::collections::HashSet;
@@ -331,10 +331,10 @@ impl NodeHandle {
 
         let node_specializations = specializations.unwrap_or_default();
 
-        let topology_node = TopologyNode {
+        let topology_node = GovernanceNode {
             availability_zone: "local".to_string(),
             origin,
-            public_key: hex::encode(public_key.to_bytes()),
+            public_key,
             region: "local".to_string(),
             specializations: node_specializations,
         };
@@ -398,8 +398,8 @@ impl NodeHandle {
             }
 
             // Remove from governance before stopping
-            let public_key = hex::encode(node.config().node_key.verifying_key().to_bytes());
-            if let Err(e) = governance.remove_node(&public_key) {
+            let public_key = node.config().node_key.verifying_key();
+            if let Err(e) = governance.remove_node(public_key) {
                 warn!("Failed to remove node {} from governance: {}", id, e);
             }
 

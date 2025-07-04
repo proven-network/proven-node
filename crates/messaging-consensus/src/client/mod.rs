@@ -4,17 +4,16 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use tokio::sync::{oneshot, Mutex as TokioMutex};
+use tokio::sync::{Mutex as TokioMutex, oneshot};
 use tokio::time::timeout;
 use tracing::{debug, warn};
 
 use proven_attestation::Attestor;
-use proven_consensus::transport::ConsensusTransport;
 use proven_governance::Governance;
 use proven_messaging::client::{Client, ClientError, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
@@ -52,11 +51,10 @@ impl ClientError for ConsensusClientError {}
 
 /// A consensus client.
 #[derive(Debug)]
-pub struct ConsensusClient<G, A, C, X, T, D, S>
+pub struct ConsensusClient<G, A, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -69,7 +67,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    stream: InitializedConsensusStream<G, A, C, T, D, S>,
+    stream: InitializedConsensusStream<G, A, T, D, S>,
     options: ConsensusClientOptions,
     /// Counter for generating unique request IDs
     request_id_counter: Arc<AtomicUsize>,
@@ -80,11 +78,10 @@ where
     _marker: PhantomData<X>,
 }
 
-impl<G, A, C, X, T, D, S> Clone for ConsensusClient<G, A, C, X, T, D, S>
+impl<G, A, X, T, D, S> Clone for ConsensusClient<G, A, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -110,11 +107,10 @@ where
 }
 
 #[async_trait]
-impl<G, A, C, X, T, D, S> Client<X, T, D, S> for ConsensusClient<G, A, C, X, T, D, S>
+impl<G, A, X, T, D, S> Client<X, T, D, S> for ConsensusClient<G, A, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static + std::fmt::Debug,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -129,7 +125,7 @@ where
     type Error = ConsensusClientError;
     type Options = ConsensusClientOptions;
     type ResponseType = X::ResponseType;
-    type StreamType = InitializedConsensusStream<G, A, C, T, D, S>;
+    type StreamType = InitializedConsensusStream<G, A, T, D, S>;
 
     async fn new(
         name: String,
@@ -219,30 +215,32 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::service::ConsensusServiceOptions;
-    use crate::stream::{ConsensusStream, ConsensusStreamOptions};
-    use proven_consensus::{Consensus, ConsensusConfig};
 
     use std::sync::Arc;
     use std::time::Duration;
 
-    use async_trait::async_trait;
     use bytes::Bytes;
-    use ed25519_dalek::SigningKey;
     use futures::StreamExt;
     use proven_attestation_mock::MockAttestor;
     use proven_bootable::Bootable;
-    use proven_consensus::transport::tcp::TcpTransport;
+    use proven_consensus::Consensus;
+    use proven_consensus::RaftConfig;
+    use proven_consensus::StorageConfig;
+    use proven_consensus::TransportConfig;
+    use proven_consensus::config::ConsensusConfig;
     use proven_governance_mock::MockGovernance;
-    use proven_messaging::client::Client;
-    use proven_messaging::service_handler::ServiceHandler;
-    use proven_messaging::service_responder::ServiceResponder;
     use proven_messaging::stream::{InitializedStream, Stream};
-    use rand::rngs::OsRng;
     use serde::{Deserialize, Serialize};
     use serial_test::serial;
     use tokio::sync::Mutex;
     use tracing_test::traced_test;
+
+    use crate::service::ConsensusServiceOptions;
+    use crate::stream::{ConsensusStream, ConsensusStreamOptions};
+
+    use proven_messaging::client::{Client, ClientResponseType};
+    use proven_messaging::service_handler::ServiceHandler;
+    use proven_messaging::service_responder::ServiceResponder;
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
     struct TestMessage {
@@ -297,18 +295,19 @@ mod tests {
         ) -> Result<R::UsedResponder, Self::Error>
         where
             R: ServiceResponder<
-                TestMessage,
-                serde_json::Error,
-                serde_json::Error,
-                Self::ResponseType,
-                Self::ResponseDeserializationError,
-                Self::ResponseSerializationError,
-            >,
+                    TestMessage,
+                    serde_json::Error,
+                    serde_json::Error,
+                    Self::ResponseType,
+                    Self::ResponseDeserializationError,
+                    Self::ResponseSerializationError,
+                >,
         {
             // Record the request
-            let mut requests = self.requests_processed.lock().await;
-            requests.push(msg.clone());
-            drop(requests);
+            {
+                let mut requests = self.requests_processed.lock().await;
+                requests.push(msg.clone());
+            }
 
             // Create a response
             let response = TestMessage {
@@ -326,13 +325,13 @@ mod tests {
     /// Test handler that responds with a stream of responses
     #[derive(Debug, Clone)]
     struct StreamingTestHandler {
-        requests_processed: Arc<Mutex<Vec<TestMessage>>>,
+        _requests_processed: Arc<Mutex<Vec<TestMessage>>>,
     }
 
     impl StreamingTestHandler {
         fn new() -> Self {
             Self {
-                requests_processed: Arc::new(Mutex::new(Vec::new())),
+                _requests_processed: Arc::new(Mutex::new(Vec::new())),
             }
         }
     }
@@ -351,21 +350,17 @@ mod tests {
         ) -> Result<R::UsedResponder, Self::Error>
         where
             R: ServiceResponder<
-                TestMessage,
-                serde_json::Error,
-                serde_json::Error,
-                Self::ResponseType,
-                Self::ResponseDeserializationError,
-                Self::ResponseSerializationError,
-            >,
+                    TestMessage,
+                    serde_json::Error,
+                    serde_json::Error,
+                    Self::ResponseType,
+                    Self::ResponseDeserializationError,
+                    Self::ResponseSerializationError,
+                >,
         {
-            // Record the request
-            let mut requests = self.requests_processed.lock().await;
-            requests.push(msg.clone());
-            drop(requests);
+            use futures::stream;
 
-            // Create a stream of responses
-            let responses = vec![
+            let messages = vec![
                 TestMessage {
                     content: format!("stream 1: {}", msg.content),
                 },
@@ -377,12 +372,7 @@ mod tests {
                 },
             ];
 
-            let stream = futures::stream::iter(responses);
-            Ok(responder.stream(stream).await)
-        }
-
-        async fn on_caught_up(&self) -> Result<(), Self::Error> {
-            Ok(())
+            Ok(responder.stream(stream::iter(messages)).await)
         }
     }
 
@@ -406,13 +396,13 @@ mod tests {
         ) -> Result<R::UsedResponder, Self::Error>
         where
             R: ServiceResponder<
-                TestMessage,
-                serde_json::Error,
-                serde_json::Error,
-                Self::ResponseType,
-                Self::ResponseDeserializationError,
-                Self::ResponseSerializationError,
-            >,
+                    TestMessage,
+                    serde_json::Error,
+                    serde_json::Error,
+                    Self::ResponseType,
+                    Self::ResponseDeserializationError,
+                    Self::ResponseSerializationError,
+                >,
         {
             // Respond with no_reply to simulate non-responsive service
             Ok(responder.no_reply().await)
@@ -424,87 +414,59 @@ mod tests {
     }
 
     // Helper to create a simple single-node governance for testing (like consensus_manager tests)
-    async fn create_test_consensus(
-        port: u16,
-    ) -> Arc<Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>>
-    {
-        use proven_governance::{TopologyNode, Version};
+    async fn create_test_consensus(port: u16) -> Arc<Consensus<MockGovernance, MockAttestor>> {
+        use ed25519_dalek::SigningKey;
+        use proven_governance::{GovernanceNode, Version};
+        use rand::rngs::OsRng;
         use std::collections::HashSet;
 
-        // Generate a fresh signing key for each test
+        // Generate a signing key for this test node
         let signing_key = SigningKey::generate(&mut OsRng);
+        let verifying_key = signing_key.verifying_key();
 
-        // Create MockAttestor
-        let attestor = Arc::new(MockAttestor::new());
-
-        // Create single-node governance (only knows about itself)
-        let public_key = hex::encode(signing_key.verifying_key().to_bytes());
-        let topology_node = TopologyNode {
-            availability_zone: "test-az".to_string(),
-            origin: format!("127.0.0.1:{port}"),
-            public_key,
-            region: "test-region".to_string(),
+        // Create governance with the node
+        let node = GovernanceNode {
+            availability_zone: "test".to_string(),
+            origin: format!("http://127.0.0.1:{port}"),
+            public_key: verifying_key,
+            region: "test".to_string(),
             specializations: HashSet::new(),
         };
 
-        // Create MockAttestor to get the actual PCR values
-        let attestor_for_version = MockAttestor::new();
-        let actual_pcrs = attestor_for_version.pcrs_sync();
-
-        // Create a test version using the actual PCR values from MockAttestor
-        let test_version = Version {
-            ne_pcr0: actual_pcrs.pcr0,
-            ne_pcr1: actual_pcrs.pcr1,
-            ne_pcr2: actual_pcrs.pcr2,
-        };
-
+        let nodes = vec![node.clone()];
+        // Create attestor
+        let attestor = Arc::new(MockAttestor::new());
+        let version = Version::from_pcrs(attestor.pcrs().await.unwrap());
         let governance = Arc::new(MockGovernance::new(
-            vec![topology_node],
-            vec![test_version],
-            "http://localhost:3200".to_string(),
+            nodes.into_iter().collect(),
+            vec![version],
+            String::new(),
             vec![],
         ));
 
-        // Create consensus config with temporary directory for tests
-        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
-        let temp_path = temp_dir.path().to_string_lossy().to_string();
+        // Create config
         let config = ConsensusConfig {
-            storage_dir: Some(temp_path),
-            ..ConsensusConfig::default()
-        };
-
-        let consensus = Consensus::new_with_tcp(
-            format!("127.0.0.1:{port}").parse().unwrap(),
             governance,
             attestor,
             signing_key,
-            config,
-        )
-        .await
-        .unwrap();
+            raft_config: RaftConfig::default(),
+            transport_config: TransportConfig::Tcp {
+                listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
+            },
+            storage_config: StorageConfig::Memory,
+            cluster_discovery_timeout: None,
+        };
 
+        // Create consensus
+        let consensus = Consensus::new(config).await.unwrap();
         Arc::new(consensus)
     }
 
     async fn create_test_options(
         port: u16,
-    ) -> ConsensusStreamOptions<
-        MockGovernance,
-        MockAttestor,
-        TcpTransport<MockGovernance, MockAttestor>,
-    > {
+    ) -> ConsensusStreamOptions<MockGovernance, MockAttestor> {
         let consensus = create_test_consensus(port).await;
-
-        // Start the consensus system (automatically initializes cluster)
-        consensus
-            .start()
-            .await
-            .expect("Failed to start consensus for test");
-
-        ConsensusStreamOptions {
-            consensus,
-            stream_config: None,
-        }
+        ConsensusStreamOptions { consensus }
     }
 
     fn next_port() -> u16 {
@@ -520,7 +482,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -559,7 +520,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -596,7 +556,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -642,7 +601,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -696,7 +654,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -732,7 +689,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -785,7 +741,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -843,7 +798,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -923,7 +877,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1000,7 +953,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1069,7 +1021,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,

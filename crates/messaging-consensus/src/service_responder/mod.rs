@@ -9,12 +9,11 @@ use std::task::Poll;
 
 use async_trait::async_trait;
 use bytes::{BufMut, Bytes, BytesMut};
-use futures::stream::Stream;
 use futures::StreamExt;
+use futures::stream::Stream;
 use tracing::{debug, warn};
 
 use proven_attestation::Attestor;
-use proven_consensus::transport::ConsensusTransport;
 use proven_governance::Governance;
 use proven_messaging::service_responder::{ServiceResponder, UsedServiceResponder};
 use proven_messaging::stream::InitializedStream;
@@ -24,11 +23,10 @@ const MAX_BATCH_SIZE: usize = 1024 * 1024; // 1MB
 
 /// A consensus service responder.
 #[derive(Clone, Debug)]
-pub struct ConsensusServiceResponder<G, A, C, T, D, S, R, RD, RS>
+pub struct ConsensusServiceResponder<G, A, T, D, S, R, RD, RS>
 where
     G: proven_governance::Governance + Send + Sync + 'static,
     A: proven_attestation::Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -57,16 +55,15 @@ where
     /// Response stream name where responses should be sent
     response_stream_name: String,
     /// Request stream for deletion operations
-    request_stream: crate::stream::InitializedConsensusStream<G, A, C, T, D, S>,
+    request_stream: crate::stream::InitializedConsensusStream<G, A, T, D, S>,
     /// Type markers
     _marker: PhantomData<(T, D, S, R, RD, RS)>,
 }
 
-impl<G, A, C, T, D, S, R, RD, RS> ConsensusServiceResponder<G, A, C, T, D, S, R, RD, RS>
+impl<G, A, T, D, S, R, RD, RS> ConsensusServiceResponder<G, A, T, D, S, R, RD, RS>
 where
     G: proven_governance::Governance + Send + Sync + 'static,
     A: proven_attestation::Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send
@@ -93,7 +90,7 @@ where
         request_sequence: u64,
         request_id: String,
         response_stream_name: String,
-        request_stream: crate::stream::InitializedConsensusStream<G, A, C, T, D, S>,
+        request_stream: crate::stream::InitializedConsensusStream<G, A, T, D, S>,
     ) -> Self {
         Self {
             caught_up,
@@ -195,12 +192,11 @@ where
 }
 
 #[async_trait]
-impl<G, A, C, T, D, S, R, RD, RS> ServiceResponder<T, D, S, R, RD, RS>
-    for ConsensusServiceResponder<G, A, C, T, D, S, R, RD, RS>
+impl<G, A, T, D, S, R, RD, RS> ServiceResponder<T, D, S, R, RD, RS>
+    for ConsensusServiceResponder<G, A, T, D, S, R, RD, RS>
 where
     G: Governance + Send + Sync + 'static,
     A: Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static,
     T: Clone
         + Debug
         + Send

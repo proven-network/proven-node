@@ -1,24 +1,25 @@
 use std::collections::HashSet;
 
 use bytes::Bytes;
-use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
+use ed25519_dalek::VerifyingKey;
+use proven_governance::{Governance, GovernanceNode, NodeSpecialization, Version};
 use proven_governance_mock::MockGovernance;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create test nodes
-    let node1 = TopologyNode {
+    let node1 = GovernanceNode {
         availability_zone: "az1".to_string(),
         origin: "http://node1.example.com".to_string(),
-        public_key: "key1".to_string(),
+        public_key: VerifyingKey::from_bytes(&[0; 32]).unwrap(),
         region: "region1".to_string(),
         specializations: HashSet::new(),
     };
 
-    let node2 = TopologyNode {
+    let node2 = GovernanceNode {
         availability_zone: "az2".to_string(),
         origin: "http://node2.example.com".to_string(),
-        public_key: "key2".to_string(),
+        public_key: VerifyingKey::from_bytes(&[1; 32]).unwrap(),
         region: "region2".to_string(),
         specializations: {
             let mut specs = HashSet::new();
@@ -50,7 +51,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let topology = governance.get_topology().await?;
     println!("Topology:");
     for node in topology {
-        println!("  - Node ID: {}, Origin: {}", node.public_key, node.origin);
+        println!(
+            "  - Node ID: {}, Origin: {}",
+            hex::encode(node.public_key.to_bytes()),
+            node.origin
+        );
     }
 
     // Get active versions

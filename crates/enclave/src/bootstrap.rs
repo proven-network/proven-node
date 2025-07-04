@@ -24,7 +24,8 @@ use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_bootable::Bootable;
 use proven_cert_store::CertStore;
-use proven_consensus::{Consensus, ConsensusConfig};
+use proven_consensus::{Consensus, TransportConfig};
+use proven_consensus::{ConsensusConfig, StorageConfig};
 use proven_core::{BootstrapUpgrade, Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
@@ -1154,23 +1155,20 @@ impl Bootstrap {
         let node_key = SigningKey::from_bytes(&node_key);
 
         let consensus = Arc::new(
-            Consensus::new_with_websocket(
-                Arc::new(governance.clone()),
-                Arc::new(attestor.clone()),
-                node_key,
-                ConsensusConfig {
-                    cluster_discovery_timeout: Some(Duration::from_secs(30)),
-                    consensus_timeout: Duration::from_secs(30),
-                    require_all_nodes: false,
-                    raft_config: Arc::new(RaftConfig {
-                        heartbeat_interval: 500,    // 500ms
-                        election_timeout_min: 1500, // 1.5s
-                        election_timeout_max: 3000, // 3s
-                        ..RaftConfig::default()
-                    }),
-                    storage_dir: None, // Default to None, will use temporary directory
+            Consensus::new(ConsensusConfig {
+                governance: Arc::new(governance.clone()),
+                attestor: Arc::new(attestor.clone()),
+                signing_key: node_key,
+                raft_config: RaftConfig {
+                    heartbeat_interval: 500,    // 500ms
+                    election_timeout_min: 1500, // 1.5s
+                    election_timeout_max: 3000, // 3s
+                    ..RaftConfig::default()
                 },
-            )
+                transport_config: TransportConfig::WebSocket,
+                storage_config: StorageConfig::Memory,
+                cluster_discovery_timeout: Some(Duration::from_secs(30)),
+            })
             .await
             .unwrap(),
         );

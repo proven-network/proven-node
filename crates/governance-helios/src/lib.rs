@@ -6,6 +6,7 @@
 
 mod error;
 
+use ed25519_dalek::VerifyingKey;
 use error::Error;
 
 use std::collections::HashSet;
@@ -19,7 +20,7 @@ use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{SolCall, sol};
 use async_trait::async_trait;
 use helios_ethereum::{EthereumClient, EthereumClientBuilder, config::networks::Network};
-use proven_governance::{Governance, NodeSpecialization, TopologyNode, Version};
+use proven_governance::{Governance, GovernanceNode, NodeSpecialization, Version};
 
 /// Configuration options for the Helios governance client.
 #[derive(Clone, Debug)]
@@ -196,7 +197,7 @@ impl Governance for HeliosGovernance {
         todo!()
     }
 
-    async fn get_topology(&self) -> Result<Vec<TopologyNode>, Self::Error> {
+    async fn get_topology(&self) -> Result<Vec<GovernanceNode>, Self::Error> {
         // Prepare the call data
         let selector = getNodesCall::SELECTOR;
         let result = self
@@ -237,10 +238,17 @@ impl Governance for HeliosGovernance {
                 }
             }
 
-            nodes.push(TopologyNode {
+            // TODO: Don't panic
+            let public_key_bytes: [u8; 32] = hex::decode(node_struct.publicKey.clone())
+                .unwrap()
+                .try_into()
+                .unwrap();
+            let public_key = VerifyingKey::from_bytes(&public_key_bytes).unwrap();
+
+            nodes.push(GovernanceNode {
                 availability_zone: node_struct.availabilityZone.clone(),
                 origin: node_struct.origin.clone(),
-                public_key: node_struct.publicKey.clone(),
+                public_key,
                 region: node_struct.region.clone(),
                 specializations,
             });

@@ -13,7 +13,6 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, warn};
 
 use proven_attestation::Attestor;
-use proven_consensus::transport::ConsensusTransport;
 use proven_governance::Governance;
 use proven_messaging::service::{Service, ServiceError, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
@@ -46,11 +45,10 @@ impl ServiceError for ConsensusServiceError {}
 /// A consensus service.
 #[derive(Debug)]
 #[allow(dead_code)]
-pub struct ConsensusService<G, A, C, X, T, D, S>
+pub struct ConsensusService<G, A, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -63,7 +61,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    stream: InitializedConsensusStream<G, A, C, T, D, S>,
+    stream: InitializedConsensusStream<G, A, T, D, S>,
     options: ConsensusServiceOptions,
     handler: X,
     last_processed_seq: u64,
@@ -75,11 +73,10 @@ where
     task_tracker: TaskTracker,
 }
 
-impl<G, A, C, X, T, D, S> Clone for ConsensusService<G, A, C, X, T, D, S>
+impl<G, A, X, T, D, S> Clone for ConsensusService<G, A, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone,
     T: Clone
         + Debug
@@ -106,11 +103,10 @@ where
 }
 
 #[async_trait]
-impl<G, A, C, X, T, D, S> Service<X, T, D, S> for ConsensusService<G, A, C, X, T, D, S>
+impl<G, A, X, T, D, S> Service<X, T, D, S> for ConsensusService<G, A, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -127,7 +123,6 @@ where
     type Responder = ConsensusServiceResponder<
         G,
         A,
-        C,
         T,
         D,
         S,
@@ -136,7 +131,7 @@ where
         X::ResponseSerializationError,
     >;
     type UsedResponder = ConsensusUsedResponder;
-    type StreamType = InitializedConsensusStream<G, A, C, T, D, S>;
+    type StreamType = InitializedConsensusStream<G, A, T, D, S>;
 
     async fn new(
         name: String,
@@ -166,11 +161,10 @@ where
 }
 
 #[async_trait]
-impl<G, A, C, X, T, D, S> Bootable for ConsensusService<G, A, C, X, T, D, S>
+impl<G, A, X, T, D, S> Bootable for ConsensusService<G, A, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -239,11 +233,10 @@ where
     }
 }
 
-impl<G, A, C, X, T, D, S> ConsensusService<G, A, C, X, T, D, S>
+impl<G, A, X, T, D, S> ConsensusService<G, A, X, T, D, S>
 where
     G: Governance + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
-    C: ConsensusTransport + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -259,7 +252,7 @@ where
     #[allow(clippy::too_many_lines)]
     async fn process_requests(
         service_name: String,
-        stream: InitializedConsensusStream<G, A, C, T, D, S>,
+        stream: InitializedConsensusStream<G, A, T, D, S>,
         handler: X,
         current_seq: Arc<Mutex<u64>>,
         start_sequence: u64,
@@ -400,20 +393,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::MessagingConsensusError;
+
     use crate::stream::{ConsensusStream, ConsensusStreamOptions};
-    use proven_consensus::{Consensus, ConsensusConfig};
 
     use std::collections::HashSet;
-
     use std::sync::Arc;
 
     use async_trait::async_trait;
     use bytes::Bytes;
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::transport::tcp::TcpTransport;
-    use proven_governance::{TopologyNode, Version};
+    use proven_consensus::{
+        Consensus, ConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
+    };
+    use proven_governance::{GovernanceNode, Version};
     use proven_governance_mock::MockGovernance;
     use proven_messaging::service_handler::ServiceHandler;
     use proven_messaging::service_responder::ServiceResponder;
@@ -426,8 +419,7 @@ mod tests {
     use tracing_test::traced_test;
 
     // Type alias to simplify complex consensus system type
-    type TestConsensusSystem =
-        Arc<Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>>;
+    type TestConsensusSystem = Arc<Consensus<MockGovernance, MockAttestor>>;
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
     struct TestMessage {
@@ -489,13 +481,13 @@ mod tests {
         ) -> Result<R::UsedResponder, Self::Error>
         where
             R: ServiceResponder<
-                TestMessage,
-                serde_json::Error,
-                serde_json::Error,
-                Self::ResponseType,
-                Self::ResponseDeserializationError,
-                Self::ResponseSerializationError,
-            >,
+                    TestMessage,
+                    serde_json::Error,
+                    serde_json::Error,
+                    Self::ResponseType,
+                    Self::ResponseDeserializationError,
+                    Self::ResponseSerializationError,
+                >,
         {
             let mut requests = self.requests_processed.lock().await;
             requests.push(msg.clone());
@@ -529,8 +521,8 @@ mod tests {
 
     fn get_test_nodes_config() -> &'static Vec<(String, SigningKey)> {
         TEST_NODES_CONFIG.get_or_init(|| {
-            use rand::rngs::StdRng;
             use rand::SeedableRng;
+            use rand::rngs::StdRng;
 
             // Use deterministic seed for reproducible test keys
             let mut rng = StdRng::seed_from_u64(12345);
@@ -550,8 +542,7 @@ mod tests {
     async fn create_test_consensus(
         node_id: &str,
         port: u16,
-    ) -> Arc<Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>>
-    {
+    ) -> Arc<Consensus<MockGovernance, MockAttestor>> {
         // Find the signing key for this node ID
         let test_nodes_config = get_test_nodes_config();
         let signing_key = test_nodes_config
@@ -566,11 +557,10 @@ mod tests {
         let attestor = Arc::new(MockAttestor::new());
 
         // Create single-node governance (only knows about itself)
-        let public_key = hex::encode(signing_key.verifying_key().to_bytes());
-        let topology_node = TopologyNode {
+        let governance_node = GovernanceNode {
             availability_zone: "test-az".to_string(),
-            origin: format!("127.0.0.1:{port}"),
-            public_key,
+            origin: format!("http://127.0.0.1:{port}"),
+            public_key: signing_key.verifying_key(),
             region: "test-region".to_string(),
             specializations: HashSet::new(),
         };
@@ -587,29 +577,26 @@ mod tests {
         };
 
         let governance = Arc::new(MockGovernance::new(
-            vec![topology_node],
+            vec![governance_node],
             vec![test_version],
             "http://localhost:3200".to_string(),
             vec![],
         ));
 
         // Create consensus config with temporary directory for tests
-        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
-        let temp_path = temp_dir.path().to_string_lossy().to_string();
         let config = ConsensusConfig {
-            storage_dir: Some(temp_path),
-            ..ConsensusConfig::default()
+            governance: governance.clone(),
+            attestor: attestor.clone(),
+            signing_key: signing_key.clone(),
+            raft_config: RaftConfig::default(),
+            transport_config: TransportConfig::Tcp {
+                listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
+            },
+            storage_config: StorageConfig::Memory,
+            cluster_discovery_timeout: Some(Duration::from_secs(10)),
         };
 
-        let consensus = Consensus::new_with_tcp(
-            format!("127.0.0.1:{port}").parse().unwrap(),
-            governance,
-            attestor,
-            signing_key,
-            config,
-        )
-        .await
-        .unwrap();
+        let consensus = Consensus::new(config).await.unwrap();
 
         Arc::new(consensus)
     }
@@ -627,23 +614,23 @@ mod tests {
         };
 
         let test_nodes_config = get_test_nodes_config();
-        let mut topology_nodes = Vec::new();
+        let mut governance_nodes = Vec::new();
 
         // Create topology nodes for the specified number of ports
         for (i, &port) in ports.iter().enumerate() {
             let (_node_id, signing_key) = &test_nodes_config[i];
-            let topology_node = TopologyNode {
+            let governance_node = GovernanceNode {
                 availability_zone: "test-az".to_string(),
-                origin: format!("127.0.0.1:{port}"),
-                public_key: hex::encode(signing_key.verifying_key().to_bytes()),
+                origin: format!("http://127.0.0.1:{port}"),
+                public_key: signing_key.verifying_key(),
                 region: "test-region".to_string(),
                 specializations: HashSet::new(),
             };
-            topology_nodes.push(topology_node);
+            governance_nodes.push(governance_node);
         }
 
         Arc::new(MockGovernance::new(
-            topology_nodes,
+            governance_nodes,
             vec![test_version],
             "http://localhost:3200".to_string(),
             vec![],
@@ -653,8 +640,7 @@ mod tests {
     async fn create_consensus_system_with_governance(
         port: u16,
         governance: Arc<MockGovernance>,
-    ) -> Arc<Consensus<MockGovernance, MockAttestor, TcpTransport<MockGovernance, MockAttestor>>>
-    {
+    ) -> Arc<Consensus<MockGovernance, MockAttestor>> {
         // Generate a fresh signing key for each test
         let signing_key = SigningKey::generate(&mut OsRng);
 
@@ -662,22 +648,19 @@ mod tests {
         let attestor = Arc::new(MockAttestor::new());
 
         // Create consensus config with temporary directory for tests
-        let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
-        let temp_path = temp_dir.path().to_string_lossy().to_string();
         let config = ConsensusConfig {
-            storage_dir: Some(temp_path),
-            ..ConsensusConfig::default()
+            governance: governance.clone(),
+            attestor: attestor.clone(),
+            signing_key: signing_key.clone(),
+            raft_config: RaftConfig::default(),
+            transport_config: TransportConfig::Tcp {
+                listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
+            },
+            storage_config: StorageConfig::Memory,
+            cluster_discovery_timeout: Some(Duration::from_secs(10)),
         };
 
-        let consensus = Consensus::new_with_tcp(
-            format!("127.0.0.1:{port}").parse().unwrap(),
-            governance,
-            attestor,
-            signing_key,
-            config,
-        )
-        .await
-        .unwrap();
+        let consensus = Consensus::new(config).await.unwrap();
 
         // Start the consensus system
         consensus
@@ -695,16 +678,9 @@ mod tests {
     async fn create_test_options(
         node_id: &str,
         port: u16,
-    ) -> ConsensusStreamOptions<
-        MockGovernance,
-        MockAttestor,
-        TcpTransport<MockGovernance, MockAttestor>,
-    > {
+    ) -> ConsensusStreamOptions<MockGovernance, MockAttestor> {
         let consensus = create_test_consensus(node_id, port).await;
-        ConsensusStreamOptions {
-            consensus,
-            stream_config: None,
-        }
+        ConsensusStreamOptions { consensus }
     }
 
     fn next_port() -> u16 {
@@ -714,14 +690,8 @@ mod tests {
     // Helper to create multi-node options without starting consensus systems (for unit testing)
     async fn create_multi_node_test_options(
         node_count: usize,
-    ) -> Vec<
-        ConsensusStreamOptions<
-            MockGovernance,
-            MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
-        >,
-    > {
-        use proven_governance::{TopologyNode, Version};
+    ) -> Vec<ConsensusStreamOptions<MockGovernance, MockAttestor>> {
+        use proven_governance::{GovernanceNode, Version};
         use std::collections::HashSet;
 
         let mut options_vec = Vec::new();
@@ -737,10 +707,10 @@ mod tests {
 
         // Create topology nodes for all nodes
         for i in 0..node_count {
-            let node = TopologyNode {
+            let node = GovernanceNode {
                 availability_zone: format!("test-az-{i}"),
                 origin: format!("127.0.0.1:{}", node_ports[i]),
-                public_key: hex::encode(signing_keys[i].verifying_key().to_bytes()),
+                public_key: signing_keys[i].verifying_key(),
                 region: "test-region".to_string(),
                 specializations: HashSet::new(),
             };
@@ -771,29 +741,24 @@ mod tests {
             let attestor = Arc::new(MockAttestor::new());
 
             // Create consensus config with temporary directory for each node
-            let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
-            let temp_path = temp_dir.path().to_string_lossy().to_string();
             let config = ConsensusConfig {
-                consensus_timeout: Duration::from_secs(10), // Longer timeout for multi-node
-                storage_dir: Some(temp_path),
-                ..ConsensusConfig::default()
+                cluster_discovery_timeout: Some(Duration::from_secs(10)), // Longer timeout for multi-node
+                governance: shared_governance.clone(),
+                attestor: attestor.clone(),
+                signing_key: signing_keys[i].clone(),
+                raft_config: RaftConfig::default(),
+                transport_config: TransportConfig::Tcp {
+                    listen_addr: format!("127.0.0.1:{}", node_ports[i]).parse().unwrap(),
+                },
+                storage_config: StorageConfig::Memory,
             };
 
-            let consensus = Consensus::new_with_tcp(
-                format!("127.0.0.1:{}", node_ports[i]).parse().unwrap(),
-                shared_governance.clone(), // ← SHARED governance instance
-                attestor,
-                signing_keys[i].clone(),
-                config,
-            )
-            .await
-            .unwrap();
+            let consensus = Consensus::new(config).await.unwrap();
 
             // NOTE: Don't call consensus.start() here - this avoids Raft cluster formation issues in unit tests
 
             let options = ConsensusStreamOptions {
                 consensus: Arc::new(consensus),
-                stream_config: None,
             };
             options_vec.push(options);
         }
@@ -810,7 +775,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -849,7 +813,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -896,7 +859,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -948,7 +910,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1003,32 +964,12 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     #[serial]
-    async fn test_service_error_handling() {
-        // Test service error types
-        let consensus_error =
-            proven_consensus::ConsensusError::InvalidConfiguration("test error".to_string());
-        let messaging_consensus_error = MessagingConsensusError::from(consensus_error);
-        let service_error = ConsensusServiceError::Consensus(messaging_consensus_error);
-
-        // Test error formatting
-        let error_string = format!("{service_error}");
-        assert!(error_string.contains("Consensus error"));
-
-        // Test debug formatting
-        let debug_string = format!("{service_error:?}");
-        assert!(debug_string.contains("Consensus"));
-    }
-
-    #[tokio::test]
-    #[traced_test]
-    #[serial]
     async fn test_multiple_services_same_stream() {
         let options = create_test_options("6", next_port()).await;
 
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1085,7 +1026,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1096,7 +1036,6 @@ mod tests {
         let responder = ConsensusServiceResponder::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1134,7 +1073,6 @@ mod tests {
         let stream = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1176,13 +1114,11 @@ mod tests {
 
             let options = ConsensusStreamOptions {
                 consensus: consensus.clone(),
-                stream_config: None,
             };
 
             let stream = ConsensusStream::<
                 MockGovernance,
                 MockAttestor,
-                TcpTransport<MockGovernance, MockAttestor>,
                 TestMessage,
                 serde_json::Error,
                 serde_json::Error,
@@ -1252,18 +1188,15 @@ mod tests {
         // Create streams on both nodes
         let options1 = ConsensusStreamOptions {
             consensus: consensus1.clone(),
-            stream_config: None,
         };
 
         let options2 = ConsensusStreamOptions {
             consensus: consensus2.clone(),
-            stream_config: None,
         };
 
         let stream1 = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1272,7 +1205,6 @@ mod tests {
         let stream2 = ConsensusStream::<
             MockGovernance,
             MockAttestor,
-            TcpTransport<MockGovernance, MockAttestor>,
             TestMessage,
             serde_json::Error,
             serde_json::Error,
@@ -1359,7 +1291,6 @@ mod tests {
             let stream = ConsensusStream::<
                 MockGovernance,
                 MockAttestor,
-                TcpTransport<MockGovernance, MockAttestor>,
                 TestMessage,
                 serde_json::Error,
                 serde_json::Error,

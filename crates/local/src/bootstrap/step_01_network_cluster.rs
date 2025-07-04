@@ -21,7 +21,7 @@ use http::StatusCode;
 use openraft::Config as RaftConfig;
 use proven_attestation::Attestor;
 use proven_bootable::Bootable;
-use proven_consensus::{Consensus, ConsensusConfig};
+use proven_consensus::Consensus;
 use proven_core::{Core, CoreOptions};
 use proven_governance::{Governance, Version};
 use proven_http_insecure::InsecureHttpServer;
@@ -52,28 +52,6 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
         )));
     }
 
-    let consensus = Arc::new(
-        Consensus::new_with_websocket(
-            Arc::new(bootstrap.config.governance.clone()),
-            Arc::new(bootstrap.attestor.clone()),
-            bootstrap.config.node_key.clone(),
-            ConsensusConfig {
-                cluster_discovery_timeout: Some(Duration::from_secs(30)),
-                consensus_timeout: Duration::from_secs(30),
-                require_all_nodes: false,
-                raft_config: Arc::new(RaftConfig {
-                    heartbeat_interval: 500,    // 500ms
-                    election_timeout_min: 1500, // 1.5s
-                    election_timeout_max: 3000, // 3s
-                    ..RaftConfig::default()
-                }),
-                storage_dir: None, // Default to None, will use temporary directory
-            },
-        )
-        .await
-        .unwrap(),
-    );
-
     // TODO: possibly remove this at some point
     let network = ProvenNetwork::new(ProvenNetworkOptions {
         governance: bootstrap.config.governance.clone(),
@@ -85,6 +63,42 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
 
     // Check /etc/hosts to ensure the node's FQDN is properly configured
     check_hostname_resolution(network.fqdn().await?.as_str()).await?;
+
+    if !bootstrap.config.allow_single_node {
+        // Get peers in a loop until we have at least two others with an Ok nats cluster endpoint
+        info!(
+            "waiting for at least two other nodes to be started so NATS can boot in cluster mode"
+        );
+        loop {
+            let peers = network.get_peers().await?;
+            if peers.len() >= 2 {
+                break;
+            }
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        info!("Peer nodes are ready");
+    }
+
+    let consensus = Arc::new(
+        Consensus::new(proven_consensus::ConsensusConfig {
+            governance: Arc::new(bootstrap.config.governance.clone()),
+            attestor: Arc::new(bootstrap.attestor.clone()),
+            signing_key: bootstrap.config.node_key.clone(),
+            raft_config: RaftConfig {
+                heartbeat_interval: 500,    // 500ms
+                election_timeout_min: 1500, // 1.5s
+                election_timeout_max: 3000, // 3s
+                ..RaftConfig::default()
+            },
+            transport_config: proven_consensus::TransportConfig::WebSocket,
+            storage_config: proven_consensus::StorageConfig::Memory,
+            cluster_discovery_timeout: Some(Duration::from_secs(30)),
+        })
+        .await
+        .unwrap(),
+    );
 
     let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.port));
     let http_server = InsecureHttpServer::new(
@@ -101,32 +115,7 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     });
     core.start().await.map_err(Error::Bootable)?;
 
-    consensus.start().await.unwrap();
     bootstrap.consensus = Some(consensus);
-
-    if !bootstrap.config.allow_single_node {
-        // Get peers in a loop until we have at least two others with an Ok nats cluster endpoint
-        info!(
-            "waiting for at least two other nodes to be started so NATS can boot in cluster mode"
-        );
-        loop {
-            let peers = network.get_peers().await?;
-            let mut valid_peers = 0;
-
-            for peer in &peers {
-                if peer.nats_cluster_endpoint().await.is_ok() {
-                    valid_peers += 1;
-                }
-            }
-            if valid_peers >= 2 {
-                break;
-            }
-
-            tokio::time::sleep(Duration::from_secs(5)).await;
-        }
-
-        info!("Peer nodes are ready");
-    }
 
     bootstrap.network = Some(network);
     bootstrap.bootstrapping_core = Some(core);

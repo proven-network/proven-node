@@ -25,7 +25,6 @@ use async_nats::Client as NatsClient;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
 use proven_consensus::Consensus;
-use proven_consensus::transport::websocket::WebSocketTransport;
 use proven_core::Core;
 use proven_governance::Governance;
 use proven_http_insecure::InsecureHttpServer;
@@ -36,7 +35,7 @@ use tracing::{error, info};
 use url::Url;
 
 // Type alias to simplify complex consensus type
-type LocalConsensus<G> = Consensus<G, MockAttestor, WebSocketTransport<G, MockAttestor>>;
+type LocalConsensus<G> = Consensus<G, MockAttestor>;
 
 /// Bootstrap struct for local node initialization.
 ///
@@ -69,8 +68,7 @@ pub struct Bootstrap<G: Governance> {
     radix_stokenet_rpc_endpoint: Url,
 
     // Special case - gets upgraded at end of bootstrap
-    bootstrapping_core:
-        Option<Core<MockAttestor, G, InsecureHttpServer, WebSocketTransport<G, MockAttestor>>>,
+    bootstrapping_core: Option<Core<MockAttestor, G, InsecureHttpServer>>,
 
     // Collection of all bootable services
     bootables: Vec<Box<dyn Bootable>>,

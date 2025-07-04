@@ -79,7 +79,7 @@ async fn main() {
             for node in nodes {
                 info!(
                     "Node {}: Region: {}, AZ: {}, Origin: {}, Specializations: {:?}",
-                    node.public_key,
+                    hex::encode(node.public_key.to_bytes()),
                     node.region,
                     node.availability_zone,
                     node.origin,
