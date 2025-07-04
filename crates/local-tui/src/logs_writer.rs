@@ -335,9 +335,15 @@ where
         // Extract target
         let target = Some(event.metadata().target().to_string());
 
-        // Ignore targets containing "async_nats"
-        if target.as_deref().unwrap_or_default().contains("async_nats") {
-            return;
+        // Ignore targets from certain sources
+        if let Some(target_str) = target.as_deref() {
+            if target_str.starts_with("async_nats")
+                || target_str.starts_with("openraft")
+                || target_str.starts_with("hyper_util")
+                || target_str == "log"
+            {
+                return;
+            }
         }
 
         // Extract message using visitor pattern
