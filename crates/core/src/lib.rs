@@ -226,7 +226,7 @@ where
             .await
             .map_err(|e| Error::HttpServer(e.to_string()))?;
 
-        info!("Mounted consensus routes under /ws");
+        info!("Mounted consensus routes under /consensus/ws");
         Ok(())
     }
 
@@ -741,7 +741,13 @@ where
 
         *self.router_installed.write().await = true;
 
-        // Start consensus system
+        // Start HTTP server first so WebSocket endpoints are available
+        if let Err(e) = self.http_server.start().await {
+            error!("http server failed to start: {e}");
+            return Err(Box::new(Error::HttpServer(e.to_string())));
+        }
+
+        // Now start consensus system (it can connect to peers' WebSocket endpoints)
         if let Err(e) = self.consensus.start().await {
             error!("consensus system failed to start: {e}");
             return Err(Box::new(e));
@@ -751,11 +757,6 @@ where
         let consensus = Arc::clone(&self.consensus);
         let shutdown_token = self.shutdown_token.clone();
         self.task_tracker.spawn(async move {
-            if let Err(e) = http_server.start().await {
-                error!("http server failed to start: {e}");
-                return Err(Error::HttpServer(e.to_string()));
-            }
-
             tokio::select! {
                 () = shutdown_token.cancelled() => {
                     info!("shutdown command received");
