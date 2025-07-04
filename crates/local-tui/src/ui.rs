@@ -197,7 +197,7 @@ fn strip_ansi_sequences(input: &str) -> String {
                 chars.next(); // consume '['
 
                 // Skip until we find the end of the sequence (a letter)
-                while let Some(next_ch) = chars.next() {
+                for next_ch in chars.by_ref() {
                     if next_ch.is_ascii_alphabetic() {
                         break;
                     }
@@ -304,37 +304,43 @@ fn create_colored_log_lines(
     };
 
     // Calculate the prefix length to determine how much space is left for the message
-    let prefix_length = if let Some(target) = &entry.target {
-        if show_node_name {
-            // "HH:MM:SS.mmm [ERRO] [node_name] target: "
-            timestamp.len()
-                + 1
-                + 1
-                + level_str.len()
-                + 1
-                + 1
-                + 1
-                + node_name.len()
-                + 1
-                + 1
-                + target.len()
-                + 2
-        } else {
-            // "HH:MM:SS.mmm [ERRO] target: "
-            timestamp.len() + 1 + 1 + level_str.len() + 1 + 1 + target.len() + 2
-        }
-    } else if show_node_name {
-        // "HH:MM:SS.mmm [ERRO] [node_name]: "
-        timestamp.len() + 1 + 1 + level_str.len() + 1 + 1 + 1 + node_name.len() + 2
-    } else {
-        // "HH:MM:SS.mmm [ERRO]: "
-        timestamp.len() + 1 + 1 + level_str.len() + 2
-    };
+    let prefix_length = entry.target.as_ref().map_or_else(
+        || {
+            if show_node_name {
+                // "HH:MM:SS.mmm [ERRO] [node_name]: "
+                timestamp.len() + 1 + 1 + level_str.len() + 1 + 1 + 1 + node_name.len() + 2
+            } else {
+                // "HH:MM:SS.mmm [ERRO]: "
+                timestamp.len() + 1 + 1 + level_str.len() + 2
+            }
+        },
+        |target| {
+            if show_node_name {
+                // "HH:MM:SS.mmm [ERRO] [node_name] target: "
+                timestamp.len()
+                    + 1
+                    + 1
+                    + level_str.len()
+                    + 1
+                    + 1
+                    + 1
+                    + node_name.len()
+                    + 1
+                    + 1
+                    + target.len()
+                    + 2
+            } else {
+                // "HH:MM:SS.mmm [ERRO] target: "
+                timestamp.len() + 1 + 1 + level_str.len() + 1 + 1 + target.len() + 2
+            }
+        },
+    );
 
     // Clean the message
     let clean_message = strip_ansi_sequences(&entry.message);
 
     // Calculate available width for the message (accounting for borders and padding)
+    #[allow(clippy::cast_possible_truncation)]
     let available_width = max_width
         .saturating_sub(prefix_length as u16)
         .saturating_sub(4); // Extra margin for safety
