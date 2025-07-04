@@ -20,7 +20,7 @@ base64.workspace = true
 axum.workspace = true
 tower.workspace = true
 tower-http.workspace = true
-tokio-tungstenite = "0.23"
+tokio-tungstenite.workspace = true
 
 # Cryptography and security
 ed25519-dalek.workspace = true
@@ -39,7 +39,7 @@ url.workspace = true
 tracing.workspace = true
 thiserror.workspace = true
 parking_lot.workspace = true
-rand = "0.8"
+rand.workspace = true
 
 # Proven dependencies
 proven-attestation.workspace = true
@@ -50,7 +50,5 @@ proven-governance.workspace = true
 proven-attestation-mock.workspace = true
 proven-governance-mock.workspace = true
 proven-util.workspace = true
-rand = "0.8" 
-serial_test = "3.0"
-tempfile = "3.0"
-tracing-test = "0.2"
+tempfile.workspace = true
+tracing-test.workspace = true

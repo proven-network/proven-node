@@ -491,6 +491,14 @@ where
         self.network_manager.cluster_state().await
     }
 
+    /// Wait for the cluster to be ready (either Initiator or Joined state)
+    pub async fn wait_for_leader(
+        &self,
+        timeout: Option<std::time::Duration>,
+    ) -> ConsensusResult<()> {
+        self.network_manager.wait_for_leader(timeout).await
+    }
+
     /// Check if cluster discovery is in progress
     pub async fn is_cluster_discovering(&self) -> bool {
         matches!(self.cluster_state().await, ClusterState::Discovering)
@@ -751,7 +759,6 @@ mod tests {
     use proven_governance::{GovernanceNode, Version};
     use proven_governance_mock::MockGovernance;
     use rand::rngs::OsRng;
-    use serial_test::serial;
     use std::collections::HashSet;
     use tracing_test::traced_test;
 
@@ -808,7 +815,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_consensus_creation() {
         let consensus = create_test_consensus(next_port()).await;
 
@@ -820,7 +826,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_consensus_lifecycle() {
         let consensus = create_test_consensus(next_port()).await;
         let node_id = consensus.node_id().to_string();
@@ -854,7 +859,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_consensus_messaging() {
         let consensus = create_test_consensus(next_port()).await;
 
@@ -899,7 +903,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_leader_election_single_node() {
         let consensus = create_test_consensus(next_port()).await;
         let node_id = consensus.node_id().to_string();
@@ -922,8 +925,11 @@ mod tests {
             "Start should succeed: {start_result:?}"
         );
 
-        // Give Raft time to initialize
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // Wait for the cluster to be ready
+        consensus
+            .wait_for_leader(Some(Duration::from_secs(10)))
+            .await
+            .unwrap();
 
         // After initialization, this node should be the leader
         println!("Checking leadership status...");
@@ -941,26 +947,13 @@ mod tests {
         );
         assert_eq!(consensus.cluster_size(), Some(1));
 
-        // The node should either be the leader or become the leader shortly
-        let mut is_leader = false;
-        for _ in 0..10 {
-            if consensus.is_leader() {
-                is_leader = true;
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-
-        if is_leader {
-            assert_eq!(consensus.current_leader().await, Some(node_id.clone()));
-            println!("✅ Node {} successfully became leader", &node_id[..8]);
-        } else {
-            println!(
-                "⚠️  Node {} is not yet leader, but Raft is initialized",
-                &node_id[..8]
-            );
-            // This is still acceptable as Raft might need more time
-        }
+        // The node should be the leader after waiting for cluster to be ready
+        assert!(
+            consensus.is_leader(),
+            "Node should be leader after cluster is ready"
+        );
+        assert_eq!(consensus.current_leader().await, Some(node_id.clone()));
+        println!("✅ Node {} successfully became leader", &node_id[..8]);
 
         // Test that we can submit a proposal through Raft
         let request = MessagingRequest {
@@ -972,7 +965,10 @@ mod tests {
 
         // This will test if consensus is properly initialized and can accept proposals
         let proposal_result = consensus.submit_request(request).await;
-        println!("Proposal result: {:?}", proposal_result.is_ok());
+        assert!(
+            proposal_result.is_ok(),
+            "Proposal should succeed after cluster is ready"
+        );
 
         // Shutdown
         let shutdown_result = consensus.shutdown().await;
@@ -986,7 +982,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_leader_election_workflow() {
         // Test that demonstrates leader election workflow works correctly
         let consensus = create_test_consensus(next_port()).await;
@@ -1005,8 +1000,11 @@ mod tests {
         let start_result = consensus.start().await;
         assert!(start_result.is_ok());
 
-        // Give time for Raft to elect leader
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Wait for the cluster to be ready
+        consensus
+            .wait_for_leader(Some(Duration::from_secs(10)))
+            .await
+            .unwrap();
 
         // Test 3: Verify leadership is established
         let final_term = consensus.current_term().unwrap_or(0);
@@ -1057,7 +1055,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_multi_node_cluster_formation() {
         println!("🧪 Testing multi-node cluster formation with shared governance");
 
@@ -1296,7 +1293,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_simultaneous_node_discovery() {
         println!("🧪 Testing simultaneous node discovery");
 
@@ -1452,7 +1448,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_consensus_transport_types() {
         // Test TCP transport creation
         let tcp_consensus = create_test_consensus(next_port()).await;
@@ -1486,14 +1481,16 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_stream_operations() {
         let consensus = create_test_consensus(next_port()).await;
 
         consensus.start().await.unwrap();
 
-        // Wait a moment for listeners to be ready
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Wait for the cluster to be ready
+        consensus
+            .wait_for_leader(Some(Duration::from_secs(10)))
+            .await
+            .unwrap();
 
         // Test that we can access stream store directly
         let stream_store = consensus.stream_store();
@@ -1524,24 +1521,22 @@ mod tests {
         let all_subscriptions = consensus.get_all_subscriptions().await;
         assert!(all_subscriptions.is_empty());
 
-        // Test leader status (should be false until Raft integration is complete)
+        // Test leader status (should be true after cluster is ready)
         let is_leader = consensus.is_leader();
-        assert!(!is_leader);
+        assert!(is_leader, "Node should be leader after cluster is ready");
 
-        // Test metrics (should be None until Raft integration is complete)
+        // Test metrics (should be available after cluster is ready)
         let metrics = consensus.metrics();
-        assert!(metrics.is_none());
-
-        // Note: We can't test the actual consensus operations (publish_message, etc.)
-        // in this unit test because they require a fully initialized Raft cluster.
-        // Those would be tested in integration tests once Raft is fully implemented.
+        assert!(
+            metrics.is_some(),
+            "Metrics should be available after cluster is ready"
+        );
 
         println!("✅ Stream operations interface test passed");
     }
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_unidirectional_connection_basic() {
         println!("🧪 Testing basic unidirectional connection message sending");
 
@@ -1677,7 +1672,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_cluster_discovery_with_correlation_ids() {
         println!("🧪 Testing cluster discovery with correlation ID tracking");
 
@@ -1798,7 +1792,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_end_to_end_discovery_and_join_flow() {
         println!("🧪 Testing complete end-to-end discovery and join flow");
 
@@ -2081,7 +2074,6 @@ mod tests {
 
     #[tokio::test]
     #[traced_test]
-    #[serial]
     async fn test_websocket_leader_election() {
         println!("🧪 Testing WebSocket-based leader election");
 

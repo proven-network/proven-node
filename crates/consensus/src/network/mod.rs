@@ -605,6 +605,43 @@ where
         }
     }
 
+    /// Wait for the cluster to be ready (either Initiator or Joined state)
+    pub async fn wait_for_leader(
+        &self,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<(), crate::error::ConsensusError> {
+        let timeout = timeout.unwrap_or(std::time::Duration::from_secs(30));
+        let start_time = std::time::Instant::now();
+
+        loop {
+            let state = self.cluster_state().await;
+
+            match state {
+                ClusterState::Initiator { .. } | ClusterState::Joined { .. } => {
+                    debug!("Cluster is ready with state: {:?}", state);
+                    return Ok(());
+                }
+                ClusterState::Failed { error, .. } => {
+                    return Err(crate::error::ConsensusError::InvalidMessage(format!(
+                        "Cluster failed to initialize: {}",
+                        error
+                    )));
+                }
+                _ => {
+                    // Continue waiting
+                    if start_time.elapsed() > timeout {
+                        return Err(crate::error::ConsensusError::InvalidMessage(format!(
+                            "Timeout waiting for cluster to be ready. Current state: {:?}",
+                            state
+                        )));
+                    }
+
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
+    }
+
     /// Get the current cluster state
     pub async fn cluster_state(&self) -> ClusterState {
         self.cluster_state.read().await.clone()

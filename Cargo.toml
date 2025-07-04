@@ -565,6 +565,7 @@ tokio-rustls-acme = { version = "0.7.1", features = ["axum"] }
 tokio-socks = "0.5.1"
 tokio-stream = "0.1.17"
 tokio-tun = "0.13.2"
+tokio-tungstenite = "0.23"
 tokio-util = { version = "0.7.15", features = ["rt"] }
 tokio-vsock = "0.7.1"
 toml = "0.8.23"
