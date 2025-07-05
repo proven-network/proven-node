@@ -24,6 +24,7 @@ use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_bootable::Bootable;
 use proven_cert_store::CertStore;
+use proven_consensus::config::ClusterJoinRetryConfig;
 use proven_consensus::{Consensus, TransportConfig};
 use proven_consensus::{ConsensusConfig, StorageConfig};
 use proven_core::{BootstrapUpgrade, Core, CoreOptions};
@@ -1168,6 +1169,7 @@ impl Bootstrap {
                 transport_config: TransportConfig::WebSocket,
                 storage_config: StorageConfig::Memory,
                 cluster_discovery_timeout: Some(Duration::from_secs(30)),
+                cluster_join_retry_config: ClusterJoinRetryConfig::default(),
             })
             .await
             .unwrap(),

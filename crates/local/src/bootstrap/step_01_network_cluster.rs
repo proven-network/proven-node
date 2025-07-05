@@ -22,6 +22,7 @@ use openraft::Config as RaftConfig;
 use proven_attestation::Attestor;
 use proven_bootable::Bootable;
 use proven_consensus::Consensus;
+use proven_consensus::config::ClusterJoinRetryConfig;
 use proven_core::{Core, CoreOptions};
 use proven_governance::{Governance, Version};
 use proven_http_insecure::InsecureHttpServer;
@@ -95,6 +96,12 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
             transport_config: proven_consensus::TransportConfig::WebSocket,
             storage_config: proven_consensus::StorageConfig::Memory,
             cluster_discovery_timeout: Some(Duration::from_secs(30)),
+            cluster_join_retry_config: ClusterJoinRetryConfig {
+                max_attempts: 20,
+                initial_delay: Duration::from_secs(1),
+                max_delay: Duration::from_secs(10),
+                request_timeout: Duration::from_secs(5),
+            },
         })
         .await
         .unwrap(),

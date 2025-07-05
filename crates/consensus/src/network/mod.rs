@@ -128,6 +128,9 @@ where
     /// Current cluster state
     cluster_state: Arc<RwLock<crate::network::ClusterState>>,
 
+    /// Cluster join retry configuration
+    cluster_join_retry_config: crate::config::ClusterJoinRetryConfig,
+
     /// Phantom data to ensure that the attestor type is used
     _marker: PhantomData<A>,
 }
@@ -138,6 +141,7 @@ where
     A: Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
 {
     /// Create a new NetworkManager with task-based message processing
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         signing_key: ed25519_dalek::SigningKey,
         governance: Arc<G>,
@@ -151,6 +155,7 @@ where
         + Sync
         + 'static,
         raft_config: Arc<openraft::Config>,
+        cluster_join_retry_config: crate::config::ClusterJoinRetryConfig,
     ) -> Result<Self, openraft::error::RaftError<TypeConfig>> {
         let local_public_key = local_node_id.clone();
 
@@ -295,6 +300,7 @@ where
             pending_requests,
             discovery_responses,
             cluster_state,
+            cluster_join_retry_config,
             _marker: PhantomData,
         })
     }
@@ -487,28 +493,35 @@ where
         Ok(())
     }
 
-    /// Join an existing cluster via Raft
+    /// Join an existing cluster via Raft with retry logic
     pub async fn join_existing_cluster_via_raft(
         &self,
         node_id: NodeId,
         existing_cluster: &crate::network::ClusterDiscoveryResponse,
     ) -> Result<(), crate::error::ConsensusError> {
+        // Get retry configuration
+        let retry_config = &self.cluster_join_retry_config;
+
         // Ensure we have a leader to send the join request to
-        let leader_id = existing_cluster.current_leader.as_ref().ok_or_else(|| {
-            crate::error::ConsensusError::InvalidMessage(
-                "Cannot join cluster: no leader reported in discovery response".to_string(),
-            )
-        })?;
+        let mut current_leader = existing_cluster
+            .current_leader
+            .as_ref()
+            .ok_or_else(|| {
+                crate::error::ConsensusError::InvalidMessage(
+                    "Cannot join cluster: no leader reported in discovery response".to_string(),
+                )
+            })?
+            .clone();
 
         info!(
-            "Joining existing cluster via Raft. Leader: {}, Term: {:?}",
-            leader_id, existing_cluster.current_term
+            "Joining existing cluster via Raft. Initial leader: {}, Term: {:?}",
+            current_leader, existing_cluster.current_term
         );
 
         // Set cluster state to waiting to join
         self.set_cluster_state(crate::network::ClusterState::WaitingToJoin {
             requested_at: std::time::Instant::now(),
-            leader_id: leader_id.clone(),
+            leader_id: current_leader.clone(),
         })
         .await;
 
@@ -517,92 +530,170 @@ where
             crate::error::ConsensusError::InvalidMessage(format!("Failed to get own node: {e}"))
         })?;
 
-        // Create join request with correlation ID tracking
+        // Create join request
         let join_request = crate::network::ClusterJoinRequest {
             requester_id: node_id.clone(),
             requester_node: requester_node.into(),
         };
 
-        // Generate correlation ID and add pending request
-        let correlation_id = Uuid::new_v4();
-        let response_rx = self
-            .add_pending_request::<ClusterJoinResponse>(
-                correlation_id,
-                leader_id.clone(),
-                "cluster_join_request".to_string(),
-            )
-            .await;
+        let mut last_error = None;
+        let mut retry_delay = retry_config.initial_delay;
 
-        // Send join request with correlation ID using channel-based system
-        let message = crate::network::Message::Application(Box::new(
-            crate::network::ApplicationMessage::ClusterJoinRequest(join_request),
-        ));
-
-        // Send using channel-based system
-        self.send_message_with_correlation(leader_id.clone(), message, correlation_id)
-            .await?;
-
-        info!(
-            "Sent join request to {} with correlation ID {}",
-            leader_id, correlation_id
-        );
-
-        // Wait for join response with timeout
-        let join_timeout = std::time::Duration::from_secs(30);
-        let join_response = match tokio::time::timeout(join_timeout, response_rx).await {
-            Ok(Ok(response)) => response,
-            Ok(Err(_)) => {
-                self.set_cluster_state(ClusterState::Failed {
-                    failed_at: std::time::Instant::now(),
-                    error: "Join request channel was cancelled".to_string(),
-                })
-                .await;
-                return Err(crate::error::ConsensusError::InvalidMessage(
-                    "Join request cancelled".to_string(),
-                ));
-            }
-            Err(_) => {
-                self.set_cluster_state(ClusterState::Failed {
-                    failed_at: std::time::Instant::now(),
-                    error: "Join request timeout".to_string(),
-                })
-                .await;
-                return Err(crate::error::ConsensusError::InvalidMessage(
-                    "Join request timeout".to_string(),
-                ));
-            }
-        };
-
-        if join_response.success {
+        for attempt in 1..=retry_config.max_attempts {
             info!(
-                "Successfully joined cluster! Leader: {}, Size: {:?}, Term: {:?}",
-                join_response.responder_id, join_response.cluster_size, join_response.current_term
+                "Cluster join attempt {} of {}, targeting leader: {}",
+                attempt, retry_config.max_attempts, current_leader
             );
 
-            self.set_cluster_state(ClusterState::Joined {
-                joined_at: std::time::Instant::now(),
-                cluster_size: join_response.cluster_size.unwrap_or(1),
-            })
-            .await;
+            // Generate correlation ID and add pending request
+            let correlation_id = Uuid::new_v4();
+            let response_rx = self
+                .add_pending_request::<ClusterJoinResponse>(
+                    correlation_id,
+                    current_leader.clone(),
+                    "cluster_join_request".to_string(),
+                )
+                .await;
 
-            Ok(())
-        } else {
-            let error_msg = join_response
-                .error_message
-                .unwrap_or_else(|| "Unknown join error".to_string());
-            warn!("Failed to join cluster: {}", error_msg);
+            // Send join request with correlation ID using channel-based system
+            let message = crate::network::Message::Application(Box::new(
+                crate::network::ApplicationMessage::ClusterJoinRequest(join_request.clone()),
+            ));
 
-            self.set_cluster_state(ClusterState::Failed {
-                failed_at: std::time::Instant::now(),
-                error: error_msg.clone(),
-            })
-            .await;
+            // Send using channel-based system
+            match self
+                .send_message_with_correlation(current_leader.clone(), message, correlation_id)
+                .await
+            {
+                Ok(()) => {
+                    info!(
+                        "Sent join request to {} with correlation ID {} (attempt {})",
+                        current_leader, correlation_id, attempt
+                    );
+                }
+                Err(e) => {
+                    warn!("Failed to send join request on attempt {}: {}", attempt, e);
+                    last_error = Some(crate::error::ConsensusError::InvalidMessage(format!(
+                        "Failed to send join request: {}",
+                        e
+                    )));
 
-            Err(crate::error::ConsensusError::InvalidMessage(format!(
-                "Join request failed: {}",
-                error_msg
-            )))
+                    // Wait before retrying, unless this is the last attempt
+                    if attempt < retry_config.max_attempts {
+                        tokio::time::sleep(retry_delay).await;
+                        retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
+                    }
+                    continue;
+                }
+            }
+
+            // Wait for join response with timeout
+            let join_response =
+                match tokio::time::timeout(retry_config.request_timeout, response_rx).await {
+                    Ok(Ok(response)) => response,
+                    Ok(Err(_)) => {
+                        warn!("Join request channel was cancelled on attempt {}", attempt);
+                        last_error = Some(crate::error::ConsensusError::InvalidMessage(
+                            "Join request cancelled".to_string(),
+                        ));
+
+                        // Wait before retrying, unless this is the last attempt
+                        if attempt < retry_config.max_attempts {
+                            tokio::time::sleep(retry_delay).await;
+                            retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
+                        }
+                        continue;
+                    }
+                    Err(_) => {
+                        warn!("Join request timeout on attempt {}", attempt);
+                        last_error = Some(crate::error::ConsensusError::InvalidMessage(
+                            "Join request timeout".to_string(),
+                        ));
+
+                        // Wait before retrying, unless this is the last attempt
+                        if attempt < retry_config.max_attempts {
+                            tokio::time::sleep(retry_delay).await;
+                            retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
+                        }
+                        continue;
+                    }
+                };
+
+            if join_response.success {
+                info!(
+                    "Successfully joined cluster! Leader: {}, Size: {:?}, Term: {:?}",
+                    join_response.responder_id,
+                    join_response.cluster_size,
+                    join_response.current_term
+                );
+
+                self.set_cluster_state(ClusterState::Joined {
+                    joined_at: std::time::Instant::now(),
+                    cluster_size: join_response.cluster_size.unwrap_or(1),
+                })
+                .await;
+
+                return Ok(());
+            } else {
+                let error_msg = join_response
+                    .error_message
+                    .unwrap_or_else(|| "Unknown join error".to_string());
+
+                warn!("Join request failed on attempt {}: {}", attempt, error_msg);
+
+                // Check if we have a new leader to try
+                if let Some(new_leader) = join_response.current_leader {
+                    if new_leader != current_leader {
+                        info!(
+                            "Received new leader {} from failed join response, will retry with new leader",
+                            new_leader
+                        );
+                        current_leader = new_leader;
+
+                        // Update cluster state with new leader
+                        self.set_cluster_state(crate::network::ClusterState::WaitingToJoin {
+                            requested_at: std::time::Instant::now(),
+                            leader_id: current_leader.clone(),
+                        })
+                        .await;
+                    }
+                }
+
+                last_error = Some(crate::error::ConsensusError::InvalidMessage(format!(
+                    "Join request failed: {}",
+                    error_msg
+                )));
+
+                // Wait before retrying, unless this is the last attempt
+                if attempt < retry_config.max_attempts {
+                    tokio::time::sleep(retry_delay).await;
+                    retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
+                }
+            }
         }
+
+        // All attempts failed
+        let final_error = last_error.unwrap_or_else(|| {
+            crate::error::ConsensusError::InvalidMessage(
+                "Unknown error after all retry attempts".to_string(),
+            )
+        });
+
+        warn!(
+            "Failed to join cluster after {} attempts. Final error: {}",
+            retry_config.max_attempts, final_error
+        );
+
+        self.set_cluster_state(ClusterState::Failed {
+            failed_at: std::time::Instant::now(),
+            error: format!(
+                "Failed after {} attempts: {}",
+                retry_config.max_attempts, final_error
+            ),
+        })
+        .await;
+
+        Err(final_error)
     }
 
     /// Wait for the cluster to be ready (either Initiator or Joined state)
@@ -1436,6 +1527,7 @@ where
                 )),
                 cluster_size: None,
                 current_term: None,
+                current_leader: metrics.current_leader.clone(),
             };
             let response_message =
                 Message::Application(Box::new(ApplicationMessage::ClusterJoinResponse(response)));
@@ -1468,6 +1560,7 @@ where
                         + metrics.membership_config.membership().learner_ids().count(),
                 ),
                 current_term: Some(metrics.current_term),
+                current_leader: metrics.current_leader.clone(),
             };
             let response_message =
                 Message::Application(Box::new(ApplicationMessage::ClusterJoinResponse(response)));
@@ -1505,6 +1598,7 @@ where
                                 + metrics.membership_config.membership().learner_ids().count(),
                         ),
                         current_term: Some(metrics.current_term),
+                        current_leader: metrics.current_leader.clone(),
                     };
                     let response_message = Message::Application(Box::new(
                         ApplicationMessage::ClusterJoinResponse(response),
@@ -1518,12 +1612,14 @@ where
                 Err(e) => {
                     error!("Failed to add {} to cluster: {}", requester_id, e);
                     // Send error response
+                    let metrics = raft_clone.metrics().borrow().clone();
                     let response = ClusterJoinResponse {
                         responder_id: local_node_id_clone,
                         success: false,
                         error_message: Some(e),
                         cluster_size: None,
                         current_term: None,
+                        current_leader: metrics.current_leader.clone(),
                     };
                     let response_message = Message::Application(Box::new(
                         ApplicationMessage::ClusterJoinResponse(response),

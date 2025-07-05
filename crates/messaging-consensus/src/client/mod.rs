@@ -227,6 +227,7 @@ mod tests {
     use proven_consensus::RaftConfig;
     use proven_consensus::StorageConfig;
     use proven_consensus::TransportConfig;
+    use proven_consensus::config::ClusterJoinRetryConfig;
     use proven_consensus::config::ConsensusConfig;
     use proven_governance_mock::MockGovernance;
     use proven_messaging::stream::{InitializedStream, Stream};
@@ -455,6 +456,7 @@ mod tests {
             },
             storage_config: StorageConfig::Memory,
             cluster_discovery_timeout: None,
+            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
         };
 
         // Create consensus

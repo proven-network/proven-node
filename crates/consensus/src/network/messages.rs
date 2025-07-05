@@ -97,6 +97,8 @@ pub struct ClusterJoinResponse {
     pub responder_id: NodeId,
     /// Whether the join request was successful
     pub success: bool,
+    /// ID of the current leader (if known)
+    pub current_leader: Option<NodeId>,
 }
 
 impl ClusterDiscoveryRequest {

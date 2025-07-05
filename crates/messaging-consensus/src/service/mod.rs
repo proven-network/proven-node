@@ -405,6 +405,7 @@ mod tests {
     use proven_attestation_mock::MockAttestor;
     use proven_consensus::{
         Consensus, ConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
+        config::ClusterJoinRetryConfig,
     };
     use proven_governance::{GovernanceNode, Version};
     use proven_governance_mock::MockGovernance;
@@ -594,6 +595,7 @@ mod tests {
             },
             storage_config: StorageConfig::Memory,
             cluster_discovery_timeout: Some(Duration::from_secs(10)),
+            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
         };
 
         let consensus = Consensus::new(config).await.unwrap();
@@ -658,6 +660,7 @@ mod tests {
             },
             storage_config: StorageConfig::Memory,
             cluster_discovery_timeout: Some(Duration::from_secs(10)),
+            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
         };
 
         let consensus = Consensus::new(config).await.unwrap();
@@ -742,7 +745,6 @@ mod tests {
 
             // Create consensus config with temporary directory for each node
             let config = ConsensusConfig {
-                cluster_discovery_timeout: Some(Duration::from_secs(10)), // Longer timeout for multi-node
                 governance: shared_governance.clone(),
                 attestor: attestor.clone(),
                 signing_key: signing_keys[i].clone(),
@@ -751,6 +753,8 @@ mod tests {
                     listen_addr: format!("127.0.0.1:{}", node_ports[i]).parse().unwrap(),
                 },
                 storage_config: StorageConfig::Memory,
+                cluster_discovery_timeout: Some(Duration::from_secs(10)),
+                cluster_join_retry_config: ClusterJoinRetryConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();

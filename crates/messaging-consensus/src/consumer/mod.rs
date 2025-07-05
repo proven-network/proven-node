@@ -343,7 +343,7 @@ mod tests {
     use std::sync::Arc;
 
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::config::ConsensusConfig;
+    use proven_consensus::config::{ClusterJoinRetryConfig, ConsensusConfig};
     use proven_consensus::{Consensus, RaftConfig, StorageConfig, TransportConfig};
     use proven_governance::GovernanceNode;
     use proven_governance_mock::MockGovernance;
@@ -460,6 +460,7 @@ mod tests {
             },
             storage_config: StorageConfig::Memory,
             cluster_discovery_timeout: None,
+            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
         };
 
         // Create consensus

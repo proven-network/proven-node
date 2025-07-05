@@ -86,6 +86,7 @@ where
                     config.transport_config,
                     mem_storage.clone(),
                     raft_config,
+                    config.cluster_join_retry_config,
                 )
                 .await
             }
@@ -98,6 +99,7 @@ where
                     config.transport_config,
                     rocks_storage.clone(),
                     raft_config,
+                    config.cluster_join_retry_config,
                 )
                 .await
             }
@@ -804,6 +806,7 @@ mod tests {
             },
             storage_config: crate::config::StorageConfig::Memory,
             cluster_discovery_timeout: None,
+            cluster_join_retry_config: crate::config::ClusterJoinRetryConfig::default(),
         };
 
         Consensus::new(config).await.unwrap()
@@ -1121,6 +1124,7 @@ mod tests {
                 },
                 storage_config: crate::config::StorageConfig::Memory,
                 cluster_discovery_timeout: None,
+                cluster_join_retry_config: crate::config::ClusterJoinRetryConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();
@@ -1359,6 +1363,7 @@ mod tests {
                 },
                 storage_config: crate::config::StorageConfig::Memory,
                 cluster_discovery_timeout: None,
+                cluster_join_retry_config: crate::config::ClusterJoinRetryConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();
@@ -1470,6 +1475,7 @@ mod tests {
                 path: temp_dir.path().to_path_buf(),
             },
             cluster_discovery_timeout: None,
+            cluster_join_retry_config: crate::config::ClusterJoinRetryConfig::default(),
         };
 
         let ws_consensus = Consensus::new(config).await.unwrap();
@@ -1604,6 +1610,7 @@ mod tests {
                 },
                 storage_config: crate::config::StorageConfig::Memory,
                 cluster_discovery_timeout: None,
+                cluster_join_retry_config: crate::config::ClusterJoinRetryConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();
@@ -1738,6 +1745,7 @@ mod tests {
                 },
                 storage_config: crate::config::StorageConfig::Memory,
                 cluster_discovery_timeout: None,
+                cluster_join_retry_config: crate::config::ClusterJoinRetryConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();
@@ -1860,6 +1868,7 @@ mod tests {
                 },
                 storage_config: crate::config::StorageConfig::Memory,
                 cluster_discovery_timeout: None,
+                cluster_join_retry_config: crate::config::ClusterJoinRetryConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();
@@ -2139,6 +2148,7 @@ mod tests {
                 transport_config: crate::transport::TransportConfig::WebSocket,
                 storage_config: crate::config::StorageConfig::Memory,
                 cluster_discovery_timeout: None,
+                cluster_join_retry_config: crate::config::ClusterJoinRetryConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();

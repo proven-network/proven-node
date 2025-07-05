@@ -628,7 +628,9 @@ mod tests {
     use bytes::Bytes;
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::{ConsensusConfig, RaftConfig, StorageConfig, TransportConfig};
+    use proven_consensus::{
+        ConsensusConfig, RaftConfig, StorageConfig, TransportConfig, config::ClusterJoinRetryConfig,
+    };
     use proven_governance_mock::MockGovernance;
     use rand::rngs::OsRng;
     use serial_test::serial;
@@ -694,6 +696,7 @@ mod tests {
             },
             storage_config: StorageConfig::Memory,
             cluster_discovery_timeout: None,
+            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
         };
 
         let consensus = Consensus::new(config).await.unwrap();
@@ -1175,6 +1178,7 @@ mod tests {
                 },
                 storage_config: StorageConfig::Memory,
                 cluster_discovery_timeout: None,
+                cluster_join_retry_config: ClusterJoinRetryConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();
