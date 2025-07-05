@@ -3,6 +3,7 @@
 //! This module provides the RaftAdapter and NetworkFactory that bridge
 //! OpenRaft with our transport layer.
 
+use crate::Node;
 use crate::types::{NodeId, TypeConfig};
 
 use std::collections::HashMap;
@@ -14,7 +15,6 @@ use openraft::raft::{
     AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest, InstallSnapshotResponse,
     VoteRequest, VoteResponse,
 };
-use proven_governance::GovernanceNode;
 use tokio::sync::{RwLock, mpsc, oneshot};
 use uuid::Uuid;
 
@@ -132,7 +132,7 @@ impl NetworkFactory {
 impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
     type Network = RaftAdapter;
 
-    async fn new_client(&mut self, target: NodeId, _node: &GovernanceNode) -> Self::Network {
+    async fn new_client(&mut self, target: NodeId, _node: &Node) -> Self::Network {
         RaftAdapter {
             correlator: self.correlator.clone(),
             message_tx: self.message_tx.clone(),

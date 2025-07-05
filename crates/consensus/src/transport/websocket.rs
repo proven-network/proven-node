@@ -34,8 +34,6 @@ use tokio_tungstenite::{
     tungstenite::protocol::Message as TungsteniteMessage,
 };
 use tracing::{debug, info, warn};
-use url::Url;
-use uuid;
 
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -644,36 +642,11 @@ where
             }
         }
 
-        // Parse the origin URL and convert http/https to ws/wss
-        let mut url = Url::parse(&node.origin).map_err(|e| {
-            NetworkError::ConnectionFailed(format!("Invalid origin URL '{}': {}", node.origin, e))
-        })?;
-
-        // Convert HTTP schemes to WebSocket schemes
-        let current_scheme = url.scheme().to_string();
-        let ws_scheme = match current_scheme.as_str() {
-            "http" => "ws",
-            "https" => "wss",
-            "ws" | "wss" => &current_scheme, // Already a WebSocket URL
-            scheme => {
-                return Err(NetworkError::ConnectionFailed(format!(
-                    "Unsupported scheme '{}' in origin '{}'. Expected http, https, ws, or wss",
-                    scheme, node.origin
-                )));
-            }
-        };
-
-        url.set_scheme(ws_scheme).map_err(|_| {
-            NetworkError::ConnectionFailed(format!(
-                "Failed to set WebSocket scheme for origin '{}'",
-                node.origin
-            ))
-        })?;
-
-        // Add the WebSocket endpoint path
-        // Ensure no double slashes by trimming trailing slash from URL
-        let base_url = url.as_str().trim_end_matches('/');
-        let ws_url = format!("{}/consensus/ws", base_url);
+        // Get WebSocket URL using the Node's websocket_url method
+        let node_wrapper = crate::types::Node::from(node.clone());
+        let ws_url = node_wrapper
+            .websocket_url()
+            .map_err(NetworkError::ConnectionFailed)?;
 
         // Connection with retry logic (matching TCP transport)
         let mut last_error = None;
@@ -759,13 +732,13 @@ where
         }
 
         // No existing connection - look up peer in topology and establish connection on-demand
-        if let Some(governance_node) = self
+        if let Some(node) = self
             .topology_manager
             .get_peer_by_node_id(target_node_id)
             .await
         {
             // Try to establish connection
-            self.establish_connection_on_demand(&governance_node)
+            self.establish_connection_on_demand(node.as_governance_node())
                 .await?;
 
             // Now try to send again

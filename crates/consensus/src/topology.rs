@@ -1,7 +1,7 @@
 //! Network topology management and peer discovery
 
 use ed25519_dalek::VerifyingKey;
-use proven_governance::{Governance, GovernanceNode};
+use proven_governance::Governance;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
+use crate::Node;
 use crate::{
     error::{ConsensusError, ConsensusResult},
     types::NodeId,
@@ -22,7 +23,7 @@ pub struct TopologyManager<G>
 where
     G: Governance + Send + Sync + 'static,
 {
-    cached_peers: Arc<RwLock<Vec<GovernanceNode>>>,
+    cached_peers: Arc<RwLock<Vec<Node>>>,
     governance: Arc<G>,
     node_id: NodeId,
     /// Track when we last tried to refresh topology for missing peers
@@ -82,7 +83,7 @@ where
                 ))
             })?;
 
-            peers.push(node);
+            peers.push(crate::types::Node::from(node));
         }
 
         debug!("Found {} peers in topology", peers.len());
@@ -123,14 +124,14 @@ where
     }
 
     /// Get all peers from cached topology
-    pub async fn get_all_peers(&self) -> Vec<GovernanceNode> {
+    pub async fn get_all_peers(&self) -> Vec<Node> {
         let cached_peers = self.cached_peers.read().await;
         cached_peers.clone()
     }
 
     /// Get a specific peer by public key
     /// Will attempt to refresh topology if peer is not found (unless in cooldown)
-    pub async fn get_peer(&self, public_key: VerifyingKey) -> Option<GovernanceNode> {
+    pub async fn get_peer(&self, public_key: VerifyingKey) -> Option<Node> {
         let node_id = NodeId::new(public_key);
 
         // First check cached peers
@@ -138,7 +139,7 @@ where
             let cached_peers = self.cached_peers.read().await;
             if let Some(peer) = cached_peers
                 .iter()
-                .find(|peer| peer.public_key == public_key)
+                .find(|peer| peer.public_key() == public_key)
                 .cloned()
             {
                 return Some(peer);
@@ -166,7 +167,7 @@ where
             let cached_peers = self.cached_peers.read().await;
             if let Some(peer) = cached_peers
                 .iter()
-                .find(|peer| peer.public_key == public_key)
+                .find(|peer| peer.public_key() == public_key)
                 .cloned()
             {
                 return Some(peer);
@@ -180,13 +181,13 @@ where
 
     /// Get a specific peer by NodeId
     /// Will attempt to refresh topology if peer is not found (unless in cooldown)
-    pub async fn get_peer_by_node_id(&self, node_id: &NodeId) -> Option<GovernanceNode> {
+    pub async fn get_peer_by_node_id(&self, node_id: &NodeId) -> Option<Node> {
         // First check cached peers
         {
             let cached_peers = self.cached_peers.read().await;
             if let Some(peer) = cached_peers
                 .iter()
-                .find(|peer| NodeId::new(peer.public_key) == *node_id)
+                .find(|peer| NodeId::new(peer.public_key()) == *node_id)
                 .cloned()
             {
                 return Some(peer);
@@ -214,7 +215,7 @@ where
             let cached_peers = self.cached_peers.read().await;
             if let Some(peer) = cached_peers
                 .iter()
-                .find(|peer| NodeId::new(peer.public_key) == *node_id)
+                .find(|peer| NodeId::new(peer.public_key()) == *node_id)
                 .cloned()
             {
                 return Some(peer);
@@ -232,7 +233,7 @@ where
     }
 
     /// Get our own GovernanceNode from the topology
-    pub async fn get_own_node(&self) -> ConsensusResult<GovernanceNode> {
+    pub async fn get_own_node(&self) -> ConsensusResult<Node> {
         let topology = self
             .governance
             .get_topology()
@@ -241,7 +242,7 @@ where
 
         for node in topology {
             if self.node_id == node.public_key {
-                return Ok(node);
+                return Ok(crate::types::Node::from(node));
             }
         }
 

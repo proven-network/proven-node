@@ -8,7 +8,6 @@
 
 #![warn(missing_docs)]
 #![warn(clippy::all)]
-
 pub mod attestation;
 pub mod config;
 pub mod consensus;
@@ -31,7 +30,7 @@ pub use error::{ConsensusError, ConsensusResult};
 pub use openraft::Config as RaftConfig;
 pub use storage::{ConsensusStorage, MemoryConsensusStorage, RocksConsensusStorage};
 pub use transport::{HttpIntegratedTransport, NetworkTransport, TransportConfig};
-pub use types::TypeConfig;
+pub use types::{Node, NodeId, TypeConfig};
 
 // Re-export config types
 pub use config::{ConsensusConfig, StorageConfig};

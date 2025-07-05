@@ -26,7 +26,6 @@ use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, timeout};
 use tracing::{debug, warn};
-use url::Url;
 
 /// Maximum message size (16MB)
 const MAX_MESSAGE_SIZE: u32 = 16 * 1024 * 1024;
@@ -565,40 +564,12 @@ where
             return Ok(());
         }
 
-        // Parse the origin URL to extract host and port
-        let url = Url::parse(&node.origin).map_err(|e| {
-            NetworkError::ConnectionFailed(format!("Invalid origin URL '{}': {}", node.origin, e))
-        })?;
-
-        let host = url.host_str().ok_or_else(|| {
-            NetworkError::ConnectionFailed(format!("No host in origin URL '{}'", node.origin))
-        })?;
-
-        let port = url.port().unwrap_or_else(|| {
-            match url.scheme() {
-                "https" => 443,
-                "http" => 80,
-                _ => 80, // Default fallback
-            }
-        });
-
-        // Resolve DNS to get socket address
-        let socket_addrs = tokio::net::lookup_host(format!("{}:{}", host, port))
+        // Get socket address using the Node's tcp_socket_addr method
+        let node_wrapper = crate::types::Node::from(node.clone());
+        let address = node_wrapper
+            .tcp_socket_addr()
             .await
-            .map_err(|e| {
-                NetworkError::ConnectionFailed(format!(
-                    "Failed to resolve host '{}:{}' from origin '{}': {}",
-                    host, port, node.origin, e
-                ))
-            })?;
-
-        // Try to connect to the first resolved address
-        let address = socket_addrs.into_iter().next().ok_or_else(|| {
-            NetworkError::ConnectionFailed(format!(
-                "No addresses resolved for host '{}:{}' from origin '{}'",
-                host, port, node.origin
-            ))
-        })?;
+            .map_err(NetworkError::ConnectionFailed)?;
 
         debug!("Resolved {} to {}", node.origin, address);
 
@@ -667,13 +638,13 @@ where
         }
 
         // No existing connection - look up peer in topology and establish connection on-demand
-        if let Some(governance_node) = self
+        if let Some(node) = self
             .topology_manager
             .get_peer_by_node_id(target_node_id)
             .await
         {
             // Try to establish connection
-            self.establish_connection_on_demand(&governance_node)
+            self.establish_connection_on_demand(node.as_governance_node())
                 .await?;
 
             // Now try to send again

@@ -454,7 +454,7 @@ where
     pub async fn initialize_multi_node_cluster(
         &self,
         node_id: NodeId,
-        _peers: Vec<proven_governance::GovernanceNode>,
+        _peers: Vec<crate::types::Node>,
     ) -> Result<(), crate::error::ConsensusError> {
         info!(
             "Initializing multi-node cluster as leader for node {}",
@@ -520,7 +520,7 @@ where
         // Create join request with correlation ID tracking
         let join_request = crate::network::ClusterJoinRequest {
             requester_id: node_id.clone(),
-            requester_node,
+            requester_node: requester_node.into(),
         };
 
         // Generate correlation ID and add pending request
@@ -696,7 +696,7 @@ where
 
         // Send discovery requests to all peers and track them
         for peer in &all_peers {
-            let peer_node_id = NodeId::new(peer.public_key);
+            let peer_node_id = NodeId::new(peer.public_key());
 
             // Create unique discovery request for each peer
             let discovery_request = ClusterDiscoveryRequest::new(self.local_node_id.clone());
@@ -1760,7 +1760,11 @@ where
             info!("Attempt {} to add {} as learner", attempt, requester_id);
 
             match raft
-                .add_learner(requester_id.clone(), requester_node.clone(), true)
+                .add_learner(
+                    requester_id.clone(),
+                    crate::types::Node::from(requester_node.clone()),
+                    true,
+                )
                 .await
             {
                 Ok(_) => {

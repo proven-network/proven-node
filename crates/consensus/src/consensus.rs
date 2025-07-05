@@ -14,7 +14,7 @@ use tracing::{info, warn};
 
 use proven_attestation::Attestor;
 use proven_bootable::Bootable;
-use proven_governance::{Governance, GovernanceNode};
+use proven_governance::Governance;
 
 use crate::config::ConsensusConfig;
 use crate::error::{ConsensusError, ConsensusResult};
@@ -533,7 +533,7 @@ where
     /// Discover existing clusters and join or become initiator
     async fn discover_and_join_cluster(
         &self,
-        all_peers: Vec<GovernanceNode>,
+        all_peers: Vec<crate::types::Node>,
     ) -> ConsensusResult<()> {
         // Set state to discovering
         self.network_manager
@@ -592,7 +592,7 @@ where
         // Use deterministic node ordering to decide who becomes the multi-node cluster coordinator
         let mut all_node_ids: Vec<NodeId> = all_peers
             .iter()
-            .map(|p| NodeId::new(p.public_key))
+            .map(|p| NodeId::new(p.public_key()))
             .collect();
         all_node_ids.push(self.node_id.clone());
         all_node_ids.sort(); // Deterministic ordering
@@ -643,7 +643,7 @@ where
     /// Initialize a multi-node cluster by starting as single-node and expecting others to join
     async fn initialize_multi_node_cluster(
         &self,
-        peers: Vec<GovernanceNode>,
+        peers: Vec<crate::types::Node>,
     ) -> ConsensusResult<()> {
         self.network_manager
             .initialize_multi_node_cluster(self.node_id.clone(), peers)
