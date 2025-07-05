@@ -16,7 +16,7 @@ use handlers::{
     connect_iframe_js_handler, create_management_session_handler, create_session_handler,
     http_rpc_handler, management_http_rpc_handler, management_ws_rpc_handler,
     nats_cluster_endpoint_handler, register_iframe_html_handler, register_iframe_js_handler,
-    rpc_iframe_html_handler, rpc_iframe_js_handler, rpc_worker_js_handler, sdk_js_handler,
+    rpc_iframe_html_handler, rpc_iframe_js_handler, rpc_worker_js_handler,
     webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
     webauthn_registration_finish_handler, webauthn_registration_start_handler, whoami_handler,
     ws_rpc_handler,
@@ -443,7 +443,6 @@ where
                 get(nats_cluster_endpoint_handler).with_state(light_ctx),
             )
             // ** Static files **
-            .route("/sdk.js", get(sdk_js_handler))
             // Iframe HTML
             .route(
                 "/app/{application_id}/iframes/bridge.html",

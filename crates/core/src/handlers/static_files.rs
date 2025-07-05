@@ -87,11 +87,6 @@ iframe_handler!(connect_iframe_html_handler, CONNECT_IFRAME_HTML);
 iframe_handler!(register_iframe_html_handler, REGISTER_IFRAME_HTML);
 iframe_handler!(rpc_iframe_html_handler, RPC_IFRAME_HTML);
 
-// SDK
-// TODO: temporary - should be extracted to external package (not served via node)
-const SDK_JS: &str = include_str!("../../static/sdk.js");
-js_handler!(sdk_js_handler, SDK_JS);
-
 // Iframe JS
 const BRIDGE_IFRAME_JS: &str = include_str!("../../static/iframes/bridge/bridge.js");
 const CONNECT_IFRAME_JS: &str = include_str!("../../static/iframes/connect/connect.js");
