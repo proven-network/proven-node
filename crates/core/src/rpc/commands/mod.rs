@@ -1,3 +1,4 @@
+mod add_allowed_origin;
 mod anonymize;
 mod create_application;
 mod execute;
@@ -27,6 +28,7 @@ pub trait RpcCommand {
 }
 
 // Re-export all command types
+pub use add_allowed_origin::{AddAllowedOriginCommand, AddAllowedOriginResponse};
 pub use anonymize::{AnonymizeCommand, AnonymizeResponse};
 pub use create_application::{CreateApplicationCommand, CreateApplicationResponse};
 pub use execute::{ExecuteCommand, ExecuteResponse};

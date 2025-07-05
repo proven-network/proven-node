@@ -8,9 +8,10 @@ pub use context::RpcContext;
 pub use error::Error;
 
 pub use crate::rpc::commands::{
-    AnonymizeCommand, AnonymizeResponse, CreateApplicationCommand, CreateApplicationResponse,
-    ExecuteCommand, ExecuteHashCommand, ExecuteHashResponse, ExecuteResponse, IdentifyCommand,
-    IdentifyResponse, WhoAmICommand, WhoAmIResponse,
+    AddAllowedOriginCommand, AddAllowedOriginResponse, AnonymizeCommand, AnonymizeResponse,
+    CreateApplicationCommand, CreateApplicationResponse, ExecuteCommand, ExecuteHashCommand,
+    ExecuteHashResponse, ExecuteResponse, IdentifyCommand, IdentifyResponse, WhoAmICommand,
+    WhoAmIResponse,
 };
 
 use async_trait::async_trait;
@@ -26,6 +27,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Command {
+    /// Add an allowed origin to an application.
+    AddAllowedOrigin(AddAllowedOriginCommand),
+
     /// Anonymize the session.
     Anonymize(AnonymizeCommand),
 
@@ -49,6 +53,9 @@ pub enum Command {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type", content = "data")]
 pub enum Response {
+    /// A response to the add allowed origin command.
+    AddAllowedOrigin(AddAllowedOriginResponse),
+
     /// A response to the anonymize command.
     Anonymize(AnonymizeResponse),
 
@@ -80,6 +87,9 @@ impl RpcCommand for Command {
         RM: RuntimePoolManagement,
     {
         match self {
+            Command::AddAllowedOrigin(cmd) => {
+                Response::AddAllowedOrigin(cmd.execute(context).await)
+            }
             Command::Anonymize(cmd) => Response::Anonymize(cmd.execute(context).await),
             Command::CreateApplication(cmd) => {
                 Response::CreateApplication(cmd.execute(context).await)
