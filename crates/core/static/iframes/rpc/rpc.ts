@@ -1,7 +1,8 @@
-import { createSession, getSession } from "../../helpers/sessions";
-import { CoseSign1Decoder, CoseSign1Encoder } from "../../helpers/cose";
+/// <reference lib="DOM" />
+import { createSession, getSession } from "@proven-network/common";
+import { CoseSign1Decoder, CoseSign1Encoder } from "@proven-network/common";
 import { bytesToHex, hexToBytes } from "@noble/curves/abstract/utils";
-import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
+import { MessageBroker, getWindowIdFromUrl } from "@proven-network/common";
 
 // Generic message types for broker communication
 type RpcRequest = {

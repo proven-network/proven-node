@@ -6,7 +6,9 @@
   "workspaces": [
     "bundler-shared",
     "bundler-webpack",
-    "bundler-rollup"
+    "bundler-rollup",
+    "common",
+    "sdk"
   ],
   "scripts": {
     "build": "npm run build --workspaces",

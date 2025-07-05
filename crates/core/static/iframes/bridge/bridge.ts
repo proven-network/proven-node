@@ -1,4 +1,5 @@
-import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
+/// <reference lib="DOM" />
+import { MessageBroker, getWindowIdFromUrl } from "@proven-network/common";
 import { bytesToHex } from "@noble/curves/abstract/utils";
 import type {
   WhoAmI,
@@ -11,7 +12,7 @@ import type {
   ExecuteResult,
   ExecuteHashResult,
   RpcResponse,
-} from "../../common";
+} from "@proven-network/common";
 
 // Message types for parent ↔ bridge communication
 export type WhoAmIMessage = {
@@ -125,7 +126,7 @@ class BridgeClient {
 
   setupParentListener() {
     // Listen for messages from parent SDK
-    window.addEventListener("message", (event) => {
+    window.addEventListener("message", (event: MessageEvent) => {
       // Only handle messages from parent window
       if (event.source === parent && isParentMessage(event.data)) {
         this.handleParentMessage(event.data);

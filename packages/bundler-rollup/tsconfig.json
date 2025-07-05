@@ -7,7 +7,7 @@
   "include": ["src/**/*"],
   "references": [
     {
-      "path": "../shared"
+      "path": "../bundler-shared"
     }
   ]
 }

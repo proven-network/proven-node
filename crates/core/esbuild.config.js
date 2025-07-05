@@ -2,7 +2,7 @@ const { build } = require('esbuild');
 
 const config = {
   entryPoints: [
-    'static/sdk.ts',
+    '../../packages/sdk/src/index.ts',
     'static/iframes/bridge/bridge.ts',
     'static/iframes/connect/connect.ts',
     'static/iframes/register/register.ts',

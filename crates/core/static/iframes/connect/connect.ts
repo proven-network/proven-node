@@ -1,5 +1,6 @@
-import { authenticate } from "../../helpers/webauthn";
-import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
+/// <reference lib="DOM" />
+import { authenticate } from "@proven-network/common";
+import { MessageBroker, getWindowIdFromUrl } from "@proven-network/common";
 import { hexToBytes } from "@noble/curves/abstract/utils";
 import {
   Anonymize,
@@ -9,9 +10,9 @@ import {
   AnonymizeResponse,
   IdentifyResponse,
   RpcResponse,
-} from "../../common";
+} from "@proven-network/common";
 import { signAsync, getPublicKeyAsync } from "@noble/ed25519";
-import { getSession } from "../../helpers/sessions";
+import { getSession } from "@proven-network/common";
 
 class ConnectClient {
   applicationId: string;

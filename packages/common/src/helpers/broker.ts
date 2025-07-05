@@ -17,7 +17,7 @@ interface MessageHandler {
 interface PendingRequest {
   resolve: (value: any) => void;
   reject: (reason?: any) => void;
-  timeout: number;
+  timeout: ReturnType<typeof setTimeout>;
 }
 
 export class MessageBroker {
@@ -42,9 +42,7 @@ export class MessageBroker {
 
     try {
       // Create SharedWorker connection with windowId in query string
-      this.worker = new SharedWorker(
-        `../workers/broker-worker.js?window=${this.windowId}`
-      );
+      this.worker = new SharedWorker(`../workers/broker-worker.js?window=${this.windowId}`);
       this.port = this.worker.port;
 
       // Set up message handling
@@ -53,10 +51,7 @@ export class MessageBroker {
       };
 
       this.port.onmessageerror = (error) => {
-        console.error(
-          `Broker: Connection error for ${this.iframeType}:`,
-          error
-        );
+        console.error(`Broker: Connection error for ${this.iframeType}:`, error);
         this.isConnected = false;
       };
 
@@ -65,7 +60,7 @@ export class MessageBroker {
 
       // Send init message
       this.port.postMessage({
-        type: "init",
+        type: 'init',
         iframeType: this.iframeType,
       });
 
@@ -100,9 +95,7 @@ export class MessageBroker {
         pendingRequest.resolve(message.data);
         return;
       } else {
-        console.warn(
-          `Broker: Received response for unknown request ${message.messageId}`
-        );
+        console.warn(`Broker: Received response for unknown request ${message.messageId}`);
         return;
       }
     }
@@ -115,35 +108,26 @@ export class MessageBroker {
           // Create respond function if this message has a messageId (indicating it's a request)
           const respond = message.messageId
             ? (responseData: any) => {
-                this.sendResponse(
-                  message.messageId!,
-                  message.fromIframe,
-                  responseData
-                );
+                this.sendResponse(message.messageId!, message.fromIframe, responseData);
               }
             : undefined;
 
           handler(message, respond);
         } catch (error) {
-          console.error(
-            `Broker: Error in message handler for ${message.type}:`,
-            error
-          );
+          console.error(`Broker: Error in message handler for ${message.type}:`, error);
           // If this was a request and there was an error, send error response
           if (message.messageId) {
             this.sendResponse(
               message.messageId,
               message.fromIframe,
               null,
-              error.message
+              error instanceof Error ? error.message : String(error)
             );
           }
         }
       });
     } else {
-      console.warn(
-        `Broker: No handlers registered for message type: ${message.type}`
-      );
+      console.warn(`Broker: No handlers registered for message type: ${message.type}`);
       // If this was a request with no handler, send error response
       if (message.messageId) {
         this.sendResponse(
@@ -167,11 +151,11 @@ export class MessageBroker {
     }
 
     if (!this.port) {
-      throw new Error("Broker: Not connected");
+      throw new Error('Broker: Not connected');
     }
 
     const response: BrokerMessage = {
-      type: "response",
+      type: 'response',
       fromIframe: this.iframeType,
       toIframe: respondingTo,
       data: error ? { error } : responseData,
@@ -189,7 +173,7 @@ export class MessageBroker {
     }
 
     if (!this.port) {
-      throw new Error("Broker: Not connected");
+      throw new Error('Broker: Not connected');
     }
 
     const message: BrokerMessage = {
@@ -203,13 +187,9 @@ export class MessageBroker {
     this.port.postMessage(message);
   }
 
-  async request<T = any>(
-    type: string,
-    data: any,
-    toIframe: string
-  ): Promise<T> {
+  async request<T = any>(type: string, data: any, toIframe: string): Promise<T> {
     if (!toIframe) {
-      throw new Error("Broker: request() requires a target iframe type");
+      throw new Error('Broker: request() requires a target iframe type');
     }
 
     if (!this.isConnected) {
@@ -217,7 +197,7 @@ export class MessageBroker {
     }
 
     if (!this.port) {
-      throw new Error("Broker: Not connected");
+      throw new Error('Broker: Not connected');
     }
 
     const messageId = crypto.randomUUID();
@@ -263,9 +243,7 @@ export class MessageBroker {
       this.messageHandlers.set(messageType, []);
     }
     this.messageHandlers.get(messageType)!.push(handler);
-    console.debug(
-      `Broker: ${this.iframeType} registered handler for ${messageType}`
-    );
+    console.debug(`Broker: ${this.iframeType} registered handler for ${messageType}`);
   }
 
   off(messageType: string, handler: MessageHandler): void {
@@ -274,9 +252,7 @@ export class MessageBroker {
       const index = handlers.indexOf(handler);
       if (index > -1) {
         handlers.splice(index, 1);
-        console.debug(
-          `Broker: ${this.iframeType} removed handler for ${messageType}`
-        );
+        console.debug(`Broker: ${this.iframeType} removed handler for ${messageType}`);
       }
     }
   }
@@ -285,7 +261,7 @@ export class MessageBroker {
     // Clear all pending requests
     this.pendingRequests.forEach((request) => {
       clearTimeout(request.timeout);
-      request.reject(new Error("Broker disconnected"));
+      request.reject(new Error('Broker disconnected'));
     });
     this.pendingRequests.clear();
 
@@ -307,7 +283,7 @@ export class MessageBroker {
 // Utility function to extract window ID from URL fragment
 export function getWindowIdFromUrl(): string | null {
   const fragment = window.location.hash.substring(1); // Remove the #
-  if (fragment.startsWith("window=")) {
+  if (fragment.startsWith('window=')) {
     return fragment.substring(7); // Remove 'window='
   }
   return null;
@@ -316,7 +292,7 @@ export function getWindowIdFromUrl(): string | null {
 // Utility function to generate a random window ID
 export function generateWindowId(): string {
   return (
-    "win_" +
+    'win_' +
     Math.random().toString(36).substring(2, 15) +
     Math.random().toString(36).substring(2, 15)
   );

@@ -1,6 +1,7 @@
-import { register } from "../../helpers/webauthn";
-import { generateMnemonic } from "../../helpers/bip32";
-import { MessageBroker, getWindowIdFromUrl } from "../../helpers/broker";
+/// <reference lib="DOM" />
+import { register } from "@proven-network/common";
+import { generateMnemonic } from "@proven-network/common";
+import { MessageBroker, getWindowIdFromUrl } from "@proven-network/common";
 
 class RegisterClient {
   broker: MessageBroker;

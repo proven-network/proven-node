@@ -11,7 +11,9 @@
     "@peculiar/x509": "1.12.4",
     "@scure/bip39": "1.1.1",
     "cbor-x": "1.6.0",
-    "neverthrow": "8.2.0"
+    "neverthrow": "8.2.0",
+    "@proven-network/common": "file:../../packages/common",
+    "@proven-network/sdk": "file:../../packages/sdk"
   },
   "devDependencies": {
     "esbuild": "0.25.5",
