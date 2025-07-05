@@ -24,6 +24,7 @@
     "@babel/parser": "^7.26.0",
     "@babel/traverse": "^7.26.0",
     "@babel/types": "^7.26.0",
+    "@proven-network/common": "^0.0.1",
     "fast-glob": "^3.3.0",
     "semver": "^7.6.0",
     "tslib": "^2.8.1"

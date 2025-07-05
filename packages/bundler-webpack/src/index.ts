@@ -175,7 +175,7 @@ export class ProvenWebpackPlugin implements WebpackPluginInstance {
   /**
    * Sets up development mode with file watching
    */
-  private setupDevelopmentMode(compiler: Compiler, projectRoot: string): void {
+  private setupDevelopmentMode(compiler: Compiler, _projectRoot: string): void {
     compiler.hooks.watchRun.tapAsync('ProvenWebpackPlugin', async (compiler, callback) => {
       // In development mode, we can hook into webpack's file watching
       // and regenerate the bundle when relevant files change

@@ -1,4 +1,4 @@
 node_modules
-*/dist
-*/.rollup.cache
-*/src/**/*.js
+**/dist
+**/.rollup.cache
+**/src/**/*.js

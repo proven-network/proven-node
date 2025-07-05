@@ -75,7 +75,7 @@ export class DevWrapperGenerator {
   /**
    * Generates a wrapper function for a single handler
    */
-  private generateSingleHandlerWrapper(handler: HandlerInfo, modulePath: string): string {
+  private generateSingleHandlerWrapper(handler: HandlerInfo, _modulePath: string): string {
     const parameterList = handler.parameters
       .map((param) => {
         if (param.optional && param.defaultValue !== undefined) {

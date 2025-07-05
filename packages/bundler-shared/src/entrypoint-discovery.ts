@@ -109,7 +109,7 @@ export class EntrypointDiscovery {
         handlers,
         imports,
       };
-    } catch (error) {
+    } catch {
       // If parsing fails, this might not be a JavaScript/TypeScript file
       return null;
     }
@@ -174,7 +174,7 @@ export class EntrypointDiscovery {
   /**
    * Analyzes a call expression to see if it's a handler function
    */
-  private analyzeHandlerCall(node: t.CallExpression, sourceCode: string): HandlerInfo | null {
+  private analyzeHandlerCall(node: t.CallExpression, _sourceCode: string): HandlerInfo | null {
     if (!t.isIdentifier(node.callee)) {
       return null;
     }

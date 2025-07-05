@@ -53,7 +53,7 @@ export function provenRollupPlugin(options: BundlerOptions = {}): Plugin {
       console.log('🔍 Proven Rollup Plugin initialized');
     },
 
-    async generateBundle(opts, bundle) {
+    async generateBundle(_opts, _bundle) {
       try {
         console.log('🔍 Generating Proven bundle manifest...');
 

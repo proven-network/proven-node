@@ -3,16 +3,16 @@
   "description": "Access information about the active session inside Proven runtime",
   "version": "0.0.1",
   "homepage": "https://proven.network",
-  "main": "dist/proven-dapp-toolkit.mjs",
+  "main": "dist/session.mjs",
   "exports": {
     ".": {
       "import": {
         "types": "./types/index.d.ts",
-        "default": "./dist/proven-dapp-toolkit.mjs"
+        "default": "./dist/session.mjs"
       },
       "require": {
         "types": "./types/index.d.ts",
-        "default": "./dist/proven-dapp-toolkit.umd.js"
+        "default": "./dist/session.umd.js"
       }
     }
   },

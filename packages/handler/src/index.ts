@@ -1,33 +1,23 @@
 import { CommittedTransactionInfo } from '@radixdlt/babylon-gateway-api-sdk';
-import { SqlRows } from '@proven-network/sql';
 
-type Input = string | number | boolean | null | Uint8Array | Input[] | { [key: string]: Input };
-
-type Output =
-  | string
-  | number
-  | boolean
-  | null
-  | SqlRows<Record<string, null | number | string | Uint8Array>>
-  | Uint8Array
-  | Output[]
-  | { [key: string]: Output };
+// Allow any serializable output type including complex objects  
+type Output = any;
 
 export interface RpcHandlerOptions {
   allowedOrigins?: string[];
   timeout?: number;
 }
 
-export function run<I extends Input[], O extends Output | Promise<Output> | void | Promise<void>>(
-  fn: (...args: I) => O
-): (...args: I) => O {
+export function run<T extends (...args: any[]) => any>(
+  fn: T
+): T {
   return fn;
 }
 
-export function runWithOptions<
-  I extends Input[],
-  O extends Output | Promise<Output> | void | Promise<void>,
->(options: RpcHandlerOptions, fn: (...args: I) => O): (...args: I) => O {
+export function runWithOptions<T extends (...args: any[]) => any>(
+  options: RpcHandlerOptions, 
+  fn: T
+): T {
   return fn;
 }
 
@@ -80,8 +70,8 @@ export type RadixEventHandlerOptions =
     };
 
 export function runOnRadixEvent(
-  options: RadixEventHandlerOptions,
-  fn: (transaction: CommittedTransactionInfo) => void | Promise<void>
+  _options: RadixEventHandlerOptions,
+  _fn: (transaction: CommittedTransactionInfo) => void | Promise<void>
 ): void {
   return;
 }

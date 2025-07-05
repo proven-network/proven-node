@@ -12,6 +12,7 @@ export interface HandlerInfo {
   name: string;
   type: 'http' | 'schedule' | 'event' | 'rpc';
   parameters: ParameterInfo[];
+  config?: any;
   line?: number;
   column?: number;
 }
@@ -35,6 +36,7 @@ export interface ImportInfo {
   type: 'default' | 'named' | 'namespace' | 'side-effect';
   imports?: string[];
   localName?: string;
+  isProvenHandler?: boolean;
 }
 
 export interface DependencyInfo {
@@ -50,15 +52,34 @@ export interface BundleMetadata {
   fileCount: number;
   bundleSize: number;
   sourceMaps: boolean;
+  buildMode?: string;
   entrypointCount?: number;
   handlerCount?: number;
+}
+
+export interface ProjectInfo {
+  name: string;
+  version: string;
+  description?: string;
+  main?: string;
+  scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+export interface SourceInfo {
+  relativePath: string;
+  content: string;
+  size?: number;
 }
 
 export interface BundleManifest {
   id: string;
   version: string;
+  project: ProjectInfo;
   modules: ManifestModule[];
   entrypoints: EntrypointInfo[];
+  sources: SourceInfo[];
   dependencies: DependencyInfo;
   metadata: BundleMetadata;
 }

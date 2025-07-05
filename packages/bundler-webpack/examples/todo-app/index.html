@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proven Network Todo App - Webpack Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .todo-form {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .todo-list {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .todo-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .todo-item:last-child {
+            border-bottom: none;
+        }
+        .todo-item.completed {
+            opacity: 0.6;
+            text-decoration: line-through;
+        }
+        .todo-content {
+            flex-grow: 1;
+        }
+        .todo-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .todo-description {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .todo-actions button {
+            margin-left: 10px;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-complete {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-delete {
+            background-color: #dc3545;
+            color: white;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+        .stats {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            text-align: center;
+        }
+        .stat-item {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .stat-number {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            color: #666;
+        }
+        .auth-status {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .auth-status.authenticated {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .auth-status.unauthenticated {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .filters {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .filter-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .filter-buttons button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .filter-buttons button.active {
+            background: #007bff;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📝 Todo App - Webpack Example</h1>
+        <p>This example demonstrates the Proven Network webpack bundler with manifest-based handler execution.</p>
+        <div id="auth-status" class="auth-status">
+            <span id="auth-text">Checking authentication...</span>
+        </div>
+        <div id="auth-container"></div>
+    </div>
+
+    <div class="stats">
+        <h3>📊 Statistics</h3>
+        <div id="stats" class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-number" id="total-count">0</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="completed-count">0</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="pending-count">0</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number" id="completion-rate">0%</div>
+                <div class="stat-label">Completion Rate</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="filters">
+        <h3>🔍 Filters</h3>
+        <div class="filter-buttons">
+            <button onclick="filterTodos('all')" class="active" id="filter-all">All</button>
+            <button onclick="filterTodos('pending')" id="filter-pending">Pending</button>
+            <button onclick="filterTodos('completed')" id="filter-completed">Completed</button>
+        </div>
+        <div class="form-group">
+            <input type="text" id="search-input" placeholder="Search todos..." oninput="searchTodos(this.value)">
+        </div>
+    </div>
+
+    <div class="todo-form">
+        <h3>➕ Add New Todo</h3>
+        <form onsubmit="addTodo(event)">
+            <div class="form-group">
+                <label for="todo-title">Title:</label>
+                <input type="text" id="todo-title" required>
+            </div>
+            <div class="form-group">
+                <label for="todo-description">Description (optional):</label>
+                <textarea id="todo-description" rows="3"></textarea>
+            </div>
+            <button type="submit" class="btn-primary">Add Todo</button>
+        </form>
+    </div>
+
+    <div class="todo-list">
+        <h3>📋 Todo List</h3>
+        <div id="todos-container">
+            <p style="text-align: center; color: #666; padding: 20px;">No todos yet. Add one above!</p>
+        </div>
+    </div>
+
+    <!-- Load the bundled SDK -->
+    <script src="dist/bundle.js"></script>
+
+    <script>
+        // SDK is now bundled and available via the bundle
+        // Get the SDK from the bundled exports
+        const { sdk } = window.ProvenTodoApp;
+
+        // Global state
+        let currentFilter = 'all';
+        let currentSearch = '';
+
+        // Initialize the app
+        async function initApp() {
+            try {
+                // Initialize auth button
+                await sdk.initConnectButton('#auth-container');
+                console.log('Auth button initialized');
+
+                // Check authentication status
+                await checkAuthStatus();
+
+                // Load initial data
+                await loadTodos();
+                await updateStats();
+            } catch (error) {
+                console.error('Failed to initialize app:', error);
+            }
+        }
+
+        async function checkAuthStatus() {
+            try {
+                const manifest = await loadManifest();
+                const isAuth = await sdk.executeHandler(manifest, 'isAuthenticated', []);
+                const authStatus = document.getElementById('auth-status');
+                const authText = document.getElementById('auth-text');
+                
+                if (isAuth) {
+                    authStatus.className = 'auth-status authenticated';
+                    authText.textContent = '✅ Authenticated - You can create and manage todos';
+                } else {
+                    authStatus.className = 'auth-status unauthenticated';
+                    authText.textContent = '❌ Not authenticated - Please sign in to create todos';
+                }
+            } catch (error) {
+                console.error('Error checking auth status:', error);
+                const authStatus = document.getElementById('auth-status');
+                const authText = document.getElementById('auth-text');
+                authStatus.className = 'auth-status unauthenticated';
+                authText.textContent = '❓ Authentication status unknown';
+            }
+        }
+
+        async function loadManifest() {
+            // In a real implementation, this would load the generated manifest
+            // For now, we'll simulate it with the bundled handlers
+            return {
+                id: 'webpack-todo-example',
+                version: '1.0.0',
+                modules: [], // Would be populated by webpack plugin
+                handlers: {
+                    createTodo: 'todo-handlers#createTodo',
+                    getTodos: 'todo-handlers#getTodos',
+                    updateTodo: 'todo-handlers#updateTodo',
+                    deleteTodo: 'todo-handlers#deleteTodo',
+                    toggleAllTodos: 'todo-handlers#toggleAllTodos',
+                    getTodoStats: 'todo-handlers#getTodoStats',
+                    isAuthenticated: 'auth-handlers#isAuthenticated',
+                    getCurrentUser: 'auth-handlers#getCurrentUser',
+                    getUserPermissions: 'auth-handlers#getUserPermissions',
+                }
+            };
+        }
+
+        async function addTodo(event) {
+            event.preventDefault();
+            
+            const title = document.getElementById('todo-title').value;
+            const description = document.getElementById('todo-description').value;
+            
+            if (!title.trim()) return;
+
+            try {
+                const manifest = await loadManifest();
+                const newTodo = await sdk.executeHandler(manifest, 'createTodo', [{
+                    title: title.trim(),
+                    description: description.trim() || undefined,
+                }]);
+
+                console.log('Created todo:', newTodo);
+                
+                // Clear form
+                document.getElementById('todo-title').value = '';
+                document.getElementById('todo-description').value = '';
+                
+                // Refresh data
+                await loadTodos();
+                await updateStats();
+            } catch (error) {
+                console.error('Error creating todo:', error);
+                alert('Failed to create todo: ' + error.message);
+            }
+        }
+
+        async function loadTodos() {
+            try {
+                const manifest = await loadManifest();
+                
+                // Build filter object
+                const filter = {};
+                if (currentFilter === 'completed') filter.completed = true;
+                if (currentFilter === 'pending') filter.completed = false;
+                if (currentSearch) filter.search = currentSearch;
+
+                const todos = await sdk.executeHandler(manifest, 'getTodos', [filter]);
+                renderTodos(todos);
+            } catch (error) {
+                console.error('Error loading todos:', error);
+                document.getElementById('todos-container').innerHTML = 
+                    '<p style="text-align: center; color: #dc3545; padding: 20px;">Failed to load todos</p>';
+            }
+        }
+
+        function renderTodos(todos) {
+            const container = document.getElementById('todos-container');
+            
+            if (todos.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No todos found</p>';
+                return;
+            }
+
+            container.innerHTML = todos.map(todo => `
+                <div class="todo-item ${todo.completed ? 'completed' : ''}">
+                    <div class="todo-content">
+                        <div class="todo-title">${escapeHtml(todo.title)}</div>
+                        ${todo.description ? `<div class="todo-description">${escapeHtml(todo.description)}</div>` : ''}
+                        <div style="font-size: 0.8em; color: #999;">
+                            Created: ${new Date(todo.createdAt).toLocaleDateString()}
+                        </div>
+                    </div>
+                    <div class="todo-actions">
+                        <button class="btn-complete" onclick="toggleTodo('${todo.id}', ${!todo.completed})">
+                            ${todo.completed ? 'Undo' : 'Complete'}
+                        </button>
+                        <button class="btn-delete" onclick="deleteTodoItem('${todo.id}')">Delete</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function toggleTodo(id, completed) {
+            try {
+                const manifest = await loadManifest();
+                await sdk.executeHandler(manifest, 'updateTodo', [{
+                    id: id,
+                    completed: completed,
+                }]);
+                
+                await loadTodos();
+                await updateStats();
+            } catch (error) {
+                console.error('Error updating todo:', error);
+                alert('Failed to update todo: ' + error.message);
+            }
+        }
+
+        async function deleteTodoItem(id) {
+            if (!confirm('Are you sure you want to delete this todo?')) return;
+
+            try {
+                const manifest = await loadManifest();
+                await sdk.executeHandler(manifest, 'deleteTodo', [id]);
+                
+                await loadTodos();
+                await updateStats();
+            } catch (error) {
+                console.error('Error deleting todo:', error);
+                alert('Failed to delete todo: ' + error.message);
+            }
+        }
+
+        async function updateStats() {
+            try {
+                const manifest = await loadManifest();
+                const stats = await sdk.executeHandler(manifest, 'getTodoStats', []);
+                
+                document.getElementById('total-count').textContent = stats.total;
+                document.getElementById('completed-count').textContent = stats.completed;
+                document.getElementById('pending-count').textContent = stats.pending;
+                document.getElementById('completion-rate').textContent = stats.completionRate + '%';
+            } catch (error) {
+                console.error('Error updating stats:', error);
+            }
+        }
+
+        function filterTodos(filter) {
+            currentFilter = filter;
+            
+            // Update button states
+            document.querySelectorAll('.filter-buttons button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('filter-' + filter).classList.add('active');
+            
+            loadTodos();
+        }
+
+        function searchTodos(query) {
+            currentSearch = query;
+            loadTodos();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize the app when page loads
+        initApp();
+    </script>
+</body>
+</html>

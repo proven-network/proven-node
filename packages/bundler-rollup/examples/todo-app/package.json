@@ -1,0 +1,31 @@
+{
+  "name": "rollup-todo-example",
+  "version": "1.0.0",
+  "description": "Example todo app using Proven Network rollup bundler",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "build:prod": "rollup -c --environment NODE_ENV:production",
+    "dev": "rollup -c --watch",
+    "serve": "node server.js"
+  },
+  "dependencies": {
+    "@proven-network/handler": "file:../../../handler",
+    "@proven-network/session": "file:../../../session",
+    "@proven-network/sdk": "file:../../../sdk"
+  },
+  "devDependencies": {
+    "@proven-network/bundler-rollup": "file:../../",
+    "rollup": "^4.9.0",
+    "@rollup/plugin-typescript": "^11.1.5",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "typescript": "^5.3.3",
+    "tslib": "^2.6.2",
+    "@types/node": "^20.10.4"
+  },
+  "keywords": ["proven-network", "rollup", "example", "todo"],
+  "author": "Proven Network",
+  "license": "MIT"
+}

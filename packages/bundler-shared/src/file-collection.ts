@@ -167,7 +167,6 @@ export class FileCollection {
   ): Promise<SourceFile> {
     const content = await fs.promises.readFile(filePath, 'utf-8');
     const relativePath = path.relative(this.projectRoot, filePath);
-    const fileExtension = path.extname(filePath);
     const isEntrypoint = entrypoints.some((ep) => ep.filePath === filePath);
 
     // TODO: Handle source maps if requested
@@ -273,7 +272,7 @@ export class FileCollection {
       if (await this.fileExists(sourceMapPath)) {
         return await fs.promises.readFile(sourceMapPath, 'utf-8');
       }
-    } catch (error) {
+    } catch {
       // Source map loading failed, continue without it
     }
 

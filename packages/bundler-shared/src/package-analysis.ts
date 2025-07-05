@@ -30,7 +30,7 @@ export class PackageAnalysis {
     let packageJson: Record<string, unknown>;
     try {
       packageJson = await this.loadPackageJson(pkgPath);
-    } catch (error) {
+    } catch {
       throw new Error('Invalid package.json format');
     }
 
@@ -61,7 +61,6 @@ export class PackageAnalysis {
     const pkg = this.packageJsonCache;
     const allDependencies = (pkg.dependencies as Record<string, string>) || {};
     const allDevDependencies = (pkg.devDependencies as Record<string, string>) || {};
-    const peerDependencies = (pkg.peerDependencies as Record<string, string>) || {};
 
     // Filter out non-npm dependencies
     const production = this.filterNpmDependencies(allDependencies);
@@ -213,7 +212,7 @@ export class PackageAnalysis {
         isDev,
         dependencies: transitiveDeps,
       };
-    } catch (error) {
+    } catch {
       // Failed to resolve this dependency
       return null;
     }
@@ -252,7 +251,7 @@ export class PackageAnalysis {
       const packageJsonPath = path.join(packagePath, 'package.json');
       const packageJson = await this.loadPackageJson(packageJsonPath);
       return (packageJson.version as string) || null;
-    } catch (error) {
+    } catch {
       return null;
     }
   }

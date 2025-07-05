@@ -44,7 +44,8 @@ export type ExecuteHash = {
 export type Execute = {
   type: 'Execute';
   data: {
-    module: string;
+    module?: string;
+    manifest?: any; // BundleManifest type
     handler_specifier: string;
     args: any[];
   };

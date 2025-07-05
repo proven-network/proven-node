@@ -1,7 +1,6 @@
 import {
   BundleManifest,
   BundlerOptions,
-  ProjectInfo,
   DependencyInfo,
   SourceFile,
   EntrypointInfo,
