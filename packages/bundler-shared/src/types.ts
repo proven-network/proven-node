@@ -108,7 +108,6 @@ export interface SourceFile {
   isEntrypoint?: boolean;
 }
 
-
 /**
  * Resolved dependency information
  */
@@ -125,4 +124,3 @@ export interface ResolvedDependency {
   /** Transitive dependencies */
   dependencies: string[];
 }
-

@@ -27,7 +27,7 @@ class Statement implements SqlStatement<any> {
 
   constructor(
     statement: string,
-    params?: Record<string, null | number | string | Uint8Array>
+    params?: Record<string, null | number | string | Uint8Array>,
   ) {
     this.statement = statement;
     this.params = params || {};
@@ -115,13 +115,13 @@ class Rows
   }
 
   filter(
-    predicate: (value: never, index: number, array: never[]) => boolean
+    predicate: (value: never, index: number, array: never[]) => boolean,
   ): never[] {
     return this.rows.filter(predicate);
   }
 
   forEach(
-    callbackfn: (value: never, index: number, array: never[]) => void
+    callbackfn: (value: never, index: number, array: never[]) => void,
   ): void {
     this.rows.forEach(callbackfn);
   }
@@ -157,7 +157,7 @@ class Rows
           result[this.columnNames[j]] = null;
         } else {
           throw new TypeError(
-            "Only expected Integer, Real, Text, Blob, or Null"
+            "Only expected Integer, Real, Text, Blob, or Null",
           );
         }
       }
@@ -184,7 +184,7 @@ function prepareParamList(values: any[]) {
       op_add_blob_param(paramListId, value);
     } else {
       throw new TypeError(
-        "Expected all values to be null, numbers, strings, or blobs"
+        "Expected all values to be null, numbers, strings, or blobs",
       );
     }
   }
@@ -207,7 +207,7 @@ class ApplicationSqlStore implements SqlDatabase {
       if (Object.keys(sql.params).length === 0) {
         affectedRows = await op_execute_application_sql(
           this.name,
-          sql.statement
+          sql.statement,
         );
       } else {
         // Sort the keys by length in descending order to avoid partial matches
@@ -222,18 +222,18 @@ class ApplicationSqlStore implements SqlDatabase {
 
           preparedStatement = preparedStatement.replace(
             new RegExp(`:${key}\\b`, "g"),
-            `?${paramIndex}`
+            `?${paramIndex}`,
           );
         }
 
         const paramListId = prepareParamList(
-          paramKeys.map((key) => sql.params[key])
+          paramKeys.map((key) => sql.params[key]),
         );
 
         affectedRows = await op_execute_application_sql(
           this.name,
           preparedStatement,
-          paramListId
+          paramListId,
         );
       }
 
@@ -269,18 +269,18 @@ class ApplicationSqlStore implements SqlDatabase {
 
           preparedStatement = preparedStatement.replace(
             new RegExp(`:${key}\\b`, "g"),
-            `?${paramIndex}`
+            `?${paramIndex}`,
           );
         }
 
         const paramListId = prepareParamList(
-          paramKeys.map((key) => sql.params[key])
+          paramKeys.map((key) => sql.params[key]),
         );
 
         result = await op_query_application_sql(
           this.name,
           preparedStatement,
-          paramListId
+          paramListId,
         );
       }
     } else {
@@ -354,7 +354,7 @@ class NftSqlStore implements SqlNftDatabase {
   async execute(
     resourceAddress: string,
     nftId: number | string | Uint8Array,
-    sql: string | Statement
+    sql: string | Statement,
   ) {
     let result;
 
@@ -363,7 +363,7 @@ class NftSqlStore implements SqlNftDatabase {
         this.name,
         resourceAddress,
         prepareNftId(nftId),
-        sql
+        sql,
       );
     } else if (sql instanceof Statement) {
       if (Object.keys(sql.params).length === 0) {
@@ -371,7 +371,7 @@ class NftSqlStore implements SqlNftDatabase {
           this.name,
           resourceAddress,
           prepareNftId(nftId),
-          sql.statement
+          sql.statement,
         );
       } else {
         // Sort the keys by length in descending order to avoid partial matches
@@ -386,12 +386,12 @@ class NftSqlStore implements SqlNftDatabase {
 
           preparedStatement = preparedStatement.replace(
             new RegExp(`:${key}\\b`, "g"),
-            `?${paramIndex}`
+            `?${paramIndex}`,
           );
         }
 
         const paramListId = prepareParamList(
-          paramKeys.map((key) => sql.params[key])
+          paramKeys.map((key) => sql.params[key]),
         );
 
         result = await op_execute_nft_sql(
@@ -399,7 +399,7 @@ class NftSqlStore implements SqlNftDatabase {
           resourceAddress,
           prepareNftId(nftId),
           preparedStatement,
-          paramListId
+          paramListId,
         );
       }
     } else {
@@ -412,7 +412,7 @@ class NftSqlStore implements SqlNftDatabase {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     }
 
@@ -427,7 +427,7 @@ class NftSqlStore implements SqlNftDatabase {
   async query(
     resourceAddress: string,
     nftId: number | string | Uint8Array,
-    sql: string | Statement
+    sql: string | Statement,
   ): Promise<Rows> {
     let result;
 
@@ -436,7 +436,7 @@ class NftSqlStore implements SqlNftDatabase {
         this.name,
         resourceAddress,
         prepareNftId(nftId),
-        sql
+        sql,
       );
     } else if (sql instanceof Statement) {
       if (Object.keys(sql.params).length === 0) {
@@ -444,7 +444,7 @@ class NftSqlStore implements SqlNftDatabase {
           this.name,
           resourceAddress,
           prepareNftId(nftId),
-          sql.statement
+          sql.statement,
         );
       } else {
         // Sort the keys by length in descending order to avoid partial matches
@@ -459,12 +459,12 @@ class NftSqlStore implements SqlNftDatabase {
 
           preparedStatement = preparedStatement.replace(
             new RegExp(`:${key}\\b`, "g"),
-            `?${paramIndex}`
+            `?${paramIndex}`,
           );
         }
 
         const paramListId = prepareParamList(
-          paramKeys.map((key) => sql.params[key])
+          paramKeys.map((key) => sql.params[key]),
         );
 
         result = await op_query_nft_sql(
@@ -472,7 +472,7 @@ class NftSqlStore implements SqlNftDatabase {
           resourceAddress,
           prepareNftId(nftId),
           preparedStatement,
-          paramListId
+          paramListId,
         );
       }
     } else {
@@ -485,7 +485,7 @@ class NftSqlStore implements SqlNftDatabase {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     }
 
@@ -551,18 +551,18 @@ class PersonalSqlStore implements SqlDatabase {
 
           preparedStatement = preparedStatement.replace(
             new RegExp(`:${key}\\b`, "g"),
-            `?${paramIndex}`
+            `?${paramIndex}`,
           );
         }
 
         const paramListId = prepareParamList(
-          paramKeys.map((key) => sql.params[key])
+          paramKeys.map((key) => sql.params[key]),
         );
 
         result = await op_execute_personal_sql(
           this.name,
           preparedStatement,
-          paramListId
+          paramListId,
         );
       }
     } else {
@@ -602,18 +602,18 @@ class PersonalSqlStore implements SqlDatabase {
 
           preparedStatement = preparedStatement.replace(
             new RegExp(`:${key}\\b`, "g"),
-            `?${paramIndex}`
+            `?${paramIndex}`,
           );
         }
 
         const paramListId = prepareParamList(
-          paramKeys.map((key) => sql.params[key])
+          paramKeys.map((key) => sql.params[key]),
         );
 
         result = await op_query_personal_sql(
           this.name,
           preparedStatement,
-          paramListId
+          paramListId,
         );
       }
     } else {

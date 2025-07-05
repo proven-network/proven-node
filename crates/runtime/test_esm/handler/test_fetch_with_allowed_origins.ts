@@ -8,5 +8,5 @@ export const test = runWithOptions(
   async () => {
     const response = await fetch("https://example.com/");
     return response.status;
-  }
+  },
 );

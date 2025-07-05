@@ -21,9 +21,9 @@ yarn add -D @proven-network/sql
 ### Application Database
 
 ```typescript
-import { getApplicationDb } from "@proven-network/sql";
+import { getApplicationDb } from '@proven-network/sql';
 
-const APP_DB = getApplicationDb("myAppDb").migrate(`
+const APP_DB = getApplicationDb('myAppDb').migrate(`
     CREATE TABLE posts (
       id INTEGER PRIMARY KEY,
       title TEXT NOT NULL,
@@ -42,9 +42,9 @@ export const handler = async () => {
 ### Personal Database
 
 ```typescript
-import { getPersonalDb } from "@proven-network/sql";
+import { getPersonalDb } from '@proven-network/sql';
 
-const PERSONAL_DB = getPersonalDb("myPersonalDb").migrate(`
+const PERSONAL_DB = getPersonalDb('myPersonalDb').migrate(`
     CREATE TABLE tasks (
       id INTEGER PRIMARY KEY,
       description TEXT NOT NULL,
@@ -63,16 +63,16 @@ export const handler = async () => {
 ### NFT Database
 
 ```typescript
-import { getNftDb } from "@proven-network/sql";
+import { getNftDb } from '@proven-network/sql';
 
-const NFT_DB = getPersonalDb("myPersonalDb").migrate(`
+const NFT_DB = getPersonalDb('myPersonalDb').migrate(`
     CREATE TABLE tasks (
       id INTEGER PRIMARY KEY,
       description TEXT NOT NULL,
       completed BOOLEAN DEFAULT FALSE
     );
   `);
-const RESOURCE_ADDR = "resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi";
+const RESOURCE_ADDR = 'resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi';
 
 export const handler = async (nftId: string) => {
   const tasks = await NFT_DB.query(

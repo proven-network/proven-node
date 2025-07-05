@@ -13,13 +13,13 @@ async function main() {
 
   console.log("Deployment parameters:");
   console.log(
-    `  Initial token supply: ${ethers.formatEther(initialSupply)} PRVN`
+    `  Initial token supply: ${ethers.formatEther(initialSupply)} PRVN`,
   );
   console.log(`  Voting delay: ${votingDelay} blocks`);
   console.log(`  Voting period: ${votingPeriod} blocks (~7 days)`);
   console.log(`  Quorum: ${quorumPercentage}%`);
   console.log(
-    `  Proposal threshold: ${ethers.formatEther(proposalThreshold)} PRVN`
+    `  Proposal threshold: ${ethers.formatEther(proposalThreshold)} PRVN`,
   );
   console.log(`  Timelock delay: ${timelockDelay / 86400} day(s)`);
 
@@ -37,27 +37,26 @@ async function main() {
     timelockDelay,
     [], // proposers - will be set after governor deployment
     [], // executors - will be set after governor deployment
-    deployer.address // admin
+    deployer.address, // admin
   );
   await timelock.waitForDeployment();
   console.log(`ProvenTimelock deployed to: ${await timelock.getAddress()}`);
 
   // Deploy VersionGovernance
   console.log("\nDeploying VersionGovernance...");
-  const VersionGovernance = await ethers.getContractFactory(
-    "VersionGovernance"
-  );
+  const VersionGovernance =
+    await ethers.getContractFactory("VersionGovernance");
   const versionGovernor = await VersionGovernance.deploy(
     await token.getAddress(),
     await timelock.getAddress(),
     votingDelay,
     votingPeriod,
     quorumPercentage,
-    proposalThreshold
+    proposalThreshold,
   );
   await versionGovernor.waitForDeployment();
   console.log(
-    `VersionGovernance deployed to: ${await versionGovernor.getAddress()}`
+    `VersionGovernance deployed to: ${await versionGovernor.getAddress()}`,
   );
 
   // Deploy NodeGovernance
@@ -69,7 +68,7 @@ async function main() {
     votingDelay,
     votingPeriod,
     quorumPercentage,
-    proposalThreshold
+    proposalThreshold,
   );
   await nodeGovernor.waitForDeployment();
   console.log(`NodeGovernance deployed to: ${await nodeGovernor.getAddress()}`);
@@ -78,7 +77,7 @@ async function main() {
   console.log("\nConfiguring timelock roles...");
   const timelockContract = await ethers.getContractAt(
     "ProvenTimelock",
-    await timelock.getAddress()
+    await timelock.getAddress(),
   );
   const proposerRole = await timelockContract.PROPOSER_ROLE();
   const executorRole = await timelockContract.EXECUTOR_ROLE();
@@ -88,11 +87,11 @@ async function main() {
   console.log("- Granting proposer role to governance contracts");
   await timelockContract.grantRole(
     proposerRole,
-    await versionGovernor.getAddress()
+    await versionGovernor.getAddress(),
   );
   await timelockContract.grantRole(
     proposerRole,
-    await nodeGovernor.getAddress()
+    await nodeGovernor.getAddress(),
   );
 
   // Grant executor role to everybody (address zero)
@@ -113,7 +112,7 @@ async function main() {
   console.log("\nNext steps:");
   console.log("1. Distribute ProvenToken for governance participation");
   console.log(
-    "2. Token holders should delegate their voting power (token.delegate())"
+    "2. Token holders should delegate their voting power (token.delegate())",
   );
   console.log("3. Create proposals through the governance contracts");
 }

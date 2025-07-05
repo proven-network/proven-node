@@ -49,7 +49,7 @@ class ConnectClient {
     } catch (error) {
       console.error("Connect: Failed to initialize broker:", error);
       throw new Error(
-        `Connect: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`
+        `Connect: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }

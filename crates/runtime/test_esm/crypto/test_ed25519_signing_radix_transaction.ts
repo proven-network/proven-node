@@ -37,10 +37,10 @@ export const test = run(async () => {
       "withdraw",
       [
         address(
-          "resource_tdx_2_1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxtfd2jc"
+          "resource_tdx_2_1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxtfd2jc",
         ),
         decimal(10),
-      ]
+      ],
     )
     .takeAllFromWorktop(
       "resource_tdx_2_1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxtfd2jc",
@@ -48,8 +48,8 @@ export const test = run(async () => {
         builder.callMethod(
           "account_tdx_2_12xhxpwuf3tyerew3j9fhuhar0xwngrftw37gxn7vu3k7cynagdpysp",
           "try_deposit_or_abort",
-          [bucket(bucketId)]
-        )
+          [bucket(bucketId)],
+        ),
     )
     .build();
 
@@ -60,7 +60,7 @@ export const test = run(async () => {
         .header(transactionHeader)
         .manifest(transactionManifest)
         .sign(signerPrivateKey)
-        .notarize(notaryPrivateKey)
+        .notarize(notaryPrivateKey),
   );
 
   const compiledTransaction =

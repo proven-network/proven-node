@@ -318,7 +318,7 @@ export class EntrypointDiscovery {
 
     // For run/runWithOptions, the handler function is the last argument
     let handlerArg: t.Expression | t.SpreadElement | t.JSXNamespacedName | null = null;
-    
+
     if (node.arguments.length >= 2) {
       handlerArg = node.arguments[node.arguments.length - 1];
     } else if (node.arguments.length === 1) {
@@ -346,13 +346,16 @@ export class EntrypointDiscovery {
   /**
    * Extracts information from a function parameter
    */
-  private extractParameterInfo(param: t.Pattern | t.RestElement | t.TSParameterProperty): ParameterInfo | null {
+  private extractParameterInfo(
+    param: t.Pattern | t.RestElement | t.TSParameterProperty
+  ): ParameterInfo | null {
     if (t.isIdentifier(param)) {
       return {
         name: param.name,
-        type: param.typeAnnotation && t.isTSTypeAnnotation(param.typeAnnotation) 
-          ? this.extractTypeString(param.typeAnnotation.typeAnnotation) 
-          : undefined,
+        type:
+          param.typeAnnotation && t.isTSTypeAnnotation(param.typeAnnotation)
+            ? this.extractTypeString(param.typeAnnotation.typeAnnotation)
+            : undefined,
         optional: false,
       };
     }
@@ -362,9 +365,10 @@ export class EntrypointDiscovery {
       if (t.isIdentifier(param.left)) {
         return {
           name: param.left.name,
-          type: param.left.typeAnnotation && t.isTSTypeAnnotation(param.left.typeAnnotation)
-            ? this.extractTypeString(param.left.typeAnnotation.typeAnnotation)
-            : undefined,
+          type:
+            param.left.typeAnnotation && t.isTSTypeAnnotation(param.left.typeAnnotation)
+              ? this.extractTypeString(param.left.typeAnnotation.typeAnnotation)
+              : undefined,
           optional: true,
           defaultValue: this.extractDefaultValue(param.right),
         };

@@ -1,23 +1,23 @@
-import { base64UrlToUint8Array, uint8ArrayToBase64Url } from "./uint8array";
+import { base64UrlToUint8Array, uint8ArrayToBase64Url } from './uint8array';
 
 // Fields that should be converted from Base64URL to ArrayBuffer
 const BASE64URL_FIELDS = new Set([
-  "publicKey.challenge",
-  "publicKey.user.id",
-  "publicKey.extensions.prf.eval.first",
+  'publicKey.challenge',
+  'publicKey.user.id',
+  'publicKey.extensions.prf.eval.first',
 ]);
 
 // Special handling for array fields that contain Base64URL data
 const ARRAY_BASE64URL_FIELDS = new Set([
-  "publicKey.allowCredentials",
-  "publicKey.excludeCredentials",
+  'publicKey.allowCredentials',
+  'publicKey.excludeCredentials',
 ]);
 
 // Deeply converts objects with Base64URL strings to ArrayBuffers
 function convertOptionsToBuffer(obj: any, path: string[] = []): any {
-  if (typeof obj === "string") {
+  if (typeof obj === 'string') {
     // Get the full path
-    const fullPath = path.join(".");
+    const fullPath = path.join('.');
 
     // Only convert if the full path matches one of our specified paths
     if (BASE64URL_FIELDS.has(fullPath)) {
@@ -31,11 +31,11 @@ function convertOptionsToBuffer(obj: any, path: string[] = []): any {
     return obj;
   } else if (Array.isArray(obj)) {
     // Special handling for credential arrays
-    const fullPath = path.join(".");
+    const fullPath = path.join('.');
     if (ARRAY_BASE64URL_FIELDS.has(fullPath)) {
       // This is an array of credential descriptors
       return obj.map((item) => {
-        if (item && typeof item === "object" && item.id) {
+        if (item && typeof item === 'object' && item.id) {
           try {
             return {
               ...item,
@@ -50,11 +50,9 @@ function convertOptionsToBuffer(obj: any, path: string[] = []): any {
       });
     } else {
       // Regular array processing
-      return obj.map((item, index) =>
-        convertOptionsToBuffer(item, [...path, index.toString()])
-      );
+      return obj.map((item, index) => convertOptionsToBuffer(item, [...path, index.toString()]));
     }
-  } else if (obj !== null && typeof obj === "object") {
+  } else if (obj !== null && typeof obj === 'object') {
     const newObj: any = {};
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -72,7 +70,7 @@ function convertResultToBase64Url(obj: any): any {
     return uint8ArrayToBase64Url(obj);
   } else if (Array.isArray(obj)) {
     return obj.map(convertResultToBase64Url);
-  } else if (obj !== null && typeof obj === "object") {
+  } else if (obj !== null && typeof obj === 'object') {
     const newObj: any = {};
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -91,14 +89,12 @@ export async function authenticate(): Promise<Uint8Array> {
 
   // Get challenge from server - uses start_discoverable_authentication
   const resp = await fetch(`/webauthn/auth/start?state=${state}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
   });
 
   if (!resp.ok) {
-    throw new Error(
-      `Authentication start failed: ${resp.status} ${resp.statusText}`
-    );
+    throw new Error(`Authentication start failed: ${resp.status} ${resp.statusText}`);
   }
 
   const responseData = await resp.json();
@@ -107,11 +103,11 @@ export async function authenticate(): Promise<Uint8Array> {
   // Use navigator.credentials.get with discoverable auth options
   const credential = await navigator.credentials.get({
     publicKey: options.publicKey,
-    mediation: "immediate" as CredentialMediationRequirement,
+    mediation: 'immediate' as CredentialMediationRequirement,
   });
 
   if (!credential) {
-    throw new Error("No credential received from authenticator");
+    throw new Error('No credential received from authenticator');
   }
 
   // Convert credential to JSON format for server
@@ -129,15 +125,13 @@ export async function authenticate(): Promise<Uint8Array> {
 
   // Send credential to server
   const finishResp = await fetch(`/webauthn/auth/finish?state=${state}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(credentialJson),
   });
 
   if (!finishResp.ok) {
-    throw new Error(
-      `Authentication finish failed: ${finishResp.status} ${finishResp.statusText}`
-    );
+    throw new Error(`Authentication finish failed: ${finishResp.status} ${finishResp.statusText}`);
   }
 
   // Return PRF results if available
@@ -148,7 +142,7 @@ export async function authenticate(): Promise<Uint8Array> {
     return prfResult;
   }
 
-  throw new Error("PRF extension result not available");
+  throw new Error('PRF extension result not available');
 }
 
 // Registration function
@@ -159,14 +153,12 @@ export async function register(username: string): Promise<Uint8Array> {
   // Get challenge from server
   const resp = await fetch(`/webauthn/register/start?state=${state}`, {
     body: JSON.stringify({ user_name: username }),
-    headers: { "Content-Type": "application/json" },
-    method: "POST",
+    headers: { 'Content-Type': 'application/json' },
+    method: 'POST',
   });
 
   if (!resp.ok) {
-    throw new Error(
-      `Registration start failed: ${resp.status} ${resp.statusText}`
-    );
+    throw new Error(`Registration start failed: ${resp.status} ${resp.statusText}`);
   }
 
   const responseData = await resp.json();
@@ -178,7 +170,7 @@ export async function register(username: string): Promise<Uint8Array> {
   });
 
   if (!credential) {
-    throw new Error("No credential received from authenticator");
+    throw new Error('No credential received from authenticator');
   }
 
   // Check if credential was created as discoverable (resident key)
@@ -197,15 +189,13 @@ export async function register(username: string): Promise<Uint8Array> {
 
   // Send credential to server
   const finishResp = await fetch(`/webauthn/register/finish?state=${state}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(credentialJson),
   });
 
   if (!finishResp.ok) {
-    throw new Error(
-      `Registration finish failed: ${finishResp.status} ${finishResp.statusText}`
-    );
+    throw new Error(`Registration finish failed: ${finishResp.status} ${finishResp.statusText}`);
   }
 
   // Return PRF results if available
@@ -214,5 +204,5 @@ export async function register(username: string): Promise<Uint8Array> {
     return prfResult;
   }
 
-  throw new Error("PRF extension result not available");
+  throw new Error('PRF extension result not available');
 }

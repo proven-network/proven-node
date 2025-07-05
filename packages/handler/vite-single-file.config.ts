@@ -1,15 +1,15 @@
-import { defineConfig } from "vite";
-import { viteSingleFile } from "vite-plugin-singlefile";
+import { defineConfig } from 'vite';
+import { viteSingleFile } from 'vite-plugin-singlefile';
 
 export default defineConfig({
   plugins: [viteSingleFile()],
   build: {
     emptyOutDir: false,
     lib: {
-      entry: "src/single-file.js",
-      name: "handler",
-      fileName: "handler.bundle",
+      entry: 'src/single-file.js',
+      name: 'handler',
+      fileName: 'handler.bundle',
     },
   },
-  define: { "process.env.NODE_ENV": '"production"' },
+  define: { 'process.env.NODE_ENV': '"production"' },
 });

@@ -43,27 +43,25 @@ describe("NodeGovernance", function () {
     await token.connect(owner).delegate(owner.address);
 
     // Deploy timelock
-    const ProvenTimelockFactory = await ethers.getContractFactory(
-      "ProvenTimelock"
-    );
+    const ProvenTimelockFactory =
+      await ethers.getContractFactory("ProvenTimelock");
     timelock = await ProvenTimelockFactory.deploy(
       timelockDelay,
       [], // Proposers will be set later (the governor contract)
       [], // Executors will be set later (anyone can execute)
-      owner.address // Admin
+      owner.address, // Admin
     );
 
     // Deploy governance
-    const NodeGovernanceFactory = await ethers.getContractFactory(
-      "NodeGovernance"
-    );
+    const NodeGovernanceFactory =
+      await ethers.getContractFactory("NodeGovernance");
     nodeGovernance = await NodeGovernanceFactory.deploy(
       token,
       timelock,
       votingDelay,
       votingPeriod,
       quorumFraction,
-      proposalThreshold
+      proposalThreshold,
     );
 
     // Setup roles
@@ -82,7 +80,7 @@ describe("NodeGovernance", function () {
       expect(await nodeGovernance.votingDelay()).to.equal(votingDelay);
       expect(await nodeGovernance.votingPeriod()).to.equal(votingPeriod);
       expect(await nodeGovernance.proposalThreshold()).to.equal(
-        proposalThreshold
+        proposalThreshold,
       );
       const numerator = await nodeGovernance["quorumNumerator()"]();
       expect(numerator).to.equal(quorumFraction);
@@ -105,8 +103,8 @@ describe("NodeGovernance", function () {
       opportunityId = ethers.keccak256(
         ethers.solidityPacked(
           ["string", "string", "bytes32[]"],
-          [region, availabilityZone, specializations]
-        )
+          [region, availabilityZone, specializations],
+        ),
       );
     });
 
@@ -143,7 +141,7 @@ describe("NodeGovernance", function () {
           [nodeGovernance.target],
           [0],
           [createOpportunityCalldata],
-          description
+          description,
         );
       await proposeTx.wait();
 
@@ -152,7 +150,7 @@ describe("NodeGovernance", function () {
         [nodeGovernance.target],
         [0],
         [createOpportunityCalldata],
-        descHash
+        descHash,
       );
 
       // Move to active state
@@ -178,7 +176,7 @@ describe("NodeGovernance", function () {
       if (currentState === ProposalState.Defeated) {
         const votes = await nodeGovernance.proposalVotes(proposalId);
         console.log(
-          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`
+          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`,
         );
         console.log(`For votes: ${ethers.formatEther(votes.forVotes)}`);
         console.log(`Against votes: ${ethers.formatEther(votes.againstVotes)}`);
@@ -194,7 +192,7 @@ describe("NodeGovernance", function () {
           [nodeGovernance.target],
           [0],
           [createOpportunityCalldata],
-          descHash
+          descHash,
         );
 
       // Wait for timelock
@@ -208,7 +206,7 @@ describe("NodeGovernance", function () {
           [nodeGovernance.target],
           [0],
           [createOpportunityCalldata],
-          descHash
+          descHash,
         );
 
       // Check that the opportunity was created
@@ -223,7 +221,7 @@ describe("NodeGovernance", function () {
       await expect(
         nodeGovernance
           .connect(owner)
-          .createOpportunity(region, availabilityZone, specializations)
+          .createOpportunity(region, availabilityZone, specializations),
       ).to.be.revertedWithCustomError(nodeGovernance, "GovernorOnlyExecutor");
     });
   });
@@ -241,8 +239,8 @@ describe("NodeGovernance", function () {
       opportunityId = ethers.keccak256(
         ethers.solidityPacked(
           ["string", "string", "bytes32[]"],
-          [region, availabilityZone, specializations]
-        )
+          [region, availabilityZone, specializations],
+        ),
       );
 
       // Delegate more voting power to users to ensure we meet quorum
@@ -277,7 +275,7 @@ describe("NodeGovernance", function () {
           [nodeGovernance.target],
           [0],
           [createOpportunityCalldata],
-          description
+          description,
         );
       await proposeTx.wait();
 
@@ -286,7 +284,7 @@ describe("NodeGovernance", function () {
         [nodeGovernance.target],
         [0],
         [createOpportunityCalldata],
-        descHash
+        descHash,
       );
 
       // Move to active state
@@ -312,7 +310,7 @@ describe("NodeGovernance", function () {
       if (currentState === ProposalState.Defeated) {
         const votes = await nodeGovernance.proposalVotes(proposalId);
         console.log(
-          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`
+          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`,
         );
         console.log(`For votes: ${ethers.formatEther(votes.forVotes)}`);
         console.log(`Against votes: ${ethers.formatEther(votes.againstVotes)}`);
@@ -328,7 +326,7 @@ describe("NodeGovernance", function () {
           [nodeGovernance.target],
           [0],
           [createOpportunityCalldata],
-          descHash
+          descHash,
         );
 
       // Wait for timelock
@@ -342,7 +340,7 @@ describe("NodeGovernance", function () {
           [nodeGovernance.target],
           [0],
           [createOpportunityCalldata],
-          descHash
+          descHash,
         );
     });
 
@@ -355,7 +353,7 @@ describe("NodeGovernance", function () {
       // Check that the candidate was registered
       const candidate = await nodeGovernance.candidates(
         opportunityId,
-        user1.address
+        user1.address,
       );
       expect(candidate.owner).to.equal(user1.address);
       expect(candidate.origin).to.equal(origin);
@@ -365,14 +363,14 @@ describe("NodeGovernance", function () {
     it("Should not allow registration for closed opportunities", async function () {
       // Create a new opportunity
       const nonExistentId = ethers.keccak256(
-        ethers.toUtf8Bytes("does-not-exist")
+        ethers.toUtf8Bytes("does-not-exist"),
       );
 
       // Try to register for non-existent opportunity
       await expect(
         nodeGovernance
           .connect(user1)
-          .registerAsCandidate(nonExistentId, origin, publicKey)
+          .registerAsCandidate(nonExistentId, origin, publicKey),
       ).to.be.revertedWith("Opportunity is closed");
     });
 
@@ -389,7 +387,7 @@ describe("NodeGovernance", function () {
       // Prepare calldata for approving the candidate
       const approveCalldata = nodeGovernance.interface.encodeFunctionData(
         "approveCandidate",
-        [opportunityId, user1.address]
+        [opportunityId, user1.address],
       );
 
       const description = "Approve node candidate";
@@ -420,7 +418,7 @@ describe("NodeGovernance", function () {
         [nodeGovernance.target],
         [0],
         [approveCalldata],
-        descHash
+        descHash,
       );
 
       // Move to active state
@@ -452,7 +450,7 @@ describe("NodeGovernance", function () {
       if (currentState === ProposalState.Defeated) {
         const votes = await nodeGovernance.proposalVotes(proposalId);
         console.log(
-          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`
+          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`,
         );
         console.log(`For votes: ${ethers.formatEther(votes.forVotes)}`);
         console.log(`Against votes: ${ethers.formatEther(votes.againstVotes)}`);
@@ -492,14 +490,18 @@ describe("NodeGovernance", function () {
       await expect(
         nodeGovernance
           .connect(user1)
-          .registerAsCandidate(opportunityId, "192.168.1.1", publicKey)
+          .registerAsCandidate(opportunityId, "192.168.1.1", publicKey),
       ).to.be.revertedWith("Origin must be a domain name, not an IP address");
 
       // Try to register with IPv6
       await expect(
         nodeGovernance
           .connect(user1)
-          .registerAsCandidate(opportunityId, "2001:0db8:85a3:0000:0000:8a2e:0370:7334", publicKey)
+          .registerAsCandidate(
+            opportunityId,
+            "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+            publicKey,
+          ),
       ).to.be.revertedWith("Origin must be a domain name, not an IP address");
     });
   });
@@ -532,7 +534,7 @@ describe("NodeGovernance", function () {
       // Try to create a proposal (should fail)
       const calldata = nodeGovernance.interface.encodeFunctionData(
         "createOpportunity",
-        ["us-east-1", "us-east-1a", [ethers.encodeBytes32String("compute")]]
+        ["us-east-1", "us-east-1a", [ethers.encodeBytes32String("compute")]],
       );
 
       await expect(
@@ -542,11 +544,11 @@ describe("NodeGovernance", function () {
             [nodeGovernance.target],
             [0],
             [calldata],
-            "Create a new node opportunity"
-          )
+            "Create a new node opportunity",
+          ),
       ).to.be.revertedWithCustomError(
         nodeGovernance,
-        "GovernorInsufficientProposerVotes"
+        "GovernorInsufficientProposerVotes",
       );
     });
 
@@ -554,7 +556,7 @@ describe("NodeGovernance", function () {
       // Create a proposal
       const calldata = nodeGovernance.interface.encodeFunctionData(
         "createOpportunity",
-        ["us-east-1", "us-east-1a", [ethers.encodeBytes32String("compute")]]
+        ["us-east-1", "us-east-1a", [ethers.encodeBytes32String("compute")]],
       );
 
       const proposalTx = await nodeGovernance
@@ -563,14 +565,14 @@ describe("NodeGovernance", function () {
           [nodeGovernance.target],
           [0],
           [calldata],
-          "Create a new node opportunity"
+          "Create a new node opportunity",
         );
 
       const receipt = await proposalTx.wait();
       const event = receipt?.logs.find(
         (log) =>
           nodeGovernance.interface.parseLog(log as any)?.name ===
-          "ProposalCreated"
+          "ProposalCreated",
       );
       const parsedEvent = nodeGovernance.interface.parseLog(event as any);
       const proposalId = parsedEvent?.args[0];

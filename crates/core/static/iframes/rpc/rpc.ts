@@ -93,7 +93,7 @@ class RpcClient {
 
   private async processQueuedRequests(): Promise<void> {
     console.debug(
-      `RPC: Processing ${this.queuedRequests.length} queued requests`
+      `RPC: Processing ${this.queuedRequests.length} queued requests`,
     );
 
     const requests = [...this.queuedRequests];
@@ -105,7 +105,7 @@ class RpcClient {
         request.resolve(response);
       } catch (error) {
         request.reject(
-          error instanceof Error ? error : new Error("Unknown error")
+          error instanceof Error ? error : new Error("Unknown error"),
         );
       }
     }
@@ -120,7 +120,7 @@ class RpcClient {
 
   async setupWorkerCommunication() {
     this.worker = new SharedWorker(
-      `../workers/rpc-worker.js?session=${this.session.sessionId}`
+      `../workers/rpc-worker.js?session=${this.session.sessionId}`,
     );
 
     this.worker.port.start();
@@ -152,7 +152,7 @@ class RpcClient {
     } catch (error) {
       console.error("RPC: Failed to initialize broker:", error);
       throw new Error(
-        `RPC: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`
+        `RPC: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }
@@ -257,7 +257,7 @@ class RpcClient {
         } else {
           console.error(
             "RPC: Failed to decode COSE message:",
-            decodedResult.error
+            decodedResult.error,
           );
         }
       } catch (error) {

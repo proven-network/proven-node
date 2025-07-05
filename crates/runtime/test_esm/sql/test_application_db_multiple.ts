@@ -2,14 +2,14 @@ import { run } from "@proven-network/handler";
 import { getApplicationDb, sql } from "@proven-network/sql";
 
 const APP_DB = getApplicationDb("myAppDb").migrate(
-  `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`
+  `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`,
 );
 
 export const test = run(async () => {
   let affectedRows = await APP_DB.execute(
     sql("INSERT INTO users (email) VALUES (:email)", {
       email: "alice@example.com",
-    })
+    }),
   );
 
   if (affectedRows !== 1) {
@@ -19,7 +19,7 @@ export const test = run(async () => {
   affectedRows = await APP_DB.execute(
     sql("INSERT INTO users (email) VALUES (:email)", {
       email: "bob@example.com",
-    })
+    }),
   );
 
   if (affectedRows !== 1) {

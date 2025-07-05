@@ -1,17 +1,17 @@
-const { build } = require('esbuild');
+const { build } = require("esbuild");
 
 const config = {
   entryPoints: [
-    '../../packages/sdk/src/index.ts',
-    'static/iframes/bridge/bridge.ts',
-    'static/iframes/connect/connect.ts',
-    'static/iframes/register/register.ts',
-    'static/iframes/rpc/rpc.ts',
-    'static/workers/broker-worker.ts',
-    'static/workers/rpc-worker.ts'
+    "../../packages/sdk/src/index.ts",
+    "static/iframes/bridge/bridge.ts",
+    "static/iframes/connect/connect.ts",
+    "static/iframes/register/register.ts",
+    "static/iframes/rpc/rpc.ts",
+    "static/workers/broker-worker.ts",
+    "static/workers/rpc-worker.ts",
   ],
   bundle: true,
-  outdir: 'static',
+  outdir: "static",
   // You can add more options here as needed:
   // minify: true,
   // sourcemap: true,
@@ -19,4 +19,4 @@ const config = {
   // format: 'esm',
 };
 
-build(config).catch(() => process.exit(1)); 
+build(config).catch(() => process.exit(1));

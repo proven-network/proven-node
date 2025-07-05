@@ -35,7 +35,7 @@ const {
 export function run(
   moduleSpecifier: string,
   handlerName: string,
-  fn: (...args: Input[]) => Promise<Output>
+  fn: (...args: Input[]) => Promise<Output>,
 ): typeof fn {
   if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error("run must be used in conjunction with the export keyword");
@@ -53,11 +53,11 @@ export function runWithOptions(
   moduleSpecifier: string,
   handlerName: string,
   options: RpcHandlerOptions,
-  fn: (...args: Input[]) => Promise<Output>
+  fn: (...args: Input[]) => Promise<Output>,
 ): typeof fn {
   if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error(
-      "runWithOptions must be used in conjunction with the export keyword"
+      "runWithOptions must be used in conjunction with the export keyword",
     );
   }
 
@@ -102,11 +102,11 @@ export function runOnHttp<P extends string>(
   moduleSpecifier: string,
   handlerName: string,
   options: HttpHandlerOptions<P>,
-  fn: (request: HttpRequest) => Promise<Output>
+  fn: (request: HttpRequest) => Promise<Output>,
 ): typeof fn {
   if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error(
-      "runOnHttp must be used in conjunction with the export keyword"
+      "runOnHttp must be used in conjunction with the export keyword",
     );
   }
 
@@ -169,11 +169,11 @@ export function runOnRadixEvent(
   moduleSpecifier: string,
   handlerName: string,
   options: RadixEventHandlerOptions,
-  fn: (transaction: CommittedTransactionInfo) => void
+  fn: (transaction: CommittedTransactionInfo) => void,
 ): void {
   if (typeof moduleSpecifier !== "string" || typeof handlerName !== "string") {
     throw new Error(
-      "runOnRadixEvent must be used in conjunction with the export keyword"
+      "runOnRadixEvent must be used in conjunction with the export keyword",
     );
   }
 

@@ -31,7 +31,7 @@ function encodeUint8Array(data: Uint8Array): EncodedUint8Array {
 async function encodeUint8ArrayInObject(
   obj: Output,
   path: string,
-  paths: string[]
+  paths: string[],
 ): Promise<Output> {
   // deno-lint-ignore no-explicit-any
   if (typeof obj === "object" && obj !== null && "allRows" in (obj as any)) {
@@ -43,8 +43,8 @@ async function encodeUint8ArrayInObject(
   } else if (Array.isArray(obj)) {
     const results = await Promise.all(
       obj.map((item, index) =>
-        encodeUint8ArrayInObject(item, `${path}[${index}]`, paths)
-      )
+        encodeUint8ArrayInObject(item, `${path}[${index}]`, paths),
+      ),
     );
     return results;
   } else if (obj !== null && typeof obj === "object") {
@@ -52,7 +52,7 @@ async function encodeUint8ArrayInObject(
       Object.entries(obj).map(async ([key, value]) => [
         key,
         await encodeUint8ArrayInObject(value, `${path}.${key}`, paths),
-      ])
+      ]),
     );
     return Object.fromEntries(entries);
   }
@@ -67,7 +67,7 @@ export const run = (fn: (..._args: Input[]) => Promise<Output>) => {
     const output = await encodeUint8ArrayInObject(
       handlerOutput,
       "$",
-      uint8ArrayJsonPaths
+      uint8ArrayJsonPaths,
     );
 
     return { output, uint8ArrayJsonPaths };
@@ -76,7 +76,7 @@ export const run = (fn: (..._args: Input[]) => Promise<Output>) => {
 
 export const runWithOptions = (
   options: RpcHandlerOptions,
-  fn: (..._args: Input[]) => Promise<Output>
+  fn: (..._args: Input[]) => Promise<Output>,
 ) => {
   return async (...args: Input[]) => {
     const handlerOutput = await (options.timeout
@@ -94,7 +94,7 @@ export const runWithOptions = (
     const output = await encodeUint8ArrayInObject(
       handlerOutput,
       "$",
-      uint8ArrayJsonPaths
+      uint8ArrayJsonPaths,
     );
 
     return { output, uint8ArrayJsonPaths };
@@ -110,13 +110,13 @@ type ExtractPathVariables<Path extends string> =
 
 export function runOnHttp<P extends string>(
   options: HttpHandlerOptions<P>,
-  fn: (request: HttpRequest) => Promise<Output>
+  fn: (request: HttpRequest) => Promise<Output>,
 ) {
   return async (
     method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
     currentPath: string,
     query?: string,
-    body?: Uint8Array
+    body?: Uint8Array,
   ) => {
     const optionsPath = options.path;
 
@@ -163,7 +163,7 @@ export function runOnHttp<P extends string>(
     const output = await encodeUint8ArrayInObject(
       handlerOutput,
       "$",
-      uint8ArrayJsonPaths
+      uint8ArrayJsonPaths,
     );
 
     return { output, uint8ArrayJsonPaths };

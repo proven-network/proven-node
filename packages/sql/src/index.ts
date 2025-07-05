@@ -1,7 +1,7 @@
-import { LexSqlTokens } from "./lexer";
-import { ParseMigration, ParseQueryType } from "./parser";
-import { GeneratedSchema } from "./state";
-import { TokenizeSqlString } from "./tokenizer";
+import { LexSqlTokens } from './lexer';
+import { ParseMigration, ParseQueryType } from './parser';
+import { GeneratedSchema } from './state';
+import { TokenizeSqlString } from './tokenizer';
 
 export type SqlStatement<S extends string> = {
   readonly params: Record<string, null | number | string | Uint8Array>;
@@ -12,10 +12,7 @@ class Statement<S extends string> implements SqlStatement<S> {
   readonly params: Record<string, null | number | string | Uint8Array>;
   readonly statement: S;
 
-  constructor(
-    statement: S,
-    params?: Record<string, null | number | string | Uint8Array>
-  ) {
+  constructor(statement: S, params?: Record<string, null | number | string | Uint8Array>) {
     this.statement = statement;
     this.params = params || {};
   }
@@ -37,9 +34,7 @@ type FirstRowValue =
 
 type FirstRow = FirstRowValue[];
 
-export type SqlRows<
-  T extends Record<string, null | number | string | Uint8Array>,
-> = {
+export type SqlRows<T extends Record<string, null | number | string | Uint8Array>> = {
   readonly [index: number]: T | undefined;
   readonly columnNames: Readonly<string[]>;
   readonly length: Promise<number>;
@@ -49,9 +44,7 @@ export type SqlRows<
   forEach(callbackfn: (value: T, index: number, array: T[]) => void): void;
 };
 
-class Rows<T extends Record<string, null | number | string | Uint8Array>>
-  implements SqlRows<T>
-{
+class Rows<T extends Record<string, null | number | string | Uint8Array>> implements SqlRows<T> {
   [index: number]: T | undefined;
   columnNames: Readonly<string[]>;
 
@@ -88,14 +81,10 @@ export type SqlDatabase<Schema extends GeneratedSchema = { tables: {} }> = {
   ): SqlDatabase<ParseMigration<LexSqlTokens<TokenizeSqlString<S>>, Schema>>;
   query<S extends string>(
     query: S | Statement<S>
-  ): Promise<
-    SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>
-  >;
+  ): Promise<SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>>;
 };
 
-class Database<Schema extends GeneratedSchema = { tables: {} }>
-  implements SqlDatabase<Schema>
-{
+class Database<Schema extends GeneratedSchema = { tables: {} }> implements SqlDatabase<Schema> {
   name: string;
 
   constructor(name: string) {
@@ -114,9 +103,7 @@ class Database<Schema extends GeneratedSchema = { tables: {} }>
 
   query<S extends string>(
     query: S | Statement<S>
-  ): Promise<
-    SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>
-  > {
+  ): Promise<SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>> {
     return [] as any;
   }
 }
@@ -143,9 +130,7 @@ export type SqlNftDatabase<Schema extends GeneratedSchema = { tables: {} }> = {
     resourceAddress: string,
     nftId: string | number | Uint8Array,
     query: S | Statement<S>
-  ): Promise<
-    SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>
-  >;
+  ): Promise<SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>>;
 };
 
 class NftDatabase<Schema extends GeneratedSchema = { tables: {} }>
@@ -175,9 +160,7 @@ class NftDatabase<Schema extends GeneratedSchema = { tables: {} }>
     resourceAddress: string,
     nftId: string | number | Uint8Array,
     query: S | Statement<S>
-  ): Promise<
-    SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>
-  > {
+  ): Promise<SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>> {
     return [] as any;
   }
 }

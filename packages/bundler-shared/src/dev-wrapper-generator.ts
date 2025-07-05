@@ -45,12 +45,12 @@ export class DevWrapperGenerator {
    */
   private generateHandlerWrappers(): string {
     const allHandlers = this.getAllHandlers();
-    
+
     if (allHandlers.length === 0) {
       return '// No handlers found in manifest';
     }
 
-    const wrappers = allHandlers.map(({ handler, modulePath }) => 
+    const wrappers = allHandlers.map(({ handler, modulePath }) =>
       this.generateSingleHandlerWrapper(handler, modulePath)
     );
 
@@ -77,7 +77,7 @@ export class DevWrapperGenerator {
    */
   private generateSingleHandlerWrapper(handler: HandlerInfo, modulePath: string): string {
     const parameterList = handler.parameters
-      .map(param => {
+      .map((param) => {
         if (param.optional && param.defaultValue !== undefined) {
           return `${param.name} = ${JSON.stringify(param.defaultValue)}`;
         }
@@ -85,13 +85,13 @@ export class DevWrapperGenerator {
       })
       .join(', ');
 
-    const parametersComment = handler.parameters.length > 0 
-      ? this.generateParametersComment(handler.parameters)
-      : '';
+    const parametersComment =
+      handler.parameters.length > 0 ? this.generateParametersComment(handler.parameters) : '';
 
-    const typeAnnotation = handler.parameters.length > 0
-      ? this.generateTypeAnnotation(handler.parameters)
-      : '(...args: any[])';
+    const typeAnnotation =
+      handler.parameters.length > 0
+        ? this.generateTypeAnnotation(handler.parameters)
+        : '(...args: any[])';
 
     return `${parametersComment}export const ${handler.name}: ${typeAnnotation} => Promise<any> = (${parameterList}) => {
   const queue = window.__ProvenHandlerQueue__;
@@ -99,7 +99,7 @@ export class DevWrapperGenerator {
     queue.push({
       manifestId: window.__ProvenManifest__.id,
       handler: '${handler.name}',
-      args: [${handler.parameters.map(p => p.name).join(', ')}],
+      args: [${handler.parameters.map((p) => p.name).join(', ')}],
       resolve,
       reject
     });
@@ -113,7 +113,7 @@ export class DevWrapperGenerator {
   private generateParametersComment(parameters: any[]): string {
     if (parameters.length === 0) return '';
 
-    const paramDocs = parameters.map(param => {
+    const paramDocs = parameters.map((param) => {
       let line = ` * @param {${param.type || 'any'}} ${param.name}`;
       if (param.optional) {
         line += ' (optional)';
@@ -133,7 +133,7 @@ ${paramDocs.join('\n')}
    * Generates TypeScript type annotation for the handler function
    */
   private generateTypeAnnotation(parameters: any[]): string {
-    const paramTypes = parameters.map(param => {
+    const paramTypes = parameters.map((param) => {
       const type = param.type || 'any';
       const paramName = param.name;
       const optional = param.optional ? '?' : '';

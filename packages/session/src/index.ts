@@ -3,5 +3,5 @@ export function getCurrentAccounts(): string[] {
 }
 
 export function getCurrentIdentity(): string {
-  return "";
+  return '';
 }

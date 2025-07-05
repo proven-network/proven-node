@@ -136,14 +136,14 @@ class NftKeyStore implements INftKeyStore {
   async get(
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
-    _key: string
+    _key: string,
   ): Promise<PrivateKey | undefined> {
     throw new Error("`get` must be run inside a handler function");
   }
 
   async keys(
     _resourceAddress: string,
-    _nftId: number | string | Uint8Array
+    _nftId: number | string | Uint8Array,
   ): Promise<string[]> {
     throw new Error("`keys` must be run inside a handler function");
   }
@@ -152,7 +152,7 @@ class NftKeyStore implements INftKeyStore {
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
     _key: string,
-    _value: PrivateKey
+    _value: PrivateKey,
   ): Promise<void> {
     throw new Error("`set` must be run inside a handler function");
   }
@@ -168,14 +168,14 @@ class NftStringStore implements INftStringStore {
   async get(
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
-    _key: string
+    _key: string,
   ): Promise<string | undefined> {
     throw new Error("`get` must be run inside a handler function");
   }
 
   async keys(
     _resourceAddress: string,
-    _nftId: number | string | Uint8Array
+    _nftId: number | string | Uint8Array,
   ): Promise<string[]> {
     throw new Error("`keys` must be run inside a handler function");
   }
@@ -184,7 +184,7 @@ class NftStringStore implements INftStringStore {
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
     _key: string,
-    _value: string
+    _value: string,
   ): Promise<void> {
     throw new Error("`set` must be run inside a handler function");
   }

@@ -1,4 +1,4 @@
-import { TableRecord } from "../state";
+import { TableRecord } from '../state';
 
 export type RenameColumn<
   T extends TableRecord,

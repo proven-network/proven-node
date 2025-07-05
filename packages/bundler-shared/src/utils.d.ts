@@ -22,7 +22,10 @@ export declare function pathToModuleSpecifier(filePath: string, projectRoot: str
 /**
  * Debounces a function call
  */
-export declare function debounce<T extends (...args: any[]) => any>(func: T, wait: number): (...args: Parameters<T>) => void;
+export declare function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void;
 /**
  * Creates a unique identifier for a handler
  */

@@ -21,7 +21,7 @@ yarn add -D @proven-network/handler
 ### RPC Handlers
 
 ```typescript
-import { run, runWithOptions } from "@proven-network/handler";
+import { run, runWithOptions } from '@proven-network/handler';
 
 // RPC handler with no options
 export const add = run((a: number, b: number) => {
@@ -34,7 +34,7 @@ export const subtract = runWithOptions(
     return a - b;
   },
   {
-    allowedOrigins: ["https://example.com"],
+    allowedOrigins: ['https://example.com'],
     timeout: 30000,
   }
 );
@@ -43,23 +43,23 @@ export const subtract = runWithOptions(
 ### HTTP Handlers
 
 ```typescript
-import { runOnHttp } from "@proven-network/handler";
+import { runOnHttp } from '@proven-network/handler';
 
 // Simple HTTP handler with path parameters
 export const getUser = runOnHttp(
   {
-    path: "/users/:userId",
+    path: '/users/:userId',
   },
   (request) => {
     const { userId } = request.pathVariables;
-    return { id: userId, name: "John Doe" };
+    return { id: userId, name: 'John Doe' };
   }
 );
 
 // HTTP handler with additional options
 export const createUser = runOnHttp(
   {
-    path: "/organizations/:orgId/users",
+    path: '/organizations/:orgId/users',
     timeout: 2000,
   },
   (request) => {

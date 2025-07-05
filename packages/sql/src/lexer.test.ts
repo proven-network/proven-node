@@ -1,23 +1,11 @@
-type TestLowercase = LexSqlTokens<["create", "table", "users"]>;
+type TestLowercase = LexSqlTokens<['create', 'table', 'users']>;
 
 type TestTripleKeyword = LexSqlTokens<
-  ["create", "table", "if", "not", "exists", "users", "(", "id", "integer", ")"]
+  ['create', 'table', 'if', 'not', 'exists', 'users', '(', 'id', 'integer', ')']
 >;
 
 type TestLowercaseType = LexSqlTokens<
-  [
-    "create",
-    "table",
-    "users",
-    "(",
-    "id",
-    "integer",
-    "primary",
-    "key",
-    "not",
-    "null",
-    ")"
-  ]
+  ['create', 'table', 'users', '(', 'id', 'integer', 'primary', 'key', 'not', 'null', ')']
 >;
 
 type TestAlterTable = LexSqlTokens<

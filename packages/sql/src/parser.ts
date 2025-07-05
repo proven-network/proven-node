@@ -10,67 +10,57 @@ import {
   InitialGeneratedSchema,
   InitialQueryState,
   QueryState,
-} from "./state";
+} from './state';
 
-import { AddColumn } from "./helpers/add-column";
-import { AddTable, EvaluateAddTable } from "./helpers/add-table";
-import { UpdateLastColumn } from "./helpers/merge-column";
-import { RemoveColumn } from "./helpers/remove-column";
-import { RemoveTable } from "./helpers/remove-table";
-import { RenameColumn } from "./helpers/rename-column";
-import { ColumnToType, GetTableColumns } from "./helpers/table-columns";
+import { AddColumn } from './helpers/add-column';
+import { AddTable, EvaluateAddTable } from './helpers/add-table';
+import { UpdateLastColumn } from './helpers/merge-column';
+import { RemoveColumn } from './helpers/remove-column';
+import { RemoveTable } from './helpers/remove-table';
+import { RenameColumn } from './helpers/rename-column';
+import { ColumnToType, GetTableColumns } from './helpers/table-columns';
 
 type ParseColumnDefinitions<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends CreateTableState,
 > = Tokens extends [infer First, ...infer Rest]
-  ? First extends { type: "KEYWORD"; value: "CREATE TABLE" }
+  ? First extends { type: 'KEYWORD'; value: 'CREATE TABLE' }
     ? ParseColumnDefinitions<Rest, Schema, State>
-    : First extends { type: "IDENTIFIER"; value: string }
+    : First extends { type: 'IDENTIFIER'; value: string }
       ? ParseColumnDefinitions<
           Rest,
           Schema,
           {
-            currentTableName: State["currentTableName"];
+            currentTableName: State['currentTableName'];
             currentColumns: [
-              ...State["currentColumns"],
-              { name: First["value"]; type: ""; isNullable: true },
+              ...State['currentColumns'],
+              { name: First['value']; type: ''; isNullable: true },
             ];
           }
         >
-      : First extends { type: "TYPE"; value: string }
+      : First extends { type: 'TYPE'; value: string }
         ? ParseColumnDefinitions<
             Rest,
             Schema,
             {
-              currentTableName: State["currentTableName"];
-              currentColumns: UpdateLastColumn<
-                State["currentColumns"],
-                { type: First["value"] }
-              >;
+              currentTableName: State['currentTableName'];
+              currentColumns: UpdateLastColumn<State['currentColumns'], { type: First['value'] }>;
             }
           >
-        : First extends { type: "KEYWORD"; value: "PRIMARY KEY" | "NOT NULL" }
+        : First extends { type: 'KEYWORD'; value: 'PRIMARY KEY' | 'NOT NULL' }
           ? ParseColumnDefinitions<
               Rest,
               Schema,
               {
-                currentTableName: State["currentTableName"];
-                currentColumns: UpdateLastColumn<
-                  State["currentColumns"],
-                  { isNullable: false }
-                >;
+                currentTableName: State['currentTableName'];
+                currentColumns: UpdateLastColumn<State['currentColumns'], { isNullable: false }>;
               }
             >
-          : First extends { type: "SYMBOL"; value: ")" }
+          : First extends { type: 'SYMBOL'; value: ')' }
             ? {
                 tables: EvaluateAddTable<
-                  AddTable<
-                    Schema["tables"],
-                    State["currentTableName"],
-                    State["currentColumns"]
-                  >
+                  AddTable<Schema['tables'], State['currentTableName'], State['currentColumns']>
                 >;
               }
             : ParseColumnDefinitions<Rest, Schema, State>
@@ -82,7 +72,7 @@ type ParseCreateTable<
   State extends CreateTableState = InitialCreateTableState,
 > = Tokens extends [infer First, ...infer Rest]
   ? First extends {
-      type: "IDENTIFIER";
+      type: 'IDENTIFIER';
       value: infer Table extends string;
     }
     ? ParseCreateTable<
@@ -93,7 +83,7 @@ type ParseCreateTable<
           currentColumns: [];
         }
       >
-    : First extends { type: "SYMBOL"; value: "(" }
+    : First extends { type: 'SYMBOL'; value: '(' }
       ? ParseColumnDefinitions<Rest, Schema, State>
       : never
   : never;
@@ -104,7 +94,7 @@ type ParseAlterTable<
   State extends AlterTableState = InitialAlterTableState,
 > = Tokens extends [infer First, ...infer Rest]
   ? First extends {
-      type: "IDENTIFIER";
+      type: 'IDENTIFIER';
       value: infer Table extends string;
     }
     ? ParseAlterTableAction<
@@ -122,17 +112,17 @@ type ParseAlterTableAction<
   Schema extends GeneratedSchema,
   State extends AlterTableState,
 > = Tokens extends [infer First, ...infer Rest]
-  ? First extends { type: "KEYWORD"; value: "ADD COLUMN" }
+  ? First extends { type: 'KEYWORD'; value: 'ADD COLUMN' }
     ? ParseAddColumn<Rest, Schema, State>
-    : First extends { type: "KEYWORD"; value: "ADD" }
+    : First extends { type: 'KEYWORD'; value: 'ADD' }
       ? ParseAddColumn<Rest, Schema, State>
-      : First extends { type: "KEYWORD"; value: "DROP COLUMN" }
+      : First extends { type: 'KEYWORD'; value: 'DROP COLUMN' }
         ? ParseDropColumn<Rest, Schema, State>
-        : First extends { type: "KEYWORD"; value: "DROP" } // COLUMN optional
+        : First extends { type: 'KEYWORD'; value: 'DROP' } // COLUMN optional
           ? ParseDropColumn<Rest, Schema, State>
-          : First extends { type: "KEYWORD"; value: "RENAME COLUMN" }
+          : First extends { type: 'KEYWORD'; value: 'RENAME COLUMN' }
             ? ParseRenameColumn<Rest, Schema, State>
-            : First extends { type: "KEYWORD"; value: "RENAME" } // COLUMN optional
+            : First extends { type: 'KEYWORD'; value: 'RENAME' } // COLUMN optional
               ? ParseRenameColumn<Rest, Schema, State>
               : ParseAlterTableAction<Rest, Schema, State>
   : Schema;
@@ -142,26 +132,26 @@ type ParseAddColumn<
   Schema extends GeneratedSchema,
   State extends AlterTableState,
 > = Tokens extends [
-  { type: "IDENTIFIER"; value: infer Column extends string },
-  { type: "TYPE"; value: infer Type extends string },
+  { type: 'IDENTIFIER'; value: infer Column extends string },
+  { type: 'TYPE'; value: infer Type extends string },
   ...infer Rest,
 ]
   ? Rest extends [
-      { type: "KEYWORD"; value: "PRIMARY KEY" | "NOT NULL" },
+      { type: 'KEYWORD'; value: 'PRIMARY KEY' | 'NOT NULL' },
       ...infer RestAfterConstraint,
     ]
     ? {
         tables: AddColumn<
-          Schema["tables"],
-          State["currentTableName"],
+          Schema['tables'],
+          State['currentTableName'],
           Column,
           { type: Type; isNullable: false }
         >;
       }
     : {
         tables: AddColumn<
-          Schema["tables"],
-          State["currentTableName"],
+          Schema['tables'],
+          State['currentTableName'],
           Column,
           { type: Type; isNullable: true }
         >;
@@ -172,12 +162,9 @@ type ParseDropColumn<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends AlterTableState,
-> = Tokens extends [
-  { type: "IDENTIFIER"; value: infer Column extends string },
-  ...infer Rest,
-]
+> = Tokens extends [{ type: 'IDENTIFIER'; value: infer Column extends string }, ...infer Rest]
   ? {
-      tables: RemoveColumn<Schema["tables"], State["currentTableName"], Column>;
+      tables: RemoveColumn<Schema['tables'], State['currentTableName'], Column>;
     }
   : Schema;
 
@@ -186,15 +173,15 @@ type ParseRenameColumn<
   Schema extends GeneratedSchema,
   State extends AlterTableState,
 > = Tokens extends [
-  { type: "IDENTIFIER"; value: infer OldColumn },
-  { type: "KEYWORD"; value: "TO" },
-  { type: "IDENTIFIER"; value: infer NewColumn },
+  { type: 'IDENTIFIER'; value: infer OldColumn },
+  { type: 'KEYWORD'; value: 'TO' },
+  { type: 'IDENTIFIER'; value: infer NewColumn },
   ...infer Rest,
 ]
   ? {
       tables: RenameColumn<
-        Schema["tables"],
-        State["currentTableName"],
+        Schema['tables'],
+        State['currentTableName'],
         OldColumn & string,
         NewColumn & string
       >;
@@ -207,10 +194,10 @@ type ParseDropTable<
   State extends DropTableState = InitialDropTableState,
 > = Tokens extends [infer First, ...infer Rest]
   ? First extends {
-      type: "IDENTIFIER";
+      type: 'IDENTIFIER';
       value: infer Table extends string;
     }
-    ? { tables: RemoveTable<Schema["tables"], Table> }
+    ? { tables: RemoveTable<Schema['tables'], Table> }
     : ParseDropTable<Rest, Schema, State>
   : Schema;
 
@@ -218,11 +205,11 @@ export type ParseMigration<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema = InitialGeneratedSchema,
 > = Tokens extends [infer First, ...infer Rest]
-  ? First extends { type: "KEYWORD"; value: "CREATE TABLE" }
+  ? First extends { type: 'KEYWORD'; value: 'CREATE TABLE' }
     ? ParseCreateTable<Rest, Schema>
-    : First extends { type: "KEYWORD"; value: "ALTER TABLE" }
+    : First extends { type: 'KEYWORD'; value: 'ALTER TABLE' }
       ? ParseAlterTable<Rest, Schema>
-      : First extends { type: "KEYWORD"; value: "DROP TABLE" }
+      : First extends { type: 'KEYWORD'; value: 'DROP TABLE' }
         ? ParseDropTable<Rest, Schema>
         : ParseMigration<Rest, Schema>
   : Schema;
@@ -232,11 +219,8 @@ export type ParseQueryType<
   Schema extends GeneratedSchema,
   State extends QueryState = InitialQueryState,
 > = Tokens extends [infer First, ...infer Rest]
-  ? First extends { type: "KEYWORD"; value: "SELECT" }
-    ? ParseSelectColumns<Rest, Schema, State> extends Record<
-        string,
-        ColumnDetails
-      >
+  ? First extends { type: 'KEYWORD'; value: 'SELECT' }
+    ? ParseSelectColumns<Rest, Schema, State> extends Record<string, ColumnDetails>
       ? {
           [K in keyof ParseSelectColumns<Rest, Schema, State>]: ColumnToType<
             ParseSelectColumns<Rest, Schema, State>[K]
@@ -251,27 +235,27 @@ type ParseSelectColumns<
   Schema extends GeneratedSchema,
   State extends QueryState,
 > = Tokens extends [infer First, ...infer Rest]
-  ? First extends { type: "IDENTIFIER"; value: "*" }
+  ? First extends { type: 'IDENTIFIER'; value: '*' }
     ? ParseFromClause<
         Rest,
         Schema,
         {
-          currentTableName: State["currentTableName"];
+          currentTableName: State['currentTableName'];
           allColumns: true;
           specificColumns: [];
         }
       >
-    : First extends { type: "IDENTIFIER"; value: string }
+    : First extends { type: 'IDENTIFIER'; value: string }
       ? ParseSelectColumns<
           Rest,
           Schema,
           {
-            currentTableName: State["currentTableName"];
+            currentTableName: State['currentTableName'];
             allColumns: false;
-            specificColumns: [...State["specificColumns"], First["value"]];
+            specificColumns: [...State['specificColumns'], First['value']];
           }
         >
-      : First extends { type: "KEYWORD"; value: "FROM" }
+      : First extends { type: 'KEYWORD'; value: 'FROM' }
         ? ParseFromClause<Rest, Schema, State>
         : ParseSelectColumns<Rest, Schema, State>
   : never;
@@ -281,14 +265,14 @@ type ParseFromClause<
   Schema extends GeneratedSchema,
   State extends QueryState,
 > = Tokens extends [
-  { type: "KEYWORD"; value: "FROM" },
-  { type: "IDENTIFIER"; value: infer Table extends string },
+  { type: 'KEYWORD'; value: 'FROM' },
+  { type: 'IDENTIFIER'; value: infer Table extends string },
   ...infer Rest,
 ]
-  ? State["allColumns"] extends true
+  ? State['allColumns'] extends true
     ? GetTableColumns<Schema, Table>
-    : Pick<GetTableColumns<Schema, Table>, State["specificColumns"][number]>
-  : Tokens extends [{ type: "KEYWORD"; value: "FROM" }, ...infer Rest]
+    : Pick<GetTableColumns<Schema, Table>, State['specificColumns'][number]>
+  : Tokens extends [{ type: 'KEYWORD'; value: 'FROM' }, ...infer Rest]
     ? ParseFromClause<Rest, Schema, State>
     : Tokens extends [infer _, ...infer Rest]
       ? ParseFromClause<Rest, Schema, State>

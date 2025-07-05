@@ -57,7 +57,7 @@ class MessageBroker {
   handleMessage(message: BrokerMessage, fromConnection: IframeConnection) {
     console.log(
       `SharedWorker: Message from ${fromConnection.iframeType}:`,
-      message
+      message,
     );
 
     // Handle responses - these should be routed back to the original requester
@@ -77,7 +77,7 @@ class MessageBroker {
   private routeMessage(
     message: BrokerMessage,
     fromConnection: IframeConnection,
-    isResponse: boolean
+    isResponse: boolean,
   ) {
     // Route message to appropriate iframe(s)
     for (const connection of this.connections) {
@@ -105,12 +105,12 @@ class MessageBroker {
           fromIframe: fromConnection.iframeType,
         });
         console.log(
-          `SharedWorker: Forwarded ${isResponse ? "response" : "message"} to ${connection.iframeType}`
+          `SharedWorker: Forwarded ${isResponse ? "response" : "message"} to ${connection.iframeType}`,
         );
       } catch (error) {
         console.error(
           `SharedWorker: Failed to send message to ${connection.iframeType}:`,
-          error
+          error,
         );
         // Remove dead connection
         this.removeConnection(connection);

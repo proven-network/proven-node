@@ -21,7 +21,7 @@ yarn add -D @proven-network/session
 ### Get Current Accounts
 
 ```typescript
-import { getCurrentAccounts } from "@proven-network/session";
+import { getCurrentAccounts } from '@proven-network/session';
 
 const accounts = getCurrentAccounts();
 console.log(accounts);
@@ -30,7 +30,7 @@ console.log(accounts);
 ### Get Current Identity
 
 ```typescript
-import { getCurrentIdentity } from "@proven-network/session";
+import { getCurrentIdentity } from '@proven-network/session';
 
 const identity = getCurrentIdentity();
 console.log(identity);

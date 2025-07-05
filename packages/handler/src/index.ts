@@ -1,14 +1,7 @@
-import { CommittedTransactionInfo } from "@radixdlt/babylon-gateway-api-sdk";
-import { SqlRows } from "@proven-network/sql";
+import { CommittedTransactionInfo } from '@radixdlt/babylon-gateway-api-sdk';
+import { SqlRows } from '@proven-network/sql';
 
-type Input =
-  | string
-  | number
-  | boolean
-  | null
-  | Uint8Array
-  | Input[]
-  | { [key: string]: Input };
+type Input = string | number | boolean | null | Uint8Array | Input[] | { [key: string]: Input };
 
 type Output =
   | string
@@ -25,10 +18,9 @@ export interface RpcHandlerOptions {
   timeout?: number;
 }
 
-export function run<
-  I extends Input[],
-  O extends Output | Promise<Output> | void | Promise<void>,
->(fn: (...args: I) => O): (...args: I) => O {
+export function run<I extends Input[], O extends Output | Promise<Output> | void | Promise<void>>(
+  fn: (...args: I) => O
+): (...args: I) => O {
   return fn;
 }
 
@@ -49,7 +41,7 @@ type ExtractPathVariables<Path extends string> =
 export interface HttpRequest<Path extends string = string> {
   body?: Uint8Array;
   headers: Record<string, string>;
-  method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   path: string;
   pathParameters: ExtractPathVariables<Path>;
   queryParameters: Record<string, string>;
@@ -57,8 +49,8 @@ export interface HttpRequest<Path extends string = string> {
 
 export interface HttpHandlerOptions<P extends string> {
   allowedOrigins?: string[];
-  attestation?: "always" | "request";
-  method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+  attestation?: 'always' | 'request';
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   path: P;
   timeout?: number;
 }

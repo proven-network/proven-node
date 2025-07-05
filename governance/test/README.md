@@ -41,19 +41,16 @@ npm run coverage
 The test suite aims to provide comprehensive coverage of:
 
 1. **Token Functionality**
-
    - Basic ERC20 operations
    - Voting power delegation
    - Minting controls
 
 2. **Timelock Mechanism**
-
    - Role management
    - Operation scheduling, execution, and cancellation
    - Delay enforcement
 
 3. **Node Governance**
-
    - Opportunity creation and management
    - Candidate registration
    - Node approval workflow

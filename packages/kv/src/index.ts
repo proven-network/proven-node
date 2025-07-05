@@ -1,4 +1,4 @@
-import { PrivateKey } from "@proven-network/crypto";
+import { PrivateKey } from '@proven-network/crypto';
 
 export type BytesStore = {
   get(key: string): Promise<Uint8Array | undefined>;
@@ -24,10 +24,7 @@ export type NftScopedBytesStore = {
     nftId: string | number | Uint8Array,
     key: string
   ): Promise<Uint8Array | undefined>;
-  keys(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array
-  ): Promise<string[]>;
+  keys(nftResourceAddress: string, nftId: string | number | Uint8Array): Promise<string[]>;
   set(
     nftResourceAddress: string,
     nftId: string | number | Uint8Array,
@@ -42,10 +39,7 @@ export type NftScopedKeyStore = {
     nftId: string | number | Uint8Array,
     key: string
   ): Promise<PrivateKey | undefined>;
-  keys(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array
-  ): Promise<string[]>;
+  keys(nftResourceAddress: string, nftId: string | number | Uint8Array): Promise<string[]>;
   set(
     nftResourceAddress: string,
     nftId: string | number | Uint8Array,
@@ -60,10 +54,7 @@ export type NftScopedStringStore = {
     nftId: string | number | Uint8Array,
     key: string
   ): Promise<string | undefined>;
-  keys(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array
-  ): Promise<string[]>;
+  keys(nftResourceAddress: string, nftId: string | number | Uint8Array): Promise<string[]>;
   set(
     nftResourceAddress: string,
     nftId: string | number | Uint8Array,
@@ -120,7 +111,7 @@ class ApplicationStringStore {
   }
 
   get(key: string): Promise<string | undefined> {
-    return Promise.resolve("");
+    return Promise.resolve('');
   }
 
   keys(): Promise<string[]> {
@@ -192,7 +183,7 @@ class PersonalStringStore implements StringStore {
   }
 
   get(key: string): Promise<string | undefined> {
-    return Promise.resolve("");
+    return Promise.resolve('');
   }
 
   keys(): Promise<string[]> {
@@ -231,10 +222,7 @@ class NftBytesStore implements NftScopedBytesStore {
     return Promise.resolve(new Uint8Array());
   }
 
-  keys(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array
-  ): Promise<string[]> {
+  keys(nftResourceAddress: string, nftId: string | number | Uint8Array): Promise<string[]> {
     return Promise.resolve([]);
   }
 
@@ -263,10 +251,7 @@ class NftKeyStore implements NftScopedKeyStore {
     return Promise.resolve(new PrivateKey(0));
   }
 
-  keys(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array
-  ): Promise<string[]> {
+  keys(nftResourceAddress: string, nftId: string | number | Uint8Array): Promise<string[]> {
     return Promise.resolve([]);
   }
 
@@ -292,13 +277,10 @@ class NftStringStore implements NftScopedStringStore {
     nftId: string | number | Uint8Array,
     key: string
   ): Promise<string | undefined> {
-    return Promise.resolve("");
+    return Promise.resolve('');
   }
 
-  keys(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array
-  ): Promise<string[]> {
+  keys(nftResourceAddress: string, nftId: string | number | Uint8Array): Promise<string[]> {
     return Promise.resolve([]);
   }
 

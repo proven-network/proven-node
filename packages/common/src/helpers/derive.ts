@@ -1,9 +1,9 @@
-import { hkdf } from "@noble/hashes/hkdf";
-import { sha256 } from "@noble/hashes/sha2";
+import { hkdf } from '@noble/hashes/hkdf';
+import { sha256 } from '@noble/hashes/sha2';
 
 type SubkeyType = ApplicationEncryptionKey;
 type ApplicationEncryptionKey = {
-  type: "application_encryption_key";
+  type: 'application_encryption_key';
   applicationId: string;
 };
 
@@ -16,7 +16,7 @@ export const deriveSubkey = async (
 
   let path: string;
   switch (type.type) {
-    case "application_encryption_key":
+    case 'application_encryption_key':
       path = `application_encryption_key/${type.applicationId}`;
       break;
     default:

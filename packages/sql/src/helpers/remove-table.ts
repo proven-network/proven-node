@@ -1,4 +1,4 @@
-import { TableRecord } from "../state";
+import { TableRecord } from '../state';
 
 export type RemoveTable<T extends TableRecord, Table extends string> = {
   [K in keyof T as K extends Table ? never : K]: T[K];

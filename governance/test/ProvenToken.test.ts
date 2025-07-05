@@ -57,12 +57,12 @@ describe("ProvenToken", function () {
       await expect(
         provenToken
           .connect(user1)
-          .transfer(owner.address, ethers.parseEther("1"))
+          .transfer(owner.address, ethers.parseEther("1")),
       ).to.be.revertedWithCustomError(provenToken, "ERC20InsufficientBalance");
 
       // Owner balance shouldn't have changed
       expect(await provenToken.balanceOf(owner.address)).to.equal(
-        initialOwnerBalance
+        initialOwnerBalance,
       );
     });
 
@@ -78,7 +78,7 @@ describe("ProvenToken", function () {
       // Check balances
       const finalOwnerBalance = await provenToken.balanceOf(owner.address);
       expect(finalOwnerBalance).to.equal(
-        initialOwnerBalance - ethers.parseEther("150")
+        initialOwnerBalance - ethers.parseEther("150"),
       );
 
       const user1Balance = await provenToken.balanceOf(user1.address);
@@ -98,12 +98,12 @@ describe("ProvenToken", function () {
 
       // Check updated total supply
       expect(await provenToken.totalSupply()).to.equal(
-        initialSupply + ethers.parseEther("1000")
+        initialSupply + ethers.parseEther("1000"),
       );
 
       // Check user1 received the minted tokens
       expect(await provenToken.balanceOf(user1.address)).to.equal(
-        ethers.parseEther("1000")
+        ethers.parseEther("1000"),
       );
     });
 
@@ -111,10 +111,10 @@ describe("ProvenToken", function () {
       await expect(
         provenToken
           .connect(user1)
-          .mint(user1.address, ethers.parseEther("1000"))
+          .mint(user1.address, ethers.parseEther("1000")),
       ).to.be.revertedWithCustomError(
         provenToken,
-        "OwnableUnauthorizedAccount"
+        "OwnableUnauthorizedAccount",
       );
     });
   });
@@ -132,7 +132,7 @@ describe("ProvenToken", function () {
 
       // Check updated voting power
       expect(await provenToken.getVotes(user1.address)).to.equal(
-        ethers.parseEther("100")
+        ethers.parseEther("100"),
       );
 
       // Transfer more tokens to user1
@@ -140,7 +140,7 @@ describe("ProvenToken", function () {
 
       // Check updated voting power
       expect(await provenToken.getVotes(user1.address)).to.equal(
-        ethers.parseEther("150")
+        ethers.parseEther("150"),
       );
     });
 

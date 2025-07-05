@@ -28,7 +28,7 @@ class RegisterClient {
     } catch (error) {
       console.error("Register: Failed to initialize broker:", error);
       throw new Error(
-        `Register: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`
+        `Register: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }
@@ -39,7 +39,7 @@ class RegisterClient {
     const cancelBtn = document.getElementById("cancel-btn");
     const closeBtn = document.getElementById("close-modal");
     const usernameInput = document.getElementById(
-      "username"
+      "username",
     ) as HTMLInputElement;
 
     // Seed screen elements
@@ -132,10 +132,10 @@ class RegisterClient {
 
   setLoading(loading: boolean) {
     const createBtn = document.getElementById(
-      "create-btn"
+      "create-btn",
     ) as HTMLButtonElement;
     const cancelBtn = document.getElementById(
-      "cancel-btn"
+      "cancel-btn",
     ) as HTMLButtonElement;
 
     if (createBtn && cancelBtn) {
@@ -221,7 +221,7 @@ class RegisterClient {
     this.hideError();
 
     const usernameInput = document.getElementById(
-      "username"
+      "username",
     ) as HTMLInputElement;
     this.username = usernameInput.value.trim();
 
@@ -239,7 +239,7 @@ class RegisterClient {
 
     if (!/^[a-zA-Z0-9_-]+$/.test(this.username)) {
       this.showError(
-        "Username can only contain letters, numbers, underscore, and dash"
+        "Username can only contain letters, numbers, underscore, and dash",
       );
       usernameInput.focus();
       return;
@@ -261,7 +261,7 @@ class RegisterClient {
           username: this.username,
           prfResult: prfResult,
         },
-        "connect"
+        "connect",
       );
 
       // Generate and display seed words, then show seed screen

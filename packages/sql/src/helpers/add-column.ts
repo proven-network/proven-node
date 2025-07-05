@@ -1,4 +1,4 @@
-import { ColumnDetails, TableRecord } from "../state";
+import { ColumnDetails, TableRecord } from '../state';
 
 export type AddColumn<
   T extends TableRecord,

@@ -1991,7 +1991,6 @@ paths:
         "4XX":
           $ref: "#/components/responses/ErrorResponse"
 
-
 components:
   responses:
     ErrorResponse:
@@ -2002,7 +2001,6 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
 
   schemas:
-
     #
     # Aliases
     #
@@ -2653,8 +2651,8 @@ components:
         propertyName: aggregation_level
         mapping:
           # NOTE: These need to match ResourceAggregationLevel
-          Global: '#/components/schemas/FungibleResourcesCollectionItemGloballyAggregated'
-          Vault: '#/components/schemas/FungibleResourcesCollectionItemVaultAggregated'
+          Global: "#/components/schemas/FungibleResourcesCollectionItemGloballyAggregated"
+          Vault: "#/components/schemas/FungibleResourcesCollectionItemVaultAggregated"
     FungibleResourcesCollectionItemGloballyAggregated:
       allOf:
         - $ref: "#/components/schemas/FungibleResourcesCollectionItem"
@@ -2729,8 +2727,8 @@ components:
         propertyName: aggregation_level
         mapping:
           # NOTE: These need to match ResourceAggregationLevel
-          Global: '#/components/schemas/NonFungibleResourcesCollectionItemGloballyAggregated'
-          Vault: '#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregated'
+          Global: "#/components/schemas/NonFungibleResourcesCollectionItemGloballyAggregated"
+          Vault: "#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregated"
     NonFungibleResourcesCollectionItemGloballyAggregated:
       allOf:
         - $ref: "#/components/schemas/NonFungibleResourcesCollectionItem"
@@ -3284,7 +3282,6 @@ components:
             amount:
               $ref: "#/components/schemas/BigDecimal"
 
-
     ResourceHoldersCollectionNonFungibleResourceItem:
       allOf:
         - $ref: "#/components/schemas/ResourceHoldersCollectionItem"
@@ -3295,7 +3292,6 @@ components:
             non_fungible_ids_count:
               type: integer
               format: int64
-
 
     ValidatorCollection:
       allOf:
@@ -3801,7 +3797,7 @@ components:
         propertyName: type
         mapping:
           # NOTE: These need to match PreviewTransactionType
-          Compiled: '#/components/schemas/CompiledPreviewTransaction'
+          Compiled: "#/components/schemas/CompiledPreviewTransaction"
     CompiledPreviewTransaction:
       allOf:
         - $ref: "#/components/schemas/PreviewTransaction"
@@ -3914,7 +3910,7 @@ components:
               $ref: "#/components/schemas/TransactionAccountDepositPreValidationAuthorizedDepositorBadge"
           example:
             account_address: "<account-address>"
-            resource_addresses: [ "<resource-address>" ]
+            resource_addresses: ["<resource-address>"]
 
     AccountDepositPreValidationResponse:
       allOf:
@@ -5038,7 +5034,7 @@ components:
                 $ref: "#/components/schemas/NonFungibleId"
       example:
         resource_address: "<non-fungible-entity-address>"
-        non_fungible_ids: [ "#1#" ]
+        non_fungible_ids: ["#1#"]
 
     StateNonFungibleLocationResponse:
       allOf:
@@ -5094,7 +5090,7 @@ components:
                 $ref: "#/components/schemas/NonFungibleId"
       example:
         resource_address: "<non-fungible-entity-address>"
-        non_fungible_ids: [ "#1#" ]
+        non_fungible_ids: ["#1#"]
     StateNonFungibleDataResponse:
       allOf:
         - $ref: "#/components/schemas/LedgerStateMixin"
@@ -5353,7 +5349,6 @@ components:
     ResourceHoldersResponse:
       allOf:
         - $ref: "#/components/schemas/ResourceHoldersCollection"
-
 
     #
     # Errors

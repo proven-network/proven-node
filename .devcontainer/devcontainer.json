@@ -1,30 +1,30 @@
 {
-	"name": "Proven Node Development",
-	"build": {
-		"dockerfile": "Dockerfile",
-		"context": ".."
-	},
-	"runArgs": ["--privileged", "--cgroupns=private"],
-	"features": {
-		"ghcr.io/devcontainers/features/node:1": {
-			"nodeGypDependencies": true,
-			"installYarnUsingApt": true,
-			"version": "lts",
-			"pnpmVersion": "latest",
-			"nvmVersion": "latest"
-		}
-	},
-	"containerEnv": {
-		"CARGO_TARGET_DIR": "${containerWorkspaceFolder}/target-devcontainer"
-	},
-	"remoteUser": "root",
-	"postCreateCommand": "echo 'Development container is ready with all dependencies installed.'",
-	"appPort": [
-		"30001:30001/tcp",
-		"30304:30304/tcp",
-		"30304:30304/udp",
-		"10109:10109/tcp",
-		"10109:10109/udp",
-		"10110:10110/udp"
-	]
+  "name": "Proven Node Development",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "runArgs": ["--privileged", "--cgroupns=private"],
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "nodeGypDependencies": true,
+      "installYarnUsingApt": true,
+      "version": "lts",
+      "pnpmVersion": "latest",
+      "nvmVersion": "latest"
+    }
+  },
+  "containerEnv": {
+    "CARGO_TARGET_DIR": "${containerWorkspaceFolder}/target-devcontainer"
+  },
+  "remoteUser": "root",
+  "postCreateCommand": "echo 'Development container is ready with all dependencies installed.'",
+  "appPort": [
+    "30001:30001/tcp",
+    "30304:30304/tcp",
+    "30304:30304/udp",
+    "10109:10109/tcp",
+    "10109:10109/udp",
+    "10110:10110/udp"
+  ]
 }

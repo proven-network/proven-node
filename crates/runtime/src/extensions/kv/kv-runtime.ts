@@ -158,13 +158,13 @@ class NftBytesStore implements NftScopedBytesStore {
   async get(
     resourceAddress: string,
     nftId: number | string | Uint8Array,
-    key: string
+    key: string,
   ): Promise<Uint8Array | undefined> {
     const result = await op_get_nft_bytes(
       this.storeName,
       resourceAddress,
       prepareNftId(nftId),
-      key
+      key,
     );
 
     if (result === "NftDoesNotExist") {
@@ -173,7 +173,7 @@ class NftBytesStore implements NftScopedBytesStore {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     } else if (result === "None") {
       return;
@@ -184,13 +184,13 @@ class NftBytesStore implements NftScopedBytesStore {
 
   async keys(
     resourceAddress: string,
-    nftId: number | string | Uint8Array
+    nftId: number | string | Uint8Array,
   ): Promise<string[]> {
     const result = await op_nft_keys(
       this.storeName,
       "bytes",
       resourceAddress,
-      prepareNftId(nftId)
+      prepareNftId(nftId),
     );
 
     if (result === "NftDoesNotExist") {
@@ -199,7 +199,7 @@ class NftBytesStore implements NftScopedBytesStore {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     } else if (result === "None") {
       return [];
@@ -212,14 +212,14 @@ class NftBytesStore implements NftScopedBytesStore {
     resourceAddress: string,
     nftId: number | string | Uint8Array,
     key: string,
-    value: Uint8Array
+    value: Uint8Array,
   ): Promise<void> {
     const result = await op_set_nft_bytes(
       this.storeName,
       resourceAddress,
       prepareNftId(nftId),
       key,
-      value
+      value,
     );
 
     if (result === "NftDoesNotExist") {
@@ -228,7 +228,7 @@ class NftBytesStore implements NftScopedBytesStore {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     }
   }
@@ -244,7 +244,7 @@ class NftKeyStore implements NftScopedKeyStore {
   async get(
     resourceAddress: string,
     nftId: number | string,
-    key: string
+    key: string,
   ): Promise<PrivateKey | undefined> {
     let keyId: number;
 
@@ -252,7 +252,7 @@ class NftKeyStore implements NftScopedKeyStore {
       this.storeName,
       resourceAddress,
       prepareNftId(nftId),
-      key
+      key,
     );
 
     if (result === "NftDoesNotExist") {
@@ -261,7 +261,7 @@ class NftKeyStore implements NftScopedKeyStore {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     } else if (result === "None") {
       return undefined;
@@ -277,13 +277,13 @@ class NftKeyStore implements NftScopedKeyStore {
 
   async keys(
     resourceAddress: string,
-    nftId: number | string | Uint8Array
+    nftId: number | string | Uint8Array,
   ): Promise<string[]> {
     const result = await op_nft_keys(
       this.storeName,
       "key",
       resourceAddress,
-      prepareNftId(nftId)
+      prepareNftId(nftId),
     );
 
     if (result === "NftDoesNotExist") {
@@ -292,7 +292,7 @@ class NftKeyStore implements NftScopedKeyStore {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     } else if (result === "None") {
       return [];
@@ -305,14 +305,14 @@ class NftKeyStore implements NftScopedKeyStore {
     resourceAddress: string,
     nftId: number | string | Uint8Array,
     key: string,
-    value: PrivateKey
+    value: PrivateKey,
   ): Promise<void> {
     const result = await op_set_nft_key(
       this.storeName,
       resourceAddress,
       prepareNftId(nftId),
       key,
-      value.keyId
+      value.keyId,
     );
 
     if (result === "NftDoesNotExist") {
@@ -321,7 +321,7 @@ class NftKeyStore implements NftScopedKeyStore {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     }
   }
@@ -337,13 +337,13 @@ class NftStringStore implements NftScopedStringStore {
   async get(
     resourceAddress: string,
     nftId: number | string | Uint8Array,
-    key: string
+    key: string,
   ): Promise<string | undefined> {
     const result = await op_get_nft_string(
       this.storeName,
       resourceAddress,
       prepareNftId(nftId),
-      key
+      key,
     );
 
     if (result === "NftDoesNotExist") {
@@ -352,7 +352,7 @@ class NftStringStore implements NftScopedStringStore {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     } else if (result === "None") {
       return undefined;
@@ -363,13 +363,13 @@ class NftStringStore implements NftScopedStringStore {
 
   async keys(
     resourceAddress: string,
-    nftId: number | string | Uint8Array
+    nftId: number | string | Uint8Array,
   ): Promise<string[]> {
     const result = await op_nft_keys(
       this.storeName,
       "string",
       resourceAddress,
-      prepareNftId(nftId)
+      prepareNftId(nftId),
     );
 
     if (result === "NftDoesNotExist") {
@@ -378,7 +378,7 @@ class NftStringStore implements NftScopedStringStore {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     } else if (result === "None") {
       return [];
@@ -391,14 +391,14 @@ class NftStringStore implements NftScopedStringStore {
     resourceAddress: string,
     nftId: number | string | Uint8Array,
     key: string,
-    value: string
+    value: string,
   ): Promise<void> {
     const result = await op_set_nft_string(
       this.storeName,
       resourceAddress,
       prepareNftId(nftId),
       key,
-      value
+      value,
     );
 
     if (result === "NftDoesNotExist") {
@@ -407,7 +407,7 @@ class NftStringStore implements NftScopedStringStore {
       throw new Error("No accounts in context");
     } else if (typeof result === "object" && "OwnershipInvalid" in result) {
       throw new Error(
-        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`
+        `NFT ownership invalid. Owned by: ${result.OwnershipInvalid}`,
       );
     }
   }

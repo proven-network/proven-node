@@ -2,14 +2,14 @@ import { run } from "@proven-network/handler";
 import { getPersonalDb, sql } from "@proven-network/sql";
 
 const PERSONAL_DB = getPersonalDb("myAppDb").migrate(
-  `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`
+  `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`,
 );
 
 export const test = run(async () => {
   const email = "alice@example.com";
 
   const affectedRows = await PERSONAL_DB.execute(
-    sql("INSERT INTO users (email) VALUES (:email)", { email })
+    sql("INSERT INTO users (email) VALUES (:email)", { email }),
   );
 
   if (affectedRows !== 1) {

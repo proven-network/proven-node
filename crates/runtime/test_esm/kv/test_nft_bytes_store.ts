@@ -12,7 +12,7 @@ export const test = run(async () => {
     RESOURCE_ADDR,
     nftId,
     "key",
-    new Uint8Array([1, 2, 3])
+    new Uint8Array([1, 2, 3]),
   );
 
   const restored = await NFT_BYTES_STORE.get(RESOURCE_ADDR, nftId, "key");

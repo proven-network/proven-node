@@ -24,5 +24,5 @@ export const test = runOnHttp(
 
     // Check path parameter extraction works
     return request.pathParameters.id;
-  }
+  },
 );

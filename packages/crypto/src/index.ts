@@ -6,13 +6,13 @@ import {
   SignerResponse as RadixSignerResponse,
   Signature as RadixSignature,
   SignatureWithPublicKey as RadixSignatureWithPublicKey,
-} from "@radixdlt/radix-engine-toolkit";
+} from '@radixdlt/radix-engine-toolkit';
 
 class PublicKey implements RadixPublicKey {
   bytes: Uint8Array;
 
   get curve(): RadixCurve {
-    return "Ed25519";
+    return 'Ed25519';
   }
 
   get publicKey() {
@@ -27,8 +27,8 @@ class PublicKey implements RadixPublicKey {
 
   hexString() {
     return Array.from(this.bytes)
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   rawBytes() {
@@ -42,7 +42,7 @@ class Signature implements RadixSignature {
   bytes: Uint8Array;
 
   get curve(): RadixCurve {
-    return "Ed25519";
+    return 'Ed25519';
   }
 
   get signature(): Uint8Array {
@@ -59,8 +59,8 @@ class Signature implements RadixSignature {
 
   hexString() {
     return Array.from(this.bytes)
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   rawBytes() {
@@ -75,7 +75,7 @@ class SignatureWithPublicKey implements RadixSignatureWithPublicKey {
   publicKey: Uint8Array;
 
   get curve(): RadixCurve {
-    return "Ed25519";
+    return 'Ed25519';
   }
 
   get signature(): Uint8Array {
@@ -93,8 +93,8 @@ class SignatureWithPublicKey implements RadixSignatureWithPublicKey {
 
   hexString() {
     return Array.from(this.bytes)
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   rawBytes() {
@@ -104,11 +104,11 @@ class SignatureWithPublicKey implements RadixSignatureWithPublicKey {
   toString = this.hexString;
 }
 
-export class PrivateKey implements Omit<RadixPrivateKey, "bytes">, RadixSigner {
+export class PrivateKey implements Omit<RadixPrivateKey, 'bytes'>, RadixSigner {
   keyId: number;
 
   get curve(): RadixCurve {
-    return "Ed25519";
+    return 'Ed25519';
   }
 
   constructor(keyId: number) {
@@ -143,9 +143,7 @@ export class PrivateKey implements Omit<RadixPrivateKey, "bytes">, RadixSigner {
     return new Signature(new Uint8Array());
   }
 
-  signToSignatureWithPublicKey(
-    data: string | Uint8Array
-  ): SignatureWithPublicKey {
+  signToSignatureWithPublicKey(data: string | Uint8Array): SignatureWithPublicKey {
     return new SignatureWithPublicKey(new Uint8Array(), this.publicKeyBytes());
   }
 }

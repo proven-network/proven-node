@@ -11,29 +11,29 @@ export type RpcResponse<T> = {
 
 // Generic result wrapper for command responses
 export type CommandResult<TSuccess, TFailure = string> =
-  | { result: "success"; data: TSuccess }
-  | { result: "failure"; data: TFailure }
-  | { result: "error"; data: TFailure };
+  | { result: 'success'; data: TSuccess }
+  | { result: 'failure'; data: TFailure }
+  | { result: 'error'; data: TFailure };
 
 // Anonymize command and response
-export type Anonymize = { type: "Anonymize"; data: null };
+export type Anonymize = { type: 'Anonymize'; data: null };
 export type AnonymizeResult = CommandResult<null, string>;
 export type AnonymizeResponse = RpcResponse<AnonymizeResult>;
 
 // WhoAmI command and response
-export type WhoAmI = { type: "WhoAmI"; data: null };
+export type WhoAmI = { type: 'WhoAmI'; data: null };
 export type WhoAmIResult =
-  | { result: "anonymous"; data: { session_id: string; origin: string } }
+  | { result: 'anonymous'; data: { session_id: string; origin: string } }
   | {
-      result: "identified";
+      result: 'identified';
       data: { identity: any; session_id: string; origin: string };
     } // TODO: define proper Identity type
-  | { result: "failure"; data: string };
+  | { result: 'failure'; data: string };
 export type WhoAmIResponse = RpcResponse<WhoAmIResult>;
 
 // Execute commands with named fields
 export type ExecuteHash = {
-  type: "ExecuteHash";
+  type: 'ExecuteHash';
   data: {
     module_hash: string;
     handler_specifier: string;
@@ -42,7 +42,7 @@ export type ExecuteHash = {
 };
 
 export type Execute = {
-  type: "Execute";
+  type: 'Execute';
   data: {
     module: string;
     handler_specifier: string;
@@ -89,12 +89,12 @@ export type ExecuteResponse = RpcResponse<ExecuteResult>;
 // ExecuteHash response using the new tagged format
 export type ExecuteHashResult =
   | CommandResult<ExecutionResult, string>
-  | { result: "error"; data: null }; // HashUnknown
+  | { result: 'error'; data: null }; // HashUnknown
 export type ExecuteHashResponse = RpcResponse<ExecuteHashResult>;
 
 // Identify command and response
 export type Identify = {
-  type: "Identify";
+  type: 'Identify';
   data: {
     passkey_prf_public_key_bytes: Uint8Array;
     session_id_signature_bytes: Uint8Array;
@@ -105,15 +105,9 @@ export type IdentifyResult = CommandResult<any, string>; // TODO: define proper 
 export type IdentifyResponse = RpcResponse<IdentifyResult>;
 
 // CreateApplication command and response
-export type CreateApplication = { type: "CreateApplication"; data: null };
+export type CreateApplication = { type: 'CreateApplication'; data: null };
 export type CreateApplicationResult = CommandResult<any, string>; // TODO: define proper Application type
 export type CreateApplicationResponse = RpcResponse<CreateApplicationResult>;
 
 // Union of all RPC commands
-export type RpcCall =
-  | Anonymize
-  | Execute
-  | ExecuteHash
-  | Identify
-  | WhoAmI
-  | CreateApplication;
+export type RpcCall = Anonymize | Execute | ExecuteHash | Identify | WhoAmI | CreateApplication;

@@ -44,14 +44,14 @@ services:
       - "3201:3201/tcp"
       - "6222:6222/tcp"
       # reth ports
-      - "30304:30304/tcp"      # P2P communication
-      - "30304:30304/udp"      # P2P communication
-      - "8546:8546/tcp"        # HTTP-RPC server
+      - "30304:30304/tcp" # P2P communication
+      - "30304:30304/udp" # P2P communication
+      - "8546:8546/tcp" # HTTP-RPC server
       # lighthouse ports
-      - "9000:9000/tcp"        # Discovery and libp2p
-      - "9000:9000/udp"        # Discovery and libp2p
-      - "9001:9001/udp"        # QUIC
-      - "5052:5052/tcp"        # HTTP API
+      - "9000:9000/tcp" # Discovery and libp2p
+      - "9000:9000/udp" # Discovery and libp2p
+      - "9001:9001/udp" # QUIC
+      - "5052:5052/tcp" # HTTP API
     volumes:
       - bulbasaur-data:/tmp/proven
       - shared-config:/etc/proven
@@ -85,7 +85,7 @@ services:
       - "3202:3202/tcp"
       - "6223:6223/tcp"
       # radix ports
-      - "30001:30001/tcp"   # gossip port
+      - "30001:30001/tcp" # gossip port
     volumes:
       - charmander-data:/tmp/proven
       - shared-config:/etc/proven
@@ -160,4 +160,4 @@ volumes:
   shared-config:
   cargo-cache:
   cargo-git-cache:
-  target-cache: 
+  target-cache:

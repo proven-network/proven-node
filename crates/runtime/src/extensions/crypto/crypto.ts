@@ -155,7 +155,7 @@ export class PrivateKey implements Omit<RadixPrivateKey, "bytes">, RadixSigner {
   }
 
   signToSignatureWithPublicKey(
-    data: string | Uint8Array
+    data: string | Uint8Array,
   ): SignatureWithPublicKey {
     let signatureWithPublicKey;
 
@@ -163,13 +163,13 @@ export class PrivateKey implements Omit<RadixPrivateKey, "bytes">, RadixSigner {
       signatureWithPublicKey = new SignatureWithPublicKey(
         op_sign_string(this.keyId, data),
         this.curve,
-        this.publicKeyBytes()
+        this.publicKeyBytes(),
       );
     } else if (data instanceof Uint8Array) {
       signatureWithPublicKey = new SignatureWithPublicKey(
         op_sign_bytes(this.keyId, data),
         this.curve,
-        this.publicKeyBytes()
+        this.publicKeyBytes(),
       );
     } else {
       throw new Error("Invalid type for signing");

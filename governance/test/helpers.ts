@@ -36,7 +36,7 @@ export async function getProposalId(
   targets: string[],
   values: bigint[],
   calldatas: string[],
-  description: string
+  description: string,
 ): Promise<bigint> {
   const descHash = ethers.id(description);
   return await governor.hashProposal(targets, values, calldatas, descHash);
@@ -50,7 +50,7 @@ export async function advanceToState(
   description: string,
   targets: string[] = [],
   values: bigint[] = [],
-  calldatas: string[] = []
+  calldatas: string[] = [],
 ): Promise<void> {
   let state = Number(await governor.state(proposalId));
   const descHash = ethers.id(description);
@@ -80,7 +80,7 @@ export async function advanceToState(
     // Make sure we succeeded and didn't defeat
     if (state === ProposalState.Defeated) {
       throw new Error(
-        `Proposal was defeated. Check the voting power/quorum requirements.`
+        `Proposal was defeated. Check the voting power/quorum requirements.`,
       );
     }
   }
@@ -119,20 +119,19 @@ export async function deployContracts() {
     TIMELOCK_DELAY,
     [], // proposers
     [], // executors
-    deployer.address
+    deployer.address,
   );
 
   // Deploy VersionGovernance
-  const VersionGovernance = await ethers.getContractFactory(
-    "VersionGovernance"
-  );
+  const VersionGovernance =
+    await ethers.getContractFactory("VersionGovernance");
   const versionGovernor = await VersionGovernance.deploy(
     await token.getAddress(),
     await timelock.getAddress(),
     VOTING_DELAY,
     VOTING_PERIOD,
     QUORUM_FRACTION,
-    PROPOSAL_THRESHOLD
+    PROPOSAL_THRESHOLD,
   );
 
   // Deploy NodeGovernance
@@ -143,7 +142,7 @@ export async function deployContracts() {
     VOTING_DELAY,
     VOTING_PERIOD,
     QUORUM_FRACTION,
-    PROPOSAL_THRESHOLD
+    PROPOSAL_THRESHOLD,
   );
 
   // Setup roles
@@ -190,14 +189,14 @@ export async function createPassingProposal(
   values: bigint[],
   calldatas: string[],
   description: string,
-  voters: HardhatEthersSigner[]
+  voters: HardhatEthersSigner[],
 ) {
   // Submit proposal
   const proposeTx = await governor.propose(
     targets,
     values,
     calldatas,
-    description
+    description,
   );
   await proposeTx.wait();
 
@@ -207,7 +206,7 @@ export async function createPassingProposal(
     targets,
     values,
     calldatas,
-    description
+    description,
   );
 
   // Move to active state
@@ -218,7 +217,7 @@ export async function createPassingProposal(
     description,
     targets,
     values,
-    calldatas
+    calldatas,
   );
 
   // Cast votes from multiple voters
@@ -234,7 +233,7 @@ export async function createPassingProposal(
     description,
     targets,
     values,
-    calldatas
+    calldatas,
   );
 
   // Wait for timelock delay and execute
@@ -245,7 +244,7 @@ export async function createPassingProposal(
     description,
     targets,
     values,
-    calldatas
+    calldatas,
   );
 
   return { proposalId, description };

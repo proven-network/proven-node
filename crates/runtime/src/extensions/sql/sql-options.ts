@@ -17,7 +17,7 @@ class Sql implements SqlStatement<any> {
 
   constructor(
     statement: string,
-    params?: Record<string, null | number | string | Uint8Array>
+    params?: Record<string, null | number | string | Uint8Array>,
   ) {
     this.statement = statement;
     this.params = params || {};
@@ -26,7 +26,7 @@ class Sql implements SqlStatement<any> {
 
 export const sql = (
   statement: string,
-  params?: Record<string, null | number | string | Uint8Array>
+  params?: Record<string, null | number | string | Uint8Array>,
 ) => {
   return new Sql(statement, params);
 };
@@ -75,7 +75,7 @@ class NftSqlStore implements SqlNftDatabase {
   execute(
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
-    _sql: string | Sql
+    _sql: string | Sql,
   ): Promise<number> {
     throw new Error("`execute` must be run inside a handler function");
   }
@@ -93,7 +93,7 @@ class NftSqlStore implements SqlNftDatabase {
   query(
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
-    _sql: string | Sql
+    _sql: string | Sql,
   ): Promise<SqlRows<any>> {
     throw new Error("`query` must be run inside a handler function");
   }

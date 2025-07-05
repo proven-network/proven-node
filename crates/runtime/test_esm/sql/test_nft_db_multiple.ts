@@ -2,7 +2,7 @@ import { run } from "@proven-network/handler";
 import { getNftDb, sql } from "@proven-network/sql";
 
 const NFT_DB = getNftDb("myAppDb").migrate(
-  `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`
+  `CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);`,
 );
 const RESOURCE_ADDR = "resource_1qlq38wvrvh5m4kaz6etaac4389qtuycnp89atc8acdfi";
 
@@ -14,7 +14,7 @@ export const test = run(async () => {
     nftId,
     sql("INSERT INTO users (email) VALUES (:email)", {
       email: "alice@example.com",
-    })
+    }),
   );
 
   if (affectedRows !== 1) {
@@ -26,7 +26,7 @@ export const test = run(async () => {
     nftId,
     sql("INSERT INTO users (email) VALUES (:email)", {
       email: "bob@example.com",
-    })
+    }),
   );
 
   if (affectedRows !== 1) {
@@ -36,7 +36,7 @@ export const test = run(async () => {
   const results = await NFT_DB.query(
     RESOURCE_ADDR,
     nftId,
-    "SELECT * FROM users"
+    "SELECT * FROM users",
   );
 
   if ((await results.length) !== 2) {

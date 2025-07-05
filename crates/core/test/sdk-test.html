@@ -304,7 +304,7 @@ export const test = run(() => {
         .catch((error) => {
           logMessage(
             `Failed to initialize auth button: ${error.message}`,
-            "error"
+            "error",
           );
         });
 
@@ -330,7 +330,7 @@ export const test = run(() => {
           const result = await sdk.whoAmI();
           logMessage(
             `WhoAmI Result: ${JSON.stringify(result, null, 2)}`,
-            "success"
+            "success",
           );
         } catch (error) {
           logMessage(`WhoAmI Error: ${error.message}`, "error");
@@ -359,7 +359,7 @@ export const test = run(() => {
           const result = await sdk.execute(script, "file:///main.ts#test", []);
           logMessage(
             `Execute Result: ${JSON.stringify(result, null, 2)}`,
-            "success"
+            "success",
           );
         } catch (error) {
           logMessage(`Execute Error: ${error.message}`, "error");
@@ -388,12 +388,12 @@ export const test = run(() => {
           const result = await sdk.execute(script, "file:///main.ts#test", []);
           logMessage(
             `Execute Result (${textareaId}): ${JSON.stringify(result, null, 2)}`,
-            "success"
+            "success",
           );
         } catch (error) {
           logMessage(
             `Execute Error (${textareaId}): ${error.message}`,
-            "error"
+            "error",
           );
           throw error;
         } finally {

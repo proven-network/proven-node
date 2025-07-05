@@ -24,4 +24,4 @@ export default {
     }),
   ],
   external: ['@proven-network/common', 'tslib'],
-}; 
+};

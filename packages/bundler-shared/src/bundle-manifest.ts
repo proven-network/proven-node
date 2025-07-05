@@ -166,19 +166,22 @@ export class BundleManifestGenerator {
   /**
    * Converts source files to modules format with handler information
    */
-  private convertSourcesToModules(sources: SourceFile[], entrypoints: EntrypointInfo[]): ManifestModule[] {
+  private convertSourcesToModules(
+    sources: SourceFile[],
+    entrypoints: EntrypointInfo[]
+  ): ManifestModule[] {
     const modules: ManifestModule[] = [];
-    
+
     for (const source of sources) {
       // Find handlers for this source file
-      const entrypoint = entrypoints.find(ep => ep.filePath === source.filePath);
+      const entrypoint = entrypoints.find((ep) => ep.filePath === source.filePath);
       const handlers = entrypoint ? entrypoint.handlers : [];
-      
+
       // Extract dependencies from imports (simplified)
-      const dependencies = entrypoint 
+      const dependencies = entrypoint
         ? entrypoint.imports
-            .filter(imp => imp.module.startsWith('./') || imp.module.startsWith('../'))
-            .map(imp => imp.module)
+            .filter((imp) => imp.module.startsWith('./') || imp.module.startsWith('../'))
+            .map((imp) => imp.module)
         : [];
 
       modules.push({
@@ -195,16 +198,18 @@ export class BundleManifestGenerator {
   /**
    * Generates a unique manifest ID based on content hash
    */
-  private generateManifestId(modules: ManifestModule[], dependencies: DependencyInfo, metadata: BundleMetadata): string {
+  private generateManifestId(
+    modules: ManifestModule[],
+    dependencies: DependencyInfo,
+    metadata: BundleMetadata
+  ): string {
     const contentToHash = {
-      modules: modules.map(m => ({ path: m.path, content: m.content, handlers: m.handlers })),
+      modules: modules.map((m) => ({ path: m.path, content: m.content, handlers: m.handlers })),
       dependencies: dependencies.production,
       timestamp: metadata.createdAt,
     };
 
-    const hash = createHash('sha256')
-      .update(JSON.stringify(contentToHash))
-      .digest('hex');
+    const hash = createHash('sha256').update(JSON.stringify(contentToHash)).digest('hex');
 
     return `manifest-${hash.substring(0, 16)}`;
   }

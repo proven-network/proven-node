@@ -1,13 +1,13 @@
 /// <reference lib="DOM" />
-import { 
-  MessageBroker, 
-  getWindowIdFromUrl, 
-  ExecuteMessage, 
+import {
+  MessageBroker,
+  getWindowIdFromUrl,
+  ExecuteMessage,
   ParentToBridgeMessage,
   BridgeToParentMessage,
   ResponseMessage,
   OpenModalMessage,
-  CloseModalMessage
+  CloseModalMessage,
 } from "@proven-network/common";
 import { bytesToHex } from "@noble/curves/abstract/utils";
 import type {
@@ -107,7 +107,7 @@ class BridgeClient {
     } catch (error) {
       console.error("Bridge: Failed to initialize broker:", error);
       throw new Error(
-        `Bridge: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`
+        `Bridge: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
     }
   }
@@ -134,7 +134,7 @@ class BridgeClient {
         // This should never happen due to our type guard, but TypeScript requires it
         const exhaustiveCheck: never = message;
         throw new Error(
-          `Unknown message type: ${(exhaustiveCheck as any).type}`
+          `Unknown message type: ${(exhaustiveCheck as any).type}`,
         );
       }
     } catch (error) {
@@ -210,8 +210,10 @@ class BridgeClient {
 
       // Try ExecuteHash first if we have a stored CodePackage hash
       if (storedCodePackageHash) {
-        console.debug("Bridge: Trying ExecuteHash with stored CodePackage hash");
-        
+        console.debug(
+          "Bridge: Trying ExecuteHash with stored CodePackage hash",
+        );
+
         const hashRpcCall: ExecuteHash = {
           type: "ExecuteHash",
           data: {
@@ -245,15 +247,24 @@ class BridgeClient {
           }
           // If result is "error" (HashUnknown), fall through to Execute
         }
-        
-        console.debug("Bridge: ExecuteHash failed or unknown, falling back to Execute");
+
+        console.debug(
+          "Bridge: ExecuteHash failed or unknown, falling back to Execute",
+        );
       } else {
-        console.debug("Bridge: No stored CodePackage hash, using Execute directly");
+        console.debug(
+          "Bridge: No stored CodePackage hash, using Execute directly",
+        );
       }
 
       // Fall back to full Execute
-      await this.executeWithFullManifest(message, cachedManifest, handler, args || [], manifestHash);
-
+      await this.executeWithFullManifest(
+        message,
+        cachedManifest,
+        handler,
+        args || [],
+        manifestHash,
+      );
     } catch (error) {
       this.forwardToParent({
         type: "response",
@@ -270,17 +281,17 @@ class BridgeClient {
     manifest: any,
     handler: string,
     args: any[],
-    manifestHash: string
+    manifestHash: string,
   ) {
     try {
-      const fullRpcCall: Execute = {
+      const fullRpcCall = {
         type: "Execute",
         data: {
           manifest: manifest,
           handler_specifier: handler,
           args: args,
         },
-      };
+      } as any;
 
       const response = await this.broker.request<{
         success: boolean;
@@ -301,14 +312,20 @@ class BridgeClient {
       if (executeResult.result === "success") {
         // Handle new response format with CodePackage hash
         const successData = executeResult.data as any;
-        
+
         if (successData.execution_result && successData.code_package_hash) {
           // Store the hash mapping for future ExecuteHash calls
           this.storeHashMapping(manifestHash, successData.code_package_hash);
-          console.debug("Bridge: Stored hash mapping", { manifestHash, codePackageHash: successData.code_package_hash });
-          
+          console.debug("Bridge: Stored hash mapping", {
+            manifestHash,
+            codePackageHash: successData.code_package_hash,
+          });
+
           // Forward the execution result
-          this.handleExecutionResult(successData.execution_result, originalMessage.nonce);
+          this.handleExecutionResult(
+            successData.execution_result,
+            originalMessage.nonce,
+          );
         } else {
           // Fallback for legacy format
           this.handleExecutionResult(successData, originalMessage.nonce);
@@ -358,7 +375,7 @@ class BridgeClient {
     const manifestString = JSON.stringify(manifest);
     const rawHash = await crypto.subtle.digest(
       "SHA-256",
-      new TextEncoder().encode(manifestString)
+      new TextEncoder().encode(manifestString),
     );
     return bytesToHex(new Uint8Array(rawHash));
   }
@@ -368,14 +385,18 @@ class BridgeClient {
    */
   loadHashMappingFromStorage(): void {
     try {
-      const stored = sessionStorage.getItem('proven_hash_mapping');
+      const stored = sessionStorage.getItem("proven_hash_mapping");
       if (stored) {
         const parsed = JSON.parse(stored);
         this.hashMapping = new Map(Object.entries(parsed));
-        console.debug('Bridge: Loaded hash mapping from storage', this.hashMapping.size, 'entries');
+        console.debug(
+          "Bridge: Loaded hash mapping from storage",
+          this.hashMapping.size,
+          "entries",
+        );
       }
     } catch (error) {
-      console.warn('Bridge: Failed to load hash mapping from storage:', error);
+      console.warn("Bridge: Failed to load hash mapping from storage:", error);
     }
   }
 
@@ -385,10 +406,14 @@ class BridgeClient {
   saveHashMappingToStorage(): void {
     try {
       const obj = Object.fromEntries(this.hashMapping);
-      sessionStorage.setItem('proven_hash_mapping', JSON.stringify(obj));
-      console.debug('Bridge: Saved hash mapping to storage', this.hashMapping.size, 'entries');
+      sessionStorage.setItem("proven_hash_mapping", JSON.stringify(obj));
+      console.debug(
+        "Bridge: Saved hash mapping to storage",
+        this.hashMapping.size,
+        "entries",
+      );
     } catch (error) {
-      console.warn('Bridge: Failed to save hash mapping to storage:', error);
+      console.warn("Bridge: Failed to save hash mapping to storage:", error);
     }
   }
 

@@ -47,27 +47,25 @@ describe("VersionGovernance", function () {
     await token.connect(owner).delegate(owner.address);
 
     // Deploy timelock
-    const ProvenTimelockFactory = await ethers.getContractFactory(
-      "ProvenTimelock"
-    );
+    const ProvenTimelockFactory =
+      await ethers.getContractFactory("ProvenTimelock");
     timelock = await ProvenTimelockFactory.deploy(
       timelockDelay,
       [], // Proposers will be set later (the governor contract)
       [], // Executors will be set later (anyone can execute)
-      owner.address // Admin
+      owner.address, // Admin
     );
 
     // Deploy governance
-    const VersionGovernanceFactory = await ethers.getContractFactory(
-      "VersionGovernance"
-    );
+    const VersionGovernanceFactory =
+      await ethers.getContractFactory("VersionGovernance");
     versionGovernance = await VersionGovernanceFactory.deploy(
       token,
       timelock,
       votingDelay,
       votingPeriod,
       quorumFraction,
-      proposalThreshold
+      proposalThreshold,
     );
 
     // Setup roles
@@ -86,7 +84,7 @@ describe("VersionGovernance", function () {
       expect(await versionGovernance.votingDelay()).to.equal(votingDelay);
       expect(await versionGovernance.votingPeriod()).to.equal(votingPeriod);
       expect(await versionGovernance.proposalThreshold()).to.equal(
-        proposalThreshold
+        proposalThreshold,
       );
       const numerator = await versionGovernance["quorumNumerator()"]();
       expect(numerator).to.equal(quorumFraction);
@@ -132,7 +130,7 @@ describe("VersionGovernance", function () {
         [versionGovernance.target],
         [0],
         [calldata],
-        descHash
+        descHash,
       );
 
       // Move to active state
@@ -164,7 +162,7 @@ describe("VersionGovernance", function () {
       if (currentState === ProposalState.Defeated) {
         const votes = await versionGovernance.proposalVotes(proposalId);
         console.log(
-          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`
+          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`,
         );
         console.log(`For votes: ${ethers.formatEther(votes.forVotes)}`);
         console.log(`Against votes: ${ethers.formatEther(votes.againstVotes)}`);
@@ -193,7 +191,7 @@ describe("VersionGovernance", function () {
       // Prepare calldata for adding a version
       const addVersionCalldata = versionGovernance.interface.encodeFunctionData(
         "addVersion",
-        [sequence, nePcr0, nePcr1, nePcr2]
+        [sequence, nePcr0, nePcr1, nePcr2],
       );
 
       // Propose and execute
@@ -213,10 +211,10 @@ describe("VersionGovernance", function () {
       await expect(
         versionGovernance
           .connect(owner)
-          .addVersion(sequence, nePcr0, nePcr1, nePcr2)
+          .addVersion(sequence, nePcr0, nePcr1, nePcr2),
       ).to.be.revertedWithCustomError(
         versionGovernance,
-        "GovernorOnlyExecutor"
+        "GovernorOnlyExecutor",
       );
     });
 
@@ -224,7 +222,7 @@ describe("VersionGovernance", function () {
       // First add a version
       const addVersionCalldata = versionGovernance.interface.encodeFunctionData(
         "addVersion",
-        [sequence, nePcr0, nePcr1, nePcr2]
+        [sequence, nePcr0, nePcr1, nePcr2],
       );
 
       await proposeAndExecute(addVersionCalldata, "Add a new node version");
@@ -250,7 +248,7 @@ describe("VersionGovernance", function () {
       // First add and activate a version
       const addVersionCalldata = versionGovernance.interface.encodeFunctionData(
         "addVersion",
-        [sequence, nePcr0, nePcr1, nePcr2]
+        [sequence, nePcr0, nePcr1, nePcr2],
       );
 
       await proposeAndExecute(addVersionCalldata, "Add a new node version");
@@ -270,7 +268,7 @@ describe("VersionGovernance", function () {
 
       await proposeAndExecute(
         deactivateVersionCalldata,
-        "Deactivate node version"
+        "Deactivate node version",
       );
 
       // Check that the version was deactivated
@@ -283,7 +281,7 @@ describe("VersionGovernance", function () {
       const activateVersionCalldata =
         versionGovernance.interface.encodeFunctionData(
           "activateVersion",
-          [999] // Non-existent sequence
+          [999], // Non-existent sequence
         );
 
       const description = "Activate non-existent version";
@@ -310,7 +308,7 @@ describe("VersionGovernance", function () {
           [versionGovernance.target],
           [0],
           [activateVersionCalldata],
-          description
+          description,
         );
       await proposeTx.wait();
 
@@ -319,7 +317,7 @@ describe("VersionGovernance", function () {
         [versionGovernance.target],
         [0],
         [activateVersionCalldata],
-        descHash
+        descHash,
       );
 
       // Move to active state
@@ -351,7 +349,7 @@ describe("VersionGovernance", function () {
       if (currentState === ProposalState.Defeated) {
         const votes = await versionGovernance.proposalVotes(proposalId);
         console.log(
-          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`
+          `Votes needed for quorum: ${ethers.formatEther(quorumAmount)}`,
         );
         console.log(`For votes: ${ethers.formatEther(votes.forVotes)}`);
         console.log(`Against votes: ${ethers.formatEther(votes.againstVotes)}`);
@@ -372,7 +370,7 @@ describe("VersionGovernance", function () {
             [versionGovernance.target],
             [0],
             [activateVersionCalldata],
-            descHash
+            descHash,
           );
 
         // Wait for timelock
@@ -387,13 +385,13 @@ describe("VersionGovernance", function () {
               [versionGovernance.target],
               [0],
               [activateVersionCalldata],
-              descHash
-            )
+              descHash,
+            ),
         ).to.be.reverted; // Will revert due to "Version does not exist"
       } else {
         // If we can't queue, just verify the version doesn't exist directly
         await expect((await versionGovernance.versions(999)).sequence).to.equal(
-          0
+          0,
         );
       }
     });
@@ -424,7 +422,7 @@ describe("VersionGovernance", function () {
 
           await proposeAndExecute(
             activateVersionCalldata,
-            `Activate version ${i}`
+            `Activate version ${i}`,
           );
         }
       }

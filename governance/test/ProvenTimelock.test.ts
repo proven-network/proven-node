@@ -17,9 +17,8 @@ describe("ProvenTimelock", function () {
     [owner, proposer, executor, user] = await ethers.getSigners();
 
     // Deploy timelock
-    const ProvenTimelockFactory = await ethers.getContractFactory(
-      "ProvenTimelock"
-    );
+    const ProvenTimelockFactory =
+      await ethers.getContractFactory("ProvenTimelock");
     const proposers = [proposer.address];
     const executors = [executor.address];
 
@@ -27,7 +26,7 @@ describe("ProvenTimelock", function () {
       minDelay,
       proposers,
       executors,
-      owner.address // Admin
+      owner.address, // Admin
     );
   });
 
@@ -77,7 +76,7 @@ describe("ProvenTimelock", function () {
         callData,
         ethers.ZeroHash, // Predecessor (none in this case)
         salt,
-        minDelay
+        minDelay,
       );
 
       // Check that the operation is pending
@@ -86,7 +85,7 @@ describe("ProvenTimelock", function () {
         value,
         callData,
         ethers.ZeroHash,
-        salt
+        salt,
       );
 
       expect(await timelock.isOperationPending(operationId)).to.be.true;
@@ -105,11 +104,11 @@ describe("ProvenTimelock", function () {
             callData,
             ethers.ZeroHash,
             salt,
-            minDelay
-          )
+            minDelay,
+          ),
       ).to.be.revertedWithCustomError(
         timelock,
-        "AccessControlUnauthorizedAccount"
+        "AccessControlUnauthorizedAccount",
       );
     });
 
@@ -123,7 +122,7 @@ describe("ProvenTimelock", function () {
           callData,
           ethers.ZeroHash,
           salt,
-          minDelay
+          minDelay,
         );
 
       const operationId = await timelock.hashOperation(
@@ -131,17 +130,17 @@ describe("ProvenTimelock", function () {
         value,
         callData,
         ethers.ZeroHash,
-        salt
+        salt,
       );
 
       // Try to execute immediately (should fail)
       await expect(
         timelock
           .connect(executor)
-          .execute(mockContract.target, value, callData, ethers.ZeroHash, salt)
+          .execute(mockContract.target, value, callData, ethers.ZeroHash, salt),
       ).to.be.revertedWithCustomError(
         timelock,
-        "TimelockUnexpectedOperationState"
+        "TimelockUnexpectedOperationState",
       );
 
       // Move time forward past the delay
@@ -172,7 +171,7 @@ describe("ProvenTimelock", function () {
           callData,
           ethers.ZeroHash,
           salt,
-          minDelay
+          minDelay,
         );
 
       // Move time forward past the delay
@@ -182,10 +181,10 @@ describe("ProvenTimelock", function () {
       await expect(
         timelock
           .connect(user)
-          .execute(mockContract.target, value, callData, ethers.ZeroHash, salt)
+          .execute(mockContract.target, value, callData, ethers.ZeroHash, salt),
       ).to.be.revertedWithCustomError(
         timelock,
-        "AccessControlUnauthorizedAccount"
+        "AccessControlUnauthorizedAccount",
       );
     });
 
@@ -199,7 +198,7 @@ describe("ProvenTimelock", function () {
           callData,
           ethers.ZeroHash,
           salt,
-          minDelay
+          minDelay,
         );
 
       const operationId = await timelock.hashOperation(
@@ -207,7 +206,7 @@ describe("ProvenTimelock", function () {
         value,
         callData,
         ethers.ZeroHash,
-        salt
+        salt,
       );
 
       // Cancel the operation
@@ -223,10 +222,10 @@ describe("ProvenTimelock", function () {
       await expect(
         timelock
           .connect(executor)
-          .execute(mockContract.target, value, callData, ethers.ZeroHash, salt)
+          .execute(mockContract.target, value, callData, ethers.ZeroHash, salt),
       ).to.be.revertedWithCustomError(
         timelock,
-        "TimelockUnexpectedOperationState"
+        "TimelockUnexpectedOperationState",
       );
     });
   });
@@ -249,10 +248,10 @@ describe("ProvenTimelock", function () {
 
       // Try to grant proposer role as a non-admin
       await expect(
-        timelock.connect(proposer).grantRole(PROPOSER_ROLE, newProposer)
+        timelock.connect(proposer).grantRole(PROPOSER_ROLE, newProposer),
       ).to.be.revertedWithCustomError(
         timelock,
-        "AccessControlUnauthorizedAccount"
+        "AccessControlUnauthorizedAccount",
       );
     });
 

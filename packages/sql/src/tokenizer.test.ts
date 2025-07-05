@@ -1,11 +1,11 @@
 // Debug type to check intermediate results
-type DebugSplit = SplitToWordsAndSymbols<"CREATE TABLE">;
+type DebugSplit = SplitToWordsAndSymbols<'CREATE TABLE'>;
 // this gives ["CREATE", "TABLE"]
 
-type DebugSplit2 = SplitToWordsAndSymbols<"CREATE TABLE (hello)">;
+type DebugSplit2 = SplitToWordsAndSymbols<'CREATE TABLE (hello)'>;
 // this gives ["CREATE", "TABLE", "(", "hello", ")"]
 
-type DebugSplit3 = SplitToWordsAndSymbols<"CREATE TABLE (hello world)">;
+type DebugSplit3 = SplitToWordsAndSymbols<'CREATE TABLE (hello world)'>;
 // this gives ["CREATE", "TABLE", "(", "hello", "world", ")"]
 
 type DebugSplit4 = TokenizeSqlString<`

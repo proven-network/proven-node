@@ -14,11 +14,11 @@ export class DevServerUtils {
     combinedJs: string;
   } {
     const generator = new DevWrapperGenerator(manifest);
-    
+
     const manifestJs = generator.generateManifestRegistration();
     const handlersJs = generator.generateHandlerWrappers();
     const hotReloadJs = generator.generateHotReloadSupport();
-    
+
     const combinedJs = `${manifestJs}\n\n${handlersJs}\n\n${hotReloadJs}`;
 
     return {
@@ -39,12 +39,18 @@ export class DevServerUtils {
   /**
    * Generates a simple development server configuration
    */
-  static generateDevServerConfig(options: {
-    port?: number;
-    manifestPath?: string;
-    outputPath?: string;
-  } = {}): object {
-    const { port = 3001, manifestPath = '/_proven/manifest', outputPath = '/_proven/bundle.js' } = options;
+  static generateDevServerConfig(
+    options: {
+      port?: number;
+      manifestPath?: string;
+      outputPath?: string;
+    } = {}
+  ): object {
+    const {
+      port = 3001,
+      manifestPath = '/_proven/manifest',
+      outputPath = '/_proven/bundle.js',
+    } = options;
 
     return {
       port,
@@ -77,7 +83,10 @@ export class DevServerUtils {
   /**
    * Creates a simple hot-reload notification message
    */
-  static createHotReloadMessage(manifest: BundleManifest, changeType: 'manifest' | 'handler' | 'module' = 'manifest'): object {
+  static createHotReloadMessage(
+    manifest: BundleManifest,
+    changeType: 'manifest' | 'handler' | 'module' = 'manifest'
+  ): object {
     return {
       type: 'proven:hot-reload',
       changeType,
@@ -166,7 +175,7 @@ export class DevServerUtils {
 
     for (const module of manifest.modules) {
       totalSize += module.content.length;
-      
+
       for (const handler of module.handlers) {
         handlerCount++;
         handlers.push({

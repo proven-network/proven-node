@@ -1,14 +1,10 @@
-import * as ed25519 from "@noble/ed25519";
-import {
-  bytesToHex,
-  hexToBytes,
-  equalBytes,
-} from "@noble/curves/abstract/utils";
-import { decode as cborDecode } from "cbor-x";
-import { X509Certificate, X509ChainBuilder } from "@peculiar/x509";
-import { Sign1 } from "@auth0/cose";
-import { mockCertificate } from "../pems/mock";
-import { usEast2Certificate } from "../pems/us-east-2";
+import * as ed25519 from '@noble/ed25519';
+import { bytesToHex, hexToBytes, equalBytes } from '@noble/curves/abstract/utils';
+import { decode as cborDecode } from 'cbor-x';
+import { X509Certificate, X509ChainBuilder } from '@peculiar/x509';
+import { Sign1 } from '@auth0/cose';
+import { mockCertificate } from '../pems/mock';
+import { usEast2Certificate } from '../pems/us-east-2';
 
 type PcrIndex = 0 | 1 | 2 | 3 | 4 | 8;
 export type Pcrs = Record<PcrIndex, string>;
@@ -39,23 +35,17 @@ export const createSession = async (applicationId: string) => {
   crypto.getRandomValues(nonceInput);
 
   const body = new FormData();
-  body.append(
-    "public_key",
-    new Blob([publicKeyInput], { type: "application/octet-stream" })
-  );
-  body.append(
-    "nonce",
-    new Blob([nonceInput], { type: "application/octet-stream" })
-  );
-  body.append("application_id", applicationId);
+  body.append('public_key', new Blob([publicKeyInput], { type: 'application/octet-stream' }));
+  body.append('nonce', new Blob([nonceInput], { type: 'application/octet-stream' }));
+  body.append('application_id', applicationId);
 
   const response = await fetch(`/app/${applicationId}/auth/create_session`, {
-    method: "POST",
+    method: 'POST',
     body,
   });
 
   if (!response.ok) {
-    throw new Error("Failed to fetch attestation document.");
+    throw new Error('Failed to fetch attestation document.');
   }
 
   const data = new Uint8Array(await response.arrayBuffer());
@@ -80,27 +70,25 @@ export const createSession = async (applicationId: string) => {
   const leaf = new X509Certificate(certificate);
 
   if (!equalBytes(nonceInput, nonce)) {
-    throw new Error("Attestation nonce does not match expected value.");
+    throw new Error('Attestation nonce does not match expected value.');
   }
 
   if (leaf.notAfter < new Date()) {
-    throw new Error("Attestation document certificate has expired.");
+    throw new Error('Attestation document certificate has expired.');
   }
 
   const publicKey = await crypto.subtle.importKey(
-    "spki",
+    'spki',
     new Uint8Array(leaf.publicKey.rawData),
-    { name: "ECDSA", namedCurve: "P-384" },
+    { name: 'ECDSA', namedCurve: 'P-384' },
     true,
-    ["verify"]
+    ['verify']
   );
   await Sign1.decode(data).verify(publicKey);
 
   const hostname = globalThis.location.hostname;
   const knownCa = new X509Certificate(
-    hostname === "localhost" || hostname.endsWith(".local")
-      ? mockCertificate
-      : usEast2Certificate
+    hostname === 'localhost' || hostname.endsWith('.local') ? mockCertificate : usEast2Certificate
   );
 
   const chain = await new X509ChainBuilder({
@@ -108,9 +96,7 @@ export const createSession = async (applicationId: string) => {
   }).build(leaf);
 
   if (!chain[chain.length - 1]?.equal(knownCa)) {
-    throw new Error(
-      "x509 certificate chain does not have expected certificate authority."
-    );
+    throw new Error('x509 certificate chain does not have expected certificate authority.');
   }
 
   const pcrs: Pcrs = {
@@ -124,9 +110,9 @@ export const createSession = async (applicationId: string) => {
 
   // TODO: get from options or generate from cargo version for testing
   const expectedPcrs: ExpectedPcrs = {
-    0: "30f2c9b7736afa4af8e80acf549cb5c9511c2198f0174bf461a5c547ad3bfbd04dd6370968444bfdf64a34e5dda2a684",
-    1: "0ab829f12a94d68545fe4a331fb80ccd2cd0e16b5c84f854a4b7f3c3c32a386dd6aed3f1117e3831bc21ac124a5e9ec8",
-    2: "ba73cd68537fb4a9e704df621505420055ee049177c50a59643cad88736fcee578139cf76549cdb9d37169a13276578b",
+    0: '30f2c9b7736afa4af8e80acf549cb5c9511c2198f0174bf461a5c547ad3bfbd04dd6370968444bfdf64a34e5dda2a684',
+    1: '0ab829f12a94d68545fe4a331fb80ccd2cd0e16b5c84f854a4b7f3c3c32a386dd6aed3f1117e3831bc21ac124a5e9ec8',
+    2: 'ba73cd68537fb4a9e704df621505420055ee049177c50a59643cad88736fcee578139cf76549cdb9d37169a13276578b',
   };
 
   // verify expected PCRs or throw error
@@ -142,7 +128,7 @@ export const createSession = async (applicationId: string) => {
   // Restore UUID with dashes from sessionIdBytes
   const sessionId = bytesToHex(sessionIdBytes).replace(
     /^([0-9a-fA-F]{8})([0-9a-fA-F]{4})([0-9a-fA-F]{4})([0-9a-fA-F]{4})([0-9a-fA-F]{12})$/,
-    "$1-$2-$3-$4-$5"
+    '$1-$2-$3-$4-$5'
   );
 
   session = {
@@ -159,10 +145,7 @@ export const createSession = async (applicationId: string) => {
     verifyingKey: bytesToHex(session.verifyingKey),
   };
 
-  localStorage.setItem(
-    "currentSession:" + applicationId,
-    JSON.stringify(serializableSession)
-  );
+  localStorage.setItem('currentSession:' + applicationId, JSON.stringify(serializableSession));
 
   return session;
 };
@@ -172,7 +155,7 @@ export const getSession = async (applicationId: string) => {
     return session;
   }
 
-  const sessionData = localStorage.getItem("currentSession:" + applicationId);
+  const sessionData = localStorage.getItem('currentSession:' + applicationId);
   if (!sessionData) {
     return null;
   }

@@ -1,6 +1,6 @@
-import { Encoder, decode } from "cbor-x";
-import { signAsync, verifyAsync } from "@noble/ed25519";
-import { Result, ok, err } from "neverthrow";
+import { Encoder, decode } from 'cbor-x';
+import { signAsync, verifyAsync } from '@noble/ed25519';
+import { Result, ok, err } from 'neverthrow';
 
 // Note: This is a tiny implementation of COSE Sign1, using noble/ed25519 for signing
 // and verifying of EdDSA signatures.
@@ -50,21 +50,20 @@ export const decodeAndVerifyCoseSign1 = async (
   ];
 
   if (coseElements.length !== 4) {
-    return err("Invalid COSE Sign1 structure.");
+    return err('Invalid COSE Sign1 structure.');
   }
 
-  const [protectedHeaders, unprotectedHeaders, payload, signature] =
-    coseElements;
+  const [protectedHeaders, unprotectedHeaders, payload, signature] = coseElements;
 
   const toBeSigned = await coseEncoder.encode([
-    "Signature1", // context
+    'Signature1', // context
     protectedHeaders, // body_protected
     externalAad, // external_aad
     payload, // payload
   ]);
 
   if (!(await verifyAsync(signature, toBeSigned, verifyingKey))) {
-    return err("COSE Sign1 verification failed.");
+    return err('COSE Sign1 verification failed.');
   }
 
   const decodedPayload = await decode(payload);
@@ -88,7 +87,7 @@ export const encodeSign1 = async (
   const payloadCbor = await coseEncoder.encode(payload);
 
   const toBeSigned = await coseEncoder.encode([
-    "Signature1", // context
+    'Signature1', // context
     ed25519Header, // body_protected
     externalAad, // external_aad
     payloadCbor, // payload
@@ -109,8 +108,6 @@ export const CoseSign1Encoder = (
   signingKey: PrivateKey,
   externalAad: Uint8Array = new Uint8Array(0)
 ) => ({
-  encode: (
-    payload: unknown,
-    unprotectedHeaders: Record<string, unknown> = {}
-  ) => encodeSign1(payload, signingKey, externalAad, unprotectedHeaders),
+  encode: (payload: unknown, unprotectedHeaders: Record<string, unknown> = {}) =>
+    encodeSign1(payload, signingKey, externalAad, unprotectedHeaders),
 });

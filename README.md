@@ -110,7 +110,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [http-insecure](crates/http-insecure): Implementation of simple non-secure HTTP for local development.
 - [http-letsencrypt](crates/http-letsencrypt): Implementation of secure HTTPS server using Let's Encrypt and enclave-only storage of certificates provisioned using draft-ietf-acme-tls-alpn-01.
 - [http-proxy](crates/http-proxy): Routes local HTTP requests from loopback to target services over messaging primitives.
-- [identity](crates/identity): Manages user identities and associated data. 
+- [identity](crates/identity): Manages user identities and associated data.
 - [imds](crates/imds): Helper crate to interact with the Instance Metadata Service. Verifies all recieved data via embedded public certificates.
 - [instance-details](crates/instance-details): Helper crate to interact with the EC2 APIs and securely retrieve info about runtime environment.
 - [isolation](crates/isolation): Isolation primitives for spawning untrusted processes (particularly third-party nodes) in a secure manner.
