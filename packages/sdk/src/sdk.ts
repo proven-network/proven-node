@@ -9,12 +9,16 @@ import {
   ResponseMessage,
   OpenModalMessage,
   CloseModalMessage,
+  BundleManifest,
+  QueuedHandler,
 } from '@proven-network/common';
 
 export type ProvenSDK = {
-  execute: (script: string, handler: string, args?: any[]) => Promise<ExecuteOutput>;
+  execute: (manifestIdOrScript: string, handler: string, args?: any[]) => Promise<ExecuteOutput>;
   whoAmI: () => Promise<WhoAmIResult>;
   initConnectButton: (targetElement?: HTMLElement | string) => Promise<void>;
+  registerManifest: (manifest: BundleManifest) => void;
+  updateManifest: (manifest: BundleManifest) => void;
 };
 
 export type Logger = {
@@ -55,6 +59,77 @@ export const ProvenSDK = (options: {
     number,
     { resolve: (data: any) => void; reject: (error: Error) => void }
   >();
+
+  // Manifest management
+  const manifests = new Map<string, BundleManifest>();
+  const sentManifests = new Set<string>(); // Track which manifests have been sent to bridge
+
+  /**
+   * Register a manifest with the SDK
+   */
+  const registerManifest = (manifest: BundleManifest): void => {
+    logger?.debug('SDK: Registering manifest', manifest.id);
+    manifests.set(manifest.id, manifest);
+
+    // Process any queued handlers waiting for this manifest
+    processQueuedHandlers();
+  };
+
+  /**
+   * Update an existing manifest (for hot-reload)
+   */
+  const updateManifest = (manifest: BundleManifest): void => {
+    logger?.debug('SDK: Updating manifest', manifest.id);
+    manifests.set(manifest.id, manifest);
+
+    // Mark as not sent so it gets resent to bridge
+    sentManifests.delete(manifest.id);
+  };
+
+  /**
+   * Connect to the global handler queue and process queued calls
+   */
+  const connectHandlerQueue = (): void => {
+    // Get reference to the global queue
+    const globalQueue = (window as any).__ProvenHandlerQueue__;
+    if (!globalQueue || !Array.isArray(globalQueue)) {
+      return;
+    }
+
+    // Process existing queued calls
+    while (globalQueue.length > 0) {
+      const handler = globalQueue.shift();
+      if (handler) {
+        executeHandler(handler);
+      }
+    }
+
+    // Replace the push method to execute handlers directly
+    globalQueue.push = (handler: QueuedHandler) => {
+      executeHandler(handler);
+      return globalQueue.length;
+    };
+  };
+
+  /**
+   * Process queued handlers that are waiting for manifests
+   */
+  const processQueuedHandlers = (): void => {
+    // This would be called when a new manifest is registered
+    // For now, just connecting to the global queue is sufficient
+  };
+
+  /**
+   * Execute a handler from the queue
+   */
+  const executeHandler = async (handler: QueuedHandler): Promise<void> => {
+    try {
+      const result = await execute(handler.manifestId, handler.handler, handler.args);
+      handler.resolve(result);
+    } catch (error) {
+      handler.reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  };
 
   const createModalOverlay = (): HTMLDivElement => {
     const overlay = document.createElement('div');
@@ -363,24 +438,85 @@ export const ProvenSDK = (options: {
   };
 
   const execute = async (
-    script: string,
+    manifestIdOrScript: string,
     handler: string,
     args: any[] = []
   ): Promise<ExecuteOutput> => {
-    logger?.debug('SDK: Executing script', { handler, args });
+    logger?.debug('SDK: Executing handler', { manifestIdOrScript, handler, args });
 
-    const response = await sendMessage({
-      type: 'execute',
-      nonce: 0, // Will be set by sendMessage
-      data: {
-        script,
-        handler,
-        args,
-      },
-    });
+    // Check if this is a manifest ID
+    const manifest = manifests.get(manifestIdOrScript);
 
-    // The response now contains the full ExecutionResult
-    const result = response as ExecutionResult;
+    let executeMessage: any;
+
+    if (manifest) {
+      // Manifest-based execution
+      const shouldSendManifest = !sentManifests.has(manifest.id);
+
+      executeMessage = {
+        type: 'execute',
+        nonce: 0, // Will be set by sendMessage
+        data: {
+          manifestId: manifest.id,
+          manifest: shouldSendManifest ? manifest : undefined,
+          handler,
+          args,
+        },
+      };
+
+      // Mark manifest as sent
+      if (shouldSendManifest) {
+        sentManifests.add(manifest.id);
+      }
+    } else {
+      // Fallback to script-based execution (backward compatibility)
+      executeMessage = {
+        type: 'execute',
+        nonce: 0,
+        data: {
+          manifestId: 'legacy-script',
+          manifest: {
+            id: 'legacy-script',
+            version: '1.0.0',
+            modules: [
+              {
+                path: 'script.js',
+                content: manifestIdOrScript,
+                handlers: [],
+                dependencies: [],
+              },
+            ],
+            entrypoints: [],
+            dependencies: { production: {}, development: {}, all: {} },
+            metadata: {
+              createdAt: new Date().toISOString(),
+              mode: 'development' as const,
+              pluginVersion: '1.0.0',
+              fileCount: 1,
+              bundleSize: manifestIdOrScript.length,
+              sourceMaps: false,
+            },
+          },
+          handler,
+          args,
+        },
+      };
+    }
+
+    const response = await sendMessage(executeMessage);
+
+    // The response now contains either the full ExecutionResult (legacy) or ExecuteSuccessResponse (new)
+    let result: ExecutionResult;
+
+    // Check if this is the new format with code_package_hash
+    if (response && typeof response === 'object' && 'execution_result' in response) {
+      // New format: { execution_result: ExecutionResult, code_package_hash: string }
+      result = response.execution_result as ExecutionResult;
+      // The bridge already handles storing the hash mapping, so we don't need to do anything with it here
+    } else {
+      // Legacy format: direct ExecutionResult
+      result = response as ExecutionResult;
+    }
 
     if ('Ok' in result) {
       // Handle successful execution
@@ -437,10 +573,27 @@ export const ProvenSDK = (options: {
     }
   });
 
+  // Initialize manifest system
+  const initializeManifestSystem = () => {
+    // Process any pre-registered manifest
+    const preRegisteredManifest = (window as any).__ProvenManifest__;
+    if (preRegisteredManifest) {
+      registerManifest(preRegisteredManifest);
+    }
+
+    // Connect to the handler queue
+    connectHandlerQueue();
+  };
+
+  // Initialize after a short delay to allow for bundler initialization
+  setTimeout(initializeManifestSystem, 10);
+
   return {
     execute,
     initConnectButton,
     whoAmI,
+    registerManifest,
+    updateManifest,
   };
 };
 

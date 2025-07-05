@@ -1,5 +1,14 @@
 /// <reference lib="DOM" />
-import { MessageBroker, getWindowIdFromUrl } from "@proven-network/common";
+import { 
+  MessageBroker, 
+  getWindowIdFromUrl, 
+  ExecuteMessage, 
+  ParentToBridgeMessage,
+  BridgeToParentMessage,
+  ResponseMessage,
+  OpenModalMessage,
+  CloseModalMessage
+} from "@proven-network/common";
 import { bytesToHex } from "@noble/curves/abstract/utils";
 import type {
   WhoAmI,
@@ -14,46 +23,16 @@ import type {
   RpcResponse,
 } from "@proven-network/common";
 
-// Message types for parent ↔ bridge communication
+// WhoAmIMessage is still local to the bridge
 export type WhoAmIMessage = {
   type: "whoAmI";
   nonce: number;
 };
 
-export type ExecuteMessage = {
-  type: "execute";
-  nonce: number;
-  data: {
-    script: string;
-    handler: string;
-    args?: any[];
-  };
-};
+// Local type that combines imported ParentToBridgeMessage with local WhoAmIMessage
+type LocalParentToBridgeMessage = ParentToBridgeMessage | WhoAmIMessage;
 
-export type ParentToBridgeMessage = WhoAmIMessage | ExecuteMessage;
-
-export type ResponseMessage = {
-  type: "response";
-  nonce: number;
-  success: boolean;
-  data?: any;
-  error?: string;
-};
-
-export type OpenModalMessage = {
-  type: "open_registration_modal";
-};
-
-export type CloseModalMessage = {
-  type: "close_registration_modal";
-};
-
-export type BridgeToParentMessage =
-  | ResponseMessage
-  | OpenModalMessage
-  | CloseModalMessage;
-
-function isParentMessage(data: unknown): data is ParentToBridgeMessage {
+function isParentMessage(data: unknown): data is LocalParentToBridgeMessage {
   if (
     typeof data !== "object" ||
     data === null ||
@@ -75,7 +54,7 @@ function isParentMessage(data: unknown): data is ParentToBridgeMessage {
       "data" in message &&
       typeof message.data === "object" &&
       message.data !== null &&
-      typeof message.data.script === "string" &&
+      typeof message.data.manifestId === "string" &&
       typeof message.data.handler === "string"
     );
   }
@@ -86,6 +65,8 @@ function isParentMessage(data: unknown): data is ParentToBridgeMessage {
 class BridgeClient {
   broker: MessageBroker;
   windowId: string;
+  manifestCache: Map<string, any>; // Cache for manifests
+  hashMapping: Map<string, string>; // Map from manifest hash to CodePackage hash
 
   constructor() {
     // Extract window ID from URL fragment
@@ -93,6 +74,13 @@ class BridgeClient {
 
     // Initialize broker synchronously - will throw if it fails
     this.broker = new MessageBroker(this.windowId, "sdk");
+
+    // Initialize caches
+    this.manifestCache = new Map();
+    this.hashMapping = new Map();
+
+    // Load hash mapping from sessionStorage
+    this.loadHashMappingFromStorage();
 
     this.initializeBroker();
     this.setupParentListener();
@@ -198,84 +186,97 @@ class BridgeClient {
 
   async handleExecute(message: ExecuteMessage) {
     try {
-      const { script, handler, args } = message.data;
+      const { manifestId, manifest, handler, args } = message.data;
 
-      if (!script || !handler) {
-        throw new Error("Script and handler are required for execute");
+      if (!manifestId || !handler) {
+        throw new Error("ManifestId and handler are required for execute");
       }
 
-      // Start with ExecuteHash (optimized path)
-      const moduleHash = await this.hashScript(script);
-      let rpcCall: ExecuteHash = {
-        type: "ExecuteHash",
-        data: {
-          args: args || [],
-          handler_specifier: handler,
-          module_hash: moduleHash,
-        },
-      };
-
-      const response = await this.broker.request<{
-        success: boolean;
-        data?: RpcResponse<ExecuteHashResult>;
-        error?: string;
-      }>("rpc_request", rpcCall, "rpc");
-
-      if (!response.success) {
-        throw new Error(response.error || "Failed to execute RPC call");
+      // Cache manifest if provided
+      if (manifest) {
+        console.debug("Bridge: Caching manifest", manifestId);
+        this.manifestCache.set(manifestId, manifest);
       }
 
-      if (!response.data || response.data.type !== "ExecuteHash") {
-        throw new Error("Invalid response format from ExecuteHash");
+      // Get manifest from cache
+      const cachedManifest = this.manifestCache.get(manifestId);
+      if (!cachedManifest) {
+        throw new Error(`Manifest ${manifestId} not found in cache`);
       }
 
-      const executeHashResult = response.data.data;
+      // Calculate manifest hash for hash mapping lookup
+      const manifestHash = await this.hashManifest(cachedManifest);
+      const storedCodePackageHash = this.getCodePackageHash(manifestHash);
 
-      // Handle the different result types
-      if (executeHashResult.result === "success") {
-        const executionResult = executeHashResult.data as ExecutionResult;
-        this.handleExecutionResult(executionResult, message.nonce);
-      } else if (executeHashResult.result === "error") {
-        // This could be HashUnknown - retry with full script
-        console.debug("Bridge: ExecuteHash unknown, retrying with full script");
-        await this.retryWithFullScript(message, script, handler, args || []);
-      } else if (executeHashResult.result === "failure") {
-        this.forwardToParent({
-          type: "response",
-          nonce: message.nonce,
-          success: false,
-          error: executeHashResult.data as string,
-        });
+      // Try ExecuteHash first if we have a stored CodePackage hash
+      if (storedCodePackageHash) {
+        console.debug("Bridge: Trying ExecuteHash with stored CodePackage hash");
+        
+        const hashRpcCall: ExecuteHash = {
+          type: "ExecuteHash",
+          data: {
+            args: args || [],
+            handler_specifier: handler,
+            module_hash: storedCodePackageHash,
+          },
+        };
+
+        const hashResponse = await this.broker.request<{
+          success: boolean;
+          data?: RpcResponse<ExecuteHashResult>;
+          error?: string;
+        }>("rpc_request", hashRpcCall, "rpc");
+
+        if (hashResponse.success && hashResponse.data?.type === "ExecuteHash") {
+          const executeHashResult = hashResponse.data.data;
+
+          if (executeHashResult.result === "success") {
+            const executionResult = executeHashResult.data as ExecutionResult;
+            this.handleExecutionResult(executionResult, message.nonce);
+            return;
+          } else if (executeHashResult.result === "failure") {
+            this.forwardToParent({
+              type: "response",
+              nonce: message.nonce,
+              success: false,
+              error: executeHashResult.data as string,
+            });
+            return;
+          }
+          // If result is "error" (HashUnknown), fall through to Execute
+        }
+        
+        console.debug("Bridge: ExecuteHash failed or unknown, falling back to Execute");
       } else {
-        this.forwardToParent({
-          type: "response",
-          nonce: message.nonce,
-          success: false,
-          error: "Unexpected response format from ExecuteHash",
-        });
+        console.debug("Bridge: No stored CodePackage hash, using Execute directly");
       }
+
+      // Fall back to full Execute
+      await this.executeWithFullManifest(message, cachedManifest, handler, args || [], manifestHash);
+
     } catch (error) {
       this.forwardToParent({
         type: "response",
         nonce: message.nonce,
         success: false,
         error:
-          error instanceof Error ? error.message : "Failed to execute script",
+          error instanceof Error ? error.message : "Failed to execute handler",
       });
     }
   }
 
-  async retryWithFullScript(
-    originalMessage: ParentToBridgeMessage,
-    script: string,
+  async executeWithFullManifest(
+    originalMessage: LocalParentToBridgeMessage,
+    manifest: any,
     handler: string,
-    args: any[]
+    args: any[],
+    manifestHash: string
   ) {
     try {
       const fullRpcCall: Execute = {
         type: "Execute",
         data: {
-          module: script,
+          manifest: manifest,
           handler_specifier: handler,
           args: args,
         },
@@ -288,7 +289,7 @@ class BridgeClient {
       }>("rpc_request", fullRpcCall, "rpc");
 
       if (!response.success) {
-        throw new Error(response.error || "Failed to execute full script");
+        throw new Error(response.error || "Failed to execute full manifest");
       }
 
       if (!response.data || response.data.type !== "Execute") {
@@ -298,8 +299,20 @@ class BridgeClient {
       const executeResult = response.data.data;
 
       if (executeResult.result === "success") {
-        const executionResult = executeResult.data as ExecutionResult;
-        this.handleExecutionResult(executionResult, originalMessage.nonce);
+        // Handle new response format with CodePackage hash
+        const successData = executeResult.data as any;
+        
+        if (successData.execution_result && successData.code_package_hash) {
+          // Store the hash mapping for future ExecuteHash calls
+          this.storeHashMapping(manifestHash, successData.code_package_hash);
+          console.debug("Bridge: Stored hash mapping", { manifestHash, codePackageHash: successData.code_package_hash });
+          
+          // Forward the execution result
+          this.handleExecutionResult(successData.execution_result, originalMessage.nonce);
+        } else {
+          // Fallback for legacy format
+          this.handleExecutionResult(successData, originalMessage.nonce);
+        }
       } else if (
         executeResult.result === "failure" ||
         executeResult.result === "error"
@@ -341,12 +354,57 @@ class BridgeClient {
     });
   }
 
-  async hashScript(script: string): Promise<string> {
+  async hashManifest(manifest: any): Promise<string> {
+    const manifestString = JSON.stringify(manifest);
     const rawHash = await crypto.subtle.digest(
       "SHA-256",
-      new TextEncoder().encode(`${script}`)
+      new TextEncoder().encode(manifestString)
     );
     return bytesToHex(new Uint8Array(rawHash));
+  }
+
+  /**
+   * Load hash mapping from sessionStorage
+   */
+  loadHashMappingFromStorage(): void {
+    try {
+      const stored = sessionStorage.getItem('proven_hash_mapping');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        this.hashMapping = new Map(Object.entries(parsed));
+        console.debug('Bridge: Loaded hash mapping from storage', this.hashMapping.size, 'entries');
+      }
+    } catch (error) {
+      console.warn('Bridge: Failed to load hash mapping from storage:', error);
+    }
+  }
+
+  /**
+   * Save hash mapping to sessionStorage
+   */
+  saveHashMappingToStorage(): void {
+    try {
+      const obj = Object.fromEntries(this.hashMapping);
+      sessionStorage.setItem('proven_hash_mapping', JSON.stringify(obj));
+      console.debug('Bridge: Saved hash mapping to storage', this.hashMapping.size, 'entries');
+    } catch (error) {
+      console.warn('Bridge: Failed to save hash mapping to storage:', error);
+    }
+  }
+
+  /**
+   * Store manifest hash to CodePackage hash mapping
+   */
+  storeHashMapping(manifestHash: string, codePackageHash: string): void {
+    this.hashMapping.set(manifestHash, codePackageHash);
+    this.saveHashMappingToStorage();
+  }
+
+  /**
+   * Get CodePackage hash for a manifest hash
+   */
+  getCodePackageHash(manifestHash: string): string | undefined {
+    return this.hashMapping.get(manifestHash);
   }
 
   processExecuteLogs(logs: ExecuteLog[]) {

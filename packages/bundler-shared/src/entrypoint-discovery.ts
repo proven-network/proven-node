@@ -3,7 +3,7 @@ import traverse from '@babel/traverse';
 import * as t from '@babel/types';
 import * as fs from 'fs';
 import * as path from 'path';
-import { EntrypointInfo, HandlerInfo, ImportInfo } from './types';
+import { EntrypointInfo, HandlerInfo, ImportInfo, ParameterInfo } from './types';
 
 /**
  * Discovers entrypoints by analyzing files for @proven-network/handler imports
@@ -192,9 +192,13 @@ export class EntrypointDiscovery {
       config = this.extractObjectExpression(node.arguments[0]);
     }
 
+    // Extract parameters from the handler function (second argument for run/runWithOptions)
+    const parameters = this.extractHandlerParameters(node);
+
     return {
       name: functionName,
       type: handlerType,
+      parameters,
       config,
       line: node.loc?.start.line,
       column: node.loc?.start.column,
@@ -242,7 +246,7 @@ export class EntrypointDiscovery {
   /**
    * Determines handler type from function name
    */
-  private getHandlerType(functionName: string): HandlerInfo['type'] {
+  private getHandlerType(functionName: string): HandlerInfo['type'] | 'unknown' {
     switch (functionName) {
       case 'runOnHttp':
         return 'http';
@@ -304,6 +308,131 @@ export class EntrypointDiscovery {
       );
       return regex.test(relativePath);
     });
+  }
+
+  /**
+   * Extracts parameter information from a handler function
+   */
+  private extractHandlerParameters(node: t.CallExpression): ParameterInfo[] {
+    const parameters: ParameterInfo[] = [];
+
+    // For run/runWithOptions, the handler function is the last argument
+    let handlerArg: t.Expression | t.SpreadElement | t.JSXNamespacedName | null = null;
+    
+    if (node.arguments.length >= 2) {
+      handlerArg = node.arguments[node.arguments.length - 1];
+    } else if (node.arguments.length === 1) {
+      // For runOnHttp etc., the handler is the first argument
+      handlerArg = node.arguments[0];
+    }
+
+    if (!handlerArg || t.isSpreadElement(handlerArg) || t.isJSXNamespacedName(handlerArg)) {
+      return parameters;
+    }
+
+    // Extract parameters based on the handler type
+    if (t.isFunctionExpression(handlerArg) || t.isArrowFunctionExpression(handlerArg)) {
+      for (const param of handlerArg.params) {
+        const paramInfo = this.extractParameterInfo(param);
+        if (paramInfo) {
+          parameters.push(paramInfo);
+        }
+      }
+    }
+
+    return parameters;
+  }
+
+  /**
+   * Extracts information from a function parameter
+   */
+  private extractParameterInfo(param: t.Pattern | t.RestElement | t.TSParameterProperty): ParameterInfo | null {
+    if (t.isIdentifier(param)) {
+      return {
+        name: param.name,
+        type: param.typeAnnotation && t.isTSTypeAnnotation(param.typeAnnotation) 
+          ? this.extractTypeString(param.typeAnnotation.typeAnnotation) 
+          : undefined,
+        optional: false,
+      };
+    }
+
+    if (t.isAssignmentPattern(param)) {
+      // Parameter with default value
+      if (t.isIdentifier(param.left)) {
+        return {
+          name: param.left.name,
+          type: param.left.typeAnnotation && t.isTSTypeAnnotation(param.left.typeAnnotation)
+            ? this.extractTypeString(param.left.typeAnnotation.typeAnnotation)
+            : undefined,
+          optional: true,
+          defaultValue: this.extractDefaultValue(param.right),
+        };
+      }
+    }
+
+    if (t.isObjectPattern(param)) {
+      // Destructured object parameter
+      return {
+        name: '(destructured)',
+        type: 'object',
+        optional: false,
+      };
+    }
+
+    if (t.isArrayPattern(param)) {
+      // Destructured array parameter
+      return {
+        name: '(destructured)',
+        type: 'array',
+        optional: false,
+      };
+    }
+
+    if (t.isRestElement(param) && t.isIdentifier(param.argument)) {
+      // Rest parameter
+      return {
+        name: '...' + param.argument.name,
+        type: 'any[]',
+        optional: true,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Extracts a type string from a TypeScript type annotation
+   */
+  private extractTypeString(typeNode: t.TSType): string {
+    if (t.isTSStringKeyword(typeNode)) return 'string';
+    if (t.isTSNumberKeyword(typeNode)) return 'number';
+    if (t.isTSBooleanKeyword(typeNode)) return 'boolean';
+    if (t.isTSAnyKeyword(typeNode)) return 'any';
+    if (t.isTSUnknownKeyword(typeNode)) return 'unknown';
+    if (t.isTSVoidKeyword(typeNode)) return 'void';
+    if (t.isTSArrayType(typeNode)) {
+      return this.extractTypeString(typeNode.elementType) + '[]';
+    }
+    if (t.isTSTypeReference(typeNode) && t.isIdentifier(typeNode.typeName)) {
+      return typeNode.typeName.name;
+    }
+    // For complex types, return a generic description
+    return 'any';
+  }
+
+  /**
+   * Extracts a default value from an expression
+   */
+  private extractDefaultValue(node: t.Expression): any {
+    if (t.isStringLiteral(node)) return node.value;
+    if (t.isNumericLiteral(node)) return node.value;
+    if (t.isBooleanLiteral(node)) return node.value;
+    if (t.isNullLiteral(node)) return null;
+    if (t.isIdentifier(node) && node.name === 'undefined') return undefined;
+    if (t.isArrayExpression(node)) return [];
+    if (t.isObjectExpression(node)) return {};
+    return undefined;
   }
 
   /**

@@ -1,3 +1,24 @@
+import {
+  BundleManifest as CommonBundleManifest,
+  HandlerInfo as CommonHandlerInfo,
+  EntrypointInfo as CommonEntrypointInfo,
+  ImportInfo as CommonImportInfo,
+  ManifestModule as CommonManifestModule,
+  DependencyInfo as CommonDependencyInfo,
+  BundleMetadata as CommonBundleMetadata,
+  ParameterInfo as CommonParameterInfo,
+} from '@proven-network/common';
+
+// Re-export common types for convenience
+export type BundleManifest = CommonBundleManifest;
+export type HandlerInfo = CommonHandlerInfo;
+export type EntrypointInfo = CommonEntrypointInfo;
+export type ImportInfo = CommonImportInfo;
+export type ManifestModule = CommonManifestModule;
+export type DependencyInfo = CommonDependencyInfo;
+export type BundleMetadata = CommonBundleMetadata;
+export type ParameterInfo = CommonParameterInfo;
+
 /**
  * Configuration options for the bundler plugins
  */
@@ -45,83 +66,6 @@ export interface BundlerOptions {
 }
 
 /**
- * Information about a discovered entrypoint
- */
-export interface EntrypointInfo {
-  /** Absolute file path */
-  filePath: string;
-
-  /** Module specifier (relative to project root) */
-  moduleSpecifier: string;
-
-  /** Handler functions found in this file */
-  handlers: HandlerInfo[];
-
-  /** All imports in this file */
-  imports: ImportInfo[];
-}
-
-/**
- * Information about a handler function
- */
-export interface HandlerInfo {
-  /** Export name of the handler */
-  name: string;
-
-  /** Type of handler (http, schedule, event, etc.) */
-  type: 'http' | 'schedule' | 'event' | 'rpc' | 'unknown';
-
-  /** Configuration passed to the handler */
-  config?: Record<string, unknown>;
-
-  /** Line number where handler is defined */
-  line?: number;
-
-  /** Column number where handler is defined */
-  column?: number;
-}
-
-/**
- * Information about an import statement
- */
-export interface ImportInfo {
-  /** Module being imported */
-  module: string;
-
-  /** Type of import (default, named, namespace, etc.) */
-  type: 'default' | 'named' | 'namespace' | 'side-effect';
-
-  /** Names being imported (for named imports) */
-  imports?: string[];
-
-  /** Local name (for default/namespace imports) */
-  localName?: string;
-
-  /** Whether this is a Proven Network handler import */
-  isProvenHandler?: boolean;
-}
-
-/**
- * Complete bundle manifest ready for transmission
- */
-export interface BundleManifest {
-  /** Project metadata */
-  project: ProjectInfo;
-
-  /** All entrypoint files */
-  entrypoints: EntrypointInfo[];
-
-  /** All source files included in the bundle */
-  sources: SourceFile[];
-
-  /** Dependency information */
-  dependencies: DependencyInfo;
-
-  /** Bundle metadata */
-  metadata: BundleMetadata;
-}
-
-/**
  * Project information
  */
 export interface ProjectInfo {
@@ -164,19 +108,6 @@ export interface SourceFile {
   isEntrypoint?: boolean;
 }
 
-/**
- * Dependency information
- */
-export interface DependencyInfo {
-  /** Production dependencies */
-  production: Record<string, string>;
-
-  /** Development dependencies */
-  development: Record<string, string>;
-
-  /** All dependencies combined */
-  all: Record<string, string>;
-}
 
 /**
  * Resolved dependency information
@@ -195,46 +126,3 @@ export interface ResolvedDependency {
   dependencies: string[];
 }
 
-/**
- * Bundle metadata
- */
-export interface BundleMetadata {
-  /** Timestamp when bundle was created */
-  createdAt: string;
-
-  /** Build mode */
-  mode: 'development' | 'production';
-
-  /** Plugin version that created the bundle */
-  pluginVersion: string;
-
-  /** Total number of files */
-  fileCount: number;
-
-  /** Total bundle size in bytes */
-  bundleSize: number;
-
-  /** Source maps included */
-  sourceMaps: boolean;
-
-  /** Build mode (alias for mode) */
-  buildMode?: 'development' | 'production';
-
-  /** Number of entrypoints */
-  entrypointCount?: number;
-
-  /** Number of handlers */
-  handlerCount?: number;
-
-  /** Number of source files */
-  sourceFileCount?: number;
-
-  /** Total source size in bytes */
-  totalSourceSize?: number;
-
-  /** Include dev dependencies */
-  includeDevDependencies?: boolean;
-
-  /** Timestamp when bundle was generated */
-  generatedAt?: string;
-}

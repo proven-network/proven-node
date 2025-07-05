@@ -7,14 +7,14 @@ use proven_sessions::{ApplicationSession, Session};
 use serde::{Deserialize, Serialize};
 
 type Args = Vec<serde_json::Value>;
-type ModuleHash = String;
+type CodePackageHash = String;
 type HandlerSpecifierString = String;
 
 #[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ExecuteHashCommand {
     pub args: Args,
     pub handler_specifier: HandlerSpecifierString,
-    pub module_hash: ModuleHash,
+    pub module_hash: CodePackageHash, // Now represents CodePackage hash from previous Execute call
 }
 
 #[derive(Debug, Deserialize, Serialize)]
