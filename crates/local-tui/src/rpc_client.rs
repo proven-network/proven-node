@@ -9,7 +9,7 @@ use proven_attestation_mock::MockAttestor;
 use proven_core::{
     AnonymizeCommand, AnonymizeResponse, Command, CreateApplicationCommand,
     CreateApplicationResponse, IdentifyCommand, IdentifyResponse, Response, WhoAmICommand,
-    WhoAmIResponse,
+    WhoAmIResponse, routes,
 };
 use rand::rngs::OsRng;
 use reqwest::{blocking::Client, blocking::multipart};
@@ -201,8 +201,9 @@ impl RpcClient {
             .part("public_key", multipart::Part::bytes(public_key));
 
         let url = format!(
-            "{}/auth/create_management_session",
-            node_url.trim_end_matches('/')
+            "{}{}",
+            node_url.trim_end_matches('/'),
+            routes::SESSION_MANAGEMENT
         );
 
         let response = self
@@ -219,12 +220,12 @@ impl RpcClient {
                 .unwrap_or_else(|_| "Could not read error response body".to_string());
 
             error!(
-                "HTTP error during session creation: {} - Response body: {}",
-                status, error_body
+                "HTTP error during session creation: {} - Response body: {} - URL: {}",
+                status, error_body, url
             );
 
             return Err(RpcError::SessionCreation(format!(
-                "Session creation failed with status: {status} - {error_body}"
+                "Session creation failed with status: {status} - {error_body} (URL: {url})"
             )));
         }
 
@@ -323,8 +324,9 @@ impl RpcClient {
 
         // Send to management RPC endpoint
         let url = format!(
-            "{}/management/rpc/http?session={}",
+            "{}{}?session={}",
             node_url.trim_end_matches('/'),
+            routes::MANAGEMENT_RPC,
             session_id
         );
 
@@ -335,6 +337,22 @@ impl RpcClient {
             .header("Origin", "http://example.com") // Dummy origin header
             .body(cose_bytes)
             .send()?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .unwrap_or_else(|_| "Could not read error response body".to_string());
+
+            error!(
+                "HTTP error during RPC command: {} - Response body: {} - URL: {}",
+                status, error_body, url
+            );
+
+            return Err(RpcError::ServerError(format!(
+                "RPC command failed with status {status}: {error_body} (URL: {url})"
+            )));
+        }
 
         Self::handle_cose_response(response, session_id, &session.server_verifying_key)
     }
@@ -366,22 +384,6 @@ impl RpcClient {
         session_id: &Uuid,
         verifying_key: &VerifyingKey,
     ) -> Result<Response, RpcError> {
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_body = response
-                .text()
-                .unwrap_or_else(|_| "Could not read error response body".to_string());
-
-            error!(
-                "HTTP error during RPC command: {} - Response body: {}",
-                status, error_body
-            );
-
-            return Err(RpcError::ServerError(format!(
-                "RPC command failed with status {status}: {error_body}"
-            )));
-        }
-
         let response_bytes = response.bytes()?;
 
         // Parse COSE Sign1 response

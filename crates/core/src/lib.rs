@@ -13,6 +13,7 @@ mod state;
 mod utils;
 
 pub use error::Error;
+pub use router::routes;
 pub use state::{BootstrapUpgrade, CoreMode, CoreOptions, FullContext, LightContext};
 
 use application::ApplicationRouter;
@@ -152,6 +153,16 @@ where
 
         // Store the bootstrapped state
         *self.bootstrapped_state.write().await = Some(Box::new(bootstrapped_state));
+
+        // Release the mode write lock before calling build_and_install_main_router
+        // to avoid deadlock (build_and_install_main_router needs to read mode)
+        drop(mode);
+
+        // Rebuild and install the router to include the new bootstrapped routes
+        if *self.router_installed.read().await {
+            self.build_and_install_main_router().await?;
+            info!("Router reinstalled with bootstrapped routes");
+        }
 
         Ok(())
     }

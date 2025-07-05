@@ -25,7 +25,59 @@ use proven_governance::Governance;
 use proven_network::NATS_CLUSTER_ENDPOINT_API_PATH;
 use serde_json::json;
 use tower_http::cors::CorsLayer;
-use tower_http::services::ServeDir;
+
+/// Route constants for API endpoints
+pub mod routes {
+    /// Management session creation endpoint
+    pub const SESSION_MANAGEMENT: &str = "/session-management";
+
+    /// Management RPC endpoint
+    pub const MANAGEMENT_RPC: &str = "/rpc";
+
+    /// Application session creation endpoint
+    pub const SESSION: &str = "/session";
+
+    /// Application RPC endpoint
+    pub const APP_RPC: &str = "/app/rpc";
+
+    /// Websocket for mana
+    pub const MANAGEMENT_WS: &str = "/ws";
+    /// Application WebSocket endpoint
+    pub const APP_WS: &str = "/app/ws";
+
+    /// `WebAuthn` endpoints
+    pub const WEBAUTHN_REGISTER_START: &str = "/webauthn/register/start";
+    /// `WebAuthn` registration finish endpoint
+    pub const WEBAUTHN_REGISTER_FINISH: &str = "/webauthn/register/finish";
+    /// `WebAuthn` authentication start endpoint
+    pub const WEBAUTHN_AUTHENTICATE_START: &str = "/webauthn/authenticate/start";
+    /// `WebAuthn` authentication finish endpoint
+    pub const WEBAUTHN_AUTHENTICATE_FINISH: &str = "/webauthn/authenticate/finish";
+
+    /// Inter-node communication endpoint
+    pub const WHOAMI: &str = "/whoami";
+
+    /// Static file endpoints
+    pub const IFRAME_BRIDGE_HTML: &str = "/app/{application_id}/iframes/bridge.html";
+    /// Connect iframe HTML endpoint
+    pub const IFRAME_CONNECT_HTML: &str = "/app/{application_id}/iframes/connect.html";
+    /// Register iframe HTML endpoint
+    pub const IFRAME_REGISTER_HTML: &str = "/app/{application_id}/iframes/register.html";
+    /// RPC iframe HTML endpoint
+    pub const IFRAME_RPC_HTML: &str = "/app/{application_id}/iframes/rpc.html";
+    /// Bridge iframe JS endpoint
+    pub const IFRAME_BRIDGE_JS: &str = "/app/{application_id}/iframes/bridge.js";
+    /// Connect iframe JS endpoint
+    pub const IFRAME_CONNECT_JS: &str = "/app/{application_id}/iframes/connect.js";
+    /// Register iframe JS endpoint
+    pub const IFRAME_REGISTER_JS: &str = "/app/{application_id}/iframes/register.js";
+    /// RPC iframe JS endpoint
+    pub const IFRAME_RPC_JS: &str = "/app/{application_id}/iframes/rpc.js";
+    /// Broker worker JS endpoint
+    pub const WORKER_BROKER_JS: &str = "/app/{application_id}/workers/broker-worker.js";
+    /// RPC worker JS endpoint
+    pub const WORKER_RPC_JS: &str = "/app/{application_id}/workers/rpc-worker.js";
+}
 
 /// Type alias for a function that can build bootstrapped routes
 pub type BootstrappedRouterBuilder = Box<dyn Fn(Router) -> Router + Send + Sync>;
@@ -78,80 +130,55 @@ impl RouterBuilder {
     {
         let stateful_router = Router::new()
             // ** Sessions **
-            .route("/session", post(create_session_handler))
+            .route(routes::SESSION, post(create_session_handler))
             .route(
-                "/session-management",
+                routes::SESSION_MANAGEMENT,
                 post(create_management_session_handler),
             )
             // ** RPC **
-            .route("/rpc", post(management_http_rpc_handler))
-            .route("/ws", get(management_ws_rpc_handler))
-            .route("/app/rpc", post(http_rpc_handler))
-            .route("/app/ws", get(ws_rpc_handler))
+            .route(routes::MANAGEMENT_RPC, post(management_http_rpc_handler))
+            .route(routes::MANAGEMENT_WS, get(management_ws_rpc_handler))
+            .route(routes::APP_RPC, post(http_rpc_handler))
+            .route(routes::APP_WS, get(ws_rpc_handler))
             // ** WebAuthn **
             .route(
-                "/webauthn/register/start",
+                routes::WEBAUTHN_REGISTER_START,
                 post(webauthn_registration_start_handler),
             )
             .route(
-                "/webauthn/register/finish",
+                routes::WEBAUTHN_REGISTER_FINISH,
                 post(webauthn_registration_finish_handler),
             )
             .route(
-                "/webauthn/authenticate/start",
+                routes::WEBAUTHN_AUTHENTICATE_START,
                 post(webauthn_authentication_start_handler),
             )
             .route(
-                "/webauthn/authenticate/finish",
+                routes::WEBAUTHN_AUTHENTICATE_FINISH,
                 post(webauthn_authentication_finish_handler),
             )
             // ** Inter-node communication **
-            .route("/whoami", get(whoami_handler))
+            .route(routes::WHOAMI, get(whoami_handler))
             // ** Static files **
             // Iframe HTML
+            .route(routes::IFRAME_BRIDGE_HTML, get(bridge_iframe_html_handler))
             .route(
-                "/app/{application_id}/iframes/bridge.html",
-                get(bridge_iframe_html_handler),
-            )
-            .route(
-                "/app/{application_id}/iframes/connect.html",
+                routes::IFRAME_CONNECT_HTML,
                 get(connect_iframe_html_handler),
             )
             .route(
-                "/app/{application_id}/iframes/register.html",
+                routes::IFRAME_REGISTER_HTML,
                 get(register_iframe_html_handler),
             )
-            .route(
-                "/app/{application_id}/iframes/rpc.html",
-                get(rpc_iframe_html_handler),
-            )
+            .route(routes::IFRAME_RPC_HTML, get(rpc_iframe_html_handler))
             // Iframe JS
-            .route(
-                "/app/{application_id}/iframes/bridge.js",
-                get(bridge_iframe_js_handler),
-            )
-            .route(
-                "/app/{application_id}/iframes/connect.js",
-                get(connect_iframe_js_handler),
-            )
-            .route(
-                "/app/{application_id}/iframes/register.js",
-                get(register_iframe_js_handler),
-            )
-            .route(
-                "/app/{application_id}/iframes/rpc.js",
-                get(rpc_iframe_js_handler),
-            )
+            .route(routes::IFRAME_BRIDGE_JS, get(bridge_iframe_js_handler))
+            .route(routes::IFRAME_CONNECT_JS, get(connect_iframe_js_handler))
+            .route(routes::IFRAME_REGISTER_JS, get(register_iframe_js_handler))
+            .route(routes::IFRAME_RPC_JS, get(rpc_iframe_js_handler))
             // Shared workers
-            .route(
-                "/app/{application_id}/workers/broker-worker.js",
-                get(broker_worker_js_handler),
-            )
-            .route(
-                "/app/{application_id}/workers/rpc-worker.js",
-                get(rpc_worker_js_handler),
-            )
-            .nest_service("/static", ServeDir::new("crates/core/static"))
+            .route(routes::WORKER_BROKER_JS, get(broker_worker_js_handler))
+            .route(routes::WORKER_RPC_JS, get(rpc_worker_js_handler))
             .with_state(full_ctx);
 
         router.merge(stateful_router)
