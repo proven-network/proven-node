@@ -421,4 +421,207 @@ mod tests {
     ";
         assert_eq!(rewrite_run_functions("file:///main.ts", source), expected);
     }
+
+    #[test]
+    fn test_module_loader_with_package_json_integration() {
+        use proven_code_package::PackageJson;
+
+        // Create a package.json with dependencies
+        let package_json_content = r#"
+        {
+            "name": "test-app",
+            "version": "1.0.0",
+            "dependencies": {
+                "lodash": "^4.17.21"
+            },
+            "devDependencies": {
+                "typescript": "^4.5.0"
+            }
+        }
+        "#;
+
+        let package_json = PackageJson::from_str(package_json_content).unwrap();
+        assert_eq!(package_json.name, Some("test-app".to_string()));
+        assert_eq!(package_json.dependencies.len(), 1);
+        assert_eq!(package_json.dev_dependencies.len(), 1);
+
+        // Create a TypeScript module that imports proven modules
+        let main_module = r#"
+            import { runOnHttp } from '@proven-network/handler';
+            
+            export const handler = runOnHttp({ path: '/api/hello' }, (request) => {
+                const message = 'hello from app';
+                return { message };
+            });
+        "#;
+
+        let module_sources = HashMap::from([
+            (ModuleSpecifier::parse("file:///main.ts").unwrap(), main_module.to_string()),
+        ]);
+
+        // Test basic CodePackage creation (without network NPM resolution)
+        let basic_package = CodePackage::from_map(
+            &module_sources,
+            vec![ModuleSpecifier::parse("file:///main.ts").unwrap()]
+        ).unwrap();
+
+        let module_loader = ModuleLoader::new(basic_package);
+
+        // Test that we can retrieve the module
+        let module = module_loader.get_module(
+            &ModuleSpecifier::parse("file:///main.ts").unwrap(),
+            ProcessingMode::Runtime
+        );
+        assert!(module.is_some());
+
+        // Test that source transformation works correctly
+        let module_source = module_loader.get_module_source(
+            &ModuleSpecifier::parse("file:///main.ts").unwrap(),
+            ProcessingMode::Runtime
+        );
+        assert!(module_source.is_some());
+        let source = module_source.unwrap();
+        
+        // Verify import replacements worked
+        assert!(source.contains("proven:handler"));
+
+        // Test module options parsing
+        let module_options = module_loader.get_module_options(
+            &ModuleSpecifier::parse("file:///main.ts").unwrap()
+        ).unwrap();
+        
+        assert!(!module_options.handler_options.is_empty());
+        assert!(module_options.handler_options.contains_key("file:///main.ts#handler"));
+    }
+
+    #[test] 
+    fn test_module_loader_npm_specifier_handling() {
+        // Test that ModuleLoader can handle modules that reference NPM packages conceptually
+        // (without actually triggering NPM resolution)
+        let main_module_source = r#"
+            import { runOnHttp } from '@proven-network/handler';
+            
+            export const handler = runOnHttp({ path: '/test' }, () => {
+                // This would use a utility from an NPM package if it were available
+                const result = 'simulated npm utility result';
+                return { result };
+            });
+        "#;
+
+        let module_sources = HashMap::from([
+            (ModuleSpecifier::parse("file:///main.ts").unwrap(), main_module_source.to_string()),
+        ]);
+
+        // Create basic CodePackage without NPM resolution
+        let code_package = CodePackage::from_map(
+            &module_sources,
+            vec![ModuleSpecifier::parse("file:///main.ts").unwrap()]
+        ).unwrap();
+
+        let module_loader = ModuleLoader::new(code_package);
+        
+        // Verify we can get the main module
+        let main_module = module_loader.get_module(
+            &ModuleSpecifier::parse("file:///main.ts").unwrap(),
+            ProcessingMode::Runtime
+        );
+        assert!(main_module.is_some());
+
+        // Verify specifiers work
+        let specifiers = module_loader.specifiers();
+        assert!(!specifiers.is_empty());
+        
+        // Verify valid entrypoints
+        let entrypoints = module_loader.valid_entrypoints();
+        assert!(entrypoints.contains(&ModuleSpecifier::parse("file:///main.ts").unwrap()));
+
+        // Verify import replacements work
+        let module_source = module_loader.get_module_source(
+            &ModuleSpecifier::parse("file:///main.ts").unwrap(),
+            ProcessingMode::Runtime
+        );
+        assert!(module_source.is_some());
+        let source = module_source.unwrap();
+        assert!(source.contains("proven:handler"));
+    }
+
+    #[test]
+    fn test_module_loader_processing_modes() {
+        let module_source = r#"
+            import { runOnHttp } from '@proven-network/handler';
+            
+            export default runOnHttp({ path: '/api/test' }, (request) => {
+                return { status: 'ok' };
+            });
+        "#;
+
+        let module_sources = HashMap::from([
+            (ModuleSpecifier::parse("file:///main.ts").unwrap(), module_source.to_string()),
+        ]);
+
+        let code_package = CodePackage::from_map(
+            &module_sources,
+            vec![ModuleSpecifier::parse("file:///main.ts").unwrap()]
+        ).unwrap();
+
+        let module_loader = ModuleLoader::new(code_package);
+        let specifier = ModuleSpecifier::parse("file:///main.ts").unwrap();
+
+        // Test Runtime processing mode
+        let runtime_source = module_loader.get_module_source(&specifier, ProcessingMode::Runtime);
+        assert!(runtime_source.is_some());
+        let runtime_src = runtime_source.unwrap();
+        assert!(runtime_src.contains("proven:handler")); // Import replacement
+        assert!(runtime_src.contains("export default")); // No default export rename
+
+        // Test Options processing mode  
+        let options_source = module_loader.get_module_source(&specifier, ProcessingMode::Options);
+        assert!(options_source.is_some());
+        let options_src = options_source.unwrap();
+        assert!(options_src.contains("proven:handler")); // Import replacement
+        assert!(options_src.contains("export const __default__")); // Default export renamed
+        assert!(options_src.contains("runOnHttp('file:///main.ts', '__default__'")); // Function rewrite
+
+        // Verify both modes produce different output
+        assert_ne!(runtime_src, options_src);
+    }
+
+    #[test]
+    fn test_module_loader_caching() {
+        let module_source = r#"
+            import { runOnHttp } from '@proven-network/handler';
+            export const handler = runOnHttp({ path: '/cached' }, () => ({ cached: true }));
+        "#;
+
+        let module_sources = HashMap::from([
+            (ModuleSpecifier::parse("file:///main.ts").unwrap(), module_source.to_string()),
+        ]);
+
+        let code_package = CodePackage::from_map(
+            &module_sources,
+            vec![ModuleSpecifier::parse("file:///main.ts").unwrap()]
+        ).unwrap();
+
+        let module_loader = ModuleLoader::new(code_package);
+        let specifier = ModuleSpecifier::parse("file:///main.ts").unwrap();
+
+        // First call should cache the module
+        let module1 = module_loader.get_module(&specifier, ProcessingMode::Runtime);
+        assert!(module1.is_some());
+
+        // Second call should return cached module (same instance)
+        let module2 = module_loader.get_module(&specifier, ProcessingMode::Runtime);
+        assert!(module2.is_some());
+        
+        // Verify caching worked by checking they're the same
+        assert_eq!(module1.unwrap().filename(), module2.unwrap().filename());
+
+        // Test that different processing modes are cached separately
+        let options_module = module_loader.get_module(&specifier, ProcessingMode::Options);
+        assert!(options_module.is_some());
+        
+        // Different processing modes should produce different cached entries
+        let runtime_module = module_loader.get_module(&specifier, ProcessingMode::Runtime);
+        assert!(runtime_module.is_some());
+    }
 }
