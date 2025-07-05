@@ -11,6 +11,7 @@ const config = {
     "static/workers/rpc-worker.ts",
   ],
   bundle: true,
+  outbase: "static",
   outdir: "static",
   // You can add more options here as needed:
   // minify: true,
