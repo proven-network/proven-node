@@ -2,3 +2,4 @@ node_modules
 **/dist
 **/.rollup.cache
 **/src/**/*.js
+tsconfig.tsbuildinfo

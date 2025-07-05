@@ -130,10 +130,7 @@ describe('BundleManifestGenerator', () => {
         name: mockProject.name,
         version: mockProject.version,
         description: mockProject.description,
-        main: mockProject.packageJson.main,
-        scripts: mockProject.packageJson.scripts,
         dependencies: mockProject.packageJson.dependencies,
-        devDependencies: mockProject.packageJson.devDependencies,
       });
       expect(result.dependencies).toEqual(mockDependencies);
       expect(result.entrypoints).toEqual(mockEntrypoints);

@@ -317,16 +317,22 @@ export class EntrypointDiscovery {
     const parameters: ParameterInfo[] = [];
 
     // For run/runWithOptions, the handler function is the last argument
-    let handlerArg: t.Expression | t.SpreadElement | t.JSXNamespacedName | null = null;
+    let handlerArg: t.Expression | t.SpreadElement | t.JSXNamespacedName | t.ArgumentPlaceholder | null = null;
 
     if (node.arguments.length >= 2) {
-      handlerArg = node.arguments[node.arguments.length - 1];
+      const arg = node.arguments[node.arguments.length - 1];
+      if (!t.isArgumentPlaceholder(arg)) {
+        handlerArg = arg;
+      }
     } else if (node.arguments.length === 1) {
       // For runOnHttp etc., the handler is the first argument
-      handlerArg = node.arguments[0];
+      const arg = node.arguments[0];
+      if (!t.isArgumentPlaceholder(arg)) {
+        handlerArg = arg;
+      }
     }
 
-    if (!handlerArg || t.isSpreadElement(handlerArg) || t.isJSXNamespacedName(handlerArg)) {
+    if (!handlerArg || t.isSpreadElement(handlerArg) || t.isJSXNamespacedName(handlerArg) || t.isArgumentPlaceholder(handlerArg)) {
       return parameters;
     }
 
@@ -347,7 +353,7 @@ export class EntrypointDiscovery {
    * Extracts information from a function parameter
    */
   private extractParameterInfo(
-    param: t.Pattern | t.RestElement | t.TSParameterProperty
+    param: t.Identifier | t.Pattern | t.RestElement | t.TSParameterProperty
   ): ParameterInfo | null {
     if (t.isIdentifier(param)) {
       return {

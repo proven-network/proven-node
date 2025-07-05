@@ -119,6 +119,7 @@ describe('FileCollection', () => {
               {
                 name: 'handler',
                 type: 'http' as const,
+                parameters: [],
                 config: { path: '/api/test' },
               },
             ],
@@ -217,6 +218,7 @@ describe('FileCollection', () => {
               {
                 name: 'handler',
                 type: 'http' as const,
+                parameters: [],
                 config: { path: '/api/test' },
               },
             ],
@@ -255,6 +257,7 @@ describe('FileCollection', () => {
             {
               name: 'handler',
               type: 'http' as const,
+              parameters: [],
               config: { path: '/api/test' },
             },
           ],

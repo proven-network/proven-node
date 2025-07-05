@@ -79,9 +79,12 @@ Complete bundle manifest structure.
 
 ```typescript
 interface BundleManifest {
+  id: string;
+  version: string;
   project: ProjectInfo;
+  modules: ManifestModule[];
   entrypoints: EntrypointInfo[];
-  sources: SourceFile[];
+  sources: SourceInfo[];
   dependencies: DependencyInfo;
   metadata: BundleMetadata;
 }
@@ -107,10 +110,39 @@ Information about a handler function.
 ```typescript
 interface HandlerInfo {
   name: string;
-  type: 'http' | 'schedule' | 'event' | 'rpc' | 'unknown';
-  config?: Record<string, unknown>;
+  type: 'http' | 'schedule' | 'event' | 'rpc';
+  parameters: ParameterInfo[];
+  config?: any;
   line?: number;
   column?: number;
+}
+```
+
+#### `ProjectInfo`
+
+Project information included in the manifest.
+
+```typescript
+interface ProjectInfo {
+  name: string;
+  version: string;
+  description?: string;
+  main?: string;
+  scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+```
+
+#### `SourceInfo`
+
+Source file information.
+
+```typescript
+interface SourceInfo {
+  relativePath: string;
+  content: string;
+  size?: number;
 }
 ```
 

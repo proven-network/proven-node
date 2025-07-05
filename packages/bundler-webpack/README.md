@@ -231,14 +231,34 @@ The generated bundle manifest contains:
 
 ```json
 {
+  "id": "unique-manifest-id",
+  "version": "1.0.0",
   "project": {
     "name": "my-app",
     "version": "1.0.0",
-    "rootDir": "/path/to/project",
-    "packageJson": {
-      /* full package.json */
+    "description": "My application",
+    "dependencies": {
+      "@proven-network/handler": "^1.0.0"
     }
   },
+  "modules": [
+    {
+      "path": "./src/handler.ts",
+      "content": "/* module content */",
+      "handlers": [
+        {
+          "name": "apiHandler",
+          "type": "http",
+          "parameters": [],
+          "config": {
+            "path": "/api/hello",
+            "method": "GET"
+          }
+        }
+      ],
+      "dependencies": []
+    }
+  ],
   "entrypoints": [
     {
       "filePath": "/path/to/handler.ts",
@@ -247,25 +267,42 @@ The generated bundle manifest contains:
         {
           "name": "apiHandler",
           "type": "http",
+          "parameters": [],
           "config": {
             "path": "/api/hello",
             "method": "GET"
           }
         }
       ],
-      "imports": [
-        /* import information */
-      ]
+      "imports": []
     }
   ],
   "sources": [
-    /* all source files */
+    {
+      "relativePath": "src/handler.ts",
+      "content": "/* source content */",
+      "size": 1234
+    }
   ],
   "dependencies": {
-    /* dependency information */
+    "production": {
+      "@proven-network/handler": "^1.0.0"
+    },
+    "development": {},
+    "all": {
+      "@proven-network/handler": "^1.0.0"
+    }
   },
   "metadata": {
-    /* build metadata */
+    "createdAt": "2024-01-01T00:00:00Z",
+    "mode": "production",
+    "pluginVersion": "1.0.0",
+    "fileCount": 1,
+    "bundleSize": 1234,
+    "sourceMaps": false,
+    "buildMode": "production",
+    "entrypointCount": 1,
+    "handlerCount": 1
   }
 }
 ```

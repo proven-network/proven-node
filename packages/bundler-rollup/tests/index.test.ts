@@ -159,13 +159,14 @@ describe('provenRollupPlugin', () => {
     describe('generateBundle', () => {
       it('should generate bundle manifest', async () => {
         const mockManifest = {
+          id: 'test-manifest-id',
+          version: '1.0.0',
           project: {
             name: 'test-project',
             version: '1.0.0',
             description: 'Test project',
-            rootDir: '/test/project',
-            packageJson: { name: 'test-project', version: '1.0.0' },
           },
+          modules: [],
           entrypoints: [
             {
               filePath: '/test/project/src/handler.ts',
@@ -174,6 +175,7 @@ describe('provenRollupPlugin', () => {
                 {
                   name: 'handler',
                   type: 'http' as const,
+                  parameters: [],
                   config: { path: '/api/test' },
                 },
               ],
@@ -182,14 +184,12 @@ describe('provenRollupPlugin', () => {
           ],
           sources: [
             {
-              filePath: '/test/project/src/handler.ts',
               relativePath: 'src/handler.ts',
               content: 'handler content',
               size: 100,
             },
           ],
           dependencies: {
-            dependencies: {},
             production: {},
             development: {},
             all: {},
@@ -229,17 +229,17 @@ describe('provenRollupPlugin', () => {
         });
 
         const mockManifest = {
+          id: 'test-manifest-id',
+          version: '1.0.0',
           project: {
             name: 'test-project',
             version: '1.0.0',
             description: 'Test project',
-            rootDir: '/test/project',
-            packageJson: { name: 'test-project', version: '1.0.0' },
           },
+          modules: [],
           entrypoints: [],
           sources: [],
           dependencies: {
-            dependencies: {},
             production: {},
             development: {},
             all: {},
@@ -292,17 +292,17 @@ describe('provenRollupPlugin', () => {
         });
 
         const mockManifest = {
+          id: 'test-manifest-id',
+          version: '1.0.0',
           project: {
             name: 'test-project',
             version: '1.0.0',
             description: 'Test project',
-            rootDir: '/test/project',
-            packageJson: { name: 'test-project', version: '1.0.0' },
           },
+          modules: [],
           entrypoints: [],
           sources: [],
           dependencies: {
-            dependencies: {},
             production: {},
             development: {},
             all: {},
@@ -375,17 +375,17 @@ describe('provenRollupPlugin', () => {
 
       it('should handle validation errors', async () => {
         const mockManifest = {
+          id: 'test-manifest-id',
+          version: '1.0.0',
           project: {
             name: 'test-project',
             version: '1.0.0',
             description: 'Test project',
-            rootDir: '/test/project',
-            packageJson: { name: 'test-project', version: '1.0.0' },
           },
+          modules: [],
           entrypoints: [],
           sources: [],
           dependencies: {
-            dependencies: {},
             production: {},
             development: {},
             all: {},
@@ -442,17 +442,17 @@ describe('provenRollupPlugin', () => {
         });
 
         const mockManifest = {
+          id: 'test-manifest-id',
+          version: '1.0.0',
           project: {
             name: 'test-project',
             version: '1.0.0',
             description: 'Test project',
-            rootDir: '/test/project',
-            packageJson: { name: 'test-project', version: '1.0.0' },
           },
+          modules: [],
           entrypoints: [],
           sources: [],
           dependencies: {
-            dependencies: {},
             production: {},
             development: {},
             all: {},
@@ -499,17 +499,17 @@ describe('provenRollupPlugin', () => {
 
       it('should use process.cwd() as project root', async () => {
         const mockManifest = {
+          id: 'test-manifest-id',
+          version: '1.0.0',
           project: {
             name: 'test-project',
             version: '1.0.0',
             description: 'Test project',
-            rootDir: '/test/project',
-            packageJson: { name: 'test-project', version: '1.0.0' },
           },
+          modules: [],
           entrypoints: [],
           sources: [],
           dependencies: {
-            dependencies: {},
             production: {},
             development: {},
             all: {},
@@ -547,17 +547,17 @@ describe('provenRollupPlugin', () => {
         });
 
         const mockManifest = {
+          id: 'test-manifest-id',
+          version: '1.0.0',
           project: {
             name: 'test-project',
             version: '1.0.0',
             description: 'Test project',
-            rootDir: '/test/project',
-            packageJson: { name: 'test-project', version: '1.0.0' },
           },
+          modules: [],
           entrypoints: [],
           sources: [],
           dependencies: {
-            dependencies: {},
             production: {},
             development: {},
             all: {},
