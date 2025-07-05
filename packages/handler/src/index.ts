@@ -1,6 +1,6 @@
 import { CommittedTransactionInfo } from '@radixdlt/babylon-gateway-api-sdk';
 
-// Allow any serializable output type including complex objects  
+// Allow any serializable output type including complex objects
 type Output = any;
 
 export interface RpcHandlerOptions {
@@ -8,14 +8,12 @@ export interface RpcHandlerOptions {
   timeout?: number;
 }
 
-export function run<T extends (...args: any[]) => any>(
-  fn: T
-): T {
+export function run<T extends (...args: any[]) => any>(fn: T): T {
   return fn;
 }
 
 export function runWithOptions<T extends (...args: any[]) => any>(
-  options: RpcHandlerOptions, 
+  options: RpcHandlerOptions,
   fn: T
 ): T {
   return fn;
@@ -69,9 +67,10 @@ export type RadixEventHandlerOptions =
       timeout?: number;
     };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function runOnRadixEvent(
-  _options: RadixEventHandlerOptions,
-  _fn: (transaction: CommittedTransactionInfo) => void | Promise<void>
+  options: RadixEventHandlerOptions,
+  fn: (transaction: CommittedTransactionInfo) => void | Promise<void>
 ): void {
   return;
 }

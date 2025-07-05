@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { CurrentColumn, TableRecord } from '../state';
 
 type LastElement<T extends any[]> = T extends [...any[], infer Last]

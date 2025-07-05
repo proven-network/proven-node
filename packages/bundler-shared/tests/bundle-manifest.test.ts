@@ -83,6 +83,7 @@ describe('BundleManifestGenerator', () => {
             {
               name: 'handler',
               type: 'http' as const,
+              parameters: [],
               config: {
                 path: '/api/test',
                 method: 'GET',
@@ -125,15 +126,26 @@ describe('BundleManifestGenerator', () => {
       const result = await generator.generateManifest();
 
       expect(result).toBeDefined();
-      expect(result.project).toEqual(mockProject);
+      expect(result.project).toEqual({
+        name: mockProject.name,
+        version: mockProject.version,
+        description: mockProject.description,
+        main: mockProject.packageJson.main,
+        scripts: mockProject.packageJson.scripts,
+        dependencies: mockProject.packageJson.dependencies,
+        devDependencies: mockProject.packageJson.devDependencies,
+      });
       expect(result.dependencies).toEqual(mockDependencies);
       expect(result.entrypoints).toEqual(mockEntrypoints);
-      expect(result.sources).toEqual(mockSources);
+      expect(result.sources).toEqual([{
+        relativePath: mockSources[0].relativePath,
+        content: mockSources[0].content,
+        size: mockSources[0].size,
+      }]);
       expect(result.metadata).toBeDefined();
       expect(result.metadata.buildMode).toBe('production');
       expect(result.metadata.entrypointCount).toBe(1);
       expect(result.metadata.handlerCount).toBe(1);
-      expect(result.metadata.sourceFileCount).toBe(1);
     });
 
     it('should handle development mode', async () => {
@@ -169,6 +181,7 @@ describe('BundleManifestGenerator', () => {
             {
               name: 'handler',
               type: 'http' as const,
+              parameters: [],
             },
           ],
           imports: [],
@@ -186,7 +199,6 @@ describe('BundleManifestGenerator', () => {
       const result = await devGenerator.generateManifest();
 
       expect(result.metadata.buildMode).toBe('development');
-      expect(result.metadata.includeDevDependencies).toBe(true);
       expect(result.metadata.sourceMaps).toBe(true);
     });
 
@@ -196,15 +208,15 @@ describe('BundleManifestGenerator', () => {
           filePath: '/test/project/src/handler1.ts',
           moduleSpecifier: './src/handler1',
           handlers: [
-            { name: 'httpHandler', type: 'http' as const },
-            { name: 'scheduleHandler', type: 'schedule' as const },
+            { name: 'httpHandler', type: 'http' as const, parameters: [] },
+            { name: 'scheduleHandler', type: 'schedule' as const, parameters: [] },
           ],
           imports: [],
         },
         {
           filePath: '/test/project/src/handler2.ts',
           moduleSpecifier: './src/handler2',
-          handlers: [{ name: 'eventHandler', type: 'event' as const }],
+          handlers: [{ name: 'eventHandler', type: 'event' as const, parameters: [] }],
           imports: [],
         },
       ];
@@ -245,8 +257,7 @@ describe('BundleManifestGenerator', () => {
 
       expect(result.metadata.entrypointCount).toBe(2);
       expect(result.metadata.handlerCount).toBe(3);
-      expect(result.metadata.sourceFileCount).toBe(2);
-      expect(result.metadata.totalSourceSize).toBe(300);
+      expect(result.metadata.fileCount).toBe(2);
     });
 
     it('should handle empty project', async () => {
@@ -282,12 +293,12 @@ describe('BundleManifestGenerator', () => {
   describe('validateManifest', () => {
     it('should validate valid manifest', async () => {
       const validManifest = {
+        id: 'test-manifest-id',
+        version: '1.0.0',
         project: {
           name: 'test-project',
           version: '1.0.0',
           description: 'Test project',
-          rootDir: mockProjectRoot,
-          packageJson: { name: 'test-project', version: '1.0.0' },
         },
         entrypoints: [
           {
@@ -297,6 +308,7 @@ describe('BundleManifestGenerator', () => {
               {
                 name: 'handler',
                 type: 'http' as const,
+                parameters: [],
                 config: { path: '/api/test' },
               },
             ],
@@ -305,12 +317,12 @@ describe('BundleManifestGenerator', () => {
         ],
         sources: [
           {
-            filePath: '/test/project/src/handler.ts',
             relativePath: 'src/handler.ts',
             content: 'handler content',
             size: 100,
           },
         ],
+        modules: [],
         dependencies: {
           production: {},
           development: {},
@@ -323,13 +335,9 @@ describe('BundleManifestGenerator', () => {
           fileCount: 1,
           bundleSize: 100,
           sourceMaps: false,
-          buildMode: 'production' as const,
+          buildMode: 'production',
           entrypointCount: 1,
           handlerCount: 1,
-          sourceFileCount: 1,
-          totalSourceSize: 100,
-          includeDevDependencies: false,
-          generatedAt: new Date().toISOString(),
         },
       };
 
@@ -340,15 +348,16 @@ describe('BundleManifestGenerator', () => {
 
     it('should reject manifest with missing required fields', async () => {
       const invalidManifest = {
+        id: 'test-manifest-id',
+        version: '1.0.0',
         project: {
           name: 'test-project',
           version: '1.0.0',
           description: 'Test project',
-          rootDir: mockProjectRoot,
-          packageJson: { name: 'test-project', version: '1.0.0' },
         },
         entrypoints: [],
         sources: [],
+        modules: [],
         dependencies: {
           production: {},
           development: {},
@@ -361,13 +370,9 @@ describe('BundleManifestGenerator', () => {
           fileCount: 0,
           bundleSize: 0,
           sourceMaps: false,
-          buildMode: 'production' as const,
+          buildMode: 'production',
           entrypointCount: 0,
           handlerCount: 0,
-          sourceFileCount: 0,
-          totalSourceSize: 0,
-          includeDevDependencies: false,
-          generatedAt: new Date().toISOString(),
         },
       };
 
@@ -378,12 +383,12 @@ describe('BundleManifestGenerator', () => {
 
     it('should reject manifest with invalid entrypoint', async () => {
       const invalidManifest = {
+        id: 'test-manifest-id',
+        version: '1.0.0',
         project: {
           name: 'test-project',
           version: '1.0.0',
           description: 'Test project',
-          rootDir: mockProjectRoot,
-          packageJson: { name: 'test-project', version: '1.0.0' },
         },
         entrypoints: [
           {
@@ -394,6 +399,7 @@ describe('BundleManifestGenerator', () => {
           },
         ],
         sources: [],
+        modules: [],
         dependencies: {
           production: {},
           development: {},
@@ -406,13 +412,9 @@ describe('BundleManifestGenerator', () => {
           fileCount: 0,
           bundleSize: 0,
           sourceMaps: false,
-          buildMode: 'production' as const,
+          buildMode: 'production',
           entrypointCount: 1,
           handlerCount: 0,
-          sourceFileCount: 0,
-          totalSourceSize: 0,
-          includeDevDependencies: false,
-          generatedAt: new Date().toISOString(),
         },
       };
 

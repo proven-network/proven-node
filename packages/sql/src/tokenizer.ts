@@ -1,4 +1,4 @@
-type ExtractWordOrSymbol<S extends string> =
+export type ExtractWordOrSymbol<S extends string> =
   // Check start for symbol
   S extends `(${infer Rest}`
     ? ['(', ...ExtractWordOrSymbol<Rest>]
@@ -24,11 +24,11 @@ type ExtractWordOrSymbol<S extends string> =
                       ? []
                       : [S];
 
-type SplitToWordsAndSymbols<S extends string> = S extends `${infer Word} ${infer Rest}`
+export type SplitToWordsAndSymbols<S extends string> = S extends `${infer Word} ${infer Rest}`
   ? [...ExtractWordOrSymbol<Word>, ...SplitToWordsAndSymbols<Rest>]
   : ExtractWordOrSymbol<S>;
 
-type TrimString<S extends string> = S extends ` ${infer Rest}` | `${infer Rest} `
+export type TrimString<S extends string> = S extends ` ${infer Rest}` | `${infer Rest} `
   ? TrimString<Rest>
   : S;
 

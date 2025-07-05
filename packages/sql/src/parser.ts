@@ -20,7 +20,7 @@ import { RemoveTable } from './helpers/remove-table';
 import { RenameColumn } from './helpers/rename-column';
 import { ColumnToType, GetTableColumns } from './helpers/table-columns';
 
-type ParseColumnDefinitions<
+export type ParseColumnDefinitions<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends CreateTableState,
@@ -66,7 +66,7 @@ type ParseColumnDefinitions<
             : ParseColumnDefinitions<Rest, Schema, State>
   : never;
 
-type ParseCreateTable<
+export type ParseCreateTable<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema = InitialGeneratedSchema,
   State extends CreateTableState = InitialCreateTableState,
@@ -88,7 +88,7 @@ type ParseCreateTable<
       : never
   : never;
 
-type ParseAlterTable<
+export type ParseAlterTable<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema = InitialGeneratedSchema,
   State extends AlterTableState = InitialAlterTableState,
@@ -107,7 +107,7 @@ type ParseAlterTable<
     : ParseAlterTable<Rest, Schema, State>
   : Schema;
 
-type ParseAlterTableAction<
+export type ParseAlterTableAction<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends AlterTableState,
@@ -127,7 +127,7 @@ type ParseAlterTableAction<
               : ParseAlterTableAction<Rest, Schema, State>
   : Schema;
 
-type ParseAddColumn<
+export type ParseAddColumn<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends AlterTableState,
@@ -158,7 +158,7 @@ type ParseAddColumn<
       }
   : Schema;
 
-type ParseDropColumn<
+export type ParseDropColumn<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends AlterTableState,
@@ -168,7 +168,7 @@ type ParseDropColumn<
     }
   : Schema;
 
-type ParseRenameColumn<
+export type ParseRenameColumn<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends AlterTableState,
@@ -188,7 +188,7 @@ type ParseRenameColumn<
     }
   : Schema;
 
-type ParseDropTable<
+export type ParseDropTable<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema = InitialGeneratedSchema,
   State extends DropTableState = InitialDropTableState,
@@ -230,7 +230,7 @@ export type ParseQueryType<
     : ParseQueryType<Rest, Schema, State>
   : never;
 
-type ParseSelectColumns<
+export type ParseSelectColumns<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends QueryState,
@@ -260,7 +260,7 @@ type ParseSelectColumns<
         : ParseSelectColumns<Rest, Schema, State>
   : never;
 
-type ParseFromClause<
+export type ParseFromClause<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends QueryState,

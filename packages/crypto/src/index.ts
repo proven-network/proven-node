@@ -135,14 +135,17 @@ export class PrivateKey implements Omit<RadixPrivateKey, 'bytes'>, RadixSigner {
     return this.publicKey().hexString();
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   sign(data: string | Uint8Array): Uint8Array {
     return new Signature(new Uint8Array()).bytes;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   signToSignature(data: string | Uint8Array): Signature {
     return new Signature(new Uint8Array());
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   signToSignatureWithPublicKey(data: string | Uint8Array): SignatureWithPublicKey {
     return new SignatureWithPublicKey(new Uint8Array(), this.publicKeyBytes());
   }

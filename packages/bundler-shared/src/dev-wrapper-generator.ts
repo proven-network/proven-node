@@ -23,7 +23,7 @@ export class DevWrapperGenerator {
   /**
    * Generates the manifest registration code
    */
-  private generateManifestRegistration(): string {
+  public generateManifestRegistration(): string {
     const manifestJson = JSON.stringify(this.manifest, null, 2);
 
     return `// Proven Network Manifest Registration
@@ -43,7 +43,7 @@ export class DevWrapperGenerator {
   /**
    * Generates wrapper functions for all handlers in the manifest
    */
-  private generateHandlerWrappers(): string {
+  public generateHandlerWrappers(): string {
     const allHandlers = this.getAllHandlers();
 
     if (allHandlers.length === 0) {

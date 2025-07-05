@@ -1,3 +1,6 @@
+import { LexSqlTokens } from './lexer';
+import { TokenizeSqlString } from './tokenizer';
+
 type TestLowercase = LexSqlTokens<['create', 'table', 'users']>;
 
 type TestTripleKeyword = LexSqlTokens<

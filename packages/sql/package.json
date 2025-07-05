@@ -22,14 +22,18 @@
     "types"
   ],
   "scripts": {
-    "build": "tsc && vite build && vite build --config vite-single-file.config.ts"
+    "build": "tsc && vite build && vite build --config vite-single-file.config.ts",
+    "lint": "eslint src --ext .ts"
   },
   "devDependencies": {
     "@babel/preset-env": "7.26.0",
     "@babel/preset-typescript": "7.26.0",
     "@types/elliptic": "6.4.18",
+    "@typescript-eslint/eslint-plugin": "^8.35.1",
+    "@typescript-eslint/parser": "^8.35.1",
     "babel-preset-vite": "1.1.3",
     "elliptic": "6.6.1",
+    "eslint": "^9.0.0",
     "prettier": "3.4.2",
     "ts-node": "10.9.2",
     "typescript": "5.7.3",

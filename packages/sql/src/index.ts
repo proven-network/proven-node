@@ -44,6 +44,7 @@ export type SqlRows<T extends Record<string, null | number | string | Uint8Array
   forEach(callbackfn: (value: T, index: number, array: T[]) => void): void;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 class Rows<T extends Record<string, null | number | string | Uint8Array>> implements SqlRows<T> {
   [index: number]: T | undefined;
   columnNames: Readonly<string[]>;
@@ -52,6 +53,7 @@ class Rows<T extends Record<string, null | number | string | Uint8Array>> implem
     return Promise.resolve(0);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(firstRow: FirstRow, rowStreamId: number) {
     this.columnNames = [];
   }
@@ -91,16 +93,19 @@ class Database<Schema extends GeneratedSchema = { tables: {} }> implements SqlDa
     this.name = name;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   execute<S extends string>(query: S | Statement<S>): Promise<number> {
     return Promise.resolve(0);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   migrate<S extends string>(
     query: S
   ): Database<ParseMigration<LexSqlTokens<TokenizeSqlString<S>>, Schema>> {
     return this;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   query<S extends string>(
     query: S | Statement<S>
   ): Promise<SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>> {
@@ -142,6 +147,7 @@ class NftDatabase<Schema extends GeneratedSchema = { tables: {} }>
     this.name = name;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   execute<S extends string>(
     resourceAddress: string,
     nftId: string | number | Uint8Array,
@@ -150,12 +156,14 @@ class NftDatabase<Schema extends GeneratedSchema = { tables: {} }>
     return Promise.resolve(0);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   migrate<S extends string>(
     query: S
   ): NftDatabase<ParseMigration<LexSqlTokens<TokenizeSqlString<S>>, Schema>> {
     return this;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   query<S extends string>(
     resourceAddress: string,
     nftId: string | number | Uint8Array,

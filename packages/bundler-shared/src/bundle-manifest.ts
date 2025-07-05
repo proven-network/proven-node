@@ -7,6 +7,7 @@ import {
   BundleMetadata,
   ManifestModule,
 } from './types';
+import { SourceInfo } from '@proven-network/common';
 import { createHash } from 'crypto';
 import { PackageAnalysis } from './package-analysis';
 import { FileCollection } from './file-collection';
@@ -66,8 +67,22 @@ export class BundleManifestGenerator {
     return {
       id: manifestId,
       version: project.version || '1.0.0',
+      project: {
+        name: project.name || 'unknown',
+        version: project.version || '1.0.0',
+        description: project.description,
+        main: project.packageJson.main as string,
+        scripts: project.packageJson.scripts as Record<string, string>,
+        dependencies: project.packageJson.dependencies as Record<string, string>,
+        devDependencies: project.packageJson.devDependencies as Record<string, string>,
+      },
       modules,
       entrypoints,
+      sources: sources.map(source => ({
+        relativePath: source.relativePath,
+        content: source.content,
+        size: source.size,
+      })),
       dependencies,
       metadata,
     };
@@ -218,7 +233,6 @@ export class BundleManifestGenerator {
    */
   private generateMetadata(sources: SourceFile[], entrypoints?: EntrypointInfo[]): BundleMetadata {
     const handlerCount = entrypoints?.reduce((sum, ep) => sum + ep.handlers.length, 0) || 0;
-    const totalSourceSize = sources.reduce((sum, source) => sum + source.size, 0);
 
     return {
       createdAt: new Date().toISOString(),
@@ -230,10 +244,6 @@ export class BundleManifestGenerator {
       buildMode: this.options.mode || 'development',
       entrypointCount: entrypoints?.length || 0,
       handlerCount,
-      sourceFileCount: sources.length,
-      totalSourceSize,
-      includeDevDependencies: !!this.options.includeDevDependencies,
-      generatedAt: new Date().toISOString(),
     };
   }
 
@@ -253,10 +263,10 @@ export class BundleManifestGenerator {
   /**
    * Calculates the total bundle size in bytes
    */
-  private calculateBundleSize(sources: SourceFile[]): number {
+  private calculateBundleSize(sources: SourceFile[] | SourceInfo[]): number {
     return sources.reduce((total, source) => {
       const contentSize = Buffer.byteLength(source.content, 'utf8');
-      const sourceMapSize = source.sourceMap ? Buffer.byteLength(source.sourceMap, 'utf8') : 0;
+      const sourceMapSize = ('sourceMap' in source && source.sourceMap) ? Buffer.byteLength(source.sourceMap, 'utf8') : 0;
       return total + contentSize + sourceMapSize;
     }, 0);
   }
@@ -266,7 +276,7 @@ export class BundleManifestGenerator {
    */
   private detectCircularDependencies(
     entrypoints: EntrypointInfo[],
-    sources: SourceFile[]
+    sources: SourceInfo[]
   ): string[] {
     const circular: string[] = [];
     const visited = new Set<string>();
@@ -335,7 +345,7 @@ export class BundleManifestGenerator {
   private resolveImportToSourcePath(
     importPath: string,
     fromFile: string,
-    sources: SourceFile[]
+    sources: SourceFile[] | SourceInfo[]
   ): string | null {
     // This is a simplified resolution - in a real implementation,
     // you'd want more sophisticated module resolution

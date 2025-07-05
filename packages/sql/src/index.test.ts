@@ -24,17 +24,17 @@ const DB = getApplicationDb('main')
   .migrate(`DROP TABLE likes;`)
   .migrate(`ALTER TABLE posts ADD COLUMN updated_at INTEGER NOT NULL DEFAULT CURRENT_TIMESTAMP;`);
 
-const rows = await DB.query('SELECT * FROM posts');
+// const rows = await DB.query('SELECT * FROM posts');
 
-const row = rows[0];
+// const row = rows[0];
 
-for (const row of rows) {
-  console.log(row);
-}
+// for (const row of rows) {
+//   console.log(row);
+// }
 
-let mapped = rows.map((row) => row.title);
-let filtered = rows.filter((row) => row.title === 'Hello');
-let length = rows.length;
-let columnNames = rows.columnNames;
+// let mapped = rows.map((row) => row.title);
+// let filtered = rows.filter((row) => row.title === 'Hello');
+// let length = rows.length;
+// let columnNames = rows.columnNames;
 
-const rows2 = await DB.query(sql('SELECT * FROM posts WHERE id = :id', { id: 1 }));
+// const rows2 = await DB.query(sql('SELECT * FROM posts WHERE id = :id', { id: 1 }));

@@ -1,3 +1,5 @@
+import { TokenizeSqlString, SplitToWordsAndSymbols } from './tokenizer';
+
 // Debug type to check intermediate results
 type DebugSplit = SplitToWordsAndSymbols<'CREATE TABLE'>;
 // this gives ["CREATE", "TABLE"]
