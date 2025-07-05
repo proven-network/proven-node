@@ -284,10 +284,35 @@ impl CodePackage {
     ///
     /// This function will return an error if the module graph cannot be built, NPM dependencies
     /// cannot be resolved, or if the `EszipV2::from_graph` function fails.
-    #[allow(clippy::future_not_send)]
     pub async fn from_map_with_npm_deps(
         module_sources: &HashMap<ModuleSpecifier, String>,
         module_roots: impl IntoIterator<Item = ModuleSpecifier> + Clone,
+        package_json: Option<&PackageJson>,
+        include_dev_deps: bool,
+    ) -> Result<Self, Error> {
+        // Clone the data we need to move into the blocking task
+        let module_sources_clone = module_sources.clone();
+        let module_roots_vec: Vec<ModuleSpecifier> = module_roots.clone().into_iter().collect();
+        let package_json_clone = package_json.cloned();
+        
+        // Use spawn_blocking to handle the non-Send deno operations
+        tokio::task::spawn_blocking(move || {
+            tokio::runtime::Handle::current().block_on(async {
+                Self::from_map_with_npm_deps_inner(
+                    &module_sources_clone,
+                    module_roots_vec,
+                    package_json_clone.as_ref(),
+                    include_dev_deps,
+                ).await
+            })
+        }).await.map_err(|e| Error::CodePackage(format!("Task join error: {e:?}")))?
+    }
+
+    /// Internal implementation of `from_map_with_npm_deps` that can be non-Send.
+    #[allow(clippy::future_not_send)]
+    async fn from_map_with_npm_deps_inner(
+        module_sources: &HashMap<ModuleSpecifier, String>,
+        module_roots: Vec<ModuleSpecifier>,
         package_json: Option<&PackageJson>,
         include_dev_deps: bool,
     ) -> Result<Self, Error> {
@@ -348,16 +373,11 @@ impl CodePackage {
 
         let loader = MemoryLoader::new(sources, Vec::new());
 
-        let module_roots_clone = module_roots
-            .clone()
-            .into_iter()
-            .collect::<Vec<ModuleSpecifier>>();
-
         let mut module_graph = ModuleGraph::new(GraphKind::All);
 
         module_graph
             .build(
-                module_roots_clone,
+                module_roots.clone(),
                 Vec::default(),
                 &loader,
                 BuildOptions {

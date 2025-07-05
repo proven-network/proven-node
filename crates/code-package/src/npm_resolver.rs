@@ -159,7 +159,6 @@ impl CodePackageNpmResolver {
 }
 
 #[async_trait(?Send)]
-#[allow(clippy::future_not_send)]
 impl NpmRegistryApi for CodePackageNpmResolver {
     async fn package_info(
         &self,
