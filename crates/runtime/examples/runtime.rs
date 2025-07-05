@@ -13,7 +13,8 @@ use serde_json::json;
 use tempfile::tempdir;
 use uuid::Uuid;
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let module_loader = ModuleLoader::new(
         CodePackage::from_str(
             r#"
@@ -30,6 +31,7 @@ fn main() -> Result<(), Error> {
             });
         "#,
         )
+        .await
         .unwrap(),
     );
 

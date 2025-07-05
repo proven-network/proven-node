@@ -14,7 +14,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_zod() {
-        let runtime_options = RuntimeOptions::for_test_code("zod/test_zod");
+        let runtime_options = RuntimeOptions::for_test_code("zod/test_zod").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =

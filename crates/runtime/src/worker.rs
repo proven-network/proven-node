@@ -34,8 +34,9 @@ use tracing::error;
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let code_package =
-///         CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
+///     let code_package = CodePackage::from_str("export const handler = (a, b) => a + b;")
+///         .await
+///         .unwrap();
 ///
 ///     let mut worker = Worker::new(RuntimeOptions {
 ///         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().keep()),
@@ -175,7 +176,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_worker_execute_in_tokio() {
-        let runtime_options = RuntimeOptions::for_test_code("test_runtime_execute");
+        let runtime_options = RuntimeOptions::for_test_code("test_runtime_execute").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =

@@ -611,7 +611,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_write() {
-        let runtime_options = RuntimeOptions::for_test_code("file_system/test_read_write");
+        let runtime_options = RuntimeOptions::for_test_code("file_system/test_read_write").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =

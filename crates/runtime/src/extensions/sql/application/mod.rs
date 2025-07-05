@@ -162,7 +162,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_application_db() {
-        let runtime_options = RuntimeOptions::for_test_code("sql/test_application_db");
+        let runtime_options = RuntimeOptions::for_test_code("sql/test_application_db").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -183,7 +183,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_application_db_multiple() {
-        let runtime_options = RuntimeOptions::for_test_code("sql/test_application_db_multiple");
+        let runtime_options =
+            RuntimeOptions::for_test_code("sql/test_application_db_multiple").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =

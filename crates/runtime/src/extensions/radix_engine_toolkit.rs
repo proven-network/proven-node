@@ -15,7 +15,7 @@ mod tests {
     #[tokio::test]
     async fn test_radix_engine_toolkit() {
         let runtime_options =
-            RuntimeOptions::for_test_code("radix_engine_toolkit/test_radix_engine_toolkit");
+            RuntimeOptions::for_test_code("radix_engine_toolkit/test_radix_engine_toolkit").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =

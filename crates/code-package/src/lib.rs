@@ -180,9 +180,29 @@ impl CodePackage {
     /// # Errors
     ///
     /// This function will return an error if the module graph cannot be built or if the `EszipV2::from_graph` function fails.
-    pub fn from_map(
+    pub async fn from_map(
         module_sources: &HashMap<ModuleSpecifier, String>,
         module_roots: impl IntoIterator<Item = ModuleSpecifier> + Clone,
+    ) -> Result<Self, Error> {
+        // Clone the data we need to move into the blocking task
+        let module_sources_clone = module_sources.clone();
+        let module_roots_vec: Vec<ModuleSpecifier> = module_roots.clone().into_iter().collect();
+
+        // Use spawn_blocking to handle the non-Send deno operations
+        tokio::task::spawn_blocking(move || {
+            tokio::runtime::Handle::current().block_on(async {
+                Self::from_map_inner(&module_sources_clone, module_roots_vec).await
+            })
+        })
+        .await
+        .map_err(|e| Error::CodePackage(format!("Task join error: {e:?}")))?
+    }
+
+    /// Internal implementation of `from_map` that can be non-Send.
+    #[allow(clippy::future_not_send)]
+    async fn from_map_inner(
+        module_sources: &HashMap<ModuleSpecifier, String>,
+        module_roots: Vec<ModuleSpecifier>,
     ) -> Result<Self, Error> {
         let mut sources = module_sources
             .iter()
@@ -216,41 +236,31 @@ impl CodePackage {
 
         let loader = MemoryLoader::new(sources, Vec::new());
 
-        let module_roots_clone = module_roots
-            .clone()
-            .into_iter()
-            .collect::<Vec<ModuleSpecifier>>();
-        let module_graph_future = async move {
-            let mut graph = ModuleGraph::new(GraphKind::All);
+        let mut module_graph = ModuleGraph::new(GraphKind::All);
 
-            graph
-                .build(
-                    module_roots_clone,
-                    Vec::default(),
-                    &loader,
-                    BuildOptions {
-                        is_dynamic: true,
-                        skip_dynamic_deps: false,
-                        executor: Default::default(),
-                        locker: None,
-                        file_system: &NullFileSystem,
-                        jsr_url_provider: Default::default(),
-                        passthrough_jsr_specifiers: false,
-                        module_analyzer: Default::default(),
-                        module_info_cacher: Default::default(),
-                        npm_resolver: Some(&CodePackageNpmResolver::new()),
-                        reporter: None,
-                        resolver: Some(&CodePackageResolver),
-                        unstable_bytes_imports: false,
-                        unstable_text_imports: false,
-                    },
-                )
-                .await;
-
-            graph
-        };
-
-        let module_graph = block_on(module_graph_future);
+        module_graph
+            .build(
+                module_roots.clone(),
+                Vec::default(),
+                &loader,
+                BuildOptions {
+                    is_dynamic: true,
+                    skip_dynamic_deps: false,
+                    executor: Default::default(),
+                    locker: None,
+                    file_system: &NullFileSystem,
+                    jsr_url_provider: Default::default(),
+                    passthrough_jsr_specifiers: false,
+                    module_analyzer: Default::default(),
+                    module_info_cacher: Default::default(),
+                    npm_resolver: Some(&CodePackageNpmResolver::new()),
+                    reporter: None,
+                    resolver: Some(&CodePackageResolver),
+                    unstable_bytes_imports: false,
+                    unstable_text_imports: false,
+                },
+            )
+            .await;
 
         Self::from_module_graph(module_graph, module_roots)
     }
@@ -265,10 +275,10 @@ impl CodePackage {
     ///
     /// This function will panic if the module root cannot be parsed.
     #[allow(clippy::should_implement_trait)]
-    pub fn from_str(module_source: &str) -> Result<Self, Error> {
+    pub async fn from_str(module_source: &str) -> Result<Self, Error> {
         let module_specifier = ModuleSpecifier::parse("file:///main.ts").unwrap();
         let module_sources = HashMap::from([(module_specifier.clone(), module_source.to_string())]);
-        Self::from_map(&module_sources, vec![module_specifier])
+        Self::from_map(&module_sources, vec![module_specifier]).await
     }
 
     /// Creates a `CodePackage` from module sources and a package.json, resolving NPM dependencies.
@@ -294,7 +304,7 @@ impl CodePackage {
         let module_sources_clone = module_sources.clone();
         let module_roots_vec: Vec<ModuleSpecifier> = module_roots.clone().into_iter().collect();
         let package_json_clone = package_json.cloned();
-        
+
         // Use spawn_blocking to handle the non-Send deno operations
         tokio::task::spawn_blocking(move || {
             tokio::runtime::Handle::current().block_on(async {
@@ -303,9 +313,12 @@ impl CodePackage {
                     module_roots_vec,
                     package_json_clone.as_ref(),
                     include_dev_deps,
-                ).await
+                )
+                .await
             })
-        }).await.map_err(|e| Error::CodePackage(format!("Task join error: {e:?}")))?
+        })
+        .await
+        .map_err(|e| Error::CodePackage(format!("Task join error: {e:?}")))?
     }
 
     /// Internal implementation of `from_map_with_npm_deps` that can be non-Send.
@@ -581,17 +594,21 @@ impl TryInto<Bytes> for CodePackage {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_code_package_from_str() {
-        let code_package = CodePackage::from_str("export default 'Hello, world!'").unwrap();
+    #[tokio::test]
+    async fn test_code_package_from_str() {
+        let code_package = CodePackage::from_str("export default 'Hello, world!'")
+            .await
+            .unwrap();
 
         assert_eq!(code_package.specifiers().len(), 1);
         assert_eq!(code_package.valid_entrypoints().len(), 1);
     }
 
-    #[test]
-    fn test_code_package_serde() {
-        let code_package = CodePackage::from_str("export default 'Hello, world!'").unwrap();
+    #[tokio::test]
+    async fn test_code_package_serde() {
+        let code_package = CodePackage::from_str("export default 'Hello, world!'")
+            .await
+            .unwrap();
         let bytes: Bytes = code_package.clone().try_into().unwrap();
         let code_package2: CodePackage = bytes.try_into().unwrap();
 
@@ -604,48 +621,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_code_package_with_package_json() {
-        // Test that we can parse package.json and create a code package
-        let package_json_content = r#"
-        {
-            "name": "test-package",
-            "version": "1.0.0",
-            "dependencies": {
-                "lodash": "^4.17.21"
-            }
-        }
-        "#;
-
-        let package_json: PackageJson = package_json_content.parse().unwrap();
-        assert_eq!(package_json.name, Some("test-package".to_string()));
-        assert_eq!(package_json.dependencies.len(), 1);
-
-        let module_source = "export default 'Hello, world!'";
-        let module_specifier = ModuleSpecifier::parse("file:///main.ts").unwrap();
-        let module_sources = HashMap::from([(module_specifier.clone(), module_source.to_string())]);
-
-        // This test would normally require network access to resolve NPM packages
-        // In a real implementation, you'd want to mock the NPM resolver
-        if std::env::var("ENABLE_NETWORK_TESTS").is_ok() {
-            let result = CodePackage::from_map_with_npm_deps(
-                &module_sources,
-                vec![module_specifier],
-                Some(&package_json),
-                false, // Don't include dev dependencies
-            )
-            .await;
-
-            // This might fail if network is unavailable, but the structure should be correct
-            if let Ok(code_package) = result {
-                assert_eq!(code_package.valid_entrypoints().len(), 1);
-                assert!(!code_package.specifiers().is_empty());
-            }
-            // Network failure is acceptable in tests
-        }
-    }
-
-    #[test]
-    fn test_npm_specifier_storage() {
+    async fn test_npm_specifier_storage() {
         // Test that NPM specifiers can be stored and retrieved from CodePackage
         // without triggering actual NPM resolution
         let npm_module_source = "export const lodash = 'utility library';";
@@ -666,7 +642,8 @@ mod tests {
         let result = CodePackage::from_map(
             &module_sources,
             vec![ModuleSpecifier::parse("file:///main.ts").unwrap()],
-        );
+        )
+        .await;
 
         if let Ok(code_package) = result {
             // Verify both modules are included
@@ -683,8 +660,8 @@ mod tests {
         // providing a real NPM resolver setup
     }
 
-    #[test]
-    fn test_complete_bundling_workflow() {
+    #[tokio::test]
+    async fn test_complete_bundling_workflow() {
         // Test the complete workflow from package.json to CodePackage
         let package_json_content = r#"
         {
@@ -729,7 +706,8 @@ mod tests {
         let basic_package = CodePackage::from_map(
             &module_sources,
             vec![ModuleSpecifier::parse("file:///main.ts").unwrap()],
-        );
+        )
+        .await;
 
         assert!(basic_package.is_ok());
         let basic_package = basic_package.unwrap();

@@ -39,6 +39,7 @@ async fn main() -> Result<(), Error> {
             });
         "#,
         )
+        .await
         .unwrap(),
     );
 

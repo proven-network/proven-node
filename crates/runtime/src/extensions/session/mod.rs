@@ -32,7 +32,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_identity() {
-        let runtime_options = RuntimeOptions::for_test_code("session/test_session_identity");
+        let runtime_options = RuntimeOptions::for_test_code("session/test_session_identity").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -58,7 +58,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_identity_no_context() {
-        let runtime_options = RuntimeOptions::for_test_code("session/test_session_identity");
+        let runtime_options = RuntimeOptions::for_test_code("session/test_session_identity").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =

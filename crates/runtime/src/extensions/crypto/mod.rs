@@ -108,7 +108,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ed25519_signing() {
-        let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_signing");
+        let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_signing").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -147,7 +147,7 @@ mod tests {
     #[tokio::test]
     async fn test_ed25519_signing_radix_transaction() {
         let runtime_options =
-            RuntimeOptions::for_test_code("crypto/test_ed25519_signing_radix_transaction");
+            RuntimeOptions::for_test_code("crypto/test_ed25519_signing_radix_transaction").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -184,7 +184,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_ed25519_storage() {
-        let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_storage");
+        let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_storage").await;
         let mut worker = Worker::new(runtime_options.clone()).await.unwrap();
 
         let request =

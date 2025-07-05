@@ -190,7 +190,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_personal_db() {
-        let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db");
+        let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -211,7 +211,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_personal_db_no_context() {
-        let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db");
+        let runtime_options = RuntimeOptions::for_test_code("sql/test_personal_db").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =

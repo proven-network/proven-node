@@ -58,10 +58,12 @@ async fn main() -> Result<(), Error> {
         // This tests a mix of unique and duplicate scripts
         let module_loader = if i % 2 == 0 {
             ModuleLoader::new(
-                CodePackage::from_str(&format!("// Invocation: {}\n{}", i, base_script)).unwrap(),
+                CodePackage::from_str(&format!("// Invocation: {}\n{}", i, base_script))
+                    .await
+                    .unwrap(),
             )
         } else {
-            ModuleLoader::new(CodePackage::from_str(base_script).unwrap())
+            ModuleLoader::new(CodePackage::from_str(base_script).await.unwrap())
         };
 
         let pool = Arc::clone(&pool);

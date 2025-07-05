@@ -14,7 +14,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_uuid() {
-        let runtime_options = RuntimeOptions::for_test_code("uuid/test_uuid");
+        let runtime_options = RuntimeOptions::for_test_code("uuid/test_uuid").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =

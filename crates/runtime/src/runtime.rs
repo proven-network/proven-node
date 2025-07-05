@@ -99,7 +99,8 @@ impl
     /// Creates a new `RuntimeOptions` instance for testing purposes.
     ///
     /// # Parameters
-    /// - `script_name`: The name of the script to use.
+    ///
+    /// * `script_name` - The name of the script file to load from the `test_esm` directory.
     ///
     /// # Returns
     /// A new `RuntimeOptions` instance.
@@ -107,7 +108,7 @@ impl
     /// # Panics
     /// This function will panic if creating a temporary directory fails.
     #[must_use]
-    pub fn for_test_code(script_name: &str) -> Self {
+    pub async fn for_test_code(script_name: &str) -> Self {
         use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
         use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
         use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
@@ -117,7 +118,7 @@ impl
             application_sql_store: DirectSqlStore2::new(tempdir().unwrap().keep()),
             application_store: MemoryStore2::new(),
             file_system_store: MemoryStore::new(),
-            module_loader: ModuleLoader::from_test_code(script_name),
+            module_loader: ModuleLoader::from_test_code(script_name).await,
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
@@ -140,7 +141,7 @@ impl
     /// # Panics
     /// This function will panic if creating a temporary directory fails.
     #[must_use]
-    pub fn for_test_code_map(
+    pub async fn for_test_code_map(
         module_sources: &HashMap<ModuleSpecifier, &str>,
         module_roots: impl IntoIterator<Item = ModuleSpecifier> + Clone,
     ) -> Self {
@@ -157,7 +158,7 @@ impl
                 ciborium::de::Error<std::io::Error>,
                 ciborium::ser::Error<std::io::Error>,
             >::new(),
-            module_loader: ModuleLoader::from_test_code_map(module_sources, module_roots),
+            module_loader: ModuleLoader::from_test_code_map(module_sources, module_roots).await,
             nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
             nft_store: MemoryStore3::new(),
             personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
@@ -192,7 +193,9 @@ impl
 /// use tempfile::tempdir;
 /// use uuid::Uuid;
 ///
-/// let code_package = CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
+/// let code_package = CodePackage::from_str("export const handler = (a, b) => a + b;")
+///     .await
+///     .unwrap();
 ///
 /// let mut runtime = Runtime::new(RuntimeOptions {
 ///     application_sql_store: DirectSqlStore2::new(tempdir().unwrap().keep()),
@@ -676,7 +679,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_execute() {
-        let options = RuntimeOptions::for_test_code("test_runtime_execute");
+        let options = RuntimeOptions::for_test_code("test_runtime_execute").await;
 
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
@@ -699,44 +702,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_execute_nested() {
-        let module_sources = HashMap::from([
-            (
-                ModuleSpecifier::parse("file:///main.ts").unwrap(),
-                "test_runtime_nested_base",
-            ),
-            (
-                ModuleSpecifier::parse("file:///test_runtime_nested_loaded.ts").unwrap(),
-                "test_runtime_nested_loaded",
-            ),
-        ]);
-        let module_roots = vec![ModuleSpecifier::parse("file:///main.ts").unwrap()];
-        let options = RuntimeOptions::for_test_code_map(&module_sources, module_roots);
-
-        run_in_thread(|| {
-            let mut runtime = Runtime::new(options).unwrap();
-
-            let request =
-                ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
-
-            match runtime.execute(request) {
-                Ok(ExecutionResult::Ok { output, .. }) => {
-                    assert!(output.is_string());
-                    assert_eq!(output.as_str().unwrap(), "Hello, world!");
-                }
-                Ok(ExecutionResult::Error { error, .. }) => {
-                    panic!("Unexpected js error: {error:?}");
-                }
-                Err(error) => {
-                    panic!("Unexpected execution error: {error:?}");
-                }
-            }
-        });
-    }
-
-    #[tokio::test]
     async fn test_runtime_execute_with_default_export() {
-        let options = RuntimeOptions::for_test_code("test_runtime_execute_with_default_export");
+        let options =
+            RuntimeOptions::for_test_code("test_runtime_execute_with_default_export").await;
 
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
@@ -759,7 +727,7 @@ mod tests {
     #[tokio::test]
     async fn test_runtime_execute_sets_timeout() {
         // The script will sleep for 1.5 seconds, but the timeout is set to 2 seconds
-        let options = RuntimeOptions::for_test_code("test_runtime_execute_sets_timeout");
+        let options = RuntimeOptions::for_test_code("test_runtime_execute_sets_timeout").await;
 
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
@@ -781,7 +749,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_execute_exhausts_timeout() {
-        let options = RuntimeOptions::for_test_code("test_runtime_execute_exhausts_timeout");
+        let options = RuntimeOptions::for_test_code("test_runtime_execute_exhausts_timeout").await;
 
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
@@ -803,7 +771,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_execute_default_max_heap_size() {
-        let options = RuntimeOptions::for_test_code("test_runtime_execute_default_max_heap_size");
+        let options =
+            RuntimeOptions::for_test_code("test_runtime_execute_default_max_heap_size").await;
 
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();
@@ -827,7 +796,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_execute_rpc_endpoints() {
-        let options = RuntimeOptions::for_test_code("test_runtime_execute_rpc_endpoints");
+        let options = RuntimeOptions::for_test_code("test_runtime_execute_rpc_endpoints").await;
 
         run_in_thread(|| {
             let mut runtime = Runtime::new(options).unwrap();

@@ -158,7 +158,7 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_with_allowed_origins() {
         let runtime_options =
-            RuntimeOptions::for_test_code("handler/test_fetch_with_allowed_origins");
+            RuntimeOptions::for_test_code("handler/test_fetch_with_allowed_origins").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -174,7 +174,7 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_with_disallowed_origins() {
         let runtime_options =
-            RuntimeOptions::for_test_code("handler/test_fetch_with_disallowed_origins");
+            RuntimeOptions::for_test_code("handler/test_fetch_with_disallowed_origins").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -195,7 +195,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_http_handler() {
-        let runtime_options = RuntimeOptions::for_test_code("handler/test_http_handler");
+        let runtime_options = RuntimeOptions::for_test_code("handler/test_http_handler").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request = ExecutionRequest::Http {
@@ -223,7 +223,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_return_bytes() {
-        let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes");
+        let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -258,7 +258,7 @@ mod tests {
             nested: Bytes,
         }
 
-        let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes");
+        let runtime_options = RuntimeOptions::for_test_code("handler/test_return_bytes").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =

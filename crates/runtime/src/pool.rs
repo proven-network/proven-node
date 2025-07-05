@@ -117,8 +117,9 @@ where
 ///     })
 ///     .await;
 ///
-///     let code_package =
-///         CodePackage::from_str("export const handler = (a, b) => a + b;").unwrap();
+///     let code_package = CodePackage::from_str("export const handler = (a, b) => a + b;")
+///         .await
+///         .unwrap();
 ///
 ///     let request = ExecutionRequest::Rpc {
 ///         application_id: Uuid::new_v4(),
@@ -793,7 +794,7 @@ mod tests {
 
         let result = pool
             .execute(
-                ModuleLoader::from_test_code("test_runtime_execute"),
+                ModuleLoader::from_test_code("test_runtime_execute").await,
                 request,
             )
             .await;
@@ -806,7 +807,7 @@ mod tests {
     async fn test_execute_prehashed() {
         let pool = Pool::new(create_pool_options()).await;
 
-        let module_loader = ModuleLoader::from_test_code("test_runtime_execute");
+        let module_loader = ModuleLoader::from_test_code("test_runtime_execute").await;
 
         let code_package_hash = module_loader.code_package_hash();
 
@@ -834,7 +835,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
 
         pool.queue_request(
-            ModuleLoader::from_test_code("test_runtime_execute"),
+            ModuleLoader::from_test_code("test_runtime_execute").await,
             request,
             tx,
             false,
@@ -853,7 +854,7 @@ mod tests {
         let pool_clone = Arc::clone(&pool);
         let _ = pool_clone
             .execute(
-                ModuleLoader::from_test_code("test_runtime_execute"),
+                ModuleLoader::from_test_code("test_runtime_execute").await,
                 request,
             )
             .await;

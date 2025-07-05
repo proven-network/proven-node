@@ -201,10 +201,10 @@ impl ModuleLoader {
     /// This function will panic if the file cannot be read.
     #[cfg(test)]
     #[must_use]
-    pub fn from_test_code(script_name: &str) -> Self {
+    pub async fn from_test_code(script_name: &str) -> Self {
         let esm = std::fs::read_to_string(format!("./test_esm/{script_name}.ts")).unwrap();
 
-        Self::new(CodePackage::from_str(&esm).unwrap())
+        Self::new(CodePackage::from_str(&esm).await.unwrap())
     }
 
     /// Creates a `ModuleLoader` from a map of module sources and module roots.
@@ -219,7 +219,7 @@ impl ModuleLoader {
     /// This function will panic if the `CodePackage` cannot be created from the provided map.
     #[cfg(test)]
     #[must_use]
-    pub fn from_test_code_map(
+    pub async fn from_test_code_map(
         module_sources: &HashMap<ModuleSpecifier, &str>,
         module_roots: impl IntoIterator<Item = ModuleSpecifier> + Clone,
     ) -> Self {
@@ -228,7 +228,7 @@ impl ModuleLoader {
             let esm = std::fs::read_to_string(format!("./test_esm/{script_name}.ts")).unwrap();
             sources.insert(specifier.clone(), esm);
         }
-        let code_package = CodePackage::from_map(&sources, module_roots).unwrap();
+        let code_package = CodePackage::from_map(&sources, module_roots).await.unwrap();
 
         Self::new(code_package)
     }
@@ -308,8 +308,10 @@ mod tests {
 
     use std::collections::HashSet;
 
-    #[test]
-    fn test_parse_module_handler_options() {
+    use proven_code_package::PackageJson;
+
+    #[tokio::test]
+    async fn test_parse_module_handler_options() {
         let module_loader = ModuleLoader::new(
             CodePackage::from_str(
                 r"
@@ -327,6 +329,7 @@ mod tests {
             });
         ",
             )
+            .await
             .unwrap(),
         );
 
@@ -422,20 +425,18 @@ mod tests {
         assert_eq!(rewrite_run_functions("file:///main.ts", source), expected);
     }
 
-    #[test]
-    fn test_module_loader_with_package_json_integration() {
-        use proven_code_package::PackageJson;
-
-        // Create a package.json with dependencies
+    #[tokio::test]
+    async fn test_module_loader_with_package_json_integration() {
+        // Test that ModuleLoader can work with package.json concepts
         let package_json_content = r#"
         {
             "name": "test-app",
             "version": "1.0.0",
             "dependencies": {
-                "lodash": "^4.17.21"
+                "utility-lib": "^1.0.0"
             },
             "devDependencies": {
-                "typescript": "^4.5.0"
+                "test-framework": "^2.0.0"
             }
         }
         "#;
@@ -465,6 +466,7 @@ mod tests {
             &module_sources,
             vec![ModuleSpecifier::parse("file:///main.ts").unwrap()],
         )
+        .await
         .unwrap();
 
         let module_loader = ModuleLoader::new(basic_package);
@@ -500,8 +502,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_module_loader_npm_specifier_handling() {
+    #[tokio::test]
+    async fn test_module_loader_npm_specifier_handling() {
         // Test that ModuleLoader can handle modules that reference NPM packages conceptually
         // (without actually triggering NPM resolution)
         let main_module_source = r"
@@ -524,6 +526,7 @@ mod tests {
             &module_sources,
             vec![ModuleSpecifier::parse("file:///main.ts").unwrap()],
         )
+        .await
         .unwrap();
 
         let module_loader = ModuleLoader::new(code_package);
@@ -553,8 +556,8 @@ mod tests {
         assert!(source.contains("proven:handler"));
     }
 
-    #[test]
-    fn test_module_loader_processing_modes() {
+    #[tokio::test]
+    async fn test_module_loader_processing_modes() {
         let module_source = r"
             import { runOnHttp } from '@proven-network/handler';
             
@@ -572,6 +575,7 @@ mod tests {
             &module_sources,
             vec![ModuleSpecifier::parse("file:///main.ts").unwrap()],
         )
+        .await
         .unwrap();
 
         let module_loader = ModuleLoader::new(code_package);
@@ -596,8 +600,8 @@ mod tests {
         assert_ne!(runtime_src, options_src);
     }
 
-    #[test]
-    fn test_module_loader_caching() {
+    #[tokio::test]
+    async fn test_module_loader_caching() {
         let module_source = r"
             import { runOnHttp } from '@proven-network/handler';
             export const handler = runOnHttp({ path: '/cached' }, () => ({ cached: true }));
@@ -612,6 +616,7 @@ mod tests {
             &module_sources,
             vec![ModuleSpecifier::parse("file:///main.ts").unwrap()],
         )
+        .await
         .unwrap();
 
         let module_loader = ModuleLoader::new(code_package);

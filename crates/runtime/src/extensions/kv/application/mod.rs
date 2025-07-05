@@ -301,7 +301,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_application_bytes_store() {
-        let runtime_options = RuntimeOptions::for_test_code("kv/test_application_bytes_store");
+        let runtime_options =
+            RuntimeOptions::for_test_code("kv/test_application_bytes_store").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -320,7 +321,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_application_key_store() {
-        let runtime_options = RuntimeOptions::for_test_code("kv/test_application_key_store");
+        let runtime_options = RuntimeOptions::for_test_code("kv/test_application_key_store").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
@@ -339,7 +340,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_application_string_store() {
-        let runtime_options = RuntimeOptions::for_test_code("kv/test_application_string_store");
+        let runtime_options =
+            RuntimeOptions::for_test_code("kv/test_application_string_store").await;
         let mut worker = Worker::new(runtime_options).await.unwrap();
 
         let request =
