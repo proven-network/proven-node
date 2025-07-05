@@ -8,7 +8,12 @@
     "bundler-webpack",
     "bundler-rollup",
     "common",
-    "sdk"
+    "crypto",
+    "handler",
+    "kv",
+    "sdk",
+    "session",
+    "sql"
   ],
   "scripts": {
     "build": "npm run build --workspaces",
