@@ -30,7 +30,7 @@ pub enum NodeStatus {
     NotStarted,
     /// Node is in the process of starting
     Starting,
-    /// Node is running normally  
+    /// Node is running normally
     Running,
     /// Node is in the process of stopping
     Stopping,
@@ -71,7 +71,7 @@ pub struct NodeConfig<G: Governance> {
     /// Bitcoin mainnet store directory
     pub bitcoin_mainnet_store_dir: PathBuf,
 
-    /// Bitcoin testnet fallback RPC endpoint  
+    /// Bitcoin testnet fallback RPC endpoint
     pub bitcoin_testnet_fallback_rpc_endpoint: Url,
 
     /// Bitcoin testnet proxy port

@@ -21,7 +21,7 @@ class MessageBroker {
   private connections: IframeConnection[] = [];
 
   constructor() {
-    console.log("SharedWorker: Message broker initialized");
+    console.log('SharedWorker: Message broker initialized');
   }
 
   addConnection(port: MessagePort, iframeType: string) {
@@ -55,10 +55,7 @@ class MessageBroker {
   }
 
   handleMessage(message: BrokerMessage, fromConnection: IframeConnection) {
-    console.log(
-      `SharedWorker: Message from ${fromConnection.iframeType}:`,
-      message,
-    );
+    console.log(`SharedWorker: Message from ${fromConnection.iframeType}:`, message);
 
     // Handle responses - these should be routed back to the original requester
     if (message.isResponse && message.messageId) {
@@ -77,7 +74,7 @@ class MessageBroker {
   private routeMessage(
     message: BrokerMessage,
     fromConnection: IframeConnection,
-    isResponse: boolean,
+    isResponse: boolean
   ) {
     // Route message to appropriate iframe(s)
     for (const connection of this.connections) {
@@ -105,13 +102,10 @@ class MessageBroker {
           fromIframe: fromConnection.iframeType,
         });
         console.log(
-          `SharedWorker: Forwarded ${isResponse ? "response" : "message"} to ${connection.iframeType}`,
+          `SharedWorker: Forwarded ${isResponse ? 'response' : 'message'} to ${connection.iframeType}`
         );
       } catch (error) {
-        console.error(
-          `SharedWorker: Failed to send message to ${connection.iframeType}:`,
-          error,
-        );
+        console.error(`SharedWorker: Failed to send message to ${connection.iframeType}:`, error);
         // Remove dead connection
         this.removeConnection(connection);
       }
@@ -122,7 +116,7 @@ class MessageBroker {
 const broker = new MessageBroker();
 
 // Handle new connections
-self.addEventListener("connect", (event: Event) => {
+self.addEventListener('connect', (event: Event) => {
   const connectEvent = event as MessageEvent;
   const port = connectEvent.ports[0];
 
@@ -130,10 +124,10 @@ self.addEventListener("connect", (event: Event) => {
   port.onmessage = (initEvent) => {
     const { type, iframeType } = initEvent.data;
 
-    if (type === "init" && iframeType) {
+    if (type === 'init' && iframeType) {
       broker.addConnection(port, iframeType);
     } else {
-      console.error("SharedWorker: Invalid init message:", initEvent.data);
+      console.error('SharedWorker: Invalid init message:', initEvent.data);
       port.close();
     }
   };

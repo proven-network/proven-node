@@ -114,7 +114,7 @@ contract NodeGovernance is
      */
     function isIpAddress(string memory str) internal pure returns (bool) {
         bytes memory strBytes = bytes(str);
-        
+
         // Check for empty string
         if (strBytes.length == 0) {
             return false;
@@ -124,11 +124,11 @@ contract NodeGovernance is
         bool couldBeIPv4 = true;
         uint8 dotCount = 0;
         uint8 digitCount = 0;
-        
+
         // Quick check for IPv6 (groups separated by colons)
         bool couldBeIPv6 = false;
         uint8 colonCount = 0;
-        
+
         for (uint i = 0; i < strBytes.length; i++) {
             // Check for IPv4 pattern
             if (strBytes[i] >= bytes1('0') && strBytes[i] <= bytes1('9')) {
@@ -148,7 +148,7 @@ contract NodeGovernance is
             } else if (strBytes[i] == bytes1(':')) {
                 colonCount++;
                 couldBeIPv6 = true;
-            } else if ((strBytes[i] >= bytes1('a') && strBytes[i] <= bytes1('f')) || 
+            } else if ((strBytes[i] >= bytes1('a') && strBytes[i] <= bytes1('f')) ||
                       (strBytes[i] >= bytes1('A') && strBytes[i] <= bytes1('F'))) {
                 // Hex digits are valid in IPv6
                 if (!couldBeIPv6) {
@@ -163,13 +163,13 @@ contract NodeGovernance is
                 }
             }
         }
-        
+
         // Valid IPv4 has exactly 3 dots
         bool isIPv4 = couldBeIPv4 && dotCount == 3;
-        
+
         // Minimum valid IPv6 has at least 2 colons
         bool isIPv6 = couldBeIPv6 && colonCount >= 2;
-        
+
         return isIPv4 || isIPv6;
     }
 
@@ -205,7 +205,7 @@ contract NodeGovernance is
 
         NodeCandidate memory winner = candidates[opportunityId][candidate];
         NodeOpportunity memory opportunity = opportunities[opportunityId];
-        
+
         require(!usedPublicKeys[winner.publicKey], "Public key already in use");
         usedPublicKeys[winner.publicKey] = true;
 

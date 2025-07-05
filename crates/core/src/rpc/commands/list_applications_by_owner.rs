@@ -61,8 +61,12 @@ impl RpcCommand for ListApplicationsByOwnerCommand {
             .list_applications_by_owner(&identity_id)
             .await
         {
-            Ok(applications) => ListApplicationsByOwnerResponse::ListApplicationsByOwnerSuccess(applications),
-            Err(e) => ListApplicationsByOwnerResponse::ListApplicationsByOwnerFailure(e.to_string()),
+            Ok(applications) => {
+                ListApplicationsByOwnerResponse::ListApplicationsByOwnerSuccess(applications)
+            }
+            Err(e) => {
+                ListApplicationsByOwnerResponse::ListApplicationsByOwnerFailure(e.to_string())
+            }
         }
     }
 }

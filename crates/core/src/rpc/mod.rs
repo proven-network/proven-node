@@ -11,8 +11,7 @@ pub use crate::rpc::commands::{
     AddAllowedOriginCommand, AddAllowedOriginResponse, AnonymizeCommand, AnonymizeResponse,
     CreateApplicationCommand, CreateApplicationResponse, ExecuteCommand, ExecuteHashCommand,
     ExecuteHashResponse, ExecuteResponse, IdentifyCommand, IdentifyResponse,
-    ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse, WhoAmICommand,
-    WhoAmIResponse,
+    ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse, WhoAmICommand, WhoAmIResponse,
 };
 
 use async_trait::async_trait;

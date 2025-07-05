@@ -34,4 +34,4 @@ upnpc -a "$LOCAL_IP" 9000 9000 TCP "Proven Node - Lighthouse libp2p"
 upnpc -a "$LOCAL_IP" 9000 9000 UDP "Proven Node - Lighthouse discovery"
 upnpc -a "$LOCAL_IP" 9001 9001 UDP "Proven Node - Lighthouse QUIC"
 
-echo "UPnP port forwarding setup complete" 
+echo "UPnP port forwarding setup complete"

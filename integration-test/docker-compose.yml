@@ -6,7 +6,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "3200:80"
+      - '3200:80'
     depends_on:
       - bulbasaur
       - charmander
@@ -41,17 +41,17 @@ services:
       - PROVEN_NODE_KEY=5625b9a5552793f321c6b1178fd20be8f8ab83fbab91a729fb9d5d222fc830c2
       - RUST_LOG=${RUST_LOG:-info}
     ports:
-      - "3201:3201/tcp"
-      - "6222:6222/tcp"
+      - '3201:3201/tcp'
+      - '6222:6222/tcp'
       # reth ports
-      - "30304:30304/tcp" # P2P communication
-      - "30304:30304/udp" # P2P communication
-      - "8546:8546/tcp" # HTTP-RPC server
+      - '30304:30304/tcp' # P2P communication
+      - '30304:30304/udp' # P2P communication
+      - '8546:8546/tcp' # HTTP-RPC server
       # lighthouse ports
-      - "9000:9000/tcp" # Discovery and libp2p
-      - "9000:9000/udp" # Discovery and libp2p
-      - "9001:9001/udp" # QUIC
-      - "5052:5052/tcp" # HTTP API
+      - '9000:9000/tcp' # Discovery and libp2p
+      - '9000:9000/udp' # Discovery and libp2p
+      - '9001:9001/udp' # QUIC
+      - '5052:5052/tcp' # HTTP API
     volumes:
       - bulbasaur-data:/tmp/proven
       - shared-config:/etc/proven
@@ -82,10 +82,10 @@ services:
       - PROVEN_SKIP_VACUUM=true
       - RUST_LOG=${RUST_LOG:-info}
     ports:
-      - "3202:3202/tcp"
-      - "6223:6223/tcp"
+      - '3202:3202/tcp'
+      - '6223:6223/tcp'
       # radix ports
-      - "30001:30001/tcp" # gossip port
+      - '30001:30001/tcp' # gossip port
     volumes:
       - charmander-data:/tmp/proven
       - shared-config:/etc/proven
@@ -115,8 +115,8 @@ services:
       - PROVEN_NODE_KEY=9d3585d534880f32264b35c087cbc84d774b53fcbebc9649fec7bdf2db04ffe4
       - RUST_LOG=${RUST_LOG:-info}
     ports:
-      - "3203:3203/tcp"
-      - "6224:6224/tcp"
+      - '3203:3203/tcp'
+      - '6224:6224/tcp'
     volumes:
       - squirtle-data:/tmp/proven
       - shared-config:/etc/proven

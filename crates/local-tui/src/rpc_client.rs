@@ -4,6 +4,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use coset::{CborSerializable, CoseSign1, CoseSign1Builder, HeaderBuilder, iana::Algorithm};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use proven_applications::Application;
 use proven_attestation::Attestor;
 use proven_attestation_mock::MockAttestor;
 use proven_core::{
@@ -12,7 +13,6 @@ use proven_core::{
     IdentifyResponse, ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse, Response,
     WhoAmICommand, WhoAmIResponse, routes,
 };
-use proven_applications::Application;
 use proven_util::Origin;
 use rand::rngs::OsRng;
 use reqwest::{blocking::Client, blocking::multipart};
@@ -221,7 +221,10 @@ impl RpcClient {
     }
 
     /// List applications owned by the current user (management session)
-    pub fn list_applications_by_owner(&mut self, node_url: &str) -> Result<Vec<Application>, RpcError> {
+    pub fn list_applications_by_owner(
+        &mut self,
+        node_url: &str,
+    ) -> Result<Vec<Application>, RpcError> {
         self.node_url = Some(node_url.to_string());
 
         // Ensure we have an identified session for listing applications
@@ -256,7 +259,12 @@ impl RpcClient {
     }
 
     /// Add an allowed origin to an application (management session)
-    pub fn add_allowed_origin(&mut self, node_url: &str, application_id: Uuid, origin: Origin) -> Result<(), RpcError> {
+    pub fn add_allowed_origin(
+        &mut self,
+        node_url: &str,
+        application_id: Uuid,
+        origin: Origin,
+    ) -> Result<(), RpcError> {
         self.node_url = Some(node_url.to_string());
 
         // Ensure we have an identified session for modifying applications
@@ -284,12 +292,15 @@ impl RpcClient {
 
         match response {
             AddAllowedOriginResponse::AddAllowedOriginSuccess => {
-                info!("Successfully added allowed origin to application {}", application_id);
+                info!(
+                    "Successfully added allowed origin to application {}",
+                    application_id
+                );
                 Ok(())
             }
-            AddAllowedOriginResponse::AddAllowedOriginFailure(error) => Err(
-                RpcError::ServerError(format!("Failed to add allowed origin: {error}")),
-            ),
+            AddAllowedOriginResponse::AddAllowedOriginFailure(error) => Err(RpcError::ServerError(
+                format!("Failed to add allowed origin: {error}"),
+            )),
         }
     }
 

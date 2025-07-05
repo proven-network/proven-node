@@ -1,5 +1,5 @@
-import { run } from "@proven-network/handler";
-import { z } from "zod";
+import { run } from '@proven-network/handler';
+import { z } from 'zod';
 
 export const test = run(() => {
   const schema = z.object({
@@ -7,5 +7,5 @@ export const test = run(() => {
     age: z.number(),
   });
 
-  return schema.parse({ name: "Alice", age: 30 });
+  return schema.parse({ name: 'Alice', age: 30 });
 });

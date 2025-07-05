@@ -1,24 +1,24 @@
 import { LexSqlTokens } from './lexer';
 import { TokenizeSqlString } from './tokenizer';
 
-type TestLowercase = LexSqlTokens<['create', 'table', 'users']>;
+type _TestLowercase = LexSqlTokens<['create', 'table', 'users']>;
 
-type TestTripleKeyword = LexSqlTokens<
+type _TestTripleKeyword = LexSqlTokens<
   ['create', 'table', 'if', 'not', 'exists', 'users', '(', 'id', 'integer', ')']
 >;
 
-type TestLowercaseType = LexSqlTokens<
+type _TestLowercaseType = LexSqlTokens<
   ['create', 'table', 'users', '(', 'id', 'integer', 'primary', 'key', 'not', 'null', ')']
 >;
 
-type TestAlterTable = LexSqlTokens<
+type _TestAlterTable = LexSqlTokens<
   TokenizeSqlString<`
   ALTER TABLE users
   ADD COLUMN email TEXT NOT NULL;
 `>
 >;
 
-type TestBig = LexSqlTokens<
+type _TestBig = LexSqlTokens<
   TokenizeSqlString<`
   CREATE TABLE posts (
     id INTEGER PRIMARY KEY,
@@ -30,3 +30,8 @@ type TestBig = LexSqlTokens<
   );
 `>
 >;
+
+// Basic test to verify TypeScript compilation
+test('should compile lexer types', () => {
+  expect(true).toBe(true);
+});

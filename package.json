@@ -1,0 +1,68 @@
+{
+  "name": "proven-node",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Proven Network platform - secure compute environment",
+  "workspaces": [
+    "crates/core",
+    "crates/runtime",
+    "governance",
+    "packages/bundler",
+    "packages/common",
+    "packages/crypto",
+    "packages/handler",
+    "packages/kv",
+    "packages/sdk",
+    "packages/session",
+    "packages/sql"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "npm run lint --workspaces",
+    "lint:fix": "npx eslint --fix . && npm run lint --workspaces",
+    "format": "prettier --write . && cargo fmt --all",
+    "clean": "npm run clean --workspaces",
+    "typecheck": "tsc --build --dry",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "npx eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,yaml,yml,md}": [
+      "prettier --write"
+    ],
+    "*.rs": [
+      "cargo fmt --"
+    ]
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.28.0",
+    "@babel/preset-typescript": "^7.27.1",
+    "@babel/types": "^7.27.1",
+    "@types/jest": "30.0.0",
+    "@types/semver": "^7.5.0",
+    "@types/webpack": "^5.28.0",
+    "@typescript-eslint/eslint-plugin": "^8.35.1",
+    "@typescript-eslint/parser": "^8.35.1",
+    "eslint": "^9.0.0",
+    "husky": "^9.1.7",
+    "jest": "30.0.4",
+    "lint-staged": "^16.1.2",
+    "prettier": "^3.5.0",
+    "ts-jest": "^29.2.0",
+    "typescript": "^5.7.0",
+    "vite": "^7.0.0",
+    "vite-plugin-dts": "^4.5.4"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.30.1"
+  }
+}

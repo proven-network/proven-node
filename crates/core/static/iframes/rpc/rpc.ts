@@ -1,12 +1,12 @@
 /// <reference lib="DOM" />
-import { createSession, getSession } from "@proven-network/common";
-import { CoseSign1Decoder, CoseSign1Encoder } from "@proven-network/common";
-import { bytesToHex, hexToBytes } from "@noble/curves/abstract/utils";
-import { MessageBroker, getWindowIdFromUrl } from "@proven-network/common";
+import { createSession, getSession } from '@proven-network/common';
+import { CoseSign1Decoder, CoseSign1Encoder } from '@proven-network/common';
+import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
+import { MessageBroker, getWindowIdFromUrl } from '@proven-network/common';
 
 // Generic message types for broker communication
 type RpcRequest = {
-  type: "rpc_request";
+  type: 'rpc_request';
   data: any; // The raw RPC call data to be signed
 };
 
@@ -38,10 +38,10 @@ class RpcClient {
 
   constructor() {
     // Extract window ID from URL fragment
-    this.windowId = getWindowIdFromUrl() || "unknown";
+    this.windowId = getWindowIdFromUrl() || 'unknown';
 
     // Initialize broker synchronously - will throw if it fails
-    this.broker = new MessageBroker(this.windowId, "rpc");
+    this.broker = new MessageBroker(this.windowId, 'rpc');
 
     // Initialize broker immediately but defer session initialization
     this.initializeBroker();
@@ -62,17 +62,17 @@ class RpcClient {
 
   private async initializeSession(): Promise<void> {
     const urlParams = new URLSearchParams(window.location.search);
-    const applicationId = urlParams.get("app") || "application_id";
+    const applicationId = urlParams.get('app') || 'application_id';
 
     try {
-      console.debug("RPC: Initializing session...");
+      console.debug('RPC: Initializing session...');
 
       let session = await getSession(applicationId);
 
       if (!session) {
-        console.debug("RPC: Creating new session...");
+        console.debug('RPC: Creating new session...');
         session = await createSession(applicationId);
-        console.debug("RPC: Session created!", session);
+        console.debug('RPC: Session created!', session);
       }
 
       this.session = session;
@@ -80,21 +80,19 @@ class RpcClient {
       await this.setupWorkerCommunication();
 
       this.isInitialized = true;
-      console.debug("RPC: Client initialized successfully");
+      console.debug('RPC: Client initialized successfully');
 
       // Process any queued requests
       await this.processQueuedRequests();
     } catch (error) {
-      console.error("RPC: Failed to initialize session:", error);
+      console.error('RPC: Failed to initialize session:', error);
       this.initializationPromise = null; // Allow retry
       throw error;
     }
   }
 
   private async processQueuedRequests(): Promise<void> {
-    console.debug(
-      `RPC: Processing ${this.queuedRequests.length} queued requests`,
-    );
+    console.debug(`RPC: Processing ${this.queuedRequests.length} queued requests`);
 
     const requests = [...this.queuedRequests];
     this.queuedRequests = [];
@@ -104,24 +102,20 @@ class RpcClient {
         const response = await this.executeRpcRequest(request.rpcCallData);
         request.resolve(response);
       } catch (error) {
-        request.reject(
-          error instanceof Error ? error : new Error("Unknown error"),
-        );
+        request.reject(error instanceof Error ? error : new Error('Unknown error'));
       }
     }
   }
 
   async setupCose() {
-    const externalAad = hexToBytes(this.session.sessionId.replace(/-/g, ""));
+    const externalAad = hexToBytes(this.session.sessionId.replace(/-/g, ''));
 
     this.coseEncoder = CoseSign1Encoder(this.session.signingKey, externalAad);
     this.coseDecoder = CoseSign1Decoder(this.session.verifyingKey, externalAad);
   }
 
   async setupWorkerCommunication() {
-    this.worker = new SharedWorker(
-      `../workers/rpc-worker.js?session=${this.session.sessionId}`,
-    );
+    this.worker = new SharedWorker(`../workers/rpc-worker.js?session=${this.session.sessionId}`);
 
     this.worker.port.start();
     this.worker.port.onmessage = (e) => {
@@ -134,7 +128,7 @@ class RpcClient {
       await this.broker.connect();
 
       // Set up generic message handler for rpc_request requests
-      this.broker.on("rpc_request", async (message, respond) => {
+      this.broker.on('rpc_request', async (message, respond) => {
         if (respond) {
           try {
             const result = await this.handleRpcRequest(message.data);
@@ -142,17 +136,17 @@ class RpcClient {
           } catch (error) {
             respond({
               success: false,
-              error: error instanceof Error ? error.message : "Unknown error",
+              error: error instanceof Error ? error.message : 'Unknown error',
             });
           }
         }
       });
 
-      console.debug("RPC: Broker initialized successfully");
+      console.debug('RPC: Broker initialized successfully');
     } catch (error) {
-      console.error("RPC: Failed to initialize broker:", error);
+      console.error('RPC: Failed to initialize broker:', error);
       throw new Error(
-        `RPC: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `RPC: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }
@@ -207,7 +201,7 @@ class RpcClient {
         setTimeout(() => {
           if (this.pendingRequests.has(requestId)) {
             this.pendingRequests.delete(requestId);
-            reject(new Error("Request timeout"));
+            reject(new Error('Request timeout'));
           }
         }, 30000); // 30 second timeout
       });
@@ -215,12 +209,12 @@ class RpcClient {
       // Send to worker
       if (this.worker) {
         this.worker.port.postMessage({
-          type: "send",
+          type: 'send',
           nonce: requestId,
           data: encodedData,
         });
       } else {
-        throw new Error("Worker not initialized");
+        throw new Error('Worker not initialized');
       }
 
       // Wait for response
@@ -233,13 +227,13 @@ class RpcClient {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
 
   async handleWorkerMessage(message: any) {
-    if (message.type === "ws-message" || message.type === "http-response") {
+    if (message.type === 'ws-message' || message.type === 'http-response') {
       try {
         // Decode COSE message
         const data = new Uint8Array(message.data);
@@ -247,7 +241,7 @@ class RpcClient {
 
         if (decodedResult.isOk()) {
           const { seq } = decodedResult.value.headers;
-          if (typeof seq === "number") {
+          if (typeof seq === 'number') {
             const pendingRequest = this.pendingRequests.get(seq);
             if (pendingRequest) {
               this.pendingRequests.delete(seq);
@@ -255,15 +249,12 @@ class RpcClient {
             }
           }
         } else {
-          console.error(
-            "RPC: Failed to decode COSE message:",
-            decodedResult.error,
-          );
+          console.error('RPC: Failed to decode COSE message:', decodedResult.error);
         }
       } catch (error) {
-        console.error("RPC: Error handling response message:", error);
+        console.error('RPC: Error handling response message:', error);
       }
-    } else if (message.type === "http-error") {
+    } else if (message.type === 'http-error') {
       // Handle HTTP errors
       const pendingRequest = this.pendingRequests.get(message.nonce);
       if (pendingRequest) {
@@ -284,7 +275,7 @@ class RpcClient {
 
 // Initialize when the page loads
 if (globalThis.addEventListener) {
-  globalThis.addEventListener("DOMContentLoaded", RpcClient.init);
+  globalThis.addEventListener('DOMContentLoaded', RpcClient.init);
 } else {
   // Fallback for cases where DOMContentLoaded has already fired
   RpcClient.init();

@@ -449,7 +449,7 @@ mod tests {
         // Create a TypeScript module that imports proven modules
         let main_module = r"
             import { runOnHttp } from '@proven-network/handler';
-            
+
             export const handler = runOnHttp({ path: '/api/hello' }, (request) => {
                 const message = 'hello from app';
                 return { message };
@@ -508,7 +508,7 @@ mod tests {
         // (without actually triggering NPM resolution)
         let main_module_source = r"
             import { runOnHttp } from '@proven-network/handler';
-            
+
             export const handler = runOnHttp({ path: '/test' }, () => {
                 // This would use a utility from an NPM package if it were available
                 const result = 'simulated npm utility result';
@@ -560,7 +560,7 @@ mod tests {
     async fn test_module_loader_processing_modes() {
         let module_source = r"
             import { runOnHttp } from '@proven-network/handler';
-            
+
             export default runOnHttp({ path: '/api/test' }, (request) => {
                 return { status: 'ok' };
             });

@@ -23,4 +23,4 @@ RUN npm install
 ENV WAIT_TIME=1000
 
 # Command to run tests
-CMD ["sh", "-c", "echo 'Waiting for nodes to start...' && sleep $WAIT_TIME && node run-tests.js"] 
+CMD ["sh", "-c", "echo 'Waiting for nodes to start...' && sleep $WAIT_TIME && node run-tests.js"]

@@ -3,15 +3,17 @@
   "version": "1.0.0",
   "description": "Smart contracts for Proven Network Governance",
   "scripts": {
+    "build": "hardhat compile",
     "compile": "hardhat compile",
     "test": "hardhat test",
+    "lint": "echo 'Linting handled by root workspace'",
     "deploy": "hardhat run scripts/deploy.ts",
     "coverage": "hardhat coverage",
     "typechain": "hardhat typechain"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "2.0.8",
-    "@nomicfoundation/hardhat-ethers": "3.0.8",
+    "@nomicfoundation/hardhat-ethers": "^3.0.9",
     "@nomicfoundation/hardhat-ignition": "^0.15.10",
     "@nomicfoundation/hardhat-ignition-ethers": "^0.15.10",
     "@nomicfoundation/hardhat-network-helpers": "1.0.12",
@@ -20,18 +22,18 @@
     "@nomicfoundation/ignition-core": "^0.15.10",
     "@typechain/ethers-v6": "0.5.1",
     "@typechain/hardhat": "9.1.0",
-    "@types/chai": "5.0.1",
+    "@types/chai": "^4.2.0",
     "@types/mocha": "10.0.10",
-    "@types/node": "22.13.5",
+    "@types/node": "^24.0.0",
     "chai": "4.2.0",
     "dotenv": "^16.4.7",
-    "ethers": "6.13.5",
+    "ethers": "^6.14.0",
     "hardhat": "2.22.19",
     "hardhat-gas-reporter": "2.2.2",
     "solidity-coverage": "0.8.14",
     "ts-node": "10.9.2",
     "typechain": "8.3.2",
-    "typescript": "5.7.3"
+    "typescript": "^5.7.0"
   },
   "dependencies": {
     "@openzeppelin/contracts": "5.2.0"

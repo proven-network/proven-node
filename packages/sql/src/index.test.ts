@@ -1,6 +1,7 @@
 import { getApplicationDb, sql } from './index';
 
-const DB = getApplicationDb('main')
+// Test database creation and migrations
+getApplicationDb('main')
   .migrate(
     `
   CREATE TABLE posts (
@@ -38,3 +39,9 @@ const DB = getApplicationDb('main')
 // let columnNames = rows.columnNames;
 
 // const rows2 = await DB.query(sql('SELECT * FROM posts WHERE id = :id', { id: 1 }));
+
+// Basic test to verify the module can be imported
+test('should import sql functions', () => {
+  expect(getApplicationDb).toBeDefined();
+  expect(sql).toBeDefined();
+});

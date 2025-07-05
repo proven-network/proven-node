@@ -1202,7 +1202,7 @@ tags:
     description: Endpoints that do not fit into other categories, for example, those which provide custom aggregation or indexing, or don't support historic state.
 
 paths:
-  "/status/gateway-status":
+  '/status/gateway-status':
     post:
       operationId: GatewayStatus
       summary: Get Gateway Status
@@ -1211,13 +1211,13 @@ paths:
       tags:
         - Status
       responses:
-        "200":
+        '200':
           description: Network Gateway Information
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GatewayStatusResponse"
-  "/status/network-configuration":
+                $ref: '#/components/schemas/GatewayStatusResponse'
+  '/status/network-configuration':
     post:
       operationId: NetworkConfiguration
       summary: Get Network Configuration
@@ -1226,14 +1226,14 @@ paths:
       tags:
         - Status
       responses:
-        "200":
+        '200':
           description: Network Configuration
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NetworkConfigurationResponse"
+                $ref: '#/components/schemas/NetworkConfigurationResponse'
 
-  "/transaction/construction":
+  '/transaction/construction':
     post:
       operationId: TransactionConstruction
       summary: Get Construction Metadata
@@ -1242,14 +1242,14 @@ paths:
       tags:
         - Transaction
       responses:
-        "200":
+        '200':
           description: |
             Returns information needed to construct transaction.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TransactionConstructionResponse"
-  "/transaction/preview":
+                $ref: '#/components/schemas/TransactionConstructionResponse'
+  '/transaction/preview':
     post:
       operationId: TransactionPreview
       summary: Preview Transaction
@@ -1267,18 +1267,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TransactionPreviewRequest"
+              $ref: '#/components/schemas/TransactionPreviewRequest'
       responses:
-        "200":
+        '200':
           description: Successful Preview
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TransactionPreviewResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/TransactionPreviewResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
-  "/transaction/preview-v2":
+  '/transaction/preview-v2':
     post:
       operationId: TransactionPreviewV2
       summary: Preview Transaction V2
@@ -1297,18 +1297,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TransactionPreviewV2Request"
+              $ref: '#/components/schemas/TransactionPreviewV2Request'
       responses:
-        "200":
+        '200':
           description: Successful Preview
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TransactionPreviewV2Response"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/TransactionPreviewV2Response'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
-  "/transaction/submit":
+  '/transaction/submit':
     post:
       operationId: TransactionSubmit
       summary: Submit Transaction
@@ -1321,17 +1321,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TransactionSubmitRequest"
+              $ref: '#/components/schemas/TransactionSubmitRequest'
       responses:
-        "200":
+        '200':
           description: Successful Submission
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TransactionSubmitResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
-  "/transaction/committed-details":
+                $ref: '#/components/schemas/TransactionSubmitResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
+  '/transaction/committed-details':
     post:
       operationId: TransactionCommittedDetails
       summary: Get Committed Transaction Details
@@ -1345,17 +1345,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TransactionCommittedDetailsRequest"
+              $ref: '#/components/schemas/TransactionCommittedDetailsRequest'
       responses:
-        "200":
+        '200':
           description: Transaction Status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TransactionCommittedDetailsResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
-  "/transaction/status":
+                $ref: '#/components/schemas/TransactionCommittedDetailsResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
+  '/transaction/status':
     post:
       operationId: TransactionStatus
       summary: Get Transaction Status
@@ -1368,17 +1368,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TransactionStatusRequest"
+              $ref: '#/components/schemas/TransactionStatusRequest'
       responses:
-        "200":
+        '200':
           description: Transaction Status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TransactionStatusResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
-  "/transaction/subintent-status":
+                $ref: '#/components/schemas/TransactionStatusResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
+  '/transaction/subintent-status':
     post:
       operationId: TransactionSubintentStatus
       summary: Get Subintent Status
@@ -1391,18 +1391,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/TransactionSubintentStatusRequest"
+              $ref: '#/components/schemas/TransactionSubintentStatusRequest'
       responses:
-        "200":
+        '200':
           description: Transaction Status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TransactionSubintentStatusResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/TransactionSubintentStatusResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
-  "/transaction/account-deposit-pre-validation":
+  '/transaction/account-deposit-pre-validation':
     post:
       operationId: AccountDepositPreValidation
       summary: PreValidate deposit of resources to an account
@@ -1415,18 +1415,18 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AccountDepositPreValidationRequest"
+              $ref: '#/components/schemas/AccountDepositPreValidationRequest'
       responses:
-        "200":
+        '200':
           description: Pre-validation response, including all deciding factors that were used to generate that response.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AccountDepositPreValidationResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/AccountDepositPreValidationResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
-  "/stream/transactions":
+  '/stream/transactions':
     post:
       operationId: StreamTransactions
       summary: Get Transactions Stream
@@ -1440,16 +1440,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StreamTransactionsRequest"
+              $ref: '#/components/schemas/StreamTransactionsRequest'
       responses:
-        "200":
+        '200':
           description: Transactions (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StreamTransactionsResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StreamTransactionsResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/entity/details:
     post:
@@ -1464,16 +1464,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateEntityDetailsRequest"
+              $ref: '#/components/schemas/StateEntityDetailsRequest'
       responses:
-        "200":
+        '200':
           description: Entity Details
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateEntityDetailsResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateEntityDetailsResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/entity/page/metadata:
     post:
@@ -1489,16 +1489,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateEntityMetadataPageRequest"
+              $ref: '#/components/schemas/StateEntityMetadataPageRequest'
       responses:
-        "200":
+        '200':
           description: Entity Metadata (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateEntityMetadataPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateEntityMetadataPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/entity/page/schemas:
     post:
@@ -1514,16 +1514,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateEntitySchemaPageRequest"
+              $ref: '#/components/schemas/StateEntitySchemaPageRequest'
       responses:
-        "200":
+        '200':
           description: Entity Schemas (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateEntitySchemaPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateEntitySchemaPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/entity/page/fungibles/:
     post:
@@ -1540,16 +1540,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateEntityFungiblesPageRequest"
+              $ref: '#/components/schemas/StateEntityFungiblesPageRequest'
       responses:
-        "200":
+        '200':
           description: Entity Fungibles (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateEntityFungiblesPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateEntityFungiblesPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/entity/page/fungible-vaults/:
     post:
@@ -1565,16 +1565,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateEntityFungibleResourceVaultsPageRequest"
+              $ref: '#/components/schemas/StateEntityFungibleResourceVaultsPageRequest'
       responses:
-        "200":
+        '200':
           description: Entity Fungibles (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateEntityFungibleResourceVaultsPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateEntityFungibleResourceVaultsPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/entity/page/non-fungibles/:
     post:
@@ -1591,16 +1591,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateEntityNonFungiblesPageRequest"
+              $ref: '#/components/schemas/StateEntityNonFungiblesPageRequest'
       responses:
-        "200":
+        '200':
           description: Entity Non-Fungibles (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateEntityNonFungiblesPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateEntityNonFungiblesPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/entity/page/non-fungible-vaults/:
     post:
@@ -1616,16 +1616,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateEntityNonFungibleResourceVaultsPageRequest"
+              $ref: '#/components/schemas/StateEntityNonFungibleResourceVaultsPageRequest'
       responses:
-        "200":
+        '200':
           description: Entity Fungibles (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateEntityNonFungibleResourceVaultsPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateEntityNonFungibleResourceVaultsPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/entity/page/non-fungible-vault/ids:
     post:
@@ -1641,16 +1641,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateEntityNonFungibleIdsPageRequest"
+              $ref: '#/components/schemas/StateEntityNonFungibleIdsPageRequest'
       responses:
-        "200":
+        '200':
           description: Entity Non-Fungible IDs (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateEntityNonFungibleIdsPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateEntityNonFungibleIdsPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/non-fungible/ids:
     post:
@@ -1666,16 +1666,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateNonFungibleIdsRequest"
+              $ref: '#/components/schemas/StateNonFungibleIdsRequest'
       responses:
-        "200":
+        '200':
           description: Non-Fungible IDs (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateNonFungibleIdsResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateNonFungibleIdsResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
   /state/non-fungible/data:
     post:
       operationId: NonFungibleData
@@ -1689,16 +1689,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateNonFungibleDataRequest"
+              $ref: '#/components/schemas/StateNonFungibleDataRequest'
       responses:
-        "200":
+        '200':
           description: Non-Fungible ID Data
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateNonFungibleDataResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateNonFungibleDataResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
   /state/non-fungible/location:
     post:
       operationId: NonFungibleLocation
@@ -1712,16 +1712,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateNonFungibleLocationRequest"
+              $ref: '#/components/schemas/StateNonFungibleLocationRequest'
       responses:
-        "200":
+        '200':
           description: Non-Fungible ID Location
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateNonFungibleLocationResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateNonFungibleLocationResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/key-value-store/keys:
     post:
@@ -1735,16 +1735,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateKeyValueStoreKeysRequest"
+              $ref: '#/components/schemas/StateKeyValueStoreKeysRequest'
       responses:
-        "200":
+        '200':
           description: KeyValueStore keys collection
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateKeyValueStoreKeysResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateKeyValueStoreKeysResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
   /state/key-value-store/data:
     post:
       operationId: KeyValueStoreData
@@ -1759,16 +1759,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateKeyValueStoreDataRequest"
+              $ref: '#/components/schemas/StateKeyValueStoreDataRequest'
       responses:
-        "200":
+        '200':
           description: Non-Fungible ID Data
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateKeyValueStoreDataResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateKeyValueStoreDataResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/validators/list:
     post:
@@ -1781,16 +1781,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateValidatorsListRequest"
+              $ref: '#/components/schemas/StateValidatorsListRequest'
       responses:
-        "200":
+        '200':
           description: Validators List
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateValidatorsListResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateValidatorsListResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/account/page/resource-preferences:
     post:
@@ -1805,16 +1805,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateAccountResourcePreferencesPageRequest"
+              $ref: '#/components/schemas/StateAccountResourcePreferencesPageRequest'
       responses:
-        "200":
+        '200':
           description: Account resource preferences page
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateAccountResourcePreferencesPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateAccountResourcePreferencesPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/account/page/authorized-depositors:
     post:
@@ -1829,16 +1829,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateAccountAuthorizedDepositorsPageRequest"
+              $ref: '#/components/schemas/StateAccountAuthorizedDepositorsPageRequest'
       responses:
-        "200":
+        '200':
           description: Account resource preferences page
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateAccountAuthorizedDepositorsPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateAccountAuthorizedDepositorsPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/package/page/blueprints:
     post:
@@ -1854,16 +1854,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StatePackageBlueprintPageRequest"
+              $ref: '#/components/schemas/StatePackageBlueprintPageRequest'
       responses:
-        "200":
+        '200':
           description: Package Blueprints (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatePackageBlueprintPageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StatePackageBlueprintPageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
   /state/package/page/codes:
     post:
       operationId: PackageCodePage
@@ -1878,16 +1878,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StatePackageCodePageRequest"
+              $ref: '#/components/schemas/StatePackageCodePageRequest'
       responses:
-        "200":
+        '200':
           description: Package Blueprints (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatePackageCodePageResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StatePackageCodePageResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/account-locker/page/vaults:
     post:
@@ -1903,16 +1903,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateAccountLockerPageVaultsRequest"
+              $ref: '#/components/schemas/StateAccountLockerPageVaultsRequest'
       responses:
-        "200":
+        '200':
           description: Account Locker vaults (paginated)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateAccountLockerPageVaultsResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateAccountLockerPageVaultsResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /state/account-lockers/touched-at:
     post:
@@ -1928,16 +1928,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/StateAccountLockersTouchedAtRequest"
+              $ref: '#/components/schemas/StateAccountLockersTouchedAtRequest'
       responses:
-        "200":
+        '200':
           description: Account locker account pair last touch state version
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StateAccountLockersTouchedAtResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/StateAccountLockersTouchedAtResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /statistics/validators/uptime:
     post:
@@ -1952,16 +1952,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ValidatorsUptimeRequest"
+              $ref: '#/components/schemas/ValidatorsUptimeRequest'
       responses:
-        "200":
+        '200':
           description: Validators Uptime
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidatorsUptimeResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/ValidatorsUptimeResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
   /extensions/resource-holders/page:
     post:
@@ -1980,16 +1980,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ResourceHoldersRequest"
+              $ref: '#/components/schemas/ResourceHoldersRequest'
       responses:
-        "200":
+        '200':
           description: Resource holders
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ResourceHoldersResponse"
-        "4XX":
-          $ref: "#/components/responses/ErrorResponse"
+                $ref: '#/components/schemas/ResourceHoldersResponse'
+        '4XX':
+          $ref: '#/components/responses/ErrorResponse'
 
 components:
   responses:
@@ -1998,7 +1998,7 @@ components:
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
 
   schemas:
     #
@@ -2011,12 +2011,12 @@ components:
       format: int32
       minimum: 0
       maximum: 255
-      example: "<network-id>"
+      example: '<network-id>'
 
     NetworkName:
       description: The logical name of the network
       type: string
-      example: "<network-name>"
+      example: '<network-name>'
 
     Address:
       description: Bech32m-encoded human readable version of the address.
@@ -2065,16 +2065,16 @@ components:
         - key_type
       properties:
         key_type:
-          $ref: "#/components/schemas/PublicKeyType"
+          $ref: '#/components/schemas/PublicKeyType'
       discriminator:
         propertyName: key_type
         mapping:
           # NOTE: These need to match PublicKeyType
-          EcdsaSecp256k1: "#/components/schemas/PublicKeyEcdsaSecp256k1"
-          EddsaEd25519: "#/components/schemas/PublicKeyEddsaEd25519"
+          EcdsaSecp256k1: '#/components/schemas/PublicKeyEcdsaSecp256k1'
+          EddsaEd25519: '#/components/schemas/PublicKeyEddsaEd25519'
     PublicKeyEcdsaSecp256k1:
       allOf:
-        - $ref: "#/components/schemas/PublicKey"
+        - $ref: '#/components/schemas/PublicKey'
         - type: object
           required:
             - key_hex
@@ -2086,7 +2086,7 @@ components:
               description: The hex-encoded compressed ECDSA Secp256k1 public key (33 bytes)
     PublicKeyEddsaEd25519:
       allOf:
-        - $ref: "#/components/schemas/PublicKey"
+        - $ref: '#/components/schemas/PublicKey'
         - type: object
           required:
             - key_hex
@@ -2108,31 +2108,31 @@ components:
         - key_hash_type
       properties:
         key_hash_type:
-          $ref: "#/components/schemas/PublicKeyHashType"
+          $ref: '#/components/schemas/PublicKeyHashType'
       discriminator:
         propertyName: key_hash_type
         mapping:
           # NOTE: These need to match PublicKeyHashType
-          EcdsaSecp256k1: "#/components/schemas/PublicKeyHashEcdsaSecp256k1"
-          EddsaEd25519: "#/components/schemas/PublicKeyHashEddsaEd25519"
+          EcdsaSecp256k1: '#/components/schemas/PublicKeyHashEcdsaSecp256k1'
+          EddsaEd25519: '#/components/schemas/PublicKeyHashEddsaEd25519'
     PublicKeyHashEcdsaSecp256k1:
       allOf:
-        - $ref: "#/components/schemas/PublicKeyHash"
+        - $ref: '#/components/schemas/PublicKeyHash'
         - type: object
           required:
             - hash_hex
           properties:
             hash_hex:
-              $ref: "#/components/schemas/HashHexString"
+              $ref: '#/components/schemas/HashHexString'
     PublicKeyHashEddsaEd25519:
       allOf:
-        - $ref: "#/components/schemas/PublicKeyHash"
+        - $ref: '#/components/schemas/PublicKeyHash'
         - type: object
           required:
             - hash_hex
           properties:
             hash_hex:
-              $ref: "#/components/schemas/HashHexString"
+              $ref: '#/components/schemas/HashHexString'
 
     #
     # Common Request Types
@@ -2143,14 +2143,14 @@ components:
       type: object
       properties:
         at_ledger_state:
-          $ref: "#/components/schemas/LedgerStateSelector"
+          $ref: '#/components/schemas/LedgerStateSelector'
 
     FromLedgerStateMixin:
       description: defines lower boundary (inclusive) for queried data. i.e `{ "from_state_version" = {"epoch" = 10} }`, will return data from epoch 10 till current max ledger tip.
       type: object
       properties:
         from_ledger_state:
-          $ref: "#/components/schemas/LedgerStateSelector"
+          $ref: '#/components/schemas/LedgerStateSelector'
 
     LedgerStateSelector:
       description: |
@@ -2241,12 +2241,12 @@ components:
         - address
       properties:
         balance:
-          $ref: "#/components/schemas/BigDecimal"
+          $ref: '#/components/schemas/BigDecimal'
         last_changed_at_state_version:
           type: integer
           format: int64
         address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
 
     LedgerStateMixin:
       type: object
@@ -2254,7 +2254,7 @@ components:
         - ledger_state
       properties:
         ledger_state:
-          $ref: "#/components/schemas/LedgerState"
+          $ref: '#/components/schemas/LedgerState'
     ResultSetCursorMixin:
       type: object
       properties:
@@ -2281,7 +2281,7 @@ components:
         - round
       properties:
         network:
-          $ref: "#/components/schemas/NetworkName"
+          $ref: '#/components/schemas/NetworkName'
         state_version:
           description: The state version of the ledger. Each transaction increments the state version by 1.
           type: integer
@@ -2316,9 +2316,9 @@ components:
         - programmatic_json
       properties:
         raw_hex:
-          $ref: "#/components/schemas/HexString"
+          $ref: '#/components/schemas/HexString'
         programmatic_json:
-          $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+          $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
 
     AccountLockerAddress:
       type: object
@@ -2327,14 +2327,14 @@ components:
         - account_address
       properties:
         locker_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         account_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
 
     EntityMetadataCollection:
       description: Entity metadata collection.
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2342,7 +2342,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/EntityMetadataItem"
+                $ref: '#/components/schemas/EntityMetadataItem'
     EntityMetadataItem:
       description: Entity metadata key-value pair.
       type: object
@@ -2356,20 +2356,20 @@ components:
           description: Entity metadata key.
           type: string
         value:
-          $ref: "#/components/schemas/EntityMetadataItemValue"
+          $ref: '#/components/schemas/EntityMetadataItemValue'
         is_locked:
           type: boolean
         last_updated_at_state_version:
-          $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+          $ref: '#/components/schemas/LastUpdatedAtStateVersion'
     EntityMetadataItemValue:
       allOf:
-        - $ref: "#/components/schemas/ScryptoSborValue"
+        - $ref: '#/components/schemas/ScryptoSborValue'
         - type: object
           required:
             - typed
           properties:
             typed:
-              $ref: "#/components/schemas/MetadataTypedValue"
+              $ref: '#/components/schemas/MetadataTypedValue'
 
     TwoWayLinkedDappsCollection:
       description: A collection of two-way linked (resolved & verified) dApps linked to the entity defining this collection.
@@ -2380,14 +2380,14 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/TwoWayLinkedDappsCollectionItem"
+            $ref: '#/components/schemas/TwoWayLinkedDappsCollectionItem'
     TwoWayLinkedDappsCollectionItem:
       type: object
       required:
         - dapp_address
       properties:
         dapp_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
 
     TwoWayLinkedEntitiesCollection:
       description: A collection of two-way linked (resolved & verified) entities linked to the entity defining this collection.
@@ -2398,29 +2398,29 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/TwoWayLinkedEntitiesCollectionItem"
+            $ref: '#/components/schemas/TwoWayLinkedEntitiesCollectionItem'
     TwoWayLinkedEntitiesCollectionItem:
       type: object
       required:
         - entity_address
       properties:
         entity_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
 
     TwoWayLinkedDappOnLedgerDetails:
       type: object
       properties:
         dapps:
-          $ref: "#/components/schemas/TwoWayLinkedDappsCollection"
+          $ref: '#/components/schemas/TwoWayLinkedDappsCollection'
         entities:
-          $ref: "#/components/schemas/TwoWayLinkedEntitiesCollection"
+          $ref: '#/components/schemas/TwoWayLinkedEntitiesCollection'
         primary_locker:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
 
     AccountLockerVaultCollection:
       description: Account Locker Account Resources Collection
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2428,7 +2428,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/AccountLockerVaultCollectionItem"
+                $ref: '#/components/schemas/AccountLockerVaultCollectionItem'
     AccountLockerVaultCollectionItemType:
       type: string
       enum:
@@ -2443,31 +2443,31 @@ components:
         - last_updated_at_state_version
       properties:
         type:
-          $ref: "#/components/schemas/AccountLockerVaultCollectionItemType"
+          $ref: '#/components/schemas/AccountLockerVaultCollectionItemType'
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         vault_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         last_updated_at_state_version:
-          $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+          $ref: '#/components/schemas/LastUpdatedAtStateVersion'
       discriminator:
         propertyName: type
         mapping:
           # NOTE: These need to match AccountLockerVaultCollectionItemType
-          Fungible: "#/components/schemas/AccountLockerVaultCollectionItemFungible"
-          NonFungible: "#/components/schemas/AccountLockerVaultCollectionItemNonFungible"
+          Fungible: '#/components/schemas/AccountLockerVaultCollectionItemFungible'
+          NonFungible: '#/components/schemas/AccountLockerVaultCollectionItemNonFungible'
     AccountLockerVaultCollectionItemFungible:
       allOf:
-        - $ref: "#/components/schemas/AccountLockerVaultCollectionItem"
+        - $ref: '#/components/schemas/AccountLockerVaultCollectionItem'
         - type: object
           required:
             - amount
           properties:
             amount:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
     AccountLockerVaultCollectionItemNonFungible:
       allOf:
-        - $ref: "#/components/schemas/AccountLockerVaultCollectionItem"
+        - $ref: '#/components/schemas/AccountLockerVaultCollectionItem'
         - type: object
           required:
             - total_count
@@ -2478,7 +2478,7 @@ components:
 
     EntitySchemaCollection:
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2486,7 +2486,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/EntitySchemaCollectionItem"
+                $ref: '#/components/schemas/EntitySchemaCollectionItem'
     EntitySchemaCollectionItem:
       type: object
       required:
@@ -2494,14 +2494,14 @@ components:
         - schema_hex
       properties:
         schema_hash_hex:
-          $ref: "#/components/schemas/HexString"
+          $ref: '#/components/schemas/HexString'
         schema_hex:
-          $ref: "#/components/schemas/HexString"
+          $ref: '#/components/schemas/HexString'
 
     PackageBlueprintCollection:
       description: Package blueprint collection.
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2509,7 +2509,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/PackageBlueprintCollectionItem"
+                $ref: '#/components/schemas/PackageBlueprintCollectionItem'
     PackageBlueprintCollectionItem:
       type: object
       required:
@@ -2528,7 +2528,7 @@ components:
         dependant_entities:
           type: array
           items:
-            $ref: "#/components/schemas/Address"
+            $ref: '#/components/schemas/Address'
         auth_template:
           type: object
           description: |
@@ -2537,14 +2537,14 @@ components:
           type: boolean
           nullable: true
         royalty_config:
-          $ref: "#/components/schemas/BlueprintRoyaltyConfig"
+          $ref: '#/components/schemas/BlueprintRoyaltyConfig'
         royalty_config_is_locked:
           type: boolean
           nullable: true
     PackageCodeCollection:
       description: Package code collection.
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2552,7 +2552,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/PackageCodeCollectionItem"
+                $ref: '#/components/schemas/PackageCodeCollectionItem'
     PackageCodeCollectionItem:
       type: object
       required:
@@ -2561,11 +2561,11 @@ components:
         - code_hex
       properties:
         vm_type:
-          $ref: "#/components/schemas/PackageVmType"
+          $ref: '#/components/schemas/PackageVmType'
         code_hash_hex:
-          $ref: "#/components/schemas/HexString"
+          $ref: '#/components/schemas/HexString'
         code_hex:
-          $ref: "#/components/schemas/HexString"
+          $ref: '#/components/schemas/HexString'
 
     ComponentEntityRoleAssignments:
       type: object
@@ -2580,7 +2580,7 @@ components:
         entries:
           type: array
           items:
-            $ref: "#/components/schemas/ComponentEntityRoleAssignmentEntry"
+            $ref: '#/components/schemas/ComponentEntityRoleAssignmentEntry'
 
     ComponentEntityRoleAssignmentEntry:
       type: object
@@ -2589,14 +2589,14 @@ components:
         - assignment
       properties:
         role_key:
-          $ref: "#/components/schemas/RoleKey"
+          $ref: '#/components/schemas/RoleKey'
         assignment:
           type: object
           required:
             - resolution
           properties:
             resolution:
-              $ref: "#/components/schemas/RoleAssignmentResolution"
+              $ref: '#/components/schemas/RoleAssignmentResolution'
             explicit_rule:
               type: object
               description: |
@@ -2604,7 +2604,7 @@ components:
         updater_roles:
           type: array
           items:
-            $ref: "#/components/schemas/RoleKey"
+            $ref: '#/components/schemas/RoleKey'
 
     RoleAssignmentResolution:
       type: string
@@ -2621,12 +2621,12 @@ components:
         name:
           type: string
         module:
-          $ref: "#/components/schemas/ObjectModuleId"
+          $ref: '#/components/schemas/ObjectModuleId'
 
     FungibleResourcesCollection:
       description: Fungible resources collection.
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2634,7 +2634,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/FungibleResourcesCollectionItem"
+                $ref: '#/components/schemas/FungibleResourcesCollectionItem'
     FungibleResourcesCollectionItem:
       type: object
       required:
@@ -2642,41 +2642,41 @@ components:
         - resource_address
       properties:
         aggregation_level:
-          $ref: "#/components/schemas/ResourceAggregationLevel"
+          $ref: '#/components/schemas/ResourceAggregationLevel'
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         explicit_metadata:
-          $ref: "#/components/schemas/EntityMetadataCollection"
+          $ref: '#/components/schemas/EntityMetadataCollection'
       discriminator:
         propertyName: aggregation_level
         mapping:
           # NOTE: These need to match ResourceAggregationLevel
-          Global: "#/components/schemas/FungibleResourcesCollectionItemGloballyAggregated"
-          Vault: "#/components/schemas/FungibleResourcesCollectionItemVaultAggregated"
+          Global: '#/components/schemas/FungibleResourcesCollectionItemGloballyAggregated'
+          Vault: '#/components/schemas/FungibleResourcesCollectionItemVaultAggregated'
     FungibleResourcesCollectionItemGloballyAggregated:
       allOf:
-        - $ref: "#/components/schemas/FungibleResourcesCollectionItem"
+        - $ref: '#/components/schemas/FungibleResourcesCollectionItem'
         - type: object
           required:
             - amount
             - last_updated_at_state_version
           properties:
             amount:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
             last_updated_at_state_version:
-              $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+              $ref: '#/components/schemas/LastUpdatedAtStateVersion'
     FungibleResourcesCollectionItemVaultAggregated:
       allOf:
-        - $ref: "#/components/schemas/FungibleResourcesCollectionItem"
+        - $ref: '#/components/schemas/FungibleResourcesCollectionItem'
         - type: object
           required:
             - vaults
           properties:
             vaults:
-              $ref: "#/components/schemas/FungibleResourcesCollectionItemVaultAggregatedVault"
+              $ref: '#/components/schemas/FungibleResourcesCollectionItemVaultAggregatedVault'
     FungibleResourcesCollectionItemVaultAggregatedVault:
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2684,7 +2684,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/FungibleResourcesCollectionItemVaultAggregatedVaultItem"
+                $ref: '#/components/schemas/FungibleResourcesCollectionItemVaultAggregatedVaultItem'
     FungibleResourcesCollectionItemVaultAggregatedVaultItem:
       type: object
       required:
@@ -2693,16 +2693,16 @@ components:
         - last_updated_at_state_version
       properties:
         vault_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         amount:
-          $ref: "#/components/schemas/BigDecimal"
+          $ref: '#/components/schemas/BigDecimal'
         last_updated_at_state_version:
-          $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+          $ref: '#/components/schemas/LastUpdatedAtStateVersion'
 
     NonFungibleResourcesCollection:
       description: Non-fungible resources collection.
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2710,7 +2710,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/NonFungibleResourcesCollectionItem"
+                $ref: '#/components/schemas/NonFungibleResourcesCollectionItem'
     NonFungibleResourcesCollectionItem:
       type: object
       required:
@@ -2718,20 +2718,20 @@ components:
         - resource_address
       properties:
         aggregation_level:
-          $ref: "#/components/schemas/ResourceAggregationLevel"
+          $ref: '#/components/schemas/ResourceAggregationLevel'
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         explicit_metadata:
-          $ref: "#/components/schemas/EntityMetadataCollection"
+          $ref: '#/components/schemas/EntityMetadataCollection'
       discriminator:
         propertyName: aggregation_level
         mapping:
           # NOTE: These need to match ResourceAggregationLevel
-          Global: "#/components/schemas/NonFungibleResourcesCollectionItemGloballyAggregated"
-          Vault: "#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregated"
+          Global: '#/components/schemas/NonFungibleResourcesCollectionItemGloballyAggregated'
+          Vault: '#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregated'
     NonFungibleResourcesCollectionItemGloballyAggregated:
       allOf:
-        - $ref: "#/components/schemas/NonFungibleResourcesCollectionItem"
+        - $ref: '#/components/schemas/NonFungibleResourcesCollectionItem'
         - type: object
           required:
             - amount
@@ -2742,19 +2742,19 @@ components:
               type: integer
               format: int64
             last_updated_at_state_version:
-              $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+              $ref: '#/components/schemas/LastUpdatedAtStateVersion'
     NonFungibleResourcesCollectionItemVaultAggregated:
       allOf:
-        - $ref: "#/components/schemas/NonFungibleResourcesCollectionItem"
+        - $ref: '#/components/schemas/NonFungibleResourcesCollectionItem'
         - type: object
           required:
             - vaults
           properties:
             vaults:
-              $ref: "#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregatedVault"
+              $ref: '#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregatedVault'
     NonFungibleResourcesCollectionItemVaultAggregatedVault:
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2762,10 +2762,10 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregatedVaultItem"
+                $ref: '#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregatedVaultItem'
     NonFungibleResourcesCollectionItemVaultAggregatedVaultItem:
       allOf:
-        - $ref: "#/components/schemas/OptionalNonFungibleIdsCollection"
+        - $ref: '#/components/schemas/OptionalNonFungibleIdsCollection'
         - type: object
           required:
             - vault_address
@@ -2773,28 +2773,28 @@ components:
             - last_updated_at_state_version
           properties:
             vault_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             total_count:
               type: integer
               format: int64
             last_updated_at_state_version:
-              $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+              $ref: '#/components/schemas/LastUpdatedAtStateVersion'
 
     OptionalNonFungibleIdsCollection:
       description: Non-fungible resource IDs collection.
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           properties:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/NonFungibleId"
+                $ref: '#/components/schemas/NonFungibleId'
 
     AccountResourcePreferencesCollection:
       description: Account resource preferences collection
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2802,7 +2802,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/AccountResourcePreferencesResponseItem"
+                $ref: '#/components/schemas/AccountResourcePreferencesResponseItem'
 
     AccountResourcePreferenceRule:
       type: string
@@ -2818,16 +2818,16 @@ components:
         - last_updated_at_state_version
       properties:
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         resource_preference_rule:
-          $ref: "#/components/schemas/AccountResourcePreferenceRule"
+          $ref: '#/components/schemas/AccountResourcePreferenceRule'
         last_updated_at_state_version:
-          $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+          $ref: '#/components/schemas/LastUpdatedAtStateVersion'
 
     AccountAuthorizedDepositorsCollection:
       description: Account resource preferences collection
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2835,7 +2835,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/AccountAuthorizedDepositorsResponseItem"
+                $ref: '#/components/schemas/AccountAuthorizedDepositorsResponseItem'
 
     AccountAuthorizedDepositorBadgeType:
       type: string
@@ -2862,12 +2862,12 @@ components:
           type: boolean
           nullable: true
         default_deposit_rule:
-          $ref: "#/components/schemas/AccountDefaultDepositRule"
+          $ref: '#/components/schemas/AccountDefaultDepositRule'
         resource_specific_details:
           description: Returns deciding factors for each resource. Contains only information about resources presented in the request, not all resource preference rules for queried account.
           type: array
           items:
-            $ref: "#/components/schemas/AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem"
+            $ref: '#/components/schemas/AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem'
 
     AccountDepositPreValidationDecidingFactorsResourceSpecificDetailsItem:
       type: object
@@ -2877,13 +2877,13 @@ components:
         - is_xrd
       properties:
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         vault_exists:
           type: boolean
         is_xrd:
           type: boolean
         resource_preference_rule:
-          $ref: "#/components/schemas/AccountResourcePreferenceRule"
+          $ref: '#/components/schemas/AccountResourcePreferenceRule'
 
     AccountDepositPreValidationResourceSpecificBehaviourItem:
       type: object
@@ -2892,7 +2892,7 @@ components:
         - allows_try_deposit
       properties:
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         allows_try_deposit:
           type: boolean
 
@@ -2903,30 +2903,30 @@ components:
         - resource_address
       properties:
         badge_type:
-          $ref: "#/components/schemas/AccountAuthorizedDepositorBadgeType"
+          $ref: '#/components/schemas/AccountAuthorizedDepositorBadgeType'
         resource_address:
           # That is part of parent type because moving it to child broke OpenAPI generator and removed some other types:
           # MetadataNonFungibleGlobalIdValueAllOf StateNonFungibleIdsRequestAllOf  MetadataNonFungibleGlobalIdArrayValueAllOf and MetadataNonFungibleGlobalIdArrayValue were affected
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
       discriminator:
         propertyName: badge_type
         mapping:
           # Must match AccountDepositPreValidationBadgeType
-          ResourceBadge: "#/components/schemas/AccountDepositPreValidationResourceBadge"
-          NonFungibleBadge: "#/components/schemas/AccountDepositPreValidationNonFungibleBadge"
+          ResourceBadge: '#/components/schemas/AccountDepositPreValidationResourceBadge'
+          NonFungibleBadge: '#/components/schemas/AccountDepositPreValidationNonFungibleBadge'
     AccountDepositPreValidationResourceBadge:
       allOf:
-        - $ref: "#/components/schemas/TransactionAccountDepositPreValidationAuthorizedDepositorBadge"
+        - $ref: '#/components/schemas/TransactionAccountDepositPreValidationAuthorizedDepositorBadge'
         - type: object
     AccountDepositPreValidationNonFungibleBadge:
       allOf:
-        - $ref: "#/components/schemas/TransactionAccountDepositPreValidationAuthorizedDepositorBadge"
+        - $ref: '#/components/schemas/TransactionAccountDepositPreValidationAuthorizedDepositorBadge'
         - type: object
           required:
             - non_fungible_id
           properties:
             non_fungible_id:
-              $ref: "#/components/schemas/NonFungibleId"
+              $ref: '#/components/schemas/NonFungibleId'
 
     AccountAuthorizedDepositorsResponseItem:
       type: object
@@ -2934,28 +2934,28 @@ components:
         - badge_type
       properties:
         badge_type:
-          $ref: "#/components/schemas/AccountAuthorizedDepositorBadgeType"
+          $ref: '#/components/schemas/AccountAuthorizedDepositorBadgeType'
       discriminator:
         propertyName: badge_type
         mapping:
           # Must match AccountAuthorizedDepositorBadgeType
-          ResourceBadge: "#/components/schemas/AccountAuthorizedDepositorsResourceBadge"
-          NonFungibleBadge: "#/components/schemas/AccountAuthorizedDepositorsNonFungibleBadge"
+          ResourceBadge: '#/components/schemas/AccountAuthorizedDepositorsResourceBadge'
+          NonFungibleBadge: '#/components/schemas/AccountAuthorizedDepositorsNonFungibleBadge'
     AccountAuthorizedDepositorsResourceBadge:
       allOf:
-        - $ref: "#/components/schemas/AccountAuthorizedDepositorsResponseItem"
+        - $ref: '#/components/schemas/AccountAuthorizedDepositorsResponseItem'
         - type: object
           required:
             - resource_address
             - last_updated_at_state_version
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             last_updated_at_state_version:
-              $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+              $ref: '#/components/schemas/LastUpdatedAtStateVersion'
     AccountAuthorizedDepositorsNonFungibleBadge:
       allOf:
-        - $ref: "#/components/schemas/AccountAuthorizedDepositorsResponseItem"
+        - $ref: '#/components/schemas/AccountAuthorizedDepositorsResponseItem'
         - type: object
           required:
             - resource_address
@@ -2963,16 +2963,16 @@ components:
             - last_updated_at_state_version
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             non_fungible_id:
-              $ref: "#/components/schemas/NonFungibleId"
+              $ref: '#/components/schemas/NonFungibleId'
             last_updated_at_state_version:
-              $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+              $ref: '#/components/schemas/LastUpdatedAtStateVersion'
 
     NonFungibleIdsCollection:
       description: Non-fungible resource IDs collection.
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -2980,7 +2980,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/NonFungibleId"
+                $ref: '#/components/schemas/NonFungibleId'
 
     CommittedTransactionInfo:
       type: object
@@ -3004,17 +3004,17 @@ components:
           type: string
           # TODO add format: date-time once OAS generator get fixed support for required value-types
         transaction_status:
-          $ref: "#/components/schemas/TransactionStatus"
+          $ref: '#/components/schemas/TransactionStatus'
         payload_hash:
-          $ref: "#/components/schemas/HashBech32mString"
+          $ref: '#/components/schemas/HashBech32mString'
         intent_hash:
-          $ref: "#/components/schemas/HashBech32mString"
+          $ref: '#/components/schemas/HashBech32mString'
         fee_paid:
-          $ref: "#/components/schemas/BigDecimal"
+          $ref: '#/components/schemas/BigDecimal'
         affected_global_entities:
           type: array
           items:
-            $ref: "#/components/schemas/Address"
+            $ref: '#/components/schemas/Address'
         confirmed_at:
           nullable: true
           type: string
@@ -3023,9 +3023,9 @@ components:
           type: string
           nullable: true
         raw_hex:
-          $ref: "#/components/schemas/HexString"
+          $ref: '#/components/schemas/HexString'
         receipt:
-          $ref: "#/components/schemas/TransactionReceipt"
+          $ref: '#/components/schemas/TransactionReceipt'
         manifest_instructions:
           description: |
             A text-representation of a transaction manifest.
@@ -3038,28 +3038,28 @@ components:
             For user transactions with subintents only the root transaction intent is currently used to determine the manifest classes.
           type: array
           items:
-            $ref: "#/components/schemas/ManifestClass"
+            $ref: '#/components/schemas/ManifestClass'
         message:
           type: object
           description: |
             The optional transaction message.
             This type is defined in the Core API as `TransactionMessage`. See the Core API documentation for more details.
         balance_changes:
-          $ref: "#/components/schemas/TransactionBalanceChanges"
+          $ref: '#/components/schemas/TransactionBalanceChanges'
         subintent_details:
           description: |
             Subintent details.
             Please note that it is returned regardless of whether the transaction was committed successfully or failed, and it can be returned in multiple transactions.
           type: array
           items:
-            $ref: "#/components/schemas/TransactionSubintentDetails"
+            $ref: '#/components/schemas/TransactionSubintentDetails'
         child_subintent_hashes:
           description: |
             The child subintent hashes of the root transaction intent.
             Please note that it is returned regardless of whether the transaction was committed successfully or failed, and it can be returned in multiple transactions.
           type: array
           items:
-            $ref: "#/components/schemas/HashBech32mString"
+            $ref: '#/components/schemas/HashBech32mString'
 
     TransactionStatus:
       type: string
@@ -3121,7 +3121,7 @@ components:
       type: object
       properties:
         status:
-          $ref: "#/components/schemas/TransactionStatus"
+          $ref: '#/components/schemas/TransactionStatus'
         fee_summary:
           type: object
           description: |
@@ -3151,12 +3151,12 @@ components:
             The manifest line-by-line engine return data (only present if `status` is `CommittedSuccess`).
             This type is defined in the Core API as `SborData`. See the Core API documentation for more details.
           items:
-            $ref: "#/components/schemas/SborData"
+            $ref: '#/components/schemas/SborData'
         events:
           description: Events emitted by a transaction.
           type: array
           items:
-            $ref: "#/components/schemas/EventsItem"
+            $ref: '#/components/schemas/EventsItem'
 
         error_message:
           description: Error message (only present if status is `Failed` or `Rejected`)
@@ -3170,7 +3170,7 @@ components:
         - programmatic_json
       properties:
         hex:
-          $ref: "#/components/schemas/HexString"
+          $ref: '#/components/schemas/HexString'
 
     EventsItem:
       type: object
@@ -3186,7 +3186,7 @@ components:
           description: |
             This type is defined in the Core API as `EventEmitterIdentifier`. See the Core API documentation for more details.
         data:
-          $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+          $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
 
     NonFungibleIdType:
       type: string
@@ -3210,7 +3210,7 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/ValidatorUptimeCollectionItem"
+            $ref: '#/components/schemas/ValidatorUptimeCollectionItem'
     ValidatorUptimeCollectionItem:
       type: object
       required:
@@ -3218,7 +3218,7 @@ components:
         - epochs_active_in
       properties:
         address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         proposals_made:
           description: number of proposals made.
           type: integer
@@ -3236,7 +3236,7 @@ components:
 
     ResourceHoldersCollection:
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -3244,7 +3244,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/ResourceHoldersCollectionItem"
+                $ref: '#/components/schemas/ResourceHoldersCollectionItem'
 
     ResourceHoldersResourceType:
       type: string
@@ -3259,9 +3259,9 @@ components:
         - last_updated_at_state_version
       properties:
         type:
-          $ref: "#/components/schemas/ResourceHoldersResourceType"
+          $ref: '#/components/schemas/ResourceHoldersResourceType'
         holder_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         last_updated_at_state_version:
           type: integer
           format: int64
@@ -3269,22 +3269,22 @@ components:
         propertyName: type
         mapping:
           # Must match ResourceHoldersResourceType
-          FungibleResource: "#/components/schemas/ResourceHoldersCollectionFungibleResourceItem"
-          NonFungibleResource: "#/components/schemas/ResourceHoldersCollectionNonFungibleResourceItem"
+          FungibleResource: '#/components/schemas/ResourceHoldersCollectionFungibleResourceItem'
+          NonFungibleResource: '#/components/schemas/ResourceHoldersCollectionNonFungibleResourceItem'
 
     ResourceHoldersCollectionFungibleResourceItem:
       allOf:
-        - $ref: "#/components/schemas/ResourceHoldersCollectionItem"
+        - $ref: '#/components/schemas/ResourceHoldersCollectionItem'
         - type: object
           required:
             - amount
           properties:
             amount:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
 
     ResourceHoldersCollectionNonFungibleResourceItem:
       allOf:
-        - $ref: "#/components/schemas/ResourceHoldersCollectionItem"
+        - $ref: '#/components/schemas/ResourceHoldersCollectionItem'
         - type: object
           required:
             - non_fungible_ids_count
@@ -3295,7 +3295,7 @@ components:
 
     ValidatorCollection:
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -3303,7 +3303,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/ValidatorCollectionItem"
+                $ref: '#/components/schemas/ValidatorCollectionItem'
     ValidatorCollectionItem:
       type: object
       required:
@@ -3317,15 +3317,15 @@ components:
         - effective_fee_factor
       properties:
         address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         stake_vault:
-          $ref: "#/components/schemas/ValidatorVaultItem"
+          $ref: '#/components/schemas/ValidatorVaultItem'
         pending_xrd_withdraw_vault:
-          $ref: "#/components/schemas/ValidatorVaultItem"
+          $ref: '#/components/schemas/ValidatorVaultItem'
         locked_owner_stake_unit_vault:
-          $ref: "#/components/schemas/ValidatorVaultItem"
+          $ref: '#/components/schemas/ValidatorVaultItem'
         pending_owner_stake_unit_unlock_vault:
-          $ref: "#/components/schemas/ValidatorVaultItem"
+          $ref: '#/components/schemas/ValidatorVaultItem'
         state:
           type: object
           nullable: true
@@ -3333,9 +3333,9 @@ components:
             Validator inner state representation.
             This type is defined in the Core API as `ValidatorFieldStateValue`. See the Core API documentation for more details.
         active_in_epoch:
-          $ref: "#/components/schemas/ValidatorCollectionItemActiveInEpoch"
+          $ref: '#/components/schemas/ValidatorCollectionItemActiveInEpoch'
         metadata:
-          $ref: "#/components/schemas/EntityMetadataCollection"
+          $ref: '#/components/schemas/EntityMetadataCollection'
         effective_fee_factor:
           type: object
           required:
@@ -3347,7 +3347,7 @@ components:
                 - fee_factor
               properties:
                 fee_factor:
-                  $ref: "#/components/schemas/BigDecimal"
+                  $ref: '#/components/schemas/BigDecimal'
             pending:
               type: object
               nullable: true
@@ -3356,7 +3356,7 @@ components:
                 - effective_at_epoch
               properties:
                 fee_factor:
-                  $ref: "#/components/schemas/BigDecimal"
+                  $ref: '#/components/schemas/BigDecimal'
                 effective_at_epoch:
                   type: integer
                   format: int64
@@ -3370,12 +3370,12 @@ components:
         - key
       properties:
         stake:
-          $ref: "#/components/schemas/BigDecimal"
+          $ref: '#/components/schemas/BigDecimal'
         stake_percentage:
           type: number
           format: double
         key:
-          $ref: "#/components/schemas/PublicKey"
+          $ref: '#/components/schemas/PublicKey'
 
     #
     # /status/* Request & Response Types
@@ -3388,9 +3388,9 @@ components:
         - well_known_addresses
       properties:
         network_id:
-          $ref: "#/components/schemas/NetworkId"
+          $ref: '#/components/schemas/NetworkId'
         network_name:
-          $ref: "#/components/schemas/NetworkName"
+          $ref: '#/components/schemas/NetworkName'
         well_known_addresses:
           type: object
           required:
@@ -3425,79 +3425,79 @@ components:
             - transaction_tracker
           properties:
             xrd:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             secp256k1_signature_virtual_badge:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             ed25519_signature_virtual_badge:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             package_of_direct_caller_virtual_badge:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             global_caller_virtual_badge:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             system_transaction_badge:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             package_owner_badge:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             validator_owner_badge:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             account_owner_badge:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             identity_owner_badge:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             package_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             resource_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             account_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             identity_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             consensus_manager_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             access_controller_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             transaction_processor_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             metadata_module_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             royalty_module_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             access_rules_package:
-              description: "**Obsolete!** Use `role_assignment_module_package` instead."
+              description: '**Obsolete!** Use `role_assignment_module_package` instead.'
               deprecated: true
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             role_assignment_module_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             genesis_helper_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             faucet_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             consensus_manager:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             genesis_helper:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             faucet:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             pool_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             locker_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             transaction_tracker:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             transaction_tracker_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             test_utils_package:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     GatewayStatusResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - release_info
           properties:
             release_info:
-              $ref: "#/components/schemas/GatewayInfoResponseReleaseInfo"
+              $ref: '#/components/schemas/GatewayInfoResponseReleaseInfo'
     GatewayInfoResponseKnownTarget:
       type: object
       required:
@@ -3532,7 +3532,7 @@ components:
     TransactionConstructionResponse:
       allOf:
         - type: object
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
 
     TransactionPreviewRequest:
       type: object
@@ -3540,7 +3540,7 @@ components:
         - manifest
       properties:
         opt_ins:
-          $ref: "#/components/schemas/TransactionPreviewOptIns"
+          $ref: '#/components/schemas/TransactionPreviewOptIns'
         manifest:
           description: A text-representation of a transaction manifest
           type: string
@@ -3566,7 +3566,7 @@ components:
             An integer between `0` and `10^10`, marking the epoch at which the transaction is no
             longer valid. If omitted, a maximum epoch (relative to the `start_epoch_inclusive`) will be used.
         notary_public_key:
-          $ref: "#/components/schemas/PublicKey"
+          $ref: '#/components/schemas/PublicKey'
           description: |
             The notary public key to use.
             If not provided, this defaults to a fixed public key.
@@ -3595,7 +3595,7 @@ components:
         signer_public_keys:
           type: array
           items:
-            $ref: "#/components/schemas/PublicKey"
+            $ref: '#/components/schemas/PublicKey'
           description: |
             A list of public keys to be used as transaction signers.
             If not provided, this defaults to an empty array.
@@ -3605,7 +3605,7 @@ components:
             An optional transaction message. Only affects the costing.
             This type is defined in the Core API as `TransactionMessage`. See the Core API documentation for more details.
         flags:
-          $ref: "#/components/schemas/PreviewFlags"
+          $ref: '#/components/schemas/PreviewFlags'
 
     PreviewFlags:
       type: object
@@ -3696,7 +3696,7 @@ components:
             functionality update your Radix Engine Toolkit and use the receipt provided in the
             `radix_engine_toolkit_receipt` field of this response.
           deprecated: true
-          $ref: "#/components/schemas/HexString"
+          $ref: '#/components/schemas/HexString'
         radix_engine_toolkit_receipt:
           type: object
           description: |
@@ -3738,15 +3738,15 @@ components:
         - preview_transaction
       properties:
         preview_transaction:
-          $ref: "#/components/schemas/PreviewTransaction"
+          $ref: '#/components/schemas/PreviewTransaction'
         flags:
-          $ref: "#/components/schemas/PreviewFlags"
+          $ref: '#/components/schemas/PreviewFlags'
         opt_ins:
-          $ref: "#/components/schemas/TransactionPreviewV2OptIns"
+          $ref: '#/components/schemas/TransactionPreviewV2OptIns'
       example:
         preview_transaction:
-          type: "Compiled"
-          preview_transaction_hex: "<sample-preview-transaction-hex>"
+          type: 'Compiled'
+          preview_transaction_hex: '<sample-preview-transaction-hex>'
         flags:
           use_free_credit: true
           assume_all_signature_proofs: true
@@ -3792,15 +3792,15 @@ components:
         - type
       properties:
         type:
-          $ref: "#/components/schemas/PreviewTransactionType"
+          $ref: '#/components/schemas/PreviewTransactionType'
       discriminator:
         propertyName: type
         mapping:
           # NOTE: These need to match PreviewTransactionType
-          Compiled: "#/components/schemas/CompiledPreviewTransaction"
+          Compiled: '#/components/schemas/CompiledPreviewTransaction'
     CompiledPreviewTransaction:
       allOf:
-        - $ref: "#/components/schemas/PreviewTransaction"
+        - $ref: '#/components/schemas/PreviewTransaction'
         - type: object
           required:
             - preview_transaction_hex
@@ -3883,7 +3883,7 @@ components:
         - notarized_transaction_hex
       properties:
         notarized_transaction_hex:
-          $ref: "#/components/schemas/NotarizedTransactionHexString"
+          $ref: '#/components/schemas/NotarizedTransactionHexString'
     TransactionSubmitResponse:
       type: object
       required:
@@ -3901,20 +3901,20 @@ components:
             - resource_addresses
           properties:
             account_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             resource_addresses:
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             badge:
-              $ref: "#/components/schemas/TransactionAccountDepositPreValidationAuthorizedDepositorBadge"
+              $ref: '#/components/schemas/TransactionAccountDepositPreValidationAuthorizedDepositorBadge'
           example:
-            account_address: "<account-address>"
-            resource_addresses: ["<resource-address>"]
+            account_address: '<account-address>'
+            resource_addresses: ['<resource-address>']
 
     AccountDepositPreValidationResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - allows_try_deposit_batch
@@ -3927,9 +3927,9 @@ components:
               description: The fully resolved try_deposit_* ability of each resource (which takes all the inputs into account, including the authorized depositor badge, the default deposit rule and the resource-specific details).
               type: array
               items:
-                $ref: "#/components/schemas/AccountDepositPreValidationResourceSpecificBehaviourItem"
+                $ref: '#/components/schemas/AccountDepositPreValidationResourceSpecificBehaviourItem'
             deciding_factors:
-              $ref: "#/components/schemas/AccountDepositPreValidationDecidingFactors"
+              $ref: '#/components/schemas/AccountDepositPreValidationDecidingFactors'
 
     TransactionSubintentStatusRequest:
       type: object
@@ -3937,19 +3937,19 @@ components:
         - subintent_hash
       properties:
         subintent_hash:
-          $ref: "#/components/schemas/HashBech32mString"
+          $ref: '#/components/schemas/HashBech32mString'
       example:
-        subintent_hash: "<transaction-subintent-hash>"
+        subintent_hash: '<transaction-subintent-hash>'
     TransactionSubintentStatusResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - subintent_status
             - subintent_status_description
           properties:
             subintent_status:
-              $ref: "#/components/schemas/SubintentStatus"
+              $ref: '#/components/schemas/SubintentStatus'
             subintent_status_description:
               description: |
                 An additional description to clarify the `subintent_status`.
@@ -3963,7 +3963,7 @@ components:
             finalized_at_transaction_intent_hash:
               description: |
                 The transaction intent hash of the transaction in which the subintent was finalized (committed as a success). This field is only present if the status is `CommittedSuccess`.
-              $ref: "#/components/schemas/HashBech32mString"
+              $ref: '#/components/schemas/HashBech32mString'
 
     TransactionStatusRequest:
       allOf:
@@ -3972,12 +3972,12 @@ components:
             - intent_hash
           properties:
             intent_hash:
-              $ref: "#/components/schemas/HashBech32mString"
+              $ref: '#/components/schemas/HashBech32mString'
       example:
-        intent_hash: "<transaction-intent-hash>"
+        intent_hash: '<transaction-intent-hash>'
     TransactionStatusResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - status
@@ -3986,9 +3986,9 @@ components:
             - known_payloads
           properties:
             status:
-              $ref: "#/components/schemas/TransactionStatus"
+              $ref: '#/components/schemas/TransactionStatus'
             intent_status:
-              $ref: "#/components/schemas/TransactionIntentStatus"
+              $ref: '#/components/schemas/TransactionIntentStatus'
             intent_status_description:
               description: |
                 An additional description to clarify the intent status.
@@ -3996,7 +3996,7 @@ components:
             known_payloads:
               type: array
               items:
-                $ref: "#/components/schemas/TransactionStatusResponseKnownPayloadItem"
+                $ref: '#/components/schemas/TransactionStatusResponseKnownPayloadItem'
             committed_state_version:
               description: |
                 If the intent was committed, this gives the state version when this intent was committed.
@@ -4025,11 +4025,11 @@ components:
         - status
       properties:
         payload_hash:
-          $ref: "#/components/schemas/HashBech32mString"
+          $ref: '#/components/schemas/HashBech32mString'
         status:
-          $ref: "#/components/schemas/TransactionStatus"
+          $ref: '#/components/schemas/TransactionStatus'
         payload_status:
-          $ref: "#/components/schemas/TransactionPayloadStatus"
+          $ref: '#/components/schemas/TransactionPayloadStatus'
         payload_status_description:
           description: |
             An additional description to clarify the payload status.
@@ -4057,7 +4057,7 @@ components:
           type: string
           nullable: true
         handling_status:
-          $ref: "#/components/schemas/TransactionPayloadGatewayHandlingStatus"
+          $ref: '#/components/schemas/TransactionPayloadGatewayHandlingStatus'
         handling_status_reason:
           description: |
             Additional reason for why the Gateway has its current handling status.
@@ -4073,17 +4073,17 @@ components:
 
     TransactionCommittedDetailsRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
         - type: object
           required:
             - intent_hash
           properties:
             intent_hash:
-              $ref: "#/components/schemas/HashBech32mString"
+              $ref: '#/components/schemas/HashBech32mString'
             opt_ins:
-              $ref: "#/components/schemas/TransactionDetailsOptIns"
+              $ref: '#/components/schemas/TransactionDetailsOptIns'
       example:
-        intent_hash: "<transaction-intent-hash>"
+        intent_hash: '<transaction-intent-hash>'
     TransactionDetailsOptIns:
       type: object
       properties:
@@ -4137,13 +4137,13 @@ components:
 
     TransactionCommittedDetailsResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - transaction
           properties:
             transaction:
-              $ref: "#/components/schemas/CommittedTransactionInfo"
+              $ref: '#/components/schemas/CommittedTransactionInfo'
 
     TransactionSubintentDetails:
       type: object
@@ -4151,7 +4151,7 @@ components:
         - subintent_hash
       properties:
         subintent_hash:
-          $ref: "#/components/schemas/HashBech32mString"
+          $ref: '#/components/schemas/HashBech32mString'
         manifest_instructions:
           description: |
             A text-representation of a subintent manifest.
@@ -4166,7 +4166,7 @@ components:
           description: The subintent hash of each child of the subintent.
           type: array
           items:
-            $ref: "#/components/schemas/HashBech32mString"
+            $ref: '#/components/schemas/HashBech32mString'
 
     TransactionBalanceChanges:
       type: object
@@ -4181,19 +4181,19 @@ components:
             A list of all fee-related fungible balance changes per entity and resource.
           type: array
           items:
-            $ref: "#/components/schemas/TransactionFungibleFeeBalanceChanges"
+            $ref: '#/components/schemas/TransactionFungibleFeeBalanceChanges'
         fungible_balance_changes:
           description: |
             A list of all non-fee-related fungible balance changes per entity and resource.
           type: array
           items:
-            $ref: "#/components/schemas/TransactionFungibleBalanceChanges"
+            $ref: '#/components/schemas/TransactionFungibleBalanceChanges'
         non_fungible_balance_changes:
           description: |
             A list of all non-fungible changes per entity and resource.
           type: array
           items:
-            $ref: "#/components/schemas/TransactionNonFungibleBalanceChanges"
+            $ref: '#/components/schemas/TransactionNonFungibleBalanceChanges'
     TransactionFungibleFeeBalanceChangeType:
       description: |
         Indicates fee-related balance changes, for example:
@@ -4218,11 +4218,11 @@ components:
         - balance_change
       properties:
         type:
-          $ref: "#/components/schemas/TransactionFungibleFeeBalanceChangeType"
+          $ref: '#/components/schemas/TransactionFungibleFeeBalanceChangeType'
         entity_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         balance_change:
           type: string
           description: |
@@ -4235,9 +4235,9 @@ components:
         - balance_change
       properties:
         entity_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         balance_change:
           type: string
           description: |
@@ -4251,17 +4251,17 @@ components:
         - removed
       properties:
         entity_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         added:
           type: array
           items:
-            $ref: "#/components/schemas/NonFungibleId"
+            $ref: '#/components/schemas/NonFungibleId'
         removed:
           type: array
           items:
-            $ref: "#/components/schemas/NonFungibleId"
+            $ref: '#/components/schemas/NonFungibleId'
 
     #
     # /stream/* Request & Response Types
@@ -4269,9 +4269,9 @@ components:
 
     StreamTransactionsRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/FromLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/FromLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           properties:
             kind_filter:
@@ -4285,42 +4285,42 @@ components:
               description: Allows specifying an array of account addresses. If specified, the response will contain only transactions with a manifest containing withdrawals from the given accounts.
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             manifest_accounts_deposited_into_filter:
               description: Similar to `manifest_accounts_withdrawn_from_filter`, but will return only transactions with a manifest containing deposits to the given accounts.
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             manifest_badges_presented_filter:
               description: Allows specifying array of badge resource addresses. If specified, the response will contain only transactions where the given badges were presented.
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             manifest_resources_filter:
               description: Allows specifying array of resource addresses. If specified, the response will contain only transactions containing the given resources in the manifest (regardless of their usage).
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             affected_global_entities_filter:
               description: Allows specifying an array of global addresses. If specified, the response will contain transactions that affected all of the given global entities. A global entity is marked as "affected" by a transaction if any of its state (or its descendents' state) was modified as a result of the transaction. For performance reasons consensus manager and transaction tracker are excluded from that filter.
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             events_filter:
               description: Filters the transaction stream to transactions which emitted at least one event matching each filter (each filter can be satisfied by a different event). Currently *only* deposit and withdrawal events emitted by an internal vault entity are tracked. For the purpose of filtering, the emitter address is replaced by the global ancestor of the emitter, for example, the top-level account / component which contains the vault which emitted the event.
               type: array
               items:
-                $ref: "#/components/schemas/StreamTransactionsRequestEventFilterItem"
+                $ref: '#/components/schemas/StreamTransactionsRequestEventFilterItem'
             accounts_with_manifest_owner_method_calls:
               description: Allows specifying an array of account addresses. If specified, the response will contain only transactions that, for all specified accounts, contain manifest method calls to that account which require the owner role. See the [account docs](https://docs.radixdlt.com/docs/account) for more information.
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             accounts_without_manifest_owner_method_calls:
               description: Allows specifying an array of account addresses. If specified, the response will contain only transactions that, for all specified accounts, do NOT contain manifest method calls to that account which require owner role. See the [account docs](https://docs.radixdlt.com/docs/account) for more information.
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             manifest_class_filter:
               description: Allows filtering to transactions which match the given manifest classification. If specified, the response will contain only transactions which have a class that matches the filter. If `match_only_most_specific` set to true, only transactions where the queried class is most specific will be returned. See the [docs on manifest classification](https://docs.radixdlt.com/docs/conforming-transaction-manifest-types) for more information.
               type: object
@@ -4328,7 +4328,7 @@ components:
                 - class
               properties:
                 class:
-                  $ref: "#/components/schemas/ManifestClass"
+                  $ref: '#/components/schemas/ManifestClass'
                 match_only_most_specific:
                   type: boolean
                   default: false
@@ -4336,7 +4336,7 @@ components:
               description: Allows specifying an array of global addresses. If specified, the response will contain transactions in which all entities emitted events. If an event was published by an internal entity, it is going to be indexed as it is a global ancestor. For performance reasons events published by consensus manager and native XRD resource are excluded from that filter.
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             order:
               description: Configures the order of returned result set. Defaults to `desc`.
               type: string
@@ -4344,7 +4344,7 @@ components:
                 - Asc
                 - Desc
             opt_ins:
-              $ref: "#/components/schemas/TransactionDetailsOptIns"
+              $ref: '#/components/schemas/TransactionDetailsOptIns'
       example:
         limit_per_page: 5
     StreamTransactionsRequestEventFilterItem:
@@ -4358,12 +4358,12 @@ components:
             - Deposit
             - Withdrawal
         emitter_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
     StreamTransactionsResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - items
@@ -4376,7 +4376,7 @@ components:
               description: The page of user transactions.
               type: array
               items:
-                $ref: "#/components/schemas/CommittedTransactionInfo"
+                $ref: '#/components/schemas/CommittedTransactionInfo'
 
     #
     # /state/entity/* Request & Response Types
@@ -4384,24 +4384,24 @@ components:
 
     StateEntityDetailsRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
         - type: object
           required:
             - addresses
           properties:
             opt_ins:
-              $ref: "#/components/schemas/StateEntityDetailsOptIns"
+              $ref: '#/components/schemas/StateEntityDetailsOptIns'
             addresses:
               type: array
               description: limited to max 20 items.
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
             aggregation_level:
-              $ref: "#/components/schemas/ResourceAggregationLevel"
+              $ref: '#/components/schemas/ResourceAggregationLevel'
       example:
         addresses:
-          - "<entity-address>"
-        aggregation_level: "Vault"
+          - '<entity-address>'
+        aggregation_level: 'Vault'
         opt_ins:
           ancestor_identities: true
           component_royalty_config: true
@@ -4452,7 +4452,7 @@ components:
           default: false
     StateEntityDetailsResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - items
@@ -4460,7 +4460,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/StateEntityDetailsResponseItem"
+                $ref: '#/components/schemas/StateEntityDetailsResponseItem'
     StateEntityDetailsResponseItem:
       type: object
       required:
@@ -4468,28 +4468,28 @@ components:
         - metadata
       properties:
         address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         fungible_resources:
-          $ref: "#/components/schemas/FungibleResourcesCollection"
+          $ref: '#/components/schemas/FungibleResourcesCollection'
         non_fungible_resources:
-          $ref: "#/components/schemas/NonFungibleResourcesCollection"
+          $ref: '#/components/schemas/NonFungibleResourcesCollection'
         ancestor_identities:
-          $ref: "#/components/schemas/StateEntityDetailsResponseItemAncestorIdentities"
+          $ref: '#/components/schemas/StateEntityDetailsResponseItemAncestorIdentities'
         metadata:
-          $ref: "#/components/schemas/EntityMetadataCollection"
+          $ref: '#/components/schemas/EntityMetadataCollection'
         explicit_metadata:
-          $ref: "#/components/schemas/EntityMetadataCollection"
+          $ref: '#/components/schemas/EntityMetadataCollection'
         details:
-          $ref: "#/components/schemas/StateEntityDetailsResponseItemDetails"
+          $ref: '#/components/schemas/StateEntityDetailsResponseItemDetails'
     StateEntityDetailsResponseItemAncestorIdentities:
       type: object
       properties:
         parent_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         owner_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         global_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
     StateEntityDetailsResponseItemDetailsType:
       type: string
       enum:
@@ -4505,20 +4505,20 @@ components:
         - type
       properties:
         type:
-          $ref: "#/components/schemas/StateEntityDetailsResponseItemDetailsType"
+          $ref: '#/components/schemas/StateEntityDetailsResponseItemDetailsType'
       discriminator:
         propertyName: type
         mapping:
           # Must match StateEntityDetailsResponseDetailsType
-          FungibleResource: "#/components/schemas/StateEntityDetailsResponseFungibleResourceDetails"
-          NonFungibleResource: "#/components/schemas/StateEntityDetailsResponseNonFungibleResourceDetails"
-          FungibleVault: "#/components/schemas/StateEntityDetailsResponseFungibleVaultDetails"
-          NonFungibleVault: "#/components/schemas/StateEntityDetailsResponseNonFungibleVaultDetails"
-          Package: "#/components/schemas/StateEntityDetailsResponsePackageDetails"
-          Component: "#/components/schemas/StateEntityDetailsResponseComponentDetails"
+          FungibleResource: '#/components/schemas/StateEntityDetailsResponseFungibleResourceDetails'
+          NonFungibleResource: '#/components/schemas/StateEntityDetailsResponseNonFungibleResourceDetails'
+          FungibleVault: '#/components/schemas/StateEntityDetailsResponseFungibleVaultDetails'
+          NonFungibleVault: '#/components/schemas/StateEntityDetailsResponseNonFungibleVaultDetails'
+          Package: '#/components/schemas/StateEntityDetailsResponsePackageDetails'
+          Component: '#/components/schemas/StateEntityDetailsResponseComponentDetails'
     StateEntityDetailsResponseFungibleResourceDetails:
       allOf:
-        - $ref: "#/components/schemas/StateEntityDetailsResponseItemDetails"
+        - $ref: '#/components/schemas/StateEntityDetailsResponseItemDetails'
         - type: object
           required:
             - role_assignments
@@ -4528,23 +4528,23 @@ components:
             - total_burned
           properties:
             role_assignments:
-              $ref: "#/components/schemas/ComponentEntityRoleAssignments"
+              $ref: '#/components/schemas/ComponentEntityRoleAssignments'
             divisibility:
               type: integer
               minimum: 0
             total_supply:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
             total_minted:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
             total_burned:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
             two_way_linked_dapps:
-              $ref: "#/components/schemas/TwoWayLinkedDappsCollection"
+              $ref: '#/components/schemas/TwoWayLinkedDappsCollection'
             native_resource_details:
-              $ref: "#/components/schemas/NativeResourceDetails"
+              $ref: '#/components/schemas/NativeResourceDetails'
     StateEntityDetailsResponseNonFungibleResourceDetails:
       allOf:
-        - $ref: "#/components/schemas/StateEntityDetailsResponseItemDetails"
+        - $ref: '#/components/schemas/StateEntityDetailsResponseItemDetails'
         - type: object
           required:
             - role_assignments
@@ -4555,52 +4555,52 @@ components:
             - non_fungible_data_mutable_fields
           properties:
             role_assignments:
-              $ref: "#/components/schemas/ComponentEntityRoleAssignments"
+              $ref: '#/components/schemas/ComponentEntityRoleAssignments'
             non_fungible_id_type:
-              $ref: "#/components/schemas/NonFungibleIdType"
+              $ref: '#/components/schemas/NonFungibleIdType'
             total_supply:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
             total_minted:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
             total_burned:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
             non_fungible_data_mutable_fields:
               type: array
               items:
                 type: string
             two_way_linked_dapps:
-              $ref: "#/components/schemas/TwoWayLinkedDappsCollection"
+              $ref: '#/components/schemas/TwoWayLinkedDappsCollection'
             native_resource_details:
-              $ref: "#/components/schemas/NativeResourceDetails"
+              $ref: '#/components/schemas/NativeResourceDetails'
     StateEntityDetailsResponseFungibleVaultDetails:
       allOf:
-        - $ref: "#/components/schemas/StateEntityDetailsResponseItemDetails"
+        - $ref: '#/components/schemas/StateEntityDetailsResponseItemDetails'
         - type: object
           required:
             - resource_address
             - balance
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             balance:
-              $ref: "#/components/schemas/FungibleResourcesCollectionItemVaultAggregatedVaultItem"
+              $ref: '#/components/schemas/FungibleResourcesCollectionItemVaultAggregatedVaultItem'
     StateEntityDetailsResponseNonFungibleVaultDetails:
       allOf:
-        - $ref: "#/components/schemas/StateEntityDetailsResponseItemDetails"
+        - $ref: '#/components/schemas/StateEntityDetailsResponseItemDetails'
         - type: object
           required:
             - resource_address
             - balance
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             balance:
-              $ref: "#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregatedVaultItem"
+              $ref: '#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregatedVaultItem'
 
     StateEntityDetailsResponsePackageDetails:
       description: "vm_type, code_hash_hex and code_hex are always going to be empty, use `codes` property which will return collection (it's possible after protocol update that package might have multiple codes)"
       allOf:
-        - $ref: "#/components/schemas/StateEntityDetailsResponseItemDetails"
+        - $ref: '#/components/schemas/StateEntityDetailsResponseItemDetails'
         - type: object
           required:
             - codes
@@ -4609,40 +4609,40 @@ components:
             - code_hex
           properties:
             codes:
-              $ref: "#/components/schemas/PackageCodeCollection"
+              $ref: '#/components/schemas/PackageCodeCollection'
             vm_type:
-              description: "**Obsolete!** Use `codes` collection instead."
+              description: '**Obsolete!** Use `codes` collection instead.'
               deprecated: true
-              $ref: "#/components/schemas/PackageVmType"
+              $ref: '#/components/schemas/PackageVmType'
             code_hash_hex:
-              description: "**Obsolete!** Use `codes` collection instead."
+              description: '**Obsolete!** Use `codes` collection instead.'
               deprecated: true
-              $ref: "#/components/schemas/HexString"
+              $ref: '#/components/schemas/HexString'
             code_hex:
-              description: "**Obsolete!** Use `codes` collection instead."
+              description: '**Obsolete!** Use `codes` collection instead.'
               deprecated: true
-              $ref: "#/components/schemas/HexString"
+              $ref: '#/components/schemas/HexString'
             royalty_vault_balance:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
             blueprints:
-              $ref: "#/components/schemas/PackageBlueprintCollection"
+              $ref: '#/components/schemas/PackageBlueprintCollection'
             schemas:
-              $ref: "#/components/schemas/EntitySchemaCollection"
+              $ref: '#/components/schemas/EntitySchemaCollection'
             role_assignments:
-              $ref: "#/components/schemas/ComponentEntityRoleAssignments"
+              $ref: '#/components/schemas/ComponentEntityRoleAssignments'
             two_way_linked_dapp_address:
               description: Two-way linked (resolved & verified) dApp address, if any.
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
     StateEntityDetailsResponseComponentDetails:
       allOf:
-        - $ref: "#/components/schemas/StateEntityDetailsResponseItemDetails"
+        - $ref: '#/components/schemas/StateEntityDetailsResponseItemDetails'
         - type: object
           required:
             - blueprint_name
             - blueprint_version
           properties:
             package_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             blueprint_name:
               type: string
             blueprint_version:
@@ -4655,176 +4655,176 @@ components:
                 `Validator`, `AccessController`, `OneResourcePool`, `TwoResourcePool`, and `MultiResourcePool`, this field will be a
                 custom JSON model defined in the Core API schema.
             role_assignments:
-              $ref: "#/components/schemas/ComponentEntityRoleAssignments"
+              $ref: '#/components/schemas/ComponentEntityRoleAssignments'
             royalty_vault_balance:
-              $ref: "#/components/schemas/BigDecimal"
+              $ref: '#/components/schemas/BigDecimal'
             royalty_config:
-              $ref: "#/components/schemas/ComponentRoyaltyConfig"
+              $ref: '#/components/schemas/ComponentRoyaltyConfig'
             two_way_linked_dapp_address:
               description: Two-way linked (resolved & verified) dApp address, if any. Applicable to non-Account dApp components only.
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             two_way_linked_dapp_details:
               description: Two-way linked (resolved & verified) dApp details. Applicable to dApp definition accounts only and limited to on-ledger information only.
-              $ref: "#/components/schemas/TwoWayLinkedDappOnLedgerDetails"
+              $ref: '#/components/schemas/TwoWayLinkedDappOnLedgerDetails'
             native_resource_details:
-              $ref: "#/components/schemas/NativeResourceDetails"
+              $ref: '#/components/schemas/NativeResourceDetails'
 
     StateAccountResourcePreferencesPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - account_address
           properties:
             account_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
         account_address: null
 
     StateAccountResourcePreferencesPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/AccountResourcePreferencesCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/AccountResourcePreferencesCollection'
         - type: object
           required:
             - account_address
           properties:
             account_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StateAccountAuthorizedDepositorsPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - account_address
           properties:
             account_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
         account_address: null
 
     StateAccountAuthorizedDepositorsPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/AccountAuthorizedDepositorsCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/AccountAuthorizedDepositorsCollection'
         - type: object
           required:
             - account_address
           properties:
             account_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StatePackageBlueprintPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - package_address
           properties:
             package_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
-        package_address: "<package-address>"
+        package_address: '<package-address>'
     StatePackageBlueprintPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/PackageBlueprintCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/PackageBlueprintCollection'
         - type: object
           required:
             - package_address
           properties:
             package_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StatePackageCodePageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - package_address
           properties:
             package_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
-        package_address: "<package-address>"
+        package_address: '<package-address>'
     StatePackageCodePageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/PackageCodeCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/PackageCodeCollection'
         - type: object
           required:
             - package_address
           properties:
             package_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StateEntityMetadataPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
-        address: "<entity-address>"
+        address: '<entity-address>'
     StateEntityMetadataPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/EntityMetadataCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/EntityMetadataCollection'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StateEntitySchemaPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
-        address: "<package-address>"
+        address: '<package-address>'
     StateEntitySchemaPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/EntitySchemaCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/EntitySchemaCollection'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StateEntityFungiblesPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             aggregation_level:
-              $ref: "#/components/schemas/ResourceAggregationLevel"
+              $ref: '#/components/schemas/ResourceAggregationLevel'
             opt_ins:
-              $ref: "#/components/schemas/StateEntityFungiblesPageRequestOptIns"
+              $ref: '#/components/schemas/StateEntityFungiblesPageRequestOptIns'
       example:
-        address: "<component-entity-address>"
+        address: '<component-entity-address>'
     StateEntityFungiblesPageRequestOptIns:
       type: object
       description: Check detailed [OptIns](#section/Using-endpoints-with-opt-in-features) documentation for more details
@@ -4836,60 +4836,60 @@ components:
             type: string
     StateEntityFungiblesPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/FungibleResourcesCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/FungibleResourcesCollection'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
     StateEntityFungibleResourceVaultsPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - address
             - resource_address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
-        address: "<component-entity-address>"
-        resource_address: "<resource-address>"
+        address: '<component-entity-address>'
+        resource_address: '<resource-address>'
     StateEntityFungibleResourceVaultsPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/FungibleResourcesCollectionItemVaultAggregatedVault"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/FungibleResourcesCollectionItemVaultAggregatedVault'
         - type: object
           required:
             - address
             - resource_address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StateEntityNonFungiblesPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             aggregation_level:
-              $ref: "#/components/schemas/ResourceAggregationLevel"
+              $ref: '#/components/schemas/ResourceAggregationLevel'
             opt_ins:
-              $ref: "#/components/schemas/StateEntityNonFungiblesPageRequestOptIns"
+              $ref: '#/components/schemas/StateEntityNonFungiblesPageRequestOptIns'
       example:
-        address: "<component-entity-address>"
+        address: '<component-entity-address>'
     StateEntityNonFungiblesPageRequestOptIns:
       type: object
       description: Check detailed [OptIns](#section/Using-endpoints-with-opt-in-features) documentation for more details
@@ -4905,33 +4905,33 @@ components:
             type: string
     StateEntityNonFungiblesPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/NonFungibleResourcesCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/NonFungibleResourcesCollection'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StateEntityNonFungibleResourceVaultsPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - address
             - resource_address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             opt_ins:
-              $ref: "#/components/schemas/StateEntityNonFungibleResourceVaultsPageOptIns"
+              $ref: '#/components/schemas/StateEntityNonFungibleResourceVaultsPageOptIns'
       example:
-        address: "<component-entity-address>"
-        resource_address: "<resource-address>"
+        address: '<component-entity-address>'
+        resource_address: '<resource-address>'
     StateEntityNonFungibleResourceVaultsPageOptIns:
       type: object
       description: Check detailed [OptIns](#section/Using-endpoints-with-opt-in-features) documentation for more details
@@ -4942,22 +4942,22 @@ components:
 
     StateEntityNonFungibleResourceVaultsPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregatedVault"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/NonFungibleResourcesCollectionItemVaultAggregatedVault'
         - type: object
           required:
             - address
             - resource_address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StateEntityNonFungibleIdsPageRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - address
@@ -4965,28 +4965,28 @@ components:
             - resource_address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             vault_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
-        address: "<component-entity-address>"
+        address: '<component-entity-address>'
         resource_address: null
         vault_address: null
     StateEntityNonFungibleIdsPageResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/NonFungibleIdsCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/NonFungibleIdsCollection'
         - type: object
           required:
             - address
             - resource_address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     #
     # /state/non-fungible/* Request & Response Types
@@ -4994,62 +4994,62 @@ components:
 
     StateNonFungibleIdsRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - resource_address
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
-        resource_address: "<non-fungible-entity-address>"
+        resource_address: '<non-fungible-entity-address>'
     StateNonFungibleIdsResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - resource_address
             - non_fungible_ids
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             non_fungible_ids:
-              $ref: "#/components/schemas/NonFungibleIdsCollection"
+              $ref: '#/components/schemas/NonFungibleIdsCollection'
 
     StateNonFungibleLocationRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
         - type: object
           required:
             - resource_address
             - non_fungible_ids
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             non_fungible_ids:
               type: array
               description: limited to max 100 items.
               items:
-                $ref: "#/components/schemas/NonFungibleId"
+                $ref: '#/components/schemas/NonFungibleId'
       example:
-        resource_address: "<non-fungible-entity-address>"
-        non_fungible_ids: ["#1#"]
+        resource_address: '<non-fungible-entity-address>'
+        non_fungible_ids: ['#1#']
 
     StateNonFungibleLocationResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - resource_address
             - non_fungible_ids
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             non_fungible_ids:
               type: array
               items:
-                $ref: "#/components/schemas/StateNonFungibleLocationResponseItem"
+                $ref: '#/components/schemas/StateNonFungibleLocationResponseItem'
     StateNonFungibleLocationResponseItem:
       type: object
       required:
@@ -5058,42 +5058,42 @@ components:
         - last_updated_at_state_version
       properties:
         non_fungible_id:
-          $ref: "#/components/schemas/NonFungibleId"
+          $ref: '#/components/schemas/NonFungibleId'
         owning_vault_address:
           description: The address of the Vault containing (owning) this NFID.
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         owning_vault_parent_ancestor_address:
           description: The address of the parent ancestor of the Vault containing (owning) this NFID.
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         owning_vault_global_ancestor_address:
           description: The address of the global ancestor of the Vault containing (owning) this NFID.
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         is_burned:
           type: boolean
         last_updated_at_state_version:
-          $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+          $ref: '#/components/schemas/LastUpdatedAtStateVersion'
 
     StateNonFungibleDataRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
         - type: object
           required:
             - resource_address
             - non_fungible_ids
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             non_fungible_ids:
               type: array
               description: limited to max 100 items.
               items:
-                $ref: "#/components/schemas/NonFungibleId"
+                $ref: '#/components/schemas/NonFungibleId'
       example:
-        resource_address: "<non-fungible-entity-address>"
-        non_fungible_ids: ["#1#"]
+        resource_address: '<non-fungible-entity-address>'
+        non_fungible_ids: ['#1#']
     StateNonFungibleDataResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - resource_address
@@ -5101,13 +5101,13 @@ components:
             - non_fungible_ids
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             non_fungible_id_type:
-              $ref: "#/components/schemas/NonFungibleIdType"
+              $ref: '#/components/schemas/NonFungibleIdType'
             non_fungible_ids:
               type: array
               items:
-                $ref: "#/components/schemas/StateNonFungibleDetailsResponseItem"
+                $ref: '#/components/schemas/StateNonFungibleDetailsResponseItem'
     StateNonFungibleDetailsResponseItem:
       type: object
       required:
@@ -5118,40 +5118,40 @@ components:
         is_burned:
           type: boolean
         non_fungible_id:
-          $ref: "#/components/schemas/NonFungibleId"
+          $ref: '#/components/schemas/NonFungibleId'
         data:
-          $ref: "#/components/schemas/ScryptoSborValue"
+          $ref: '#/components/schemas/ScryptoSborValue'
         last_updated_at_state_version:
-          $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+          $ref: '#/components/schemas/LastUpdatedAtStateVersion'
 
     StateKeyValueStoreKeysRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           required:
             - key_value_store_address
           properties:
             key_value_store_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
-        key_value_store_address: "<key-value-store-address>"
+        key_value_store_address: '<key-value-store-address>'
 
     StateKeyValueStoreKeysResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/StateKeyValueStoreKeysCollection"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/StateKeyValueStoreKeysCollection'
         - type: object
           required:
             - key_value_store_address
           properties:
             key_value_store_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     StateKeyValueStoreKeysCollection:
       description: Key value store items collection.
       allOf:
-        - $ref: "#/components/schemas/ResultSetCursorMixin"
+        - $ref: '#/components/schemas/ResultSetCursorMixin'
         - type: object
           required:
             - items
@@ -5159,7 +5159,7 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/StateKeyValueStoreKeysResponseItem"
+                $ref: '#/components/schemas/StateKeyValueStoreKeysResponseItem'
 
     StateKeyValueStoreKeysResponseItem:
       type: object
@@ -5168,56 +5168,56 @@ components:
         - last_updated_at_state_version
       properties:
         key:
-          $ref: "#/components/schemas/ScryptoSborValue"
+          $ref: '#/components/schemas/ScryptoSborValue'
         last_updated_at_state_version:
-          $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+          $ref: '#/components/schemas/LastUpdatedAtStateVersion'
 
     StateKeyValueStoreDataRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
         - type: object
           required:
             - key_value_store_address
             - keys
           properties:
             key_value_store_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             keys:
               type: array
               description: limited to max 100 items.
               items:
-                $ref: "#/components/schemas/StateKeyValueStoreDataRequestKeyItem"
+                $ref: '#/components/schemas/StateKeyValueStoreDataRequestKeyItem'
       example:
-        key_value_store_address: "<key-value-store-address>"
+        key_value_store_address: '<key-value-store-address>'
         keys:
-          - key_hex: "5C21010901000000"
+          - key_hex: '5C21010901000000'
           - key_json:
               kind: Tuple
               fields:
-                - kind: "U32"
-                  value: "1"
+                - kind: 'U32'
+                  value: '1'
     StateKeyValueStoreDataRequestKeyItem:
       description: Provide either `key_hex` or `key_json`. If both are provided, `key_hex` is used and `key_json` is ignored.
       type: object
       properties:
         key_hex:
-          $ref: "#/components/schemas/HexString"
+          $ref: '#/components/schemas/HexString'
         key_json:
-          $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+          $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
     StateKeyValueStoreDataResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - key_value_store_address
             - entries
           properties:
             key_value_store_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             entries:
               type: array
               items:
-                $ref: "#/components/schemas/StateKeyValueStoreDataResponseItem"
+                $ref: '#/components/schemas/StateKeyValueStoreDataResponseItem'
     StateKeyValueStoreDataResponseItem:
       type: object
       required:
@@ -5227,32 +5227,32 @@ components:
         - is_locked
       properties:
         key:
-          $ref: "#/components/schemas/ScryptoSborValue"
+          $ref: '#/components/schemas/ScryptoSborValue'
         value:
-          $ref: "#/components/schemas/ScryptoSborValue"
+          $ref: '#/components/schemas/ScryptoSborValue'
         last_updated_at_state_version:
-          $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+          $ref: '#/components/schemas/LastUpdatedAtStateVersion'
         is_locked:
           type: boolean
 
     StateAccountLockerPageVaultsRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/CursorLimitMixin"
-        - $ref: "#/components/schemas/AccountLockerAddress"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/CursorLimitMixin'
+        - $ref: '#/components/schemas/AccountLockerAddress'
       example:
-        locker_address: "<locker-address>"
-        account_address: "<account-address>"
+        locker_address: '<locker-address>'
+        account_address: '<account-address>'
 
     StateAccountLockerPageVaultsResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
-        - $ref: "#/components/schemas/AccountLockerVaultCollection"
-        - $ref: "#/components/schemas/AccountLockerAddress"
+        - $ref: '#/components/schemas/LedgerStateMixin'
+        - $ref: '#/components/schemas/AccountLockerVaultCollection'
+        - $ref: '#/components/schemas/AccountLockerAddress'
 
     StateAccountLockersTouchedAtRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
         - type: object
           required:
             - account_lockers
@@ -5260,15 +5260,15 @@ components:
             account_lockers:
               type: array
               items:
-                $ref: "#/components/schemas/AccountLockerAddress"
+                $ref: '#/components/schemas/AccountLockerAddress'
       example:
         account_lockers:
-          - locker_address: "<locker-address>"
-            account_address: "<account-address>"
+          - locker_address: '<locker-address>'
+            account_address: '<account-address>'
 
     StateAccountLockersTouchedAtResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - items
@@ -5276,16 +5276,16 @@ components:
             items:
               type: array
               items:
-                $ref: "#/components/schemas/StateAccountLockersTouchedAtResponseItem"
+                $ref: '#/components/schemas/StateAccountLockersTouchedAtResponseItem'
     StateAccountLockersTouchedAtResponseItem:
       allOf:
-        - $ref: "#/components/schemas/AccountLockerAddress"
+        - $ref: '#/components/schemas/AccountLockerAddress'
         - type: object
           required:
             - last_touched_at_state_version
           properties:
             last_touched_at_state_version:
-              $ref: "#/components/schemas/LastUpdatedAtStateVersion"
+              $ref: '#/components/schemas/LastUpdatedAtStateVersion'
 
     #
     # /state/validators/* Request & Response Types
@@ -5293,7 +5293,7 @@ components:
 
     StateValidatorsListRequest:
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
         - type: object
           properties:
             cursor:
@@ -5304,51 +5304,51 @@ components:
         at_ledger_state: null
     StateValidatorsListResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - validators
           properties:
             validators:
-              $ref: "#/components/schemas/ValidatorCollection"
+              $ref: '#/components/schemas/ValidatorCollection'
 
     ValidatorsUptimeRequest:
       description: |
         For `at_ledger_state` and `from_ledger_state` you can use one of `state_version`, `epoch`, `epoch` and `round`, or `timestamp`, but then ongoing epoch will be selected and used for querying data.
         i.e for request with `{ "from_state_version" = { "state_version" = 100 }, "at_state_version" = { "state_version" = 300} }` gateway api will check in which epoch transactions with state version 100 and 300 were and then use that as inclusive boundary for request.
       allOf:
-        - $ref: "#/components/schemas/AtLedgerStateMixin"
-        - $ref: "#/components/schemas/FromLedgerStateMixin"
+        - $ref: '#/components/schemas/AtLedgerStateMixin'
+        - $ref: '#/components/schemas/FromLedgerStateMixin'
         - type: object
           properties:
             validator_addresses:
               type: array
               items:
-                $ref: "#/components/schemas/Address"
+                $ref: '#/components/schemas/Address'
     ValidatorsUptimeResponse:
       allOf:
-        - $ref: "#/components/schemas/LedgerStateMixin"
+        - $ref: '#/components/schemas/LedgerStateMixin'
         - type: object
           required:
             - validators
           properties:
             validators:
-              $ref: "#/components/schemas/ValidatorUptimeCollection"
+              $ref: '#/components/schemas/ValidatorUptimeCollection'
 
     ResourceHoldersRequest:
       allOf:
-        - $ref: "#/components/schemas/CursorLimitMixin"
+        - $ref: '#/components/schemas/CursorLimitMixin'
         - type: object
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
       example:
         limit_per_page: 100
-        resource_address: "<resource-address>"
+        resource_address: '<resource-address>'
 
     ResourceHoldersResponse:
       allOf:
-        - $ref: "#/components/schemas/ResourceHoldersCollection"
+        - $ref: '#/components/schemas/ResourceHoldersCollection'
 
     #
     # Errors
@@ -5366,7 +5366,7 @@ components:
           description: A numeric code corresponding to the given error type.
           type: integer
         details:
-          $ref: "#/components/schemas/GatewayError"
+          $ref: '#/components/schemas/GatewayError'
         trace_id:
           description: A unique request identifier to be used when reporting errors, to allow correlation with the Gateway API's error logs.
           type: string
@@ -5382,39 +5382,39 @@ components:
       discriminator:
         propertyName: type
         mapping:
-          AccountLockerNotFoundError: "#/components/schemas/AccountLockerNotFoundError"
-          EntityNotFoundError: "#/components/schemas/EntityNotFoundError"
-          InvalidEntityError: "#/components/schemas/InvalidEntityError"
-          NotSyncedUpError: "#/components/schemas/NotSyncedUpError"
-          InvalidRequestError: "#/components/schemas/InvalidRequestError"
-          InvalidTransactionError: "#/components/schemas/InvalidTransactionError"
-          TransactionNotFoundError: "#/components/schemas/TransactionNotFoundError"
-          InternalServerError: "#/components/schemas/InternalServerError"
+          AccountLockerNotFoundError: '#/components/schemas/AccountLockerNotFoundError'
+          EntityNotFoundError: '#/components/schemas/EntityNotFoundError'
+          InvalidEntityError: '#/components/schemas/InvalidEntityError'
+          NotSyncedUpError: '#/components/schemas/NotSyncedUpError'
+          InvalidRequestError: '#/components/schemas/InvalidRequestError'
+          InvalidTransactionError: '#/components/schemas/InvalidTransactionError'
+          TransactionNotFoundError: '#/components/schemas/TransactionNotFoundError'
+          InternalServerError: '#/components/schemas/InternalServerError'
     AccountLockerNotFoundError:
       allOf:
-        - $ref: "#/components/schemas/GatewayError"
-        - $ref: "#/components/schemas/AccountLockerAddress"
+        - $ref: '#/components/schemas/GatewayError'
+        - $ref: '#/components/schemas/AccountLockerAddress'
     EntityNotFoundError:
       allOf:
-        - $ref: "#/components/schemas/GatewayError"
+        - $ref: '#/components/schemas/GatewayError'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
     InvalidEntityError:
       allOf:
-        - $ref: "#/components/schemas/GatewayError"
+        - $ref: '#/components/schemas/GatewayError'
         - type: object
           required:
             - address
           properties:
             address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
     NotSyncedUpError:
       allOf:
-        - $ref: "#/components/schemas/GatewayError"
+        - $ref: '#/components/schemas/GatewayError'
         - type: object
           required:
             - request_type
@@ -5434,7 +5434,7 @@ components:
               format: int64
     InvalidRequestError:
       allOf:
-        - $ref: "#/components/schemas/GatewayError"
+        - $ref: '#/components/schemas/GatewayError'
         - type: object
           required:
             - validation_errors
@@ -5443,23 +5443,23 @@ components:
               description: One or more validation errors which occurred when validating the request.
               type: array
               items:
-                $ref: "#/components/schemas/ValidationErrorsAtPath"
+                $ref: '#/components/schemas/ValidationErrorsAtPath'
     InvalidTransactionError:
       allOf:
-        - $ref: "#/components/schemas/GatewayError"
+        - $ref: '#/components/schemas/GatewayError'
         - type: object
     TransactionNotFoundError:
       allOf:
-        - $ref: "#/components/schemas/GatewayError"
+        - $ref: '#/components/schemas/GatewayError'
         - type: object
           required:
             - intent_hash
           properties:
             intent_hash:
-              $ref: "#/components/schemas/HashBech32mString"
+              $ref: '#/components/schemas/HashBech32mString'
     InternalServerError:
       allOf:
-        - $ref: "#/components/schemas/GatewayError"
+        - $ref: '#/components/schemas/GatewayError'
         - type: object
           required:
             - exception
@@ -5491,16 +5491,16 @@ components:
     NativeResourceUnitRedemptionValue:
       type: array
       items:
-        $ref: "#/components/schemas/NativeResourceRedemptionValueItem"
+        $ref: '#/components/schemas/NativeResourceRedemptionValueItem'
     NativeResourceRedemptionValueItem:
       type: object
       required:
         - resource_address
       properties:
         resource_address:
-          $ref: "#/components/schemas/Address"
+          $ref: '#/components/schemas/Address'
         amount:
-          $ref: "#/components/schemas/BigDecimal"
+          $ref: '#/components/schemas/BigDecimal'
 
     NativeResourceKind:
       type: string
@@ -5526,70 +5526,70 @@ components:
       discriminator:
         propertyName: kind
         mapping:
-          Xrd: "#/components/schemas/NativeResourceXrdValue"
-          PackageOwnerBadge: "#/components/schemas/NativeResourcePackageOwnerBadgeValue"
-          AccountOwnerBadge: "#/components/schemas/NativeResourceAccountOwnerBadgeValue"
-          IdentityOwnerBadge: "#/components/schemas/NativeResourceIdentityOwnerBadgeValue"
-          ValidatorOwnerBadge: "#/components/schemas/NativeResourceValidatorOwnerBadgeValue"
-          Secp256k1SignatureResource: "#/components/schemas/NativeResourceSecp256k1SignatureResourceValue"
-          Ed25519SignatureResource: "#/components/schemas/NativeResourceEd25519SignatureResourceValue"
-          GlobalCallerResource: "#/components/schemas/NativeResourceGlobalCallerResourceValue"
-          PackageOfDirectCallerResource: "#/components/schemas/NativeResourcePackageOfDirectCallerResourceValue"
-          SystemExecutionResource: "#/components/schemas/NativeResourceSystemExecutionResourceValue"
-          ValidatorLiquidStakeUnit: "#/components/schemas/NativeResourceValidatorLiquidStakeUnitValue"
-          ValidatorClaimNft: "#/components/schemas/NativeResourceValidatorClaimNftValue"
-          OneResourcePoolUnit: "#/components/schemas/NativeResourceOneResourcePoolUnitValue"
-          TwoResourcePoolUnit: "#/components/schemas/NativeResourceTwoResourcePoolUnitValue"
-          MultiResourcePoolUnit: "#/components/schemas/NativeResourceMultiResourcePoolUnitValue"
-          AccessControllerRecoveryBadge: "#/components/schemas/NativeResourceAccessControllerRecoveryBadgeValue"
+          Xrd: '#/components/schemas/NativeResourceXrdValue'
+          PackageOwnerBadge: '#/components/schemas/NativeResourcePackageOwnerBadgeValue'
+          AccountOwnerBadge: '#/components/schemas/NativeResourceAccountOwnerBadgeValue'
+          IdentityOwnerBadge: '#/components/schemas/NativeResourceIdentityOwnerBadgeValue'
+          ValidatorOwnerBadge: '#/components/schemas/NativeResourceValidatorOwnerBadgeValue'
+          Secp256k1SignatureResource: '#/components/schemas/NativeResourceSecp256k1SignatureResourceValue'
+          Ed25519SignatureResource: '#/components/schemas/NativeResourceEd25519SignatureResourceValue'
+          GlobalCallerResource: '#/components/schemas/NativeResourceGlobalCallerResourceValue'
+          PackageOfDirectCallerResource: '#/components/schemas/NativeResourcePackageOfDirectCallerResourceValue'
+          SystemExecutionResource: '#/components/schemas/NativeResourceSystemExecutionResourceValue'
+          ValidatorLiquidStakeUnit: '#/components/schemas/NativeResourceValidatorLiquidStakeUnitValue'
+          ValidatorClaimNft: '#/components/schemas/NativeResourceValidatorClaimNftValue'
+          OneResourcePoolUnit: '#/components/schemas/NativeResourceOneResourcePoolUnitValue'
+          TwoResourcePoolUnit: '#/components/schemas/NativeResourceTwoResourcePoolUnitValue'
+          MultiResourcePoolUnit: '#/components/schemas/NativeResourceMultiResourcePoolUnitValue'
+          AccessControllerRecoveryBadge: '#/components/schemas/NativeResourceAccessControllerRecoveryBadgeValue'
       required:
         - kind
       properties:
         kind:
-          $ref: "#/components/schemas/NativeResourceKind"
+          $ref: '#/components/schemas/NativeResourceKind'
     NativeResourceXrdValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourcePackageOwnerBadgeValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourceAccountOwnerBadgeValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourceIdentityOwnerBadgeValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourceValidatorOwnerBadgeValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourceSecp256k1SignatureResourceValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourceEd25519SignatureResourceValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourceGlobalCallerResourceValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourcePackageOfDirectCallerResourceValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourceSystemExecutionResourceValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
     NativeResourceValidatorLiquidStakeUnitValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
           required:
             - validator_address
@@ -5597,23 +5597,23 @@ components:
             - unit_redemption_value
           properties:
             validator_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             redemption_resource_count:
               type: integer
             unit_redemption_value:
-              $ref: "#/components/schemas/NativeResourceUnitRedemptionValue"
+              $ref: '#/components/schemas/NativeResourceUnitRedemptionValue'
     NativeResourceValidatorClaimNftValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
           required:
             - validator_address
           properties:
             validator_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
     NativeResourceOneResourcePoolUnitValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
           required:
             - pool_address
@@ -5621,14 +5621,14 @@ components:
             - unit_redemption_value
           properties:
             pool_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             redemption_resource_count:
               type: integer
             unit_redemption_value:
-              $ref: "#/components/schemas/NativeResourceUnitRedemptionValue"
+              $ref: '#/components/schemas/NativeResourceUnitRedemptionValue'
     NativeResourceTwoResourcePoolUnitValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
           required:
             - pool_address
@@ -5636,14 +5636,14 @@ components:
             - unit_redemption_value
           properties:
             pool_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             redemption_resource_count:
               type: integer
             unit_redemption_value:
-              $ref: "#/components/schemas/NativeResourceUnitRedemptionValue"
+              $ref: '#/components/schemas/NativeResourceUnitRedemptionValue'
     NativeResourceMultiResourcePoolUnitValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
           required:
             - pool_address
@@ -5651,20 +5651,20 @@ components:
             - unit_redemption_value
           properties:
             pool_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             redemption_resource_count:
               type: integer
             unit_redemption_value:
-              $ref: "#/components/schemas/NativeResourceUnitRedemptionValue"
+              $ref: '#/components/schemas/NativeResourceUnitRedemptionValue'
     NativeResourceAccessControllerRecoveryBadgeValue:
       allOf:
-        - $ref: "#/components/schemas/NativeResourceDetails"
+        - $ref: '#/components/schemas/NativeResourceDetails'
         - type: object
           required:
             - access_controller_address
           properties:
             access_controller_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
 
     #
     # Metadata Typed Value
@@ -5710,46 +5710,46 @@ components:
       discriminator:
         propertyName: type
         mapping:
-          String: "#/components/schemas/MetadataStringValue"
-          Bool: "#/components/schemas/MetadataBoolValue"
-          U8: "#/components/schemas/MetadataU8Value"
-          U32: "#/components/schemas/MetadataU32Value"
-          U64: "#/components/schemas/MetadataU64Value"
-          I32: "#/components/schemas/MetadataI32Value"
-          I64: "#/components/schemas/MetadataI64Value"
-          Decimal: "#/components/schemas/MetadataDecimalValue"
-          GlobalAddress: "#/components/schemas/MetadataGlobalAddressValue"
-          PublicKey: "#/components/schemas/MetadataPublicKeyValue"
-          NonFungibleGlobalId: "#/components/schemas/MetadataNonFungibleGlobalIdValue"
-          NonFungibleLocalId: "#/components/schemas/MetadataNonFungibleLocalIdValue"
-          Instant: "#/components/schemas/MetadataInstantValue"
-          Url: "#/components/schemas/MetadataUrlValue"
-          Origin: "#/components/schemas/MetadataOriginValue"
-          PublicKeyHash: "#/components/schemas/MetadataPublicKeyHashValue"
-          StringArray: "#/components/schemas/MetadataStringArrayValue"
-          BoolArray: "#/components/schemas/MetadataBoolArrayValue"
-          U8Array: "#/components/schemas/MetadataU8ArrayValue"
-          U32Array: "#/components/schemas/MetadataU32ArrayValue"
-          U64Array: "#/components/schemas/MetadataU64ArrayValue"
-          I32Array: "#/components/schemas/MetadataI32ArrayValue"
-          I64Array: "#/components/schemas/MetadataI64ArrayValue"
-          DecimalArray: "#/components/schemas/MetadataDecimalArrayValue"
-          GlobalAddressArray: "#/components/schemas/MetadataGlobalAddressArrayValue"
-          PublicKeyArray: "#/components/schemas/MetadataPublicKeyArrayValue"
-          NonFungibleGlobalIdArray: "#/components/schemas/MetadataNonFungibleGlobalIdArrayValue"
-          NonFungibleLocalIdArray: "#/components/schemas/MetadataNonFungibleLocalIdArrayValue"
-          InstantArray: "#/components/schemas/MetadataInstantArrayValue"
-          UrlArray: "#/components/schemas/MetadataUrlArrayValue"
-          OriginArray: "#/components/schemas/MetadataOriginArrayValue"
-          PublicKeyHashArray: "#/components/schemas/MetadataPublicKeyHashArrayValue"
+          String: '#/components/schemas/MetadataStringValue'
+          Bool: '#/components/schemas/MetadataBoolValue'
+          U8: '#/components/schemas/MetadataU8Value'
+          U32: '#/components/schemas/MetadataU32Value'
+          U64: '#/components/schemas/MetadataU64Value'
+          I32: '#/components/schemas/MetadataI32Value'
+          I64: '#/components/schemas/MetadataI64Value'
+          Decimal: '#/components/schemas/MetadataDecimalValue'
+          GlobalAddress: '#/components/schemas/MetadataGlobalAddressValue'
+          PublicKey: '#/components/schemas/MetadataPublicKeyValue'
+          NonFungibleGlobalId: '#/components/schemas/MetadataNonFungibleGlobalIdValue'
+          NonFungibleLocalId: '#/components/schemas/MetadataNonFungibleLocalIdValue'
+          Instant: '#/components/schemas/MetadataInstantValue'
+          Url: '#/components/schemas/MetadataUrlValue'
+          Origin: '#/components/schemas/MetadataOriginValue'
+          PublicKeyHash: '#/components/schemas/MetadataPublicKeyHashValue'
+          StringArray: '#/components/schemas/MetadataStringArrayValue'
+          BoolArray: '#/components/schemas/MetadataBoolArrayValue'
+          U8Array: '#/components/schemas/MetadataU8ArrayValue'
+          U32Array: '#/components/schemas/MetadataU32ArrayValue'
+          U64Array: '#/components/schemas/MetadataU64ArrayValue'
+          I32Array: '#/components/schemas/MetadataI32ArrayValue'
+          I64Array: '#/components/schemas/MetadataI64ArrayValue'
+          DecimalArray: '#/components/schemas/MetadataDecimalArrayValue'
+          GlobalAddressArray: '#/components/schemas/MetadataGlobalAddressArrayValue'
+          PublicKeyArray: '#/components/schemas/MetadataPublicKeyArrayValue'
+          NonFungibleGlobalIdArray: '#/components/schemas/MetadataNonFungibleGlobalIdArrayValue'
+          NonFungibleLocalIdArray: '#/components/schemas/MetadataNonFungibleLocalIdArrayValue'
+          InstantArray: '#/components/schemas/MetadataInstantArrayValue'
+          UrlArray: '#/components/schemas/MetadataUrlArrayValue'
+          OriginArray: '#/components/schemas/MetadataOriginArrayValue'
+          PublicKeyHashArray: '#/components/schemas/MetadataPublicKeyHashArrayValue'
       required:
         - type
       properties:
         type:
-          $ref: "#/components/schemas/MetadataValueType"
+          $ref: '#/components/schemas/MetadataValueType'
     MetadataStringValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5758,7 +5758,7 @@ components:
               type: string
     MetadataBoolValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5767,7 +5767,7 @@ components:
               type: boolean
     MetadataU8Value:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5776,7 +5776,7 @@ components:
               type: string
     MetadataU32Value:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5785,7 +5785,7 @@ components:
               type: string
     MetadataU64Value:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5794,7 +5794,7 @@ components:
               type: string
     MetadataI32Value:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5803,7 +5803,7 @@ components:
               type: string
     MetadataI64Value:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5812,7 +5812,7 @@ components:
               type: string
     MetadataDecimalValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5821,7 +5821,7 @@ components:
               type: string
     MetadataGlobalAddressValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5830,28 +5830,28 @@ components:
               type: string
     MetadataPublicKeyValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
           properties:
             value:
-              $ref: "#/components/schemas/PublicKey"
+              $ref: '#/components/schemas/PublicKey'
     MetadataNonFungibleGlobalIdValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - resource_address
             - non_fungible_id
           properties:
             resource_address:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
             non_fungible_id:
-              $ref: "#/components/schemas/NonFungibleId"
+              $ref: '#/components/schemas/NonFungibleId'
     MetadataNonFungibleLocalIdValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5860,7 +5860,7 @@ components:
               type: string
     MetadataInstantValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5881,7 +5881,7 @@ components:
                 Note: this field accurately represents the full range of possible on-ledger values (i.e. `-2^63 <= seconds < 2^63`).
     MetadataUrlValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5890,7 +5890,7 @@ components:
               type: string
     MetadataOriginValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
@@ -5899,16 +5899,16 @@ components:
               type: string
     MetadataPublicKeyHashValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value
           properties:
             value:
-              $ref: "#/components/schemas/PublicKeyHash"
+              $ref: '#/components/schemas/PublicKeyHash'
     MetadataStringArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -5919,7 +5919,7 @@ components:
                 type: string
     MetadataBoolArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -5930,7 +5930,7 @@ components:
                 type: boolean
     MetadataU8ArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - value_hex
@@ -5939,7 +5939,7 @@ components:
               type: string
     MetadataU32ArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -5950,7 +5950,7 @@ components:
                 type: string
     MetadataU64ArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -5961,7 +5961,7 @@ components:
                 type: string
     MetadataI32ArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -5972,7 +5972,7 @@ components:
                 type: string
     MetadataI64ArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -5983,7 +5983,7 @@ components:
                 type: string
     MetadataDecimalArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -5994,7 +5994,7 @@ components:
                 type: string
     MetadataGlobalAddressArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -6005,7 +6005,7 @@ components:
                 type: string
     MetadataPublicKeyArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -6013,10 +6013,10 @@ components:
             values:
               type: array
               items:
-                $ref: "#/components/schemas/PublicKey"
+                $ref: '#/components/schemas/PublicKey'
     MetadataNonFungibleGlobalIdArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -6030,12 +6030,12 @@ components:
                   - non_fungible_id
                 properties:
                   resource_address:
-                    $ref: "#/components/schemas/Address"
+                    $ref: '#/components/schemas/Address'
                   non_fungible_id:
-                    $ref: "#/components/schemas/NonFungibleId"
+                    $ref: '#/components/schemas/NonFungibleId'
     MetadataNonFungibleLocalIdArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -6046,7 +6046,7 @@ components:
                 type: string
     MetadataInstantArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           description: |
             See documentation of `MetadataInstantValue` for detailed description of `values` vs `values_unix_timestamp_seconds`.
@@ -6064,7 +6064,7 @@ components:
                 type: string
     MetadataUrlArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -6075,7 +6075,7 @@ components:
                 type: string
     MetadataOriginArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -6086,7 +6086,7 @@ components:
                 type: string
     MetadataPublicKeyHashArrayValue:
       allOf:
-        - $ref: "#/components/schemas/MetadataTypedValue"
+        - $ref: '#/components/schemas/MetadataTypedValue'
         - type: object
           required:
             - values
@@ -6094,7 +6094,7 @@ components:
             values:
               type: array
               items:
-                $ref: "#/components/schemas/PublicKeyHash"
+                $ref: '#/components/schemas/PublicKeyHash'
 
     #
     # Programmatic Scrypto SBOR Values
@@ -6165,7 +6165,7 @@ components:
         - kind
       properties:
         kind:
-          $ref: "#/components/schemas/ProgrammaticScryptoSborValueKind"
+          $ref: '#/components/schemas/ProgrammaticScryptoSborValueKind'
         type_name:
           description: |
             The name of the type of this value.
@@ -6183,31 +6183,31 @@ components:
       discriminator:
         propertyName: kind
         mapping:
-          Bool: "#/components/schemas/ProgrammaticScryptoSborValueBool"
-          I8: "#/components/schemas/ProgrammaticScryptoSborValueI8"
-          I16: "#/components/schemas/ProgrammaticScryptoSborValueI16"
-          I32: "#/components/schemas/ProgrammaticScryptoSborValueI32"
-          I64: "#/components/schemas/ProgrammaticScryptoSborValueI64"
-          I128: "#/components/schemas/ProgrammaticScryptoSborValueI128"
-          U8: "#/components/schemas/ProgrammaticScryptoSborValueU8"
-          U16: "#/components/schemas/ProgrammaticScryptoSborValueU16"
-          U32: "#/components/schemas/ProgrammaticScryptoSborValueU32"
-          U64: "#/components/schemas/ProgrammaticScryptoSborValueU64"
-          U128: "#/components/schemas/ProgrammaticScryptoSborValueU128"
-          String: "#/components/schemas/ProgrammaticScryptoSborValueString"
-          Enum: "#/components/schemas/ProgrammaticScryptoSborValueEnum"
-          Array: "#/components/schemas/ProgrammaticScryptoSborValueArray"
-          Bytes: "#/components/schemas/ProgrammaticScryptoSborValueBytes"
-          Map: "#/components/schemas/ProgrammaticScryptoSborValueMap"
-          Tuple: "#/components/schemas/ProgrammaticScryptoSborValueTuple"
-          Reference: "#/components/schemas/ProgrammaticScryptoSborValueReference"
-          Own: "#/components/schemas/ProgrammaticScryptoSborValueOwn"
-          Decimal: "#/components/schemas/ProgrammaticScryptoSborValueDecimal"
-          PreciseDecimal: "#/components/schemas/ProgrammaticScryptoSborValuePreciseDecimal"
-          NonFungibleLocalId: "#/components/schemas/ProgrammaticScryptoSborValueNonFungibleLocalId"
+          Bool: '#/components/schemas/ProgrammaticScryptoSborValueBool'
+          I8: '#/components/schemas/ProgrammaticScryptoSborValueI8'
+          I16: '#/components/schemas/ProgrammaticScryptoSborValueI16'
+          I32: '#/components/schemas/ProgrammaticScryptoSborValueI32'
+          I64: '#/components/schemas/ProgrammaticScryptoSborValueI64'
+          I128: '#/components/schemas/ProgrammaticScryptoSborValueI128'
+          U8: '#/components/schemas/ProgrammaticScryptoSborValueU8'
+          U16: '#/components/schemas/ProgrammaticScryptoSborValueU16'
+          U32: '#/components/schemas/ProgrammaticScryptoSborValueU32'
+          U64: '#/components/schemas/ProgrammaticScryptoSborValueU64'
+          U128: '#/components/schemas/ProgrammaticScryptoSborValueU128'
+          String: '#/components/schemas/ProgrammaticScryptoSborValueString'
+          Enum: '#/components/schemas/ProgrammaticScryptoSborValueEnum'
+          Array: '#/components/schemas/ProgrammaticScryptoSborValueArray'
+          Bytes: '#/components/schemas/ProgrammaticScryptoSborValueBytes'
+          Map: '#/components/schemas/ProgrammaticScryptoSborValueMap'
+          Tuple: '#/components/schemas/ProgrammaticScryptoSborValueTuple'
+          Reference: '#/components/schemas/ProgrammaticScryptoSborValueReference'
+          Own: '#/components/schemas/ProgrammaticScryptoSborValueOwn'
+          Decimal: '#/components/schemas/ProgrammaticScryptoSborValueDecimal'
+          PreciseDecimal: '#/components/schemas/ProgrammaticScryptoSborValuePreciseDecimal'
+          NonFungibleLocalId: '#/components/schemas/ProgrammaticScryptoSborValueNonFungibleLocalId'
     ProgrammaticScryptoSborValueBool:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6216,7 +6216,7 @@ components:
               type: boolean
     ProgrammaticScryptoSborValueI8:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6225,7 +6225,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueI16:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6234,7 +6234,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueI32:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6243,7 +6243,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueI64:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6252,7 +6252,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueI128:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6261,7 +6261,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueU8:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6270,7 +6270,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueU16:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6279,7 +6279,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueU32:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6288,7 +6288,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueU64:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6297,7 +6297,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueU128:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6306,7 +6306,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueString:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6315,7 +6315,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueEnum:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - variant_id
@@ -6328,40 +6328,40 @@ components:
             fields:
               type: array
               items:
-                $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+                $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
     ProgrammaticScryptoSborValueArray:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - element_kind
             - elements
           properties:
             element_kind:
-              $ref: "#/components/schemas/ProgrammaticScryptoSborValueKind"
+              $ref: '#/components/schemas/ProgrammaticScryptoSborValueKind'
             element_type_name:
               type: string
             elements:
               type: array
               items:
-                $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+                $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
     ProgrammaticScryptoSborValueBytes:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - element_kind
             - hex
           properties:
             element_kind:
-              $ref: "#/components/schemas/ProgrammaticScryptoSborValueKind"
+              $ref: '#/components/schemas/ProgrammaticScryptoSborValueKind'
             element_type_name:
               type: string
             hex:
-              $ref: "#/components/schemas/HexString"
+              $ref: '#/components/schemas/HexString'
     ProgrammaticScryptoSborValueMap:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - key_kind
@@ -6369,17 +6369,17 @@ components:
             - entries
           properties:
             key_kind:
-              $ref: "#/components/schemas/ProgrammaticScryptoSborValueKind"
+              $ref: '#/components/schemas/ProgrammaticScryptoSborValueKind'
             key_type_name:
               type: string
             value_kind:
-              $ref: "#/components/schemas/ProgrammaticScryptoSborValueKind"
+              $ref: '#/components/schemas/ProgrammaticScryptoSborValueKind'
             value_type_name:
               type: string
             entries:
               type: array
               items:
-                $ref: "#/components/schemas/ProgrammaticScryptoSborValueMapEntry"
+                $ref: '#/components/schemas/ProgrammaticScryptoSborValueMapEntry'
     ProgrammaticScryptoSborValueMapEntry:
       type: object
       required:
@@ -6387,12 +6387,12 @@ components:
         - value
       properties:
         key:
-          $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+          $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         value:
-          $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+          $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
     ProgrammaticScryptoSborValueTuple:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - fields
@@ -6400,28 +6400,28 @@ components:
             fields:
               type: array
               items:
-                $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+                $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
     ProgrammaticScryptoSborValueReference:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
           properties:
             value:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
     ProgrammaticScryptoSborValueOwn:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
           properties:
             value:
-              $ref: "#/components/schemas/Address"
+              $ref: '#/components/schemas/Address'
     ProgrammaticScryptoSborValueDecimal:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6430,7 +6430,7 @@ components:
               type: string
     ProgrammaticScryptoSborValuePreciseDecimal:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6439,7 +6439,7 @@ components:
               type: string
     ProgrammaticScryptoSborValueNonFungibleLocalId:
       allOf:
-        - $ref: "#/components/schemas/ProgrammaticScryptoSborValue"
+        - $ref: '#/components/schemas/ProgrammaticScryptoSborValue'
         - type: object
           required:
             - value
@@ -6462,7 +6462,7 @@ components:
           description: The royalty rules by method. The array is only present if royalties are enabled.
           type: array
           items:
-            $ref: "#/components/schemas/BlueprintMethodRoyalty"
+            $ref: '#/components/schemas/BlueprintMethodRoyalty'
     BlueprintMethodRoyalty:
       type: object
       required:
@@ -6472,7 +6472,7 @@ components:
           type: string
         royalty_amount:
           description: The due royalty; missing field denotes a free method.
-          $ref: "#/components/schemas/RoyaltyAmount"
+          $ref: '#/components/schemas/RoyaltyAmount'
     ComponentRoyaltyConfig:
       type: object
       required:
@@ -6484,7 +6484,7 @@ components:
           description: The royalty rules by method. The array is only present if royalties are enabled.
           type: array
           items:
-            $ref: "#/components/schemas/ComponentMethodRoyalty"
+            $ref: '#/components/schemas/ComponentMethodRoyalty'
     ComponentMethodRoyalty:
       type: object
       required:
@@ -6494,7 +6494,7 @@ components:
           type: string
         royalty_amount:
           description: The due royalty; missing field denotes a free method.
-          $ref: "#/components/schemas/RoyaltyAmount"
+          $ref: '#/components/schemas/RoyaltyAmount'
     RoyaltyAmount:
       type: object
       required:
@@ -6502,7 +6502,7 @@ components:
         - unit
       properties:
         amount:
-          $ref: "#/components/schemas/BigDecimal"
+          $ref: '#/components/schemas/BigDecimal'
         unit:
           type: string
           enum:

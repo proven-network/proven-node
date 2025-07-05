@@ -70,8 +70,7 @@ class ApplicationBytesStore implements BytesStore {
     this.storeName = storeName;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  get(key: string): Promise<Uint8Array | undefined> {
+  get(_key: string): Promise<Uint8Array | undefined> {
     return Promise.resolve(new Uint8Array());
   }
 
@@ -79,8 +78,7 @@ class ApplicationBytesStore implements BytesStore {
     return Promise.resolve([]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  set(key: string, value: Uint8Array): Promise<void> {
+  set(_key: string, _value: Uint8Array): Promise<void> {
     return Promise.resolve();
   }
 }
@@ -92,8 +90,7 @@ class ApplicationKeyStore implements KeyStore {
     this.storeName = storeName;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  get(key: string): Promise<PrivateKey | undefined> {
+  get(_key: string): Promise<PrivateKey | undefined> {
     return Promise.resolve(new PrivateKey(0));
   }
 
@@ -101,8 +98,7 @@ class ApplicationKeyStore implements KeyStore {
     return Promise.resolve([]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  set(key: string, value: PrivateKey): Promise<void> {
+  set(_key: string, _value: PrivateKey): Promise<void> {
     return Promise.resolve();
   }
 }
@@ -114,8 +110,7 @@ class ApplicationStringStore {
     this.storeName = storeName;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  get(key: string): Promise<string | undefined> {
+  get(_key: string): Promise<string | undefined> {
     return Promise.resolve('');
   }
 
@@ -123,8 +118,7 @@ class ApplicationStringStore {
     return Promise.resolve([]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  set(key: string, value: string): Promise<void> {
+  set(_key: string, _value: string): Promise<void> {
     return Promise.resolve();
   }
 }
@@ -148,8 +142,7 @@ class PersonalBytesStore implements BytesStore {
     this.storeName = storeName;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  get(key: string): Promise<Uint8Array | undefined> {
+  get(_key: string): Promise<Uint8Array | undefined> {
     return Promise.resolve(new Uint8Array());
   }
 
@@ -157,8 +150,7 @@ class PersonalBytesStore implements BytesStore {
     return Promise.resolve([]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  set(key: string, value: Uint8Array): Promise<void> {
+  set(_key: string, _value: Uint8Array): Promise<void> {
     return Promise.resolve();
   }
 }
@@ -170,8 +162,7 @@ class PersonalKeyStore implements KeyStore {
     this.storeName = storeName;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  get(key: string): Promise<PrivateKey | undefined> {
+  get(_key: string): Promise<PrivateKey | undefined> {
     return Promise.resolve(new PrivateKey(0));
   }
 
@@ -179,8 +170,7 @@ class PersonalKeyStore implements KeyStore {
     return Promise.resolve([]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  set(key: string, value: PrivateKey): Promise<void> {
+  set(_key: string, _value: PrivateKey): Promise<void> {
     return Promise.resolve();
   }
 }
@@ -192,8 +182,7 @@ class PersonalStringStore implements StringStore {
     this.storeName = storeName;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  get(key: string): Promise<string | undefined> {
+  get(_key: string): Promise<string | undefined> {
     return Promise.resolve('');
   }
 
@@ -201,8 +190,7 @@ class PersonalStringStore implements StringStore {
     return Promise.resolve([]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  set(key: string, value: string): Promise<void> {
+  set(_key: string, _value: string): Promise<void> {
     return Promise.resolve();
   }
 }
@@ -226,26 +214,23 @@ class NftBytesStore implements NftScopedBytesStore {
     this.storeName = storeName;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   get(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array,
-    key: string
+    _nftResourceAddress: string,
+    _nftId: string | number | Uint8Array,
+    _key: string
   ): Promise<Uint8Array | undefined> {
     return Promise.resolve(new Uint8Array());
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  keys(nftResourceAddress: string, nftId: string | number | Uint8Array): Promise<string[]> {
+  keys(_nftResourceAddress: string, _nftId: string | number | Uint8Array): Promise<string[]> {
     return Promise.resolve([]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   set(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array,
-    key: string,
-    value: Uint8Array
+    _nftResourceAddress: string,
+    _nftId: string | number | Uint8Array,
+    _key: string,
+    _value: Uint8Array
   ): Promise<void> {
     return Promise.resolve();
   }
@@ -258,26 +243,23 @@ class NftKeyStore implements NftScopedKeyStore {
     this.storeName = storeName;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   get(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array,
-    key: string
+    _nftResourceAddress: string,
+    _nftId: string | number | Uint8Array,
+    _key: string
   ): Promise<PrivateKey | undefined> {
     return Promise.resolve(new PrivateKey(0));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  keys(nftResourceAddress: string, nftId: string | number | Uint8Array): Promise<string[]> {
+  keys(_nftResourceAddress: string, _nftId: string | number | Uint8Array): Promise<string[]> {
     return Promise.resolve([]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   set(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array,
-    key: string,
-    value: PrivateKey
+    _nftResourceAddress: string,
+    _nftId: string | number | Uint8Array,
+    _key: string,
+    _value: PrivateKey
   ): Promise<void> {
     return Promise.resolve();
   }
@@ -290,26 +272,23 @@ class NftStringStore implements NftScopedStringStore {
     this.storeName = storeName;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   get(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array,
-    key: string
+    _nftResourceAddress: string,
+    _nftId: string | number | Uint8Array,
+    _key: string
   ): Promise<string | undefined> {
     return Promise.resolve('');
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  keys(nftResourceAddress: string, nftId: string | number | Uint8Array): Promise<string[]> {
+  keys(_nftResourceAddress: string, _nftId: string | number | Uint8Array): Promise<string[]> {
     return Promise.resolve([]);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   set(
-    nftResourceAddress: string,
-    nftId: string | number | Uint8Array,
-    key: string,
-    value: string
+    _nftResourceAddress: string,
+    _nftId: string | number | Uint8Array,
+    _key: string,
+    _value: string
   ): Promise<void> {
     return Promise.resolve();
   }

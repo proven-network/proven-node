@@ -35,5 +35,7 @@ pub use create_application::{CreateApplicationCommand, CreateApplicationResponse
 pub use execute::{ExecuteCommand, ExecuteResponse};
 pub use execute_hash::{ExecuteHashCommand, ExecuteHashResponse};
 pub use identify::{IdentifyCommand, IdentifyResponse};
-pub use list_applications_by_owner::{ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse};
+pub use list_applications_by_owner::{
+    ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse,
+};
 pub use who_am_i::{WhoAmICommand, WhoAmIResponse};

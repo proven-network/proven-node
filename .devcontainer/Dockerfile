@@ -130,4 +130,4 @@ WORKDIR /
 RUN rm -rf /downloads /tmp/postgresql-17.4 /tmp/postgresql-17.4.tar.bz2
 
 # Reset to start directory
-WORKDIR /workspaces/proven-node 
+WORKDIR /workspaces/proven-node

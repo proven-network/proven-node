@@ -1,4 +1,4 @@
-import { run } from "@proven-network/handler";
+import { run } from '@proven-network/handler';
 
 import {
   BITCOIN_MAINNET_RPC,
@@ -8,7 +8,7 @@ import {
   ETHEREUM_SEPOLIA_RPC,
   RADIX_MAINNET_RPC,
   RADIX_STOKENET_RPC,
-} from "@proven-network/rpc";
+} from '@proven-network/rpc';
 
 export const test = run(() => {
   return [

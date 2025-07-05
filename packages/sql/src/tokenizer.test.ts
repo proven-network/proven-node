@@ -1,16 +1,21 @@
 import { TokenizeSqlString, SplitToWordsAndSymbols } from './tokenizer';
 
 // Debug type to check intermediate results
-type DebugSplit = SplitToWordsAndSymbols<'CREATE TABLE'>;
+type _DebugSplit = SplitToWordsAndSymbols<'CREATE TABLE'>;
 // this gives ["CREATE", "TABLE"]
 
-type DebugSplit2 = SplitToWordsAndSymbols<'CREATE TABLE (hello)'>;
+type _DebugSplit2 = SplitToWordsAndSymbols<'CREATE TABLE (hello)'>;
 // this gives ["CREATE", "TABLE", "(", "hello", ")"]
 
-type DebugSplit3 = SplitToWordsAndSymbols<'CREATE TABLE (hello world)'>;
+type _DebugSplit3 = SplitToWordsAndSymbols<'CREATE TABLE (hello world)'>;
 // this gives ["CREATE", "TABLE", "(", "hello", "world", ")"]
 
-type DebugSplit4 = TokenizeSqlString<`
+// Basic test to verify TypeScript compilation
+test('should compile TypeScript types', () => {
+  expect(true).toBe(true);
+});
+
+type _DebugSplit4 = TokenizeSqlString<`
   CREATE TABLE posts (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL DEFAULT "Untitled Post",

@@ -53,4 +53,4 @@ else
   docker-compose logs
   docker-compose down
   exit 1
-fi 
+fi

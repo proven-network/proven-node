@@ -20,7 +20,7 @@ pub const MAIN_THREAD_NODE_ID: NodeId = NodeId {
 /// Node identifier consisting of execution order and pokemon ID
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeId {
-    /// Execution order (1, 2, 3, etc.) - used for naming and coloring  
+    /// Execution order (1, 2, 3, etc.) - used for naming and coloring
     pub execution_order: u8,
     /// Pokemon ID (0-149 for Kanto Pokemon) - used for pokemon names
     pub pokemon_id: u8,

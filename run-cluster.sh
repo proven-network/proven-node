@@ -49,4 +49,4 @@ echo "Cluster stopped. Cleaning up..."
 # Clean up UPnP port forwarding
 ./../upnp-teardown.sh
 
-echo "Shutdown complete" 
+echo "Shutdown complete"

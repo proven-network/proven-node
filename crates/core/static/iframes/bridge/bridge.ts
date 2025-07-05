@@ -8,8 +8,8 @@ import {
   ResponseMessage,
   OpenModalMessage,
   CloseModalMessage,
-} from "@proven-network/common";
-import { bytesToHex } from "@noble/curves/abstract/utils";
+} from '@proven-network/common';
+import { bytesToHex } from '@noble/curves/abstract/utils';
 import type {
   WhoAmI,
   WhoAmIResult,
@@ -21,11 +21,11 @@ import type {
   ExecuteResult,
   ExecuteHashResult,
   RpcResponse,
-} from "@proven-network/common";
+} from '@proven-network/common';
 
 // WhoAmIMessage is still local to the bridge
 export type WhoAmIMessage = {
-  type: "whoAmI";
+  type: 'whoAmI';
   nonce: number;
 };
 
@@ -34,28 +34,28 @@ type LocalParentToBridgeMessage = ParentToBridgeMessage | WhoAmIMessage;
 
 function isParentMessage(data: unknown): data is LocalParentToBridgeMessage {
   if (
-    typeof data !== "object" ||
+    typeof data !== 'object' ||
     data === null ||
-    !("type" in data) ||
-    !("nonce" in data) ||
-    typeof (data as any).nonce !== "number"
+    !('type' in data) ||
+    !('nonce' in data) ||
+    typeof (data as any).nonce !== 'number'
   ) {
     return false;
   }
 
   const message = data as any;
 
-  if (message.type === "whoAmI") {
+  if (message.type === 'whoAmI') {
     return true;
   }
 
-  if (message.type === "execute") {
+  if (message.type === 'execute') {
     return (
-      "data" in message &&
-      typeof message.data === "object" &&
+      'data' in message &&
+      typeof message.data === 'object' &&
       message.data !== null &&
-      typeof message.data.manifestId === "string" &&
-      typeof message.data.handler === "string"
+      typeof message.data.manifestId === 'string' &&
+      typeof message.data.handler === 'string'
     );
   }
 
@@ -70,10 +70,10 @@ class BridgeClient {
 
   constructor() {
     // Extract window ID from URL fragment
-    this.windowId = getWindowIdFromUrl() || "unknown";
+    this.windowId = getWindowIdFromUrl() || 'unknown';
 
     // Initialize broker synchronously - will throw if it fails
-    this.broker = new MessageBroker(this.windowId, "sdk");
+    this.broker = new MessageBroker(this.windowId, 'sdk');
 
     // Initialize caches
     this.manifestCache = new Map();
@@ -91,30 +91,30 @@ class BridgeClient {
       await this.broker.connect();
 
       // Set up message handlers for modal events
-      this.broker.on("open_registration_modal", (message) => {
+      this.broker.on('open_registration_modal', (message) => {
         this.forwardToParent({
-          type: "open_registration_modal",
+          type: 'open_registration_modal',
         });
       });
 
-      this.broker.on("close_registration_modal", (message) => {
+      this.broker.on('close_registration_modal', (message) => {
         this.forwardToParent({
-          type: "close_registration_modal",
+          type: 'close_registration_modal',
         });
       });
 
-      console.debug("Bridge: Broker initialized successfully");
+      console.debug('Bridge: Broker initialized successfully');
     } catch (error) {
-      console.error("Bridge: Failed to initialize broker:", error);
+      console.error('Bridge: Failed to initialize broker:', error);
       throw new Error(
-        `Bridge: Failed to initialize broker: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Bridge: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }
 
   setupParentListener() {
     // Listen for messages from parent SDK
-    window.addEventListener("message", (event: MessageEvent) => {
+    window.addEventListener('message', (event: MessageEvent) => {
       // Only handle messages from parent window
       if (event.source === parent && isParentMessage(event.data)) {
         this.handleParentMessage(event.data);
@@ -124,62 +124,59 @@ class BridgeClient {
 
   async handleParentMessage(message: ParentToBridgeMessage) {
     try {
-      console.debug("Bridge: Received message from parent:", message);
+      console.debug('Bridge: Received message from parent:', message);
 
-      if (message.type === "whoAmI") {
+      if (message.type === 'whoAmI') {
         await this.handleWhoAmI(message);
-      } else if (message.type === "execute") {
+      } else if (message.type === 'execute') {
         await this.handleExecute(message);
       } else {
         // This should never happen due to our type guard, but TypeScript requires it
         const exhaustiveCheck: never = message;
-        throw new Error(
-          `Unknown message type: ${(exhaustiveCheck as any).type}`,
-        );
+        throw new Error(`Unknown message type: ${(exhaustiveCheck as any).type}`);
       }
     } catch (error) {
-      console.error("Bridge: Error handling parent message:", error);
+      console.error('Bridge: Error handling parent message:', error);
       this.forwardToParent({
-        type: "response",
+        type: 'response',
         nonce: message.nonce,
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   }
 
   async handleWhoAmI(message: WhoAmIMessage) {
     try {
-      const rpcCall: WhoAmI = { type: "WhoAmI", data: null };
+      const rpcCall: WhoAmI = { type: 'WhoAmI', data: null };
 
       const response = await this.broker.request<{
         success: boolean;
         data?: RpcResponse<WhoAmIResult>;
         error?: string;
-      }>("rpc_request", rpcCall, "rpc");
+      }>('rpc_request', rpcCall, 'rpc');
 
-      if (response.success && response.data?.type === "WhoAmI") {
+      if (response.success && response.data?.type === 'WhoAmI') {
         this.forwardToParent({
-          type: "response",
+          type: 'response',
           nonce: message.nonce,
           success: true,
           data: response.data.data, // Extract the WhoAmIResult from the tagged response
         });
       } else {
         this.forwardToParent({
-          type: "response",
+          type: 'response',
           nonce: message.nonce,
           success: false,
-          error: response.error || "WhoAmI response is missing or malformed",
+          error: response.error || 'WhoAmI response is missing or malformed',
         });
       }
     } catch (error) {
       this.forwardToParent({
-        type: "response",
+        type: 'response',
         nonce: message.nonce,
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to execute WhoAmI",
+        error: error instanceof Error ? error.message : 'Failed to execute WhoAmI',
       });
     }
   }
@@ -189,12 +186,12 @@ class BridgeClient {
       const { manifestId, manifest, handler, args } = message.data;
 
       if (!manifestId || !handler) {
-        throw new Error("ManifestId and handler are required for execute");
+        throw new Error('ManifestId and handler are required for execute');
       }
 
       // Cache manifest if provided
       if (manifest) {
-        console.debug("Bridge: Caching manifest", manifestId);
+        console.debug('Bridge: Caching manifest', manifestId);
         this.manifestCache.set(manifestId, manifest);
       }
 
@@ -210,12 +207,10 @@ class BridgeClient {
 
       // Try ExecuteHash first if we have a stored CodePackage hash
       if (storedCodePackageHash) {
-        console.debug(
-          "Bridge: Trying ExecuteHash with stored CodePackage hash",
-        );
+        console.debug('Bridge: Trying ExecuteHash with stored CodePackage hash');
 
         const hashRpcCall: ExecuteHash = {
-          type: "ExecuteHash",
+          type: 'ExecuteHash',
           data: {
             args: args || [],
             handler_specifier: handler,
@@ -227,18 +222,18 @@ class BridgeClient {
           success: boolean;
           data?: RpcResponse<ExecuteHashResult>;
           error?: string;
-        }>("rpc_request", hashRpcCall, "rpc");
+        }>('rpc_request', hashRpcCall, 'rpc');
 
-        if (hashResponse.success && hashResponse.data?.type === "ExecuteHash") {
+        if (hashResponse.success && hashResponse.data?.type === 'ExecuteHash') {
           const executeHashResult = hashResponse.data.data;
 
-          if (executeHashResult.result === "success") {
+          if (executeHashResult.result === 'success') {
             const executionResult = executeHashResult.data as ExecutionResult;
             this.handleExecutionResult(executionResult, message.nonce);
             return;
-          } else if (executeHashResult.result === "failure") {
+          } else if (executeHashResult.result === 'failure') {
             this.forwardToParent({
-              type: "response",
+              type: 'response',
               nonce: message.nonce,
               success: false,
               error: executeHashResult.data as string,
@@ -248,13 +243,9 @@ class BridgeClient {
           // If result is "error" (HashUnknown), fall through to Execute
         }
 
-        console.debug(
-          "Bridge: ExecuteHash failed or unknown, falling back to Execute",
-        );
+        console.debug('Bridge: ExecuteHash failed or unknown, falling back to Execute');
       } else {
-        console.debug(
-          "Bridge: No stored CodePackage hash, using Execute directly",
-        );
+        console.debug('Bridge: No stored CodePackage hash, using Execute directly');
       }
 
       // Fall back to full Execute
@@ -263,15 +254,14 @@ class BridgeClient {
         cachedManifest,
         handler,
         args || [],
-        manifestHash,
+        manifestHash
       );
     } catch (error) {
       this.forwardToParent({
-        type: "response",
+        type: 'response',
         nonce: message.nonce,
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to execute handler",
+        error: error instanceof Error ? error.message : 'Failed to execute handler',
       });
     }
   }
@@ -281,11 +271,11 @@ class BridgeClient {
     manifest: any,
     handler: string,
     args: any[],
-    manifestHash: string,
+    manifestHash: string
   ) {
     try {
       const fullRpcCall = {
-        type: "Execute",
+        type: 'Execute',
         data: {
           manifest: manifest,
           handler_specifier: handler,
@@ -297,66 +287,57 @@ class BridgeClient {
         success: boolean;
         data?: RpcResponse<ExecuteResult>;
         error?: string;
-      }>("rpc_request", fullRpcCall, "rpc");
+      }>('rpc_request', fullRpcCall, 'rpc');
 
       if (!response.success) {
-        throw new Error(response.error || "Failed to execute full manifest");
+        throw new Error(response.error || 'Failed to execute full manifest');
       }
 
-      if (!response.data || response.data.type !== "Execute") {
-        throw new Error("Invalid response format from Execute");
+      if (!response.data || response.data.type !== 'Execute') {
+        throw new Error('Invalid response format from Execute');
       }
 
       const executeResult = response.data.data;
 
-      if (executeResult.result === "success") {
+      if (executeResult.result === 'success') {
         // Handle new response format with CodePackage hash
         const successData = executeResult.data as any;
 
         if (successData.execution_result && successData.code_package_hash) {
           // Store the hash mapping for future ExecuteHash calls
           this.storeHashMapping(manifestHash, successData.code_package_hash);
-          console.debug("Bridge: Stored hash mapping", {
+          console.debug('Bridge: Stored hash mapping', {
             manifestHash,
             codePackageHash: successData.code_package_hash,
           });
 
           // Forward the execution result
-          this.handleExecutionResult(
-            successData.execution_result,
-            originalMessage.nonce,
-          );
+          this.handleExecutionResult(successData.execution_result, originalMessage.nonce);
         } else {
           // Fallback for legacy format
           this.handleExecutionResult(successData, originalMessage.nonce);
         }
-      } else if (
-        executeResult.result === "failure" ||
-        executeResult.result === "error"
-      ) {
+      } else if (executeResult.result === 'failure' || executeResult.result === 'error') {
         this.forwardToParent({
-          type: "response",
+          type: 'response',
           nonce: originalMessage.nonce,
           success: false,
           error: executeResult.data as string,
         });
       } else {
         this.forwardToParent({
-          type: "response",
+          type: 'response',
           nonce: originalMessage.nonce,
           success: false,
-          error: "Unexpected response format from Execute",
+          error: 'Unexpected response format from Execute',
         });
       }
     } catch (error) {
       this.forwardToParent({
-        type: "response",
+        type: 'response',
         nonce: originalMessage.nonce,
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to retry with full script",
+        error: error instanceof Error ? error.message : 'Failed to retry with full script',
       });
     }
   }
@@ -364,7 +345,7 @@ class BridgeClient {
   handleExecutionResult(result: ExecutionResult, nonce: number) {
     // Send the full ExecutionResult back to the SDK to handle
     this.forwardToParent({
-      type: "response",
+      type: 'response',
       nonce: nonce,
       success: true,
       data: result,
@@ -373,10 +354,7 @@ class BridgeClient {
 
   async hashManifest(manifest: any): Promise<string> {
     const manifestString = JSON.stringify(manifest);
-    const rawHash = await crypto.subtle.digest(
-      "SHA-256",
-      new TextEncoder().encode(manifestString),
-    );
+    const rawHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(manifestString));
     return bytesToHex(new Uint8Array(rawHash));
   }
 
@@ -385,18 +363,14 @@ class BridgeClient {
    */
   loadHashMappingFromStorage(): void {
     try {
-      const stored = sessionStorage.getItem("proven_hash_mapping");
+      const stored = sessionStorage.getItem('proven_hash_mapping');
       if (stored) {
         const parsed = JSON.parse(stored);
         this.hashMapping = new Map(Object.entries(parsed));
-        console.debug(
-          "Bridge: Loaded hash mapping from storage",
-          this.hashMapping.size,
-          "entries",
-        );
+        console.debug('Bridge: Loaded hash mapping from storage', this.hashMapping.size, 'entries');
       }
     } catch (error) {
-      console.warn("Bridge: Failed to load hash mapping from storage:", error);
+      console.warn('Bridge: Failed to load hash mapping from storage:', error);
     }
   }
 
@@ -406,14 +380,10 @@ class BridgeClient {
   saveHashMappingToStorage(): void {
     try {
       const obj = Object.fromEntries(this.hashMapping);
-      sessionStorage.setItem("proven_hash_mapping", JSON.stringify(obj));
-      console.debug(
-        "Bridge: Saved hash mapping to storage",
-        this.hashMapping.size,
-        "entries",
-      );
+      sessionStorage.setItem('proven_hash_mapping', JSON.stringify(obj));
+      console.debug('Bridge: Saved hash mapping to storage', this.hashMapping.size, 'entries');
     } catch (error) {
-      console.warn("Bridge: Failed to save hash mapping to storage:", error);
+      console.warn('Bridge: Failed to save hash mapping to storage:', error);
     }
   }
 
@@ -434,23 +404,23 @@ class BridgeClient {
 
   processExecuteLogs(logs: ExecuteLog[]) {
     logs.forEach((log) => {
-      if (log.level === "log") {
+      if (log.level === 'log') {
         console.log(...log.args);
-      } else if (log.level === "error") {
+      } else if (log.level === 'error') {
         console.error(...log.args);
-      } else if (log.level === "warn") {
+      } else if (log.level === 'warn') {
         console.warn(...log.args);
-      } else if (log.level === "debug") {
+      } else if (log.level === 'debug') {
         console.debug(...log.args);
-      } else if (log.level === "info") {
+      } else if (log.level === 'info') {
         console.info(...log.args);
       }
     });
   }
 
   forwardToParent(message: BridgeToParentMessage) {
-    console.debug("Bridge: Forwarding to parent:", message);
-    parent.postMessage(message, "*");
+    console.debug('Bridge: Forwarding to parent:', message);
+    parent.postMessage(message, '*');
   }
 
   // Initialize the client when the page loads
@@ -464,7 +434,7 @@ class BridgeClient {
 
 // Initialize when the page loads
 if (globalThis.addEventListener) {
-  globalThis.addEventListener("DOMContentLoaded", BridgeClient.init);
+  globalThis.addEventListener('DOMContentLoaded', BridgeClient.init);
 } else {
   // Fallback for cases where DOMContentLoaded has already fired
   BridgeClient.init();

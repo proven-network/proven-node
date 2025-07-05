@@ -63,4 +63,4 @@ for i in "${!ports[@]}"; do
     echo "  ${node_names[$i]}: $BASE_DIR/${node_names[$i]}"
 done
 echo "To connect, use: nats://localhost:4222,nats://localhost:4223,nats://localhost:4224"
-echo "To stop the cluster, run: pkill -f nats-server" 
+echo "To stop the cluster, run: pkill -f nats-server"

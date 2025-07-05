@@ -19,6 +19,7 @@ use proven_attestation_mock::MockAttestor;
 use proven_governance::Version;
 use proven_governance_mock::MockGovernance;
 use proven_local::NodeStatus;
+use proven_util::Origin;
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
@@ -34,7 +35,6 @@ use std::{
     time::Duration,
 };
 use tracing::info;
-use proven_util::Origin;
 
 /// Events that can occur in the TUI
 #[derive(Debug, Clone)]
@@ -961,9 +961,8 @@ impl App {
                         ));
                     }
                     Err(e) => {
-                        self.ui_state.app_manager_result = Some(format!(
-                            "❌ Failed to load applications: {e}"
-                        ));
+                        self.ui_state.app_manager_result =
+                            Some(format!("❌ Failed to load applications: {e}"));
                     }
                 }
             } else {
@@ -989,9 +988,9 @@ impl App {
 
             // Handle different views
             _ => match self.ui_state.app_manager_view {
-                0 => self.handle_app_list_keys(key),        // List view
-                1 => self.handle_app_details_keys(key),     // Details view
-                2 => self.handle_add_origin_keys(key),      // Add origin view
+                0 => self.handle_app_list_keys(key),           // List view
+                1 => self.handle_app_details_keys(key),        // Details view
+                2 => self.handle_add_origin_keys(key),         // Add origin view
                 3 => self.handle_create_application_keys(key), // Create application view
                 _ => {}
             },
@@ -1003,22 +1002,30 @@ impl App {
         match key.code {
             // Navigate up
             KeyCode::Up => {
-                if !self.ui_state.app_manager_applications.is_empty() && self.ui_state.app_manager_selected_index > 0 {
+                if !self.ui_state.app_manager_applications.is_empty()
+                    && self.ui_state.app_manager_selected_index > 0
+                {
                     self.ui_state.app_manager_selected_index -= 1;
                 }
             }
 
             // Navigate down
             KeyCode::Down => {
-                if !self.ui_state.app_manager_applications.is_empty() 
-                    && self.ui_state.app_manager_selected_index < self.ui_state.app_manager_applications.len() - 1 {
+                if !self.ui_state.app_manager_applications.is_empty()
+                    && self.ui_state.app_manager_selected_index
+                        < self.ui_state.app_manager_applications.len() - 1
+                {
                     self.ui_state.app_manager_selected_index += 1;
                 }
             }
 
             // View application details
             KeyCode::Enter => {
-                if let Some(app) = self.ui_state.app_manager_applications.get(self.ui_state.app_manager_selected_index) {
+                if let Some(app) = self
+                    .ui_state
+                    .app_manager_applications
+                    .get(self.ui_state.app_manager_selected_index)
+                {
                     self.ui_state.app_manager_selected_application = Some(app.clone());
                     self.ui_state.app_manager_view = 1; // Switch to details view
                 }
@@ -1094,9 +1101,7 @@ impl App {
         let origin = match origin_str.parse::<Origin>() {
             Ok(origin) => origin,
             Err(e) => {
-                self.ui_state.app_manager_result = Some(format!(
-                    "❌ Invalid origin format: {e}"
-                ));
+                self.ui_state.app_manager_result = Some(format!("❌ Invalid origin format: {e}"));
                 return;
             }
         };
@@ -1120,20 +1125,26 @@ impl App {
                     url
                 );
 
-                match self.rpc_client.add_allowed_origin(&url, application_id, origin) {
+                match self
+                    .rpc_client
+                    .add_allowed_origin(&url, application_id, origin)
+                {
                     Ok(()) => {
-                        self.ui_state.app_manager_result = Some(format!(
-                            "✅ Successfully added origin: {origin_str}"
-                        ));
-                        
+                        self.ui_state.app_manager_result =
+                            Some(format!("✅ Successfully added origin: {origin_str}"));
+
                         // Reload applications to get updated data
                         self.load_applications();
-                        
+
                         // Update selected application if it's still there
-                        if let Some(updated_app) = self.ui_state.app_manager_applications
+                        if let Some(updated_app) = self
+                            .ui_state
+                            .app_manager_applications
                             .iter()
-                            .find(|app| app.id == application_id) {
-                            self.ui_state.app_manager_selected_application = Some(updated_app.clone());
+                            .find(|app| app.id == application_id)
+                        {
+                            self.ui_state.app_manager_selected_application =
+                                Some(updated_app.clone());
                         }
 
                         // Clear input and go back to details view
@@ -1141,9 +1152,8 @@ impl App {
                         self.ui_state.app_manager_view = 1;
                     }
                     Err(e) => {
-                        self.ui_state.app_manager_result = Some(format!(
-                            "❌ Failed to add origin: {e}"
-                        ));
+                        self.ui_state.app_manager_result =
+                            Some(format!("❌ Failed to add origin: {e}"));
                     }
                 }
             } else {
@@ -1200,17 +1210,16 @@ impl App {
                         self.ui_state.app_manager_result = Some(format!(
                             "✅ Successfully created application: {application_id}"
                         ));
-                        
+
                         // Reload applications to get updated data including the new application
                         self.load_applications();
-                        
+
                         // Go back to list view to show the new application
                         self.ui_state.app_manager_view = 0;
                     }
                     Err(e) => {
-                        self.ui_state.app_manager_result = Some(format!(
-                            "❌ Failed to create application: {e}"
-                        ));
+                        self.ui_state.app_manager_result =
+                            Some(format!("❌ Failed to create application: {e}"));
                     }
                 }
             } else {

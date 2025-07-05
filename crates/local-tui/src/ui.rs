@@ -2,8 +2,8 @@
 
 use crate::{logs_viewer::LogReader, messages::NodeId};
 
-use std::collections::{HashMap, HashSet};
 use proven_applications::Application;
+use std::collections::{HashMap, HashSet};
 
 use proven_local::NodeStatus;
 use ratatui::{
@@ -1425,7 +1425,11 @@ fn render_node_type_modal(frame: &mut Frame, area: ratatui::layout::Rect, ui_sta
 
 /// Render application manager modal
 #[allow(clippy::too_many_lines)]
-fn render_application_manager_modal(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
+fn render_application_manager_modal(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    ui_state: &UiState,
+) {
     let popup_area = centered_rect(80, 80, area);
 
     frame.render_widget(Clear, popup_area);
@@ -1449,7 +1453,6 @@ fn render_application_manager_modal(frame: &mut Frame, area: ratatui::layout::Re
     });
 
     match ui_state.app_manager_view {
-        0 => render_application_list_view(frame, inner_area, ui_state),
         1 => render_application_details_view(frame, inner_area, ui_state),
         2 => render_add_origin_view(frame, inner_area, ui_state),
         3 => render_create_application_view(frame, inner_area, ui_state),
@@ -1458,7 +1461,12 @@ fn render_application_manager_modal(frame: &mut Frame, area: ratatui::layout::Re
 }
 
 /// Render application list view
-fn render_application_list_view(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
+#[allow(clippy::too_many_lines)]
+fn render_application_list_view(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    ui_state: &UiState,
+) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1477,7 +1485,10 @@ fn render_application_list_view(frame: &mut Frame, area: ratatui::layout::Rect, 
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(format!(" ({} applications)", ui_state.app_manager_applications.len())),
+        Span::raw(format!(
+            " ({} applications)",
+            ui_state.app_manager_applications.len()
+        )),
     ]);
     let title_paragraph = Paragraph::new(title_text)
         .style(Style::default().fg(Color::White))
@@ -1495,7 +1506,9 @@ fn render_application_list_view(frame: &mut Frame, area: ratatui::layout::Rect, 
                     .add_modifier(Modifier::ITALIC),
             )),
             Line::from(""),
-            Line::from("Create a new application using the RPC modal (press 'c' → Management → CreateApplication)"),
+            Line::from(
+                "Create a new application using the RPC modal (press 'c' → Management → CreateApplication)",
+            ),
         ];
         let empty_paragraph = Paragraph::new(empty_text)
             .style(Style::default().fg(Color::White))
@@ -1503,20 +1516,20 @@ fn render_application_list_view(frame: &mut Frame, area: ratatui::layout::Rect, 
         frame.render_widget(empty_paragraph, chunks[1]);
     } else {
         let mut app_items = Vec::new();
-        
+
         for (i, app) in ui_state.app_manager_applications.iter().enumerate() {
             let is_selected = i == ui_state.app_manager_selected_index;
-            
+
             let app_info = format!(
                 "ID: {} | Origins: {} | Created: {}",
                 app.id,
                 app.allowed_origins.len(),
                 app.created_at.format("%Y-%m-%d %H:%M:%S")
             );
-            
+
             let styled_text = if is_selected {
                 vec![Span::styled(
-                    format!("  > {}  ", app_info),
+                    format!("  > {app_info}  "),
                     Style::default()
                         .fg(Color::Black)
                         .bg(Color::White)
@@ -1524,14 +1537,14 @@ fn render_application_list_view(frame: &mut Frame, area: ratatui::layout::Rect, 
                 )]
             } else {
                 vec![Span::styled(
-                    format!("    {}  ", app_info),
+                    format!("    {app_info}  "),
                     Style::default().fg(Color::White),
                 )]
             };
-            
+
             app_items.push(ListItem::new(Line::from(styled_text)));
         }
-        
+
         let apps_list = List::new(app_items)
             .block(
                 Block::default()
@@ -1540,7 +1553,7 @@ fn render_application_list_view(frame: &mut Frame, area: ratatui::layout::Rect, 
                     .title_style(Style::default().fg(Color::Yellow)),
             )
             .style(Style::default().fg(Color::White));
-        
+
         frame.render_widget(apps_list, chunks[1]);
     }
 
@@ -1601,7 +1614,12 @@ fn render_application_list_view(frame: &mut Frame, area: ratatui::layout::Rect, 
 }
 
 /// Render application details view
-fn render_application_details_view(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
+#[allow(clippy::too_many_lines)]
+fn render_application_details_view(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    ui_state: &UiState,
+) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1613,14 +1631,12 @@ fn render_application_details_view(frame: &mut Frame, area: ratatui::layout::Rec
 
     if let Some(app) = &ui_state.app_manager_selected_application {
         // Title
-        let title_text = Line::from(vec![
-            Span::styled(
-                "Application Details",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]);
+        let title_text = Line::from(vec![Span::styled(
+            "Application Details",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]);
         let title_paragraph = Paragraph::new(title_text)
             .style(Style::default().fg(Color::White))
             .alignment(ratatui::layout::Alignment::Center);
@@ -1640,22 +1656,21 @@ fn render_application_details_view(frame: &mut Frame, area: ratatui::layout::Rec
                 Span::styled("Created: ", Style::default().fg(Color::Cyan)),
                 Span::styled(
                     app.created_at.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
-                    Style::default().fg(Color::White)
+                    Style::default().fg(Color::White),
                 ),
             ]),
             Line::from(""),
-            Line::from(vec![
-                Span::styled(
-                    format!("Allowed Origins ({}):", app.allowed_origins.len()),
-                    Style::default().fg(Color::Cyan),
-                ),
-            ]),
+            Line::from(vec![Span::styled(
+                format!("Allowed Origins ({}):", app.allowed_origins.len()),
+                Style::default().fg(Color::Cyan),
+            )]),
         ];
 
         if app.allowed_origins.is_empty() {
-            details_text.push(Line::from(vec![
-                Span::styled("  (no origins configured)", Style::default().fg(Color::Gray)),
-            ]));
+            details_text.push(Line::from(vec![Span::styled(
+                "  (no origins configured)",
+                Style::default().fg(Color::Gray),
+            )]));
         } else {
             for origin in &app.allowed_origins {
                 details_text.push(Line::from(vec![
@@ -1666,17 +1681,16 @@ fn render_application_details_view(frame: &mut Frame, area: ratatui::layout::Rec
         }
 
         details_text.push(Line::from(""));
-        details_text.push(Line::from(vec![
-            Span::styled(
-                format!("Linked HTTP Domains ({}):", app.linked_http_domains.len()),
-                Style::default().fg(Color::Cyan),
-            ),
-        ]));
+        details_text.push(Line::from(vec![Span::styled(
+            format!("Linked HTTP Domains ({}):", app.linked_http_domains.len()),
+            Style::default().fg(Color::Cyan),
+        )]));
 
         if app.linked_http_domains.is_empty() {
-            details_text.push(Line::from(vec![
-                Span::styled("  (no domains linked)", Style::default().fg(Color::Gray)),
-            ]));
+            details_text.push(Line::from(vec![Span::styled(
+                "  (no domains linked)",
+                Style::default().fg(Color::Gray),
+            )]));
         } else {
             for domain in &app.linked_http_domains {
                 details_text.push(Line::from(vec![
@@ -1743,14 +1757,12 @@ fn render_add_origin_view(frame: &mut Frame, area: ratatui::layout::Rect, ui_sta
         .split(area);
 
     // Title
-    let title_text = Line::from(vec![
-        Span::styled(
-            "Add Allowed Origin",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]);
+    let title_text = Line::from(vec![Span::styled(
+        "Add Allowed Origin",
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    )]);
     let title_paragraph = Paragraph::new(title_text)
         .style(Style::default().fg(Color::White))
         .alignment(ratatui::layout::Alignment::Center);
@@ -1762,7 +1774,10 @@ fn render_add_origin_view(frame: &mut Frame, area: ratatui::layout::Rect, ui_sta
         Line::from(""),
         Line::from(vec![
             Span::styled("> ", Style::default().fg(Color::Cyan)),
-            Span::styled(&ui_state.app_manager_origin_input, Style::default().fg(Color::White)),
+            Span::styled(
+                &ui_state.app_manager_origin_input,
+                Style::default().fg(Color::White),
+            ),
             Span::styled("█", Style::default().fg(Color::Gray)), // Cursor
         ]),
     ];
@@ -1828,7 +1843,11 @@ fn render_add_origin_view(frame: &mut Frame, area: ratatui::layout::Rect, ui_sta
 }
 
 /// Render create application view
-fn render_create_application_view(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
+fn render_create_application_view(
+    frame: &mut Frame,
+    area: ratatui::layout::Rect,
+    ui_state: &UiState,
+) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1840,14 +1859,12 @@ fn render_create_application_view(frame: &mut Frame, area: ratatui::layout::Rect
         .split(area);
 
     // Title
-    let title_text = Line::from(vec![
-        Span::styled(
-            "Create New Application",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]);
+    let title_text = Line::from(vec![Span::styled(
+        "Create New Application",
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    )]);
     let title_paragraph = Paragraph::new(title_text)
         .style(Style::default().fg(Color::White))
         .alignment(ratatui::layout::Alignment::Center);
@@ -1860,17 +1877,26 @@ fn render_create_application_view(frame: &mut Frame, area: ratatui::layout::Rect
         Line::from(vec![
             Span::styled("• ", Style::default().fg(Color::Cyan)),
             Span::styled("Owner: ", Style::default().fg(Color::Cyan)),
-            Span::styled("Your authenticated identity", Style::default().fg(Color::White)),
+            Span::styled(
+                "Your authenticated identity",
+                Style::default().fg(Color::White),
+            ),
         ]),
         Line::from(vec![
             Span::styled("• ", Style::default().fg(Color::Cyan)),
             Span::styled("Allowed Origins: ", Style::default().fg(Color::Cyan)),
-            Span::styled("None (you can add them later)", Style::default().fg(Color::White)),
+            Span::styled(
+                "None (you can add them later)",
+                Style::default().fg(Color::White),
+            ),
         ]),
         Line::from(vec![
             Span::styled("• ", Style::default().fg(Color::Cyan)),
             Span::styled("HTTP Domains: ", Style::default().fg(Color::Cyan)),
-            Span::styled("None (you can link them later)", Style::default().fg(Color::White)),
+            Span::styled(
+                "None (you can link them later)",
+                Style::default().fg(Color::White),
+            ),
         ]),
     ];
 

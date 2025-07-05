@@ -3,7 +3,7 @@ use std::process::Command;
 fn main() {
     // Tell Cargo when to rerun
     println!("cargo:rerun-if-changed=package.json");
-    println!("cargo:rerun-if-changed=src/**/*.ts");
+    println!("cargo:rerun-if-changed=vite.config.ts");
     println!("cargo:rerun-if-changed=static/**/*.ts");
     println!("cargo:rerun-if-changed=../../packages/common/src/**/*.ts");
 

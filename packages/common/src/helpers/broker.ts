@@ -179,8 +179,8 @@ export class MessageBroker {
     const message: BrokerMessage = {
       type,
       fromIframe: this.iframeType,
-      toIframe,
       data,
+      ...(toIframe !== undefined && { toIframe }),
     };
 
     console.debug(`Broker: ${this.iframeType} sending message:`, message);

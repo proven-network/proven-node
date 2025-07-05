@@ -10,4 +10,4 @@ upnpc -d 10109 TCP
 upnpc -d 10109 UDP
 upnpc -d 10110 UDP
 
-echo "UPnP port forwarding cleanup complete" 
+echo "UPnP port forwarding cleanup complete"

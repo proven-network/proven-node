@@ -19,7 +19,7 @@ export function runWithOptions<T extends (...args: any[]) => any>(
   return fn;
 }
 
-type ExtractPathVariables<Path extends string> =
+export type ExtractPathVariables<Path extends string> =
   Path extends `${infer _Start}:${infer Param}/${infer Rest}`
     ? { [K in Param | keyof ExtractPathVariables<`/${Rest}`>]: string }
     : Path extends `${infer _Start}:${infer Param}`
@@ -67,10 +67,9 @@ export type RadixEventHandlerOptions =
       timeout?: number;
     };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function runOnRadixEvent(
-  options: RadixEventHandlerOptions,
-  fn: (transaction: CommittedTransactionInfo) => void | Promise<void>
+  _options: RadixEventHandlerOptions,
+  _fn: (transaction: CommittedTransactionInfo) => void | Promise<void>
 ): void {
   return;
 }

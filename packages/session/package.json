@@ -7,22 +7,23 @@
   "exports": {
     ".": {
       "import": {
-        "types": "./types/index.d.ts",
+        "types": "./dist/index.d.ts",
         "default": "./dist/session.mjs"
       },
       "require": {
-        "types": "./types/index.d.ts",
+        "types": "./dist/index.d.ts",
         "default": "./dist/session.umd.js"
       }
     }
   },
-  "types": "./types/index.d.ts",
+  "types": "./dist/index.d.ts",
   "files": [
-    "dist",
-    "types"
+    "dist"
   ],
   "scripts": {
-    "build": "tsc && vite build && vite build --config vite-single-file.config.ts",
+    "build": "vite build",
+    "clean": "rm -rf dist",
+    "test": "jest",
     "lint": "eslint src --ext .ts"
   },
   "devDependencies": {
@@ -36,8 +37,8 @@
     "eslint": "^9.0.0",
     "prettier": "3.4.2",
     "ts-node": "10.9.2",
-    "typescript": "5.7.3",
-    "vite": "6.0.7",
-    "vite-plugin-singlefile": "2.1.0"
+    "typescript": "^5.7.0",
+    "vite": "^7.0.0",
+    "vite-plugin-dts": "^4.0.0"
   }
 }

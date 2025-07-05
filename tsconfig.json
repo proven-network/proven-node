@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.base.json",
+  "references": [
+    { "path": "./governance" },
+    { "path": "./crates/core" },
+    { "path": "./crates/runtime" },
+    { "path": "./packages/bundler" },
+    { "path": "./packages/common" },
+    { "path": "./packages/crypto" },
+    { "path": "./packages/handler" },
+    { "path": "./packages/kv" },
+    { "path": "./packages/sdk" },
+    { "path": "./packages/session" },
+    { "path": "./packages/sql" }
+  ],
+  "files": [],
+  "include": []
+}

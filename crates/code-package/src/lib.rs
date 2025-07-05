@@ -30,7 +30,7 @@
 //! let main_module = r#"
 //!     import _ from 'lodash';
 //!     import { v4 as uuidv4 } from 'uuid';
-//!     
+//!
 //!     export default function main() {
 //!         return _.capitalize(`Hello ${uuidv4()}`);
 //!     }
@@ -74,7 +74,7 @@
 //! The system supports standard NPM dependencies while filtering out non-NPM sources:
 //!
 //! - ✅ `"^4.17.21"` - Semantic version ranges
-//! - ✅ `"~1.0.0"` - Tilde ranges  
+//! - ✅ `"~1.0.0"` - Tilde ranges
 //! - ✅ `">=16.0.0"` - Comparison ranges
 //! - ✅ `"*"` - Wildcard versions
 //! - ❌ `"file:../local"` - Local file dependencies (skipped)
@@ -691,7 +691,7 @@ mod tests {
         // Create TypeScript module that would import the dependency
         let main_module = r"
             import { utilityFunction } from 'utility-lib';
-            
+
             export default function main() {
                 return utilityFunction('Hello, World!');
             }

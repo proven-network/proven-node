@@ -8,9 +8,9 @@ import {
   getPersonalStore as _getPersonalStore,
   getPersonalBytesStore as _getPersonalBytesStore,
   getPersonalKeyStore as _getPersonalKeyStore,
-} from "@proven-network/kv";
+} from '@proven-network/kv';
 
-import { PrivateKey } from "@proven-network/crypto";
+import { PrivateKey } from '@proven-network/crypto';
 
 type IApplicationBytesStore = ReturnType<typeof _getApplicationBytesStore>;
 type IApplicationKeyStore = ReturnType<typeof _getApplicationKeyStore>;
@@ -30,15 +30,15 @@ class ApplicationBytesStore implements IApplicationBytesStore {
   }
 
   async get(_key: string): Promise<Uint8Array | undefined> {
-    throw new Error("`get` must be run inside a handler function");
+    throw new Error('`get` must be run inside a handler function');
   }
 
   async keys(): Promise<string[]> {
-    throw new Error("`keys` must be run inside a handler function");
+    throw new Error('`keys` must be run inside a handler function');
   }
 
   async set(_key: string, _value: Uint8Array): Promise<void> {
-    throw new Error("`set` must be run inside a handler function");
+    throw new Error('`set` must be run inside a handler function');
   }
 }
 
@@ -50,15 +50,15 @@ class ApplicationKeyStore implements IApplicationKeyStore {
   }
 
   async get(_key: string): Promise<PrivateKey | undefined> {
-    throw new Error("`get` must be run inside a handler function");
+    throw new Error('`get` must be run inside a handler function');
   }
 
   async keys(): Promise<string[]> {
-    throw new Error("`keys` must be run inside a handler function");
+    throw new Error('`keys` must be run inside a handler function');
   }
 
   async set(_key: string, _value: PrivateKey): Promise<void> {
-    throw new Error("`set` must be run inside a handler function");
+    throw new Error('`set` must be run inside a handler function');
   }
 }
 
@@ -70,21 +70,21 @@ class ApplicationStringStore implements IApplicationStringStore {
   }
 
   async get(_key: string): Promise<string | undefined> {
-    throw new Error("`get` must be run inside a handler function");
+    throw new Error('`get` must be run inside a handler function');
   }
 
   async keys(): Promise<string[]> {
-    throw new Error("`keys` must be run inside a handler function");
+    throw new Error('`keys` must be run inside a handler function');
   }
 
   async set(_key: string, _value: string): Promise<void> {
-    throw new Error("`set` must be run inside a handler function");
+    throw new Error('`set` must be run inside a handler function');
   }
 }
 
 export const getApplicationStore = (storeName: string) => {
   if (!storeName) {
-    throw new Error("storeName is required");
+    throw new Error('storeName is required');
   }
 
   return new ApplicationStringStore(storeName);
@@ -92,7 +92,7 @@ export const getApplicationStore = (storeName: string) => {
 
 export const getApplicationKeyStore = (storeName: string) => {
   if (!storeName) {
-    throw new Error("storeName is required");
+    throw new Error('storeName is required');
   }
 
   return new ApplicationKeyStore(storeName);
@@ -100,7 +100,7 @@ export const getApplicationKeyStore = (storeName: string) => {
 
 export const getApplicationBytesStore = (storeName: string) => {
   if (!storeName) {
-    throw new Error("storeName is required");
+    throw new Error('storeName is required');
   }
 
   return new ApplicationBytesStore(storeName);
@@ -114,15 +114,15 @@ class NftBytesStore implements INftBytesStore {
   }
 
   async get(_key: string): Promise<Uint8Array | undefined> {
-    throw new Error("`get` must be run inside a handler function");
+    throw new Error('`get` must be run inside a handler function');
   }
 
   async keys(): Promise<string[]> {
-    throw new Error("`keys` must be run inside a handler function");
+    throw new Error('`keys` must be run inside a handler function');
   }
 
   async set(_key: string, _value: Uint8Array): Promise<void> {
-    throw new Error("`set` must be run inside a handler function");
+    throw new Error('`set` must be run inside a handler function');
   }
 }
 
@@ -136,25 +136,22 @@ class NftKeyStore implements INftKeyStore {
   async get(
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
-    _key: string,
+    _key: string
   ): Promise<PrivateKey | undefined> {
-    throw new Error("`get` must be run inside a handler function");
+    throw new Error('`get` must be run inside a handler function');
   }
 
-  async keys(
-    _resourceAddress: string,
-    _nftId: number | string | Uint8Array,
-  ): Promise<string[]> {
-    throw new Error("`keys` must be run inside a handler function");
+  async keys(_resourceAddress: string, _nftId: number | string | Uint8Array): Promise<string[]> {
+    throw new Error('`keys` must be run inside a handler function');
   }
 
   async set(
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
     _key: string,
-    _value: PrivateKey,
+    _value: PrivateKey
   ): Promise<void> {
-    throw new Error("`set` must be run inside a handler function");
+    throw new Error('`set` must be run inside a handler function');
   }
 }
 
@@ -168,31 +165,28 @@ class NftStringStore implements INftStringStore {
   async get(
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
-    _key: string,
+    _key: string
   ): Promise<string | undefined> {
-    throw new Error("`get` must be run inside a handler function");
+    throw new Error('`get` must be run inside a handler function');
   }
 
-  async keys(
-    _resourceAddress: string,
-    _nftId: number | string | Uint8Array,
-  ): Promise<string[]> {
-    throw new Error("`keys` must be run inside a handler function");
+  async keys(_resourceAddress: string, _nftId: number | string | Uint8Array): Promise<string[]> {
+    throw new Error('`keys` must be run inside a handler function');
   }
 
   async set(
     _resourceAddress: string,
     _nftId: number | string | Uint8Array,
     _key: string,
-    _value: string,
+    _value: string
   ): Promise<void> {
-    throw new Error("`set` must be run inside a handler function");
+    throw new Error('`set` must be run inside a handler function');
   }
 }
 
 export const getNftStore = (storeName: string) => {
   if (!storeName) {
-    throw new Error("storeName is required");
+    throw new Error('storeName is required');
   }
 
   return new NftStringStore(storeName);
@@ -200,7 +194,7 @@ export const getNftStore = (storeName: string) => {
 
 export const getNftKeyStore = (storeName: string) => {
   if (!storeName) {
-    throw new Error("storeName is required");
+    throw new Error('storeName is required');
   }
 
   return new NftKeyStore(storeName);
@@ -208,7 +202,7 @@ export const getNftKeyStore = (storeName: string) => {
 
 export const getNftBytesStore = (storeName: string) => {
   if (!storeName) {
-    throw new Error("storeName is required");
+    throw new Error('storeName is required');
   }
 
   return new NftBytesStore(storeName);
@@ -222,15 +216,15 @@ class PersonalBytesStore implements IPersonalBytesStore {
   }
 
   async get(_key: string): Promise<Uint8Array | undefined> {
-    throw new Error("`get` must be run inside a handler function");
+    throw new Error('`get` must be run inside a handler function');
   }
 
   async keys(): Promise<string[]> {
-    throw new Error("`keys` must be run inside a handler function");
+    throw new Error('`keys` must be run inside a handler function');
   }
 
   async set(_key: string, _value: Uint8Array): Promise<void> {
-    throw new Error("`set` must be run inside a handler function");
+    throw new Error('`set` must be run inside a handler function');
   }
 }
 
@@ -242,15 +236,15 @@ class PersonalKeyStore implements IPersonalKeyStore {
   }
 
   async get(_key: string): Promise<PrivateKey | undefined> {
-    throw new Error("`get` must be run inside a handler function");
+    throw new Error('`get` must be run inside a handler function');
   }
 
   async keys(): Promise<string[]> {
-    throw new Error("`keys` must be run inside a handler function");
+    throw new Error('`keys` must be run inside a handler function');
   }
 
   async set(_key: string, _value: PrivateKey): Promise<void> {
-    throw new Error("`set` must be run inside a handler function");
+    throw new Error('`set` must be run inside a handler function');
   }
 }
 
@@ -262,21 +256,21 @@ class PersonalStringStore implements IPersonalStringStore {
   }
 
   async get(_key: string): Promise<string | undefined> {
-    throw new Error("`get` must be run inside a handler function");
+    throw new Error('`get` must be run inside a handler function');
   }
 
   async keys(): Promise<string[]> {
-    throw new Error("`keys` must be run inside a handler function");
+    throw new Error('`keys` must be run inside a handler function');
   }
 
   async set(_key: string, _value: string): Promise<void> {
-    throw new Error("`set` must be run inside a handler function");
+    throw new Error('`set` must be run inside a handler function');
   }
 }
 
 export const getPersonalStore = (storeName: string) => {
   if (!storeName) {
-    throw new Error("storeName is required");
+    throw new Error('storeName is required');
   }
 
   return new PersonalStringStore(storeName);
@@ -284,7 +278,7 @@ export const getPersonalStore = (storeName: string) => {
 
 export const getPersonalKeyStore = (storeName: string) => {
   if (!storeName) {
-    throw new Error("storeName is required");
+    throw new Error('storeName is required');
   }
 
   return new PersonalKeyStore(storeName);
@@ -292,7 +286,7 @@ export const getPersonalKeyStore = (storeName: string) => {
 
 export const getPersonalBytesStore = (storeName: string) => {
   if (!storeName) {
-    throw new Error("storeName is required");
+    throw new Error('storeName is required');
   }
 
   return new PersonalBytesStore(storeName);

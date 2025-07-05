@@ -1,13 +1,8 @@
 {
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2020",
+    "composite": true,
     "module": "CommonJS",
-    "moduleResolution": "Node",
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
     "outDir": "dist"
   },
   "include": ["./scripts", "./test", "./typechain-types"],

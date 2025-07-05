@@ -44,33 +44,31 @@ export type SqlRows<T extends Record<string, null | number | string | Uint8Array
   forEach(callbackfn: (value: T, index: number, array: T[]) => void): void;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-class Rows<T extends Record<string, null | number | string | Uint8Array>> implements SqlRows<T> {
-  [index: number]: T | undefined;
+class _Rows<_T extends Record<string, null | number | string | Uint8Array>> implements SqlRows<_T> {
+  [index: number]: _T | undefined;
   columnNames: Readonly<string[]>;
 
   get length(): Promise<number> {
     return Promise.resolve(0);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  constructor(firstRow: FirstRow, rowStreamId: number) {
+  constructor(_firstRow: FirstRow, _rowStreamId: number) {
     this.columnNames = [];
   }
 
-  [Symbol.iterator](): Iterator<T> {
+  [Symbol.iterator](): Iterator<_T> {
     return [][Symbol.iterator]();
   }
 
-  map<U>(callbackfn: (value: T, index: number, array: T[]) => U): U[] {
+  map<U>(callbackfn: (value: _T, index: number, array: _T[]) => U): U[] {
     return [].map(callbackfn);
   }
 
-  filter(predicate: (value: T, index: number, array: T[]) => boolean): T[] {
+  filter(predicate: (value: _T, index: number, array: _T[]) => boolean): _T[] {
     return [].filter(predicate);
   }
 
-  forEach(callbackfn: (value: T, index: number, array: T[]) => void): void {
+  forEach(callbackfn: (value: _T, index: number, array: _T[]) => void): void {
     [].forEach(callbackfn);
   }
 }
@@ -93,21 +91,18 @@ class Database<Schema extends GeneratedSchema = { tables: {} }> implements SqlDa
     this.name = name;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  execute<S extends string>(query: S | Statement<S>): Promise<number> {
+  execute<S extends string>(_query: S | Statement<S>): Promise<number> {
     return Promise.resolve(0);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   migrate<S extends string>(
-    query: S
+    _query: S
   ): Database<ParseMigration<LexSqlTokens<TokenizeSqlString<S>>, Schema>> {
     return this;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   query<S extends string>(
-    query: S | Statement<S>
+    _query: S | Statement<S>
   ): Promise<SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>> {
     return [] as any;
   }
@@ -147,27 +142,24 @@ class NftDatabase<Schema extends GeneratedSchema = { tables: {} }>
     this.name = name;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   execute<S extends string>(
-    resourceAddress: string,
-    nftId: string | number | Uint8Array,
-    query: S | Statement<S>
+    _resourceAddress: string,
+    _nftId: string | number | Uint8Array,
+    _query: S | Statement<S>
   ): Promise<number> {
     return Promise.resolve(0);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   migrate<S extends string>(
-    query: S
+    _query: S
   ): NftDatabase<ParseMigration<LexSqlTokens<TokenizeSqlString<S>>, Schema>> {
     return this;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   query<S extends string>(
-    resourceAddress: string,
-    nftId: string | number | Uint8Array,
-    query: S | Statement<S>
+    _resourceAddress: string,
+    _nftId: string | number | Uint8Array,
+    _query: S | Statement<S>
   ): Promise<SqlRows<ParseQueryType<LexSqlTokens<TokenizeSqlString<S>>, Schema>>> {
     return [] as any;
   }

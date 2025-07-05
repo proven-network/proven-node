@@ -101,7 +101,7 @@
         padding: 10px;
         border: 1px solid #ccc;
         border-radius: 4px;
-        font-family: "Courier New", monospace;
+        font-family: 'Courier New', monospace;
         font-size: 16px;
         line-height: 1.4;
         resize: none;
@@ -150,9 +150,7 @@ export const test = run(() => {
   return "Hello from Proven!";
 });</textarea
               >
-              <button class="execute-btn" onclick="executeScript('script1')">
-                Execute
-              </button>
+              <button class="execute-btn" onclick="executeScript('script1')">Execute</button>
             </div>
           </div>
 
@@ -169,9 +167,7 @@ export const test = run(() => {
   return identity ? "Logged in" : "Logged out";
 });</textarea
               >
-              <button class="execute-btn" onclick="executeScript('script2')">
-                Execute
-              </button>
+              <button class="execute-btn" onclick="executeScript('script2')">Execute</button>
             </div>
           </div>
 
@@ -186,9 +182,7 @@ export const test = run(() => {
   throw new Error("Test error message");
 });</textarea
               >
-              <button class="execute-btn" onclick="executeScript('script3')">
-                Execute
-              </button>
+              <button class="execute-btn" onclick="executeScript('script3')">Execute</button>
             </div>
           </div>
 
@@ -200,17 +194,15 @@ import { run } from "@proven-network/handler";
 
 export const test = run(async () => {
   console.log("Starting async operation...");
-  
+
   // Simulate async work
   await new Promise(resolve => setTimeout(resolve, 1000));
-  
+
   console.log("Async operation completed!");
   return "Async result after 1 second delay";
 });</textarea
               >
-              <button class="execute-btn" onclick="executeScript('script4')">
-                Execute
-              </button>
+              <button class="execute-btn" onclick="executeScript('script4')">Execute</button>
             </div>
           </div>
 
@@ -231,9 +223,7 @@ export const test = runWithOptions(
   }
 );</textarea
               >
-              <button class="execute-btn" onclick="executeScript('script5')">
-                Execute
-              </button>
+              <button class="execute-btn" onclick="executeScript('script5')">Execute</button>
             </div>
           </div>
 
@@ -246,13 +236,11 @@ import { run } from "@proven-network/handler";
 export const test = run(() => {
   // Edit this script to test your own code!
   console.log("Custom script running...");
-  
+
   return "Edit this script and test your own logic!";
 });</textarea
               >
-              <button class="execute-btn" onclick="executeScript('script6')">
-                Execute
-              </button>
+              <button class="execute-btn" onclick="executeScript('script6')">Execute</button>
             </div>
           </div>
         </div>
@@ -286,39 +274,36 @@ export const test = run(() => {
       // Initialize the SDK
       const sdk = ProvenSDK({
         logger: {
-          debug: (...args) => console.debug("[SDK]", ...args),
-          info: (...args) => console.info("[SDK]", ...args),
-          warn: (...args) => console.warn("[SDK]", ...args),
-          error: (...args) => console.error("[SDK]", ...args),
+          debug: (...args) => console.debug('[SDK]', ...args),
+          info: (...args) => console.info('[SDK]', ...args),
+          warn: (...args) => console.warn('[SDK]', ...args),
+          error: (...args) => console.error('[SDK]', ...args),
         },
-        authGatewayOrigin: "http://localhost:3000",
-        applicationId: globalThis.location.hash.split("=")[1],
+        authGatewayOrigin: 'http://localhost:3000',
+        applicationId: globalThis.location.hash.split('=')[1],
       });
 
       // Initialize the button iframe
       sdk
-        .initConnectButton("#auth-container")
+        .initConnectButton('#auth-container')
         .then(() => {
-          logMessage("Auth button initialized", "success");
+          logMessage('Auth button initialized', 'success');
         })
         .catch((error) => {
-          logMessage(
-            `Failed to initialize auth button: ${error.message}`,
-            "error",
-          );
+          logMessage(`Failed to initialize auth button: ${error.message}`, 'error');
         });
 
       // Make SDK available globally for button handlers
       window.sdk = sdk;
 
-      function logMessage(message, type = "info") {
-        const div = document.createElement("div");
+      function logMessage(message, type = 'info') {
+        const div = document.createElement('div');
         div.className = `message ${type}`;
         div.innerHTML = `
           <strong>${new Date().toLocaleTimeString()}</strong><br>
-          ${typeof message === "object" ? JSON.stringify(message, null, 2) : message}
+          ${typeof message === 'object' ? JSON.stringify(message, null, 2) : message}
         `;
-        document.getElementById("messages").prepend(div);
+        document.getElementById('messages').prepend(div);
       }
 
       window.testWhoAmI = async function () {
@@ -326,14 +311,11 @@ export const test = run(() => {
         button.disabled = true;
 
         try {
-          logMessage("Calling whoAmI...", "info");
+          logMessage('Calling whoAmI...', 'info');
           const result = await sdk.whoAmI();
-          logMessage(
-            `WhoAmI Result: ${JSON.stringify(result, null, 2)}`,
-            "success",
-          );
+          logMessage(`WhoAmI Result: ${JSON.stringify(result, null, 2)}`, 'success');
         } catch (error) {
-          logMessage(`WhoAmI Error: ${error.message}`, "error");
+          logMessage(`WhoAmI Error: ${error.message}`, 'error');
         } finally {
           button.disabled = false;
         }
@@ -344,7 +326,7 @@ export const test = run(() => {
         button.disabled = true;
 
         try {
-          logMessage("Calling execute with test script...", "info");
+          logMessage('Calling execute with test script...', 'info');
 
           const script = `
             import { run } from "@proven-network/handler";
@@ -356,20 +338,17 @@ export const test = run(() => {
             });
           `;
 
-          const result = await sdk.execute(script, "file:///main.ts#test", []);
-          logMessage(
-            `Execute Result: ${JSON.stringify(result, null, 2)}`,
-            "success",
-          );
+          const result = await sdk.execute(script, 'file:///main.ts#test', []);
+          logMessage(`Execute Result: ${JSON.stringify(result, null, 2)}`, 'success');
         } catch (error) {
-          logMessage(`Execute Error: ${error.message}`, "error");
+          logMessage(`Execute Error: ${error.message}`, 'error');
         } finally {
           button.disabled = false;
         }
       };
 
       window.clearMessages = function () {
-        document.getElementById("messages").innerHTML = "";
+        document.getElementById('messages').innerHTML = '';
       };
 
       window.executeScript = async function (textareaId) {
@@ -379,22 +358,17 @@ export const test = run(() => {
         try {
           // Get script content from CodeMirror editor
           const editor = codeEditors[textareaId];
-          const script = editor
-            ? editor.getValue()
-            : document.getElementById(textareaId).value;
+          const script = editor ? editor.getValue() : document.getElementById(textareaId).value;
 
-          logMessage(`Executing script from ${textareaId}...`, "info");
+          logMessage(`Executing script from ${textareaId}...`, 'info');
 
-          const result = await sdk.execute(script, "file:///main.ts#test", []);
+          const result = await sdk.execute(script, 'file:///main.ts#test', []);
           logMessage(
             `Execute Result (${textareaId}): ${JSON.stringify(result, null, 2)}`,
-            "success",
+            'success'
           );
         } catch (error) {
-          logMessage(
-            `Execute Error (${textareaId}): ${error.message}`,
-            "error",
-          );
+          logMessage(`Execute Error (${textareaId}): ${error.message}`, 'error');
           throw error;
         } finally {
           button.disabled = false;
@@ -415,18 +389,18 @@ export const test = run(() => {
 
       // Initialize CodeMirror for syntax highlighting
       function initCodeEditors() {
-        const textareas = document.querySelectorAll(".script-textarea");
+        const textareas = document.querySelectorAll('.script-textarea');
         textareas.forEach((textarea) => {
           const editor = CodeMirror.fromTextArea(textarea, {
-            mode: "javascript",
-            theme: "default",
+            mode: 'javascript',
+            theme: 'default',
             lineNumbers: true,
             autoCloseBrackets: true,
             matchBrackets: true,
             indentUnit: 2,
             tabSize: 2,
             lineWrapping: true,
-            scrollbarStyle: "null", // Hide scrollbars
+            scrollbarStyle: 'null', // Hide scrollbars
           });
 
           // Store editor instance for later access
@@ -438,14 +412,14 @@ export const test = run(() => {
           }, 100);
 
           // Auto-resize when content changes
-          editor.on("change", () => {
+          editor.on('change', () => {
             setTimeout(() => {
               autoResizeEditor(editor);
             }, 0);
           });
 
           // Auto-resize on focus to handle any layout changes
-          editor.on("focus", () => {
+          editor.on('focus', () => {
             autoResizeEditor(editor);
           });
         });
@@ -455,7 +429,7 @@ export const test = run(() => {
       setTimeout(initCodeEditors, 100);
 
       // Log SDK initialization
-      logMessage("Proven SDK initialized", "success");
+      logMessage('Proven SDK initialized', 'success');
     </script>
   </body>
 </html>

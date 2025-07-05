@@ -4,7 +4,7 @@ const INACTIVITY_TIMEOUT = 60000; // 60 seconds in milliseconds
 const CHECK_INTERVAL = 5000; // 5 seconds in milliseconds
 
 type WorkerMessage = {
-  type: "send";
+  type: 'send';
   nonce: number;
   data: Uint8Array;
 };
@@ -30,7 +30,7 @@ class RpcWorker {
     const query = globalThis.location.search;
     const host = globalThis.location.host;
     const path = globalThis.location.pathname;
-    const applicationId = path.split("/")[2];
+    const applicationId = path.split('/')[2];
 
     this.httpEndpoint = `http://${host}/app/${applicationId}/rpc/http${query}`;
     this.wsEndpoint = `ws://${host}/app/${applicationId}/rpc/ws${query}`;
@@ -39,11 +39,10 @@ class RpcWorker {
   }
 
   initWebSocket() {
-    if (this.ws?.readyState === WebSocket.OPEN || this.intentionallyClosed)
-      return;
+    if (this.ws?.readyState === WebSocket.OPEN || this.intentionallyClosed) return;
 
     this.ws = new WebSocket(this.wsEndpoint);
-    this.ws.binaryType = "arraybuffer";
+    this.ws.binaryType = 'arraybuffer';
     this.updateLastActivity();
     this.intentionallyClosed = false;
 
@@ -53,7 +52,7 @@ class RpcWorker {
     };
 
     this.ws.onclose = () => {
-      console.log("WebSocket connection closed");
+      console.log('WebSocket connection closed');
       this.ws = null;
       // Only reconnect if closure wasn't intentional
       if (!this.intentionallyClosed) {
@@ -62,7 +61,7 @@ class RpcWorker {
     };
 
     this.ws.onerror = (error) => {
-      console.error("WebSocket error:", error);
+      console.error('WebSocket error:', error);
     };
   }
 
@@ -70,7 +69,7 @@ class RpcWorker {
     // Forward the binary message to all connected ports
     this.ports.forEach((port) => {
       port.postMessage({
-        type: "ws-message",
+        type: 'ws-message',
         data: data,
       });
     });
@@ -79,9 +78,9 @@ class RpcWorker {
   async sendViaHttp(data: Uint8Array, nonce: number): Promise<void> {
     try {
       const response = await fetch(this.httpEndpoint, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/octet-stream",
+          'Content-Type': 'application/octet-stream',
         },
         body: data,
       });
@@ -96,22 +95,22 @@ class RpcWorker {
       const port = this.pendingRequests.get(nonce);
       if (port) {
         port.postMessage({
-          type: "http-response",
+          type: 'http-response',
           nonce: nonce,
           data: responseData,
         });
         this.pendingRequests.delete(nonce);
       }
     } catch (error) {
-      console.error("HTTP request failed:", error);
+      console.error('HTTP request failed:', error);
 
       // Send error back to the requesting port
       const port = this.pendingRequests.get(nonce);
       if (port) {
         port.postMessage({
-          type: "http-error",
+          type: 'http-error',
           nonce: nonce,
-          error: error instanceof Error ? error.message : "Unknown error",
+          error: error instanceof Error ? error.message : 'Unknown error',
         });
         this.pendingRequests.delete(nonce);
       }
@@ -159,7 +158,7 @@ class RpcWorker {
   }
 
   async handlePortMessage(port: MessagePort, data: any) {
-    if (data.type === "send") {
+    if (data.type === 'send') {
       const message = data as WorkerMessage;
 
       // Store which port sent this request for response routing
@@ -167,10 +166,10 @@ class RpcWorker {
 
       // Decide transport: use WebSocket if already open, otherwise use HTTP
       if (this.ws?.readyState === WebSocket.OPEN) {
-        console.debug("RPC: Using WebSocket transport (already open)");
+        console.debug('RPC: Using WebSocket transport (already open)');
         this.sendViaWebSocket(message.data);
       } else {
-        console.debug("RPC: Using HTTP transport");
+        console.debug('RPC: Using HTTP transport');
         await this.sendViaHttp(message.data, message.nonce);
       }
     }
@@ -179,7 +178,7 @@ class RpcWorker {
 
 const worker = new RpcWorker();
 
-self.addEventListener("connect", (event: Event) => {
+self.addEventListener('connect', (event: Event) => {
   const connectEvent = event as MessageEvent;
   const port = connectEvent.ports[0];
 
@@ -191,11 +190,11 @@ self.addEventListener("connect", (event: Event) => {
   };
 
   port.onmessageerror = (e) => {
-    console.error("Port message error:", e);
+    console.error('Port message error:', e);
   };
 
   // Clean up when port is closed
-  port.addEventListener("close", () => {
+  port.addEventListener('close', () => {
     worker.ports.delete(port);
   });
 

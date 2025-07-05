@@ -1,5 +1,5 @@
-import { generateEd25519Key } from "@proven-network/crypto";
-import { run } from "@proven-network/handler";
+import { generateEd25519Key } from '@proven-network/crypto';
+import { run } from '@proven-network/handler';
 
 import {
   ManifestBuilder,
@@ -13,7 +13,7 @@ import {
   bucket,
   decimal,
   generateRandomNonce,
-} from "@radixdlt/radix-engine-toolkit";
+} from '@radixdlt/radix-engine-toolkit';
 
 export const test = run(async () => {
   const notaryPrivateKey = generateEd25519Key();
@@ -33,46 +33,38 @@ export const test = run(async () => {
   // We then build the transaction manifest
   const transactionManifest: TransactionManifest = new ManifestBuilder()
     .callMethod(
-      "account_tdx_2_12xhxpwuf3tyerew3j9fhuhar0xwngrftw37gxn7vu3k7cynagdpysp",
-      "withdraw",
+      'account_tdx_2_12xhxpwuf3tyerew3j9fhuhar0xwngrftw37gxn7vu3k7cynagdpysp',
+      'withdraw',
       [
-        address(
-          "resource_tdx_2_1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxtfd2jc",
-        ),
+        address('resource_tdx_2_1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxtfd2jc'),
         decimal(10),
-      ],
+      ]
     )
     .takeAllFromWorktop(
-      "resource_tdx_2_1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxtfd2jc",
+      'resource_tdx_2_1tknxxxxxxxxxradxrdxxxxxxxxx009923554798xxxxxxxxxtfd2jc',
       (builder, bucketId) =>
         builder.callMethod(
-          "account_tdx_2_12xhxpwuf3tyerew3j9fhuhar0xwngrftw37gxn7vu3k7cynagdpysp",
-          "try_deposit_or_abort",
-          [bucket(bucketId)],
-        ),
+          'account_tdx_2_12xhxpwuf3tyerew3j9fhuhar0xwngrftw37gxn7vu3k7cynagdpysp',
+          'try_deposit_or_abort',
+          [bucket(bucketId)]
+        )
     )
     .build();
 
   // We may now build the complete transaction through the transaction builder.
-  const transaction: NotarizedTransaction = await TransactionBuilder.new().then(
-    (builder) =>
-      builder
-        .header(transactionHeader)
-        .manifest(transactionManifest)
-        .sign(signerPrivateKey)
-        .notarize(notaryPrivateKey),
+  const transaction: NotarizedTransaction = await TransactionBuilder.new().then((builder) =>
+    builder
+      .header(transactionHeader)
+      .manifest(transactionManifest)
+      .sign(signerPrivateKey)
+      .notarize(notaryPrivateKey)
   );
 
-  const compiledTransaction =
-    await RadixEngineToolkit.NotarizedTransaction.compile(transaction);
+  const compiledTransaction = await RadixEngineToolkit.NotarizedTransaction.compile(transaction);
 
   const compiledTransactionHex = Array.from(compiledTransaction)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 
-  return [
-    compiledTransactionHex,
-    notaryPrivateKey.publicKeyHex(),
-    signerPrivateKey.publicKeyHex(),
-  ];
+  return [compiledTransactionHex, notaryPrivateKey.publicKeyHex(), signerPrivateKey.publicKeyHex()];
 });

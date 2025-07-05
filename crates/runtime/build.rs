@@ -107,7 +107,7 @@ fn main() {
     // Tell Cargo when to rerun - only when these specific files change
     println!("cargo:rerun-if-changed=package.json");
     println!("cargo:rerun-if-changed=package-lock.json");
-    println!("cargo:rerun-if-changed=rollup.config.js");
+    println!("cargo:rerun-if-changed=vite.config.ts");
     println!("cargo:rerun-if-changed=src/import_replacements.rs");
 
     // Only rerun for TS files, not for any file in src
@@ -169,15 +169,15 @@ fn main() {
             fs::write(path, replaced).expect("Failed to write file");
         });
 
-        // Rollup deps
-        let rollup_status = Command::new("npm")
+        // Bundle deps with Vite
+        let vite_status = Command::new("npm")
             .arg("run")
             .arg("bundle")
             .status()
-            .expect("Failed to run rollup");
+            .expect("Failed to run vite bundle");
 
-        if !rollup_status.success() {
-            panic!("rollup bundling failed");
+        if !vite_status.success() {
+            panic!("vite bundling failed");
         }
         clean_vendor_file("openai").expect("Failed to clean openai bundle");
         clean_vendor_file("uuid").expect("Failed to clean uuid bundle");

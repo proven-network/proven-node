@@ -138,7 +138,7 @@ export type ParseAddColumn<
 ]
   ? Rest extends [
       { type: 'KEYWORD'; value: 'PRIMARY KEY' | 'NOT NULL' },
-      ...infer RestAfterConstraint,
+      ...infer _RestAfterConstraint,
     ]
     ? {
         tables: AddColumn<
@@ -162,7 +162,7 @@ export type ParseDropColumn<
   Tokens extends readonly any[],
   Schema extends GeneratedSchema,
   State extends AlterTableState,
-> = Tokens extends [{ type: 'IDENTIFIER'; value: infer Column extends string }, ...infer Rest]
+> = Tokens extends [{ type: 'IDENTIFIER'; value: infer Column extends string }, ...infer _Rest]
   ? {
       tables: RemoveColumn<Schema['tables'], State['currentTableName'], Column>;
     }
@@ -176,7 +176,7 @@ export type ParseRenameColumn<
   { type: 'IDENTIFIER'; value: infer OldColumn },
   { type: 'KEYWORD'; value: 'TO' },
   { type: 'IDENTIFIER'; value: infer NewColumn },
-  ...infer Rest,
+  ...infer _Rest,
 ]
   ? {
       tables: RenameColumn<
@@ -267,13 +267,13 @@ export type ParseFromClause<
 > = Tokens extends [
   { type: 'KEYWORD'; value: 'FROM' },
   { type: 'IDENTIFIER'; value: infer Table extends string },
-  ...infer Rest,
+  ...infer _Rest,
 ]
   ? State['allColumns'] extends true
     ? GetTableColumns<Schema, Table>
     : Pick<GetTableColumns<Schema, Table>, State['specificColumns'][number]>
   : Tokens extends [{ type: 'KEYWORD'; value: 'FROM' }, ...infer Rest]
     ? ParseFromClause<Rest, Schema, State>
-    : Tokens extends [infer _, ...infer Rest]
+    : Tokens extends [infer _First, ...infer Rest]
       ? ParseFromClause<Rest, Schema, State>
       : never;

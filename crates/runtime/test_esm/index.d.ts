@@ -1,4 +1,4 @@
-declare module "@proven-network/rpc" {
+declare module '@proven-network/rpc' {
   export const BITCOIN_MAINNET_RPC: string;
   export const BITCOIN_TESTNET_RPC: string;
   export const ETHEREUM_HOLESKY_RPC: string;

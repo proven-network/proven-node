@@ -6,17 +6,12 @@ import {
   SignerResponse as RadixSignerResponse,
   Signature as RadixSignature,
   SignatureWithPublicKey as RadixSignatureWithPublicKey,
-} from "@radixdlt/radix-engine-toolkit";
+} from '@radixdlt/radix-engine-toolkit';
 
-type Curve = "Ed25519" & RadixCurve;
+type Curve = 'Ed25519' & RadixCurve;
 
-const {
-  op_generate_ed25519,
-  op_get_curve_name,
-  op_get_public_key,
-  op_sign_bytes,
-  op_sign_string,
-} = Deno.core.ops;
+const { op_generate_ed25519, op_get_curve_name, op_get_public_key, op_sign_bytes, op_sign_string } =
+  Deno.core.ops;
 
 class PublicKey implements RadixPublicKey {
   bytes: Uint8Array;
@@ -37,8 +32,8 @@ class PublicKey implements RadixPublicKey {
 
   hexString(): string {
     return Array.from(this.bytes)
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   rawBytes(): Uint8Array {
@@ -69,8 +64,8 @@ class Signature implements RadixSignature {
 
   hexString(): string {
     return Array.from(this.bytes)
-      .map((byte) => byte.toString(16).padStart(2, "0"))
-      .join("");
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   rawBytes(): Uint8Array {
@@ -98,7 +93,7 @@ class SignatureWithPublicKey implements RadixSignatureWithPublicKey {
   }
 }
 
-export class PrivateKey implements Omit<RadixPrivateKey, "bytes">, RadixSigner {
+export class PrivateKey implements Omit<RadixPrivateKey, 'bytes'>, RadixSigner {
   private keyId: number;
 
   get curve(): Curve {
@@ -141,12 +136,12 @@ export class PrivateKey implements Omit<RadixPrivateKey, "bytes">, RadixSigner {
   signToSignature(data: string | Uint8Array): Signature {
     let signature;
 
-    if (typeof data === "string") {
+    if (typeof data === 'string') {
       signature = new Signature(op_sign_string(this.keyId, data), this.curve);
     } else if (data instanceof Uint8Array) {
       signature = new Signature(op_sign_bytes(this.keyId, data), this.curve);
     } else {
-      throw new Error("Invalid type for signing");
+      throw new Error('Invalid type for signing');
     }
 
     Object.freeze(signature);
@@ -154,25 +149,23 @@ export class PrivateKey implements Omit<RadixPrivateKey, "bytes">, RadixSigner {
     return signature;
   }
 
-  signToSignatureWithPublicKey(
-    data: string | Uint8Array,
-  ): SignatureWithPublicKey {
+  signToSignatureWithPublicKey(data: string | Uint8Array): SignatureWithPublicKey {
     let signatureWithPublicKey;
 
-    if (typeof data === "string") {
+    if (typeof data === 'string') {
       signatureWithPublicKey = new SignatureWithPublicKey(
         op_sign_string(this.keyId, data),
         this.curve,
-        this.publicKeyBytes(),
+        this.publicKeyBytes()
       );
     } else if (data instanceof Uint8Array) {
       signatureWithPublicKey = new SignatureWithPublicKey(
         op_sign_bytes(this.keyId, data),
         this.curve,
-        this.publicKeyBytes(),
+        this.publicKeyBytes()
       );
     } else {
-      throw new Error("Invalid type for signing");
+      throw new Error('Invalid type for signing');
     }
 
     Object.freeze(signatureWithPublicKey);

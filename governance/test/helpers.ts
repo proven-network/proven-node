@@ -1,17 +1,17 @@
-import { ethers } from "hardhat";
-import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
-import { expect } from "chai";
-import { Contract, Signer } from "ethers";
-import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { NodeGovernance, VersionGovernance } from "../typechain-types";
+import { ethers } from 'hardhat';
+import { time } from '@nomicfoundation/hardhat-toolbox/network-helpers';
+import { expect } from 'chai';
+import { Contract, Signer } from 'ethers';
+import { HardhatEthersSigner } from '@nomicfoundation/hardhat-ethers/signers';
+import { NodeGovernance, VersionGovernance } from '../typechain-types';
 
 export const VOTING_DELAY = 1n; // 1 block
 export const VOTING_PERIOD = 50400n; // 1 week assuming 12 sec blocks
 export const QUORUM_FRACTION = 4n; // 4%
-export const PROPOSAL_THRESHOLD = ethers.parseEther("10000"); // 10,000 tokens
+export const PROPOSAL_THRESHOLD = ethers.parseEther('10000'); // 10,000 tokens
 export const TIMELOCK_DELAY = 86400n; // 1 day
 export const ZERO_ADDRESS = ethers.ZeroAddress;
-export const INITIAL_SUPPLY = ethers.parseEther("10000000"); // 10M tokens
+export const INITIAL_SUPPLY = ethers.parseEther('10000000'); // 10M tokens
 
 // OpenZeppelin Governor ProposalState enum
 export enum ProposalState {
@@ -36,7 +36,7 @@ export async function getProposalId(
   targets: string[],
   values: bigint[],
   calldatas: string[],
-  description: string,
+  description: string
 ): Promise<bigint> {
   const descHash = ethers.id(description);
   return await governor.hashProposal(targets, values, calldatas, descHash);
@@ -50,7 +50,7 @@ export async function advanceToState(
   description: string,
   targets: string[] = [],
   values: bigint[] = [],
-  calldatas: string[] = [],
+  calldatas: string[] = []
 ): Promise<void> {
   let state = Number(await governor.state(proposalId));
   const descHash = ethers.id(description);
@@ -58,38 +58,30 @@ export async function advanceToState(
   // Move from Pending to Active
   if (state === ProposalState.Pending && targetState >= ProposalState.Active) {
     await time.increase(VOTING_DELAY + 1n);
-    await ethers.provider.send("evm_mine", []);
+    await ethers.provider.send('evm_mine', []);
     state = Number(await governor.state(proposalId));
   }
 
   // Wait for voting period to end and move to Succeeded
-  if (
-    state === ProposalState.Active &&
-    targetState >= ProposalState.Succeeded
-  ) {
+  if (state === ProposalState.Active && targetState >= ProposalState.Succeeded) {
     await time.increase(VOTING_PERIOD + 1n);
-    await ethers.provider.send("evm_mine", []);
+    await ethers.provider.send('evm_mine', []);
 
     // Mine a few blocks to ensure the vote is counted correctly
     for (let i = 0; i < 5; i++) {
-      await ethers.provider.send("evm_mine", []);
+      await ethers.provider.send('evm_mine', []);
     }
 
     state = Number(await governor.state(proposalId));
 
     // Make sure we succeeded and didn't defeat
     if (state === ProposalState.Defeated) {
-      throw new Error(
-        `Proposal was defeated. Check the voting power/quorum requirements.`,
-      );
+      throw new Error(`Proposal was defeated. Check the voting power/quorum requirements.`);
     }
   }
 
   // Move from Succeeded to Queued
-  if (
-    state === ProposalState.Succeeded &&
-    targetState >= ProposalState.Queued
-  ) {
+  if (state === ProposalState.Succeeded && targetState >= ProposalState.Queued) {
     await governor.queue(targets, values, calldatas, descHash);
     state = Number(await governor.state(proposalId));
   }
@@ -97,7 +89,7 @@ export async function advanceToState(
   // Move from Queued to Executed
   if (state === ProposalState.Queued && targetState >= ProposalState.Executed) {
     await time.increase(TIMELOCK_DELAY + 1n);
-    await ethers.provider.send("evm_mine", []);
+    await ethers.provider.send('evm_mine', []);
     await governor.execute(targets, values, calldatas, descHash);
     state = Number(await governor.state(proposalId));
   }
@@ -110,39 +102,38 @@ export async function deployContracts() {
   const [deployer, voter1, voter2, voter3, voter4] = await ethers.getSigners();
 
   // Deploy token
-  const ProvenToken = await ethers.getContractFactory("ProvenToken");
+  const ProvenToken = await ethers.getContractFactory('ProvenToken');
   const token = await ProvenToken.deploy(INITIAL_SUPPLY);
 
   // Deploy timelock with proposers and executors to be set later
-  const ProvenTimelock = await ethers.getContractFactory("ProvenTimelock");
+  const ProvenTimelock = await ethers.getContractFactory('ProvenTimelock');
   const timelock = await ProvenTimelock.deploy(
     TIMELOCK_DELAY,
     [], // proposers
     [], // executors
-    deployer.address,
+    deployer.address
   );
 
   // Deploy VersionGovernance
-  const VersionGovernance =
-    await ethers.getContractFactory("VersionGovernance");
+  const VersionGovernance = await ethers.getContractFactory('VersionGovernance');
   const versionGovernor = await VersionGovernance.deploy(
     await token.getAddress(),
     await timelock.getAddress(),
     VOTING_DELAY,
     VOTING_PERIOD,
     QUORUM_FRACTION,
-    PROPOSAL_THRESHOLD,
+    PROPOSAL_THRESHOLD
   );
 
   // Deploy NodeGovernance
-  const NodeGovernance = await ethers.getContractFactory("NodeGovernance");
+  const NodeGovernance = await ethers.getContractFactory('NodeGovernance');
   const nodeGovernor = await NodeGovernance.deploy(
     await token.getAddress(),
     await timelock.getAddress(),
     VOTING_DELAY,
     VOTING_PERIOD,
     QUORUM_FRACTION,
-    PROPOSAL_THRESHOLD,
+    PROPOSAL_THRESHOLD
   );
 
   // Setup roles
@@ -163,7 +154,7 @@ export async function deployContracts() {
   // Distribute tokens for voting
   const voters = [voter1, voter2, voter3, voter4];
   for (const voter of voters) {
-    const amount = ethers.parseEther("1000000"); // 1M tokens
+    const amount = ethers.parseEther('1000000'); // 1M tokens
     await token.transfer(voter.address, amount);
     await token.connect(voter).delegate(voter.address);
   }
@@ -189,25 +180,14 @@ export async function createPassingProposal(
   values: bigint[],
   calldatas: string[],
   description: string,
-  voters: HardhatEthersSigner[],
+  voters: HardhatEthersSigner[]
 ) {
   // Submit proposal
-  const proposeTx = await governor.propose(
-    targets,
-    values,
-    calldatas,
-    description,
-  );
+  const proposeTx = await governor.propose(targets, values, calldatas, description);
   await proposeTx.wait();
 
   // Get proposal id from events
-  const proposalId = await getProposalId(
-    governor,
-    targets,
-    values,
-    calldatas,
-    description,
-  );
+  const proposalId = await getProposalId(governor, targets, values, calldatas, description);
 
   // Move to active state
   await advanceToState(
@@ -217,7 +197,7 @@ export async function createPassingProposal(
     description,
     targets,
     values,
-    calldatas,
+    calldatas
   );
 
   // Cast votes from multiple voters
@@ -233,7 +213,7 @@ export async function createPassingProposal(
     description,
     targets,
     values,
-    calldatas,
+    calldatas
   );
 
   // Wait for timelock delay and execute
@@ -244,7 +224,7 @@ export async function createPassingProposal(
     description,
     targets,
     values,
-    calldatas,
+    calldatas
   );
 
   return { proposalId, description };

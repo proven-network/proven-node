@@ -1,22 +1,15 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "composite": true,
     "module": "ES2020",
     "lib": ["ES2020", "DOM"],
     "types": ["deno"],
-    "target": "ES2020",
-    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
-    "forceConsistentCasingInFileNames": true,
     "useDefineForClassFields": false,
-    "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "test_esm/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": ["src/**/*.ts", "test_esm/**/*.ts"]
 }
