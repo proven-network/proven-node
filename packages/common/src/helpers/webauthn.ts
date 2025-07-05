@@ -88,7 +88,7 @@ export async function authenticate(): Promise<Uint8Array> {
   const state = crypto.randomUUID();
 
   // Get challenge from server - uses start_discoverable_authentication
-  const resp = await fetch(`/webauthn/auth/start?state=${state}`, {
+  const resp = await fetch(`/webauthn/authenticate/start?state=${state}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -124,7 +124,7 @@ export async function authenticate(): Promise<Uint8Array> {
   });
 
   // Send credential to server
-  const finishResp = await fetch(`/webauthn/auth/finish?state=${state}`, {
+  const finishResp = await fetch(`/webauthn/authenticate/finish?state=${state}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(credentialJson),

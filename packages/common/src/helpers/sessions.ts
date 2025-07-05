@@ -39,7 +39,7 @@ export const createSession = async (applicationId: string) => {
   body.append('nonce', new Blob([nonceInput], { type: 'application/octet-stream' }));
   body.append('application_id', applicationId);
 
-  const response = await fetch(`/app/${applicationId}/auth/create_session`, {
+  const response = await fetch(`/session`, {
     method: 'POST',
     body,
   });
