@@ -34,6 +34,8 @@ struct CachedSession {
     signing_key: SigningKey,
     verifying_key: VerifyingKey,        // Our client's verifying key
     server_verifying_key: VerifyingKey, // Server's verifying key from attestation document
+    is_identified: bool,                // Whether the session has been identified
+    identity_key: Option<SigningKey>,   // Ed25519 key used for identity
 }
 
 /// Client for sending RPC commands to Proven nodes with transparent session management
@@ -43,6 +45,8 @@ pub struct RpcClient {
     client: Client,
     /// Cached sessions by type
     sessions: HashMap<SessionType, CachedSession>,
+    /// Base URL for the node (cached for auto-identify)
+    node_url: Option<String>,
 }
 
 /// Error types for RPC operations
@@ -70,11 +74,13 @@ impl RpcClient {
         Self {
             client: Client::new(),
             sessions: HashMap::new(),
+            node_url: None,
         }
     }
 
     /// Send a `WhoAmI` command to get session information (management session)
     pub fn who_am_i(&mut self, node_url: &str) -> Result<WhoAmIResponse, RpcError> {
+        self.node_url = Some(node_url.to_string());
         let session_id = {
             let session = self.ensure_management_session(node_url)?;
             session.session_id
@@ -91,8 +97,16 @@ impl RpcClient {
 
     /// Create a new application on the specified node (management session)
     pub fn create_application(&mut self, node_url: &str, _name: &str) -> Result<Uuid, RpcError> {
+        self.node_url = Some(node_url.to_string());
+
+        // Ensure we have an identified session for creating applications
+        self.ensure_identified_session(node_url)?;
+
         let session_id = {
-            let session = self.ensure_management_session(node_url)?;
+            let session = self
+                .sessions
+                .get(&SessionType::Management)
+                .ok_or_else(|| RpcError::InvalidResponse("No management session".to_string()))?;
             session.session_id
         };
 
@@ -118,15 +132,29 @@ impl RpcClient {
 
     /// Send an identify command to authenticate the session (management session)
     pub fn identify(&mut self, node_url: &str) -> Result<(), RpcError> {
-        let session_id = {
+        self.node_url = Some(node_url.to_string());
+        let (session_id, identity_key, session_id_signature) = {
             let session = self.ensure_management_session(node_url)?;
-            session.session_id
+            let identity_key = session.identity_key.as_ref().map_or_else(
+                || SigningKey::generate(&mut OsRng),
+                std::clone::Clone::clone,
+            );
+
+            // Sign the session ID with the identity key
+            let session_id_bytes = session.session_id.as_bytes();
+            let signature = identity_key.sign(session_id_bytes);
+
+            (session.session_id, identity_key, signature)
         };
 
-        // For now, create identify command with empty bytes - real implementation would include identity proof
+        // Get the public key bytes
+        let public_key_bytes = identity_key.verifying_key().as_bytes().to_vec();
+
         let command = Command::Identify(IdentifyCommand {
-            passkey_prf_public_key_bytes: bytes::Bytes::new(),
-            session_id_signature_bytes: bytes::Bytes::new(),
+            passkey_prf_public_key_bytes: bytes::Bytes::from(public_key_bytes),
+            session_id_signature_bytes: bytes::Bytes::from(
+                session_id_signature.to_bytes().to_vec(),
+            ),
         });
 
         let Response::Identify(response) =
@@ -140,6 +168,13 @@ impl RpcClient {
         match response {
             IdentifyResponse::IdentifySuccess(_identity) => {
                 info!("Management session identified successfully");
+
+                // Update the session to mark it as identified and store the identity key
+                if let Some(session) = self.sessions.get_mut(&SessionType::Management) {
+                    session.is_identified = true;
+                    session.identity_key = Some(identity_key);
+                }
+
                 Ok(())
             }
             IdentifyResponse::IdentifyFailure(error) => Err(RpcError::ServerError(format!(
@@ -150,6 +185,7 @@ impl RpcClient {
 
     /// Send an anonymize command to remove session identity (management session)
     pub fn anonymize(&mut self, node_url: &str) -> Result<(), RpcError> {
+        self.node_url = Some(node_url.to_string());
         let session_id = {
             let session = self.ensure_management_session(node_url)?;
             session.session_id
@@ -167,6 +203,12 @@ impl RpcClient {
         match response {
             AnonymizeResponse::AnonymizeSuccess => {
                 info!("Management session anonymized successfully");
+
+                // Update the session to mark it as no longer identified
+                if let Some(session) = self.sessions.get_mut(&SessionType::Management) {
+                    session.is_identified = false;
+                }
+
                 Ok(())
             }
             AnonymizeResponse::AnonymizeFailure(error) => Err(RpcError::ServerError(format!(
@@ -184,6 +226,25 @@ impl RpcClient {
         }
 
         Ok(self.sessions.get(&SessionType::Management).unwrap())
+    }
+
+    /// Ensure we have an identified management session, creating and identifying one if needed
+    fn ensure_identified_session(&mut self, node_url: &str) -> Result<(), RpcError> {
+        // First ensure we have a session
+        self.ensure_management_session(node_url)?;
+
+        // Check if it's already identified
+        let needs_identification = self
+            .sessions
+            .get(&SessionType::Management)
+            .is_none_or(|s| !s.is_identified);
+
+        if needs_identification {
+            info!("Session not identified, sending identify command...");
+            self.identify(node_url)?;
+        }
+
+        Ok(())
     }
 
     /// Create a management session with the specified node
@@ -242,6 +303,8 @@ impl RpcClient {
             signing_key,
             verifying_key,
             server_verifying_key,
+            is_identified: false,
+            identity_key: None,
         })
     }
 
@@ -420,6 +483,13 @@ impl RpcClient {
         self.sessions.contains_key(&SessionType::Management)
     }
 
+    /// Check if we have an identified management session
+    pub fn has_identified_session(&self) -> bool {
+        self.sessions
+            .get(&SessionType::Management)
+            .is_some_and(|s| s.is_identified)
+    }
+
     /// Get the management session ID (if any)
     pub fn management_session_id(&self) -> Option<Uuid> {
         self.sessions
@@ -430,6 +500,7 @@ impl RpcClient {
     /// Clear all cached sessions (useful for testing or reconnection)
     pub fn clear_sessions(&mut self) {
         self.sessions.clear();
+        self.node_url = None;
         info!("All cached sessions cleared");
     }
 }
