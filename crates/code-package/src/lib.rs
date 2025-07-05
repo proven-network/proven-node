@@ -15,8 +15,7 @@
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Parse a package.json file
-//! let package_json = PackageJson::from_str(
-//!     r#"
+//! let package_json: PackageJson = r#"
 //! {
 //!     "name": "my-app",
 //!     "dependencies": {
@@ -24,8 +23,8 @@
 //!         "uuid": "^8.3.2"
 //!     }
 //! }
-//! "#,
-//! )?;
+//! "#
+//! .parse()?;
 //!
 //! // Create your application modules
 //! let main_module = r#"
@@ -285,6 +284,7 @@ impl CodePackage {
     ///
     /// This function will return an error if the module graph cannot be built, NPM dependencies
     /// cannot be resolved, or if the `EszipV2::from_graph` function fails.
+    #[allow(clippy::future_not_send)]
     pub async fn from_map_with_npm_deps(
         module_sources: &HashMap<ModuleSpecifier, String>,
         module_roots: impl IntoIterator<Item = ModuleSpecifier> + Clone,
@@ -353,37 +353,31 @@ impl CodePackage {
             .into_iter()
             .collect::<Vec<ModuleSpecifier>>();
 
-        let module_graph_future = async move {
-            let mut graph = ModuleGraph::new(GraphKind::All);
+        let mut module_graph = ModuleGraph::new(GraphKind::All);
 
-            graph
-                .build(
-                    module_roots_clone,
-                    Vec::default(),
-                    &loader,
-                    BuildOptions {
-                        is_dynamic: true,
-                        skip_dynamic_deps: false,
-                        executor: Default::default(),
-                        locker: None,
-                        file_system: &NullFileSystem,
-                        jsr_url_provider: Default::default(),
-                        passthrough_jsr_specifiers: false,
-                        module_analyzer: Default::default(),
-                        module_info_cacher: Default::default(),
-                        npm_resolver: Some(&npm_resolver),
-                        reporter: None,
-                        resolver: Some(&CodePackageResolver),
-                        unstable_bytes_imports: false,
-                        unstable_text_imports: false,
-                    },
-                )
-                .await;
-
-            graph
-        };
-
-        let module_graph = module_graph_future.await;
+        module_graph
+            .build(
+                module_roots_clone,
+                Vec::default(),
+                &loader,
+                BuildOptions {
+                    is_dynamic: true,
+                    skip_dynamic_deps: false,
+                    executor: Default::default(),
+                    locker: None,
+                    file_system: &NullFileSystem,
+                    jsr_url_provider: Default::default(),
+                    passthrough_jsr_specifiers: false,
+                    module_analyzer: Default::default(),
+                    module_info_cacher: Default::default(),
+                    npm_resolver: Some(&npm_resolver),
+                    reporter: None,
+                    resolver: Some(&CodePackageResolver),
+                    unstable_bytes_imports: false,
+                    unstable_text_imports: false,
+                },
+            )
+            .await;
 
         Self::from_module_graph(module_graph, module_roots)
     }
@@ -602,7 +596,7 @@ mod tests {
         }
         "#;
 
-        let package_json = PackageJson::from_str(package_json_content).unwrap();
+        let package_json: PackageJson = package_json_content.parse().unwrap();
         assert_eq!(package_json.name, Some("test-package".to_string()));
         assert_eq!(package_json.dependencies.len(), 1);
 
@@ -686,7 +680,7 @@ mod tests {
         "#;
 
         // Parse package.json
-        let package_json = PackageJson::from_str(package_json_content).unwrap();
+        let package_json: PackageJson = package_json_content.parse().unwrap();
 
         // Test production dependencies only
         let prod_reqs = package_json.to_package_reqs(false).unwrap();

@@ -1,0 +1,48 @@
+{
+  "name": "@proven-network/bundler-shared",
+  "version": "0.0.1",
+  "description": "Shared utilities for Proven Network bundler plugins",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc && rollup -c",
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@babel/parser": "^7.26.0",
+    "@babel/traverse": "^7.26.0",
+    "@babel/types": "^7.26.0",
+    "fast-glob": "^3.3.0",
+    "semver": "^7.6.0",
+    "tslib": "^2.8.1"
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.28.0",
+    "@babel/preset-typescript": "^7.27.1",
+    "@rollup/plugin-typescript": "^12.1.0",
+    "@types/babel__traverse": "^7.20.6",
+    "@types/jest": "30.0.0",
+    "@types/semver": "^7.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.35.1",
+    "@typescript-eslint/parser": "^8.35.1",
+    "jest": "30.0.4",
+    "rollup": "^4.32.0",
+    "ts-jest": "^29.2.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

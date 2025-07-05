@@ -4,10 +4,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use async_trait::async_trait;
-use deno_graph::{NpmLoadError, NpmResolvePkgReqsResult};
 use deno_graph::source::NpmResolver;
-use deno_npm::registry::{NpmPackageInfo, NpmRegistryApi, NpmRegistryPackageInfoLoadError};
+use deno_graph::{NpmLoadError, NpmResolvePkgReqsResult};
 use deno_npm::NpmSystemInfo;
+use deno_npm::registry::{NpmPackageInfo, NpmRegistryApi, NpmRegistryPackageInfoLoadError};
 use deno_semver::package::{PackageNv, PackageReq};
 use reqwest::Client;
 use tracing::{debug, error};
@@ -109,7 +109,8 @@ impl CodePackageNpmResolver {
     pub async fn cache_stats(&self) -> (usize, usize) {
         let cache = self.cache.read().await;
         let total_entries = cache.len();
-        let expired_entries = cache.values()
+        let expired_entries = cache
+            .values()
             .filter(|cached_info| cached_info.is_expired(self.cache_ttl))
             .count();
         drop(cache);
@@ -117,12 +118,20 @@ impl CodePackageNpmResolver {
     }
 
     /// Resolves a package requirement to a specific package version.
-    pub async fn resolve_package_req(&self, package_req: &PackageReq) -> Result<PackageNv, NpmLoadError> {
-        let package_info = self.package_info(package_req.name.as_str()).await
+    #[allow(clippy::future_not_send)]
+    pub async fn resolve_package_req(
+        &self,
+        package_req: &PackageReq,
+    ) -> Result<PackageNv, NpmLoadError> {
+        let package_info = self
+            .package_info(package_req.name.as_str())
+            .await
             .map_err(|e| NpmLoadError::RegistryInfo(Arc::new(e)))?;
 
         // Find the best matching version
-        let mut matching_versions: Vec<_> = package_info.versions.keys()
+        let mut matching_versions: Vec<_> = package_info
+            .versions
+            .keys()
             .filter(|version| package_req.version_req.matches(version))
             .collect();
 
@@ -130,8 +139,11 @@ impl CodePackageNpmResolver {
             return Err(NpmLoadError::PackageReqResolution(Arc::new(
                 std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    format!("No version of {} matches {}", package_req.name, package_req.version_req)
-                )
+                    format!(
+                        "No version of {} matches {}",
+                        package_req.name, package_req.version_req
+                    ),
+                ),
             )));
         }
 
@@ -147,6 +159,7 @@ impl CodePackageNpmResolver {
 }
 
 #[async_trait(?Send)]
+#[allow(clippy::future_not_send)]
 impl NpmRegistryApi for CodePackageNpmResolver {
     async fn package_info(
         &self,
@@ -168,19 +181,26 @@ impl NpmRegistryApi for CodePackageNpmResolver {
         debug!("Fetching package info for {} from registry", name);
 
         // Construct the registry URL for the package
-        let package_url = self.registry_url.join(name)
-            .map_err(|e| NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
-                std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("Invalid package name: {e}"))
-            )))?;
+        let package_url = self.registry_url.join(name).map_err(|e| {
+            NpmRegistryPackageInfoLoadError::LoadError(Arc::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid package name: {e}"),
+            )))
+        })?;
 
         // Fetch package information from the registry
-        let response = self.client.get(package_url)
-            .header("Accept", "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*")
+        let response = self
+            .client
+            .get(package_url)
+            .header(
+                "Accept",
+                "application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*",
+            )
             .send()
             .await
-            .map_err(|e| NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
-                std::io::Error::other(e)
-            )))?;
+            .map_err(|e| {
+                NpmRegistryPackageInfoLoadError::LoadError(Arc::new(std::io::Error::other(e)))
+            })?;
 
         if response.status() == 404 {
             return Err(NpmRegistryPackageInfoLoadError::PackageNotExists {
@@ -190,23 +210,30 @@ impl NpmRegistryApi for CodePackageNpmResolver {
 
         if !response.status().is_success() {
             return Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
-                std::io::Error::other(
-                    format!("HTTP {} when fetching package {}", response.status(), name)
-                )
+                std::io::Error::other(format!(
+                    "HTTP {} when fetching package {}",
+                    response.status(),
+                    name
+                )),
             )));
         }
 
-        let package_info: NpmPackageInfo = response.json().await
-            .map_err(|e| NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
-                std::io::Error::new(std::io::ErrorKind::InvalidData, e)
-            )))?;
+        let package_info: NpmPackageInfo = response.json().await.map_err(|e| {
+            NpmRegistryPackageInfoLoadError::LoadError(Arc::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                e,
+            )))
+        })?;
 
         let package_info = Arc::new(package_info);
 
         // Cache the result (with write lock)
         {
             let mut cache = self.cache.write().await;
-            cache.insert(name.to_string(), CachedPackageInfo::new(package_info.clone()));
+            cache.insert(
+                name.to_string(),
+                CachedPackageInfo::new(package_info.clone()),
+            );
         }
 
         debug!("Successfully cached package info for {}", name);
@@ -215,6 +242,7 @@ impl NpmRegistryApi for CodePackageNpmResolver {
 }
 
 #[async_trait(?Send)]
+#[allow(clippy::future_not_send)]
 impl NpmResolver for CodePackageNpmResolver {
     /// Pre-loads and caches NPM package information for optimization.
     fn load_and_cache_npm_package_info(&self, package_name: &str) {
@@ -228,22 +256,26 @@ impl NpmResolver for CodePackageNpmResolver {
     /// The implementation returns the same number of results as input requirements.
     async fn resolve_pkg_reqs(&self, package_reqs: &[PackageReq]) -> NpmResolvePkgReqsResult {
         debug!("Resolving {} package requirements", package_reqs.len());
-        
+
         let mut results = Vec::with_capacity(package_reqs.len());
-        
+
         for package_req in package_reqs {
-            let result = self.resolve_package_req(package_req).await
-                .map_err(|e| {
-                    error!("Failed to resolve package requirement {}: {:?}", package_req, e);
-                    e
-                });
+            let result = self.resolve_package_req(package_req).await.map_err(|e| {
+                error!(
+                    "Failed to resolve package requirement {}: {:?}",
+                    package_req, e
+                );
+                e
+            });
             results.push(result);
         }
-        
-        debug!("Resolved {}/{} package requirements successfully", 
-               results.iter().filter(|r| r.is_ok()).count(), 
-               results.len());
-        
+
+        debug!(
+            "Resolved {}/{} package requirements successfully",
+            results.iter().filter(|r| r.is_ok()).count(),
+            results.len()
+        );
+
         NpmResolvePkgReqsResult {
             results,
             dep_graph_result: Ok(()),
@@ -255,23 +287,26 @@ impl NpmResolver for CodePackageNpmResolver {
 mod tests {
     use super::*;
     use deno_semver::VersionReq;
-    
+
     #[tokio::test]
     async fn test_npm_resolver_basic() {
         let resolver = CodePackageNpmResolver::new();
-        
+
         // Test loading a real package (using a very common, stable package)
         let package_req = PackageReq {
             name: "lodash".into(),
             version_req: VersionReq::parse_from_npm("^4.0.0").unwrap(),
         };
-        
+
         // This test requires internet access and may be flaky in CI
         // In a real implementation, you'd want to mock the HTTP client
         if std::env::var("ENABLE_NETWORK_TESTS").is_ok() {
             let result = resolver.resolve_package_req(&package_req).await;
-            assert!(result.is_ok(), "Failed to resolve lodash package: {result:?}");
-            
+            assert!(
+                result.is_ok(),
+                "Failed to resolve lodash package: {result:?}"
+            );
+
             let nv = result.unwrap();
             assert_eq!(nv.name.as_str(), "lodash");
             assert!(nv.version.major >= 4);
@@ -281,12 +316,12 @@ mod tests {
     #[tokio::test]
     async fn test_npm_resolver_nonexistent_package() {
         let resolver = CodePackageNpmResolver::new();
-        
+
         let package_req = PackageReq {
             name: "this-package-definitely-does-not-exist-12345".into(),
             version_req: VersionReq::parse_from_npm("*").unwrap(),
         };
-        
+
         if std::env::var("ENABLE_NETWORK_TESTS").is_ok() {
             let result = resolver.resolve_package_req(&package_req).await;
             assert!(result.is_err(), "Expected error for nonexistent package");
@@ -296,15 +331,15 @@ mod tests {
     #[tokio::test]
     async fn test_cache_functionality() {
         use std::time::Duration;
-        
+
         // Create resolver with short TTL for testing
         let resolver = CodePackageNpmResolver::with_cache_ttl(Duration::from_millis(100));
-        
+
         // Initially cache should be empty
         let (total, expired) = resolver.cache_stats().await;
         assert_eq!(total, 0);
         assert_eq!(expired, 0);
-        
+
         // Test cache cleanup (should be no-op on empty cache)
         resolver.cleanup_cache().await;
         let (total, expired) = resolver.cache_stats().await;
