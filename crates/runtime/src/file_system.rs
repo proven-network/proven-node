@@ -377,6 +377,14 @@ where
         block_on(self.chmod(path, mode))
     }
 
+    fn lchmod_sync(&self, _path: &Path, _mode: u32) -> FsResult<()> {
+        todo!()
+    }
+
+    async fn lchmod_async(&self, _path: PathBuf, _mode: u32) -> FsResult<()> {
+        todo!()
+    }
+
     fn lchown_sync(&self, _path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
         todo!()
     }

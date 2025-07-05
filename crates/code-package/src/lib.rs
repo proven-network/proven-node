@@ -141,6 +141,8 @@ impl CodePackage {
                         npm_resolver: Some(&CodePackageNpmResolver),
                         reporter: None,
                         resolver: Some(&CodePackageResolver),
+                        unstable_bytes_imports: false,
+                        unstable_text_imports: false,
                     },
                 )
                 .await;
