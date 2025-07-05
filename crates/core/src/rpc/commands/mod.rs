@@ -4,6 +4,7 @@ mod create_application;
 mod execute;
 mod execute_hash;
 mod identify;
+mod list_applications_by_owner;
 mod who_am_i;
 
 use crate::rpc::context::RpcContext;
@@ -34,4 +35,5 @@ pub use create_application::{CreateApplicationCommand, CreateApplicationResponse
 pub use execute::{ExecuteCommand, ExecuteResponse};
 pub use execute_hash::{ExecuteHashCommand, ExecuteHashResponse};
 pub use identify::{IdentifyCommand, IdentifyResponse};
+pub use list_applications_by_owner::{ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse};
 pub use who_am_i::{WhoAmICommand, WhoAmIResponse};

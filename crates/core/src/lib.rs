@@ -44,9 +44,10 @@ use tokio_util::task::TaskTracker;
 use tracing::{error, info, warn};
 
 pub use rpc::{
-    AnonymizeCommand, AnonymizeResponse, Command, CreateApplicationCommand,
-    CreateApplicationResponse, IdentifyCommand, IdentifyResponse, Response, WhoAmICommand,
-    WhoAmIResponse,
+    AddAllowedOriginCommand, AddAllowedOriginResponse, AnonymizeCommand, AnonymizeResponse,
+    Command, CreateApplicationCommand, CreateApplicationResponse, IdentifyCommand,
+    IdentifyResponse, ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse, Response,
+    WhoAmICommand, WhoAmIResponse,
 };
 
 /// Unified core that can operate in Bootstrapping or Bootstrapped mode

@@ -10,7 +10,8 @@ pub use error::Error;
 pub use crate::rpc::commands::{
     AddAllowedOriginCommand, AddAllowedOriginResponse, AnonymizeCommand, AnonymizeResponse,
     CreateApplicationCommand, CreateApplicationResponse, ExecuteCommand, ExecuteHashCommand,
-    ExecuteHashResponse, ExecuteResponse, IdentifyCommand, IdentifyResponse, WhoAmICommand,
+    ExecuteHashResponse, ExecuteResponse, IdentifyCommand, IdentifyResponse,
+    ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse, WhoAmICommand,
     WhoAmIResponse,
 };
 
@@ -45,6 +46,9 @@ pub enum Command {
     /// Identify the session.
     Identify(IdentifyCommand),
 
+    /// List applications owned by the current user.
+    ListApplicationsByOwner(ListApplicationsByOwnerCommand),
+
     /// Get the identity of the current session.
     WhoAmI(WhoAmICommand),
 }
@@ -70,6 +74,9 @@ pub enum Response {
 
     /// A response to the identify command.
     Identify(IdentifyResponse),
+
+    /// A response to the list applications by owner command.
+    ListApplicationsByOwner(ListApplicationsByOwnerResponse),
 
     /// A response to the who am i command.
     WhoAmI(WhoAmIResponse),
@@ -97,6 +104,9 @@ impl RpcCommand for Command {
             Command::Execute(cmd) => Response::Execute(cmd.execute(context).await),
             Command::ExecuteHash(cmd) => Response::ExecuteHash(cmd.execute(context).await),
             Command::Identify(cmd) => Response::Identify(cmd.execute(context).await),
+            Command::ListApplicationsByOwner(cmd) => {
+                Response::ListApplicationsByOwner(cmd.execute(context).await)
+            }
             Command::WhoAmI(cmd) => Response::WhoAmI(cmd.execute(context).await),
         }
     }

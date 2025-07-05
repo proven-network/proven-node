@@ -5,6 +5,7 @@ fn main() {
     println!("cargo:rerun-if-changed=package.json");
     println!("cargo:rerun-if-changed=src/**/*.ts");
     println!("cargo:rerun-if-changed=static/**/*.ts");
+    println!("cargo:rerun-if-changed=../../packages/common/src/**/*.ts");
 
     // Run npm install
     let npm_install_status = Command::new("npm")
